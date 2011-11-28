@@ -1,0 +1,4 @@
+setupRequired(pipe_base)
+setupRequired(afw)
+
+envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)

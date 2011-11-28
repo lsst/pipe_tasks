@@ -1,0 +1,28 @@
+/**
+\mainpage lsst::pipe::base;  Base package for pipeline tasks
+
+\section pipeBase_introduction Introduction
+
+Classes to support pipeline tasks
+
+A data processing pipeline is implemented as a task that is a subclass of pipeBase.Task.
+Tasks often call subtasks, which are also instances of pipeBase.Task.
+
+Each Task is configured by a Policy object.
+
+Task should implement a "run" method, "runButler" method, or both:
+ @li: "run" performs the primary data processing. It takes whatever arguments the author deems appropriate
+ to the task and returns a pipeBase.Struct object with a named field for each returned value.
+ "run" must not persist its output data and typically does not un-persist its input data.
+ @li: "runButler" un-persists its input data, processes the data (using "run" if present)
+ and persists the results using a data butler.
+
+A Task may also write data to its metadata dict. This object is intended for recording performance
+metrics that have no obvious object to which to belong. Use the addMetadata method to add an item of
+metadata. A task and all its subtasks share the same metadata dict.
+
+pipe_base is written purely in Python. Classes include:
+@li lsst.pipeBase.Source: object returned by the run method of a task
+@li lsst.pipeBase.Task: base class for a pipeline task
+*/
+}}}
