@@ -1,4 +1,27 @@
 setupRequired(pipe_base)
-setupRequired(afw)
+setupOptional(coadd_utils)
+setupOptional(coadd_chisquared)
+setupOptional(ip_isr)
+setupOptional(ip_diffim)
+setupOptional(ip_utils)
+setupRequired(meas_utils)
+setupRequired(meas_pipeline)
+
+setupOptional(skymap)
+
+setupOptional(obs_subaru)
+setupOptional(obs_cfht)
+setupOptional(obs_lsstSim)
+
+# HSC products
+setupOptional(hscAstrom)
+setupOptional(distEst)
+
+setupOptional(matplotlib)
+
+# Extra algorithms
+setupOptional(meas_extensions_shapeHSM)
+setupOptional(meas_extensions_photometryKron)
+setupOptional(meas_extensions_rotAngle)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
