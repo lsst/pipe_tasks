@@ -28,17 +28,14 @@ import lsst.afw.geom as afwGeom
 import lsst.meas.astrom as measAst
 import lsst.meas.astrom.sip as astromSip
 import lsst.meas.astrom.verifyWcs as astromVerify
-import lsst.pipette.util as pipUtil
-import lsst.pipette.distortion as pipDist
-
 import lsst.pipe.base as pipeBase
+from .distoration import createDistortion
+from .detectorUtil import getCcd
 
 class AstrometryTask(pipeBase.Task):
     """Conversion notes:
     
     Extracted from the Calibration task, since it seemed a good self-contained task.
-    
-    Warning: pipUtil and pipDist have not yet been moved over from pipette
     
     Warning: I'm not sure I'm using the filter information correctly. There are two issue:
     - Is the filter data being handled correctly in applyColorTerms?
@@ -58,8 +55,8 @@ class AstrometryTask(pipeBase.Task):
         assert exposure is not None, "No exposure provided"
 
         if self.policy.doDistortion:
-            ccd = pipUtil.getCcd(exposure)
-            distortion = pipDist.createDistortion(ccd, self.policy.distortion)
+            ccd = getCcd(exposure)
+            distortion = createDistortion(ccd, self.policy.distortion)
         else:
             distortion = None
 
