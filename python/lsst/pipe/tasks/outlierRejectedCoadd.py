@@ -21,7 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 """@todo: 
-- use butler to save and retrieve intermediate images!
+- use butler to save and retrieve intermediate images
 - modify debug mode that allow retrieving existing data so that it
     is controlled by debug or policy, and perhaps implement it as "reuse if it exists"
     (but this is dangerous unless the file name contains enough info to tell if it's the right image)
@@ -42,11 +42,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
 
         coaddPolicy = self.policy.coadd
         self._badPixelMask = afwImage.MaskU.getPlaneBitMask(coaddPolicy.badMaskPlanes)
-        coaddZeroPoint = coaddPolicy.coaddZeroPoint
-        coddFluxMag0 = 10**(0.4 * coaddZeroPoint)
-        coaddCalib = afwImage.Calib()
-        coaddCalib.setFluxMag0(coddFluxMag0)
-        self._coaddCalib = coaddCalib
+        self._coaddCalib = coaddUtils.makeCalib(coaddPolicy.coaddZeroPoint)
     
     def getBadPixelMask(self):
         return self._badPixelMask
