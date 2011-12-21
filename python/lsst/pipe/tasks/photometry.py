@@ -30,7 +30,7 @@ class PhotometryTask(pipeBase.Task):
     
     Warnings:
     - display is disabled until we figure out how to turn it on and off
-    - thresholdMultiplier has been moved to policy
+    - thresholdMultiplier has been moved to config
     """
     @pipeBase.timeMethod
     def run(self, exposure, psf, apcorr=None, wcs=None):
@@ -52,10 +52,10 @@ class PhotometryTask(pipeBase.Task):
         
         footprintSet = self.detect(exposure, psf)
 
-        if self.policy.doBackground:
-            with self.timer("backgroundDuration"):
+        if self.config.doBackground:
+            with self.timer("background"):
                 bg, exposure = muDetection.estimateBackground(
-                    exposure, policy=self.policy.background, subtract=True)
+                    exposure, config=self.config.background, subtract=True)
                 del bg
         
         sources = self.measure(exposure, footprintSet, psf, apcorr=apcorr, wcs=wcs)
@@ -77,12 +77,12 @@ class PhotometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert psf, "No psf provided"
         posSources, negSources = muDetection.detectSources(
-            exposure, psf, self.policy.detect, extraThreshold=self.policy.thresholdMultiplier)
+            exposure, psf, self.config.detect, extraThreshold=self.config.thresholdMultiplier)
         numPos = len(posSources.getFootprints()) if posSources is not None else 0
         numNeg = len(negSources.getFootprints()) if negSources is not None else 0
         if numNeg > 0:
             self.log.log(self.log.WARN, "%d negative sources found and ignored" % numNeg)
-        self.log.log(self.log.INFO, "Detected %d sources to %g sigma." % (numPos, policy['thresholdValue']))
+        self.log.log(self.log.INFO, "Detected %d sources to %g sigma." % (numPos, config.thresholdValue))
         return posSources
 
     @pipeBase.timeMethod
@@ -103,12 +103,12 @@ class PhotometryTask(pipeBase.Task):
         num = len(footprintSet.getFootprints())
         self.log.log(self.log.INFO, "Measuring %d positive sources" % num)
         footprints.append([footprintSet.getFootprints(), False])
-        sources = muMeasurement.sourceMeasurement(exposure, psf, footprints, self.policy.measure)
+        sources = muMeasurement.sourceMeasurement(exposure, psf, footprints, self.config.measure)
 
         if wcs is not None:
             muMeasurement.computeSkyCoords(wcs, sources)
 
-        if not self.policy.applyApcorr: # actually apply the aperture correction?
+        if not self.config.applyApcorr: # actually apply the aperture correction?
             apcorr = None
 
         if apcorr is not None:
@@ -146,10 +146,10 @@ class PhotometryTask(pipeBase.Task):
 
     def _importModules(self):
         """Import modules (so they can register themselves)"""
-        if self.policy.imports:
-            for modName in self.policy.imports:
+        if self.config.imports:
+            for modName in self.config.imports:
                 try:
-                    module = self.policy.imports[modName]
+                    module = self.config.imports[modName]
                     self.log.log(self.log.INFO, "Importing %s (%s)" % (modName, module))
                     exec("import " + module)
                 except ImportError, err:
@@ -191,11 +191,11 @@ class PhotometryDiffTask(PhotometryTask):
         """
         assert exposure, "No exposure provided"
         assert psf, "No psf provided"
-        posSources, negSources = muDetection.detectSources(exposure, psf, self.policy.detect)
+        posSources, negSources = muDetection.detectSources(exposure, psf, self.config.detect)
         numPos = len(posSources.getFootprints()) if posSources is not None else 0
         numNeg = len(negSources.getFootprints()) if negSources is not None else 0
         self.log.log(self.log.INFO, "Detected %d positive and %d negative sources to %g sigma." % 
-                     (numPos, numNeg, policy['thresholdValue']))
+                     (numPos, numNeg, config.thresholdValue))
 
         for f in negSources.getFootprints():
             posSources.getFootprints().push_back(f)

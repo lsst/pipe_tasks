@@ -22,7 +22,6 @@
 import math
 import numpy
 
-import lsst.pex.logging as pexLog
 import lsst.afw.detection as afwDet
 import lsst.afw.geom as afwGeom
 import lsst.meas.astrom as measAst
@@ -54,9 +53,9 @@ class AstrometryTask(pipeBase.Task):
         """
         assert exposure is not None, "No exposure provided"
 
-        if self.policy.doDistortion:
+        if self.config.doDistortion:
             ccd = getCcd(exposure)
-            distortion = createDistortion(ccd, self.policy.distortion)
+            distortion = createDistortion(ccd, self.config.distortion)
         else:
             distortion = None
 
@@ -66,7 +65,7 @@ class AstrometryTask(pipeBase.Task):
         self.undistort(exposure, sources, matches, distortion=dist)
         self.verifyAstrometry(exposure, matches)
 
-        if matches is not None and self.policy.doColorTerms:
+        if matches is not None and self.config.doColorTerms:
             self.applyColorTerms(exposure, matches, matchMeta)
 
         return pipeBase.Struct(
@@ -146,15 +145,14 @@ class AstrometryTask(pipeBase.Task):
 
         if distortion is not None:
             # Removed distortion, so use low order
-            oldOrder = self.policy.sipOrder
-            self.policy.sipOrder = 2
+            oldOrder = self.config.sipOrder
+            self.config.sipOrder = 2
 
-        log = pexLog.Log(self.log, "astrometry")
-        astrom = measAst.determineWcs(self.policy, exposure, distSources,
-                                      log=log, forceImageSize=size, filterName=filterName)
+        astrom = measAst.determineWcs(self.config, exposure, distSources,
+                                      log=self.log, forceImageSize=size, filterName=filterName)
 
         if distortion is not None:
-            self.policy.sipOrder = oldOrder
+            self.config.sipOrder = oldOrder
 
         if astrom is None:
             raise RuntimeError("Unable to solve astrometry for %s", exposure.getDetector().getId())
@@ -214,9 +212,9 @@ class AstrometryTask(pipeBase.Task):
             m.first.setYAstrom(m.second.getYAstrom() + dy)
 
         # Re-fit the WCS with the distortion undone
-        if self.policy.calculateSip:
+        if self.config.calculateSip:
             self.log.log(self.log.INFO, "Refitting WCS with distortion removed")
-            sip = astromSip.CreateWcsWithSip(matches, exposure.getWcs(), self.policy.sipOrder)
+            sip = astromSip.CreateWcsWithSip(matches, exposure.getWcs(), self.config.sipOrder)
             wcs = sip.getNewWcs()
             self.log.log(self.log.INFO, "Astrometric scatter: %f arcsec (%s non-linear terms)" %
                          (sip.getScatterOnSky().asArcseconds(), "with" if wcs.hasDistortion() else "without"))
@@ -251,7 +249,7 @@ class AstrometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "Cannot apply color terms: filter name unknown")
             # No data to do anything
             return
-        filterTable = self.policy.filterTable
+        filterTable = self.config.filterTable
         filterData = filterTable.get(natural)
         if natural is None:
             self.log.log(self.log.WARN, "Cannot apply color terms: no data for filter %s" % (filterName,))
@@ -259,7 +257,7 @@ class AstrometryTask(pipeBase.Task):
         primary = filterData['primary'] # Primary band for correction
         secondary = filterData['secondary'] # Secondary band for correction
 
-        polyData = filterData.getPolicy().getDoubleArray('polynomial') # Polynomial correction
+        polyData = filterData.getConfig().getDoubleArray('polynomial') # Polynomial correction
         polyData.reverse()            # Numpy wants decreasing powers
         polynomial = numpy.poly1d(polyData)
 
@@ -267,7 +265,7 @@ class AstrometryTask(pipeBase.Task):
         secondaries = measAst.readReferenceSourcesFromMetadata(
             matchMeta,
             log = self.log,
-            policy = self.policy.astrometry,
+            config = self.config.astrometry,
             filterName = secondary,
         )
         secondariesDict = dict()

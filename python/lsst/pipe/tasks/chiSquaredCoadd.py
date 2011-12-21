@@ -29,5 +29,5 @@ class ChiSquaredCoaddTask(CoaddTask):
     def makeCoadd(self, coaddBBox, coaddWcs):
         """Make a coadd object, e.g. lsst.coadd.utils.Coadd
         """
-        return coaddChiSq.Coadd.fromPolicy(coaddBBox, coaddWcs, self.policy.coadd)
+        return coaddChiSq.Coadd.fromConfig(coaddBBox, coaddWcs, self.config.coadd)
     

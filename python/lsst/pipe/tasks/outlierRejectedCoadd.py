@@ -23,7 +23,7 @@
 """@todo: 
 - use butler to save and retrieve intermediate images
 - modify debug mode that allow retrieving existing data so that it
-    is controlled by debug or policy, and perhaps implement it as "reuse if it exists"
+    is controlled by debug or config, and perhaps implement it as "reuse if it exists"
     (but this is dangerous unless the file name contains enough info to tell if it's the right image)
 """
 import math
@@ -36,13 +36,40 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 from .coadd import CoaddTask
 
+class OutlierRejectedCoaddConfig(coaddUtils.Coadd.ConfigClass):
+    subregionSize = pexConfig.ListField(
+        int,
+        doc = """width, height of stack subregion size;
+                make small enough that a full stack of images will fit into memory at once""",
+        length = 2,
+        default = (200, 200),
+        optional = None,
+    )
+    sigmaClip = pexConfig.Field(
+        float,
+        doc = "sigma for outlier rejection",
+        default = 3.0,
+        optional = None,
+    )
+    clipIter = pexConfig.Field(
+        int
+        doc = "number of iterations of outlier rejection",
+        default = 2,
+        optional = False,
+    )
+    
+
 class OutlierRejectedCoaddTask(CoaddTask):
+    """Construct an outlier-rejected (robust mean) coadd
+    """
+    ConfigClass = OutlierRejectedCoaddConfig
+
     def __init__(self, *args, **kwargs):
         CoaddTask.__init__(self, *args, **kwargs)
 
-        coaddPolicy = self.policy.coadd
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(coaddPolicy.badMaskPlanes)
-        self._coaddCalib = coaddUtils.makeCalib(coaddPolicy.coaddZeroPoint)
+        coaddConfig = self.config.coadd
+        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(coaddConfig.badMaskPlanes)
+        self._coaddCalib = coaddUtils.makeCalib(coaddConfig.coaddZeroPoint)
     
     def getBadPixelMask(self):
         return self._badPixelMask
@@ -50,7 +77,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
     def getCoaddCalib(self):
         return self._coaddCalib
         
-    def run(self, idList, butler, desFwhm, coaddWcs, coaddBBox, policy):
+    def run(self, idList, butler, desFwhm, coaddWcs, coaddBBox, config):
         """PSF-match, warp and coadd images, using outlier rejection
         
         PSF matching is to a double gaussian model with core FWHM = desFwhm
@@ -69,7 +96,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     if 0 then no PSF matching is performed.
         @param[in] coaddWcs: WCS for coadd
         @param[in] coaddBBox: bounding box for coadd
-        @param[in] policy: see policy/outlierRejectedCoaddDictionary.paf
+        @param[in] config: see config/outlierRejectedCoaddDictionary.paf
         @output:
         - coaddExposure: coadd exposure
         - weightMap: a float Image of the same dimensions as the coadd; the value of each pixel
@@ -85,14 +112,14 @@ class OutlierRejectedCoaddTask(CoaddTask):
             desFwhm = desFwhm,
             coaddWcs = coaddWcs,
             coaddBBox = coaddBBox,
-            policy = policy,
+            config = config,
         )
         
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
         statsCtrl = afwMath.StatisticsControl()
-        statsCtrl.setNumSigmaClip(3.0)
-        statsCtrl.setNumIter(2)
+        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
+        statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self.getBadPixelMask())
     
         coaddExposure = afwImage.ExposureF(coaddBBox, coaddWcs)
@@ -108,7 +135,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         coaddExposure.writeFits("blankCoadd.fits")
     
         coaddMaskedImage = coaddExposure.getMaskedImage()
-        subregionSizeArr = policy.getArray("subregionSize")
+        subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         dumPS = dafBase.PropertySet()
         for bbox in _subBBoxIter(coaddBBox, subregionSize):
@@ -156,7 +183,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         @param[in] desFwhm: desired FWHM (pixels)
         @param[in] coaddWcs: desired WCS of coadd
         @param[in] coaddBBox: bounding box for coadd
-        @param[in] policy: policy: see policy/outlierRejectedCoaddDictionary.paf
+        @param[in] config: config: see config/outlierRejectedCoaddDictionary.paf
         
         @return
         - exposureMetadataList: a list of ExposureMetadata objects

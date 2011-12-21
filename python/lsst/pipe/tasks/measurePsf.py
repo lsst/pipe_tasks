@@ -21,6 +21,7 @@
 #
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
+import lsst.pex.config as pexConfig
 import lsst.pipette.distortion as pipDist
 import lsst.pipe.base as pipeBase
 
@@ -29,14 +30,31 @@ def propagateFlag(flag, old, new):
     if old.getFlagForDetection() & flag:
         new.setFlagForDetection(new.getFlagForDetection() | flag)
 
+class MeasurePsfConfig(pexConfig.Config):
+    starSelector = pexConfig.RegistryField(measAlg.makeStarSelector, default="secondMomentStarSelector", optional=False)
+    psfDeterminer = pexConfig.RegistryField(measAlg.makePsfDeterminer, default="pcaPsfDeterminer", optional=False)
 
 class MeasurePsfTask(pipeBase.Task):
     """Conversion notes:
     
     Split out of Calibrate since it seemed a good self-contained task
     
-    Warning: I'm not sure I'm using metadata correctly (to replace old sdqa code)
+    @warning
+    - I'm not sure I'm using metadata correctly (to replace old sdqa code)
+    - The star selector and psf determiner registries will have to be modified to return a class,
+      which has a ConfigClass attribute and can be instantiated with a config. Until then, there's no
+      obvious way to get a registry algorithm's Config from another Config.
     """
+    def __init__(self, *args, **kwargs):
+        pipeBase.Task.__init__(self, *args, **kwargs)
+        starSelectorName = self.config.starSelector.name
+        starSelectorConfig = getattr(self.config.starSelector, name)
+        self.starSelector = measAlg.makeStarSelector(starSelectorName, starSelectorConfig)
+
+        psfDeterminerName = self.config.psfDeterminer.name
+        psfDeterminerConfig = getattr(self.config.psfDeterminer, name)
+        self.psfDeterminer = measAlg.makePsfDeterminer(psfDeterminerName, psfDeterminerConfig)
+        
     @pipeBase.timeMethod
     def run(self, exposure, sources):
         """Measure the PSF
@@ -46,10 +64,6 @@ class MeasurePsfTask(pipeBase.Task):
         """
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
-        selName   = self.policy.selectName
-        selPolicy = self.policy.select
-        algName   = self.policy.algorithmName
-        algPolicy = self.policy.algorithm
         self.log.log(self.log.INFO, "Measuring PSF")
 
         #
@@ -73,11 +87,9 @@ class MeasurePsfTask(pipeBase.Task):
             fs = afwDet.makeFootprintSet(fs, 3, True)
             fs.setMask(exposure.getMaskedImage().getMask(), "DETECTED")
 
-        starSelector = measAlg.makeStarSelector(selName, selPolicy)
-        psfCandidateList = starSelector.selectStars(exposure, sources)
+        psfCandidateList = self.starSelector.selectStars(exposure, sources)
 
-        psfDeterminer = measAlg.makePsfDeterminer(algName, algPolicy)
-        psf, cellSet = psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
+        psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
         self.log.log(self.log.INFO, "PSF determination using %d/%d stars." % 
                      (self.metadata["numGoodStars"].getValue(),
                       sdqaRatings["numAvailStars"].getValue()))

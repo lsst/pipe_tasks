@@ -120,9 +120,9 @@ class RadialDistortion(CameraDistortion):
         @param ccd Ccd for distortion (sets position relative to center)
         @param config Configuration for distortion
         """
-        self.coeffs = config['coeffs']
-        self.a2i = config['actualToIdeal']
-        self.step = config['step']
+        self.coeffs = config.coeffs
+        self.a2i = config.actualToIdeal
+        self.step = config.step
 
         position = ccd.getCenter()        # Centre of CCD on focal plane
         center = ccd.getSize() / ccd.getPixelSize() / 2.0 # Central pixel

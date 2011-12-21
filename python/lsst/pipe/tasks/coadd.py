@@ -29,17 +29,54 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.ip.diffim as ipDiffIm
+import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
+# experimental use of Martin's new Config
+class TempWarpConfig(pexConfig.Config):
+    """Config for afwMath.Warper; this belongs in afwMath
+    """
+    warpingKernelName = pexConfig.Field(
+        doc = "Warping kernel",
+        dtype = str,
+        default = "lanczos4",
+        check = lambda x: x in set("bilinear", "lanczos3", "lancsoz4", "lanczos5"),
+    )
+    interpLength = pexConfig.Field(
+        doc = "interpLength argument to lsst.afw.math.warpExposure",
+        dtype = int,
+        default = 10,
+    )
+    cacheSize = pexConfig.Field(
+        doc = "cacheSize argument to lsst.afw.math.SeparableKernel.computeCache",
+        dtype = int,
+        default = 0,
+    )
+
+
+class TempPsfMatchConfig(Config):
+    pass # too complex to put here and it belongs in ip_diffim anyway; it makes a great test of pexConfig!
+
+
+class CoaddConfig(Config):
+    """Config for CoaddTask
+    """
+    coadd = pexConfig.ConfigField(coaddUtils.Coadd.ConfigClass, optional=False)
+    warp = pexConfig.ConfigField(TempWarpConfig, optional=False)
+    psfMatch = pexConfig.ConfigField(TempPsfMatchConfig, optional=False)
+
+
 class CoaddTask(pipeBase.Task):
     """Coadd images by PSF-matching (optional), warping and computing a weighted sum
     """
+    ConfigClass = CoaddConfig
+    
     def __init__(self, *args, **kwargs):
         self.pipeBase.Task.__init__(self, *args, **kwargs)
-        self.psfMatcher = ipDiffIm.ModelPsfMatch(self.policy.psfMatch)
-        self.warper = afwMath.Warper.fromPolicy(self.policy.warp)
+        self.psfMatcher = ipDiffIm.ModelPsfMatch(self.config.psfMatchConfig)
+        self.warper = afwMath.Warper.fromConfig(self.config.warpConfig)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
     
@@ -58,7 +95,7 @@ class CoaddTask(pipeBase.Task):
     def makeCoadd(self, coaddBBox, coaddWcs):
         """Make a coadd object, e.g. lsst.coadd.utils.Coadd
         """
-        return coaddUtils.Coadd.fromPolicy(coaddBBox, coaddWcs, self.policy.coadd)
+        return coaddUtils.Coadd.fromConfig(coaddBBox, coaddWcs, self.config.coaddConfig)
     
     def makeModelPsf(self, exposure, desFwhm):
         """Construct a model PSF, or reuse the prior model, if possible
