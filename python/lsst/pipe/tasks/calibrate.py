@@ -40,7 +40,7 @@ def propagateFlag(flag, old, new):
 
 class CalibrateConfig(pexConfig.Config):
     model = pexConfig.ChoiceField(
-        str,
+        dtype = str,
         doc = "PSF model type",
         default = "SingleGaussian",
         allowed = {
@@ -50,56 +50,55 @@ class CalibrateConfig(pexConfig.Config):
         optional = False,
     )
     fwhm = pexConfig.Field(
-        double,
+        dtype = float,
         doc = "FWHM of PSF model (arcsec)",
         default = 1.0,
         optional = False,
     )
     size = pexConfig.Field(
-        int,
+        dtype = int,
         doc = "Size of PSF model (pixels)",
         default = 15,
         optional = False,
     )
     thresholdValue = pexConfig.Field(
-        double,
+        dtype = float,
         doc = "Threshold for PSF stars (relative to regular detection limit)",
         default = 10.0,
         optional = False,
     )
     magnitudeLimitForCalibration = pexConfig.Field(
-        double,
+        dtype = float,
         doc = "The faintest star to consider for photometric calibration",
         default = 22.0,
         optional = False,
     )
-
     doPsf = pexConfig.Field(
-        bool,
+        dtype = bool,
         doc = "Perform PSF fitting?",
         default = True,
         optional = False,
     )
     doAstrometry = pexConfig.Field(
-        bool,
+        dtype = bool,
         doc = "Compute astrometric solution?",
         default = True,
         optional = False,
     )
     doZeropoint = pexConfig.Field(
-        bool,
+        dtype = bool,
         doc = "Compute photometric zeropoint?",
         default = True,
         optional = False,
     )
     doApCorr = pexConfig.Field(
-        bool,
+        dtype = bool,
         doc = "Calculate the aperture correction?",
         default = True,
         optional = False,
     )
     doBackground = pexConfig.Field(
-        bool,
+        dtype = bool,
         doc = "Subtract background (after computing it, if not supplied)?",
         default = True,
         optional = False,

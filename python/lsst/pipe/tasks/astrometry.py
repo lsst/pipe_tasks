@@ -22,6 +22,7 @@
 import math
 import numpy
 
+import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.afw.geom as afwGeom
 import lsst.meas.astrom as measAst
@@ -31,16 +32,66 @@ import lsst.pipe.base as pipeBase
 from .distoration import createDistortion
 from .detectorUtil import getCcd
 
+class AstrometryConfig(pexConfig.Config):
+    doDistortion = pexConfig.Field(
+        dype = bool,
+        doc = "Compute distortion",
+        default = True,
+        optional = False,
+    )
+    doColorTerms = pexConfig.Field(
+        dype = bool,
+        doc = "Correct astrometry for color terms",
+        default = True,
+        optional = False,
+    )
+    distortion = pexConfig.ConfigField(
+        configType = createDistortion.ConfigClass,
+        doc = "Config for the createDistortion function; required if doDistortation True",
+        optional = True,
+    )
+    sipOrder = pexConfig.Field(
+        dtype = int,
+        doc = "Order for SIP distortion terms",
+        default = 2,
+        optional = False,
+    )
+    calculateSip = pexConfig.Field(
+        dtype = bool,
+        doc = "Calculate SIP terms?",
+        default = True,
+        optional = False,
+    )
+    filterTable = pexConfig.ConfigField(
+        configType = ???
+        doc = "Filter translation table: data --> catalog; required if doColorTerms True",
+        optional = False,
+    )
+    astrometry = pexConfig.ConfigField(
+        configType =  ??? # from meas_astrom/policy/WcsDeterminationDictionary.paf
+        optional = False,
+    )
+    def validate():
+        if self.doDistortion and not self.distortion:
+            raise RuntimeError("distortion must be specified if doDistortion True")
+        if self.doColorTerms and not self.filterTable:
+            raise RuntimeError("filterTable must be specified if doColorTerms True")
+    
+
 class AstrometryTask(pipeBase.Task):
     """Conversion notes:
     
     Extracted from the Calibration task, since it seemed a good self-contained task.
     
     Warning: I'm not sure I'm using the filter information correctly. There are two issue:
+    - Renamed policy item filters to filterTable, for clarity (it's not just a list of filter names)
+      but it still needs work to flesh it out!
     - Is the filter data being handled correctly in applyColorTerms?
     - There was code that dealt with the filter table in astrometry, but it didn't seem to be doing
       anything so I removed it.
     """
+    ConfigClass = AstrometryConfig
+
     @pipeBase.timeMethod
     def run(self, exposure, sources):
         """AstrometryTask an exposure: PSF, astrometry and photometry

@@ -30,6 +30,7 @@ import math
 import os
 import sys
 
+import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath

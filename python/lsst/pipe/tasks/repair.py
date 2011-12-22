@@ -19,6 +19,7 @@
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
@@ -27,13 +28,27 @@ import lsst.pipe.base as pipeBase
 import lsst.afw.display.ds9 as ds9
 import lsst.afw.display.utils as displayUtils
 
+class RepairConfig(pexConfig.Config):
+    doInterpolate = pexConfig.Field(
+        dtype = bool,
+        doc = "Interpolate over defects? (ignored unless you provide a list of defects)",
+        default = True,
+    )
+    doCosmicRay = pexConfig.Field(
+        dtype = bool,
+        doc = "Find and mask out cosmic rays?",
+        default = False,
+    )
+
 class Repair(pipeBase.Task):
     """Conversion notes:
     
     Display code should be updated once we settle on a standard way of controlling what is displayed.
     """
+    ConfigClass = RepairConfig
+
     def __init__(self, keepCRs=False, *args, **kwargs):
-        # why is this not part of policy (or even policy for measAlg.findCosmicRays)?
+        # why is this not part of config (or even config for measAlg.findCosmicRays)?
         self._keepCRs = keepCRs
         pipeBase.Task.__init__(self, *args, **kwargs)
     
@@ -51,11 +66,11 @@ class Repair(pipeBase.Task):
         if display:
             self.display('prerepair', exposure=exposure)
 
-        if defects is not None and self.policy.doInterpolate:
+        if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, psf, defects)
 
-        if self.policy.doCosmicray:
-            self.cosmicray(exposure, psf)
+        if self.config.doCosmicray:
+            self.cosmicRay(exposure, psf)
 
         if display:
             self.display('repair', exposure=exposure)
@@ -76,7 +91,7 @@ class Repair(pipeBase.Task):
         measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
         self.log.log(self.log.INFO, "Interpolated over %d defects." % len(defects))
 
-    def cosmicray(self, exposure, psf):
+    def cosmicRay(self, exposure, psf):
         """Mask cosmic rays
 
         @param[in,out] exposure Exposure to process
@@ -98,7 +113,7 @@ class Repair(pipeBase.Task):
             pass
         
         bg = afwMath.makeStatistics(mi, afwMath.MEDIAN).getValue()
-        crs = measAlg.findCosmicRays(mi, psf, bg, self.policy.cosmicray, self._keepCRs)
+        crs = measAlg.findCosmicRays(mi, psf, bg, self.config.doCosmicRay, self._keepCRs)
         num = 0
         if crs is not None:
             mask = mi.getMask()

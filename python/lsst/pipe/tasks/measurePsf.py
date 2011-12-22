@@ -45,6 +45,8 @@ class MeasurePsfTask(pipeBase.Task):
       which has a ConfigClass attribute and can be instantiated with a config. Until then, there's no
       obvious way to get a registry algorithm's Config from another Config.
     """
+    ConfigClass = MeasurePsfConfig
+
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         starSelectorName = self.config.starSelector.name

@@ -24,35 +24,45 @@ import math
 import os
 import sys
 
+import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.ip.diffim as ipDiffIm
-import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 # experimental use of Martin's new Config
+# move this to afwMath once Config is close enough to start modifying afw
 class TempWarpConfig(pexConfig.Config):
-    """Config for afwMath.Warper; this belongs in afwMath
-    """
-    warpingKernelName = pexConfig.Field(
+    warpingKernelName = pexConfig.ChoiceField(
         doc = "Warping kernel",
         dtype = str,
         default = "lanczos4",
-        check = lambda x: x in set("bilinear", "lanczos3", "lancsoz4", "lanczos5"),
+        allowed = {
+            "nearest":  "nearest-neighbor interpolation; kernel size is 2x2, with only one nonzero pixel",
+            "bilinear": "bilinear interpolation; kernel size is 2x2",
+            "lanczos2": "Lanczos kernel of order 2; kernel size is 4x4",
+            "lanczos3": "Lanczos kernel of order 3; kernel size is 6x6",
+            "lanczos4": "Lanczos kernel of order 4; kernel size is 8x8",
+            "lanczos5": "Lanczos kernel of order 5; kernel size is 10x10",
+            "lanczos6": "Lanczos kernel of order 5; kernel size is 12x12",
+        }
+        optional = False,
     )
     interpLength = pexConfig.Field(
         doc = "interpLength argument to lsst.afw.math.warpExposure",
         dtype = int,
         default = 10,
+        optional = False,
     )
     cacheSize = pexConfig.Field(
         doc = "cacheSize argument to lsst.afw.math.SeparableKernel.computeCache",
         dtype = int,
         default = 0,
+        optional = False,
     )
 
 
@@ -63,9 +73,9 @@ class TempPsfMatchConfig(Config):
 class CoaddConfig(Config):
     """Config for CoaddTask
     """
-    coadd = pexConfig.ConfigField(coaddUtils.Coadd.ConfigClass, optional=False)
-    warp = pexConfig.ConfigField(TempWarpConfig, optional=False)
-    psfMatch = pexConfig.ConfigField(TempPsfMatchConfig, optional=False)
+    coadd = pexConfig.ConfigField(coaddUtils.Coadd.ConfigClass, doc="", optional=False)
+    warp = pexConfig.ConfigField(TempWarpConfig, doc="", optional=False)
+    psfMatch = pexConfig.ConfigField(TempPsfMatchConfig, doc="", optional=False)
 
 
 class CoaddTask(pipeBase.Task):

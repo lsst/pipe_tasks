@@ -21,9 +21,40 @@
 #
 import numpy
 
+import lsst.pex.config as pexConfig
 import lsst.meas.utils.sourceDetection as muDetection
 import lsst.meas.utils.sourceMeasurement as muMeasurement
 import lsst.pipe.base as pipeBase
+
+class PhotometryConfig(pexConfig.Config):
+    doBackground = pexConfig.Field(
+        dtype = bool,
+        doc = "Estimate background and subtract from exposure",
+        default = True,
+        optional = False,
+    )
+    detect = pexConfig.ConfigField(
+        configType = ??? # based on @@meas_utils:policy:DetectionDictionary.paf,
+        doc = "Source detection policy",
+        optional = False,
+    )
+    measure = pexConfig.Field(
+        configType = ??? # based on  @@meas_algorithms:policy:MeasureSourcesDictionary.paf,
+        doc = "Source measurement policy",
+        optional = False,
+    )
+    imports = pexConfig.ListField(
+        itemType = str,
+        doc = "A list of modules to import (is this still needed?)",
+        default = (),
+        optional = False,
+    )
+    thresholdValue = pexConfig.Field(
+        dtype = float,
+        doc = "Threshold for PSF stars (relative to regular detection limit)",
+        default = 10.0,
+    )
+
 
 class PhotometryTask(pipeBase.Task):
     """Conversion notes:
@@ -32,6 +63,8 @@ class PhotometryTask(pipeBase.Task):
     - display is disabled until we figure out how to turn it on and off
     - thresholdMultiplier has been moved to config
     """
+    ConfigClass = PhotometryConfig
+
     @pipeBase.timeMethod
     def run(self, exposure, psf, apcorr=None, wcs=None):
         """Run photometry
@@ -155,8 +188,17 @@ class PhotometryTask(pipeBase.Task):
                 except ImportError, err:
                     self.log.log(self.log.WARN, "Failed to import %s (%s): %s" % (modName, module, err))
 
+class RephotometryConfig(pexConfig.Config):
+    measure = pexConfig.Field(
+        configType = ??? # based on  @@meas_algorithms:policy:MeasureSourcesDictionary.paf,
+        doc = "Source measurement policy",
+        optional = False,
+    )
+
 
 class RephotometryTask(PhotometryTask):
+    ConfigClass = RephotometryConfig
+
     def run(self, exposure, footprintSet, psf, apcorr=None, wcs=None):
         """Photometer footprints that have already been detected
 
