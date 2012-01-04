@@ -5,7 +5,45 @@ import numpy
 import lsst.afw.detection as afwDet
 import lsst.afw.geom as afwGeom
 
-"""This module defines the CameraDistortion class, which calculates the effects of optical distortions."""
+"""This module defines the CameraDistortion class, which calculates the effects of optical distortions.
+
+@todo rewrite distortion as a registry, where radial is one choice
+and the other algorithms are similarly named and can have associated Config
+(right now alternate algorithms cannot be configured and there is no way to look them up).
+"""
+
+class RadialDistortionConfig(pexConfig.Config):
+    coeffs = pexConfig.ListField(
+        itemType = float,
+        doc = "Radial distortion polynomial coefficients, from highest power down to constant (typically ending as 1.0, 0.0)",
+        minLength = 0,
+        optional = False,
+    )
+    actualToIdeal = pexConfig.Field(
+        dtype = bool,
+        doc = "Whether the coefficients are suitable for actual-to-ideal (TRUE) or ideal-to-actual (FALSE)",
+        default = False,
+        optional = False,
+    )
+    step = pexConfig.Field(
+        dtype = double,
+        doc = "Step size for lookup table (pixels)",
+        default = 10.0,
+        optional = False,
+    )
+    
+class DistortionConfig(pexConfig.Config):
+    radial = pexConfig.ConfigField(
+        configType = RadialDistortionConfig,
+        doc = "Radial distortion configuration",
+        optional = True,
+    )
+    className: pexConfig.Field(
+        dtype = string,
+        doc = "dotted name of distortion computation function",
+        optional = True,
+    )
+
 
 class CameraDistortion(object):
     """This is a base class for calculating the effects of optical distortions on a camera."""
@@ -81,29 +119,31 @@ class CameraDistortion(object):
         """
         return self._distortSources(ideal, copy=copy)
 
-def createDistortion(ccd, distConfig):
+def createDistortion(ccd, config):
     """Create a suitable CameraDistortion object
 
     @param ccd Ccd for distortion (sets position relative to center)
-    @param config Configuration for distortion
+    @param config Instance of DistortionConfig
     @returns CameraDistortion specified by ccd and configuration
     """
-    if 'radial' in distConfig and 'class' in distConfig:
+    if config.radial config.className:
         raise RuntimeError("more than one distortion mechanism was specified in the configuration!")
     
-    if 'radial' in distConfig:
-        return RadialDistortion(ccd, distConfig['radial'])
-    elif 'class' in distConfig:
+    if config.radial:
+        return RadialDistortion(ccd, config.radial)
+    elif config.className:
         try:
-            distMod, distClassname = distConfig['class'].rsplit('.', 1)
+            distMod, distClassname = config.className.rsplit('.', 1)
             _temp = __import__(distMod, globals(), locals(), [distClassname], -1)
             distClass = _temp.__dict__[distClassname]
         except Exception, e:
             raise RuntimeError('Failed to import distortion class %s: %s' % \
-                               (distConfig['class'], e))
-        return distClass(ccd, distConfig)
+                               (config.className, e))
+        return distClass(ccd, config)
     else:
         return NullDistortion()
+
+createDistortion.ConfigClass = DistortionConfig
 
 class NullDistortion(CameraDistortion):
     """Class to implement no optical distortion."""
@@ -114,6 +154,8 @@ class NullDistortion(CameraDistortion):
 
 
 class RadialDistortion(CameraDistortion):
+    ConfigClass = RadialDistortionConfig
+
     def __init__(self, ccd, config):
         """Constructor
 
@@ -121,7 +163,7 @@ class RadialDistortion(CameraDistortion):
         @param config Configuration for distortion
         """
         self.coeffs = config.coeffs
-        self.a2i = config.actualToIdeal
+        self.actualToIdeal = config.actualToIdeal
         self.step = config.step
 
         position = ccd.getCenter()        # Centre of CCD on focal plane
@@ -165,7 +207,7 @@ class RadialDistortion(CameraDistortion):
         fromRadii = numpy.arange(self.minRadius, self.maxRadius, self.step, dtype=float)
         toRadii = numpy.polyval(poly, fromRadii)
 
-        if self.a2i:
+        if self.actualToIdeal:
             # Actual --> ideal
             self.actual = fromRadii
             self.ideal = toRadii
