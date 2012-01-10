@@ -78,7 +78,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
     def getCoaddCalib(self):
         return self._coaddCalib
         
-    def run(self, idList, butler, desFwhm, coaddWcs, coaddBBox, config):
+    def run(self, idList, butler, desFwhm, wcs, bbox, config):
         """PSF-match, warp and coadd images, using outlier rejection
         
         PSF matching is to a double gaussian model with core FWHM = desFwhm
@@ -95,8 +95,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
         @param[in] desFwhm: desired PSF of coadd, but in science exposure pixels
                     (the coadd usually has a different scale!);
                     if 0 then no PSF matching is performed.
-        @param[in] coaddWcs: WCS for coadd
-        @param[in] coaddBBox: bounding box for coadd
+        @param[in] wcs: WCS for coadd
+        @param[in] bbox: bounding box for coadd
         @param[in] config: see config/outlierRejectedCoaddDictionary.paf
         @output:
         - coaddExposure: coadd exposure
@@ -105,14 +105,14 @@ class OutlierRejectedCoaddTask(CoaddTask):
         """
         if numExp < 1:
             raise RuntimeError("No exposures to coadd")
-        print "Coadd %s calexp" % (len(idList),)
+        self.log.log(self.log.INFO, "Coadd %s calexp" % (len(idList),))
     
         exposureMetadataList = self.psfMatchAndWarp(
             idList = idList,
             butler = butler,
             desFwhm = desFwhm,
-            coaddWcs = coaddWcs,
-            coaddBBox = coaddBBox,
+            wcs = wcs,
+            bbox = bbox,
             config = config,
         )
         
@@ -123,7 +123,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self.getBadPixelMask())
     
-        coaddExposure = afwImage.ExposureF(coaddBBox, coaddWcs)
+        coaddExposure = afwImage.ExposureF(bbox, wcs)
         coaddExposure.setCalib(self.getCoaddCalib())
     
         filterDict = {} # dict of name: Filter
@@ -131,7 +131,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
             filterDict.setdefault(expMeta.filter.getName(), expMeta.filter)
         if len(filterDict) == 1:
             coaddExposure.setFilter(filterDict.values()[0])
-        print "Filter=", coaddExposure.getFilter().getName()
+        self.log.log(self.log.INFO, "Filter=%s" % (coaddExposure.getFilter().getName(),)
         
         coaddExposure.writeFits("blankCoadd.fits")
     
@@ -139,22 +139,23 @@ class OutlierRejectedCoaddTask(CoaddTask):
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         dumPS = dafBase.PropertySet()
-        for bbox in _subBBoxIter(coaddBBox, subregionSize):
-            print "Computing coadd %s" % (bbox,)
-            coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)
+        for subBBox in _subBBoxIter(bbox, subregionSize):
+            self.log.log(self.log.INFO, "Computing coadd %s" % (subBBox,))
+            coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
             maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
             weightList = []
             for expMeta in exposureMetadataList:
-                if expMeta.bbox.contains(bbox):
-                    maskedImage = afwImage.MaskedImageF(expMeta.path, 0, dumPS, bbox, afwImage.PARENT)
-                elif not bbox.overlaps(expMeta.bbox):
-                    print "Skipping %s; no overlap" % (expMeta.path,)
+                if expMeta.bbox.contains(subBBox):
+                    maskedImage = afwImage.MaskedImageF(expMeta.path, 0, dumPS, subBBox, afwImage.PARENT)
+                elif not subBBox.overlaps(expMeta.bbox):
+                    self.log.log(self.log.INFO, "Skipping %s; no overlap" % (expMeta.path,))
                     continue
                 else:
                     overlapBBox = afwGeom.Box2I(expMeta.bbox)
-                    overlapBBox.clip(bbox)
-                    print "Processing %s; grow from %s to %s" % (expMeta.path, overlapBBox, bbox)
-                    maskedImage = afwImage.MaskedImageF(bbox)
+                    overlapBBox.clip(subBBox)
+                    self.log.log(self.log.INFO,
+                        "Processing %s; grow from %s to %s" % (expMeta.path, overlapBBox, subBBox))
+                    maskedImage = afwImage.MaskedImageF(subBBox)
                     maskedImage.getMask().set(edgeMask)
                     maskedImageView = afwImage.MaskedImageF(maskedImage, overlapBBox, afwImage.PARENT, False)
                     maskedImageView <<= afwImage.MaskedImageF(expMeta.path, 0,dumPS, overlapBBox, afwImage.PARENT)
@@ -166,9 +167,9 @@ class OutlierRejectedCoaddTask(CoaddTask):
     
                 coaddView <<= coaddSubregion
             except Exception, e:
-                print "Outlier rejection failed; setting EDGE mask: %s" % (e,)
+                self.log.log(self.log.ERR, "Outlier rejection failed; setting EDGE mask: %s" % (e,))
+                # re-raise the exception so setCoaddEdgeBits will set the whole coadd mask to EDGE
                 raise
-                # setCoaddEdgeBits does this later, so no need to do it here
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
     
@@ -176,14 +177,14 @@ class OutlierRejectedCoaddTask(CoaddTask):
             coaddExposure = coaddExposure,
         )
 
-    def psfMatchAndWarp(self, butler, idList, coaddBBox, coaddWcs, desFwhm):
+    def psfMatchAndWarp(self, butler, idList, bbox, wcs, desFwhm):
         """Normalize, PSF-match (if desFWhm > 0) and warp exposures; save the resulting exposures as FITS files
         
         @param[in] idList: a list of IDs of calexp (and associated PSFs) to coadd
         @param[in] butler: data butler for retrieving input calexp and associated PSFs
         @param[in] desFwhm: desired FWHM (pixels)
-        @param[in] coaddWcs: desired WCS of coadd
-        @param[in] coaddBBox: bounding box for coadd
+        @param[in] wcs: desired WCS of coadd
+        @param[in] bbox: bounding box for coadd
         @param[in] config: config: see config/outlierRejectedCoaddDictionary.paf
         
         @return
@@ -196,7 +197,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
             return []
         
         if desFwhm <= 0:
-            print "No PSF matching will be done (desFwhm <= 0)"
+            self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
             
         exposureMetadataList = []
         for ind, id in enumerate(idList):
@@ -204,29 +205,29 @@ class OutlierRejectedCoaddTask(CoaddTask):
             outPath = outPath.replace(",", "_")
             outPath = outPath + ".fits"
             if True:        
-                print "Processing exposure %d of %d: id=%s" % (ind+1, numExp, id)
+                self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % (ind+1, numExp, id))
                 exposure = self.getCalexp(butler, id)
         
                 srcCalib = exposure.getCalib()
                 scaleFac = 1.0 / srcCalib.getFlux(coaddZeroPoint)
                 maskedImage = exposure.getMaskedImage()
                 maskedImage *= scaleFac
-                print "Normalized using scaleFac=%0.3g" % (scaleFac,)
+                self.log.log(self.log.INFO, "Normalized using scaleFac=%0.3g" % (scaleFac,))
     
                 if desFwhm > 0:
                     modelPsf = self.makeModelPsf(exposure, desFwhm)
-                    print "PSF-match exposure"
+                    self.log.log(self.log.INFO, "PSF-match exposure")
                     exposure, psfMatchingKernel, kernelCellSet = psfMatcher.matchExposure(exposure, modelPsf)
                 
-                print "Warp exposure"
-                exposure = self.warper.warpExposure(coaddWcs, exposure, maxBBox = coaddBBox)
+                self.log.log(self.log.INFO, "Warp exposure")
+                exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
                 exposure.setCalib(self.coaddCalib)
     
-                print "Saving intermediate exposure as %s" % (outPath,)
+                self.log.log(self.log.INFO, "Saving intermediate exposure as %s" % (outPath,))
                 exposure.writeFits(outPath)
             else:
                 # debug mode; exposures already exist
-                print "WARNING: DEBUG MODE; Processing id=%s; retrieving from %s" % (id, outPath)
+                self.log.log(self.log.WARN, "DEBUG MODE; Processing id=%s; retrieving from %s" % (id, outPath))
                 exposure = afwImage.ExposureF(outPath)
     
             expMetadata = ExposureMetadata(

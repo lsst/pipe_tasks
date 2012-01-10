@@ -26,8 +26,8 @@ from .coadd import CoaddTask
 class ChiSquaredCoaddTask(CoaddTask):
     """Coadd images by PSF-matching (optional), warping and computing a chi squared sum
     """
-    def makeCoadd(self, coaddBBox, coaddWcs):
+    def makeCoadd(self, bbox, wcs):
         """Make a coadd object; in this case an instance of coaddChiSq.Coadd
         """
-        return coaddChiSq.Coadd.fromConfig(coaddBBox, coaddWcs, self.config.coadd)
+        return coaddChiSq.Coadd.fromConfig(bbox=bbox, wcs=wcs, config=self.config.coadd)
     
