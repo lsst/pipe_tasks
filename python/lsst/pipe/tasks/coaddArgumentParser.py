@@ -19,19 +19,13 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import math
-import os
-import sys
-
 import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
-import lsst.afw.image as afwImage
 import lsst.skymap
 import lsst.pipe.base as pipeBase
-import idListOptions
 
-class CoaddOptionParser(pipeBase.ArgumentParser):
-    """OptionParser is an lsst.pipe.base.ArgumentParser specialized for coaddition.
+class CoaddArgumentParser(pipeBase.ArgumentParser):
+    """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
     
     @warning this class contains camera-specific defaults for plate scale and tile overlap;
         additional camera support requires additional coding
@@ -54,10 +48,10 @@ class CoaddOptionParser(pipeBase.ArgumentParser):
         lsstSim = 3.5,
         suprimecam = 1.5,
     )
-    def __init__(self, usage="usage: %prog dataSource [options]", **kwargs):
+    def __init__(self, **kwargs):
         """Construct an option parser
         """
-        pipeBase.ArgumentParser.__init__(self, usage=usage, **kwargs)
+        pipeBase.ArgumentParser.__init__(self, **kwargs)
 
         self.add_argument("--fwhm", type=float, default=0.0,
             help="Desired FWHM, in science exposure pixels; for no PSF matching omit or set to 0")
@@ -77,10 +71,10 @@ class CoaddOptionParser(pipeBase.ArgumentParser):
         
         Called by parse_args before the main parser is called
         """
-        pipeBase.ArgumentParser._handleDataSource(self, camera)
+        pipeBase.ArgumentParser._handleCamera(self, camera)
         defaultScale = self._DefaultScale.get(camera)
         defaultOverlap = self._DefaultOverlap.get(camera)
-        self.add_argument("--scale", type=float, default = defaultScale, required = (defaultScale == None),
+        self.add_argument("--scale", type=float, default = defaultScale, required = (defaultScale is None),
             help="Pixel scale for skycell, in arcsec/pixel")
         self.add_argument("--overlap", type=float, default = defaultOverlap, required = (defaultScale==None),
             help="Overlap between adjacent sky tiles, in deg")
@@ -95,14 +89,14 @@ class CoaddOptionParser(pipeBase.ArgumentParser):
             coadd-specific attributes:
             - fwhm: Desired FWHM, in science exposure pixels; 0 for no PSF matching
             - radec: RA, Dec of center of coadd (an afwGeom.IcrsCoord)
-            - coaddBBox: bounding box for coadd (an afwGeom.Box2I)
-            - coaddWcs: WCS for coadd (an afwMath.Wcs)
+            - bbox: bounding box for coadd (an afwGeom.Box2I)
+            - wcs: WCS for coadd (an afwMath.Wcs)
             - skyMap: sky map for coadd (an lsst.skymap.SkyMap)
             - skyTileInfo: sky tile info for coadd (an lsst.skymap.SkyTileInfo)
 
             The following command-line options are NOT included in namespace:
-            - llc (get from coaddBBox)
-            - size (get from coaddBBox)
+            - llc (get from bbox)
+            - size (get from bbox)
             - scale (get from skyTileInfo)
             - projection (get from skyTileInfo)
             - overlap (get from skyTileInfo)
@@ -126,27 +120,27 @@ class CoaddOptionParser(pipeBase.ArgumentParser):
         dimensions = afwGeom.Extent2I(namespace.size[0], namespace.size[1])
         
         tileId = namespace.tileid
-        if tileId == None:
-            if namespace.radec == None:
+        if tileId is None:
+            if namespace.radec is None:
                 raise RuntimeError("Must specify tileid or radec")
             tileId = namespace.skyMap.getSkyTileId(namespace.radec)
 
         namespace.skyTileInfo = namespace.skyMap.getSkyTileInfo(tileId)
-        namespace.coaddWcs = namespace.skyTileInfo.getWcs()
+        namespace.wcs = namespace.skyTileInfo.getWcs()
         
         # determine bounding box
         if namespace.llc != None:
             llcPixInd = afwGeom.Point2I(namespace.llc[0], namespace.llc[1])
         else:
-            if namespace.radec == None:
+            if namespace.radec is None:
                 raise RuntimeError("Must specify llc or radec")
-            ctrPixPos = namespace.coaddWcs.skyToPixel(namespace.radec)
+            ctrPixPos = namespace.wcs.skyToPixel(namespace.radec)
             ctrPixInd = afwGeom.Point2I(ctrPixPos)
             llcPixInd = ctrPixInd - (dimensions / 2)
-        namespace.coaddBBox = afwGeom.Box2I(llcPixInd, dimensions)
+        namespace.bbox = afwGeom.Box2I(llcPixInd, dimensions)
         del namespace.llc
         del namespace.size
-        if namespace.radec == None:
+        if namespace.radec is None:
             namespace.radec = namespace.skyTileInfo.getCtrCoord()
         
         return namespace

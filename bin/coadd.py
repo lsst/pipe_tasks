@@ -25,19 +25,19 @@ from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 from lsst.pipe.tasks.coadd import CoaddTask
 
 if __name__ == "__main__":
+    TaskClass = CoaddTask
     algName = "coadd"
     pexLog.Trace.setVerbosity('lsst.coadd', 3)
     pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
 
     parser = CoaddArgumentParser()
-    cmd = parser.parse_args()
-    
-    task = CoaddTask(cmd.config)
+    cmd = parser.parse_args(config=TaskClass.ConfigClass())
+    task = TaskClass(cmd.config)
     taskRes = task.run(
         butler = cmd.butler,
-        idList = butler.idList,
-        coaddBBox = cmd.coaddWcs,
-        coaddWcs = cmd.coaddBBox,
+        idList = cmd.idList,
+        bbox = cmd.bbox,
+        wcs = cmd.wcs,
         desFwhm = cmd.fwhm,
     )
     

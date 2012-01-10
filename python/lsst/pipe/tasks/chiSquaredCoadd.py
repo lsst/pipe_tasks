@@ -27,7 +27,7 @@ class ChiSquaredCoaddTask(CoaddTask):
     """Coadd images by PSF-matching (optional), warping and computing a chi squared sum
     """
     def makeCoadd(self, coaddBBox, coaddWcs):
-        """Make a coadd object, e.g. lsst.coadd.utils.Coadd
+        """Make a coadd object; in this case an instance of coaddChiSq.Coadd
         """
         return coaddChiSq.Coadd.fromConfig(coaddBBox, coaddWcs, self.config.coadd)
     
