@@ -58,7 +58,7 @@ class CoaddTask(pipeBase.Task):
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
     
-    def getCalexp(self, butler, id):
+    def getCalexp(self, butler, id, getPsf=True):
         """Return one "calexp" calibrated exposure, with psf
         
         @param butler: data butler
@@ -66,8 +66,9 @@ class CoaddTask(pipeBase.Task):
         @return calibrated exposure with psf
         """
         exposure = butler.get("calexp", id)
-        psf = butler.get("psf", id)
-        exposure.setPsf(psf)
+        if getPsf:
+            psf = butler.get("psf", id)
+            exposure.setPsf(psf)
         return exposure
     
     def makeCoadd(self, bbox, wcs):
@@ -126,20 +127,22 @@ class CoaddTask(pipeBase.Task):
                 (note that the coadd often has a different scale than the science images);
                 if 0 then no PSF matching is performed.
         @return: a pipeBase.Struct with fields:
-        - coadd: a coaddUtils.Coadd object; call coadd.getExposure() to get the coadd exposure
+        - coadd: a coaddUtils.Coadd object; call coadd.getCoadd() to get the coadd exposure
         """
         numExp = len(idList)
         if numExp < 1:
             raise RuntimeError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
+
+        doPsfMatch = desFwhm > 0
     
-        if desFwhm <= 0:
+        if not doPsfMatch:
             self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, id in enumerate(idList):
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % (ind+1, numExp, id))
-            exposure = self.getCalexp(butler, id)
+            exposure = self.getCalexp(butler, id, getPsf=doPsfMatch)
             if desFwhm > 0:
                 modelPsf = self.makeModelPsf(exposure, desFwhm)
                 self.log.log(self.log.INFO, "PSF-match exposure")

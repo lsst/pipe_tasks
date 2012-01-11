@@ -22,10 +22,10 @@
 #
 import lsst.pex.logging as pexLog
 from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
-from lsst.pipe.tasks.outlierRejectedCoadd import OutlierRejectedCoadd
+from lsst.pipe.tasks.outlierRejectedCoadd import OutlierRejectedCoaddTask
 
 if __name__ == "__main__":
-    TaskClass = OutlierRejectedCoadd
+    TaskClass = OutlierRejectedCoaddTask
     algName = "outlierRejectedCoadd"
     pexLog.Trace.setVerbosity('lsst.coadd', 3)
     pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
@@ -41,14 +41,13 @@ if __name__ == "__main__":
         desFwhm = cmd.fwhm,
     )
     
-    coadd = taskRes.coadd
-    coaddExposure = coadd.getExposure()
+    coaddExposure = taskRes.coaddExposure
 
     filterName = coaddExposure.getFilter().getName()
     if filterName == "_unknown_":
         filterStr = "unk"
     coaddBasePath = cmd.rerun
-    coaddBaseName = "%s_%s_filter_%s_fwhm_%s" % (coaddBasePath, algName, filterName, desFwhm)
+    coaddBaseName = "%s_%s_filter_%s_fwhm_%s" % (coaddBasePath, algName, filterName, cmd.fwhm)
     coaddPath = coaddBaseName + ".fits"
     print "Saving coadd as %s" % (coaddPath,)
     coaddExposure.writeFits(coaddPath)

@@ -20,7 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import lsst.coadd.chiSquared as coaddChiSq
+import lsst.coadd.chisquared as coaddChiSq
 from .coadd import CoaddTask
 
 class ChiSquaredCoaddTask(CoaddTask):

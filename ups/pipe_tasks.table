@@ -1,14 +1,15 @@
 setupRequired(pipe_base)
-setupOptional(coadd_utils)
-setupOptional(coadd_chisquared)
+setupOptional(meas_utils)
 setupOptional(ip_isr)
 setupOptional(ip_diffim)
 setupOptional(ip_utils)
-setupRequired(meas_utils)
-setupRequired(meas_pipeline)
-
+setupOptional(coadd_utils)
+setupOptional(coadd_chisquared)
 setupOptional(skymap)
 
+setupOptional(matplotlib)
+
+# mappers; this should go away with the new butler
 setupOptional(obs_subaru)
 setupOptional(obs_cfht)
 setupOptional(obs_lsstSim)
@@ -16,8 +17,6 @@ setupOptional(obs_lsstSim)
 # HSC products
 setupOptional(hscAstrom)
 setupOptional(distEst)
-
-setupOptional(matplotlib)
 
 # Extra algorithms
 setupOptional(meas_extensions_shapeHSM)

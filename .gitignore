@@ -3,6 +3,7 @@
 *.so
 *.os
 *.pyc
+/*.fits
 *_wrap.cc
 *Lib.py
 .sconf_temp
