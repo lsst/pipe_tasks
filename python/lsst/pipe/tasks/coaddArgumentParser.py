@@ -27,7 +27,7 @@ import lsst.pipe.base as pipeBase
 class CoaddArgumentParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
     
-    @warning this class contains camera-specific defaults for plate scale and tile overlap;
+    @warning this class contains camera-specific defaults for plate scale and patch overlap;
         additional camera support requires additional coding
     
     @todo:
@@ -43,7 +43,7 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         suprimecam = 0.14,
     )
 
-    # default overlap of sky tiles (deg); recommended value is one field width of the camera
+    # default overlap of sky patches (deg); recommended value is one field width of the camera
     _DefaultOverlap = dict(
         lsstSim = 3.5,
         suprimecam = 1.5,
@@ -56,15 +56,15 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         self.add_argument("--fwhm", type=float, default=0.0,
             help="Desired FWHM, in science exposure pixels; for no PSF matching omit or set to 0")
         self.add_argument("--radec", nargs=2, type=float,
-            help="RA Dec to find tileid; center of coadd unless llc specified (ICRS, degrees)")
-        self.add_argument("--tileid", type=int,
-            help="sky tile ID; if omitted, chooses the best sky tile for --radec")
+            help="RA Dec to find patchid; center of coadd unless llc specified (ICRS, degrees)")
+        self.add_argument("--patchid", type=int,
+            help="sky patch ID; if omitted, chooses the best sky patch for --radec")
         self.add_argument("--llc", nargs=2, type=int,
             help="x y index of lower left corner (pixels); if omitted, coadd is centered on --radec")
         self.add_argument("--size", nargs=2, type=int,
             help="x y size of coadd (pixels)")
         self.add_argument("--projection", default="STG",
-            help="WCS projection used for sky tiles, e.g. STG or TAN")
+            help="WCS projection used for sky patches, e.g. STG or TAN")
         
     def _handleCamera(self, camera):
         """Set attributes based on camera
@@ -77,7 +77,7 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         self.add_argument("--scale", type=float, default = defaultScale, required = (defaultScale is None),
             help="Pixel scale for skycell, in arcsec/pixel")
         self.add_argument("--overlap", type=float, default = defaultOverlap, required = (defaultScale==None),
-            help="Overlap between adjacent sky tiles, in deg")
+            help="Overlap between adjacent sky patches, in deg")
 
     def parse_args(self, config, argv=None):
         """Parse arguments for a command-line-driven task
@@ -92,15 +92,15 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
             - bbox: bounding box for coadd (an afwGeom.Box2I)
             - wcs: WCS for coadd (an afwMath.Wcs)
             - skyMap: sky map for coadd (an lsst.skymap.SkyMap)
-            - skyTileInfo: sky tile info for coadd (an lsst.skymap.SkyTileInfo)
+            - skyPatchInfo: sky patch info for coadd (an lsst.skymap.SkyPatchInfo)
 
             The following command-line options are NOT included in namespace:
             - llc (get from bbox)
             - size (get from bbox)
-            - scale (get from skyTileInfo)
-            - projection (get from skyTileInfo)
-            - overlap (get from skyTileInfo)
-            - tileid (get from skyTileInfo)
+            - scale (get from skyPatchInfo)
+            - projection (get from skyPatchInfo)
+            - overlap (get from skyPatchInfo)
+            - patchid (get from skyPatchInfo)
         """
         namespace = pipeBase.ArgumentParser.parse_args(self, config, argv)
         
@@ -119,14 +119,14 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
 
         dimensions = afwGeom.Extent2I(namespace.size[0], namespace.size[1])
         
-        tileId = namespace.tileid
-        if tileId is None:
+        patchId = namespace.patchid
+        if patchId is None:
             if namespace.radec is None:
-                raise RuntimeError("Must specify tileid or radec")
-            tileId = namespace.skyMap.getSkyTileId(namespace.radec)
+                raise RuntimeError("Must specify patchid or radec")
+            patchId = namespace.skyMap.getSkyPatchId(namespace.radec)
 
-        namespace.skyTileInfo = namespace.skyMap.getSkyTileInfo(tileId)
-        namespace.wcs = namespace.skyTileInfo.getWcs()
+        namespace.skyPatchInfo = namespace.skyMap.getSkyPatchInfo(patchId)
+        namespace.wcs = namespace.skyPatchInfo.getWcs()
         
         # determine bounding box
         if namespace.llc != None:
@@ -141,6 +141,6 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         del namespace.llc
         del namespace.size
         if namespace.radec is None:
-            namespace.radec = namespace.skyTileInfo.getCtrCoord()
+            namespace.radec = namespace.skyPatchInfo.getCtrCoord()
         
         return namespace
