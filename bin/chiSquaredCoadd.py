@@ -23,24 +23,15 @@
 import lsst.pex.logging as pexLog
 from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 from lsst.pipe.tasks.chiSquaredCoadd import ChiSquaredCoaddTask
+from lsst.pipe.base.run import runTask
 
 if __name__ == "__main__":
-    TaskClass = ChiSquaredCoaddTask
-    algName = "chiSquaredCoadd"
     pexLog.Trace.setVerbosity('lsst.coadd', 3)
     pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
-
-    parser = CoaddArgumentParser()
-    cmd = parser.parse_args(config=TaskClass.ConfigClass())
-    task = TaskClass(cmd.config)
-    taskRes = task.run(
-        butler = cmd.butler,
-        idList = cmd.idList,
-        bbox = cmd.bbox,
-        wcs = cmd.wcs,
-        desFwhm = cmd.fwhm,
-    )
+    taskRes = runTask(ChiSquaredCoaddTask, CoaddArgumentParser, argList=['butler', 'idList', 'bbox', 'wcs'],
+                      argMap={'desFwhm': 'fwhm'})
     
+    algName = "chiSquaredCoadd"
     coadd = taskRes.coadd
     coaddExposure = coadd.getCoadd()
     weightMap = coadd.getWeightMap()
