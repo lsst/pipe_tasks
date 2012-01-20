@@ -47,70 +47,58 @@ class CalibrateConfig(pexConfig.Config):
             "SingleGaussian": "Single Gaussian model",
             "DoubleGaussian": "Double Gaussian model",
         },
-        optional = False,
     )
     fwhm = pexConfig.Field(
         dtype = float,
         doc = "FWHM of PSF model (arcsec)",
         default = 1.0,
-        optional = False,
     )
     size = pexConfig.Field(
         dtype = int,
         doc = "Size of PSF model (pixels)",
         default = 15,
-        optional = False,
     )
     thresholdValue = pexConfig.Field(
         dtype = float,
         doc = "Threshold for PSF stars (relative to regular detection limit)",
         default = 10.0,
-        optional = False,
     )
     magnitudeLimitForCalibration = pexConfig.Field(
         dtype = float,
         doc = "The faintest star to consider for photometric calibration",
         default = 22.0,
-        optional = False,
     )
     doPsf = pexConfig.Field(
         dtype = bool,
         doc = "Perform PSF fitting?",
         default = True,
-        optional = False,
     )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
         default = True,
-        optional = False,
     )
     doZeropoint = pexConfig.Field(
         dtype = bool,
         doc = "Compute photometric zeropoint?",
         default = True,
-        optional = False,
     )
     doApCorr = pexConfig.Field(
         dtype = bool,
         doc = "Calculate the aperture correction?",
         default = True,
-        optional = False,
     )
     doBackground = pexConfig.Field(
         dtype = bool,
         doc = "Subtract background (after computing it, if not supplied)?",
         default = True,
-        optional = False,
     )
-
-    apCorr = ? # (a Config object from maApCorr.ApertureCorrection)
-
-    repair       = pexConfig.ConfigField(RepairTask.ConfigClass, doc="", optional=False)
-    photometry   = pexConfig.ConfigField(PhotometryTask.ConfigClass, doc="", optional=False)
-    measurePsf   = pexConfig.ConfigField(MeasurePsfTask.ConfigClass, doc="", optional=False)
-    rephotometry = pexConfig.ConfigField(RephotometryTask.ConfigClass, doc="", optional=False)
-    astrometry   = pexConfig.ConfigField(AstrometryTask.ConfigClass, doc="", optional=False)
+    apCorr       = pexConfig.ConfigField(dtype = maApCorr.ApertureCorrectionConfig, doc = "")
+    repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
+    photometry   = pexConfig.ConfigField(dtype = PhotometryTask.ConfigClass,        doc = "")
+    measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
+    rephotometry = pexConfig.ConfigField(dtype = RephotometryTask.ConfigClass,      doc = "")
+    astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
 
 
 class CalibrateTask(pipeBase.Task):
@@ -248,9 +236,8 @@ class CalibrateTask(pipeBase.Task):
         """
         assert exposure, "No exposure provided"
         assert cellSet, "No cellSet provided"
-        control = maApCorr.ApertureCorrectionControl(self.config.apCorr)
         apCorrMetadata = self.metadata.add("apCorr")
-        corr = maApCorr.ApertureCorrection(exposure, cellSet, apCorrMetadata, control, self.log)
+        corr = maApCorr.ApertureCorrection(exposure, cellSet, apCorrMetadata, self.config.apCorr, self.log)
         x, y = exposure.getWidth() / 2.0, exposure.getHeight() / 2.0
         value, error = corr.computeAt(x, y)
         self.log.log(self.log.INFO, "Aperture correction using %d/%d stars: %f +/- %f" %

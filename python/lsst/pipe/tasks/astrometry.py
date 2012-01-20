@@ -37,39 +37,33 @@ class AstrometryConfig(pexConfig.Config):
         dype = bool,
         doc = "Compute distortion",
         default = True,
-        optional = False,
     )
     doColorTerms = pexConfig.Field(
         dype = bool,
         doc = "Correct astrometry for color terms",
         default = True,
-        optional = False,
     )
     distortion = pexConfig.ConfigField(
-        configType = createDistortion.ConfigClass,
+        dtype = createDistortion.ConfigClass,
         doc = "Config for the createDistortion function; required if doDistortation True",
-        optional = True,
     )
     sipOrder = pexConfig.Field(
         dtype = int,
         doc = "Order for SIP distortion terms",
         default = 2,
-        optional = False,
     )
     calculateSip = pexConfig.Field(
         dtype = bool,
         doc = "Calculate SIP terms?",
         default = True,
-        optional = False,
     )
     filterTable = pexConfig.ConfigField(
-        configType = ???
+        dtype = ???
         doc = "Filter translation table: data --> catalog; required if doColorTerms True",
-        optional = False,
     )
     astrometry = pexConfig.ConfigField(
-        configType =  ??? # from meas_astrom/policy/WcsDeterminationDictionary.paf
-        optional = False,
+        dtype =  ???, # from meas_astrom/policy/WcsDeterminationDictionary.paf
+        doc = "",
     )
     def validate():
         if self.doDistortion and not self.distortion:

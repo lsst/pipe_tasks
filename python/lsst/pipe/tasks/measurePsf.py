@@ -31,8 +31,16 @@ def propagateFlag(flag, old, new):
         new.setFlagForDetection(new.getFlagForDetection() | flag)
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = pexConfig.RegistryField(measAlg.makeStarSelector, default="secondMomentStarSelector", optional=False)
-    psfDeterminer = pexConfig.RegistryField(measAlg.makePsfDeterminer, default="pcaPsfDeterminer", optional=False)
+    starSelector = pexConfig.RegistryField(
+        dtype = measAlg.starSelectorRegistry,
+        default="secondMomentStarSelector",
+        doc = "See measAlg.starSelectorRegistry",
+    )
+    psfDeterminer = pexConfig.RegistryField(
+        dtype = measAlg.psfDeterminerRegistry,
+        default = "pcaPsfDeterminer",
+        doc = "See measAlg.psfDeterminerRegistry",
+    )
 
 class MeasurePsfTask(pipeBase.Task):
     """Conversion notes:

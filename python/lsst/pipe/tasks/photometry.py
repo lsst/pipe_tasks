@@ -31,23 +31,19 @@ class PhotometryConfig(pexConfig.Config):
         dtype = bool,
         doc = "Estimate background and subtract from exposure",
         default = True,
-        optional = False,
     )
     detect = pexConfig.ConfigField(
-        configType = ??? # based on @@meas_utils:policy:DetectionDictionary.paf,
+        dtype = muDetection.detectSources.ConfigClass,
         doc = "Source detection policy",
-        optional = False,
     )
     measure = pexConfig.Field(
-        configType = ??? # based on  @@meas_algorithms:policy:MeasureSourcesDictionary.paf,
+        dtype = muMeasurement.sourceMeasurement.ConfigClass,
         doc = "Source measurement policy",
-        optional = False,
     )
     imports = pexConfig.ListField(
-        itemType = str,
+        dtype = str,
         doc = "A list of modules to import (is this still needed?)",
         default = (),
-        optional = False,
     )
     thresholdValue = pexConfig.Field(
         dtype = float,
@@ -192,7 +188,6 @@ class RephotometryConfig(pexConfig.Config):
     measure = pexConfig.Field(
         configType = ??? # based on  @@meas_algorithms:policy:MeasureSourcesDictionary.paf,
         doc = "Source measurement policy",
-        optional = False,
     )
 
 
