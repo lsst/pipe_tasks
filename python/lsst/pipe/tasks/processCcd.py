@@ -24,14 +24,34 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
+from lsst.ip.isr.IsrTask import IsrTask
+from lsst.pipe.tasks.calibrate import CalibrateTask
+from lsst.pipe.tasks.photometry import PhotometryTask
+
+
+def guessCcdId(ampIdList):
+    """Guess the identifier for the CCD from the list of identifiers for the CCD's amplifiers"""
+    ccdId = dict(ampIdList[0])
+    for ampId in ampIdList[1:]:
+        for key, value in ampId.items():
+            if not ccdId.has_key(key) or ccdId[key] != value:
+                del ccdId[key]
+    if len(ccdId.keys()) == 0:
+        raise ValueError("Unable to determine CCD identifier from %s" % ampIdList)
+    return ccdId
+
+
 class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
-    doIsr = pexConfig.Field(dtype=bool, default=True, optional=False, doc = "Perform ISR?")
-    doCalibrate = pexConfig.Field(dtype=bool, default=True, optional=False, doc = "Perform calibration?")
-    doPhotometry = pexConfig.Field(dtype=bool, default=True, optional=False, doc = "Perform photometry?")
-    isr = pexConfig.ConfigField(IsrTask.ConfigClass, doc="Instrumental Signature Removal", optional=False)
-    calibrate = pexConfig.ConfigField(CalibrateTask.ConfigClass, doc="Calibration", optional=False)
-    photometry = pexConfig.ConfigField(IsrTask.ConfigClass, doc="Photometry", optional=False)
+    doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
+    doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
+    doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
+    doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
+    doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
+    doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
+    isr = pexConfig.ConfigField(IsrTask.ConfigClass, doc="Instrumental Signature Removal")
+    calibrate = pexConfig.ConfigField(CalibrateTask.ConfigClass, doc="Calibration")
+    photometry = pexConfig.ConfigField(IsrTask.ConfigClass, doc="Photometry")
 
 
 class ProcessCcdTask(pipeBase.Task):
@@ -45,19 +65,17 @@ class ProcessCcdTask(pipeBase.Task):
         self.makeSubtask("photometry", PhotometryTask)
 
 
-    def run(self, butler, idList):
-        assert butler and idList
+    def run(self, butler, ampIdList):
+        assert butler and ampIdList
 
         if self.config.doIsr:
-            ccdExposure = self.isr.run(butler, idList)
+            ccdExposure = self.isr.run(butler, ampIdList)
             if self.config.doWriteIsr:
                 butler.put('postISRCCD', ccdExposure)
         else:
             ccdExposure = None
 
-        ### XXX How do I select the CCD identifier from the idList that contains the amps?
-        ccdId = selectCcdId(idList)
-
+        ccdId = guessCcdId(ampIdList)
 
         if self.config.doCalibrate:
             if ccdExposure is None:
@@ -85,5 +103,11 @@ class ProcessCcdTask(pipeBase.Task):
             phot = self.photometry.run(exposure, psf, apcorr=apCorr)
             if self.config.doWritePhotometry:
                 butler.put('src', phot.sources, ccdId)
+        else:
+            phot = None
 
-        return Struct(
+        return Struct(exposure=exposure, psf=psf, apCorr=apCorr,
+                      sources=phot.sources if phot else None,
+                      matches=calib.matches if calib else None,
+                      matchMeta=calib.matchMeta if calib else None,
+                      )
