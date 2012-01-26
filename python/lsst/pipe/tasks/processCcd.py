@@ -61,21 +61,21 @@ class ProcessCcdTask(pipeBase.Task):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("isr", IsrTask)
-        self.makeSubtask("calibrate", CalibrateTask)
-        self.makeSubtask("photometry", PhotometryTask)
+#        self.makeSubtask("calibrate", CalibrateTask)
+#        self.makeSubtask("photometry", PhotometryTask)
 
 
-    def run(self, butler, ampIdList):
-        assert butler and ampIdList
+    def run(self, butler, idList):
+        assert butler and idList
 
         if self.config.doIsr:
-            ccdExposure = self.isr.run(butler, ampIdList)
+            ccdExposure = self.isr.run(butler, idList)
             if self.config.doWriteIsr:
                 butler.put('postISRCCD', ccdExposure)
         else:
             ccdExposure = None
 
-        ccdId = guessCcdId(ampIdList)
+        ccdId = guessCcdId(idList)
 
         return
 
