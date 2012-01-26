@@ -67,9 +67,13 @@ class ProcessCcdTask(pipeBase.Task):
 
     def runButler(self, butler, idList):
         assert butler and idList
-
         if self.config.doIsr:
-            ccdExposure = self.isr.runButler(butler, idList)
+            ccdExposures = list()
+            for ident in idList:
+                isrStruct = self.isr.runButler(butler, ident)
+                ccdExposures.append(isrStruct.postIsrExposure)
+                # XXX do something with metadata
+            # XXX CCD assembly
             if self.config.doWriteIsr:
                 butler.put('postISRCCD', ccdExposure)
         else:
