@@ -23,15 +23,24 @@
 import lsst.pex.logging as pexLog
 from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 from lsst.pipe.tasks.outlierRejectedCoadd import OutlierRejectedCoaddTask
-from lsst.pipe.base.run import runTask
 
 if __name__ == "__main__":
+    TaskClass = OutlierRejectedCoaddTask
+    algName = "outlierRejectedCoadd"
     pexLog.Trace.setVerbosity('lsst.coadd', 3)
     pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
-    taskRes = runTask(OutlierRejectedCoaddTask, CoaddArgumentParser,
-                      argList=['butler', 'idList', 'bbox', 'wcs'], argMap={'desFwhm': 'fwhm'})
 
-    algName = "outlierRejectedCoadd"
+    parser = CoaddArgumentParser()
+    cmd = parser.parse_args(config=TaskClass.ConfigClass())
+    task = TaskClass(cmd.config)
+    taskRes = task.run(
+        butler = cmd.butler,
+        idList = cmd.idList,
+        bbox = cmd.bbox,
+        wcs = cmd.wcs,
+        desFwhm = cmd.fwhm,
+    )
+    
     coaddExposure = taskRes.coaddExposure
 
     filterName = coaddExposure.getFilter().getName()
