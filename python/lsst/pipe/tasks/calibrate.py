@@ -25,9 +25,9 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.apertureCorrection as maApCorr
-import lsst.meas.photocal as photocal
+#import lsst.meas.photocal as photocal
+#from .astrometry import AstrometryTask
 import lsst.pipe.base as pipeBase
-from .astrometry import AstrometryTask
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
 from .photometry import PhotometryTask, RephotometryTask
@@ -98,7 +98,7 @@ class CalibrateConfig(pexConfig.Config):
     photometry   = pexConfig.ConfigField(dtype = PhotometryTask.ConfigClass,        doc = "")
     measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
     rephotometry = pexConfig.ConfigField(dtype = RephotometryTask.ConfigClass,      doc = "")
-    astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
+#    astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
 
 
 class CalibrateTask(pipeBase.Task):
@@ -123,7 +123,7 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("photometry", PhotometryTask)
         self.makeSubtask("measurePsf", MeasurePsfTask)
         self.makeSubtask("rephotometry", RephotometryTask)
-        self.makeSubtask("astrometry", AstrometryTask)
+#        self.makeSubtask("astrometry", AstrometryTask)
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, background=None):
@@ -190,7 +190,7 @@ class CalibrateTask(pipeBase.Task):
             sources = rephotRet.sources
             del rephotRet
         
-        if self.config.doAstrometry or self.config.doZeropoint:
+        if False and (self.config.doAstrometry or self.config.doZeropoint):
             astromRet = self.astrometry.run(exposure, sources)
             matches = astromRet.matches
             matchMeta = astromRet.matchMeta
