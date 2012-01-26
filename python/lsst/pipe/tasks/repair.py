@@ -40,7 +40,7 @@ class RepairConfig(pexConfig.Config):
         default = False,
     )
 
-class Repair(pipeBase.Task):
+class RepairTask(pipeBase.Task):
     """Conversion notes:
     
     Display code should be updated once we settle on a standard way of controlling what is displayed.
