@@ -25,8 +25,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 from lsst.ip.isr import IsrTask
-from lsst.pipe.tasks.calibrate import CalibrateTask
-from lsst.pipe.tasks.photometry import PhotometryTask
+#from lsst.pipe.tasks.calibrate import CalibrateTask
+#from lsst.pipe.tasks.photometry import PhotometryTask
 
 
 def guessCcdId(ampIdList):
@@ -49,9 +49,9 @@ class ProcessCcdConfig(pexConfig.Config):
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
-    isr = pexConfig.ConfigField(IsrTask.ConfigClass, doc="Instrumental Signature Removal")
-    calibrate = pexConfig.ConfigField(CalibrateTask.ConfigClass, doc="Calibration")
-    photometry = pexConfig.ConfigField(IsrTask.ConfigClass, doc="Photometry")
+    isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Instrumental Signature Removal")
+#    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
+#    photometry = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Photometry")
 
 
 class ProcessCcdTask(pipeBase.Task):
@@ -76,6 +76,8 @@ class ProcessCcdTask(pipeBase.Task):
             ccdExposure = None
 
         ccdId = guessCcdId(ampIdList)
+
+        return
 
         if self.config.doCalibrate:
             if ccdExposure is None:
