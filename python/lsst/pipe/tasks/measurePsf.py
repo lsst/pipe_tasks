@@ -22,7 +22,6 @@
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pex.config as pexConfig
-import lsst.pipette.distortion as pipDist
 import lsst.pipe.base as pipeBase
 
 def propagateFlag(flag, old, new):
