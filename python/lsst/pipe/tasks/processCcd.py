@@ -65,11 +65,11 @@ class ProcessCcdTask(pipeBase.Task):
 #        self.makeSubtask("photometry", PhotometryTask)
 
 
-    def run(self, butler, idList):
+    def runButler(self, butler, idList):
         assert butler and idList
 
         if self.config.doIsr:
-            ccdExposure = self.isr.run(butler, idList)
+            ccdExposure = self.isr.runButler(butler, idList)
             if self.config.doWriteIsr:
                 butler.put('postISRCCD', ccdExposure)
         else:

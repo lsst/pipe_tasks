@@ -49,5 +49,5 @@ def runTask(TaskClass, ArgumentParserClass=ArgumentParser, argList=['butler', 'i
     if argMap is not None:
         kwargs.update([(argTarget, getattr(cmd, argSource)) for argTarget,argSource in argMap])
 
-    return task.run(**kwargs)
+    return task.runButler(**kwargs)
 
