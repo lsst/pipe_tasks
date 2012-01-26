@@ -21,7 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from lsst.pipe.tasks.processCcd import ProcessCcdAndOutputTask
-from lsst.pipe.base.run import runTask
+from lsst.pipe.tasks.run import runTask
 
 
 if __name__ == "__main__":
