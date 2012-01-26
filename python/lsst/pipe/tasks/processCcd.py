@@ -24,7 +24,7 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-from lsst.ip.isr.IsrTask import IsrTask
+from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.photometry import PhotometryTask
 
