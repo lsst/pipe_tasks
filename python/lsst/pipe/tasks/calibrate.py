@@ -117,13 +117,13 @@ class CalibrateTask(pipeBase.Task):
     """
     ConfigClass = CalibrateConfig
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config=CalibrateConfig(), *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("repair", RepairTask, keepCRs=True)
-        self.makeSubtask("photometry", PhotometryTask)
-        self.makeSubtask("measurePsf", MeasurePsfTask)
-        self.makeSubtask("rephotometry", RephotometryTask)
-#        self.makeSubtask("astrometry", AstrometryTask)
+        self.makeSubtask("repair", RepairTask, keepCRs=True, config=config.repair)
+        self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
+        self.makeSubtask("measurePsf", MeasurePsfTask, config=config.measurePsf)
+        self.makeSubtask("rephotometry", RephotometryTask, config=config.rephotometry)
+#        self.makeSubtask("astrometry", AstrometryTask, config=config.astrometry)
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, background=None):

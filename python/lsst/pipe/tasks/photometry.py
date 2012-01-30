@@ -22,28 +22,30 @@
 import numpy
 
 import lsst.pex.config as pexConfig
+import lsst.meas.algorithms as measAlg
 import lsst.meas.utils.sourceDetection as muDetection
 import lsst.meas.utils.sourceMeasurement as muMeasurement
 import lsst.pipe.base as pipeBase
 
-class PhotometryConfig(pexConfig.Config):
+class MeasurementConfig(pexConfig.Config):
     doBackground = pexConfig.Field(
         dtype = bool,
         doc = "Estimate background and subtract from exposure",
         default = True,
     )
-    detect = pexConfig.ConfigField(
-        dtype = muDetection.detectSources.ConfigClass,
-        doc = "Source detection policy",
-    )
-    measure = pexConfig.Field(
+    measure = pexConfig.ConfigField(
         dtype = muMeasurement.sourceMeasurement.ConfigClass,
         doc = "Source measurement policy",
     )
-    imports = pexConfig.ListField(
-        dtype = str,
-        doc = "A list of modules to import (is this still needed?)",
-        default = (),
+    background = pexConfig.ConfigField(
+        dtype = muDetection.estimateBackground.ConfigClass,
+        doc = "Background estimation configuration"
+        )
+
+class PhotometryConfig(MeasurementConfig):
+    detect = pexConfig.ConfigField(
+        dtype = muDetection.detectSources.ConfigClass,
+        doc = "Source detection policy",
     )
     thresholdValue = pexConfig.Field(
         dtype = float,
@@ -76,15 +78,11 @@ class PhotometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert psf, "No psf provided"
         
-        # why is this needed? Why can't photometry or the user import the modules?
-        self._importModules()
-        
         footprintSet = self.detect(exposure, psf)
 
         if self.config.doBackground:
             with self.timer("background"):
-                bg, exposure = muDetection.estimateBackground(
-                    exposure, config=self.config.background, subtract=True)
+                bg, exposure = muDetection.estimateBackground(exposure, self.config.background, subtract=True)
                 del bg
         
         sources = self.measure(exposure, footprintSet, psf, apcorr=apcorr, wcs=wcs)
@@ -106,12 +104,12 @@ class PhotometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert psf, "No psf provided"
         posSources, negSources = muDetection.detectSources(
-            exposure, psf, self.config.detect, extraThreshold=self.config.thresholdMultiplier)
+            exposure, psf, self.config.detect)#, extraThreshold=self.config.thresholdMultiplier)
         numPos = len(posSources.getFootprints()) if posSources is not None else 0
         numNeg = len(negSources.getFootprints()) if negSources is not None else 0
         if numNeg > 0:
             self.log.log(self.log.WARN, "%d negative sources found and ignored" % numNeg)
-        self.log.log(self.log.INFO, "Detected %d sources to %g sigma." % (numPos, config.thresholdValue))
+        self.log.log(self.log.INFO, "Detected %d sources to %g sigma." % (numPos, self.config.thresholdValue))
         return posSources
 
     @pipeBase.timeMethod
@@ -173,26 +171,9 @@ class PhotometryTask(pipeBase.Task):
 
         return sources
 
-    def _importModules(self):
-        """Import modules (so they can register themselves)"""
-        if self.config.imports:
-            for modName in self.config.imports:
-                try:
-                    module = self.config.imports[modName]
-                    self.log.log(self.log.INFO, "Importing %s (%s)" % (modName, module))
-                    exec("import " + module)
-                except ImportError, err:
-                    self.log.log(self.log.WARN, "Failed to import %s (%s): %s" % (modName, module, err))
-
-class RephotometryConfig(pexConfig.Config):
-    measure = pexConfig.Field(
-        configType = ??? # based on  @@meas_algorithms:policy:MeasureSourcesDictionary.paf,
-        doc = "Source measurement policy",
-    )
-
 
 class RephotometryTask(PhotometryTask):
-    ConfigClass = RephotometryConfig
+    ConfigClass = MeasurementConfig
 
     def run(self, exposure, footprintSet, psf, apcorr=None, wcs=None):
         """Photometer footprints that have already been detected

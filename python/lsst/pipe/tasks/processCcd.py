@@ -25,8 +25,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 from lsst.ip.isr import IsrTask
-#from lsst.pipe.tasks.calibrate import CalibrateTask
-#from lsst.pipe.tasks.photometry import PhotometryTask
+from lsst.pipe.tasks.calibrate import CalibrateTask
+from lsst.pipe.tasks.photometry import PhotometryTask
 
 
 def guessCcdId(ampIdList):
@@ -50,19 +50,20 @@ class ProcessCcdConfig(pexConfig.Config):
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Instrumental Signature Removal")
-#    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
-#    photometry = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Photometry")
+    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
+    photometry = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Photometry")
 
 
 class ProcessCcdTask(pipeBase.Task):
     """Process a CCD"""
     ConfigClass = ProcessCcdConfig
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("isr", IsrTask)
-#        self.makeSubtask("calibrate", CalibrateTask)
-#        self.makeSubtask("photometry", PhotometryTask)
+    def __init__(self, config=ProcessCcdConfig(), *args, **kwargs):
+        config = ProcessCcdConfig.load("/home/price/LSST/pipe/tasks/config/suprimecam.py")
+        pipeBase.Task.__init__(self, config=config, *args, **kwargs)
+        self.makeSubtask("isr", IsrTask, config=config.isr)
+        self.makeSubtask("calibrate", CalibrateTask, config=config.calibrate)
+        self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
 
 
     def runButler(self, butler, idList):
@@ -81,8 +82,6 @@ class ProcessCcdTask(pipeBase.Task):
             ccdExposure = None
 
         ccdId = guessCcdId(idList)
-
-        return
 
         if self.config.doCalibrate:
             if ccdExposure is None:

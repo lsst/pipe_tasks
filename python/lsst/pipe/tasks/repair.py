@@ -28,6 +28,8 @@ import lsst.pipe.base as pipeBase
 import lsst.afw.display.ds9 as ds9
 import lsst.afw.display.utils as displayUtils
 
+import lsstDebug
+
 class RepairConfig(pexConfig.Config):
     doInterpolate = pexConfig.Field(
         dtype = bool,
@@ -69,7 +71,7 @@ class RepairTask(pipeBase.Task):
         if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, psf, defects)
 
-        if self.config.doCosmicray:
+        if self.config.doCosmicRay:
             self.cosmicRay(exposure, psf)
 
         if display:

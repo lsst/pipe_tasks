@@ -30,16 +30,8 @@ def propagateFlag(flag, old, new):
         new.setFlagForDetection(new.getFlagForDetection() | flag)
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = pexConfig.RegistryField(
-        dtype = measAlg.starSelectorRegistry,
-        default="secondMomentStarSelector",
-        doc = "See measAlg.starSelectorRegistry",
-    )
-    psfDeterminer = pexConfig.RegistryField(
-        dtype = measAlg.psfDeterminerRegistry,
-        default = "pcaPsfDeterminer",
-        doc = "See measAlg.psfDeterminerRegistry",
-    )
+    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm")
+    psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm")
 
 class MeasurePsfTask(pipeBase.Task):
     """Conversion notes:
@@ -56,13 +48,8 @@ class MeasurePsfTask(pipeBase.Task):
 
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        starSelectorName = self.config.starSelector.name
-        starSelectorConfig = getattr(self.config.starSelector, name)
-        self.starSelector = measAlg.makeStarSelector(starSelectorName, starSelectorConfig)
-
-        psfDeterminerName = self.config.psfDeterminer.name
-        psfDeterminerConfig = getattr(self.config.psfDeterminer, name)
-        self.psfDeterminer = measAlg.makePsfDeterminer(psfDeterminerName, psfDeterminerConfig)
+        self.starSelector = self.config.starSelector.applyFactory()
+        self.psfDeterminer = self.config.psfDeterminer.applyFactory()
         
     @pipeBase.timeMethod
     def run(self, exposure, sources):
@@ -96,7 +83,7 @@ class MeasurePsfTask(pipeBase.Task):
             fs = afwDet.makeFootprintSet(fs, 3, True)
             fs.setMask(exposure.getMaskedImage().getMask(), "DETECTED")
 
-        psfCandidateList = self.starSelector.selectStars(exposure, sources)
+        psfCandidateList = self.starSelector(exposure, sources)
 
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
         self.log.log(self.log.INFO, "PSF determination using %d/%d stars." % 
