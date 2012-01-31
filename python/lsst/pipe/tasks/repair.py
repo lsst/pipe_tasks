@@ -41,6 +41,10 @@ class RepairConfig(pexConfig.Config):
         doc = "Find and mask out cosmic rays?",
         default = False,
     )
+    cosmicray = pexConfig.ConfigField(
+        dtype = measAlg.FindCosmicRaysConfig,
+        doc = "Options for finding and masking cosmic rays",
+        )
 
 class RepairTask(pipeBase.Task):
     """Conversion notes:
@@ -110,9 +114,10 @@ class RepairTask(pipeBase.Task):
             mask.clearMaskPlane(crBit)
         except Exception:
             pass
-        
+
+        mi = exposure.getMaskedImage()
         bg = afwMath.makeStatistics(mi, afwMath.MEDIAN).getValue()
-        crs = measAlg.findCosmicRays(mi, psf, bg, self.config.doCosmicRay, self._keepCRs)
+        crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), self._keepCRs)
         num = 0
         if crs is not None:
             mask = mi.getMask()
