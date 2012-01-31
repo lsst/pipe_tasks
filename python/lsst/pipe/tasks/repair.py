@@ -64,9 +64,7 @@ class RepairTask(pipeBase.Task):
         """
         assert exposure, "No exposure provided"
 
-        display = lsstDebug.Info(__name__).display
-        if display:
-            self.display('prerepair', exposure=exposure)
+        self.display('repair.before', exposure=exposure)
 
         if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, psf, defects)
@@ -74,8 +72,7 @@ class RepairTask(pipeBase.Task):
         if self.config.doCosmicRay:
             self.cosmicRay(exposure, psf)
 
-        if display:
-            self.display('repair', exposure=exposure)
+        self.display('repair.after', exposure=exposure)
 
     def interpolate(self, exposure, psf, defects):
         """Interpolate over defects

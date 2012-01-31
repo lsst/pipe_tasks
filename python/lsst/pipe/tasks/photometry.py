@@ -28,18 +28,14 @@ import lsst.meas.utils.sourceMeasurement as muMeasurement
 import lsst.pipe.base as pipeBase
 
 class MeasurementConfig(pexConfig.Config):
-    doBackground = pexConfig.Field(
-        dtype = bool,
-        doc = "Estimate background and subtract from exposure",
-        default = True,
-    )
     measure = pexConfig.ConfigField(
         dtype = muMeasurement.sourceMeasurement.ConfigClass,
         doc = "Source measurement policy",
     )
-    background = pexConfig.ConfigField(
-        dtype = muDetection.estimateBackground.ConfigClass,
-        doc = "Background estimation configuration"
+    applyApcorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Apply aperture correction?",
+        default = True,
         )
 
 class PhotometryConfig(MeasurementConfig):
@@ -80,11 +76,6 @@ class PhotometryTask(pipeBase.Task):
         
         footprintSet = self.detect(exposure, psf)
 
-        if self.config.doBackground:
-            with self.timer("background"):
-                bg, exposure = muDetection.estimateBackground(exposure, self.config.background, subtract=True)
-                del bg
-        
         sources = self.measure(exposure, footprintSet, psf, apcorr=apcorr, wcs=wcs)
 
         self.display('phot', exposure=exposure, sources=sources, pause=True)

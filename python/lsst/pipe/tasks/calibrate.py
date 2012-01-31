@@ -25,6 +25,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.apertureCorrection as maApCorr
+import lsst.meas.utils.sourceDetection as muDetection
 #import lsst.meas.photocal as photocal
 #from .astrometry import AstrometryTask
 import lsst.pipe.base as pipeBase
@@ -93,6 +94,10 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Subtract background (after computing it, if not supplied)?",
         default = True,
     )
+    background = pexConfig.ConfigField(
+        dtype = muDetection.estimateBackground.ConfigClass,
+        doc = "Background estimation configuration"
+        )
     apCorr       = pexConfig.ConfigField(dtype = maApCorr.ApertureCorrectionConfig, doc = "")
     repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
     photometry   = pexConfig.ConfigField(dtype = PhotometryTask.ConfigClass,        doc = "")
@@ -126,12 +131,11 @@ class CalibrateTask(pipeBase.Task):
 #        self.makeSubtask("astrometry", AstrometryTask, config=config.astrometry)
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None, background=None):
+    def run(self, exposure, defects=None):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
 
         @param exposure Exposure to calibrate
         @param defects List of defects on exposure
-        @param background Background model; if None and background subtraction is enabled, background is fit
         @return a pipeBase.Struct with fields:
         - psf: Point spread function
         - apCorr: Aperture correction
@@ -144,12 +148,19 @@ class CalibrateTask(pipeBase.Task):
         fakePsf, wcs = self.makeFakePsf(exposure)
 
         self.repair.run(exposure, fakePsf, defects=defects)
+        self.display('repair', exposure=exposure)
 
+        if self.config.doBackground:
+            with self.timer("background"):
+                bg, exposure = muDetection.estimateBackground(exposure, self.config.background, subtract=True)
+                del bg
+            self.display('background', exposure=exposure)
+        
         if self.config.doPsf or self.config.doAstrometry or self.config.doZeropoint:
             with self.timer("photometry"):
                 photRet = self.photometry.run(exposure, fakePsf)
                 sources = photRet.sources
-                footprints = photRet.footprints
+                footprints = photRet.footprintSet
         else:
             sources, footprints = None, None
 
@@ -169,18 +180,15 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPsf:
             self.repair(exposure, psf, defects=defects, preserve=False)
+            self.display('repair', exposure=exposure)
 
         if self.config.doBackground:
             with self.timer("background"):
-                if background is not None:
-                    background = value.getImageF()
-                    exposure += background
-                    self.log.log(self.log.INFO, "Subtracted supplied background")
-                else:
-                    # Subtract background
-                    background, exposure = muDetection.estimateBackground(
-                        exposure, self.config.background, subtract=True)
-                    self.log.log(self.log.INFO, "Fit and subtracted background")
+                # Subtract background
+                background, exposure = muDetection.estimateBackground(
+                    exposure, self.config.background, subtract=True)
+                self.log.log(self.log.INFO, "Fit and subtracted background")
+            self.display('background', exposure=exposure)
 
         if self.config.doPsf and (self.config.doAstrometry or self.config.doZeropoint):
             rephotRet = self.rephotometry.run(exposure, footprints, psf, apCorr)

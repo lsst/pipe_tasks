@@ -83,7 +83,7 @@ class MeasurePsfTask(pipeBase.Task):
             fs = afwDet.makeFootprintSet(fs, 3, True)
             fs.setMask(exposure.getMaskedImage().getMask(), "DETECTED")
 
-        psfCandidateList = self.starSelector(exposure, sources)
+        psfCandidateList = self.starSelector.selectStars(exposure, sources)
 
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
         self.log.log(self.log.INFO, "PSF determination using %d/%d stars." % 
