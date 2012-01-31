@@ -51,7 +51,7 @@ class ProcessCcdConfig(pexConfig.Config):
     doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Instrumental Signature Removal")
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
-    photometry = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Photometry")
+    photometry = pexConfig.ConfigField(dtype=PhotometryTask.ConfigClass, doc="Photometry")
 
 
 class ProcessCcdTask(pipeBase.Task):
@@ -59,7 +59,6 @@ class ProcessCcdTask(pipeBase.Task):
     ConfigClass = ProcessCcdConfig
 
     def __init__(self, config=ProcessCcdConfig(), *args, **kwargs):
-        config = ProcessCcdConfig.load("/home/price/LSST/pipe/tasks/config/suprimecam.py")
         pipeBase.Task.__init__(self, config=config, *args, **kwargs)
         self.makeSubtask("isr", IsrTask, config=config.isr)
         self.makeSubtask("calibrate", CalibrateTask, config=config.calibrate)
