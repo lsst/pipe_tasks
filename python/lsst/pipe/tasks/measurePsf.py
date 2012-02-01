@@ -48,8 +48,8 @@ class MeasurePsfTask(pipeBase.Task):
 
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.starSelector = self.config.starSelector.applyFactory()
-        self.psfDeterminer = self.config.psfDeterminer.applyFactory()
+        self.starSelector = self.config.starSelector.apply()
+        self.psfDeterminer = self.config.psfDeterminer.apply()
         
     @pipeBase.timeMethod
     def run(self, exposure, sources):
