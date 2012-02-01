@@ -21,6 +21,7 @@
 #
 import math
 
+import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
@@ -244,14 +245,15 @@ class CalibrateTask(pipeBase.Task):
         """
         assert exposure, "No exposure provided"
         assert cellSet, "No cellSet provided"
-        apCorrMetadata = self.metadata.add("apCorr")
-        corr = maApCorr.ApertureCorrection(exposure, cellSet, apCorrMetadata, self.config.apCorr, self.log)
+        metadata = dafBase.PropertyList()
+        corr = maApCorr.ApertureCorrection(exposure, cellSet, metadata, self.config.apCorr, self.log)
         x, y = exposure.getWidth() / 2.0, exposure.getHeight() / 2.0
         value, error = corr.computeAt(x, y)
         self.log.log(self.log.INFO, "Aperture correction using %d/%d stars: %f +/- %f" %
-                     (apCorrMetadata["phot.apCorr.numAvailStars"],
-                      apCorrMetadata["phot.apCorr.numGoodStars"],
-                      value, error))
+                     (metadata.get("numAvailStars"), metadata.get("numGoodStars"), value, error))
+        for key in metadata:
+            self.metadata.add("apCorr.%s" % key, metadata.get(key))
+        # XXX metadata?
         return corr
 
     @pipeBase.timeMethod
