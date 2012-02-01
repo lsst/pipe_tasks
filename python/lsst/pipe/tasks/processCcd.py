@@ -23,6 +23,7 @@
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.afw.detection as afwDet
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -89,8 +90,8 @@ class ProcessCcdTask(pipeBase.Task):
             if ccdExposure is None:
                 ccdExposure = butler.get('postISRCCD', ccdId)
             calib = self.calibrate.run(ccdExposure)
+            ccdExposure = calib.exposure
             if self.config.doWriteCalibrate:
-                import lsst.afw.detection as afwDet
                 butler.put(ccdExposure, 'calexp', ccdId)
                 butler.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc', ccdId)
                 if calib.psf is not None:
@@ -104,9 +105,10 @@ class ProcessCcdTask(pipeBase.Task):
         else:
             calib = None
 
-        if self.config.photometry:
-            if calib is None:
+        if self.config.doPhotometry:
+            if ccdExposure is None:
                 ccdExposure = butler.get('calexp', ccdId)
+            if calib is None:
                 psf = butler.get('psf', ccdId)
                 apCorr = None # butler.get('apcorr', ccdId)
             else:
@@ -114,12 +116,12 @@ class ProcessCcdTask(pipeBase.Task):
                 apCorr = calib.apCorr
             phot = self.photometry.run(ccdExposure, psf, apcorr=apCorr)
             if self.config.doWritePhotometry:
-                butler.put('src', phot.sources, ccdId)
+                butler.put(afwDet.PersistableSourceVector(phot.sources), 'src', ccdId)
         else:
             phot = None
 
-        return Struct(exposure=ccdExposure, psf=psf, apCorr=apCorr,
-                      sources=phot.sources if phot else None,
-                      matches=calib.matches if calib else None,
-                      matchMeta=calib.matchMeta if calib else None,
-                      )
+        return pipeBase.Struct(exposure=ccdExposure, psf=psf, apCorr=apCorr,
+                               sources=phot.sources if phot else None,
+                               matches=calib.matches if calib else None,
+                               matchMeta=calib.matchMeta if calib else None,
+                               )

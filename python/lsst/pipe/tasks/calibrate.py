@@ -211,6 +211,7 @@ class CalibrateTask(pipeBase.Task):
 #        self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
 
         return pipeBase.Struct(
+            exposure = exposure,
             psf = psf,
             apCorr = apCorr,
             sources = sources,
