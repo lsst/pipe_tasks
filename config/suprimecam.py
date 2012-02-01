@@ -9,6 +9,7 @@ root.calibrate.repair.cosmicray.nCrPixelMax = 100000
 root.calibrate.measurePsf.starSelector.name = "secondMoment"
 root.calibrate.measurePsf.psfDeterminer.name = "pca"
 
+root.calibrate.photometry.detect.thresholdValue = 50.0
 root.calibrate.photometry.measure.source.astrom = "NAIVE"
 root.calibrate.photometry.measure.source.apFlux = "NAIVE"
 root.calibrate.photometry.measure.source.modelFlux = "GAUSSIAN"

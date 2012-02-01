@@ -103,7 +103,6 @@ class CalibrateConfig(pexConfig.Config):
     repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
     photometry   = pexConfig.ConfigField(dtype = PhotometryTask.ConfigClass,        doc = "")
     measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
-    rephotometry = pexConfig.ConfigField(dtype = RephotometryTask.ConfigClass,      doc = "")
 #    astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
 
 
@@ -125,10 +124,10 @@ class CalibrateTask(pipeBase.Task):
 
     def __init__(self, config=CalibrateConfig(), *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("repair", RepairTask, keepCRs=True, config=config.repair)
+        self.makeSubtask("repair", RepairTask, config=config.repair)
         self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
         self.makeSubtask("measurePsf", MeasurePsfTask, config=config.measurePsf)
-        self.makeSubtask("rephotometry", RephotometryTask, config=config.rephotometry)
+        self.makeSubtask("rephotometry", RephotometryTask, config=config.photometry)
 #        self.makeSubtask("astrometry", AstrometryTask, config=config.astrometry)
 
     @pipeBase.timeMethod
@@ -148,7 +147,7 @@ class CalibrateTask(pipeBase.Task):
 
         fakePsf, wcs = self.makeFakePsf(exposure)
 
-        self.repair.run(exposure, fakePsf, defects=defects)
+        self.repair.run(exposure, fakePsf, defects=defects, keepCRs=True)
         self.display('repair', exposure=exposure)
 
         if self.config.doBackground:
@@ -180,7 +179,7 @@ class CalibrateTask(pipeBase.Task):
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
-            self.repair(exposure, psf, defects=defects, preserve=False)
+            self.repair.run(exposure, psf, defects=defects, keepCRs=False)
             self.display('repair', exposure=exposure)
 
         if self.config.doBackground:
@@ -206,7 +205,7 @@ class CalibrateTask(pipeBase.Task):
         else:
             matches, matchMeta = None, None
 
-        if self.config.doZeropoint:
+        if self.config.doZeropoint and matches is not None:
             self.zeropoint(exposure, matches)
 
 #        self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
@@ -251,7 +250,7 @@ class CalibrateTask(pipeBase.Task):
         value, error = corr.computeAt(x, y)
         self.log.log(self.log.INFO, "Aperture correction using %d/%d stars: %f +/- %f" %
                      (metadata.get("numAvailStars"), metadata.get("numGoodStars"), value, error))
-        for key in metadata:
+        for key in metadata.names():
             self.metadata.add("apCorr.%s" % key, metadata.get(key))
         # XXX metadata?
         return corr

@@ -53,13 +53,8 @@ class RepairTask(pipeBase.Task):
     """
     ConfigClass = RepairConfig
 
-    def __init__(self, keepCRs=False, *args, **kwargs):
-        # why is this not part of config (or even config for measAlg.findCosmicRays)?
-        self._keepCRs = keepCRs
-        pipeBase.Task.__init__(self, *args, **kwargs)
-    
     @pipeBase.timeMethod
-    def run(self, exposure, psf, defects=None):
+    def run(self, exposure, psf, defects=None, keepCRs=False):
         """Repair exposure's instrumental problems
 
         @param[in,out] exposure Exposure to process
@@ -74,7 +69,7 @@ class RepairTask(pipeBase.Task):
             self.interpolate(exposure, psf, defects)
 
         if self.config.doCosmicRay:
-            self.cosmicRay(exposure, psf)
+            self.cosmicRay(exposure, psf, keepCRs=keepCRs)
 
         self.display('repair.after', exposure=exposure)
 
@@ -94,7 +89,7 @@ class RepairTask(pipeBase.Task):
         measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
         self.log.log(self.log.INFO, "Interpolated over %d defects." % len(defects))
 
-    def cosmicRay(self, exposure, psf):
+    def cosmicRay(self, exposure, psf, keepCRs=False):
         """Mask cosmic rays
 
         @param[in,out] exposure Exposure to process
@@ -117,7 +112,7 @@ class RepairTask(pipeBase.Task):
 
         mi = exposure.getMaskedImage()
         bg = afwMath.makeStatistics(mi, afwMath.MEDIAN).getValue()
-        crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), self._keepCRs)
+        crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
         num = 0
         if crs is not None:
             mask = mi.getMask()

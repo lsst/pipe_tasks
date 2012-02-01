@@ -76,6 +76,7 @@ class ProcessCcdTask(pipeBase.Task):
                 # XXX do something with metadata
 
             ccdExposure = self.isr.doCcdAssembly(exposureList)
+            del exposureList
             self.display('ccdAssembly', exposure=ccdExposure)
             if self.config.doWriteIsr:
                 butler.put('postISRCCD', ccdExposure)
@@ -88,32 +89,36 @@ class ProcessCcdTask(pipeBase.Task):
             if ccdExposure is None:
                 ccdExposure = butler.get('postISRCCD', ccdId)
             calib = self.calibrate.run(ccdExposure)
-            del ccdExposure
             if self.config.doWriteCalibrate:
-                butler.put('calexp', calib.exposure, ccdId)
-                butler.put('psf', calib.psf, ccdId)
-                butler.put('icSrc', calib.sources, ccdId)
-                butler.put('icMatch', calib.matches, ccdId)
-                #butler.put('apcorr', calib.apcorr, ccdId)
+                import lsst.afw.detection as afwDet
+                butler.put(ccdExposure, 'calexp', ccdId)
+                butler.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc', ccdId)
+                if calib.psf is not None:
+                    butler.put(calib.psf, 'psf', ccdId)
+                if calib.apCorr is not None:
+                    #butler.put(calib.apCorr, 'apcorr', ccdId)
+                    pass
+                if calib.matches is not None:
+                    butler.put(afwDet.PersistableSourceMatchVector(calib.matches, calib.matchMeta),
+                               'icMatch', ccdId)
         else:
             calib = None
 
         if self.config.photometry:
             if calib is None:
-                exposure = butler.get('calexp', ccdId)
+                ccdExposure = butler.get('calexp', ccdId)
                 psf = butler.get('psf', ccdId)
                 apCorr = None # butler.get('apcorr', ccdId)
             else:
-                exposure = calib.exposure
                 psf = calib.psf
-                apCorr = calib.apcorr
-            phot = self.photometry.run(exposure, psf, apcorr=apCorr)
+                apCorr = calib.apCorr
+            phot = self.photometry.run(ccdExposure, psf, apcorr=apCorr)
             if self.config.doWritePhotometry:
                 butler.put('src', phot.sources, ccdId)
         else:
             phot = None
 
-        return Struct(exposure=exposure, psf=psf, apCorr=apCorr,
+        return Struct(exposure=ccdExposure, psf=psf, apCorr=apCorr,
                       sources=phot.sources if phot else None,
                       matches=calib.matches if calib else None,
                       matchMeta=calib.matchMeta if calib else None,
