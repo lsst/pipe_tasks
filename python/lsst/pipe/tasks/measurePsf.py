@@ -87,8 +87,7 @@ class MeasurePsfTask(pipeBase.Task):
 
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
         self.log.log(self.log.INFO, "PSF determination using %d/%d stars." % 
-                     (self.metadata["numGoodStars"].getValue(),
-                      sdqaRatings["numAvailStars"].getValue()))
+                     (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
 
         # The PSF candidates contain a copy of the source, and so we need to explicitly propagate new flags
         for cand in psfCandidateList:
