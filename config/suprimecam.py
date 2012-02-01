@@ -1,7 +1,9 @@
 root.doWriteIsr = False
 root.isr.methodList=["doConversionForIsr", "doSaturationDetection",
-                     "doOverscanCorrection", "doFlatCorrection"]
+                     "doOverscanCorrection", "doVariance", "doFlatCorrection"]
 root.isr.doWrite = False
+
+root.calibrate.repair.doCosmicRay = True
 
 root.calibrate.measurePsf.starSelector.name = "secondMoment"
 root.calibrate.measurePsf.psfDeterminer.name = "pca"
