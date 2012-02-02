@@ -34,8 +34,7 @@ if __name__ == "__main__":
     cmd = parser.parse_args(config=TaskClass.ConfigClass())
     task = TaskClass(cmd.config)
     taskRes = task.run(
-        butler = cmd.butler,
-        idList = cmd.idList,
+        dataRefList = cmd.dataRefList,
         bbox = cmd.bbox,
         wcs = cmd.wcs,
         desFwhm = cmd.fwhm,

@@ -58,16 +58,16 @@ class CoaddTask(pipeBase.Task):
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
     
-    def getCalexp(self, butler, id, getPsf=True):
-        """Return one "calexp" calibrated exposure, with psf
+    def getCalexp(self, dataRef, getPsf=True):
+        """Return one "calexp" calibrated exposure, perhaps with psf
         
-        @param butler: data butler
-        @param dataId: data identity of exposure
+        @param dataRef: a sensor-level data reference
+        @param getPsf: include the PSF?
         @return calibrated exposure with psf
         """
-        exposure = butler.get("calexp", id)
+        exposure = dataRef.get("calexp")
         if getPsf:
-            psf = butler.get("psf", id)
+            psf = dataRef.get("psf")
             exposure.setPsf(psf)
         return exposure
     
@@ -105,7 +105,7 @@ class CoaddTask(pipeBase.Task):
                 coreSigma, coreSigma * 2.5, 0.1)
         return self._modelPsf
 
-    def run(self, butler, idList, bbox, wcs, desFwhm):
+    def run(self, dataRefList, bbox, wcs, desFwhm):
         """Coadd images by PSF-matching (optional), warping and computing a weighted sum
         
         PSF matching is to a double gaussian model with core FWHM = desFwhm
@@ -119,8 +119,7 @@ class CoaddTask(pipeBase.Task):
         
         Coaddition is performed as a weighted sum. See lsst.coadd.utils.Coadd for details.
     
-        @param butler: data butler
-        @param idList: list of data identity dictionaries
+        @param dataRefList: list of data identity dictionaries
         @param bbox: bounding box of coadd
         @param wcs: WCS of coadd
         @param desFwhm: desired FWHM of PSF, in science exposure pixels
@@ -129,7 +128,7 @@ class CoaddTask(pipeBase.Task):
         @return: a pipeBase.Struct with fields:
         - coadd: a coaddUtils.Coadd object; call coadd.getCoadd() to get the coadd exposure
         """
-        numExp = len(idList)
+        numExp = len(dataRefList)
         if numExp < 1:
             raise RuntimeError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
@@ -140,9 +139,9 @@ class CoaddTask(pipeBase.Task):
             self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
     
         coadd = self.makeCoadd(bbox, wcs)
-        for ind, id in enumerate(idList):
-            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % (ind+1, numExp, id))
-            exposure = self.getCalexp(butler, id, getPsf=doPsfMatch)
+        for ind, dataRef in enumerate(dataRefList):
+            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % (ind+1, numExp, dataRef.dataId))
+            exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
             if desFwhm > 0:
                 modelPsf = self.makeModelPsf(exposure, desFwhm)
                 self.log.log(self.log.INFO, "PSF-match exposure")
