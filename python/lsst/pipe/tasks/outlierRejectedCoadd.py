@@ -41,7 +41,7 @@ from .coadd import CoaddTask
 
 class OutlierRejectedCoaddConfig(CoaddTask.ConfigClass):
     subregionSize = pexConfig.ListField(
-        int,
+        dtype = int,
         doc = """width, height of stack subregion size;
                 make small enough that a full stack of images will fit into memory at once""",
         length = 2,
@@ -49,13 +49,13 @@ class OutlierRejectedCoaddConfig(CoaddTask.ConfigClass):
         optional = None,
     )
     sigmaClip = pexConfig.Field(
-        float,
+        dtype = float,
         doc = "sigma for outlier rejection",
         default = 3.0,
         optional = None,
     )
     clipIter = pexConfig.Field(
-        int,
+        dtype = int,
         doc = "number of iterations of outlier rejection",
         default = 2,
         optional = False,

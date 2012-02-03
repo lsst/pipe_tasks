@@ -41,9 +41,9 @@ class _TempPsfMatchConfig(pexConfig.Config):
 class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
     """
-    coadd = pexConfig.ConfigField(coaddUtils.Coadd.ConfigClass, doc="")
-    warp = pexConfig.ConfigField(afwMath.Warper.ConfigClass, doc="")
-    psfMatch = pexConfig.ConfigField(_TempPsfMatchConfig, doc="")
+    coadd    = pexConfig.ConfigField(dtype = coaddUtils.Coadd.ConfigClass, doc = "")
+    warp     = pexConfig.ConfigField(dtype = afwMath.Warper.ConfigClass, doc = "")
+    psfMatch = pexConfig.ConfigField(dtype = _TempPsfMatchConfig, doc = "a hack!")
 
 
 class CoaddTask(pipeBase.Task):
