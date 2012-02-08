@@ -27,8 +27,8 @@ import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.apertureCorrection as maApCorr
 import lsst.meas.utils.sourceDetection as muDetection
-#import lsst.meas.photocal as photocal
-#from .astrometry import AstrometryTask
+import lsst.meas.photocal as photocal
+from .astrometry import AstrometryTask
 import lsst.pipe.base as pipeBase
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
@@ -103,7 +103,7 @@ class CalibrateConfig(pexConfig.Config):
     repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
     photometry   = pexConfig.ConfigField(dtype = PhotometryTask.ConfigClass,        doc = "")
     measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
-#    astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
+    astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
 
 
 class CalibrateTask(pipeBase.Task):
@@ -128,7 +128,7 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
         self.makeSubtask("measurePsf", MeasurePsfTask, config=config.measurePsf)
         self.makeSubtask("rephotometry", RephotometryTask, config=config.photometry)
-#        self.makeSubtask("astrometry", AstrometryTask, config=config.astrometry)
+        self.makeSubtask("astrometry", AstrometryTask, config=config.astrometry)
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None):
@@ -198,7 +198,7 @@ class CalibrateTask(pipeBase.Task):
             sources = rephotRet.sources
             del rephotRet
         
-        if False and (self.config.doAstrometry or self.config.doZeropoint):
+        if self.config.doAstrometry or self.config.doZeropoint:
             astromRet = self.astrometry.run(exposure, sources)
             matches = astromRet.matches
             matchMeta = astromRet.matchMeta
@@ -208,7 +208,7 @@ class CalibrateTask(pipeBase.Task):
         if self.config.doZeropoint and matches is not None:
             self.zeropoint(exposure, matches)
 
-#        self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
+        self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
 
         return pipeBase.Struct(
             exposure = exposure,

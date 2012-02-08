@@ -42,4 +42,5 @@ root.calibrate.apCorr.alg2.name = "SINC"
 root.calibrate.apCorr.alg1[root.calibrate.apCorr.alg1.name] = root.photometry.measure.photometry[root.calibrate.apCorr.alg1.name]
 root.calibrate.apCorr.alg2[root.calibrate.apCorr.alg2.name] = root.photometry.measure.photometry[root.calibrate.apCorr.alg2.name]
 
-
+# Astrometry
+root.calibrate.astrometry.distortion.name = "null"
