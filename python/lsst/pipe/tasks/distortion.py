@@ -62,7 +62,6 @@ class RadialPolyDistorter(object):
         return point.getX(), point.getY()
     def toCorrected(self, x, y):
         point = self.distort(afwGeom.Point2D(x, y), self.ccd)
-        print "%f,%f --> %s" % (x, y, point)
         return point.getX(), point.getY()
 
 distorterRegistry.register("radial", RadialPolyDistorter)
