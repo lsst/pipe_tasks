@@ -1,4 +1,5 @@
 setupRequired(pipe_base)
+setupRequired(pex_config)
 setupOptional(meas_utils)
 setupOptional(ip_isr)
 setupOptional(ip_diffim)
