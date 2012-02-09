@@ -1,38 +1,34 @@
 #!/usr/bin/env python
 
-import lsst.pex.logging as pexLog
+import lsst.afw.cameraGeom as afwCG
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.pipette.isr as pipIsr
-import lsst.pipette.calibrate as pipCalibrate
-import lsst.pipette.util as pipUtil
-import lsst.pipette.processCcd as pipProcCcd
+from lsst.ip.isr import IsrTask
 
-from lsst.pipette.specific.Hsc import CalibrateHsc
-from lsst.pipette.timer import timecall
-
-class IsrSuprimeCam(pipIsr.Isr):
-    @timecall
-    def defects(self, exposure):
+class SuprimeCamIsrTask(IsrTask):
+    def run(self, exposure, calibSet):
+        isrOut = super(SuprimeCamIsrTask, self).run(exposure, calibSet)
+        self.guider(isrOut.postIsrExposure)
+        return isrOut
+    
+    def guider(self, exposure):
         """Mask defects and trim guider shadow
 
         @param exposure Exposure to process
         @return Defect list
         """
         assert exposure, "No exposure provided"
-
-        defects = super(IsrSuprimeCam, self).defects(exposure)
-
-        ccd = pipUtil.getCcd(exposure)
+        
+        ccd = afwCG.cast_Ccd(exposure.getDetector()) # This is Suprime-Cam so we know the Detector is a Ccd
         ccdNum = ccd.getId().getSerial()
         if ccdNum not in [0, 1, 2, 6, 7]:
             # No need to mask
-            return defects
+            return
 
         md = exposure.getMetadata()
         if not md.exists("S_AG-X"):
             self.log.log(self.log.WARN, "No autoguider position in exposure metadata.")
-            return defects
+            return
 
         xGuider = md.get("S_AG-X")
         if ccdNum in [1, 2, 7]:
@@ -45,7 +41,7 @@ class IsrSuprimeCam(pipIsr.Isr):
         height = mi.getHeight()
         if height < maskLimit:
             # Nothing to mask!
-            return defects
+            return
 
         if False:
             # XXX This mask plane isn't respected by background subtraction or source detection or measurement
@@ -65,11 +61,3 @@ class IsrSuprimeCam(pipIsr.Isr):
             bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(mi.getWidth(), maskLimit))
             good = mi.Factory(mi, bbox, afwImage.LOCAL)
             exposure.setMaskedImage(good)
-
-        return defects
-
-class ProcessCcdSuprimeCam(pipProcCcd.ProcessCcd):
-    def __init__(self, *args, **kwargs):
-        super(ProcessCcdSuprimeCam, self).__init__(Isr=IsrSuprimeCam, Calibrate=CalibrateHsc,
-                                                   *args, **kwargs)
-    
