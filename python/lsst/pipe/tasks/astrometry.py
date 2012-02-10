@@ -34,7 +34,7 @@ import lsst.pipe.tasks.distortion as pipeDist
 from .detectorUtil import getCcd
 
 class AstrometryConfig(pexConfig.Config):
-    distortion = pipeDist.distorterRegistry.makeField("Distortion to apply (null if none)")
+    distortion = pipeDist.distorterRegistry.makeField("Distortion to apply (null if none)", optional=True)
     solver = pexConfig.ConfigField(
         dtype=measAst.MeasAstromConfig,
         doc = "Configuration for the astrometry solver"
