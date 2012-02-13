@@ -56,7 +56,7 @@ class HscAstrometryTask(ptAstrometry.AstrometryTask):
                 raise RuntimeError("hsc.meas.astrom failed to determine the WCS")
         except Exception, e:
             self.log.log(self.log.WARN, "hsc.meas.astrom failed (%s); trying lsst.meas.astrom" % e)
-            astrometer = measAstrometry.Astrometry(self.config.solver, log=self.log)
+            astrometer = measAstrom.Astrometry(self.config.solver, log=self.log)
             astrom = astrometer.determineWcs(distSources, exposure)
         
         if astrom is None:
