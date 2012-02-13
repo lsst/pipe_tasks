@@ -15,7 +15,7 @@ class HscAstrometryConfig(ptAstrometry.AstrometryConfig):
 
 # Use hsc.meas.astrom, failing over to lsst.meas.astrom
 class HscAstrometryTask(ptAstrometry.AstrometryTask):
-    ConfigClass = hscAstrom.TaburAstrometryConfig
+    ConfigClass = HscAstrometryConfig
     @pipeBase.timeMethod
     def astrometry(self, exposure, sources, distSources, llc=(0,0), size=None):
         """Solve astrometry to produce WCS
