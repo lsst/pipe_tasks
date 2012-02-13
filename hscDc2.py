@@ -8,11 +8,11 @@ import lsst.meas.algorithms as measAlg
 import lsst.afw.display.ds9 as ds9
 import lsst.meas.algorithms as measAlg
 
-from lsst.pipette.specific.Hsc import CalibrateHsc
+import hsc.pipe.tasks.calibrate as hscCalibrate
 
 # HSC-DC2 has very round galaxies that look much like stars, so we need to change the order of operations a
 # bit to use the astrometry catalogue to select stars for the PSF determination.
-class CalibrateHscDc2(CalibrateHsc):
+class HscDc2CalibrateTask(hscCalibrate.CalibrateTask):
     def run(self, exposure, defects=None, background=None):
         """Calibrate an exposure: PSF, astrometry and photometry
 
@@ -44,8 +44,8 @@ class CalibrateHscDc2(CalibrateHsc):
             wcs0 = exposure.getWcs().clone()
 
             distSources, llc, size = self.distort(exposure, sources, distortion=dist)
-            matches, matchMeta = self.astrometry(exposure, sources, distSources,
-                                                 distortion=dist, llc=llc, size=size)
+            matches, matchMeta = self.astrometry.run(exposure, sources, distSources,
+                                                     distortion=dist, llc=llc, size=size)
 
             exposure.setWcs(wcs0)                                            # ... and restore it
         else:
@@ -74,8 +74,8 @@ class CalibrateHscDc2(CalibrateHsc):
 
         if do['astrometry'] or do['zeropoint']:
             distSources, llc, size = self.distort(exposure, sources, distortion=dist)
-            matches, matchMeta = self.astrometry(exposure, sources, distSources,
-                                                 distortion=dist, llc=llc, size=size)
+            matches, matchMeta = self.astrometry.run(exposure, sources, distSources,
+                                                     distortion=dist, llc=llc, size=size)
             self.undistort(exposure, sources, matches, distortion=dist)
             self.verifyAstrometry(exposure, matches)
         else:

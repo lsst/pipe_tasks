@@ -3,9 +3,11 @@
 import lsst.afw.cameraGeom as afwCG
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-from lsst.ip.isr import IsrTask
+import lsst.ip.isr as ipIsr
+import lsst.pipe.tasks.processCcd as ptProcessCcd
+import hsc.pipe.tasks.calibrate as hscCalibrate
 
-class SuprimeCamIsrTask(IsrTask):
+class SuprimeCamIsrTask(ipIsr.IsrTask):
     def run(self, exposure, calibSet):
         isrOut = super(SuprimeCamIsrTask, self).run(exposure, calibSet)
         self.guider(isrOut.postIsrExposure)

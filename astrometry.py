@@ -2,11 +2,19 @@
 
 import lsst.pipe.base as pipeBase
 import lsst.meas.astrom as measAstrom
+import lsst.pipe.tasks.astrometry as ptAstrometry
+import hsc.meas.astrom.astrom as hscAstrom
 
-from lsst.pipe.tasks.astrometry import AstrometryTask
+class HscAstrometryConfig(ptAstrometry.AstrometryConfig):
+    solver = pexConfig.ConfigField(
+        dtype=hscAstrom.TaburAstrometryConfig,
+        doc = "Configuration for the Tabur astrometry solver"
+        )
+
 
 # Use hsc.meas.astrom, failing over to lsst.meas.astrom
-class HscAstrometryTask(CalibrateTask):
+class HscAstrometryTask(ptAstrometry.AstrometryTask):
+    ConfigClass = hscAstrom.TaburAstrometryConfig
     @pipeBase.timeMethod
     def astrometry(self, exposure, sources, distSources, llc=(0,0), size=None):
         """Solve astrometry to produce WCS
@@ -40,8 +48,8 @@ class HscAstrometryTask(CalibrateTask):
         wcs.shiftReferencePixel(-llc[0], -llc[1])
 
         try:
-            astrom = hscAst.determineWcs(self.config['astrometry'].getPolicy(), exposure, distSources,
-                                         log=self.log, forceImageSize=size, filterName=filterName)
+            astrometer = hscAstrom.TaburAstrometry(self.config.solver, log=self.log)
+            astrom = astrometer.determineWcs(distSources, exposure)
             wcs.shiftReferencePixel(llc[0], llc[1])
             if astrom is None:
                 raise RuntimeError("hsc.meas.astrom failed to determine the WCS")
