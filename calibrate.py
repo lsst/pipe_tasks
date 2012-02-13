@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.calibrate as ptCalibrate
 from lsst.pipe.tasks.repair import RepairTask
 from lsst.pipe.tasks.measurePsf import MeasurePsfTask

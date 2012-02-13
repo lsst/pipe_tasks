@@ -2,6 +2,7 @@
 
 import lsst.pex.config as pexConfig
 from lsst.ip.isr import IsrTask
+import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.processCcd as ptProcessCcd
 from lsst.pipe.tasks.photometry import PhotometryTask
 import hsc.pipe.tasks.astrometry as hscAstrom
