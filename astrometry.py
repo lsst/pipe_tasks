@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.meas.astrom as measAstrom
 import lsst.pipe.tasks.astrometry as ptAstrometry
