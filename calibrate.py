@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 
+import lsst.pex.config as pexConfig
 import lsst.pipe.tasks.calibrate as ptCalibrate
-
 from lsst.pipe.tasks.repair import RepairTask
 from lsst.pipe.tasks.measurePsf import MeasurePsfTask
 from lsst.pipe.tasks.photometry import PhotometryTask, RephotometryTask
-import hsc.pipe.tasks.astrom as hscAstrom
+import hsc.pipe.tasks.astrometry as hscAstrom
 
 
 class HscCalibrateConfig(ptCalibrate.CalibrateConfig):
-    astrometry = pexConfig.ConfigField(dtype = hscAstrom.HscAstrometryConfigClass, doc = "HSC astrometry")
+    astrometry = pexConfig.ConfigField(dtype = hscAstrom.HscAstrometryConfig, doc = "HSC astrometry")
 
 class HscCalibrateTask(ptCalibrate.CalibrateTask):
     ConfigClass = HscCalibrateConfig
