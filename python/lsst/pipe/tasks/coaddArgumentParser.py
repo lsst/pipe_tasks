@@ -28,12 +28,15 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
     
     @warning this class contains camera-specific defaults for plate scale and tract overlap;
-        additional camera support requires additional coding
+        additional camera support requires additional coding.
+        In the long run this camera-specific support will not be required: the sky maps
+        will be defined in the data repositories and the associated arguments for constructing
+        a sky map will go away.
     
     @todo:
     - Add defaults for:
-      - HSC
-      - CFHT Megacam
+      - hscSim
+      - cfht (Megacam)
     - Set correct default scale for suprimecam
     
     """
@@ -66,12 +69,13 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         self.add_argument("--projection", default="STG",
             help="WCS projection used for sky tracts, e.g. STG or TAN")
         
-    def _handleCamera(self, camera):
+    def handleCamera(self, namespace):
         """Set attributes based on camera
         
         Called by parse_args before the main parser is called
         """
-        pipeBase.ArgumentParser._handleCamera(self, camera)
+        camera = namespace.camera
+        pipeBase.ArgumentParser.handleCamera(self, namespace)
         defaultScale = self._DefaultScale.get(camera)
         defaultOverlap = self._DefaultOverlap.get(camera)
         self.add_argument("--scale", type=float, default = defaultScale, required = (defaultScale is None),
