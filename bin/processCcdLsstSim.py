@@ -29,6 +29,6 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     namespace = parser.parse_args(config=TaskClass.ConfigClass())
-    task = TaskClass(cmd.config)
+    task = TaskClass(namespace.config)
     for sensorRef in namespace.dataRefList:
         task.runButler(sensorRef)

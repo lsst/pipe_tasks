@@ -20,7 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.detection as afwDet
@@ -44,9 +43,9 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
 
     def __init__(self, *args, **kwargs):
         pexConfig.Config.__init__(self, *args, **kwargs)
-        self.isr.doWrite = False # don't persist data until until CCD ISR is run
+        self.isr.doWrite = False # don't persist data until until CCD ISR is run; ignored anyway
         self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
-        self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, should persist the data
+        self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
 
 
 class ProcessCcdLsstSimTask(pipeBase.Task):
@@ -62,29 +61,37 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         self.makeSubtask("ccdIsr", IsrTask, config=config.ccdIsr)
         self.makeSubtask("calibrate", CalibrateTask, config=config.calibrate)
         self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
-    
+
+    @pipeBase.timeMethod
     def run(self, sensorRef):
         """Run task; do not persist results.
         """
+        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        butler = sensorRef.butlerSubset.butler
         if self.config.doIsr:
+            # perform amp-level ISR
             exposureList = list()
             for ampRef in sensorRef.subItems():
-                isrRes = self.isr.runButler(sensorRef.butler, ampRef.dataId)
+                calibSet = self.isr.makeCalibDict(butler, ampRef.dataId)
+                ampExposure = ampRef.get("raw")
+                isrRes = self.isr.run(ampExposure, calibSet)
                 exposureList.append(isrRes.postIsrExposure)
-                self.display('isr', exposure=isrRes.postIsrExposure, pause=True)
-            
+#                self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
+            # assemble amps into a CCD
             ccdExposure = self.isr.doCcdAssembly(exposureList)
             del exposureList
-            ccdIsrRes = self.ccdIsr.runButler(sensorRef.butler, sensorRef.dataId)
+            # perform CCD-level ISR
+            ccdCalibSet = self.ccdIsr.makeCalibDict(butler, sensorRef.dataId)
+            ccdIsrRes = self.ccdIsr.run(ccdExposure, ccdCalibSet)
             ccdExposure = ccdIsrRes.postIsrExposure
             
-            self.display('ccdAssembly', exposure=ccdExposure)
+#            self.display("ccdAssembly", exposure=ccdExposure)
         else:
             ccdExposure = None
 
         if self.config.doCalibrate:
             if ccdExposure is None:
-                ccdExposure = sensorRef.get('postISR')
+                ccdExposure = sensorRef.get("postISRCCD")
             calib = self.calibrate.run(ccdExposure)
             ccdExposure = calib.exposure
         else:
@@ -92,9 +99,9 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
 
         if self.config.doPhotometry:
             if ccdExposure is None:
-                ccdExposure = sensorRef.get('calexp')
+                ccdExposure = sensorRef.get("calexp")
             if calib is None:
-                psf = sensorRef.get('psf')
+                psf = sensorRef.get("psf")
                 apCorr = None # sensorRef.get('apcorr')
             else:
                 psf = calib.psf
@@ -117,7 +124,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         """Persist results of run method
         """
         if self.config.doIsr:
-            sensorRef.put(res.postIsrExposure, "postISR")
+            sensorRef.put(res.postIsrExposure, "postISRCCD")
         if self.config.doCalibrate:
             sensorRef.put(res.exposure, "calexp")
             sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
@@ -135,4 +142,5 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             res = self.run(sensorRef)
             self.persist(res, sensorRef)
         except Exception, e:
-            self.log.log(self.log.ERROR, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))
+            self.log.log(self.log.FATAL, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))
+            raise
