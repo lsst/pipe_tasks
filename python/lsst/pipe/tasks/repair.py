@@ -39,12 +39,12 @@ class RepairConfig(pexConfig.Config):
     doCosmicRay = pexConfig.Field(
         dtype = bool,
         doc = "Find and mask out cosmic rays?",
-        default = False,
+        default = True,
     )
     cosmicray = pexConfig.ConfigField(
         dtype = measAlg.FindCosmicRaysConfig,
         doc = "Options for finding and masking cosmic rays",
-        )
+    )
 
 class RepairTask(pipeBase.Task):
     """Conversion notes:
