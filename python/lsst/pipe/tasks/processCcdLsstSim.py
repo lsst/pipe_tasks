@@ -143,4 +143,3 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             self.persist(res, sensorRef)
         except Exception, e:
             self.log.log(self.log.FATAL, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))
-            raise
