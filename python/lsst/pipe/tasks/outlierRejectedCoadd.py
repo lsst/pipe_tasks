@@ -41,7 +41,7 @@ from .coadd import CoaddTask
 
 class OutlierRejectedCoaddConfig(CoaddTask.ConfigClass):
     subregionSize = pexConfig.ListField(
-        int,
+        dtype = int,
         doc = """width, height of stack subregion size;
                 make small enough that a full stack of images will fit into memory at once""",
         length = 2,
@@ -49,13 +49,13 @@ class OutlierRejectedCoaddConfig(CoaddTask.ConfigClass):
         optional = None,
     )
     sigmaClip = pexConfig.Field(
-        float,
+        dtype = float,
         doc = "sigma for outlier rejection",
         default = 3.0,
         optional = None,
     )
     clipIter = pexConfig.Field(
-        int,
+        dtype = int,
         doc = "number of iterations of outlier rejection",
         default = 2,
         optional = False,
@@ -80,7 +80,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
     def getCoaddCalib(self):
         return self._coaddCalib
         
-    def run(self, butler, idList, bbox, wcs, desFwhm):
+    def run(self, dataRefList, bbox, wcs, desFwhm):
         """PSF-match, warp and coadd images, using outlier rejection
         
         PSF matching is to a double gaussian model with core FWHM = desFwhm
@@ -92,8 +92,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         PSF-matching is performed before warping so the code can use the PSF models
         associated with the calibrated science exposures (without having to warp those models).
         
-        @param butler: data butler
-        @param idList: list of data identity dictionaries
+        @param dataRefList: list of sensor-level data references
         @param bbox: bounding box of coadd
         @param wcs: WCS of coadd
         @param desFwhm: desired FWHM of PSF, in science exposure pixels
@@ -103,14 +102,13 @@ class OutlierRejectedCoaddTask(CoaddTask):
         @return: a pipeBase.Struct with fields:
         - coaddExposure: coadd exposure
         """
-        numExp = len(idList)
+        numExp = len(dataRefList)
         if numExp < 1:
             raise RuntimeError("No exposures to coadd")
-        self.log.log(self.log.INFO, "Coadd %s calexp" % (len(idList),))
+        self.log.log(self.log.INFO, "Coadd %s calexp" % (len(dataRefList),))
     
         exposureMetadataList = self.psfMatchAndWarp(
-            idList = idList,
-            butler = butler,
+            dataRefList = dataRefList,
             desFwhm = desFwhm,
             wcs = wcs,
             bbox = bbox,
@@ -177,20 +175,19 @@ class OutlierRejectedCoaddTask(CoaddTask):
             coaddExposure = coaddExposure,
         )
 
-    def psfMatchAndWarp(self, butler, idList, bbox, wcs, desFwhm):
+    def psfMatchAndWarp(self, dataRefList, bbox, wcs, desFwhm):
         """Normalize, PSF-match (if desFWhm > 0) and warp exposures; save the resulting exposures as FITS files
         
-        @param[in] butler: data butler for retrieving input calexp and associated PSFs
-        @param[in] idList: a list of IDs of calexp (and associated PSFs) to coadd
-        @param[in] bbox: bounding box for coadd
-        @param[in] wcs: desired WCS of coadd
-        @param[in] desFwhm: desired FWHM (pixels)
+        @param dataRefList: list of sensor-level data references
+        @param bbox: bounding box for coadd
+        @param wcs: desired WCS of coadd
+        @param desFwhm: desired FWHM (pixels)
 
         @return
         - exposureMetadataList: a list of ExposureMetadata objects
             describing the saved psf-matched and warped exposures
         """
-        numExp = len(idList)
+        numExp = len(dataRefList)
 
         doPsfMatch = desFwhm > 0
     
@@ -198,13 +195,14 @@ class OutlierRejectedCoaddTask(CoaddTask):
             self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
             
         exposureMetadataList = []
-        for ind, id in enumerate(idList):
-            outPath = "_".join(["%s_%s" % (k, id[k]) for k in sorted(id.keys())])
+        for ind, dataRef in enumerate(dataRefList):
+            dataId = dataRef.dataId
+            outPath = "_".join(["%s_%s" % (k, dataId[k]) for k in sorted(dataId.keys())])
             outPath = outPath.replace(",", "_")
             outPath = outPath + ".fits"
             if True:        
-                self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % (ind+1, numExp, id))
-                exposure = self.getCalexp(butler, id, getPsf=doPsfMatch)
+                self.log.log(self.log.INFO, "Processing exposure %d of %d: dataId=%s" % (ind+1, numExp, dataId))
+                exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
         
                 srcCalib = exposure.getCalib()
                 scaleFac = 1.0 / srcCalib.getFlux(self.config.coadd.coaddZeroPoint)
@@ -225,7 +223,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                 exposure.writeFits(outPath)
             else:
                 # debug mode; exposures already exist
-                self.log.log(self.log.WARN, "DEBUG MODE; Processing id=%s; retrieving from %s" % (id, outPath))
+                self.log.log(self.log.WARN, "DEBUG MODE; Processing dataId=%s; retrieving from %s" % \
+                    (dataId, outPath))
                 exposure = afwImage.ExposureF(outPath)
     
             expMetadata = ExposureMetadata(

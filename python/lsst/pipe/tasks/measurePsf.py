@@ -30,8 +30,8 @@ def propagateFlag(flag, old, new):
         new.setFlagForDetection(new.getFlagForDetection() | flag)
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm")
-    psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm")
+    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
+    psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
 
 class MeasurePsfTask(pipeBase.Task):
     """Conversion notes:
