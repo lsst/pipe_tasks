@@ -2,20 +2,80 @@
 
 import os, math
 import numpy
+import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
+import lsst.afw.cameraGeom as afwCG
 import lsst.afw.geom as afwGeom
 
-"""This module defines the CameraDistortion class, which calculates the effects of optical distortions.
+"""This module defines the CameraDistortion class, which calculates the effects of optical distortions."""
 
-@todo rewrite distortion as a registry, where radial is one choice
-and the other algorithms are similarly named and can have associated Config
-(right now alternate algorithms cannot be configured and there is no way to look them up).
-"""
+distorterRegistry = pexConfig.makeRegistry(
+    '''A registry of distorter factories
+    
+       A distorter factory makes a class with the following API:
+        
+       def __init__(self, config, ccd):
+           """Construct a distorter
+           
+           @param[in] config: an instance of pexConfig.Config that configures this algorithm
+           @param[in] ccd: the CCD that will provide positions to be distorted
+           """
+        
+       def toObserved(self, x, y):
+           """Return the as-observed position (x,y) of the corrected position x,y"""
+
+       def toCorrected(self, x, y):
+           """Return the corrected position (x,y) of the as-observed position x,y"""
+       '''
+)
+
+
+class NullDistorter(object):
+    """No-op distortion"""
+    ConfigClass = pexConfig.Config
+    def __init__(self, config, ccd):
+        pass
+    def toObserved(self, x, y):
+        return x, y
+    def toCorrected(self, x, y):
+        return x, y
+
+distorterRegistry.register("null", NullDistorter)
+
+
+class RadialPolyDistorterConfig(pexConfig.Config):
+    coefficients = pexConfig.ListField(dtype=float, doc="Coefficients of distortion polynomial, from 0 to n")
+    observedToCorrected = pexConfig.Field(dtype=bool, doc="Coefficients represent observed-->corrected?",
+                                          default=True)
+
+
+class RadialPolyDistorter(object):
+    """Distortion using the RadialPolyDistortion class in afw"""
+    ConfigClass = RadialPolyDistorterConfig
+    def __init__(self, config, ccd):
+        self.ccd = ccd
+        self.distortion = afwCG.RadialPolyDistortion(config.coefficients)
+        self.distort = self.distortion.distort if config.observedToCorrected else self.distortion.undistort
+        self.undistort = self.distortion.undistort if config.observedToCorrected else self.distortion.distort
+    def toObserved(self, x, y):
+        point = self.undistort(afwGeom.Point2D(x, y), self.ccd)
+        return point.getX(), point.getY()
+    def toCorrected(self, x, y):
+        point = self.distort(afwGeom.Point2D(x, y), self.ccd)
+        return point.getX(), point.getY()
+
+distorterRegistry.register("radial", RadialPolyDistorter)
+
+
+# Ignore everything after here
+
+
 
 class RadialDistortionConfig(pexConfig.Config):
     coeffs = pexConfig.ListField(
-        itemType = float,
-        doc = "Radial distortion polynomial coefficients, from highest power down to constant (typically ending as 1.0, 0.0)",
+        dtype = float,
+        doc = """Radial distortion polynomial coefficients, from highest power
+        down to constant (typically ending as 1.0, 0.0)""",
         minLength = 0,
         optional = False,
     )
@@ -26,7 +86,7 @@ class RadialDistortionConfig(pexConfig.Config):
         optional = False,
     )
     step = pexConfig.Field(
-        dtype = double,
+        dtype = float,
         doc = "Step size for lookup table (pixels)",
         default = 10.0,
         optional = False,
@@ -34,12 +94,11 @@ class RadialDistortionConfig(pexConfig.Config):
     
 class DistortionConfig(pexConfig.Config):
     radial = pexConfig.ConfigField(
-        configType = RadialDistortionConfig,
+        dtype = RadialDistortionConfig,
         doc = "Radial distortion configuration",
-        optional = True,
     )
-    className: pexConfig.Field(
-        dtype = string,
+    className = pexConfig.Field(
+        dtype = str,
         doc = "dotted name of distortion computation function",
         optional = True,
     )
@@ -126,12 +185,7 @@ def createDistortion(ccd, config):
     @param config Instance of DistortionConfig
     @returns CameraDistortion specified by ccd and configuration
     """
-    if config.radial config.className:
-        raise RuntimeError("more than one distortion mechanism was specified in the configuration!")
-    
-    if config.radial:
-        return RadialDistortion(ccd, config.radial)
-    elif config.className:
+    if config.className:
         try:
             distMod, distClassname = config.className.rsplit('.', 1)
             _temp = __import__(distMod, globals(), locals(), [distClassname], -1)
@@ -140,17 +194,13 @@ def createDistortion(ccd, config):
             raise RuntimeError('Failed to import distortion class %s: %s' % \
                                (config.className, e))
         return distClass(ccd, config)
+    elif config.radial:
+        return RadialDistortion(ccd, config.radial)
     else:
         return NullDistortion()
 
 createDistortion.ConfigClass = DistortionConfig
 
-class NullDistortion(CameraDistortion):
-    """Class to implement no optical distortion."""
-    def _distortPosition(self, x, y):
-        """(Not really) distort a position.
-        """
-        return x, y
 
 
 class RadialDistortion(CameraDistortion):
@@ -166,8 +216,8 @@ class RadialDistortion(CameraDistortion):
         self.actualToIdeal = config.actualToIdeal
         self.step = config.step
 
-        position = ccd.getCenter()        # Centre of CCD on focal plane
-        center = ccd.getSize() / ccd.getPixelSize() / 2.0 # Central pixel
+        position = ccd.getCenter().getPixels(ccd.getPixelSize()) # Centre of CCD on focal plane
+        center = ccd.getSize().getPixels(ccd.getPixelSize()) / 2.0 # Central pixel
         # Pixels from focal plane center to CCD corner
         self.x0 = position.getX() - center.getX()
         self.y0 = position.getY() - center.getY()

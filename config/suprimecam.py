@@ -42,4 +42,7 @@ root.calibrate.apCorr.alg2.name = "SINC"
 root.calibrate.apCorr.alg1[root.calibrate.apCorr.alg1.name] = root.photometry.measure.photometry[root.calibrate.apCorr.alg1.name]
 root.calibrate.apCorr.alg2[root.calibrate.apCorr.alg2.name] = root.photometry.measure.photometry[root.calibrate.apCorr.alg2.name]
 
-
+# Astrometry
+root.calibrate.astrometry.distortion.name = "radial"
+root.calibrate.astrometry.distortion["radial"].coefficients = [0.0, 1.0, 7.16417e-08, 3.03146e-10, 5.69338e-14, -6.61572e-18]
+root.calibrate.astrometry.distortion["radial"].observedToCorrected = True

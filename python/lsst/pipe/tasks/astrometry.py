@@ -26,51 +26,19 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.afw.geom as afwGeom
 import lsst.meas.astrom as measAst
+import lsst.meas.astrom.astrom as measAstrometry
 import lsst.meas.astrom.sip as astromSip
 import lsst.meas.astrom.verifyWcs as astromVerify
 import lsst.pipe.base as pipeBase
-from .distoration import createDistortion
+import lsst.pipe.tasks.distortion as pipeDist
 from .detectorUtil import getCcd
 
 class AstrometryConfig(pexConfig.Config):
-    doDistortion = pexConfig.Field(
-        dype = bool,
-        doc = "Compute distortion",
-        default = True,
-    )
-    doColorTerms = pexConfig.Field(
-        dype = bool,
-        doc = "Correct astrometry for color terms",
-        default = True,
-    )
-    distortion = pexConfig.ConfigField(
-        dtype = createDistortion.ConfigClass,
-        doc = "Config for the createDistortion function; required if doDistortation True",
-    )
-    sipOrder = pexConfig.Field(
-        dtype = int,
-        doc = "Order for SIP distortion terms",
-        default = 2,
-    )
-    calculateSip = pexConfig.Field(
-        dtype = bool,
-        doc = "Calculate SIP terms?",
-        default = True,
-    )
-    filterTable = pexConfig.ConfigField(
-        dtype = ???
-        doc = "Filter translation table: data --> catalog; required if doColorTerms True",
-    )
-    astrometry = pexConfig.ConfigField(
-        dtype =  ???, # from meas_astrom/policy/WcsDeterminationDictionary.paf
-        doc = "",
-    )
-    def validate():
-        if self.doDistortion and not self.distortion:
-            raise RuntimeError("distortion must be specified if doDistortion True")
-        if self.doColorTerms and not self.filterTable:
-            raise RuntimeError("filterTable must be specified if doColorTerms True")
-    
+    distortion = pipeDist.distorterRegistry.makeField("Distortion to apply (null if none)", optional=True)
+    solver = pexConfig.ConfigField(
+        dtype=measAst.MeasAstromConfig,
+        doc = "Configuration for the astrometry solver"
+        )
 
 class AstrometryTask(pipeBase.Task):
     """Conversion notes:
@@ -98,20 +66,9 @@ class AstrometryTask(pipeBase.Task):
         """
         assert exposure is not None, "No exposure provided"
 
-        if self.config.doDistortion:
-            ccd = getCcd(exposure)
-            distortion = createDistortion(ccd, self.config.distortion)
-        else:
-            distortion = None
-
-        distSources, llc, size = self.distort(exposure, sources, distortion=dist)
-        matches, matchMeta = self.astrometry(exposure, sources, distSources,
-                                             distortion=dist, llc=llc, size=size)
-        self.undistort(exposure, sources, matches, distortion=dist)
-        self.verifyAstrometry(exposure, matches)
-
-        if matches is not None and self.config.doColorTerms:
-            self.applyColorTerms(exposure, matches, matchMeta)
+        distSources, llc, size = self.distort(exposure, sources)
+        matches, matchMeta = self.astrometry(exposure, sources, distSources, llc=llc, size=size)
+        self.undistort(exposure, sources, matches)
 
         return pipeBase.Struct(
             matches = matches,
@@ -130,45 +87,46 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
 
-        if distortion is not None:
-            self.log.log(self.log.INFO, "Applying distortion correction.")
-            distSources = distortion.actualToIdeal(sources)
+        distorter = self.config.distortion.apply(getCcd(exposure))
+
+        # Distort source positions
+        self.log.log(self.log.INFO, "Applying distortion correction: %s" % self.config.distortion.name)
+        distSources = afwDet.SourceSet()
+        for s in sources:
+            dist = afwDet.Source(s)
+            x,y = distorter.toCorrected(s.getXAstrom(), s.getYAstrom())
+            dist.setXAstrom(x)
+            dist.setYAstrom(y)
+            distSources.push_back(dist)
             
-            # Get distorted image size so that astrometry_net does not clip.
-            xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
-            for x, y in ((0.0, 0.0), (0.0, exposure.getHeight()), (exposure.getWidth(), 0.0),
-                         (exposure.getWidth(), exposure.getHeight())):
-                point = afwGeom.Point2D(x, y)
-                point = distortion.actualToIdeal(point)
-                x, y = point.getX(), point.getY()
-                if x < xMin: xMin = x
-                if x > xMax: xMax = x
-                if y < yMin: yMin = y
-                if y > yMax: yMax = y
-            xMin = int(xMin)
-            yMin = int(yMin)
-            llc = (xMin, yMin)
-            size = (int(xMax - xMin + 0.5), int(yMax - yMin + 0.5))
-            for s in distSources:
-                s.setXAstrom(s.getXAstrom() - xMin)
-                s.setYAstrom(s.getYAstrom() - yMin)
-        else:
-            distSources = sources
-            size = (exposure.getWidth(), exposure.getHeight())
-            llc = (0, 0)
+        # Get distorted image size so that astrometry_net does not clip.
+        xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
+        for x, y in ((0.0, 0.0), (0.0, exposure.getHeight()), (exposure.getWidth(), 0.0),
+                     (exposure.getWidth(), exposure.getHeight())):
+            x, y = distorter.toCorrected(x, y)
+            if x < xMin: xMin = x
+            if x > xMax: xMax = x
+            if y < yMin: yMin = y
+            if y > yMax: yMax = y
+        xMin = int(xMin)
+        yMin = int(yMin)
+        llc = (xMin, yMin)
+        size = (int(xMax - xMin + 0.5), int(yMax - yMin + 0.5))
+        for s in distSources:
+            s.setXAstrom(s.getXAstrom() - xMin)
+            s.setYAstrom(s.getYAstrom() - yMin)
 
         self.display('distortion', exposure=exposure, sources=distSources, pause=True)
         return distSources, llc, size
 
 
     @pipeBase.timeMethod
-    def astrometry(self, exposure, sources, distSources, distortion=None, llc=(0,0), size=None):
+    def astrometry(self, exposure, sources, distSources, llc=(0,0), size=None):
         """Solve astrometry to produce WCS
 
         @param exposure Exposure to process
         @param sources Sources as measured (actual) positions
         @param distSources Sources with undistorted (ideal) positions
-        @param distortion Distortion model
         @param llc Lower left corner (minimum x,y)
         @param size Size of exposure
         @return Star matches, match metadata
@@ -188,16 +146,19 @@ class AstrometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
             filterName = None
 
-        if distortion is not None:
-            # Removed distortion, so use low order
-            oldOrder = self.config.sipOrder
-            self.config.sipOrder = 2
+#        if distortion is not None:
+#            # Removed distortion, so use low order
+#            oldOrder = self.config.sipOrder
+#            self.config.sipOrder = 2
 
-        astrom = measAst.determineWcs(self.config, exposure, distSources,
-                                      log=self.log, forceImageSize=size, filterName=filterName)
+        astrometer = measAstrometry.Astrometry(self.config.solver, log=self.log)
+        astrom = astrometer.determineWcs(distSources, exposure)
 
-        if distortion is not None:
-            self.config.sipOrder = oldOrder
+#        astrom = measAstrometry.determineWcs(self.config, exposure, distSources,
+#                                             log=self.log, forceImageSize=size, filterName=filterName)
+
+#        if distortion is not None:
+#            self.config.sipOrder = oldOrder
 
         if astrom is None:
             raise RuntimeError("Unable to solve astrometry for %s", exposure.getDetector().getId())
@@ -226,7 +187,7 @@ class AstrometryTask(pipeBase.Task):
         return matches, matchMeta
 
     @pipeBase.timeMethod
-    def undistort(self, exposure, sources, matches, distortion=None):
+    def undistort(self, exposure, sources, matches):
         """Undistort matches after solving astrometry, resolving WCS
 
         @param exposure Exposure of interest
@@ -237,10 +198,6 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
         assert matches, "No matches provided"
-
-        if distortion is None:
-            # No need to do anything
-            return
 
         # Undo distortion in matches
         self.log.log(self.log.INFO, "Removing distortion correction.")
@@ -257,9 +214,9 @@ class AstrometryTask(pipeBase.Task):
             m.first.setYAstrom(m.second.getYAstrom() + dy)
 
         # Re-fit the WCS with the distortion undone
-        if self.config.calculateSip:
+        if self.config.solver.calculateSip:
             self.log.log(self.log.INFO, "Refitting WCS with distortion removed")
-            sip = astromSip.CreateWcsWithSip(matches, exposure.getWcs(), self.config.sipOrder)
+            sip = astromSip.CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
             wcs = sip.getNewWcs()
             self.log.log(self.log.INFO, "Astrometric scatter: %f arcsec (%s non-linear terms)" %
                          (sip.getScatterOnSky().asArcseconds(), "with" if wcs.hasDistortion() else "without"))
@@ -274,63 +231,3 @@ class AstrometryTask(pipeBase.Task):
         
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
-    def verifyAstrometry(self, exposure, matches):
-        """Verify astrometry solution
-
-        @param exposure Exposure of interest
-        @param matches Astrometric matches
-        """
-        verify = dict()                    # Verification parameters
-        verify.update(astromSip.sourceMatchStatistics(matches))
-        verify.update(astromVerify.checkMatches(matches, exposure, log=self.log))
-        for k, v in verify.items():
-            exposure.getMetadata().set(k, v)
-
-    def applyColorTerms(self, exposure, matches, matchMeta):
-        """Correct astrometry for color terms
-        """
-        natural = exposure.getFilter().getName() # Natural band
-        if natural is None:
-            self.log.log(self.log.WARN, "Cannot apply color terms: filter name unknown")
-            # No data to do anything
-            return
-        filterTable = self.config.filterTable
-        filterData = filterTable.get(natural)
-        if natural is None:
-            self.log.log(self.log.WARN, "Cannot apply color terms: no data for filter %s" % (filterName,))
-            return
-        primary = filterData['primary'] # Primary band for correction
-        secondary = filterData['secondary'] # Secondary band for correction
-
-        polyData = filterData.getConfig().getDoubleArray('polynomial') # Polynomial correction
-        polyData.reverse()            # Numpy wants decreasing powers
-        polynomial = numpy.poly1d(polyData)
-
-        # We already have the 'primary' magnitudes in the matches
-        secondaries = measAst.readReferenceSourcesFromMetadata(
-            matchMeta,
-            log = self.log,
-            config = self.config.astrometry,
-            filterName = secondary,
-        )
-        secondariesDict = dict()
-        for s in secondaries:
-            secondariesDict[s.getId()] = (s.getPsfFlux(), s.getPsfFluxErr())
-        del secondaries
-
-        polyString = ["%f (%s-%s)^%d" % (polynomial[order+1], primary, secondary, order+1) for
-                      order in range(polynomial.order)]
-        self.log.log(self.log.INFO, "Adjusting reference magnitudes: %f + %s" % (polynomial[0],
-                                                                                 " + ".join(polyString)))
-
-        for m in matches:
-            index = m.first.getId()
-            primary = -2.5 * math.log10(m.first.getPsfFlux())
-            primaryErr = m.first.getPsfFluxErr()
-            
-            secondary = -2.5 * math.log10(secondariesDict[index][0])
-            secondaryErr = secondariesDict[index][1]
-
-            diff = polynomial(primary - secondary)
-            m.first.setPsfFlux(math.pow(10.0, -0.4*(primary + diff)))
-            # XXX Ignoring the error for now

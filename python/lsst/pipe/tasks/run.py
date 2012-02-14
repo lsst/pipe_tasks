@@ -23,7 +23,7 @@
 
 from lsst.pipe.base.argumentParser import ArgumentParser
 
-def runTask(TaskClass, ArgumentParserClass=ArgumentParser, argList=['butler', 'idList'], argMap=None):
+def runTask(TaskClass, ArgumentParserClass=ArgumentParser, argList=['butler', 'dataIdList'], argMap=None):
     """Run a Task after parsing the command-line arguments.
     This is intended to be used as a common front-end for scripts.
 

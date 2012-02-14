@@ -66,11 +66,11 @@ class ProcessCcdTask(pipeBase.Task):
         self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
 
 
-    def runButler(self, butler, idList):
-        assert butler and idList
+    def runButler(self, butler, dataIdList):
+        assert butler and dataIdList
         if self.config.doIsr:
             exposureList = list()
-            for ident in idList:
+            for ident in dataIdList:
                 isrStruct = self.isr.runButler(butler, ident)
                 exposureList.append(isrStruct.postIsrExposure)
                 self.display('isr', exposure=isrStruct.postIsrExposure, pause=True)
@@ -84,7 +84,7 @@ class ProcessCcdTask(pipeBase.Task):
         else:
             ccdExposure = None
 
-        ccdId = guessCcdId(idList)
+        ccdId = guessCcdId(dataIdList)
 
         if self.config.doCalibrate:
             if ccdExposure is None:
