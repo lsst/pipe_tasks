@@ -109,10 +109,9 @@ class ProcessCcdTask(pipeBase.Task):
             butler = sensorRef.butlerSubset.butler
             calibSet = self.isr.makeCalibDict(butler, sensorRef.dataId)
             rawExposure = sensorRef.get("raw")
-            isrRes = self.isr.run(ampExposure, calibSet)
+            isrRes = self.isr.run(rawExposure, calibSet)
             self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
             ccdExposure = self.isr.doCcdAssembly([isrRes.postIsrExposure])
-            
             self.display("ccdAssembly", exposure=ccdExposure)
             if self.config.doWriteIsr:
                 sensorRef.put(ccdExposure, 'postISRCCD')
@@ -154,7 +153,7 @@ class ProcessCcdTask(pipeBase.Task):
             phot = None
 
         return pipeBase.Struct(
-            postIsrExposure = postIsrExposure if self.config.doIsr else None,
+            ccdExposure = isrRes.postIsrExposure if self.config.doIsr else None,
             exposure = ccdExposure,
             psf = psf,
             apCorr = apCorr,
