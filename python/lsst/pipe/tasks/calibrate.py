@@ -105,7 +105,6 @@ class CalibrateConfig(pexConfig.Config):
     measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
     astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
 
-
 class CalibrateTask(pipeBase.Task):
     """Conversion notes:
     
@@ -122,13 +121,13 @@ class CalibrateTask(pipeBase.Task):
     """
     ConfigClass = CalibrateConfig
 
-    def __init__(self, config=CalibrateConfig(), *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("repair", RepairTask, config=config.repair)
-        self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
-        self.makeSubtask("measurePsf", MeasurePsfTask, config=config.measurePsf)
-        self.makeSubtask("rephotometry", RephotometryTask, config=config.photometry)
-        self.makeSubtask("astrometry", AstrometryTask, config=config.astrometry)
+        self.makeSubtask("repair", RepairTask)
+        self.makeSubtask("photometry", PhotometryTask)
+        self.makeSubtask("measurePsf", MeasurePsfTask)
+        self.makeSubtask("rephotometry", RephotometryTask, config=self.config.photometry)
+        self.makeSubtask("astrometry", AstrometryTask)
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None):
