@@ -28,7 +28,10 @@ if __name__ == "__main__":
     namespace = parser.parse_args(config=TaskClass.ConfigClass())
     task = TaskClass(namespace.config)
     for sensorRef in namespace.dataRefList:
-        try:
+        if namespace.doRaise:
             task.run(sensorRef)
-        except Exception, e:
-            task.log.log(task.log.FATAL, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))
+        else:
+            try:
+                task.run(sensorRef)
+            except Exception, e:
+                task.log.log(task.log.FATAL, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))
