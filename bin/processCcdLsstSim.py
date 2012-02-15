@@ -20,15 +20,16 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import lsst.pex.logging as pexLog
 from lsst.pipe.base import ArgumentParser
 from lsst.pipe.tasks.processCcdLsstSim import ProcessCcdLsstSimTask as TaskClass
 
 if __name__ == "__main__":
-    pexLog.Trace.setVerbosity('lsst.ip.isr', 3)
-
     parser = ArgumentParser()
     namespace = parser.parse_args(config=TaskClass.ConfigClass())
     task = TaskClass(namespace.config)
     for sensorRef in namespace.dataRefList:
-        task.runButler(sensorRef)
+        try:
+            task.run(sensorRef)
+        except Exception, e:
+            task.log.log(task.log.FATAL, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))
+        
