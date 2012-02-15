@@ -37,3 +37,4 @@ class HscDistorter(object):
         point = self.inverseTransform(point)
         return point.getX(), point.getY()
 
+ptDistortion.distorterRegistry.register("hsc", HscDistorter)
