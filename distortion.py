@@ -2,9 +2,10 @@
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.tasks.distortion as ptDistortion
+import hsc.meas.match.distest as distest
 
 class HscDistorterConfig(pexConfig.Config):
-    elevation = pexConfig.RangeField(dtype=float, doc="Elevation to use (degrees)",
+    elevation = pexConfig.RangeField(dtype=float, doc="Telescope elevation to use (degrees)",
                                      default=60.0, min=0.0, max=90.0)
 
 class HscDistorter(object):
