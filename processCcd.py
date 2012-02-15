@@ -20,6 +20,7 @@ class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
     """HSC version of ProcessCcdTask, with method to write outputs
     after producing a new WCS.
     """
+    ConfigClass = HscProcessCcdConfig
     def write(self, butler, dataId, struct, wcs=None):
         exposure = struct.exposure
         psf = struct.psf
@@ -54,13 +55,27 @@ class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
         butler.put(psf, 'psf', dataId)
         butler.put(afwDet.PersistableSourceVector(brightSources), 'icSrc', dataId)
 
+class SuprimeCamProcessCcdConfig(HscProcessCcdConfig):
+    def __init__(self, *args, **kwargs):
+        super(SuprimeCamProcessCcdConfig, self).__init__(*args, **kwargs)
+        self.calibrate.astrometry.distortion.name = "radial"
+        self.calibrate.astrometry.distortion["radial"].coefficients = [0.0, 1.0, 7.16417e-08, 3.03146e-10,
+                                                                       5.69338e-14, -6.61572e-18]
+        self.calibrate.astrometry.distortion["radial"].observedToCorrected = False
 
 class SuprimeCamProcessCcdTask(HscProcessCcdTask):
+    ConfigClass = SuprimeCamProcessCcdConfig
     def __init__(self, config=HscProcessCcdConfig(), *args, **kwargs):
         pipeBase.Task.__init__(self, config=config, *args, **kwargs)
         self.makeSubtask("isr", hscSuprimeCam.SuprimeCamIsrTask, config=config.isr)
         self.makeSubtask("calibrate", hscCalibrate.HscCalibrateTask, config=config.calibrate)
         self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
+
+
+class HscDc2ProcessCcdConfig(HscProcessCcdConfig):
+    def __init__(self, *args, **kwargs):
+        super(HscDc2ProcessCcdConfig, self).__init__(*args, **kwargs)
+        self.calibrate.astrometry.distortion.name = "hsc"
 
 class HscDc2ProcessCcdTask(HscProcessCcdTask):
     ConfigClass = HscProcessCcdConfig
