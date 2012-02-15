@@ -10,6 +10,9 @@ import hsc.pipe.tasks.suprimecam as hscSuprimeCam
 import hsc.pipe.tasks.calibrate as hscCalibrate
 import hsc.pipe.tasks.hscDc2 as hscDc2
 
+import hsc.pipe.tasks.distortion # Register distortion classes
+
+
 class HscProcessCcdConfig(ptProcessCcd.ProcessCcdConfig):
     calibrate = pexConfig.ConfigField(dtype=hscCalibrate.HscCalibrateConfig, doc="Calibration")
 
