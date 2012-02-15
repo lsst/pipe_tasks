@@ -13,15 +13,53 @@ import hsc.pipe.tasks.hscDc2 as hscDc2
 class HscProcessCcdConfig(ptProcessCcd.ProcessCcdConfig):
     calibrate = pexConfig.ConfigField(dtype=hscCalibrate.HscCalibrateConfig, doc="Calibration")
 
-class SuprimeCamProcessCcdTask(ptProcessCcd.ProcessCcdTask):
-    ConfigClass = HscProcessCcdConfig
+class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
+    """HSC version of ProcessCcdTask, with method to write outputs
+    after producing a new WCS.
+    """
+    def write(self, butler, dataId, struct, wcs=None):
+        exposure = struct.exposure
+        psf = struct.psf
+        apCorr = struct.apCorr
+        brightSources = struct.brightSources if hasattr(struct, 'brightSources') else None
+        sources = struct.sources
+        matches = struct.matches
+        matchMeta = struct.matchMeta
+
+        if brightSources is None:
+            brightSources = afwDet.SourceSet()
+            for match in matches:
+                brightSources.push_back(match.second)
+
+        if wcs is None:
+            wcs = exposure.getWcs()
+            self.log.log(self.log.WARN, "WARNING: No new WCS provided")
+
+        # Apply WCS to sources
+        # In the matchlist, only convert the matches.second source, which is our measured source.
+        exposure.setWcs(wcs)
+        matchSources = [m.second for m in matches] if matches is not None else None
+        for sources in (sources, brightSources, matchSources):
+            if sources is None:
+                continue
+            for s in sources:
+                s.setRaDec(wcs.pixelToSky(s.getXAstrom(), s.getYAstrom()))
+
+        butler.put(exposure, 'calexp', dataId)
+        butler.put(afwDet.PersistableSourceVector(sources), 'src', dataId)
+        butler.put(afwDet.PersistableSourceMatchVector(matches, matchMeta), 'icMatch', dataId)
+        butler.put(psf, 'psf', dataId)
+        butler.put(afwDet.PersistableSourceVector(brightSources), 'icSrc', dataId)
+
+
+class SuprimeCamProcessCcdTask(HscProcessCcdTask):
     def __init__(self, config=HscProcessCcdConfig(), *args, **kwargs):
         pipeBase.Task.__init__(self, config=config, *args, **kwargs)
         self.makeSubtask("isr", hscSuprimeCam.SuprimeCamIsrTask, config=config.isr)
         self.makeSubtask("calibrate", hscCalibrate.HscCalibrateTask, config=config.calibrate)
         self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
 
-class HscDc2ProcessCcdTask(ptProcessCcd.ProcessCcdTask):
+class HscDc2ProcessCcdTask(HscProcessCcdTask):
     ConfigClass = HscProcessCcdConfig
     def __init__(self, config=HscProcessCcdConfig(), *args, **kwargs):
         pipeBase.Task.__init__(self, config=config, *args, **kwargs)
