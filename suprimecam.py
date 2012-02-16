@@ -8,10 +8,10 @@ import lsst.pipe.tasks.processCcd as ptProcessCcd
 import hsc.pipe.tasks.calibrate as hscCalibrate
 
 class SuprimeCamIsrTask(ipIsr.IsrTask):
-    def run(self, exposure, calibSet):
-        isrOut = super(SuprimeCamIsrTask, self).run(exposure, calibSet)
-        self.guider(isrOut.postIsrExposure)
-        return isrOut
+    def doCcdAssembly(self, exposureList):
+        ccdExposure = super(SuprimeCamIsrTask, self).doCcdAssembly(exposureList)
+        self.guider(ccdExposure)
+        return ccdExposure
     
     def guider(self, exposure):
         """Mask defects and trim guider shadow
