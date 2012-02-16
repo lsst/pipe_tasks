@@ -221,6 +221,7 @@ class CalibrateTask(pipeBase.Task):
         model = self.config.model
         fwhm = self.config.fwhm / wcs.pixelScale().asArcseconds()
         size = self.config.size
+        self.log.log(self.log.INFO, "makeFakePsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
         psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         return psf, wcs
 

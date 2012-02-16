@@ -104,6 +104,18 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
+        """Process a CCD: including ISR, source detection, photometry and WCS determination
+        
+        @param sensorRef: sensor-level butler data reference
+        @return pipe_base Struct containing these fields:
+        - postIsrExposure: exposure after ISR performed if calib.doIsr, else None
+        - exposure: calibrated exposure (calexp)
+        - psf: the PSF determined for the exposure
+        - apCorr: aperture correction
+        - sources: detected source if calib.doPhotometry run, else None
+        - matches: ? if doCalibrate, else None
+        - matchMeta: ? if config.doCalibrate, else None
+        """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
         if self.config.doIsr:
             butler = sensorRef.butlerSubset.butler
@@ -119,26 +131,27 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                     exposureList.append(isrRes.postIsrExposure)
                     self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
                 # assemble amps into a CCD
-                ccdExposure = self.isr.doCcdAssembly(exposureList)
+                tempExposure = self.isr.doCcdAssembly(exposureList)
                 del exposureList
                 # perform CCD-level ISR
                 ccdCalibSet = self.ccdIsr.makeCalibDict(butler, snapRef.dataId)
-                ccdIsrRes = self.ccdIsr.run(ccdExposure, ccdCalibSet)
-                ccdExposure = ccdIsrRes.postIsrExposure
+                ccdIsrRes = self.ccdIsr.run(tempExposure, ccdCalibSet)
+                del tempExposure
+                postIsrExposure = ccdIsrRes.postIsrExposure
                 
-                self.display("ccdAssembly", exposure=ccdExposure)
+                self.display("ccdAssembly", exposure=postIsrExposure)
                 if self.config.doWriteIsr:
-                    snapRef.put(ccdExposure, 'postISRCCD')
+                    snapRef.put(postIsrExposure, 'postISRCCD')
         else:
-            ccdExposure = None
+            postIsrExposure = None
 
         if self.config.doCalibrate:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(ccdExposure)
-            ccdExposure = calib.exposure
+            if postIsrExposure is None:
+                postIsrExposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(postIsrExposure)
+            calExposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(ccdExposure, 'calexp')
+                sensorRef.put(calExposure, 'calexp')
                 sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
@@ -152,15 +165,15 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             calib = None
 
         if self.config.doPhotometry:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('calexp')
+            if calExposure is None:
+                calExposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
                 apCorr = None # sensorRef.get('apcorr')
             else:
                 psf = calib.psf
                 apCorr = calib.apCorr
-            phot = self.photometry.run(ccdExposure, psf, apcorr=apCorr)
+            phot = self.photometry.run(calExposure, psf, apcorr=apCorr)
             if self.config.doWritePhotometry:
                 sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
         else:
@@ -168,7 +181,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure if self.config.doIsr else None,
-            exposure = ccdExposure,
+            exposure = calExposure,
             psf = psf,
             apCorr = apCorr,
             sources = phot.sources if phot else None,
