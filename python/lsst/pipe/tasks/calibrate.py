@@ -106,18 +106,7 @@ class CalibrateConfig(pexConfig.Config):
     astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
 
 class CalibrateTask(pipeBase.Task):
-    """Conversion notes:
-    
-    Disabled display until we figure out how to turn it off or on
-    
-    Warning: I'm not sure I'm using metadata correctly (to replace old sdqa code)
-    
-    Made new subtasks for measuring PSF and astrometry    
-    
-    Eliminated the background subtask because it was such a thin layer around muDetection.estimateBackground
-    
-    Modified to NOT estimate a new background model if the user supplies one. The old code first applied
-    the user-supplied background (if any) then fit and subtracted a new background.
+    """Calibrate an exposure: measure PSF, subtract background, etc.
     """
     ConfigClass = CalibrateConfig
 

@@ -86,11 +86,6 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.calibrate.apCorr.alg2.name = "SINC"
         self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
         self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
-        
-        # Astrometry
-        self.calibrate.astrometry.distortion.name = "radial"
-        self.calibrate.astrometry.distortion["radial"].coefficients = [0.0, 1.0, 7.16417e-08, 3.03146e-10, 5.69338e-14, -6.61572e-18]
-        self.calibrate.astrometry.distortion["radial"].observedToCorrected = True
 
 
 class ProcessCcdLsstSimTask(pipeBase.Task):
@@ -112,25 +107,28 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
         if self.config.doIsr:
             butler = sensorRef.butlerSubset.butler
-            # perform amp-level ISR
-            exposureList = list()
-            for ampRef in sensorRef.subItems():
-                calibSet = self.isr.makeCalibDict(butler, ampRef.dataId)
-                ampExposure = ampRef.get("raw")
-                isrRes = self.isr.run(ampExposure, calibSet)
-                exposureList.append(isrRes.postIsrExposure)
-                self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
-            # assemble amps into a CCD
-            ccdExposure = self.isr.doCcdAssembly(exposureList)
-            del exposureList
-            # perform CCD-level ISR
-            ccdCalibSet = self.ccdIsr.makeCalibDict(butler, sensorRef.dataId)
-            ccdIsrRes = self.ccdIsr.run(ccdExposure, ccdCalibSet)
-            ccdExposure = ccdIsrRes.postIsrExposure
-            
-            self.display("ccdAssembly", exposure=ccdExposure)
-            if self.config.doWriteIsr:
-                sensorRef.put(ccdExposure, 'postISRCCD')
+            for snapRef in sensorRef.subItems(level="snap"):
+                self.log.log(self.log.INFO, "Performing ISR on snap %s" % (snapRef.dataId))
+                # perform amp-level ISR
+                exposureList = list()
+                for ampRef in snapRef.subItems(level="channel"):
+                    self.log.log(self.log.INFO, "Performing ISR on channel %s" % (ampRef.dataId))
+                    calibSet = self.isr.makeCalibDict(butler, ampRef.dataId)
+                    ampExposure = ampRef.get("raw")
+                    isrRes = self.isr.run(ampExposure, calibSet)
+                    exposureList.append(isrRes.postIsrExposure)
+                    self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
+                # assemble amps into a CCD
+                ccdExposure = self.isr.doCcdAssembly(exposureList)
+                del exposureList
+                # perform CCD-level ISR
+                ccdCalibSet = self.ccdIsr.makeCalibDict(butler, snapRef.dataId)
+                ccdIsrRes = self.ccdIsr.run(ccdExposure, ccdCalibSet)
+                ccdExposure = ccdIsrRes.postIsrExposure
+                
+                self.display("ccdAssembly", exposure=ccdExposure)
+                if self.config.doWriteIsr:
+                    snapRef.put(ccdExposure, 'postISRCCD')
         else:
             ccdExposure = None
 
