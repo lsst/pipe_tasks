@@ -87,10 +87,14 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
 
-        distorter = self.config.distortion.apply(getCcd(exposure))
+        if self.config.distortion.name == "null": # use the one from cameraGeom.Camera
+            distorter = pipeDist.RadialPolyDistorter(ccd=getCcd(exposure))
+        else:
+            self.log.log(self.log.WARN, "Creating a new %s from config" % self.config.distortion.name)
+            distorter = self.config.distortion.apply(getCcd(exposure))
 
         # Distort source positions
-        self.log.log(self.log.INFO, "Applying distortion correction: %s" % self.config.distortion.name)
+        self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter)
         distSources = afwDet.SourceSet()
         for s in sources:
             dist = afwDet.Source(s)
