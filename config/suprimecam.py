@@ -5,6 +5,7 @@ root.isr.doWrite = False
 
 root.calibrate.repair.doCosmicRay = True
 root.calibrate.repair.cosmicray.nCrPixelMax = 100000
+root.calibrate.repair.cosmicray.keepCRs = False
 root.calibrate.background.binSize = 1024
 
 # PSF determination

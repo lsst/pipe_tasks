@@ -147,7 +147,8 @@ class CalibrateTask(pipeBase.Task):
 
         fakePsf, wcs = self.makeFakePsf(exposure)
 
-        self.repair.run(exposure, fakePsf, defects=defects, keepCRs=True)
+        keepCRs = True                  # At least until we know the PSF
+        self.repair.run(exposure, fakePsf, defects=defects, keepCRs=keepCRs)
         self.display('repair', exposure=exposure)
 
         if self.config.doBackground:
@@ -179,7 +180,7 @@ class CalibrateTask(pipeBase.Task):
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
-            self.repair.run(exposure, psf, defects=defects, keepCRs=False)
+            self.repair.run(exposure, psf, defects=defects, keepCRs=None)
             self.display('repair', exposure=exposure)
 
         if self.config.doBackground:
