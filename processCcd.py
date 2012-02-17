@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import lsst.pex.config as pexConfig
+import lsst.afw.detection as afwDet
 from lsst.ip.isr import IsrTask
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.processCcd as ptProcessCcd
@@ -50,10 +51,11 @@ class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
                 s.setRaDec(wcs.pixelToSky(s.getXAstrom(), s.getYAstrom()))
 
         butler.put(exposure, 'calexp', dataId)
-        butler.put(afwDet.PersistableSourceVector(sources), 'src', dataId)
+        butler.put(afwDet.PersistableSourceVector(afwDet.SourceSet(sources)), 'src', dataId)
         butler.put(afwDet.PersistableSourceMatchVector(matches, matchMeta), 'icMatch', dataId)
         butler.put(psf, 'psf', dataId)
-        butler.put(afwDet.PersistableSourceVector(brightSources), 'icSrc', dataId)
+        if brightSources is not None:
+            butler.put(afwDet.PersistableSourceVector(afwDet.SourceSet(brightSources)), 'icSrc', dataId)
 
 class SuprimeCamProcessCcdConfig(HscProcessCcdConfig):
     def __init__(self, *args, **kwargs):
