@@ -193,7 +193,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
     
         if not doPsfMatch:
             self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
-            
+
         exposureMetadataList = []
         for ind, dataRef in enumerate(dataRefList):
             dataId = dataRef.dataId
@@ -213,7 +213,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                 if desFwhm > 0:
                     modelPsf = self.makeModelPsf(exposure, desFwhm)
                     self.log.log(self.log.INFO, "PSF-match exposure")
-                    exposure, psfMatchingKernel, kernelCellSet = psfMatcher.matchExposure(exposure, modelPsf)
+                    exposure, psfMatchingKernel, kernelCellSet = \
+                        self.psfMatcher.matchExposure(exposure, modelPsf)
                 
                 self.log.log(self.log.INFO, "Warp exposure")
                 exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)

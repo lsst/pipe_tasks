@@ -20,9 +20,18 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.processCcd import ProcessCcdTask
-from lsst.pipe.tasks.run import runTask
-
+from lsst.pipe.base import ArgumentParser
+from lsst.pipe.tasks.processCcd import ProcessCcdTask as TaskClass
 
 if __name__ == "__main__":
-    runTask(ProcessCcdTask)
+    parser = ArgumentParser()
+    namespace = parser.parse_args(config=TaskClass.ConfigClass())
+    task = TaskClass(namespace.config)
+    for sensorRef in namespace.dataRefList:
+        if namespace.doRaise:
+            task.run(sensorRef)
+        else:
+            try:
+                task.run(sensorRef)
+            except Exception, e:
+                task.log.log(task.log.FATAL, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))

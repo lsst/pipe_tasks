@@ -105,30 +105,18 @@ class CalibrateConfig(pexConfig.Config):
     measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
     astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
 
-
 class CalibrateTask(pipeBase.Task):
-    """Conversion notes:
-    
-    Disabled display until we figure out how to turn it off or on
-    
-    Warning: I'm not sure I'm using metadata correctly (to replace old sdqa code)
-    
-    Made new subtasks for measuring PSF and astrometry    
-    
-    Eliminated the background subtask because it was such a thin layer around muDetection.estimateBackground
-    
-    Modified to NOT estimate a new background model if the user supplies one. The old code first applied
-    the user-supplied background (if any) then fit and subtracted a new background.
+    """Calibrate an exposure: measure PSF, subtract background, etc.
     """
     ConfigClass = CalibrateConfig
 
-    def __init__(self, config=CalibrateConfig(), *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("repair", RepairTask, config=config.repair)
-        self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
-        self.makeSubtask("measurePsf", MeasurePsfTask, config=config.measurePsf)
-        self.makeSubtask("rephotometry", RephotometryTask, config=config.photometry)
-        self.makeSubtask("astrometry", AstrometryTask, config=config.astrometry)
+        self.makeSubtask("repair", RepairTask)
+        self.makeSubtask("photometry", PhotometryTask)
+        self.makeSubtask("measurePsf", MeasurePsfTask)
+        self.makeSubtask("rephotometry", RephotometryTask, config=self.config.photometry)
+        self.makeSubtask("astrometry", AstrometryTask)
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None):
@@ -234,6 +222,7 @@ class CalibrateTask(pipeBase.Task):
         model = self.config.model
         fwhm = self.config.fwhm / wcs.pixelScale().asArcseconds()
         size = self.config.size
+        self.log.log(self.log.INFO, "makeFakePsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
         psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         return psf, wcs
 
