@@ -24,6 +24,7 @@ import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
+import lsst.afw.display.ds9 as ds9
 import lsst.afw.geom as afwGeom
 import lsst.meas.astrom as measAst
 import lsst.meas.astrom.astrom as measAstrometry
@@ -101,7 +102,11 @@ class AstrometryTask(pipeBase.Task):
             dist.setXAstrom(x)
             dist.setYAstrom(y)
             distSources.push_back(dist)
-            
+
+        self.display('distortion', exposure=exposure, sources=sources, pause=False)
+        self.display('distortion', exposure=None, sources=distSources,
+                     ctypes=[ds9.RED], pause=True)
+
         # Get distorted image size so that astrometry_net does not clip.
         xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
         for x, y in ((0.0, 0.0), (0.0, exposure.getHeight()), (exposure.getWidth(), 0.0),
