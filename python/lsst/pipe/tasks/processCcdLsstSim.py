@@ -23,7 +23,7 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.detection as afwDet
-import lsst.meas.utils as measUtils
+import lsst.meas.utils.sourceMeasurement as srcMeas
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -177,7 +177,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                 apCorr = calib.apCorr
             phot = self.photometry.run(calExposure, psf, apcorr=apCorr)
             if self.config.doComputeSkyCoords and calExposure.getWcs() is not None:
-                measUtils.computeSkyCoords(calExposure.getWcs(), phot.sources)
+                srcMeas.computeSkyCoords(calExposure.getWcs(), phot.sources)
             if self.config.doWritePhotometry:
                 sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
         else:
