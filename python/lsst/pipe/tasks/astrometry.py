@@ -144,31 +144,19 @@ class AstrometryTask(pipeBase.Task):
 
         self.log.log(self.log.INFO, "Solving astrometry")
 
-        if size is None:
-            size = (exposure.getWidth(), exposure.getHeight())
-
-        try:
-            filterName = exposure.getFilter().getName()
-            self.log.log(self.log.INFO, "Using filter: %s" % filterName)
-        except:
-            self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
-            filterName = None
-
 #        if distortion is not None:
 #            # Removed distortion, so use low order
 #            oldOrder = self.config.sipOrder
 #            self.config.sipOrder = 2
 
         astrometer = measAstrometry.Astrometry(self.config.solver, log=self.log)
-        astrom = astrometer.determineWcs(distSources, exposure)
-
-#        astrom = measAstrometry.determineWcs(self.config, exposure, distSources,
-#                                             log=self.log, forceImageSize=size, filterName=filterName)
+        astrom = astrometer.determineWcs(distSources, exposure,
+                                         imageSize=size)
 
 #        if distortion is not None:
 #            self.config.sipOrder = oldOrder
 
-        if astrom is None:
+        if astrom is None or astrom.getWcs() is None:
             raise RuntimeError("Unable to solve astrometry for %s", exposure.getDetector().getId())
 
         wcs = astrom.getWcs()
