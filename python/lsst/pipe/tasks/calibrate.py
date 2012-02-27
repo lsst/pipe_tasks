@@ -95,6 +95,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Subtract background (after computing it, if not supplied)?",
         default = True,
     )
+    adjustBackground = pexConfig.Field(
+        dtype = float,
+        doc = "Fiddle factor to add to the background; debugging only",
+        default = 0.0,
+    )
     background = pexConfig.ConfigField(
         dtype = muDetection.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
@@ -143,6 +148,13 @@ class CalibrateTask(pipeBase.Task):
             with self.timer("background"):
                 bg, exposure = muDetection.estimateBackground(exposure, self.config.background, subtract=True)
                 del bg
+
+            if self.config.adjustBackground:
+                self.log.log(self.log.WARN, "Fiddling the background by %g" % self.config.adjustBackground)
+                mi = exposure.getMaskedImage()
+                mi -= self.config.adjustBackground
+                del mi
+
             self.display('background', exposure=exposure)
         
         if self.config.doPsf or self.config.doAstrometry or self.config.doZeropoint:
