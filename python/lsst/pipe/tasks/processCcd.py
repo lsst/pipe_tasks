@@ -124,7 +124,6 @@ class ProcessCcdTask(pipeBase.Task):
             calib = self.calibrate.run(ccdExposure)
             ccdExposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(ccdExposure, 'calexp')
                 sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
