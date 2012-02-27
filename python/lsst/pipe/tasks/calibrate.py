@@ -119,6 +119,7 @@ class CalibrateTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("repair", RepairTask)
         self.makeSubtask("photometry", PhotometryTask)
+        self.makeSubtask("applyApCorr", ApplyApCorrTask)
         self.makeSubtask("measurePsf", MeasurePsfTask)
         self.makeSubtask("rephotometry", RephotometryTask, config=self.config.photometry)
         self.makeSubtask("astrometry", AstrometryTask)
@@ -172,11 +173,6 @@ class CalibrateTask(pipeBase.Task):
         else:
             psf, cellSet = None, None
 
-        if self.config.doPsf and self.config.doApCorr:
-            apCorr = self.apCorr(exposure, cellSet) # calculate the aperture correction; we may use it later
-        else:
-            apCorr = None
-
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
@@ -192,13 +188,19 @@ class CalibrateTask(pipeBase.Task):
             self.display('background', exposure=exposure)
 
         if self.config.doPsf and (self.config.doAstrometry or self.config.doZeropoint):
-            rephotRet = self.rephotometry.run(exposure, footprints, psf, apCorr)
+            rephotRet = self.rephotometry.run(exposure, footprints, psf)
             for old, new in zip(sources, rephotRet.sources):
                 for flag in (measAlg.Flags.STAR, measAlg.Flags.PSFSTAR):
                     propagateFlag(flag, old, new)
             sources = rephotRet.sources
             del rephotRet
-        
+
+        if self.config.doPsf and self.config.doApCorr:
+            apCorr = self.measureApCorr(exposure, cellSet) # calculate the aperture correction
+            applyApCorrRet = self.photometry.applyApCorr(sources, apCorr)
+        else:
+            apCorr = None
+
         if self.config.doAstrometry or self.config.doZeropoint:
             astromRet = self.astrometry.run(exposure, sources)
             matches = astromRet.matches
@@ -239,7 +241,7 @@ class CalibrateTask(pipeBase.Task):
         return psf, wcs
 
     @pipeBase.timeMethod
-    def apCorr(self, exposure, cellSet):
+    def measureApCorr(self, exposure, cellSet):
         """Measure aperture correction
 
         @param exposure Exposure to process

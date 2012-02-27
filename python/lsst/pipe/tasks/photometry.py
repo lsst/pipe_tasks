@@ -104,6 +104,30 @@ class PhotometryTask(pipeBase.Task):
         return posSources
 
     @pipeBase.timeMethod
+    def applyApCorr(self, sources, apcorr):
+        """Apply aperture corrections to Sources that have already been measured
+
+        @param sources SourceSet to calibrate
+        @param apcorr Aperture correction to apply
+        @return None
+        """
+        if apcorr:
+            self.log.log(self.log.INFO, "Applying aperture correction to %d sources" % len(sources))
+            for source in sources:
+                x, y = source.getXAstrom(), source.getYAstrom()
+
+                for getter, getterErr, setter, setterErr in (
+                    ('getPsfFlux', 'getPsfFluxErr', 'setPsfFlux', 'setPsfFluxErr'),
+                    ('getInstFlux', 'getInstFluxErr', 'setInstFlux', 'setInstFluxErr'),
+                    ('getModelFlux', 'getModelFluxErr', 'setModelFlux', 'setModelFluxErr')):
+                    flux = getattr(source, getter)()
+                    fluxErr = getattr(source, getterErr)()
+                    if (numpy.isfinite(flux) and numpy.isfinite(fluxErr)):
+                        corr, corrErr = apcorr.computeAt(x, y)
+                        getattr(source, setter)(flux*corr)
+                        getattr(source, setterErr)(numpy.hypot(corr*fluxErr, corrErr*flux))
+
+    @pipeBase.timeMethod
     def measure(self, exposure, footprintSet, psf, apcorr=None, wcs=None):
         """Measure sources
 
@@ -126,42 +150,25 @@ class PhotometryTask(pipeBase.Task):
         if wcs is not None:
             muMeasurement.computeSkyCoords(wcs, sources)
 
-        if not self.config.applyApcorr: # actually apply the aperture correction?
-            apcorr = None
+        if self.config.applyApcorr: # actually apply the aperture correction?
+            self.applyApCorr(sources, apcorr)
 
-        if apcorr is not None:
-            self.log.log(self.log.INFO, "Applying aperture correction to %d sources" % len(sources))
-            for source in sources:
-                x, y = source.getXAstrom(), source.getYAstrom()
-
-                for getter, getterErr, setter, setterErr in (
-                    ('getPsfFlux', 'getPsfFluxErr', 'setPsfFlux', 'setPsfFluxErr'),
-                    ('getInstFlux', 'getInstFluxErr', 'setInstFlux', 'setInstFluxErr'),
-                    ('getModelFlux', 'getModelFluxErr', 'setModelFlux', 'setModelFluxErr')):
-                    flux = getattr(source, getter)()
-                    fluxErr = getattr(source, getterErr)()
-                    if (numpy.isfinite(flux) and numpy.isfinite(fluxErr)):
-                        corr, corrErr = apcorr.computeAt(x, y)
-                        getattr(source, setter)(flux * corr)
-                        getattr(source, setterErr)(numpy.sqrt(corr**2 * fluxErr**2 + corrErr**2 * flux**2))
-
-#         if self._display and self._display.has_key('psfinst') and self._display['psfinst']:
-#             import matplotlib.pyplot as plt
-#             psfMag = -2.5 * numpy.log10(numpy.array([s.getPsfFlux() for s in sources]))
-#             instMag = -2.5 * numpy.log10(numpy.array([s.getInstFlux() for s in sources]))
-#             fig = plt.figure(1)
-#             fig.clf()
-#             ax = fig.add_axes((0.1, 0.1, 0.8, 0.8))
-#             ax.set_autoscale_on(False)
-#             ax.set_ybound(lower=-1.0, upper=1.0)
-#             ax.set_xbound(lower=-17, upper=-7)
-#             ax.plot(psfMag, psfMag-instMag, 'ro')
-#             ax.axhline(0.0)
-#             ax.set_title('psf - inst')
-#             plt.show()
-
+        if self._display and self._display.get('calib'):
+            import matplotlib.pyplot as plt
+            psfMag = -2.5 * numpy.log10(numpy.array([s.getPsfFlux() for s in sources]))
+            instMag = -2.5 * numpy.log10(numpy.array([s.getApFlux() for s in sources]))
+            fig = plt.figure(1)
+            fig.clf()
+            ax = fig.add_axes((0.1, 0.1, 0.8, 0.8))
+            ax.set_autoscale_on(False)
+            ax.set_ybound(lower=-1.0, upper=1.0)
+            ax.set_xbound(lower=-17, upper=-7)
+            ax.plot(psfMag, psfMag-instMag, 'ro')
+            ax.axhline(0.0)
+            ax.set_title('psf - ap')
+            plt.show()
+            
         return sources
-
 
 class RephotometryTask(PhotometryTask):
     ConfigClass = MeasurementConfig
