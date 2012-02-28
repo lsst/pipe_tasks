@@ -119,7 +119,6 @@ class CalibrateTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("repair", RepairTask)
         self.makeSubtask("photometry", PhotometryTask)
-        self.makeSubtask("applyApCorr", ApplyApCorrTask)
         self.makeSubtask("measurePsf", MeasurePsfTask)
         self.makeSubtask("rephotometry", RephotometryTask, config=self.config.photometry)
         self.makeSubtask("astrometry", AstrometryTask)
