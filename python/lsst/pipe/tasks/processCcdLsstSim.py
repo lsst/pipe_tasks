@@ -42,50 +42,11 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
     photometry = pexConfig.ConfigField(dtype=PhotometryTask.ConfigClass, doc="Photometry")
 
-    def __init__(self, *args, **kwargs):
-        pexConfig.Config.__init__(self, *args, **kwargs)
-        self.isr.doWrite = False # don't persist data until until CCD ISR is run; ignored anyway
-        self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
-        self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
-
-        self.calibrate.repair.doCosmicRay = True
-        self.calibrate.repair.cosmicray.nCrPixelMax = 100000
-        self.calibrate.background.binSize = 1024
-        
-        # PSF determination
-        self.calibrate.measurePsf.starSelector.name = "secondMoment"
-        self.calibrate.measurePsf.psfDeterminer.name = "pca"
-        self.calibrate.measurePsf.starSelector["secondMoment"].clumpNSigma = 2.0
-        self.calibrate.measurePsf.psfDeterminer["pca"].nEigenComponents = 4
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7.0
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 2
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin = 25
-        
-        # Final photometry
-        self.photometry.detect.thresholdValue = 5.0
-        self.photometry.detect.includeThresholdMultiplier = 1.0
-        self.photometry.measure.source.astrom = "NAIVE"
-        self.photometry.measure.source.apFlux = "NAIVE"
-        self.photometry.measure.source.modelFlux = "GAUSSIAN"
-        self.photometry.measure.source.psfFlux = "PSF"
-        self.photometry.measure.source.shape = "SDSS"
-        self.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
-        self.photometry.measure.shape.names = ["SDSS"]
-        self.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-        self.photometry.measure.photometry["NAIVE"].radius = 7.0
-        self.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10
-        self.photometry.measure.photometry["SINC"].radius = 7.0
-        
-        # Initial photometry
-        self.calibrate.photometry.detect.thresholdValue = 5.0
-        self.calibrate.photometry.detect.includeThresholdMultiplier = 10.0
-        self.calibrate.photometry.measure = self.photometry.measure
-        
-        # Aperture correction
-        self.calibrate.apCorr.alg1.name = "PSF"
-        self.calibrate.apCorr.alg2.name = "SINC"
-        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
-        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
+    def __init__(self):
+        pexConfig.Config.__init__(self)
+        self.doWriteIsr = False
+        self.isr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
+        self.isr.doWrite = False
 
 
 class ProcessCcdLsstSimTask(pipeBase.Task):

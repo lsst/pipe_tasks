@@ -127,8 +127,16 @@ class CalibrateConfig(pexConfig.Config):
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
         self.applyApCorr.validateMeasurementConfig(self.measurement)
 
-CalibrateConfig.detection.includeThresholdMultiplier.default = 10.0
-CalibrateConfig.initialMeasurement.prefix.default = "initial."
+    def __init__(self):
+        pexConfig.Config.__init__(self)
+        self.detection.includeThresholdMultiplier = 10.0
+        self.initialMeasurement.prefix = "initial."
+        self.background.binSize = 1024
+        
+        # Aperture correction
+        self.computeApCorr.alg1.name = "flux.psf"
+        self.computeApCorr.alg2.name = "flux.sinc"
+        
 
 class CalibrateTask(pipeBase.Task):
     """Calibrate an exposure: measure PSF, subtract background, etc.

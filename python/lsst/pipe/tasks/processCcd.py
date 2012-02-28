@@ -23,6 +23,7 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.detection as afwDet
+import lsst.meas.algorithms as measAlg
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -35,62 +36,26 @@ class ProcessCcdConfig(pexConfig.Config):
     doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
-    doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Instrumental Signature Removal")
-    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
-    photometry = pexConfig.ConfigField(dtype=PhotometryTask.ConfigClass, doc="Photometry")
+    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
+                                      doc="Calibration (inc. high-threshold detection and measurement)")
+    detection = pexConfig.ConfigField(dtype=measAlg.SourceDetectionTask.ConfigConfig,
+                                      doc="Low-threshold detection for final measurement")
+    measurement = pexConfig.ConfigField(dtype=measAlg.SourceMeasurementTask.ConfigClass,
+                                        doc="Final source measurement on low-threshold detections")
 
-    def __init__(self, *args, **kwargs):
-        pexConfig.Config.__init__(self, *args, **kwargs)
+    def __init__(self):
+        pexConfig.Config.__init__(self)
         self.doWriteIsr = False
-        self.isr.methodList=["doConversionForIsr", "doSaturationDetection",
-                             "doOverscanCorrection", "doVariance", "doFlatCorrection"]
+        self.isr.methodList = ["doConversionForIsr", "doSaturationDetection",
+                               "doOverscanCorrection", "doVariance", "doFlatCorrection"]
         self.isr.doWrite = False
-        
-        self.calibrate.repair.doCosmicRay = True
-        self.calibrate.repair.cosmicray.nCrPixelMax = 100000
-        self.calibrate.background.binSize = 1024
-        
-        # PSF determination
-        self.calibrate.measurePsf.starSelector.name = "secondMoment"
-        self.calibrate.measurePsf.psfDeterminer.name = "pca"
-        self.calibrate.measurePsf.starSelector["secondMoment"].clumpNSigma = 2.0
-        self.calibrate.measurePsf.psfDeterminer["pca"].nEigenComponents = 4
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7.0
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 2
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin = 25
-        
-        # Final photometry
-        self.photometry.detect.thresholdValue = 5.0
-        self.photometry.detect.includeThresholdMultiplier = 1.0
-        self.photometry.measure.source.astrom = "NAIVE"
-        self.photometry.measure.source.apFlux = "NAIVE"
-        self.photometry.measure.source.modelFlux = "GAUSSIAN"
-        self.photometry.measure.source.psfFlux = "PSF"
-        self.photometry.measure.source.shape = "SDSS"
-        self.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
-        self.photometry.measure.shape.names = ["SDSS"]
-        self.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-        self.photometry.measure.photometry["NAIVE"].radius = 7.0
-        self.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10
-        self.photometry.measure.photometry["SINC"].radius = 7.0
-        
-        # Initial photometry
-        self.calibrate.photometry.detect.thresholdValue = 5.0
-        self.calibrate.photometry.detect.includeThresholdMultiplier = 10.0
-        self.calibrate.photometry.measure = self.photometry.measure
-        
-        # Aperture correction
-        self.calibrate.apCorr.alg1.name = "PSF"
-        self.calibrate.apCorr.alg2.name = "SINC"
-        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
-        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
-        
-        # Astrometry
-        self.calibrate.astrometry.distortion.name = "radial"
-        self.calibrate.astrometry.distortion["radial"].coefficients = [0.0, 1.0, 7.16417e-08, 3.03146e-10, 5.69338e-14, -6.61572e-18]
-        self.calibrate.astrometry.distortion["radial"].observedToCorrected = True
 
+        # Astrometry; subaru specific, shouldn't end up here once merged with processCcdLsstSim
+        self.calibrate.astrometry.distortion.name = "radial"
+        self.calibrate.astrometry.distortion["radial"].coefficients \
+            = [0.0, 1.0, 7.16417e-08, 3.03146e-10, 5.69338e-14, -6.61572e-18]
+        self.calibrate.astrometry.distortion["radial"].observedToCorrected = True
 
 class ProcessCcdTask(pipeBase.Task):
     """Process a CCD"""

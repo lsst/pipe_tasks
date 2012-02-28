@@ -24,14 +24,15 @@ import lsst.meas.algorithms as measAlg
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-def propagateFlag(flag, old, new):
-    """Propagate a flag from one source to another"""
-    if old.getFlagForDetection() & flag:
-        new.setFlagForDetection(new.getFlagForDetection() | flag)
-
 class MeasurePsfConfig(pexConfig.Config):
     starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
+
+MeasurePsfConfig.starSelector["secondMoment"].clumpNSigma.default = 2.0
+MeasurePsfConfig.psfDeterminer["pca"].nEigenComponents.default = 4
+MeasurePsfConfig.psfDeterminer["pca"].kernelSize.default = 7.0
+MeasurePsfConfig.psfDeterminer["pca"].spatialOrder.default = 2
+MeasurePsfConfig.psfDeterminer["pca"].kernelSizeMin.default = 25
 
 class MeasurePsfTask(pipeBase.Task):
     """Conversion notes:
