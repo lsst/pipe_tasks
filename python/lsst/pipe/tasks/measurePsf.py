@@ -28,11 +28,13 @@ class MeasurePsfConfig(pexConfig.Config):
     starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
 
-MeasurePsfConfig.starSelector["secondMoment"].clumpNSigma.default = 2.0
-MeasurePsfConfig.psfDeterminer["pca"].nEigenComponents.default = 4
-MeasurePsfConfig.psfDeterminer["pca"].kernelSize.default = 7.0
-MeasurePsfConfig.psfDeterminer["pca"].spatialOrder.default = 2
-MeasurePsfConfig.psfDeterminer["pca"].kernelSizeMin.default = 25
+    def __init__(self):
+        pexConfig.Config.__init__(self)
+        self.starSelector["secondMoment"].clumpNSigma = 2.0
+        self.psfDeterminer["pca"].nEigenComponents = 4
+        self.psfDeterminer["pca"].kernelSize = 7.0
+        self.psfDeterminer["pca"].spatialOrder = 2
+        self.psfDeterminer["pca"].kernelSizeMin = 25
 
 class MeasurePsfTask(pipeBase.Task):
     """Conversion notes:

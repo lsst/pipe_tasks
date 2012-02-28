@@ -22,25 +22,33 @@
 #
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.afw.detection as afwDet
+import lsst.afw.table as afwTable
+import lsst.meas.algorithms as measAlg
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
-from lsst.pipe.tasks.photometry import PhotometryTask
-
 
 class ProcessCcdLsstSimConfig(pexConfig.Config):
     """Config for ProcessCcdLsstSim"""
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
-    doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
+    doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
+    doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
-    doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
+    doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Amp-level instrumental signature removal")
     ccdIsr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="CCD level instrumental signature removal")
-    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
-    photometry = pexConfig.ConfigField(dtype=PhotometryTask.ConfigClass, doc="Photometry")
+    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
+                                      doc="Calibration (inc. high-threshold detection and measurement)")
+    detection = pexConfig.ConfigField(dtype=measAlg.SourceDetectionTask.ConfigClass,
+                                      doc="Low-threshold detection for final measurement")
+    measurement = pexConfig.ConfigField(dtype=measAlg.SourceMeasurementTask.ConfigClass,
+                                        doc="Final source measurement on low-threshold detections")
+
+    def validate(self):
+        if self.doMeasurement and not self.doDetection:
+            raise ValueError("Cannot run source measurement without source detection.")
 
     def __init__(self):
         pexConfig.Config.__init__(self)
@@ -61,7 +69,13 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         self.makeSubtask("isr", IsrTask)
         self.makeSubtask("ccdIsr", IsrTask)
         self.makeSubtask("calibrate", CalibrateTask)
-        self.makeSubtask("photometry", PhotometryTask)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
+        if self.config.doDetection:
+            self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
+                             schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
@@ -113,39 +127,54 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             calExposure = calib.exposure
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
-                sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
+                # FIXME: SourceCatalog not butlerized
+                #sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
+                    # FIXME: ApertureCorrection not butlerized
                     #sensorRef.put(calib.apCorr, 'apcorr')
                     pass
                 if calib.matches is not None:
-                    sensorRef.put(afwDet.PersistableSourceMatchVector(calib.matches, calib.matchMeta),
-                               'icMatch')
+                    normalizedMatches = afwTable.packMatches(calib.matches)
+                    normalizedMatches.table.setMetadata(calib.matchmeta)
+                    # FIXME: BaseCatalog (i.e. normalized match vector) not butlerized
+                    #sensorRef.put(normalizedMatches, 'icMatch')
+
         else:
             calib = None
 
-        if self.config.doPhotometry:
-            if calExposure is None:
-                calExposure = sensorRef.get('calexp')
+        if self.config.doDetection:
+            if ccdExposure is None:
+                ccdExposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                apCorr = None # sensorRef.get('apcorr')
-            else:
-                psf = calib.psf
-                apCorr = calib.apCorr
-            phot = self.photometry.run(calExposure, psf, apcorr=apCorr)
-            if self.config.doWritePhotometry:
-                sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
+                ccdExposure.setPsf(sensorRef.get('psf'))
+            table = afwTable.SourceTable.make(self.schema)
+            table.setMetadata(self.algMetadata)
+            sources = self.detection.makeSourceCatalog(exposure)
         else:
-            phot = None
+            sources = None
+
+        if self.config.doMeasurement:
+            assert(sources)
+            assert(ccdExposure)
+            if calib is None:
+                apCorr = None # FIXME: should load from butler
+                if self.measurement.doApplyApCorr:
+                    self.log.log(self.log.WARN, "Cannot load aperture correction; will not be applied.")
+            else:
+                apCorr = calib.apCorr
+            self.measurement.run(exposure, sources, apCorr)
+
+        if self.config.doWriteSources:
+            # FIXME: SourceCatalog not butlerized
+            #sensorRef.put(phot.sources, 'src')
+            pass
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure if self.config.doIsr else None,
             exposure = calExposure,
-            psf = psf,
-            apCorr = apCorr,
-            sources = phot.sources if phot else None,
-            matches = calib.matches if calib else None,
-            matchMeta = calib.matchMeta if calib else None,
+            calib = calib,
+            sources = sources
         )

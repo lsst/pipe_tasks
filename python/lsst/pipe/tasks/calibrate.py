@@ -31,7 +31,6 @@ from .astrometry import AstrometryTask
 import lsst.pipe.base as pipeBase
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
-from .photometry import PhotometryTask, RephotometryTask
 
 class InitialPsfConfig(pexConfig.Config):
     """Describes the initial PSF used for detection and measurement before we do PSF determination."""
@@ -89,16 +88,16 @@ class CalibrateConfig(pexConfig.Config):
         )
     repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
     detection    = pexConfig.ConfigField(
-        dtype=measAlg.SourceDetectionConfig,
+        dtype=measAlg.SourceDetectionTask.ConfigClass,
         doc="Initial (high-threshold) detection phase for calibration"
     )
     initialMeasurement = pexConfig.ConfigField(
-        dtype=measAlg.SourceMeasurementConfig,
+        dtype=measAlg.SourceMeasurementTask.ConfigClass,
         doc="Initial measurements used to feed PSF determination and aperture correction determination"
     )
     measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
     measurement = pexConfig.ConfigField(
-        dtype=measAlg.SourceMeasurementConfig,
+        dtype=measAlg.SourceMeasurementTask.ConfigClass,
         doc="Post-PSF-determination measurements used to feed other calibrations"
     )
     computeApCorr = pexConfig.ConfigField(dtype = measAlg.ApertureCorrectionConfig,
@@ -139,14 +138,14 @@ class CalibrateTask(pipeBase.Task):
     def __init__(self, config, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
-        self.tableMetadata = dafBase.PropertyList()
+        self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("repair", RepairTask)
         self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
         self.makeSubtask("initialMeasurement", measAlg.SourceMeasurementTask,
-                         schema=self.schema, algMetadata=self.tableMetadata)
+                         schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("measurePsf", MeasurePsfTask, schema=self.schema)
         self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
-                         schema=self.schema, algMetadata=self.tableMetadata)
+                         schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("astrometry", AstrometryTask)
         self.makeSubtask("photocal", photocal.PhotoCalTask, schema=self.schema)
 
@@ -177,7 +176,7 @@ class CalibrateTask(pipeBase.Task):
             self.display('background', exposure=exposure)
         
         table = afwTable.SourceTable.make(self.schema) # TODO: custom IdFactory for globally unique IDs
-        table.setMetadata(self.tableMetadata)
+        table.setMetadata(self.algMetadata)
         sources = self.detection.makeSourceCatalog(exposure)
 
         if self.config.doPsf:

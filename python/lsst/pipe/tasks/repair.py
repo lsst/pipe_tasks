@@ -25,9 +25,6 @@ import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 
-import lsst.afw.display.ds9 as ds9
-import lsst.afw.display.utils as displayUtils
-
 import lsstDebug
 
 class RepairConfig(pexConfig.Config):
@@ -46,7 +43,9 @@ class RepairConfig(pexConfig.Config):
         doc = "Options for finding and masking cosmic rays",
     )
 
-RepairConfig.cosmicray.nCrPixelMax.default = 100000
+    def __init__(self):
+        pexConfig.Config.__init__(self)
+        self.cosmicray.nCrPixelMax = 100000
 
 class RepairTask(pipeBase.Task):
     """Conversion notes:
@@ -124,6 +123,9 @@ class RepairTask(pipeBase.Task):
             num = len(crs)
 
             if display and displayCR:
+                import lsst.afw.display.ds9 as ds9
+                import lsst.afw.display.utils as displayUtils
+
                 ds9.incrDefaultFrame()
                 ds9.mtv(exposure, title="Post-CR")
                 
