@@ -11,9 +11,6 @@ import hsc.pipe.tasks.suprimecam as hscSuprimeCam
 import hsc.pipe.tasks.calibrate as hscCalibrate
 import hsc.pipe.tasks.hscDc2 as hscDc2
 
-import hsc.pipe.tasks.distortion # Register distortion classes
-
-
 class HscProcessCcdConfig(ptProcessCcd.ProcessCcdConfig):
     calibrate = pexConfig.ConfigField(dtype=hscCalibrate.HscCalibrateConfig, doc="Calibration")
 
@@ -60,10 +57,6 @@ class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
 class SuprimeCamProcessCcdConfig(HscProcessCcdConfig):
     def __init__(self, *args, **kwargs):
         super(SuprimeCamProcessCcdConfig, self).__init__(*args, **kwargs)
-        self.calibrate.astrometry.distortion.name = "radial"
-        self.calibrate.astrometry.distortion["radial"].coefficients = [0.0, 1.0, 7.16417e-08, 3.03146e-10,
-                                                                       5.69338e-14, -6.61572e-18]
-        self.calibrate.astrometry.distortion["radial"].observedToCorrected = False
 
 class SuprimeCamProcessCcdTask(HscProcessCcdTask):
     ConfigClass = SuprimeCamProcessCcdConfig
@@ -77,7 +70,6 @@ class SuprimeCamProcessCcdTask(HscProcessCcdTask):
 class HscDc2ProcessCcdConfig(HscProcessCcdConfig):
     def __init__(self, *args, **kwargs):
         super(HscDc2ProcessCcdConfig, self).__init__(*args, **kwargs)
-        self.calibrate.astrometry.distortion.name = "hsc"
 
 class HscDc2ProcessCcdTask(HscProcessCcdTask):
     ConfigClass = HscProcessCcdConfig

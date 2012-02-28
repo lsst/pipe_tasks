@@ -40,18 +40,15 @@ class HscAstrometryTask(ptAstrometry.AstrometryTask):
         wcs = exposure.getWcs()
         if wcs is None or hscAst is None:
             self.log.log(self.log.WARN, "Unable to use hsc.meas.astrom; reverting to lsst.meas.astrom")
-            return super(HscAstrometryTask, self).astrometry(exposure, sources, distSources,
-                                                             llc=llc, size=size)
+            return ptAstrometry.AstrometryTask.astrometry(exposure, sources, distSources,
+                                                          llc=llc, size=size)
 
         if size is None:
             size = (exposure.getWidth(), exposure.getHeight())
 
-        wcs.shiftReferencePixel(-llc[0], -llc[1])
-
         try:
             astrometer = hscAstrom.TaburAstrometry(self.config.solver, log=self.log)
             astrom = astrometer.determineWcs(distSources, exposure)
-            wcs.shiftReferencePixel(llc[0], llc[1])
             if astrom is None:
                 raise RuntimeError("hsc.meas.astrom failed to determine the WCS")
         except Exception, e:
