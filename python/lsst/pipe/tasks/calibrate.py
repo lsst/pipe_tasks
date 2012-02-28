@@ -73,11 +73,6 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Calculate the aperture correction?",
         default = True,
     )
-    doApplyApCorr = pexConfig.Field(
-        dtype = bool,
-        doc = "Apply the aperture correction?",
-        default = True,
-    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -108,8 +103,6 @@ class CalibrateConfig(pexConfig.Config):
     )
     computeApCorr = pexConfig.ConfigField(dtype = measAlg.ApertureCorrectionConfig,
                                           doc = measAlg.ApertureCorrectionConfig.__doc__)
-    applyApCorr   = pexConfig.ConfigField(dtype = measAlg.ApertureCorrectionApplyConfig,
-                                          doc = measAlg.ApertureCorrectionApplyConfig.__doc__)
     astrometry    = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
     photocal      = pexConfig.ConfigField(dtype = photocal.PhotoCalConfig,
                                           doc = photocal.PhotoCalConfig.__doc__)
@@ -121,16 +114,16 @@ class CalibrateConfig(pexConfig.Config):
                                      "have the same prefix; field names may clash.")
         if self.doComputeApCorr and not self.doPsf:
             raise ValueError("Cannot compute aperture correction without doing PSF determination")
-        if self.doApplyApCorr and not self.doComputeApCorr:
+        if self.measurement.doApplyApCorr and not self.doComputeApCorr:
             raise ValueError("Cannot apply aperture correction without computing it")
         if self.doZeropoint and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
-        self.applyApCorr.validateMeasurementConfig(self.measurement)
 
     def __init__(self):
         pexConfig.Config.__init__(self)
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.prefix = "initial."
+        self.initialMeasurement.doApplyApCorr = False
         self.background.binSize = 1024
         
         # Aperture correction
@@ -154,7 +147,6 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("measurePsf", MeasurePsfTask, schema=self.schema)
         self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.tableMetadata)
-        self.makeSubtask("applyApCorr", measAlg.ApertureCorrectionApplyTask, schema=self.schema)
         self.makeSubtask("astrometry", AstrometryTask)
         self.makeSubtask("photocal", photocal.PhotoCalTask, schema=self.schema)
 
@@ -189,7 +181,7 @@ class CalibrateTask(pipeBase.Task):
         sources = self.detection.makeSourceCatalog(exposure)
 
         if self.config.doPsf:
-            self.initialMeasurement.run(exposure, sources)
+            self.initialMeasurement.measure(exposure, sources)
             psfRet = self.measurePsf.run(exposure, sources)
             cellSet = psfRet.cellSet
         else:
@@ -209,18 +201,18 @@ class CalibrateTask(pipeBase.Task):
                 self.log.log(self.log.INFO, "Fit and subtracted background")
             self.display('background', exposure=exposure)
 
-        if self.config.doApCorr or self.config.doAstrometry or self.config.doZeropoint:
-            self.measurement.run(exposure, sources)
+        if self.config.doComputeApCorr or self.config.doAstrometry or self.config.doZeropoint:
+            self.measurement.measure(exposure, sources)   # don't use run, because we don't have apCorr yet
 
         if self.config.doComputeApCorr:
             assert(self.config.doPsf)
             apCorr = self.computeApCorr(exposure, cellSet)
         else:
             apCorr = None
-        
-        if self.config.doApplyApCorr:
-            assert(self.config.doComputeApCorr)
-            self.applyApCorr.run(apCorr, sources)
+
+        if self.measurement.config.doApplyApCorr:
+            assert(apCorr is not None)
+            self.measurement.applyApCorr(sources, apCorr)
 
         if self.config.doAstrometry:
             astromRet = self.astrometry.run(exposure, sources)
