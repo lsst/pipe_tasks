@@ -63,17 +63,17 @@ class ProcessCcdConfig(pexConfig.Config):
         # Final photometry
         self.photometry.detect.thresholdValue = 5.0
         self.photometry.detect.includeThresholdMultiplier = 1.0
-        self.photometry.measure.source.astrom = "NAIVE"
-        self.photometry.measure.source.apFlux = "NAIVE"
+        self.photometry.measure.source.astrom = "SDSS"
+        self.photometry.measure.source.apFlux = "SINC"
         self.photometry.measure.source.modelFlux = "GAUSSIAN"
         self.photometry.measure.source.psfFlux = "PSF"
         self.photometry.measure.source.shape = "SDSS"
         self.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
         self.photometry.measure.shape.names = ["SDSS"]
         self.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-        self.photometry.measure.photometry["NAIVE"].radius = 7.0
         self.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10
         self.photometry.measure.photometry["SINC"].radius = 7.0
+        self.photometry.measure.photometry["NAIVE"].radius = self.photometry.measure.photometry["SINC"].radius
         
         # Initial photometry
         self.calibrate.photometry.detect.thresholdValue = 5.0
@@ -83,15 +83,11 @@ class ProcessCcdConfig(pexConfig.Config):
         # Aperture correction
         self.calibrate.apCorr.alg1.name = "PSF"
         self.calibrate.apCorr.alg2.name = "SINC"
-        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
-        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
+        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = \
+            self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
+        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = \
+            self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
         
-        # Astrometry
-        self.calibrate.astrometry.distortion.name = "radial"
-        self.calibrate.astrometry.distortion["radial"].coefficients = [0.0, 1.0, 7.16417e-08, 3.03146e-10, 5.69338e-14, -6.61572e-18]
-        self.calibrate.astrometry.distortion["radial"].observedToCorrected = True
-
-
 class ProcessCcdTask(pipeBase.Task):
     """Process a CCD"""
     ConfigClass = ProcessCcdConfig
@@ -124,7 +120,6 @@ class ProcessCcdTask(pipeBase.Task):
             calib = self.calibrate.run(ccdExposure)
             ccdExposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(ccdExposure, 'calexp')
                 sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
@@ -152,6 +147,9 @@ class ProcessCcdTask(pipeBase.Task):
         else:
             phot = None
 
+        if self.config.doWriteCalibrate:
+            sensorRef.put(ccdExposure, 'calexp')
+            
         return pipeBase.Struct(
             ccdExposure = isrRes.postIsrExposure if self.config.doIsr else None,
             exposure = ccdExposure,

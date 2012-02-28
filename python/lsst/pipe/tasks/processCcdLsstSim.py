@@ -29,7 +29,6 @@ from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.photometry import PhotometryTask
 
-
 class ProcessCcdLsstSimConfig(pexConfig.Config):
     """Config for ProcessCcdLsstSim"""
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
@@ -66,17 +65,16 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         # Final photometry
         self.photometry.detect.thresholdValue = 5.0
         self.photometry.detect.includeThresholdMultiplier = 1.0
-        self.photometry.measure.source.astrom = "NAIVE"
-        self.photometry.measure.source.apFlux = "NAIVE"
+        self.photometry.measure.source.astrom = "SDSS"
+        self.photometry.measure.source.apFlux = "SINC"
         self.photometry.measure.source.modelFlux = "GAUSSIAN"
         self.photometry.measure.source.psfFlux = "PSF"
         self.photometry.measure.source.shape = "SDSS"
         self.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
         self.photometry.measure.shape.names = ["SDSS"]
         self.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-        self.photometry.measure.photometry["NAIVE"].radius = 7.0
-        self.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10.0
         self.photometry.measure.photometry["SINC"].radius = 7.0
+        self.photometry.measure.photometry["NAIVE"].radius = self.photometry.measure.photometry["SINC"].radius
         
         # Initial photometry
         self.calibrate.photometry.detect.thresholdValue = 5.0
@@ -86,10 +84,11 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         # Aperture correction
         self.calibrate.apCorr.alg1.name = "PSF"
         self.calibrate.apCorr.alg2.name = "SINC"
-        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
-        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
-
-
+        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = \
+            self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
+        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = \
+            self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
+        
 class ProcessCcdLsstSimTask(pipeBase.Task):
     """Process a CCD for LSSTSim
     
