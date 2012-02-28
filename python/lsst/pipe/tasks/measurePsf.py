@@ -46,58 +46,28 @@ class MeasurePsfTask(pipeBase.Task):
     """
     ConfigClass = MeasurePsfConfig
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
-        self.starSelector = self.config.starSelector.apply()
-        self.psfDeterminer = self.config.psfDeterminer.apply()
+    def __init__(self, config, schema=None, **kwargs):
+        pipeBase.Task.__init__(self, config, **kwargs)
+        self.starSelector = self.config.starSelector.apply(schema=schema)
+        self.psfDeterminer = self.config.psfDeterminer.apply(schema=schema)
         
     @pipeBase.timeMethod
     def run(self, exposure, sources):
         """Measure the PSF
 
-        @param exposure Exposure to process
-        @param sources Measured sources on exposure
+        @param[in,out]   exposure      Exposure to process; measured PSF will be installed here as well.
+        @param[in,out]   sources       Measured sources on exposure; flag fields will be set marking
+                                       stars chosen by the star selector and PSF determiner.
         """
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
         self.log.log(self.log.INFO, "Measuring PSF")
-
-        #
-        # Run an extra detection step to mask out faint stars
-        #
-        if False:
-            print "RHL is cleaning faint sources"
-
-            import lsst.afw.math as afwMath
-
-            sigma = 1.0
-            gaussFunc = afwMath.GaussianFunction1D(sigma)
-            gaussKernel = afwMath.SeparableKernel(15, 15, gaussFunc, gaussFunc)
-
-            im = exposure.getMaskedImage().getImage()
-            convolvedImage = im.Factory(im.getDimensions())
-            afwMath.convolve(convolvedImage, im, gaussKernel)
-            del im
-
-            fs = afwDet.makeFootprintSet(convolvedImage, afwDet.createThreshold(4, "stdev"))
-            fs = afwDet.makeFootprintSet(fs, 3, True)
-            fs.setMask(exposure.getMaskedImage().getMask(), "DETECTED")
 
         psfCandidateList = self.starSelector.selectStars(exposure, sources)
 
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
         self.log.log(self.log.INFO, "PSF determination using %d/%d stars." % 
                      (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
-
-        # The PSF candidates contain a copy of the source, and so we need to explicitly propagate new flags
-        for cand in psfCandidateList:
-            cand = measAlg.cast_PsfCandidateF(cand)
-            src = cand.getSource()
-            if src.getFlagForDetection() & measAlg.Flags.PSFSTAR:
-                ident = src.getId()
-                src = sources[ident]
-                assert src.getId() == ident
-                src.setFlagForDetection(src.getFlagForDetection() | measAlg.Flags.PSFSTAR)
 
         exposure.setPsf(psf)
         return pipeBase.Struct(

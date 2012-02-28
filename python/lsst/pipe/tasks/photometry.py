@@ -49,7 +49,6 @@ class PhotometryConfig(MeasurementConfig):
         default = 10.0,
     )
 
-
 class PhotometryTask(pipeBase.Task):
     """Conversion notes:
     
