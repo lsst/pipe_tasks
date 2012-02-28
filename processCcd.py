@@ -24,7 +24,7 @@ class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
         psf = struct.psf
         apCorr = struct.apCorr
         brightSources = struct.brightSources if hasattr(struct, 'brightSources') else None
-        sources = struct.sources
+        faintSources = struct.sources
         matches = struct.matches
         matchMeta = struct.matchMeta
 
@@ -41,14 +41,14 @@ class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
         # In the matchlist, only convert the matches.second source, which is our measured source.
         exposure.setWcs(wcs)
         matchSources = [m.second for m in matches] if matches is not None else None
-        for sources in (sources, brightSources, matchSources):
+        for sources in (faintSources, brightSources, matchSources):
             if sources is None:
                 continue
             for s in sources:
                 s.setRaDec(wcs.pixelToSky(s.getXAstrom(), s.getYAstrom()))
 
         butler.put(exposure, 'calexp', dataId)
-        butler.put(afwDet.PersistableSourceVector(afwDet.SourceSet(sources)), 'src', dataId)
+        butler.put(afwDet.PersistableSourceVector(afwDet.SourceSet(faintSources)), 'src', dataId)
         butler.put(afwDet.PersistableSourceMatchVector(matches, matchMeta), 'icMatch', dataId)
         butler.put(psf, 'psf', dataId)
         if brightSources is not None:
