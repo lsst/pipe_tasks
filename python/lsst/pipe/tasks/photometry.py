@@ -101,7 +101,7 @@ class PhotometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "%d negative sources found and ignored" % numNeg)
         self.log.log(self.log.INFO, "Detected %d sources to %g sigma." %
                      (numPos, self.config.detect.thresholdValue))
-        return (posSources.getFootprint(), False)
+        return [(posSources.getFootprints(), False),]
 
     @pipeBase.timeMethod
     def measure(self, exposure, footprintSets, psf, apcorr=None, wcs=None):

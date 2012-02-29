@@ -24,6 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.detection as afwDet
 import lsst.meas.utils.sourceMeasurement as srcMeas
+import lsst.pex.logging as pexLog
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -54,7 +55,7 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
 
-        self.snapCombine.diffim.kernel.name = "AL"
+        self.snapCombine.diffim.kernel.name = "DF"
         self.snapCombine.photometry.detect.thresholdValue = 5.0
 
         self.calibrate.repair.doCosmicRay = True
@@ -95,6 +96,9 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.calibrate.apCorr.alg2.name = "SINC"
         self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
         self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
+
+        pexLog.Trace_setVerbosity("ProcessCcdLsstSimTask", 1)
+        pexLog.Trace_setVerbosity("lsst.ip.diffim", 3)
 
 
 class ProcessCcdLsstSimTask(pipeBase.Task):
@@ -165,16 +169,6 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             if snap0 is None or snap1 is None:
                 snap0 = sensorRef.get("postISRCCD", snap=0)
                 snap1 = sensorRef.get("postISRCCD", snap=1)
-
-            if False:
-                # debugging showing the WCS of these is off
-                import lsst.afw.math as afwMath
-                import lsst.afw.image as afwImage
-                testWarper = afwMath.Warper.fromConfig(self.snapCombine.diffim.ConfigClass().kernel.active.warpingConfig)
-                testWarp   = testWarper.warpExposure(snap1.getWcs(), snap0, destBBox = snap1.getBBox(afwImage.PARENT))
-                snap0.writeFits("/tmp/snap0.fits")
-                snap1.writeFits("/tmp/snap1.fits")
-                testWarp.writeFits("/tmp/warped.fits")
 
             combineRes = self.snapCombine.run(snap0, snap1)
             visitExposure = combineRes.visitExposure
