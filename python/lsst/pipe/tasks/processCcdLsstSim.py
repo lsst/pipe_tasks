@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.daf.base as dafBase
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
@@ -64,8 +65,8 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
     """
     ConfigClass = ProcessCcdLsstSimConfig
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
         self.makeSubtask("isr", IsrTask)
         self.makeSubtask("ccdIsr", IsrTask)
         self.makeSubtask("calibrate", CalibrateTask)

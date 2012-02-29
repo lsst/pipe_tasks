@@ -24,6 +24,7 @@ import math
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
+import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 import lsst.meas.utils.sourceDetection as muDetection
 import lsst.meas.photocal as photocal
@@ -135,7 +136,7 @@ class CalibrateTask(pipeBase.Task):
     """
     ConfigClass = CalibrateConfig
 
-    def __init__(self, config, **kwargs):
+    def __init__(self, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
@@ -144,6 +145,7 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("initialMeasurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("measurePsf", MeasurePsfTask, schema=self.schema)
+        print self.schema
         self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("astrometry", AstrometryTask)
@@ -177,7 +179,7 @@ class CalibrateTask(pipeBase.Task):
         
         table = afwTable.SourceTable.make(self.schema) # TODO: custom IdFactory for globally unique IDs
         table.setMetadata(self.algMetadata)
-        sources = self.detection.makeSourceCatalog(exposure)
+        sources = self.detection.makeSourceCatalog(table, exposure)
 
         if self.config.doPsf:
             self.initialMeasurement.measure(exposure, sources)

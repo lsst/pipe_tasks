@@ -22,6 +22,7 @@
 #
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 
@@ -67,8 +68,8 @@ class ProcessCcdTask(pipeBase.Task):
     """Process a CCD"""
     ConfigClass = ProcessCcdConfig
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
         self.makeSubtask("isr", IsrTask)
         self.makeSubtask("calibrate", CalibrateTask)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
@@ -126,7 +127,7 @@ class ProcessCcdTask(pipeBase.Task):
                 ccdExposure.setPsf(sensorRef.get('psf'))
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(exposure)
+            sources = self.detection.makeSourceCatalog(table, exposure)
         else:
             sources = None
 

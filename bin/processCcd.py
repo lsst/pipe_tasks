@@ -26,7 +26,7 @@ from lsst.pipe.tasks.processCcd import ProcessCcdTask as TaskClass
 if __name__ == "__main__":
     parser = ArgumentParser()
     namespace = parser.parse_args(config=TaskClass.ConfigClass())
-    task = TaskClass(namespace.config)
+    task = TaskClass(config=namespace.config)
     for sensorRef in namespace.dataRefList:
         if namespace.doRaise:
             task.run(sensorRef)

@@ -49,8 +49,8 @@ class MeasurePsfTask(pipeBase.Task):
     """
     ConfigClass = MeasurePsfConfig
 
-    def __init__(self, config, schema=None, **kwargs):
-        pipeBase.Task.__init__(self, config, **kwargs)
+    def __init__(self, schema=None, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
         self.starSelector = self.config.starSelector.apply(schema=schema)
         self.psfDeterminer = self.config.psfDeterminer.apply(schema=schema)
         
