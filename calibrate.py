@@ -10,7 +10,7 @@ import hsc.pipe.tasks.astrometry as hscAstrom
 
 
 class HscCalibrateConfig(ptCalibrate.CalibrateConfig):
-    astrometry = pexConfig.ConfigField(dtype = hscAstrom.HscAstrometryConfig, doc = "HSC astrometry")
+    astrometry = pexConfig.ConfigField(dtype = hscAstrom.HscAstrometryConfig, doc = "HSC calibration")
 
 class HscCalibrateTask(ptCalibrate.CalibrateTask):
     ConfigClass = HscCalibrateConfig
