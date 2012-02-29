@@ -145,7 +145,6 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("initialMeasurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("measurePsf", MeasurePsfTask, schema=self.schema)
-        print self.schema
         self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("astrometry", AstrometryTask)
