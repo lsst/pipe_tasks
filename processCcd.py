@@ -54,12 +54,7 @@ class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
         if brightSources is not None:
             butler.put(afwDet.PersistableSourceVector(afwDet.SourceSet(brightSources)), 'icSrc', dataId)
 
-class SuprimeCamProcessCcdConfig(HscProcessCcdConfig):
-    def __init__(self, *args, **kwargs):
-        super(SuprimeCamProcessCcdConfig, self).__init__(*args, **kwargs)
-
 class SuprimeCamProcessCcdTask(HscProcessCcdTask):
-    ConfigClass = SuprimeCamProcessCcdConfig
     def __init__(self, config=HscProcessCcdConfig(), *args, **kwargs):
         pipeBase.Task.__init__(self, config=config, *args, **kwargs)
         self.makeSubtask("isr", hscSuprimeCam.SuprimeCamIsrTask, config=config.isr)
