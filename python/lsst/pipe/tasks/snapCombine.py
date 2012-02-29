@@ -52,11 +52,15 @@ class SnapCombineTask(pipeBase.Task):
         if self.config.doDiffim:
             diffRet = self.diffim.run(snap0, snap1, "subtractExposures")
             diffExp = diffRet.subtractedImage
+            diffExp.writeFits("/tmp/diff.fits")
 
             fakePsf, wcs = self.makeFakePsf(snap0)
             photRet = self.photometry.run(diffExp, fakePsf, wcs=wcs)
             sources = photRet.sources
-            footprints = photRet.footprintSet
+            footprints = photRet.footprintSets
+        
+        return pipeBase.Struct(visitExposure = snap0,
+                               metadata = self.metadata)
 
     def makeFakePsf(self, exposure):
         """Initialise the detection procedure by setting the PSF and WCS

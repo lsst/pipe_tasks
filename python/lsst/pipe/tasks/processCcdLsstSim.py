@@ -39,6 +39,7 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
     doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
     doComputeSkyCoords = pexConfig.Field(dtype=bool, default=True, doc="Compute sky coordinates?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
+    doWriteSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Write snapCombine results?")  
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Amp-level instrumental signature removal")
