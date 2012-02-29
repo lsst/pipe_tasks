@@ -34,7 +34,7 @@ from lsst.pipe.tasks.snapCombine import SnapCombineTask
 class ProcessCcdLsstSimConfig(pexConfig.Config):
     """Config for ProcessCcdLsstSim"""
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
-    doSnapCombine = pexConfig.Field(dtype=bool, default=False, doc = "Combine Snaps?")
+    doSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Combine Snaps?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
     doComputeSkyCoords = pexConfig.Field(dtype=bool, default=True, doc="Compute sky coordinates?")
@@ -53,7 +53,8 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
 
-        self.snapCombine.photometry.detect.
+        self.snapCombine.diffim.kernel.name = "AL"
+        self.snapCombine.photometry.detect.thresholdValue = 5.0
 
         self.calibrate.repair.doCosmicRay = True
         self.calibrate.repair.cosmicray.nCrPixelMax = 100000
@@ -125,6 +126,8 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         - matchMeta: ? if config.doCalibrate, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        snap0 = None
+        snap1 = None
         if self.config.doIsr:
             butler = sensorRef.butlerSubset.butler
             for snapRef in sensorRef.subItems(level="snap"):
@@ -140,6 +143,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                     self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
                 # assemble amps into a CCD
                 tempExposure = self.isr.doCcdAssembly(exposureList)
+
                 del exposureList
                 # perform CCD-level ISR
                 ccdCalibSet = self.ccdIsr.makeCalibDict(butler, snapRef.dataId)
@@ -149,18 +153,33 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                 
                 self.display("ccdAssembly", exposure=postIsrExposure)
                 if self.config.doWriteIsr:
-                    snapRef.put(postIsrExposure, 'postISRCCD')
-        else:
-            postIsrExposure = None
+                    snapRef.put(postIsrExposure, "postISRCCD")
+
+                if snapRef.dataId['snap'] == 0:
+                    snap0 = postIsrExposure
+                elif snapRef.dataId['snap'] == 1:
+                    snap1 = postIsrExposure
 
         if self.config.doSnapCombine:
-            butler = sensorRef.butlerSubset.butler
-            snapRefs = sensorRef.subItems(level="snap")
-            combineRes = self.snapCombine.run(snapRefs)
+            if snap0 is None or snap1 is None:
+                snap0 = sensorRef.get("postISRCCD", snap=0)
+                snap1 = sensorRef.get("postISRCCD", snap=1)
+
+            if False:
+                # debugging showing the WCS of these is off
+                import lsst.afw.math as afwMath
+                import lsst.afw.image as afwImage
+                testWarper = afwMath.Warper.fromConfig(self.snapCombine.diffim.ConfigClass().kernel.active.warpingConfig)
+                testWarp   = testWarper.warpExposure(snap1.getWcs(), snap0, destBBox = snap1.getBBox(afwImage.PARENT))
+                snap0.writeFits("/tmp/snap0.fits")
+                snap1.writeFits("/tmp/snap1.fits")
+                testWarp.writeFits("/tmp/warped.fits")
+
+            combineRes = self.snapCombine.run(snap0, snap1)
             visitExposure = combineRes.visitExposure
             self.display("snapCombine", exposure=visitExposure)
             if self.config.doWriteSnapCombine:
-                snapRef.put(visitExposure, 'visitCCD')
+                snapRef.put(visitExposure, "visitCCD")
         else:
             visitExposure = postIsrExposure
 

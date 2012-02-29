@@ -19,11 +19,14 @@
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import numpy as num
 import lsst.pex.config as pexConfig
+import lsst.afw.detection as afwDet
 import lsst.meas.utils.sourceDetection as muDetection
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import SnapPsfMatchTask
-from lsst.pipe.tasks.photometry import PhotometryTask
+from lsst.pipe.tasks.photometry import PhotometryDiffTask
+from lsst.pipe.tasks.calibrate import CalibrateTask
 
 class SnapCombineConfig(pexConfig.Config):
     doDiffim = pexConfig.Field(
@@ -33,7 +36,8 @@ class SnapCombineConfig(pexConfig.Config):
     )
 
     diffim = pexConfig.ConfigField(dtype = SnapPsfMatchTask.ConfigClass, doc = "")
-    photometry  = pexConfig.ConfigField(dtype = PhotometryTask.ConfigClass,  doc = "")
+    photometry = pexConfig.ConfigField(dtype = PhotometryDiffTask.ConfigClass,  doc = "")
+    calibrate = pexConfig.ConfigField(dtype = CalibrateTask.ConfigClass,  doc = "")
 
 class SnapCombineTask(pipeBase.Task):
     ConfigClass = SnapCombineConfig
@@ -43,15 +47,31 @@ class SnapCombineTask(pipeBase.Task):
         self.makeSubtask("diffim", SnapPsfMatchTask)
         self.makeSubtask("photometry", PhotometryDiffTask)
  
-   @pipeBase.timeMethod
-    def run(self, snap1, snap2):
-        fakePsf, wcs = self.makeFakePsf(snap1)
-        
+    @pipeBase.timeMethod
+    def run(self, snap0, snap1):
         if self.config.doDiffim:
-            diffRet = self.diffim.run(diffim, fakePsf, "subtractExposures")
+            diffRet = self.diffim.run(snap0, snap1, "subtractExposures")
             diffExp = diffRet.subtractedImage
-            
-            photRet = self.detect.run(diffExp, fakePsf)
+
+            fakePsf, wcs = self.makeFakePsf(snap0)
+            photRet = self.photometry.run(diffExp, fakePsf, wcs=wcs)
             sources = photRet.sources
             footprints = photRet.footprintSet
 
+    def makeFakePsf(self, exposure):
+        """Initialise the detection procedure by setting the PSF and WCS
+
+        @param exposure Exposure to process
+        @return PSF, WCS
+        """
+        assert exposure, "No exposure provided"
+        
+        wcs = exposure.getWcs()
+        assert wcs, "No wcs in exposure"
+
+        model = self.config.calibrate.model
+        fwhm = self.config.calibrate.fwhm / wcs.pixelScale().asArcseconds()
+        size = self.config.calibrate.size
+        self.log.log(self.log.INFO, "makeFakePsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
+        psf = afwDet.createPsf(model, size, size, fwhm/(2.0*num.sqrt(2*num.log(2.0))))
+        return psf, wcs
