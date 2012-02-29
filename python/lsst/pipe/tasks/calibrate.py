@@ -135,8 +135,8 @@ class CalibrateTask(pipeBase.Task):
     """
     ConfigClass = CalibrateConfig
 
-    def __init__(self, config, **kwargs):
-        pipeBase.Task.__init__(self, **kwargs)
+    def __init__(self, *args, **kwargs):
+        pipeBase.Task.__init__(self, *args, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("repair", RepairTask)
