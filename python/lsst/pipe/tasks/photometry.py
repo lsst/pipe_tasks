@@ -191,6 +191,10 @@ class RephotometryTask(PhotometryTask):
 class PhotometryDiffTask(PhotometryTask):
     """Variant of PhotometryTask that detects and measures both negative and positive sources
     """
+    def __init__(self, *args, **kwargs):
+        PhotometryTask.__init__(self, *args, **kwargs)
+        self.config.detect.thresholdPolarity = "both"
+
     def detect(self, exposure, psf):
         """Detect positive and negative sources (e.g. in a difference image)
 
@@ -204,7 +208,7 @@ class PhotometryDiffTask(PhotometryTask):
         numPos = len(posSources.getFootprints()) if posSources is not None else 0
         numNeg = len(negSources.getFootprints()) if negSources is not None else 0
         self.log.log(self.log.INFO, "Detected %d positive and %d negative sources to %g sigma." % 
-                     (numPos, numNeg, config.thresholdValue))
+                     (numPos, numNeg, self.config.detect.thresholdValue))
 
         for f in negSources.getFootprints():
             posSources.getFootprints().push_back(f)
