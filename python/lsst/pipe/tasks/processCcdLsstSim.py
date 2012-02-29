@@ -127,15 +127,20 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             calExposure = calib.exposure
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
-                sensorRef.put(calib.sources, 'icSrc')
+                # FIXME: SourceCatalog not butlerized
+                #sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
-                    sensorRef.put(calib.apCorr, 'apcorr')
+                    # FIXME: ApertureCorrection not butlerized
+                    #sensorRef.put(calib.apCorr, 'apcorr')
+                    pass
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchmeta)
-                    sensorRef.put(normalizedMatches, 'icMatch')
+                    # FIXME: BaseCatalog (i.e. normalized match vector) not butlerized
+                    #sensorRef.put(normalizedMatches, 'icMatch')
+
         else:
             calib = None
 
@@ -155,7 +160,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             assert(sources)
             assert(ccdExposure)
             if calib is None:
-                apCorr = sensorRef.get('apcorr')
+                apCorr = None # FIXME: should load from butler
                 if self.measurement.doApplyApCorr:
                     self.log.log(self.log.WARN, "Cannot load aperture correction; will not be applied.")
             else:
@@ -163,7 +168,9 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             self.measurement.run(exposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            sensorRef.put(sources, 'src')
+            # FIXME: SourceCatalog not butlerized
+            #sensorRef.put(phot.sources, 'src')
+            pass
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure if self.config.doIsr else None,
