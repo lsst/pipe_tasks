@@ -43,8 +43,7 @@ class RepairConfig(pexConfig.Config):
         doc = "Options for finding and masking cosmic rays",
     )
 
-    def __init__(self):
-        pexConfig.Config.__init__(self)
+    def setDefaults(self):
         self.cosmicray.nCrPixelMax = 100000
 
 class RepairTask(pipeBase.Task):

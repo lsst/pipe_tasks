@@ -125,14 +125,11 @@ class CalibrateConfig(pexConfig.Config):
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
 
-    def __init__(self):
-        pexConfig.Config.__init__(self)
+    def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.prefix = "initial."
         self.initialMeasurement.doApplyApCorr = False
         self.background.binSize = 1024
-        
-        # Aperture correction
         self.computeApCorr.alg1.name = "flux.psf"
         self.computeApCorr.alg2.name = "flux.sinc"
         

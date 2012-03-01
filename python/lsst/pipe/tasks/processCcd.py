@@ -51,8 +51,7 @@ class ProcessCcdConfig(pexConfig.Config):
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
 
-    def __init__(self):
-        pexConfig.Config.__init__(self)
+    def setDefaults(self):
         self.doWriteIsr = False
         self.isr.methodList = ["doConversionForIsr", "doSaturationDetection",
                                "doOverscanCorrection", "doVariance", "doFlatCorrection"]
