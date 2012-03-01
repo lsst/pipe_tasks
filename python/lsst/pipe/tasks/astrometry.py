@@ -92,7 +92,6 @@ class AstrometryTask(pipeBase.Task):
         @param[in]     exposure Exposure to process
         @param[in,out] sources  SourceCatalog; getX() and getY() will be used as inputs,
                                 with distorted points in "centroid.distorted" field.
-        @param distortion Distortion to apply
         @return Lower-left corner, size of distorted image
         """
         assert exposure, "No exposure provided"
@@ -101,11 +100,6 @@ class AstrometryTask(pipeBase.Task):
         distorter = pipeDist.RadialPolyDistorter(ccd=getCcd(exposure))
 
         # Distort source positions
-        self.log.log(self.log.INFO, "Applying distortion correction: %s" % self.config.distortion.name)
-
-        self.display('distortion', exposure=exposure, sources=sources, pause=False)
-        self.display('distortion', exposure=None, sources=distSources,
-                     ctypes=[ds9.RED], pause=True)
 
         # Get distorted image size so that astrometry_net does not clip.
         xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
@@ -120,6 +114,10 @@ class AstrometryTask(pipeBase.Task):
         yMin = int(yMin)
         llc = (xMin, yMin)
         size = (int(xMax - xMin + 0.5), int(yMax - yMin + 0.5))
+        for s in sources:
+            x,y = distorter.toCorrected(s.getX(), s.getY())
+            s.set(self.centroidKey.getX(), x)
+            s.set(self.centroidKey.getY(), y)
         return llc, size
 
 
@@ -160,16 +158,16 @@ class AstrometryTask(pipeBase.Task):
         xMin, yMin = llc
         if xMin != 0 or yMin != 0:
             for s in sources:
-                s.set(self.centroidKey.getX(), self.get(self.centroidKey().getX()) - xMin)
-                s.set(self.centroidKey.getY(), self.get(self.centroidKey().getY()) - yMin)
+                s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) - xMin)
+                s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) - yMin)
                 
         astrometer = measAstrometry.Astrometry(self.config.solver, log=self.log)
         astrom = astrometer.determineWcs(sources, exposure)
 
         if xMin != 0 or yMin != 0:
             for s in sources:
-                s.set(self.centroidKey.getX(), self.get(self.centroidKey().getX()) + xMin)
-                s.set(self.centroidKey.getY(), self.get(self.centroidKey().getY()) + yMin)
+                s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) + xMin)
+                s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) + yMin)
 
         if False:
             if distortion is not None:

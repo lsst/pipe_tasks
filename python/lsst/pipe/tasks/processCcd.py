@@ -97,18 +97,18 @@ class ProcessCcdTask(pipeBase.Task):
             if self.config.doWriteCalibrate:
                 sensorRef.put(exposure, 'calexp')
                 # FIXME: SourceCatalog not butlerized
-                #sensorRef.put(calib.sources, 'icSrc')
+                sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
-                    # FIXME: ApertureCorrection not butlerized
-                    #sensorRef.put(calib.apCorr, 'apcorr')
+                    # FIXME: ApertureCorrection not butlerized (?!)
+                    # sensorRef.put(calib.apCorr, 'apcorr')
                     pass
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     # FIXME: BaseCatalog (i.e. normalized match vector) not butlerized
-                    #sensorRef.put(normalizedMatches, 'icMatch')
+                    sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
 
@@ -134,14 +134,14 @@ class ProcessCcdTask(pipeBase.Task):
             else:
                 apCorr = calib.apCorr
             self.measurement.run(exposure, sources, apCorr)
-
+ 
         if self.config.doWriteSources:
             # FIXME: SourceCatalog not butlerized
-            #sensorRef.put(phot.sources, 'src')
+            sensorRef.put(sources, 'src')
             pass
 
         if self.config.doWriteCalibrate:
-            sensorRef.put(ccdExposure, 'calexp')
+            sensorRef.put(exposure, 'calexp')
             
         return pipeBase.Struct(
             exposure = exposure,
