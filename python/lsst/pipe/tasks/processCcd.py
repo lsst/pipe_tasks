@@ -47,6 +47,7 @@ class ProcessCcdConfig(pexConfig.Config):
                                         doc="Final source measurement on low-threshold detections")
 
     def validate(self):
+        pexConfig.Config.validate(self)
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
 
@@ -89,20 +90,20 @@ class ProcessCcdTask(pipeBase.Task):
             rawExposure = sensorRef.get("raw")
             isrRes = self.isr.run(rawExposure, calibSet)
             self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
-            ccdExposure = self.isr.doCcdAssembly([isrRes.postIsrExposure])
-            self.display("ccdAssembly", exposure=ccdExposure)
+            exposure = self.isr.doCcdAssembly([isrRes.postIsrExposure])
+            self.display("ccdAssembly", exposure=exposure)
             if self.config.doWriteIsr:
-                sensorRef.put(ccdExposure, 'postISRCCD')
+                sensorRef.put(exposure, 'postISRCCD')
         else:
-            ccdExposure = None
+            exposure = None
 
         if self.config.doCalibrate:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(ccdExposure)
-            ccdExposure = calib.exposure
+            if exposure is None:
+                exposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(exposure)
+            exposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(ccdExposure, 'calexp')
+                sensorRef.put(exposure, 'calexp')
                 # FIXME: SourceCatalog not butlerized
                 #sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
@@ -113,18 +114,18 @@ class ProcessCcdTask(pipeBase.Task):
                     pass
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
-                    normalizedMatches.table.setMetadata(calib.matchmeta)
+                    normalizedMatches.table.setMetadata(calib.matchMeta)
                     # FIXME: BaseCatalog (i.e. normalized match vector) not butlerized
                     #sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
 
         if self.config.doDetection:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('calexp')
+            if exposure is None:
+                exposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                ccdExposure.setPsf(sensorRef.get('psf'))
+                exposure.setPsf(sensorRef.get('psf'))
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, exposure)
@@ -133,7 +134,7 @@ class ProcessCcdTask(pipeBase.Task):
 
         if self.config.doMeasurement:
             assert(sources)
-            assert(ccdExposure)
+            assert(exposure)
             if calib is None:
                 apCorr = None # FIXME: should load from butler
                 if self.measurement.doApplyApCorr:
@@ -149,7 +150,7 @@ class ProcessCcdTask(pipeBase.Task):
 
         return pipeBase.Struct(
             postIsrExposure = isrRes.postIsrExposure if self.config.doIsr else None,
-            exposure = ccdExposure,
+            exposure = exposure,
             calib = calib,
             sources = sources,
         )

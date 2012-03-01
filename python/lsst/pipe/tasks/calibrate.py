@@ -108,7 +108,8 @@ class CalibrateConfig(pexConfig.Config):
                                           doc = photocal.PhotoCalConfig.__doc__)
 
     def validate(self):
-        if self.doPsf and (self.doZeroPoint or self.doApCorr or self.doAstrometry):
+        pexConfig.Config.validate(self)
+        if self.doPsf and (self.doPhotoCal or self.doApCorr or self.doAstrometry):
             if self.initialMeasurement.prefix == self.measurement.prefix:
                 raise ValueError("CalibrateConfig.initialMeasurement and CalibrateConfig.measurement "\
                                      "have the same prefix; field names may clash.")
@@ -116,7 +117,7 @@ class CalibrateConfig(pexConfig.Config):
             raise ValueError("Cannot compute aperture correction without doing PSF determination")
         if self.measurement.doApplyApCorr and not self.doComputeApCorr:
             raise ValueError("Cannot apply aperture correction without computing it")
-        if self.doZeropoint and not self.doAstrometry:
+        if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
 
     def __init__(self):
@@ -184,8 +185,10 @@ class CalibrateTask(pipeBase.Task):
             self.initialMeasurement.measure(exposure, sources)
             psfRet = self.measurePsf.run(exposure, sources)
             cellSet = psfRet.cellSet
+            psf = psfRet.psf
         else:
             cellSet = None
+            psf = None
 
         # Wash, rinse, repeat with proper PSF
 
@@ -201,7 +204,7 @@ class CalibrateTask(pipeBase.Task):
                 self.log.log(self.log.INFO, "Fit and subtracted background")
             self.display('background', exposure=exposure)
 
-        if self.config.doComputeApCorr or self.config.doAstrometry or self.config.doZeropoint:
+        if self.config.doComputeApCorr or self.config.doAstrometry or self.config.doPhotoCal:
             self.measurement.measure(exposure, sources)   # don't use run, because we don't have apCorr yet
 
         if self.config.doComputeApCorr:
@@ -221,10 +224,10 @@ class CalibrateTask(pipeBase.Task):
         else:
             matches, matchMeta = None, None
 
-        if self.config.doZeropoint:
+        if self.config.doPhotoCal:
             assert(matches is not None)
-            photocalRet = self.photocal.run(exposure, matches)
-            zp = photoCalRet.zp
+            photocalRet = self.photocal.run(matches)
+            zp = photocalRet.photocal
             self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
             exposure.getCalib().setFluxMag0(zp.getFlux(0))
 
@@ -232,6 +235,7 @@ class CalibrateTask(pipeBase.Task):
 
         return pipeBase.Struct(
             exposure = exposure,
+            psf = psf,
             apCorr = apCorr,
             sources = sources,
             matches = matches,

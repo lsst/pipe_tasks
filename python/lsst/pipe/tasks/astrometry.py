@@ -186,7 +186,7 @@ class AstrometryTask(pipeBase.Task):
         for index, source in enumerate(sources):
             distorted = source.get(self.centroidKey)
             sky = wcs.pixelToSky(distorted.getX() - llc[0], distorted.getY() - llc[1])
-            source.updateCoord(sky) 
+            source.setCoord(sky) 
 
             #point = afwGeom.Point2D(distorted.getX() - llc[0], distorted.getY() - llc[1])
             # in square degrees
@@ -224,7 +224,7 @@ class AstrometryTask(pipeBase.Task):
             # Apply WCS to sources
             for index, source in enumerate(sources):
                 sky = wcs.pixelToSky(source.getX(), source.getY())
-                source.updateCoord(sky)
+                source.setCoord(sky)
         else:
             self.log.log(self.log.WARN, "Not calculating a SIP solution; matches may be suspect")
         
