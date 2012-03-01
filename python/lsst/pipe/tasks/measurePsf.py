@@ -68,6 +68,8 @@ class MeasurePsfTask(pipeBase.Task):
 
         psfCandidateList = self.starSelector.selectStars(exposure, sources)
 
+        self.log.log(self.log.INFO, "PSF star selector found %d candidates" % len(psfCandidateList))
+
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
         self.log.log(self.log.INFO, "PSF determination using %d/%d stars." % 
                      (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
