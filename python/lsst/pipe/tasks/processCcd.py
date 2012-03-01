@@ -95,13 +95,9 @@ class ProcessCcdTask(pipeBase.Task):
             calib = self.calibrate.run(exposure)
             exposure = calib.exposure
             if self.config.doWriteCalibrate:
-<<<<<<< HEAD
                 sensorRef.put(exposure, 'calexp')
                 # FIXME: SourceCatalog not butlerized
                 #sensorRef.put(calib.sources, 'icSrc')
-=======
-                sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
->>>>>>> master
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
