@@ -58,7 +58,6 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.isr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.isr.doWrite = False
 
-
 class ProcessCcdLsstSimTask(pipeBase.Task):
     """Process a CCD for LSSTSim
     

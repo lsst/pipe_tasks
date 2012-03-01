@@ -52,18 +52,26 @@ class RadialPolyDistorterConfig(pexConfig.Config):
 class RadialPolyDistorter(object):
     """Distortion using the RadialPolyDistortion class in afw"""
     ConfigClass = RadialPolyDistorterConfig
-    def __init__(self, config, ccd):
+    def __init__(self, ccd):
         self.ccd = ccd
-        self.distortion = afwCG.RadialPolyDistortion(config.coefficients)
-        self.distort = self.distortion.distort if config.observedToCorrected else self.distortion.undistort
-        self.undistort = self.distortion.undistort if config.observedToCorrected else self.distortion.distort
+
+        self.distortion = ccd.getDistortion()
+        self.distort   = self.distortion.distort
+        self.undistort = self.distortion.undistort
+
+    def __str__(self):
+        if self.distortion:
+            return self.distortion.prynt() # ughh.  Rename this method!
+        else:
+            return None
+
     def toObserved(self, x, y):
-        point = self.undistort(afwGeom.Point2D(x, y), self.ccd)
-        return point.getX(), point.getY()
-    def toCorrected(self, x, y):
         point = self.distort(afwGeom.Point2D(x, y), self.ccd)
         return point.getX(), point.getY()
 
-distorterRegistry.register("radial", RadialPolyDistorter)
+    def toCorrected(self, x, y):
+        point = self.undistort(afwGeom.Point2D(x, y), self.ccd)
+        return point.getX(), point.getY()
 
+distorterRegistry.register("radial", RadialPolyDistorter)
 

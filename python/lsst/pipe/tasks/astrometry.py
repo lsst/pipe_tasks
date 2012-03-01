@@ -24,6 +24,7 @@ import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
+import lsst.afw.display.ds9 as ds9
 import lsst.afw.geom as afwGeom
 import lsst.meas.astrom as measAst
 import lsst.meas.astrom.astrom as measAstrometry
@@ -34,10 +35,6 @@ import lsst.pipe.tasks.distortion as pipeDist
 from .detectorUtil import getCcd
 
 class AstrometryConfig(pexConfig.Config):
-    distortion = pipeDist.distorterRegistry.makeField(
-        doc = "Distortion to apply (\"null\" if none)",
-        default = "null",
-    )
     solver = pexConfig.ConfigField(
         dtype=measAst.MeasAstromConfig,
         doc = "Configuration for the astrometry solver",
@@ -89,7 +86,7 @@ class AstrometryTask(pipeBase.Task):
         )
 
     @pipeBase.timeMethod
-    def distort(self, exposure, sources, distortion=None):
+    def distort(self, exposure, sources):
         """Distort source positions before solving astrometry
 
         @param[in]     exposure Exposure to process
@@ -101,11 +98,15 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
 
-        distorter = self.config.distortion.apply(getCcd(exposure))
+        distorter = pipeDist.RadialPolyDistorter(ccd=getCcd(exposure))
 
         # Distort source positions
         self.log.log(self.log.INFO, "Applying distortion correction: %s" % self.config.distortion.name)
-            
+
+        self.display('distortion', exposure=exposure, sources=sources, pause=False)
+        self.display('distortion', exposure=None, sources=distSources,
+                     ctypes=[ds9.RED], pause=True)
+
         # Get distorted image size so that astrometry_net does not clip.
         xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
         for x, y in ((0.0, 0.0), (0.0, exposure.getHeight()), (exposure.getWidth(), 0.0),
@@ -119,12 +120,6 @@ class AstrometryTask(pipeBase.Task):
         yMin = int(yMin)
         llc = (xMin, yMin)
         size = (int(xMax - xMin + 0.5), int(yMax - yMin + 0.5))
-        for s in sources:
-            x,y = distorter.toCorrected(s.getX(), s.getY())
-            s.set(self.centroidKey.getX(), x - xMin)
-            s.set(self.centroidKey.getY(), y - yMin)
-
-        self.display('distortion', exposure=exposure, sources=sources, pause=True)
         return llc, size
 
 
@@ -153,24 +148,39 @@ class AstrometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
             filterName = None
 
-#        if distortion is not None:
-#            # Removed distortion, so use low order
-#            oldOrder = self.config.sipOrder
-#            self.config.sipOrder = 2
-
+        if False:
+            if distortion is not None:
+                # Removed distortion, so use low order
+                oldOrder = self.config.sipOrder
+                self.config.sipOrder = 2
+#
+# meas_astrom doesn't like -ve coordinates.  The proper thing to do is to fix that; but for now
+# we'll pander to its whims
+#
+        xMin, yMin = llc
+        if xMin != 0 or yMin != 0:
+            for s in sources:
+                s.set(self.centroidKey.getX(), self.get(self.centroidKey().getX()) - xMin)
+                s.set(self.centroidKey.getY(), self.get(self.centroidKey().getY()) - yMin)
+                
         astrometer = measAstrometry.Astrometry(self.config.solver, log=self.log)
         astrom = astrometer.determineWcs(sources, exposure)
 
-#        astrom = measAstrometry.determineWcs(self.config, exposure, sources,
-#                                             log=self.log, forceImageSize=size, filterName=filterName)
+        if xMin != 0 or yMin != 0:
+            for s in sources:
+                s.set(self.centroidKey.getX(), self.get(self.centroidKey().getX()) + xMin)
+                s.set(self.centroidKey.getY(), self.get(self.centroidKey().getY()) + yMin)
 
-#        if distortion is not None:
-#            self.config.sipOrder = oldOrder
+        if False:
+            if distortion is not None:
+                self.config.sipOrder = oldOrder
 
-        if astrom is None:
+        if astrom is None or astrom.getWcs() is None:
             raise RuntimeError("Unable to solve astrometry for %s", exposure.getDetector().getId())
 
         wcs = astrom.getWcs()
+        wcs.shiftReferencePixel(llc[0], llc[1])
+
         matches = astrom.getMatches()
         matchMeta = astrom.getMatchMetadata()
         if matches is None or len(matches) == 0:
@@ -180,12 +190,12 @@ class AstrometryTask(pipeBase.Task):
         exposure.setWcs(wcs)
 
         # Apply WCS to sources
-        # This should be unnecessary - we do similar things in meas/astrom and in SkyCoord pluggable
-        # algorithm.  But I'm not totally sure what's going on with the distortion at this point,
-        # so I'll just try to replicate the old logic.
+        # This should be unnecessary - we update the RA/DEC in a zillion different places.  But I'm
+        # not totally sure what's going on with the distortion at this point, so I'll just try to
+        # replicate the old logic.
         for index, source in enumerate(sources):
             distorted = source.get(self.centroidKey)
-            sky = wcs.pixelToSky(distorted.getX() - llc[0], distorted.getY() - llc[1])
+            sky = wcs.pixelToSky(distorted.getX(), distorted.getY())
             source.setCoord(sky) 
 
             #point = afwGeom.Point2D(distorted.getX() - llc[0], distorted.getY() - llc[1])

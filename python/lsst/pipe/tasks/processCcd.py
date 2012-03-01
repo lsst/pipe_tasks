@@ -58,13 +58,6 @@ class ProcessCcdConfig(pexConfig.Config):
                                "doOverscanCorrection", "doVariance", "doFlatCorrection"]
         self.isr.doWrite = False
 
-        # Astrometry; subaru specific, shouldn't end up here once merged with processCcdLsstSim
-        self.calibrate.astrometry.distortion.name = "radial"
-        self.calibrate.astrometry.distortion["radial"].coefficients \
-            = [0.0, 1.0, 7.16417e-08, 3.03146e-10, 5.69338e-14, -6.61572e-18]
-        self.calibrate.astrometry.distortion["radial"].observedToCorrected = True
-
-
 class ProcessCcdTask(pipeBase.Task):
     """Process a CCD"""
     ConfigClass = ProcessCcdConfig
@@ -103,9 +96,13 @@ class ProcessCcdTask(pipeBase.Task):
             calib = self.calibrate.run(exposure)
             exposure = calib.exposure
             if self.config.doWriteCalibrate:
+<<<<<<< HEAD
                 sensorRef.put(exposure, 'calexp')
                 # FIXME: SourceCatalog not butlerized
                 #sensorRef.put(calib.sources, 'icSrc')
+=======
+                sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
+>>>>>>> master
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
@@ -148,6 +145,9 @@ class ProcessCcdTask(pipeBase.Task):
             #sensorRef.put(phot.sources, 'src')
             pass
 
+        if self.config.doWriteCalibrate:
+            sensorRef.put(ccdExposure, 'calexp')
+            
         return pipeBase.Struct(
             exposure = exposure,
             calib = calib,

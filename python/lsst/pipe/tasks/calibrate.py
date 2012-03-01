@@ -83,6 +83,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Compute photometric zeropoint?",
         default = True,
     )
+    adjustBackground = pexConfig.Field(
+        dtype = float,
+        doc = "Fiddle factor to add to the background; debugging only",
+        default = 0.0,
+    )
     background = pexConfig.ConfigField(
         dtype = muDetection.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
@@ -168,13 +173,21 @@ class CalibrateTask(pipeBase.Task):
 
         self.installInitialPsf(exposure)
 
-        self.repair.run(exposure, defects=defects, keepCRs=True)
+        keepCRs = True                  # At least until we know the PSF
+        self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
         self.display('repair', exposure=exposure)
 
         if self.config.doBackground:
             with self.timer("background"):
                 bg, exposure = muDetection.estimateBackground(exposure, self.config.background, subtract=True)
                 del bg
+
+            if self.config.adjustBackground:
+                self.log.log(self.log.WARN, "Fiddling the background by %g" % self.config.adjustBackground)
+                mi = exposure.getMaskedImage()
+                mi -= self.config.adjustBackground
+                del mi
+
             self.display('background', exposure=exposure)
         
         table = afwTable.SourceTable.make(self.schema) # TODO: custom IdFactory for globally unique IDs
@@ -187,13 +200,12 @@ class CalibrateTask(pipeBase.Task):
             cellSet = psfRet.cellSet
             psf = psfRet.psf
         else:
-            cellSet = None
-            psf = None
+            psf, cellSet = None, None
 
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
-            self.repair.run(exposure, defects=defects, keepCRs=False)
+            self.repair.run(exposure, defects=defects, keepCRs=None)
             self.display('repair', exposure=exposure)
 
         if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)

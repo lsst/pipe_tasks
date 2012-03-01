@@ -55,11 +55,12 @@ class RepairTask(pipeBase.Task):
     ConfigClass = RepairConfig
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None, keepCRs=False):
+    def run(self, exposure, defects=None, keepCRs=None):
         """Repair exposure's instrumental problems
 
         @param[in,out] exposure Exposure to process
         @param defects Defect list
+        @param keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         assert exposure, "No exposure provided"
         psf = exposure.getPsf()
@@ -91,10 +92,11 @@ class RepairTask(pipeBase.Task):
         measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
         self.log.log(self.log.INFO, "Interpolated over %d defects." % len(defects))
 
-    def cosmicRay(self, exposure, keepCRs=False):
+    def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
 
         @param[in,out] exposure Exposure to process
+        @param keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display
@@ -114,6 +116,9 @@ class RepairTask(pipeBase.Task):
 
         mi = exposure.getMaskedImage()
         bg = afwMath.makeStatistics(mi, afwMath.MEDIAN).getValue()
+
+        if keepCRs is None:
+            keepCRs = self.config.cosmicray.keepCRs
         crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
         num = 0
         if crs is not None:
