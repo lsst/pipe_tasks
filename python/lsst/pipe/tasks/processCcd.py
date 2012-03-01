@@ -149,7 +149,6 @@ class ProcessCcdTask(pipeBase.Task):
             pass
 
         return pipeBase.Struct(
-            postIsrExposure = isrRes.postIsrExposure if self.config.doIsr else None,
             exposure = exposure,
             calib = calib,
             sources = sources,

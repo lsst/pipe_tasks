@@ -21,8 +21,8 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
-import lsst.daf.base as dafBase
 import lsst.pipe.base as pipeBase
+import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 
@@ -48,6 +48,7 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
                                         doc="Final source measurement on low-threshold detections")
 
     def validate(self):
+        pexConfig.Config.validate(self)
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
 
@@ -113,23 +114,23 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                 ccdCalibSet = self.ccdIsr.makeCalibDict(butler, snapRef.dataId)
                 ccdIsrRes = self.ccdIsr.run(tempExposure, ccdCalibSet)
                 del tempExposure
-                postIsrExposure = ccdIsrRes.postIsrExposure
+                exposure = ccdIsrRes.postIsrExposure
                 
                 self.display("ccdAssembly", exposure=postIsrExposure)
                 if self.config.doWriteIsr:
                     snapRef.put(postIsrExposure, 'postISRCCD')
         else:
-            postIsrExposure = None
+            exposure = None
 
         if self.config.doCalibrate:
-            if postIsrExposure is None:
-                postIsrExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(postIsrExposure)
-            calExposure = calib.exposure
+            if exposure is None:
+                exposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(exposure)
+            exposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(calExposure, 'calexp')
+                sensorRef.put(exposure, 'calexp')
                 # FIXME: SourceCatalog not butlerized
-                #sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
+                #sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
@@ -138,28 +139,27 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                     pass
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
-                    normalizedMatches.table.setMetadata(calib.matchmeta)
+                    normalizedMatches.table.setMetadata(calib.matchMeta)
                     # FIXME: BaseCatalog (i.e. normalized match vector) not butlerized
                     #sensorRef.put(normalizedMatches, 'icMatch')
-
         else:
             calib = None
 
         if self.config.doDetection:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('calexp')
+            if exposure is None:
+                exposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                ccdExposure.setPsf(sensorRef.get('psf'))
+                exposure.setPsf(sensorRef.get('psf'))
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(exposure)
+            sources = self.detection.makeSourceCatalog(table, exposure)
         else:
             sources = None
 
         if self.config.doMeasurement:
             assert(sources)
-            assert(ccdExposure)
+            assert(exposure)
             if calib is None:
                 apCorr = None # FIXME: should load from butler
                 if self.measurement.doApplyApCorr:
@@ -174,8 +174,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             pass
 
         return pipeBase.Struct(
-            postIsrExposure = postIsrExposure if self.config.doIsr else None,
-            exposure = calExposure,
+            exposure = exposure,
             calib = calib,
-            sources = sources
+            sources = sources,
         )
