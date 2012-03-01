@@ -147,7 +147,7 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("measurePsf", MeasurePsfTask, schema=self.schema)
         self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("astrometry", AstrometryTask)
+        self.makeSubtask("astrometry", AstrometryTask, schema=self.schema)
         self.makeSubtask("photocal", photocal.PhotoCalTask, schema=self.schema)
 
     @pipeBase.timeMethod
@@ -190,7 +190,7 @@ class CalibrateTask(pipeBase.Task):
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
-            self.repair.run(exposure, psf, defects=defects, keepCRs=False)
+            self.repair.run(exposure, defects=defects, keepCRs=False)
             self.display('repair', exposure=exposure)
 
         if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
@@ -232,7 +232,6 @@ class CalibrateTask(pipeBase.Task):
 
         return pipeBase.Struct(
             exposure = exposure,
-            psf = psf,
             apCorr = apCorr,
             sources = sources,
             matches = matches,
@@ -266,12 +265,12 @@ class CalibrateTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert cellSet, "No cellSet provided"
         metadata = dafBase.PropertyList()
-        corr = measAlg.ApertureCorrection(exposure, cellSet, metadata, self.config.apCorr, self.log)
+        apCorr = measAlg.ApertureCorrection(exposure, cellSet, metadata, self.config.computeApCorr, self.log)
         x, y = exposure.getWidth() / 2.0, exposure.getHeight() / 2.0
-        value, error = corr.computeAt(x, y)
+        value, error = apCorr.computeAt(x, y)
         self.log.log(self.log.INFO, "Aperture correction using %d/%d stars: %f +/- %f" %
                      (metadata.get("numAvailStars"), metadata.get("numGoodStars"), value, error))
         for key in metadata.names():
             self.metadata.add("apCorr.%s" % key, metadata.get(key))
         # XXX metadata?
-        return corr
+        return apCorr
