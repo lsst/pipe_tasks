@@ -96,18 +96,14 @@ class ProcessCcdTask(pipeBase.Task):
             exposure = calib.exposure
             if self.config.doWriteCalibrate:
                 sensorRef.put(exposure, 'calexp')
-                # FIXME: SourceCatalog not butlerized
                 sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
-                    # FIXME: ApertureCorrection not butlerized (?!)
-                    # sensorRef.put(calib.apCorr, 'apcorr')
-                    pass
+                    sensorRef.put(calib.apCorr, 'apCorr')
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    # FIXME: BaseCatalog (i.e. normalized match vector) not butlerized
                     sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
@@ -128,15 +124,12 @@ class ProcessCcdTask(pipeBase.Task):
             assert(sources)
             assert(exposure)
             if calib is None:
-                apCorr = None # FIXME: should load from butler
-                if self.measurement.doApplyApCorr:
-                    self.log.log(self.log.WARN, "Cannot load aperture correction; will not be applied.")
+                apCorr = sensorRef.get("apCorr")
             else:
                 apCorr = calib.apCorr
             self.measurement.run(exposure, sources, apCorr)
  
         if self.config.doWriteSources:
-            # FIXME: SourceCatalog not butlerized
             sensorRef.put(sources, 'src')
             pass
 
