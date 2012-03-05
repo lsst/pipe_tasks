@@ -191,14 +191,10 @@ class AstrometryTask(pipeBase.Task):
         # This should be unnecessary - we update the RA/DEC in a zillion different places.  But I'm
         # not totally sure what's going on with the distortion at this point, so I'll just try to
         # replicate the old logic.
-        for index, source in enumerate(sources):
+        for source in sources:
             distorted = source.get(self.centroidKey)
             sky = wcs.pixelToSky(distorted.getX(), distorted.getY())
             source.setCoord(sky) 
-
-            #point = afwGeom.Point2D(distorted.getX() - llc[0], distorted.getY() - llc[1])
-            # in square degrees
-            #areas.append(wcs.pixArea(point))
 
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
