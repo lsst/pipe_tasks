@@ -2,75 +2,75 @@
 
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
+import lsst.afw.table as afwTable
+import lsst.daf.base as dafBase
+import lsst.meas.algorithms as measAlg
 from lsst.ip.isr import IsrTask
 import lsst.pipe.base as pipeBase
 import lsst.pipe.tasks.processCcd as ptProcessCcd
-from lsst.pipe.tasks.photometry import PhotometryTask
 import hsc.pipe.tasks.astrometry as hscAstrom
 import hsc.pipe.tasks.suprimecam as hscSuprimeCam
 import hsc.pipe.tasks.calibrate as hscCalibrate
 import hsc.pipe.tasks.hscDc2 as hscDc2
 
-class HscProcessCcdConfig(ptProcessCcd.ProcessCcdConfig):
+class SubaruProcessCcdConfig(ptProcessCcd.ProcessCcdConfig):
     calibrate = pexConfig.ConfigField(dtype=hscCalibrate.HscCalibrateConfig, doc="Calibration")
 
-class HscProcessCcdTask(ptProcessCcd.ProcessCcdTask):
-    """HSC version of ProcessCcdTask, with method to write outputs
-    after producing a new WCS.
+class SubaruProcessCcdTask(ptProcessCcd.ProcessCcdTask):
+    """Subaru version of ProcessCcdTask, with method to write outputs
+    after producing a new multi-frame WCS.
     """
-    ConfigClass = HscProcessCcdConfig
+    ConfigClass = SubaruProcessCcdConfig
+    
     def write(self, butler, dataId, struct, wcs=None):
-        exposure = struct.exposure
-        psf = struct.psf
-        apCorr = struct.apCorr
-        brightSources = struct.brightSources if hasattr(struct, 'brightSources') else None
-        faintSources = struct.sources
-        matches = struct.matches
-        matchMeta = struct.matchMeta
-
-        if brightSources is None:
-            brightSources = afwDet.SourceSet()
-            for match in matches:
-                brightSources.push_back(match.second)
-
         if wcs is None:
             wcs = exposure.getWcs()
             self.log.log(self.log.WARN, "WARNING: No new WCS provided")
 
         # Apply WCS to sources
-        # In the matchlist, only convert the matches.second source, which is our measured source.
+        # No longer handling matchSources explicitly - these should all be in calib.sources,
+        # or there's a bug in the calibrate task.
         exposure.setWcs(wcs)
-        matchSources = [m.second for m in matches] if matches is not None else None
-        for sources in (faintSources, brightSources, matchSources):
+        for sources in (struct.sources, struct.calib.sources):
             if sources is None:
                 continue
             for s in sources:
-                s.setRaDec(wcs.pixelToSky(s.getXAstrom(), s.getYAstrom()))
+                s.updateCoord(wcs)
+                
+        normalizedMatches = afwTable.packMatches(struct.calib.matches)
+        normalizedMatches.table.setMetadata(struct.calib.matchMeta)
 
-        butler.put(exposure, 'calexp', dataId)
-        butler.put(afwDet.PersistableSourceVector(afwDet.SourceSet(faintSources)), 'src', dataId)
-        butler.put(afwDet.PersistableSourceMatchVector(matches, matchMeta), 'icMatch', dataId)
-        butler.put(psf, 'psf', dataId)
-        if brightSources is not None:
-            butler.put(afwDet.PersistableSourceVector(afwDet.SourceSet(brightSources)), 'icSrc', dataId)
+        butler.put(struct.exposure, 'calexp', dataId)
+        butler.put(struct.sources, 'src', dataId)
+        butler.put(normalizedMatches, 'icMatch', dataId)
+        butler.put(struct.calib.psf, 'psf', dataId)
+        butler.put(struct.calib.apCorr, 'apCorr', dataId)
+        butler.put(struct.calib.sources, 'icSrc', dataId)
 
-class SuprimeCamProcessCcdTask(HscProcessCcdTask):
-    def __init__(self, config=HscProcessCcdConfig(), *args, **kwargs):
-        pipeBase.Task.__init__(self, config=config, *args, **kwargs)
-        self.makeSubtask("isr", hscSuprimeCam.SuprimeCamIsrTask, config=config.isr)
-        self.makeSubtask("calibrate", hscCalibrate.HscCalibrateTask, config=config.calibrate)
-        self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
+class SuprimeCamProcessCcdTask(SubaruProcessCcdTask):
+    
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
+        self.makeSubtask("isr", hscSuprimeCam.SuprimeCamIsrTask)
+        self.makeSubtask("calibrate", hscCalibrate.HscCalibrateTask)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
+        if self.config.doDetection:
+            self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
+                             schema=self.schema, algMetadata=self.algMetadata)
 
+class HscProcessCcdTask(SubaruProcessCcdTask):
 
-class HscDc2ProcessCcdConfig(HscProcessCcdConfig):
-    def __init__(self, *args, **kwargs):
-        super(HscDc2ProcessCcdConfig, self).__init__(*args, **kwargs)
-
-class HscDc2ProcessCcdTask(HscProcessCcdTask):
-    ConfigClass = HscProcessCcdConfig
-    def __init__(self, config=HscProcessCcdConfig(), *args, **kwargs):
-        pipeBase.Task.__init__(self, config=config, *args, **kwargs)
-        self.makeSubtask("isr", IsrTask, config=config.isr)
-        self.makeSubtask("calibrate", hscDc2.HscDc2CalibrateTask, config=config.calibrate)
-        self.makeSubtask("photometry", PhotometryTask, config=config.photometry)
-
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
+        self.makeSubtask("isr", IsrTask)
+        self.makeSubtask("calibrate", hscDc2.HscDc2CalibrateTask)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
+        if self.config.doDetection:
+            self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
+                             schema=self.schema, algMetadata=self.algMetadata)

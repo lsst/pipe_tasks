@@ -17,18 +17,16 @@ class HscAstrometryConfig(ptAstrometry.AstrometryConfig):
 class HscAstrometryTask(ptAstrometry.AstrometryTask):
     ConfigClass = HscAstrometryConfig
     @pipeBase.timeMethod
-    def astrometry(self, exposure, sources, distSources, llc=(0,0), size=None):
+    def astrometry(self, exposure, sources, llc=(0,0), size=None):
         """Solve astrometry to produce WCS
 
         @param exposure Exposure to process
-        @param sources Sources as measured (actual) positions
-        @param distSources Sources with undistorted (ideal) positions
+        @param sources Sources
         @param llc Lower left corner (minimum x,y)
         @param size Size of exposure
         @return Star matches, match metadata
         """
         assert exposure, "No exposure provided"
-        assert distSources, "No sources provided"
 
         self.log.log(self.log.INFO, "Solving astrometry")
 
@@ -40,21 +38,20 @@ class HscAstrometryTask(ptAstrometry.AstrometryTask):
         wcs = exposure.getWcs()
         if wcs is None or hscAst is None:
             self.log.log(self.log.WARN, "Unable to use hsc.meas.astrom; reverting to lsst.meas.astrom")
-            return ptAstrometry.AstrometryTask.astrometry(exposure, sources, distSources,
-                                                          llc=llc, size=size)
+            return ptAstrometry.AstrometryTask.astrometry(exposure, sources, llc=llc, size=size)
 
         if size is None:
             size = (exposure.getWidth(), exposure.getHeight())
 
         try:
             astrometer = hscAstrom.TaburAstrometry(self.config.solver, log=self.log)
-            astrom = astrometer.determineWcs(distSources, exposure)
+            astrom = astrometer.determineWcs(sources, exposure)
             if astrom is None:
                 raise RuntimeError("hsc.meas.astrom failed to determine the WCS")
         except Exception, e:
             self.log.log(self.log.WARN, "hsc.meas.astrom failed (%s); trying lsst.meas.astrom" % e)
             astrometer = measAstrom.Astrometry(self.config.solver, log=self.log)
-            astrom = astrometer.determineWcs(distSources, exposure)
+            astrom = astrometer.determineWcs(sources, exposure)
         
         if astrom is None:
             raise RuntimeError("Unable to solve astrometry for %s", exposure.getDetector().getId())
@@ -69,10 +66,10 @@ class HscAstrometryTask(ptAstrometry.AstrometryTask):
         exposure.setWcs(wcs)
 
         # Apply WCS to sources
-        for index, source in enumerate(sources):
-            distSource = distSources[index]
-            sky = wcs.pixelToSky(distSource.getXAstrom(), distSource.getYAstrom())
-            source.setRaDec(sky)
+        for source in sources:
+            distorted = source.get(self.centroidKey)
+            sky = wcs.pixelToSky(distorted.getX(), distorted.getY())
+            source.setCoord(sky) 
 
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
