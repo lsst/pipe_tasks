@@ -131,7 +131,6 @@ class ProcessCcdTask(pipeBase.Task):
  
         if self.config.doWriteSources:
             sensorRef.put(sources, 'src')
-            pass
 
         if self.config.doWriteCalibrate:
             sensorRef.put(exposure, 'calexp')
