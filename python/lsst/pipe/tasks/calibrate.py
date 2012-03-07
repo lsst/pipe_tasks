@@ -26,7 +26,6 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
-import lsst.meas.utils.sourceDetection as muDetection
 import lsst.meas.photocal as photocal
 from .astrometry import AstrometryTask
 import lsst.pipe.base as pipeBase
@@ -84,7 +83,7 @@ class CalibrateConfig(pexConfig.Config):
         default = True,
     )
     background = pexConfig.ConfigField(
-        dtype = muDetection.estimateBackground.ConfigClass,
+        dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
         )
     repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
@@ -171,7 +170,7 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doBackground:
             with self.timer("background"):
-                bg, exposure = muDetection.estimateBackground(exposure, self.config.background, subtract=True)
+                bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
                 del bg
 
             self.display('background', exposure=exposure)
@@ -197,7 +196,7 @@ class CalibrateTask(pipeBase.Task):
         if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
             with self.timer("background"):
                 # Subtract background
-                background, exposure = muDetection.estimateBackground(
+                background, exposure = measAlg.estimateBackground(
                     exposure, self.config.background, subtract=True)
                 self.log.log(self.log.INFO, "Fit and subtracted background")
 
