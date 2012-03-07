@@ -120,13 +120,14 @@ class ProcessCcdTask(pipeBase.Task):
             calib = self.calibrate.run(ccdExposure)
             ccdExposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
-                if calib.psf is not None:
+                if calib.sources:
+                    sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
+                if calib.psf:
                     sensorRef.put(calib.psf, 'psf')
-                if calib.apCorr is not None:
+                if calib.apCorr:
                     #sensorRef.put(calib.apCorr, 'apcorr')
                     pass
-                if calib.matches is not None:
+                if calib.matches:
                     sensorRef.put(afwDet.PersistableSourceMatchVector(calib.matches, calib.matchMeta),
                                'icMatch')
         else:
@@ -145,7 +146,7 @@ class ProcessCcdTask(pipeBase.Task):
             if self.config.doWritePhotometry:
                 sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
         else:
-            phot = None
+            phot, psf, apCorr = None, None, None
 
         if self.config.doWriteCalibrate:
             sensorRef.put(ccdExposure, 'calexp')
