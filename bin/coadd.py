@@ -22,17 +22,16 @@
 #
 import lsst.pex.logging as pexLog
 from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
-from lsst.pipe.tasks.coadd import CoaddTask
+from lsst.pipe.tasks.coadd import CoaddTask as TaskClass
 
 if __name__ == "__main__":
-    TaskClass = CoaddTask
-    algName = "coadd"
+    name = "coadd"
     pexLog.Trace.setVerbosity('lsst.coadd', 3)
     pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
 
-    parser = CoaddArgumentParser()
+    parser = CoaddArgumentParser(name = name)
     cmd = parser.parse_args(config=TaskClass.ConfigClass())
-    task = TaskClass(cmd.config)
+    task = TaskClass(name = name, config = cmd.config, log = cmd.log)
     taskRes = task.run(
         dataRefList = cmd.dataRefList,
         bbox = cmd.bbox,
@@ -48,7 +47,7 @@ if __name__ == "__main__":
     if filterName == "_unknown_":
         filterStr = "unk"
     coaddBasePath = cmd.rerun
-    coaddBaseName = "%s_%s_filter_%s_fwhm_%s" % (coaddBasePath, algName, filterName, cmd.fwhm)
+    coaddBaseName = "%s_%s_filter_%s_fwhm_%s" % (coaddBasePath, name, filterName, cmd.fwhm)
     coaddPath = coaddBaseName + ".fits"
     weightPath = coaddBaseName + "weight.fits"
     print "Saving coadd as %s" % (coaddPath,)
