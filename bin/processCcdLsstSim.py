@@ -29,11 +29,11 @@ from lsst.pipe.tasks.processCcdLsstSim import ProcessCcdLsstSimTask as TaskClass
 if __name__ == "__main__":
     name = "processCcd"
     parser = ArgumentParser(name = name)
-    namespace = parser.parse_args(config = TaskClass.ConfigClass())
-    task = TaskClass(name = name, config = namespace.config, log = namespace.log)
-    for sensorRef in namespace.dataRefList:
-        sensorRef.put(namespace.config, name + "_config")
-        if namespace.doRaise:
+    cmd = parser.parse_args(config = TaskClass.ConfigClass())
+    task = TaskClass(name = name, config = cmd.config, log = cmd.log)
+    for sensorRef in cmd.dataRefList:
+        sensorRef.put(cmd.config, name + "_config")
+        if cmd.doRaise:
             task.run(sensorRef)
         else:
             try:

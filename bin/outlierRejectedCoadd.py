@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     parser = CoaddArgumentParser(name = name)
     cmd = parser.parse_args(config=TaskClass.ConfigClass())
-    task = TaskClass(name = name, config = cmd.config, log = namespace.log)
+    task = TaskClass(name = name, config = cmd.config, log = cmd.log)
     taskRes = task.run(
         dataRefList = cmd.dataRefList,
         bbox = cmd.bbox,
