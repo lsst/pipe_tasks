@@ -46,8 +46,7 @@ if __name__ == "__main__":
     filterName = coaddExposure.getFilter().getName()
     if filterName == "_unknown_":
         filterStr = "unk"
-    coaddBasePath = cmd.rerun
-    coaddBaseName = "%s_%s_filter_%s_fwhm_%s" % (coaddBasePath, name, filterName, cmd.fwhm)
+    coaddBaseName = "%s_filter_%s_fwhm_%s" % (name, filterName, cmd.fwhm)
     coaddPath = coaddBaseName + ".fits"
     weightPath = coaddBaseName + "weight.fits"
     print "Saving coadd as %s" % (coaddPath,)
