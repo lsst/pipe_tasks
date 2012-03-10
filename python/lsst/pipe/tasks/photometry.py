@@ -94,7 +94,7 @@ class PhotometryTask(pipeBase.Task):
         """
         assert exposure, "No exposure provided"
         assert psf, "No psf provided"
-        posSources, negSources = muDetection.detectSources(exposure, psf, self.config.detect)
+        posSources, negSources = muDetection.detectSources(exposure, psf, self.config.detect, self.log)
         numPos = len(posSources.getFootprints()) if posSources is not None else 0
         numNeg = len(negSources.getFootprints()) if negSources is not None else 0
         if numNeg > 0:

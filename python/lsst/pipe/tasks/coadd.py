@@ -49,7 +49,7 @@ class CoaddTask(pipeBase.Task):
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("psfMatch", ipDiffIm.ModelPsfMatch)
+        self.makeSubtask("psfMatch", ipDiffIm.ModelPsfMatchTask)
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
