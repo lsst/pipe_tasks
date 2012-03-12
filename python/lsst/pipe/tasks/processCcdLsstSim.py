@@ -55,6 +55,7 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
 
         self.snapCombine.diffim.kernel.name = "DF"
+        self.snapCombine.repair.doInterpolate = True
         self.snapCombine.photometry.detect.thresholdValue = 5.0
 
         self.calibrate.repair.doCosmicRay = True
@@ -219,7 +220,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure if self.config.doIsr else None,
-            combinedExposure = combinedExposure if self.config.doSnapCombine else None,
+            visitExposure = visitExposure if self.config.doSnapCombine else None,
             exposure = calExposure,
             psf = psf,
             apCorr = apCorr,
