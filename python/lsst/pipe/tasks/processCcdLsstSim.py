@@ -24,22 +24,27 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.detection as afwDet
 import lsst.meas.utils.sourceMeasurement as srcMeas
+import lsst.pex.logging as pexLog
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.photometry import PhotometryTask
+from lsst.pipe.tasks.snapCombine import SnapCombineTask
 
 class ProcessCcdLsstSimConfig(pexConfig.Config):
     """Config for ProcessCcdLsstSim"""
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
+    doSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Combine Snaps?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
     doComputeSkyCoords = pexConfig.Field(dtype=bool, default=True, doc="Compute sky coordinates?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
+    doWriteSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Write snapCombine results?")  
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Amp-level instrumental signature removal")
     ccdIsr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="CCD level instrumental signature removal")
+    snapCombine = pexConfig.ConfigField(dtype=SnapCombineTask.ConfigClass, doc="Combine snaps")
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
     photometry = pexConfig.ConfigField(dtype=PhotometryTask.ConfigClass, doc="Photometry")
 
@@ -48,6 +53,13 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.isr.doWrite = False # don't persist data until until CCD ISR is run; ignored anyway
         self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
+
+        self.snapCombine.doPsfMatch = True
+        self.snapCombine.repair.doInterpolate = True
+        self.snapCombine.diffim.kernel.name = "DF"
+        self.snapCombine.diffim.kernel.active.spatialKernelOrder = 1
+        self.snapCombine.coadd.badMaskPlanes = ["EDGE"]
+        self.snapCombine.photometry.detect.thresholdValue = 5.0
 
         self.calibrate.repair.doCosmicRay = True
         self.calibrate.repair.cosmicray.nCrPixelMax = 100000
@@ -84,11 +96,15 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         # Aperture correction
         self.calibrate.apCorr.alg1.name = "PSF"
         self.calibrate.apCorr.alg2.name = "SINC"
+
         self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = \
             self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
         self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = \
             self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
-        
+
+        pexLog.Trace_setVerbosity("ProcessCcdLsstSimTask", 1)
+        pexLog.Trace_setVerbosity("lsst.ip.diffim", 3)
+
 class ProcessCcdLsstSimTask(pipeBase.Task):
     """Process a CCD for LSSTSim
     
@@ -100,6 +116,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("isr", IsrTask)
         self.makeSubtask("ccdIsr", IsrTask)
+        self.makeSubtask("snapCombine", SnapCombineTask)
         self.makeSubtask("calibrate", CalibrateTask)
         self.makeSubtask("photometry", PhotometryTask)
 
@@ -118,6 +135,8 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         - matchMeta: ? if config.doCalibrate, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        snap0 = None
+        snap1 = None
         if self.config.doIsr:
             butler = sensorRef.butlerSubset.butler
             for snapRef in sensorRef.subItems(level="snap"):
@@ -133,6 +152,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                     self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
                 # assemble amps into a CCD
                 tempExposure = self.isr.doCcdAssembly(exposureList)
+
                 del exposureList
                 # perform CCD-level ISR
                 ccdCalibSet = self.ccdIsr.makeCalibDict(butler, snapRef.dataId)
@@ -142,14 +162,33 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                 
                 self.display("ccdAssembly", exposure=postIsrExposure)
                 if self.config.doWriteIsr:
-                    snapRef.put(postIsrExposure, 'postISRCCD')
+                    snapRef.put(postIsrExposure, "postISRCCD")
+
+                if snapRef.dataId['snap'] == 0:
+                    snap0 = postIsrExposure
+                elif snapRef.dataId['snap'] == 1:
+                    snap1 = postIsrExposure
+
+        if self.config.doSnapCombine:
+            if snap0 is None or snap1 is None:
+                snap0 = sensorRef.get("postISRCCD", snap=0)
+                snap1 = sensorRef.get("postISRCCD", snap=1)
+
+            combineRes = self.snapCombine.run(snap0, snap1)
+            visitExposure = combineRes.visitExposure
+            self.display("snapCombine", exposure=visitExposure)
+            if self.config.doWriteSnapCombine:
+                snapRef.put(visitExposure, "visitCCD")
         else:
-            postIsrExposure = None
+            visitExposure = postIsrExposure
 
         if self.config.doCalibrate:
-            if postIsrExposure is None:
-                postIsrExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(postIsrExposure)
+            if visitExposure is None:
+                if self.config.doSnapCombine:
+                    visitExposure = sensorRef.get('visitCCD')
+                else:
+                    visitExposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(visitExposure)
             calExposure = calib.exposure
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
@@ -184,6 +223,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure if self.config.doIsr else None,
+            visitExposure = visitExposure if self.config.doSnapCombine else None,
             exposure = calExposure,
             psf = psf,
             apCorr = apCorr,

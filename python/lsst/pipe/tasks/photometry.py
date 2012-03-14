@@ -69,19 +69,19 @@ class PhotometryTask(pipeBase.Task):
         @param wcs WCS to apply
         @return a Struct with fields:
         - sources: Measured sources
-        - footprintSet: Set of footprints
+        - footprintSet: Sets of footprints
         """
         assert exposure, "No exposure provided"
         assert psf, "No psf provided"
         
-        footprintSet = self.detect(exposure, psf)
+        footprintSets = self.detect(exposure, psf)
 
-        sources = self.measure(exposure, footprintSet, psf, apcorr=apcorr, wcs=wcs)
+        sources = self.measure(exposure, footprintSets, psf, apcorr=apcorr, wcs=wcs)
 
         self.display('phot', exposure=exposure, sources=sources, pause=True)
         return pipeBase.Struct(
             sources = sources,
-            footprintSet = footprintSet,
+            footprintSets = footprintSets,
         )
 
     @pipeBase.timeMethod
@@ -101,7 +101,7 @@ class PhotometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "%d negative sources found and ignored" % numNeg)
         self.log.log(self.log.INFO, "Detected %d sources to %g sigma." %
                      (numPos, self.config.detect.thresholdValue))
-        return posSources
+        return [(posSources.getFootprints(), False),]
 
     @pipeBase.timeMethod
     def applyApCorr(self, sources, apcorr):
@@ -128,7 +128,7 @@ class PhotometryTask(pipeBase.Task):
                         getattr(source, setterErr)(numpy.hypot(corr*fluxErr, corrErr*flux))
 
     @pipeBase.timeMethod
-    def measure(self, exposure, footprintSet, psf, apcorr=None, wcs=None):
+    def measure(self, exposure, footprintSets, psf, apcorr=None, wcs=None):
         """Measure sources
 
         @param exposure Exposure to process
@@ -139,13 +139,13 @@ class PhotometryTask(pipeBase.Task):
         @return Source list
         """
         assert exposure, "No exposure provided"
-        assert footprintSet, "No footprintSet provided"
+        assert footprintSets, "No footprintSets provided"
         assert psf, "No psf provided"
-        footprints = [] # Footprints to measure
-        num = len(footprintSet.getFootprints())
-        self.log.log(self.log.INFO, "Measuring %d positive sources" % num)
-        footprints.append([footprintSet.getFootprints(), False])
-        sources = muMeasurement.sourceMeasurement(exposure, psf, footprints, self.config.measure)
+        numPos = max([len(x[0]) if x[1] == False else 0 for x in footprintSets])
+        numNeg = max([len(x[0]) if x[1] == True else 0 for x in footprintSets])
+        self.log.log(self.log.INFO, "Measuring %d positive sources" % numPos)
+        self.log.log(self.log.INFO, "Measuring %d negative sources" % numNeg)
+        sources = muMeasurement.sourceMeasurement(exposure, psf, footprintSets, self.config.measure)
 
         if wcs is not None:
             muMeasurement.computeSkyCoords(wcs, sources)
@@ -173,11 +173,11 @@ class PhotometryTask(pipeBase.Task):
 class RephotometryTask(PhotometryTask):
     ConfigClass = MeasurementConfig
 
-    def run(self, exposure, footprintSet, psf, apcorr=None, wcs=None):
+    def run(self, exposure, footprintSets, psf, apcorr=None, wcs=None):
         """Photometer footprints that have already been detected
 
         @param exposure Exposure to process
-        @param footprintSet Set of footprints to rephotometer
+        @param footprintSets Sets of footprints to rephotometer
         @param psf PSF for photometry
         @param apcorr Aperture correction to apply
         @param wcs WCS to apply
@@ -186,7 +186,7 @@ class RephotometryTask(PhotometryTask):
         """
         assert exposure, "No exposure provided"
         assert psf, "No psf provided"
-        sources = self.measure(exposure, footprintSet, psf, apcorr=apcorr, wcs=wcs)
+        sources = self.measure(exposure, footprintSets, psf, apcorr=apcorr, wcs=wcs)
         return pipeBase.Struct(
             sources = sources,
         )
@@ -198,6 +198,10 @@ class RephotometryTask(PhotometryTask):
 class PhotometryDiffTask(PhotometryTask):
     """Variant of PhotometryTask that detects and measures both negative and positive sources
     """
+    def __init__(self, *args, **kwargs):
+        PhotometryTask.__init__(self, *args, **kwargs)
+        self.config.detect.thresholdPolarity = "both"
+
     def detect(self, exposure, psf):
         """Detect positive and negative sources (e.g. in a difference image)
 
@@ -211,9 +215,8 @@ class PhotometryDiffTask(PhotometryTask):
         numPos = len(posSources.getFootprints()) if posSources is not None else 0
         numNeg = len(negSources.getFootprints()) if negSources is not None else 0
         self.log.log(self.log.INFO, "Detected %d positive and %d negative sources to %g sigma." % 
-                     (numPos, numNeg, config.thresholdValue))
+                     (numPos, numNeg, self.config.detect.thresholdValue))
 
-        for f in negSources.getFootprints():
-            posSources.getFootprints().push_back(f)
-
-        return posSources
+        footprintSets = ( (posSources.getFootprints(), False),
+                          (negSources.getFootprints(), True) )
+        return footprintSets

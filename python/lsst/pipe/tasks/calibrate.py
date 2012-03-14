@@ -150,9 +150,9 @@ class CalibrateTask(pipeBase.Task):
             with self.timer("photometry"):
                 photRet = self.photometry.run(exposure, fakePsf)
                 sources = photRet.sources
-                footprints = photRet.footprintSet
+                footprintSets = photRet.footprintSets
         else:
-            sources, footprints = None, None
+            sources, footprintSets = None, []
 
         if self.config.doPsf:
             psfRet = self.measurePsf.run(exposure, sources)
@@ -177,7 +177,7 @@ class CalibrateTask(pipeBase.Task):
             self.display('background', exposure=exposure)
 
         if self.config.doPsf and (self.config.doAstrometry or self.config.doZeropoint):
-            rephotRet = self.rephotometry.run(exposure, footprints, psf)
+            rephotRet = self.rephotometry.run(exposure, footprintSets, psf)
             for old, new in zip(sources, rephotRet.sources):
                 for flag in (measAlg.Flags.STAR, measAlg.Flags.PSFSTAR):
                     propagateFlag(flag, old, new)
