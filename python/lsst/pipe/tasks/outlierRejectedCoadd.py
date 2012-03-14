@@ -213,8 +213,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                 if desFwhm > 0:
                     modelPsf = self.makeModelPsf(exposure, desFwhm)
                     self.log.log(self.log.INFO, "PSF-match exposure")
-                    exposure, psfMatchingKernel, kernelCellSet = \
-                        self.psfMatcher.matchExposure(exposure, modelPsf)
+                    psfRes = self.psfMatch.run(exposure, modelPsf)
+                    exposure = psfRes.psfMatchedExposure
                 
                 self.log.log(self.log.INFO, "Warp exposure")
                 exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)

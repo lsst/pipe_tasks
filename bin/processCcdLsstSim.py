@@ -27,12 +27,13 @@ from lsst.pipe.base import ArgumentParser
 from lsst.pipe.tasks.processCcdLsstSim import ProcessCcdLsstSimTask as TaskClass
 
 if __name__ == "__main__":
-    parser = ArgumentParser()
-    namespace = parser.parse_args(config=TaskClass.ConfigClass())
-    task = TaskClass(namespace.config, log = namespace.log)
-    for sensorRef in namespace.dataRefList:
-        sensorRef.put(namespace.config, "processCcd_config")
-        if namespace.doRaise:
+    name = "processCcd"
+    parser = ArgumentParser(name = name)
+    cmd = parser.parse_args(config = TaskClass.ConfigClass())
+    task = TaskClass(name = name, config = cmd.config, log = cmd.log)
+    for sensorRef in cmd.dataRefList:
+        sensorRef.put(cmd.config, name + "_config")
+        if cmd.doRaise:
             task.run(sensorRef)
         else:
             try:
@@ -40,4 +41,4 @@ if __name__ == "__main__":
             except Exception, e:
                 task.log.log(task.log.FATAL, "Failed on dataId=%s: %s" % (sensorRef.dataId, e))
                 traceback.print_exc(file=sys.stderr)
-        sensorRef.put(task.getFullMetadata(), "processCcd_metadata")
+        sensorRef.put(task.getFullMetadata(), name + "_metadata")

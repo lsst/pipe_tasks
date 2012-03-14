@@ -56,7 +56,7 @@ class ProcessCcdConfig(pexConfig.Config):
         self.calibrate.measurePsf.psfDeterminer.name = "pca"
         self.calibrate.measurePsf.starSelector["secondMoment"].clumpNSigma = 2.0
         self.calibrate.measurePsf.psfDeterminer["pca"].nEigenComponents = 4
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7.0
+        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7
         self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 2
         self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin = 25
         
@@ -71,7 +71,7 @@ class ProcessCcdConfig(pexConfig.Config):
         self.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
         self.photometry.measure.shape.names = ["SDSS"]
         self.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-        self.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10
+        self.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10.0
         self.photometry.measure.photometry["SINC"].radius = 7.0
         self.photometry.measure.photometry["NAIVE"].radius = self.photometry.measure.photometry["SINC"].radius
         
@@ -120,13 +120,14 @@ class ProcessCcdTask(pipeBase.Task):
             calib = self.calibrate.run(ccdExposure)
             ccdExposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
-                if calib.psf is not None:
+                if calib.sources:
+                    sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
+                if calib.psf:
                     sensorRef.put(calib.psf, 'psf')
-                if calib.apCorr is not None:
+                if calib.apCorr:
                     #sensorRef.put(calib.apCorr, 'apcorr')
                     pass
-                if calib.matches is not None:
+                if calib.matches:
                     sensorRef.put(afwDet.PersistableSourceMatchVector(calib.matches, calib.matchMeta),
                                'icMatch')
         else:
@@ -145,7 +146,7 @@ class ProcessCcdTask(pipeBase.Task):
             if self.config.doWritePhotometry:
                 sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
         else:
-            phot = None
+            phot, psf, apCorr = None, None, None
 
         if self.config.doWriteCalibrate:
             sensorRef.put(ccdExposure, 'calexp')
