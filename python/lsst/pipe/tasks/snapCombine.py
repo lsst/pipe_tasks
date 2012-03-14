@@ -44,7 +44,7 @@ class SnapCombineConfig(pexConfig.Config):
         default = 2.5 # pixels
     )
 
-    doDiffim = pexConfig.Field(
+    doPsfMatch = pexConfig.Field(
         dtype = bool,
         doc = "Perform difference imaging before combining",
         default = True,
@@ -76,35 +76,58 @@ class SnapCombineTask(pipeBase.Task):
             self.display('repair0', exposure=snap0)
             self.display('repair1', exposure=snap1)
             
-        if self.config.doDiffim:
-            diffRet = self.diffim.run(snap0, snap1, "subtractExposures")
-            diffExp = diffRet.subtractedImage
-            diffExp.writeFits("/tmp/diff.fits")
+        if self.config.doPsfMatch:
+            diffRet  = self.diffim.run(snap0, snap1, "subtractExposures")
+            diffExp  = diffRet.subtractedImage
 
-            fakePsf, wcs = self.makeFakePsf(snap0)
-            photRet = self.photometry.run(diffExp, fakePsf, wcs=wcs)
-            sources = photRet.sources
-            footprints = photRet.footprintSets
+            # Measure centroid and width of kernel; dependent on ticket #1980
+            # Useful diagnostic for the degree of astrometric shift between snaps.
+            diffKern = diffRet.psfMatchingKernel
+            width, height = diffKern.getDimensions()
+            # TBD...
+            #psfAttr = measAlg.PsfAttributes(diffKern, width//2, height//2)
 
-            coaddMi   = snap0.getMaskedImage().Factory(snap0.getBBox(afwImage.PARENT))
-            weightMap = coaddMi.getImage().Factory(coaddMi.getBBox(afwImage.PARENT))
-            weight    = 1.0
+        else:
+            diffExp  = afwImage.ExposureF(snap0, True)
+            diffMi   = diffExp.getMaskedImage()
+            diffMi  -= snap1.getMaskedImage()
 
-            badMaskPlanes  = []
-            for bmp in self.config.coadd.badMaskPlanes:
-                badMaskPlanes.append(bmp)
-            badMaskPlanes.append("BAD")
-            badMaskPlanes.append("CR")
-            badPixelMask   = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
-            addToCoadd(coaddMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
-            addToCoadd(coaddMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
-            coaddMi /= weightMap
-            setCoaddEdgeBits(coaddMi.getMask(), weightMap)
-
-            # Need copy of Filter, Detector, Wcs, Calib in new Exposure
-            coaddExp = afwImage.ExposureF(snap0, True)
-            coaddExp.setMaskedImage(coaddMi)
+        fakePsf, wcs = self.makeFakePsf(snap0)
+        photRet = self.photometry.run(diffExp, fakePsf, wcs=wcs)
+        sources = photRet.sources
+        footprints = photRet.footprintSets
         
+        # Ugly!
+        footprintsP = footprints[num.where(num.array([x[1] for x in footprints]) == False)[0]][0]
+        footprintsN = footprints[num.where(num.array([x[1] for x in footprints]) == True)[0]][0]
+        
+        mask0 = snap0.getMaskedImage().getMask()
+        mask1 = snap1.getMaskedImage().getMask()
+        afwDet.setMaskFromFootprintList(mask0, footprintsP, mask0.getPlaneBitMask("DETECTED"))
+        afwDet.setMaskFromFootprintList(mask1, footprintsN, mask1.getPlaneBitMask("DETECTED"))
+        
+        maskD = diffExp.getMaskedImage().getMask()
+        afwDet.setMaskFromFootprintList(maskD, footprintsP, maskD.getPlaneBitMask("DETECTED")) 
+        afwDet.setMaskFromFootprintList(maskD, footprintsN, maskD.getPlaneBitMask("DETECTED_NEGATIVE")) 
+        
+        coaddMi   = snap0.getMaskedImage().Factory(snap0.getBBox(afwImage.PARENT))
+        weightMap = coaddMi.getImage().Factory(coaddMi.getBBox(afwImage.PARENT))
+        weight    = 1.0
+        
+        badMaskPlanes  = []
+        for bmp in self.config.coadd.badMaskPlanes:
+            badMaskPlanes.append(bmp)
+        badMaskPlanes.append("DETECTED")
+        badPixelMask   = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
+        addToCoadd(coaddMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
+        addToCoadd(coaddMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
+        coaddMi /= weightMap
+        setCoaddEdgeBits(coaddMi.getMask(), weightMap)
+
+        # Need copy of Filter, Detector, Wcs, Calib in new Exposure
+        coaddExp = afwImage.ExposureF(snap0, True)
+        coaddExp.setMaskedImage(coaddMi)
+
         return pipeBase.Struct(visitExposure = coaddExp,
                                metadata = self.metadata)
 

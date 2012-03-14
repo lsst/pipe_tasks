@@ -54,8 +54,11 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
 
-        self.snapCombine.diffim.kernel.name = "DF"
+        self.snapCombine.doPsfMatch = True
         self.snapCombine.repair.doInterpolate = True
+        self.snapCombine.diffim.kernel.name = "DF"
+        self.snapCombine.diffim.kernel.active.spatialKernelOrder = 1
+        self.snapCombine.coadd.badMaskPlanes = ["EDGE"]
         self.snapCombine.photometry.detect.thresholdValue = 5.0
 
         self.calibrate.repair.doCosmicRay = True
