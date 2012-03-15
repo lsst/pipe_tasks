@@ -57,9 +57,11 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
             raise ValueError("Cannot run source measurement without source detection.")
 
     def setDefaults(self):
-        self.doWriteIsr = False
-        self.isr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.isr.doWrite = False
+        self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
+        self.ccdIsr.doWrite = False
+
+        self.doSnapCombine = False
 
         # FIXME: unless these defaults need to be different from the subtask defaults,
         #        don't repeat them here
@@ -68,8 +70,7 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.snapCombine.diffim.kernel.name = "DF"
         self.snapCombine.diffim.kernel.active.spatialKernelOrder = 1
         self.snapCombine.coadd.badMaskPlanes = ["EDGE"]
-        if False:
-            self.snapCombine.photometry.detect.thresholdValue = 5.0
+        self.snapCombine.detection.thresholdValue = 5.0
 
 
 class ProcessCcdLsstSimTask(pipeBase.Task):
@@ -161,24 +162,20 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                     visitExposure = sensorRef.get('visitCCD')
                 else:
                     visitExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(exposure)
+            calib = self.calibrate.run(visitExposure)
             calExposure = calib.exposure
 
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
-                # FIXME: SourceCatalog not butlerized
-                #sensorRef.put(calib.sources, 'icSrc')
+                sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
-                    # FIXME: ApertureCorrection not butlerized
-                    #sensorRef.put(calib.apCorr, 'apcorr')
-                    pass
+                    sensorRef.put(calib.apCorr, 'apCorr')
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    # FIXME: BaseCatalog (i.e. normalized match vector) not butlerized
-                    #sensorRef.put(normalizedMatches, 'icMatch')
+                    sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
 
@@ -190,7 +187,8 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                 calExposure.setPsf(sensorRef.get('psf'))
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, calExposure)
+            detRet = self.detection.makeSourceCatalog(table, calExposure)
+            sources = detRet.sources
         else:
             sources = None
 
@@ -198,26 +196,21 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             assert(sources)
             assert(calExposure)
             if calib is None:
-                apCorr = None # FIXME: should load from butler
-                if self.measurement.doApplyApCorr:
-                    self.log.log(self.log.WARN, "Cannot load aperture correction; will not be applied.")
+                apCorr = sensorRef.get("apCorr")
             else:
                 apCorr = calib.apCorr
             self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            # FIXME: SourceCatalog not butlerized
-            #sensorRef.put(phot.sources, 'src')
-            pass
+            sensorRef.put(sources, 'src')
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure if self.config.doIsr else None,
             visitExposure = visitExposure if self.config.doSnapCombine else None,
             calExposure = calExposure,
             calib = calib,
-            psf = psf,
             apCorr = apCorr,
-            sources = phot.sources if phot else None,
+            sources = sources,
             matches = calib.matches if calib else None,
             matchMeta = calib.matchMeta if calib else None,
         )

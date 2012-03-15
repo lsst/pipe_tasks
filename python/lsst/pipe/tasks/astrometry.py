@@ -100,6 +100,11 @@ class AstrometryTask(pipeBase.Task):
         distorter = pipeDist.RadialPolyDistorter(ccd=getCcd(exposure))
 
         # Distort source positions
+        self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter)
+        for s in sources:
+            x,y = distorter.toCorrected(s.getX(), s.getY())
+            s.set(self.centroidKey.getX(), x)
+            s.set(self.centroidKey.getY(), y)
 
         # Get distorted image size so that astrometry_net does not clip.
         xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
@@ -114,10 +119,7 @@ class AstrometryTask(pipeBase.Task):
         yMin = int(yMin)
         llc = (xMin, yMin)
         size = (int(xMax - xMin + 0.5), int(yMax - yMin + 0.5))
-        for s in sources:
-            x,y = distorter.toCorrected(s.getX(), s.getY())
-            s.set(self.centroidKey.getX(), x)
-            s.set(self.centroidKey.getY(), y)
+
         return llc, size
 
 
@@ -141,7 +143,7 @@ class AstrometryTask(pipeBase.Task):
 
         try:
             filterName = exposure.getFilter().getName()
-            self.log.log(self.log.INFO, "Using filter: %s" % filterName)
+            self.log.log(self.log.INFO, "Using filter: '%s'" % filterName)
         except:
             self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
             filterName = None

@@ -21,13 +21,15 @@
 #
 import numpy as num
 import lsst.pex.config as pexConfig
+import lsst.daf.base as dafBase
 import lsst.afw.detection as afwDet
 import lsst.afw.image as afwImage
+import lsst.afw.table as afwTable
 import lsst.pipe.base as pipeBase
 from lsst.coadd.utils import Coadd, addToCoadd, setCoaddEdgeBits
 from lsst.ip.diffim import SnapPsfMatchTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 
-from .calibrate import CalibrateTask
 from .repair import RepairTask
 
 class SnapCombineConfig(pexConfig.Config):
@@ -41,20 +43,29 @@ class SnapCombineConfig(pexConfig.Config):
         doc = "Psf FWHM (pixels) used to detect CRs", 
         default = 2.5 # pixels
     )
-
     doPsfMatch = pexConfig.Field(
         dtype = bool,
         doc = "Perform difference imaging before combining",
         default = True,
     )
+    doMeasurement = pexConfig.Field(
+        dtype = bool,
+        doc = "Measure difference sources",
+        default = True
+    )
 
-    repair     = pexConfig.ConfigField(dtype = RepairTask.ConfigClass, doc = "")
-    diffim     = pexConfig.ConfigField(dtype = SnapPsfMatchTask.ConfigClass, doc = "")
-    coadd      = pexConfig.ConfigField(dtype = Coadd.ConfigClass, doc="")
-    calibrate  = pexConfig.ConfigField(dtype = CalibrateTask.ConfigClass,  doc = "")
+    repair      = pexConfig.ConfigField(dtype = RepairTask.ConfigClass, doc = "")
+    diffim      = pexConfig.ConfigField(dtype = SnapPsfMatchTask.ConfigClass, doc = "")
+    coadd       = pexConfig.ConfigField(dtype = Coadd.ConfigClass, doc="")
+    detection   = pexConfig.ConfigField(dtype = SourceDetectionTask.ConfigClass, doc = "")
+    measurement = pexConfig.ConfigField(dtype = SourceMeasurementTask.ConfigClass, doc = "")
 
-if False:
-    photometry = pexConfig.ConfigField(dtype = PhotometryDiffTask.ConfigClass,  doc = "")
+    def setDefaults(self):
+        self.detection.thresholdPolarity = "both"
+
+    def validate(self):
+        if self.detection.thresholdPolarity != "both":
+            raise ValueError("detection.thresholdPolarity must be 'both' for SnapCombineTask")
 
 class SnapCombineTask(pipeBase.Task):
     ConfigClass = SnapCombineConfig
@@ -63,17 +74,21 @@ class SnapCombineTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("repair", RepairTask)
         self.makeSubtask("diffim", SnapPsfMatchTask)
-        if False:
-            self.makeSubtask("photometry", PhotometryDiffTask)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
+        self.makeSubtask("detection", SourceDetectionTask, schema=self.schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", SourceMeasurementTask,
+                             schema=self.schema, algMetadata=self.algMetadata)
  
     @pipeBase.timeMethod
     def run(self, snap0, snap1, defects=None):
 
         if self.config.doRepair:
-            fakePsf, wcs = self.makeFakePsf(snap0, fwhmPix=self.config.repairPsfFwhm)
-
-            self.repair.run(snap0, fakePsf, defects=defects, keepCRs=False)
-            self.repair.run(snap1, fakePsf, defects=defects, keepCRs=False)
+            self.installInitialPsf(snap0, fwhmPix=self.config.repairPsfFwhm)
+            snap1.setPsf(snap0.getPsf())
+            self.repair.run(snap0, defects=defects, keepCRs=False)
+            self.repair.run(snap1, defects=defects, keepCRs=False)
             self.display('repair0', exposure=snap0)
             self.display('repair1', exposure=snap1)
             
@@ -93,24 +108,23 @@ class SnapCombineTask(pipeBase.Task):
             diffMi   = diffExp.getMaskedImage()
             diffMi  -= snap1.getMaskedImage()
 
-        fakePsf, wcs = self.makeFakePsf(snap0)
-        if False:
-            photRet = self.photometry.run(diffExp, fakePsf, wcs=wcs)
-            sources = photRet.sources
-            footprints = photRet.footprintSets
-        
-        # Ugly!
-        footprintsP = footprints[num.where(num.array([x[1] for x in footprints]) == False)[0]][0]
-        footprintsN = footprints[num.where(num.array([x[1] for x in footprints]) == True)[0]][0]
+        self.installInitialPsf(diffExp)
+        table = afwTable.SourceTable.make(self.schema)
+        table.setMetadata(self.algMetadata)
+        detRet = self.detection.makeSourceCatalog(table, diffExp)
+        sources = detRet.sources
+        fpSets = detRet.fpSets
+        if self.config.doMeasurement:
+            self.measurement.measure(diffExp, sources)
         
         mask0 = snap0.getMaskedImage().getMask()
         mask1 = snap1.getMaskedImage().getMask()
-        afwDet.setMaskFromFootprintList(mask0, footprintsP, mask0.getPlaneBitMask("DETECTED"))
-        afwDet.setMaskFromFootprintList(mask1, footprintsN, mask1.getPlaneBitMask("DETECTED"))
+        fpSets.positive.setMask(mask0, "DETECTED")
+        fpSets.positive.setMask(mask1, "DETECTED")
         
         maskD = diffExp.getMaskedImage().getMask()
-        afwDet.setMaskFromFootprintList(maskD, footprintsP, maskD.getPlaneBitMask("DETECTED")) 
-        afwDet.setMaskFromFootprintList(maskD, footprintsN, maskD.getPlaneBitMask("DETECTED_NEGATIVE")) 
+        fpSets.positive.setMask(maskD, "DETECTED")
+        fpSets.negative.setMask(maskD, "DETECTED_NEGATIVE")
         
         coaddMi   = snap0.getMaskedImage().Factory(snap0.getBBox(afwImage.PARENT))
         weightMap = coaddMi.getImage().Factory(coaddMi.getBBox(afwImage.PARENT))
@@ -130,10 +144,9 @@ class SnapCombineTask(pipeBase.Task):
         coaddExp = afwImage.ExposureF(snap0, True)
         coaddExp.setMaskedImage(coaddMi)
 
-        return pipeBase.Struct(visitExposure = coaddExp,
-                               metadata = self.metadata)
+        return pipeBase.Struct(visitExposure = coaddExp, sources = sources)
 
-    def makeFakePsf(self, exposure, fwhmPix=None):
+    def installInitialPsf(self, exposure, fwhmPix=None):
         """Initialise the detection procedure by setting the PSF and WCS
 
         @param exposure Exposure to process
@@ -144,10 +157,10 @@ class SnapCombineTask(pipeBase.Task):
         assert wcs, "No wcs in exposure"
         
         if fwhmPix is None:
-            fwhmPix = self.config.calibrate.fwhm / wcs.pixelScale().asArcseconds()
+            fwhmPix = self.config.calibrate.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
             
-        size = self.config.calibrate.size
-        model = self.config.calibrate.model
-        self.log.log(self.log.INFO, "makeFakePsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
+        size = self.config.calibrate.initialPsf.size
+        model = self.config.calibrate.initialPsf.model
+        self.log.log(self.log.INFO, "installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
         psf = afwDet.createPsf(model, size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
-        return psf, wcs
+        exposure.setPsf(psf)

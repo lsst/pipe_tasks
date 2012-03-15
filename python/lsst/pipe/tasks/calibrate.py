@@ -177,7 +177,8 @@ class CalibrateTask(pipeBase.Task):
         
         table = afwTable.SourceTable.make(self.schema) # TODO: custom IdFactory for globally unique IDs
         table.setMetadata(self.algMetadata)
-        sources = self.detection.makeSourceCatalog(table, exposure)
+        detRet = self.detection.makeSourceCatalog(table, exposure)
+        sources = detRet.sources
 
         if self.config.doPsf:
             self.initialMeasurement.measure(exposure, sources)
