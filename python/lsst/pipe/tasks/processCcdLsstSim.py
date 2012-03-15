@@ -61,8 +61,6 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.ccdIsr.doWrite = False
 
-        self.doSnapCombine = False
-
         # FIXME: unless these defaults need to be different from the subtask defaults,
         #        don't repeat them here
         self.snapCombine.doPsfMatch = True

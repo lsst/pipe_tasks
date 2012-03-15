@@ -31,6 +31,7 @@ from lsst.ip.diffim import SnapPsfMatchTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 
 from .repair import RepairTask
+from .calibrate import InitialPsfConfig
 
 class SnapCombineConfig(pexConfig.Config):
     doRepair = pexConfig.Field(
@@ -58,6 +59,7 @@ class SnapCombineConfig(pexConfig.Config):
     diffim      = pexConfig.ConfigField(dtype = SnapPsfMatchTask.ConfigClass, doc = "")
     coadd       = pexConfig.ConfigField(dtype = Coadd.ConfigClass, doc="")
     detection   = pexConfig.ConfigField(dtype = SourceDetectionTask.ConfigClass, doc = "")
+    initialPsf  = pexConfig.ConfigField(dtype = InitialPsfConfig, doc = "")
     measurement = pexConfig.ConfigField(dtype = SourceMeasurementTask.ConfigClass, doc = "")
 
     def setDefaults(self):
@@ -85,13 +87,14 @@ class SnapCombineTask(pipeBase.Task):
     def run(self, snap0, snap1, defects=None):
 
         if self.config.doRepair:
-            self.installInitialPsf(snap0, fwhmPix=self.config.repairPsfFwhm)
-            snap1.setPsf(snap0.getPsf())
+            psf = self.makeInitialPsf(snap0, fwhmPix=self.config.repairPsfFwhm)
+            snap0.setPsf(psf)
+            snap1.setPsf(psf)
             self.repair.run(snap0, defects=defects, keepCRs=False)
             self.repair.run(snap1, defects=defects, keepCRs=False)
             self.display('repair0', exposure=snap0)
             self.display('repair1', exposure=snap1)
-            
+
         if self.config.doPsfMatch:
             diffRet  = self.diffim.run(snap0, snap1, "subtractExposures")
             diffExp  = diffRet.subtractedImage
@@ -108,7 +111,8 @@ class SnapCombineTask(pipeBase.Task):
             diffMi   = diffExp.getMaskedImage()
             diffMi  -= snap1.getMaskedImage()
 
-        self.installInitialPsf(diffExp)
+        psf = self.makeInitialPsf(snap0)
+        diffExp.setPsf(psf)
         table = afwTable.SourceTable.make(self.schema)
         table.setMetadata(self.algMetadata)
         detRet = self.detection.makeSourceCatalog(table, diffExp)
@@ -120,12 +124,12 @@ class SnapCombineTask(pipeBase.Task):
         mask0 = snap0.getMaskedImage().getMask()
         mask1 = snap1.getMaskedImage().getMask()
         fpSets.positive.setMask(mask0, "DETECTED")
-        fpSets.positive.setMask(mask1, "DETECTED")
+        fpSets.negative.setMask(mask1, "DETECTED")
         
         maskD = diffExp.getMaskedImage().getMask()
         fpSets.positive.setMask(maskD, "DETECTED")
         fpSets.negative.setMask(maskD, "DETECTED_NEGATIVE")
-        
+
         coaddMi   = snap0.getMaskedImage().Factory(snap0.getBBox(afwImage.PARENT))
         weightMap = coaddMi.getImage().Factory(coaddMi.getBBox(afwImage.PARENT))
         weight    = 1.0
@@ -146,7 +150,7 @@ class SnapCombineTask(pipeBase.Task):
 
         return pipeBase.Struct(visitExposure = coaddExp, sources = sources)
 
-    def installInitialPsf(self, exposure, fwhmPix=None):
+    def makeInitialPsf(self, exposure, fwhmPix=None):
         """Initialise the detection procedure by setting the PSF and WCS
 
         @param exposure Exposure to process
@@ -157,10 +161,10 @@ class SnapCombineTask(pipeBase.Task):
         assert wcs, "No wcs in exposure"
         
         if fwhmPix is None:
-            fwhmPix = self.config.calibrate.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
+            fwhmPix = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
             
-        size = self.config.calibrate.initialPsf.size
-        model = self.config.calibrate.initialPsf.model
+        size = self.config.initialPsf.size
+        model = self.config.initialPsf.model
         self.log.log(self.log.INFO, "installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
         psf = afwDet.createPsf(model, size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
-        exposure.setPsf(psf)
+        return psf
