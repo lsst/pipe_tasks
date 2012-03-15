@@ -54,6 +54,11 @@ class AstrometryTask(pipeBase.Task):
     """
     ConfigClass = AstrometryConfig
 
+    def __init__(self, schema, **kwds):
+        pipeBase.Task.__init__(self, **kwds)
+        self.centroidKey = schema.addField("centroid.distorted", type="Point<F8>",
+                                           doc="centroid distorted for astrometry solver")
+
     @pipeBase.timeMethod
     def run(self, exposure, sources):
         """AstrometryTask an exposure: PSF, astrometry and photometry
@@ -66,8 +71,13 @@ class AstrometryTask(pipeBase.Task):
         """
         assert exposure is not None, "No exposure provided"
 
-        distSources, llc, size = self.distort(exposure, sources)
-        matches, matchMeta = self.astrometry(exposure, sources, distSources, llc=llc, size=size)
+        llc, size = self.distort(exposure, sources)
+        oldCentroidKey = sources.table.getCentroidKey()
+        sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
+                                     sources.table.getCentroidFlagKey())
+        matches, matchMeta = self.astrometry(exposure, sources, llc=llc, size=size)
+        sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
+                                     sources.table.getCentroidFlagKey())
         self.undistort(exposure, sources, matches)
 
         return pipeBase.Struct(
@@ -79,9 +89,10 @@ class AstrometryTask(pipeBase.Task):
     def distort(self, exposure, sources):
         """Distort source positions before solving astrometry
 
-        @param exposure Exposure to process
-        @param sources Sources with undistorted (actual) positions
-        @return Distorted sources, lower-left corner, size of distorted image
+        @param[in]     exposure Exposure to process
+        @param[in,out] sources  SourceCatalog; getX() and getY() will be used as inputs,
+                                with distorted points in "centroid.distorted" field.
+        @return Lower-left corner, size of distorted image
         """
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
@@ -90,17 +101,10 @@ class AstrometryTask(pipeBase.Task):
 
         # Distort source positions
         self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter)
-        distSources = afwDet.SourceSet()
         for s in sources:
-            dist = afwDet.Source(s)
-            x,y = distorter.toCorrected(s.getXAstrom(), s.getYAstrom())
-            dist.setXAstrom(x)
-            dist.setYAstrom(y)
-            distSources.push_back(dist)
-
-        self.display('distortion', exposure=exposure, sources=sources, pause=False)
-        self.display('distortion', exposure=None, sources=distSources,
-                     ctypes=[ds9.RED], pause=True)
+            x,y = distorter.toCorrected(s.getX(), s.getY())
+            s.set(self.centroidKey.getX(), x)
+            s.set(self.centroidKey.getY(), y)
 
         # Get distorted image size so that astrometry_net does not clip.
         xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
@@ -116,22 +120,21 @@ class AstrometryTask(pipeBase.Task):
         llc = (xMin, yMin)
         size = (int(xMax - xMin + 0.5), int(yMax - yMin + 0.5))
 
-        return distSources, llc, size
+        return llc, size
 
 
     @pipeBase.timeMethod
-    def astrometry(self, exposure, sources, distSources, llc=(0,0), size=None):
+    def astrometry(self, exposure, sources, llc=(0,0), size=None):
         """Solve astrometry to produce WCS
 
         @param exposure Exposure to process
-        @param sources Sources as measured (actual) positions
-        @param distSources Sources with undistorted (ideal) positions
+        @param sources Sources
         @param llc Lower left corner (minimum x,y)
         @param size Size of exposure
         @return Star matches, match metadata
         """
         assert exposure, "No exposure provided"
-        assert distSources, "No sources provided"
+        assert sources, "No sources provided"
 
         self.log.log(self.log.INFO, "Solving astrometry")
 
@@ -140,7 +143,7 @@ class AstrometryTask(pipeBase.Task):
 
         try:
             filterName = exposure.getFilter().getName()
-            self.log.log(self.log.INFO, "Using filter: %s" % filterName)
+            self.log.log(self.log.INFO, "Using filter: '%s'" % filterName)
         except:
             self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
             filterName = None
@@ -156,17 +159,17 @@ class AstrometryTask(pipeBase.Task):
 #
         xMin, yMin = llc
         if xMin != 0 or yMin != 0:
-            for s in distSources:
-                s.setXAstrom(s.getXAstrom() - xMin)
-                s.setYAstrom(s.getYAstrom() - yMin)
+            for s in sources:
+                s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) - xMin)
+                s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) - yMin)
                 
         astrometer = measAstrometry.Astrometry(self.config.solver, log=self.log)
-        astrom = astrometer.determineWcs(distSources, exposure)
+        astrom = astrometer.determineWcs(sources, exposure)
 
         if xMin != 0 or yMin != 0:
-            for s in distSources:
-                s.setXAstrom(s.getXAstrom() + xMin)
-                s.setYAstrom(s.getYAstrom() + yMin)
+            for s in sources:
+                s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) + xMin)
+                s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) + yMin)
 
         if False:
             if distortion is not None:
@@ -187,14 +190,13 @@ class AstrometryTask(pipeBase.Task):
         exposure.setWcs(wcs)
 
         # Apply WCS to sources
-        for index, source in enumerate(sources):
-            distSource = distSources[index]
-            sky = wcs.pixelToSky(distSource.getXAstrom(), distSource.getYAstrom())
-            source.setRaDec(sky)
-
-            #point = afwGeom.Point2D(distSource.getXAstrom() - llc[0], distSource.getYAstrom() - llc[1])
-            # in square degrees
-            #areas.append(wcs.pixArea(point))
+        # This should be unnecessary - we update the RA/DEC in a zillion different places.  But I'm
+        # not totally sure what's going on with the distortion at this point, so I'll just try to
+        # replicate the old logic.
+        for source in sources:
+            distorted = source.get(self.centroidKey)
+            sky = wcs.pixelToSky(distorted.getX(), distorted.getY())
+            source.setCoord(sky) 
 
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
@@ -215,17 +217,6 @@ class AstrometryTask(pipeBase.Task):
 
         # Undo distortion in matches
         self.log.log(self.log.INFO, "Removing distortion correction.")
-        # Undistort directly, assuming:
-        # * astrometry matching propagates the source identifier (to get original x,y)
-        # * distortion is linear on very very small scales (to get x,y of catalogue)
-        for m in matches:
-            dx = m.first.getXAstrom() - m.second.getXAstrom()
-            dy = m.first.getYAstrom() - m.second.getYAstrom()
-            orig = sources[m.second.getId()]
-            m.second.setXAstrom(orig.getXAstrom())
-            m.second.setYAstrom(orig.getYAstrom())
-            m.first.setXAstrom(m.second.getXAstrom() + dx)
-            m.first.setYAstrom(m.second.getYAstrom() + dy)
 
         # Re-fit the WCS with the distortion undone
         if self.config.solver.calculateSip:
@@ -238,8 +229,8 @@ class AstrometryTask(pipeBase.Task):
             
             # Apply WCS to sources
             for index, source in enumerate(sources):
-                sky = wcs.pixelToSky(source.getXAstrom(), source.getYAstrom())
-                source.setRaDec(sky)
+                sky = wcs.pixelToSky(source.getX(), source.getY())
+                source.setCoord(sky)
         else:
             self.log.log(self.log.WARN, "Not calculating a SIP solution; matches may be suspect")
         

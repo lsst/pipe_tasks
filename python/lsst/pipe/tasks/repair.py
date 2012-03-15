@@ -25,9 +25,6 @@ import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 
-import lsst.afw.display.ds9 as ds9
-import lsst.afw.display.utils as displayUtils
-
 import lsstDebug
 
 class RepairConfig(pexConfig.Config):
@@ -54,35 +51,36 @@ class RepairTask(pipeBase.Task):
     ConfigClass = RepairConfig
 
     @pipeBase.timeMethod
-    def run(self, exposure, psf, defects=None, keepCRs=None):
+    def run(self, exposure, defects=None, keepCRs=None):
         """Repair exposure's instrumental problems
 
         @param[in,out] exposure Exposure to process
-        @param psf Point spread function
         @param defects Defect list
         @param keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         assert exposure, "No exposure provided"
+        psf = exposure.getPsf()
+        assert psf, "No PSF provided"
 
         self.display('repair.before', exposure=exposure)
 
         if defects is not None and self.config.doInterpolate:
-            self.interpolate(exposure, psf, defects)
+            self.interpolate(exposure, defects)
 
         if self.config.doCosmicRay:
-            self.cosmicRay(exposure, psf, keepCRs=keepCRs)
+            self.cosmicRay(exposure, keepCRs=keepCRs)
 
         self.display('repair.after', exposure=exposure)
 
-    def interpolate(self, exposure, psf, defects):
+    def interpolate(self, exposure, defects):
         """Interpolate over defects
 
         @param[in,out] exposure Exposure to process
-        @param psf PSF for interpolation
         @param defects Defect list
         """
         assert exposure, "No exposure provided"
         assert defects is not None, "No defects provided"
+        psf = exposure.getPsf()
         assert psf, "No psf provided"
 
         mi = exposure.getMaskedImage()
@@ -90,11 +88,10 @@ class RepairTask(pipeBase.Task):
         measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
         self.log.log(self.log.INFO, "Interpolated over %d defects." % len(defects))
 
-    def cosmicRay(self, exposure, psf, keepCRs=None):
+    def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
 
         @param[in,out] exposure Exposure to process
-        @param psf PSF
         @param keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         import lsstDebug
@@ -102,6 +99,7 @@ class RepairTask(pipeBase.Task):
         displayCR = lsstDebug.Info(__name__).displayCR
 
         assert exposure, "No exposure provided"
+        psf = exposure.getPsf()
         assert psf, "No psf provided"
 
         # Blow away old mask
@@ -126,6 +124,9 @@ class RepairTask(pipeBase.Task):
             num = len(crs)
 
             if display and displayCR:
+                import lsst.afw.display.ds9 as ds9
+                import lsst.afw.display.utils as displayUtils
+
                 ds9.incrDefaultFrame()
                 ds9.mtv(exposure, title="Post-CR")
                 

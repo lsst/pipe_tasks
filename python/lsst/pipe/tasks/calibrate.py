@@ -24,23 +24,17 @@ import math
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
+import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
-import lsst.meas.algorithms.apertureCorrection as maApCorr
-import lsst.meas.utils.sourceDetection as muDetection
 import lsst.meas.photocal as photocal
 from .astrometry import AstrometryTask
 import lsst.pipe.base as pipeBase
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
-from .photometry import PhotometryTask, RephotometryTask
 
-def propagateFlag(flag, old, new):
-    """Propagate a flag from one source to another"""
-    if old.getFlagForDetection() & flag:
-        new.setFlagForDetection(new.getFlagForDetection() | flag)
+class InitialPsfConfig(pexConfig.Config):
+    """Describes the initial PSF used for detection and measurement before we do PSF determination."""
 
-
-class CalibrateConfig(pexConfig.Config):
     model = pexConfig.ChoiceField(
         dtype = str,
         doc = "PSF model type",
@@ -60,19 +54,22 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Size of PSF model (pixels)",
         default = 15,
     )
-    thresholdValue = pexConfig.Field(
-        dtype = float,
-        doc = "Threshold for PSF stars (relative to regular detection limit)",
-        default = 10.0,
-    )
-    magnitudeLimitForCalibration = pexConfig.Field(
-        dtype = float,
-        doc = "The faintest star to consider for photometric calibration",
-        default = 22.0,
+
+class CalibrateConfig(pexConfig.Config):
+    initialPsf = pexConfig.ConfigField(dtype=InitialPsfConfig, doc=InitialPsfConfig.__doc__)
+    doBackground = pexConfig.Field(
+        dtype = bool,
+        doc = "Subtract background (after computing it, if not supplied)?",
+        default = True,
     )
     doPsf = pexConfig.Field(
         dtype = bool,
         doc = "Perform PSF fitting?",
+        default = True,
+    )
+    doComputeApCorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Calculate the aperture correction?",
         default = True,
     )
     doAstrometry = pexConfig.Field(
@@ -80,50 +77,82 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Compute astrometric solution?",
         default = True,
     )
-    doZeropoint = pexConfig.Field(
+    doPhotoCal = pexConfig.Field(
         dtype = bool,
         doc = "Compute photometric zeropoint?",
         default = True,
     )
-    doApCorr = pexConfig.Field(
-        dtype = bool,
-        doc = "Calculate the aperture correction?",
-        default = True,
-    )
-    doBackground = pexConfig.Field(
-        dtype = bool,
-        doc = "Subtract background (after computing it, if not supplied)?",
-        default = True,
-    )
     background = pexConfig.ConfigField(
-        dtype = muDetection.estimateBackground.ConfigClass,
+        dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
         )
-    apCorr       = pexConfig.ConfigField(dtype = maApCorr.ApertureCorrectionConfig, doc = "")
     repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
-    photometry   = pexConfig.ConfigField(dtype = PhotometryTask.ConfigClass,        doc = "")
+    detection    = pexConfig.ConfigField(
+        dtype=measAlg.SourceDetectionTask.ConfigClass,
+        doc="Initial (high-threshold) detection phase for calibration"
+    )
+    initialMeasurement = pexConfig.ConfigField(
+        dtype=measAlg.SourceMeasurementTask.ConfigClass,
+        doc="Initial measurements used to feed PSF determination and aperture correction determination"
+    )
     measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
-    astrometry   = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
+    measurement = pexConfig.ConfigField(
+        dtype=measAlg.SourceMeasurementTask.ConfigClass,
+        doc="Post-PSF-determination measurements used to feed other calibrations"
+    )
+    computeApCorr = pexConfig.ConfigField(dtype = measAlg.ApertureCorrectionConfig,
+                                          doc = measAlg.ApertureCorrectionConfig.__doc__)
+    astrometry    = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
+    photocal      = pexConfig.ConfigField(dtype = photocal.PhotoCalConfig,
+                                          doc = photocal.PhotoCalConfig.__doc__)
+
+    def validate(self):
+        pexConfig.Config.validate(self)
+        if self.doPsf and (self.doPhotoCal or self.doApCorr or self.doAstrometry):
+            if self.initialMeasurement.prefix == self.measurement.prefix:
+                raise ValueError("CalibrateConfig.initialMeasurement and CalibrateConfig.measurement "\
+                                     "have the same prefix; field names may clash.")
+        if self.doComputeApCorr and not self.doPsf:
+            raise ValueError("Cannot compute aperture correction without doing PSF determination")
+        if self.measurement.doApplyApCorr and not self.doComputeApCorr:
+            raise ValueError("Cannot apply aperture correction without computing it")
+        if self.doPhotoCal and not self.doAstrometry:
+            raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+
+    def setDefaults(self):
+        self.detection.includeThresholdMultiplier = 10.0
+        self.initialMeasurement.prefix = "initial."
+        self.initialMeasurement.doApplyApCorr = False
+        self.background.binSize = 1024
+        self.computeApCorr.alg1.name = "flux.psf"
+        self.computeApCorr.alg2.name = "flux.sinc"
+        
 
 class CalibrateTask(pipeBase.Task):
     """Calibrate an exposure: measure PSF, subtract background, etc.
     """
     ConfigClass = CalibrateConfig
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("repair", RepairTask)
-        self.makeSubtask("photometry", PhotometryTask)
-        self.makeSubtask("measurePsf", MeasurePsfTask)
-        self.makeSubtask("rephotometry", RephotometryTask, config=self.config.photometry)
-        self.makeSubtask("astrometry", AstrometryTask)
+        self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+        self.makeSubtask("initialMeasurement", measAlg.SourceMeasurementTask,
+                         schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("measurePsf", MeasurePsfTask, schema=self.schema)
+        self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
+                         schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("astrometry", AstrometryTask, schema=self.schema)
+        self.makeSubtask("photocal", photocal.PhotoCalTask, schema=self.schema)
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
 
-        @param exposure Exposure to calibrate
-        @param defects List of defects on exposure
+        @param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
+        @param[in]      defects    List of defects on exposure
         @return a pipeBase.Struct with fields:
         - psf: Point spread function
         - apCorr: Aperture correction
@@ -133,72 +162,73 @@ class CalibrateTask(pipeBase.Task):
         """
         assert exposure is not None, "No exposure provided"
 
-        fakePsf, wcs = self.makeFakePsf(exposure)
+        self.installInitialPsf(exposure)
 
         keepCRs = True                  # At least until we know the PSF
-        self.repair.run(exposure, fakePsf, defects=defects, keepCRs=keepCRs)
+        self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
         self.display('repair', exposure=exposure)
 
         if self.config.doBackground:
             with self.timer("background"):
-                bg, exposure = muDetection.estimateBackground(exposure, self.config.background, subtract=True)
+                bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
                 del bg
 
             self.display('background', exposure=exposure)
         
-        if self.config.doPsf or self.config.doAstrometry or self.config.doZeropoint:
-            with self.timer("photometry"):
-                photRet = self.photometry.run(exposure, fakePsf)
-                sources = photRet.sources
-                footprintSets = photRet.footprintSets
-        else:
-            sources, footprintSets = None, []
+        table = afwTable.SourceTable.make(self.schema) # TODO: custom IdFactory for globally unique IDs
+        table.setMetadata(self.algMetadata)
+        detRet = self.detection.makeSourceCatalog(table, exposure)
+        sources = detRet.sources
 
         if self.config.doPsf:
+            self.initialMeasurement.measure(exposure, sources)
             psfRet = self.measurePsf.run(exposure, sources)
-            psf = psfRet.psf
             cellSet = psfRet.cellSet
+            psf = psfRet.psf
         else:
             psf, cellSet = None, None
 
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
-            self.repair.run(exposure, psf, defects=defects, keepCRs=None)
+            self.repair.run(exposure, defects=defects, keepCRs=None)
             self.display('repair', exposure=exposure)
 
-        if self.config.doBackground:
+        if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
             with self.timer("background"):
                 # Subtract background
-                background, exposure = muDetection.estimateBackground(
+                background, exposure = measAlg.estimateBackground(
                     exposure, self.config.background, subtract=True)
                 self.log.log(self.log.INFO, "Fit and subtracted background")
 
             self.display('background', exposure=exposure)
 
-        if self.config.doPsf and (self.config.doAstrometry or self.config.doZeropoint):
-            rephotRet = self.rephotometry.run(exposure, footprintSets, psf)
-            for old, new in zip(sources, rephotRet.sources):
-                for flag in (measAlg.Flags.STAR, measAlg.Flags.PSFSTAR):
-                    propagateFlag(flag, old, new)
-            sources = rephotRet.sources
-            del rephotRet
+        if self.config.doComputeApCorr or self.config.doAstrometry or self.config.doPhotoCal:
+            self.measurement.measure(exposure, sources)   # don't use run, because we don't have apCorr yet
 
-        if self.config.doPsf and self.config.doApCorr:
-            apCorr = self.measureApCorr(exposure, cellSet) # calculate the aperture correction
-            applyApCorrRet = self.photometry.applyApCorr(sources, apCorr)
+        if self.config.doComputeApCorr:
+            assert(self.config.doPsf)
+            apCorr = self.computeApCorr(exposure, cellSet)
         else:
             apCorr = None
 
-        if self.config.doAstrometry or self.config.doZeropoint:
+        if self.measurement.config.doApplyApCorr:
+            assert(apCorr is not None)
+            self.measurement.applyApCorr(sources, apCorr)
+
+        if self.config.doAstrometry:
             astromRet = self.astrometry.run(exposure, sources)
             matches = astromRet.matches
             matchMeta = astromRet.matchMeta
         else:
             matches, matchMeta = None, None
 
-        if self.config.doZeropoint and matches is not None:
-            self.zeropoint(exposure, matches)
+        if self.config.doPhotoCal:
+            assert(matches is not None)
+            photocalRet = self.photocal.run(matches)
+            zp = photocalRet.photocal
+            self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
+            exposure.getCalib().setFluxMag0(zp.getFlux(0))
 
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
 
@@ -211,26 +241,25 @@ class CalibrateTask(pipeBase.Task):
             matchMeta = matchMeta,
         )
 
-    def makeFakePsf(self, exposure):
-        """Initialise the calibration procedure by setting the PSF and WCS
+    def installInitialPsf(self, exposure):
+        """Initialise the calibration procedure by setting the PSF to a configuration-defined guess.
 
-        @param exposure Exposure to process
-        @return PSF, WCS
+        @param[in,out] exposure Exposure to process; fake PSF will be installed here.
         """
         assert exposure, "No exposure provided"
         
         wcs = exposure.getWcs()
         assert wcs, "No wcs in exposure"
 
-        model = self.config.model
-        fwhm = self.config.fwhm / wcs.pixelScale().asArcseconds()
-        size = self.config.size
-        self.log.log(self.log.INFO, "makeFakePsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
+        model = self.config.initialPsf.model
+        fwhm = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
+        size = self.config.initialPsf.size
+        self.log.log(self.log.INFO, "installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
         psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
-        return psf, wcs
+        exposure.setPsf(psf)
 
     @pipeBase.timeMethod
-    def measureApCorr(self, exposure, cellSet):
+    def computeApCorr(self, exposure, cellSet):
         """Measure aperture correction
 
         @param exposure Exposure to process
@@ -239,51 +268,12 @@ class CalibrateTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert cellSet, "No cellSet provided"
         metadata = dafBase.PropertyList()
-        corr = maApCorr.ApertureCorrection(exposure, cellSet, metadata, self.config.apCorr, self.log)
+        apCorr = measAlg.ApertureCorrection(exposure, cellSet, metadata, self.config.computeApCorr, self.log)
         x, y = exposure.getWidth() / 2.0, exposure.getHeight() / 2.0
-        value, error = corr.computeAt(x, y)
+        value, error = apCorr.computeAt(x, y)
         self.log.log(self.log.INFO, "Aperture correction using %d/%d stars: %f +/- %f" %
                      (metadata.get("numAvailStars"), metadata.get("numGoodStars"), value, error))
         for key in metadata.names():
             self.metadata.add("apCorr.%s" % key, metadata.get(key))
         # XXX metadata?
-        return corr
-
-    @pipeBase.timeMethod
-    def zeropoint(self, exposure, matches):
-        """Photometric calibration
-
-        @param exposure Exposure to process
-        @param matches Matched sources
-        """
-        assert exposure, "No exposure provided"
-        assert matches, "No matches provided"
-
-        zp = photocal.calcPhotoCal(matches, log=self.log, goodFlagValue=0)
-        self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
-        exposure.getCalib().setFluxMag0(zp.getFlux(0))
-        return
-
-
-class CalibratePsfTask(CalibrateTask):
-    """Calibrate only the PSF for an image.
-    
-    Explicitly turns off other functions.
-    
-    Conversion notes:
-    - Is it really necessary to restore the old config?
-    - Surely there is a cleaner way to do this, such as creating a config that
-      has these flags explicitly turned off?
-    """
-    def run(self, *args, **kwargs):
-        oldConfig = self.config.copy()
-        self.config.doBackground = False
-        self.config.doDistortion = False
-        self.config.doAstrometry = False
-        self.config.doZeropoint = False
-
-        retVal = CalibrateTask.run(self, *args, **kwargs)
-
-        self.config = oldConfig
-        
-        return retVal
+        return apCorr

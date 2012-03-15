@@ -22,81 +22,56 @@
 #
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.afw.detection as afwDet
+import lsst.daf.base as dafBase
+import lsst.afw.table as afwTable
+import lsst.meas.algorithms as measAlg
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
-from lsst.pipe.tasks.photometry import PhotometryTask
 
 class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
-    doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
+    doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
+    doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
-    doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
+    doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Instrumental Signature Removal")
-    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
-    photometry = pexConfig.ConfigField(dtype=PhotometryTask.ConfigClass, doc="Photometry")
+    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
+                                      doc="Calibration (inc. high-threshold detection and measurement)")
+    detection = pexConfig.ConfigField(dtype=measAlg.SourceDetectionTask.ConfigClass,
+                                      doc="Low-threshold detection for final measurement")
+    measurement = pexConfig.ConfigField(dtype=measAlg.SourceMeasurementTask.ConfigClass,
+                                        doc="Final source measurement on low-threshold detections")
 
-    def __init__(self, *args, **kwargs):
-        pexConfig.Config.__init__(self, *args, **kwargs)
+    def validate(self):
+        pexConfig.Config.validate(self)
+        if self.doMeasurement and not self.doDetection:
+            raise ValueError("Cannot run source measurement without source detection.")
+
+    def setDefaults(self):
         self.doWriteIsr = False
-        self.isr.methodList=["doConversionForIsr", "doSaturationDetection",
-                             "doOverscanCorrection", "doVariance", "doFlatCorrection"]
+        self.isr.methodList = ["doConversionForIsr", "doSaturationDetection",
+                               "doOverscanCorrection", "doVariance", "doFlatCorrection"]
         self.isr.doWrite = False
-        
-        self.calibrate.repair.doCosmicRay = True
-        self.calibrate.repair.cosmicray.nCrPixelMax = 100000
-        self.calibrate.background.binSize = 1024
-        
-        # PSF determination
-        self.calibrate.measurePsf.starSelector.name = "secondMoment"
-        self.calibrate.measurePsf.psfDeterminer.name = "pca"
-        self.calibrate.measurePsf.starSelector["secondMoment"].clumpNSigma = 2.0
-        self.calibrate.measurePsf.psfDeterminer["pca"].nEigenComponents = 4
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 2
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin = 25
-        
-        # Final photometry
-        self.photometry.detect.thresholdValue = 5.0
-        self.photometry.detect.includeThresholdMultiplier = 1.0
-        self.photometry.measure.source.astrom = "SDSS"
-        self.photometry.measure.source.apFlux = "SINC"
-        self.photometry.measure.source.modelFlux = "GAUSSIAN"
-        self.photometry.measure.source.psfFlux = "PSF"
-        self.photometry.measure.source.shape = "SDSS"
-        self.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
-        self.photometry.measure.shape.names = ["SDSS"]
-        self.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-        self.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10.0
-        self.photometry.measure.photometry["SINC"].radius = 7.0
-        self.photometry.measure.photometry["NAIVE"].radius = self.photometry.measure.photometry["SINC"].radius
-        
-        # Initial photometry
-        self.calibrate.photometry.detect.thresholdValue = 5.0
-        self.calibrate.photometry.detect.includeThresholdMultiplier = 10.0
-        self.calibrate.photometry.measure = self.photometry.measure
-        
-        # Aperture correction
-        self.calibrate.apCorr.alg1.name = "PSF"
-        self.calibrate.apCorr.alg2.name = "SINC"
-        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = \
-            self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
-        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = \
-            self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
-        
+
 class ProcessCcdTask(pipeBase.Task):
     """Process a CCD"""
     ConfigClass = ProcessCcdConfig
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
         self.makeSubtask("isr", IsrTask)
         self.makeSubtask("calibrate", CalibrateTask)
-        self.makeSubtask("photometry", PhotometryTask)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
+        if self.config.doDetection:
+            self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
+                             schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
@@ -107,56 +82,62 @@ class ProcessCcdTask(pipeBase.Task):
             rawExposure = sensorRef.get("raw")
             isrRes = self.isr.run(rawExposure, calibSet)
             self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
-            ccdExposure = self.isr.doCcdAssembly([isrRes.postIsrExposure])
-            self.display("ccdAssembly", exposure=ccdExposure)
+            exposure = self.isr.doCcdAssembly([isrRes.postIsrExposure])
+            self.display("ccdAssembly", exposure=exposure)
             if self.config.doWriteIsr:
-                sensorRef.put(ccdExposure, 'postISRCCD')
+                sensorRef.put(exposure, 'postISRCCD')
         else:
-            ccdExposure = None
+            exposure = None
 
         if self.config.doCalibrate:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(ccdExposure)
-            ccdExposure = calib.exposure
+            if exposure is None:
+                exposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(exposure)
+            exposure = calib.exposure
             if self.config.doWriteCalibrate:
-                if calib.sources:
-                    sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
-                if calib.psf:
+                sensorRef.put(exposure, 'calexp')
+                sensorRef.put(calib.sources, 'icSrc')
+                if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
-                if calib.apCorr:
-                    #sensorRef.put(calib.apCorr, 'apcorr')
-                    pass
-                if calib.matches:
-                    sensorRef.put(afwDet.PersistableSourceMatchVector(calib.matches, calib.matchMeta),
-                               'icMatch')
+                if calib.apCorr is not None:
+                    sensorRef.put(calib.apCorr, 'apCorr')
+                if calib.matches is not None:
+                    normalizedMatches = afwTable.packMatches(calib.matches)
+                    normalizedMatches.table.setMetadata(calib.matchMeta)
+                    sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
 
-        if self.config.doPhotometry:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('calexp')
+        if self.config.doDetection:
+            if exposure is None:
+                exposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                apCorr = None # sensorRef.get('apcorr')
-            else:
-                psf = calib.psf
-                apCorr = calib.apCorr
-            phot = self.photometry.run(ccdExposure, psf, apcorr=apCorr)
-            if self.config.doWritePhotometry:
-                sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
+                exposure.setPsf(sensorRef.get('psf'))
+            table = afwTable.SourceTable.make(self.schema)
+            table.setMetadata(self.algMetadata)
+            detRet = self.detection.makeSourceCatalog(table, exposure)
+            sources = detRet.sources
         else:
-            phot, psf, apCorr = None, None, None
+            sources = None
+
+        if self.config.doMeasurement:
+            assert(sources)
+            assert(exposure)
+            if calib is None:
+                apCorr = sensorRef.get("apCorr")
+            else:
+                apCorr = calib.apCorr
+            self.measurement.run(exposure, sources, apCorr)
+ 
+        if self.config.doWriteSources:
+            sensorRef.put(sources, 'src')
 
         if self.config.doWriteCalibrate:
-            sensorRef.put(ccdExposure, 'calexp')
+            sensorRef.put(exposure, 'calexp')
             
         return pipeBase.Struct(
-            ccdExposure = isrRes.postIsrExposure if self.config.doIsr else None,
-            exposure = ccdExposure,
-            psf = psf,
-            apCorr = apCorr,
-            sources = phot.sources if phot else None,
-            matches = calib.matches if calib else None,
-            matchMeta = calib.matchMeta if calib else None,
+            exposure = exposure,
+            calib = calib,
+            sources = sources,
         )

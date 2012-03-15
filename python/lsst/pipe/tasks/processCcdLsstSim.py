@@ -22,13 +22,12 @@
 #
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.afw.detection as afwDet
-import lsst.meas.utils.sourceMeasurement as srcMeas
-import lsst.pex.logging as pexLog
+import lsst.daf.base as dafBase
+import lsst.afw.table as afwTable
+import lsst.meas.algorithms as measAlg
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
-from lsst.pipe.tasks.photometry import PhotometryTask
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
 
 class ProcessCcdLsstSimConfig(pexConfig.Config):
@@ -36,74 +35,41 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
     doSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Combine Snaps?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
-    doPhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Perform photometry?")
-    doComputeSkyCoords = pexConfig.Field(dtype=bool, default=True, doc="Compute sky coordinates?")
+    doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
+    doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Write snapCombine results?")  
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
-    doWritePhotometry = pexConfig.Field(dtype=bool, default=True, doc = "Write photometry results?")
+    doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Amp-level instrumental signature removal")
     ccdIsr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="CCD level instrumental signature removal")
     snapCombine = pexConfig.ConfigField(dtype=SnapCombineTask.ConfigClass, doc="Combine snaps")
-    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass, doc="Calibration")
-    photometry = pexConfig.ConfigField(dtype=PhotometryTask.ConfigClass, doc="Photometry")
+    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
+                                      doc="Calibration (inc. high-threshold detection and measurement)")
+    detection = pexConfig.ConfigField(dtype=measAlg.SourceDetectionTask.ConfigClass,
+                                      doc="Low-threshold detection for final measurement")
+    measurement = pexConfig.ConfigField(dtype=measAlg.SourceMeasurementTask.ConfigClass,
+                                        doc="Final source measurement on low-threshold detections")
 
-    def __init__(self, *args, **kwargs):
-        pexConfig.Config.__init__(self, *args, **kwargs)
-        self.isr.doWrite = False # don't persist data until until CCD ISR is run; ignored anyway
+    def validate(self):
+        pexConfig.Config.validate(self)
+        if self.doMeasurement and not self.doDetection:
+            raise ValueError("Cannot run source measurement without source detection.")
+
+    def setDefaults(self):
+        self.isr.doWrite = False
         self.ccdIsr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
-        self.ccdIsr.doWrite = False # ProcessCcdLsstSimTask, not IsrTask, persists the data; ignored anyway
+        self.ccdIsr.doWrite = False
 
+        # FIXME: unless these defaults need to be different from the subtask defaults,
+        #        don't repeat them here
         self.snapCombine.doPsfMatch = True
         self.snapCombine.repair.doInterpolate = True
         self.snapCombine.diffim.kernel.name = "DF"
         self.snapCombine.diffim.kernel.active.spatialKernelOrder = 1
         self.snapCombine.coadd.badMaskPlanes = ["EDGE"]
-        self.snapCombine.photometry.detect.thresholdValue = 5.0
+        self.snapCombine.detection.thresholdValue = 5.0
 
-        self.calibrate.repair.doCosmicRay = True
-        self.calibrate.repair.cosmicray.nCrPixelMax = 100000
-        self.calibrate.background.binSize = 1024
-        
-        # PSF determination
-        self.calibrate.measurePsf.starSelector.name = "secondMoment"
-        self.calibrate.measurePsf.psfDeterminer.name = "pca"
-        self.calibrate.measurePsf.starSelector["secondMoment"].clumpNSigma = 2.0
-        self.calibrate.measurePsf.psfDeterminer["pca"].nEigenComponents = 4
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 2
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin = 25
-        
-        # Final photometry
-        self.photometry.detect.thresholdValue = 5.0
-        self.photometry.detect.includeThresholdMultiplier = 1.0
-        self.photometry.measure.source.astrom = "SDSS"
-        self.photometry.measure.source.apFlux = "SINC"
-        self.photometry.measure.source.modelFlux = "GAUSSIAN"
-        self.photometry.measure.source.psfFlux = "PSF"
-        self.photometry.measure.source.shape = "SDSS"
-        self.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
-        self.photometry.measure.shape.names = ["SDSS"]
-        self.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-        self.photometry.measure.photometry["SINC"].radius = 7.0
-        self.photometry.measure.photometry["NAIVE"].radius = self.photometry.measure.photometry["SINC"].radius
-        
-        # Initial photometry
-        self.calibrate.photometry.detect.thresholdValue = 5.0
-        self.calibrate.photometry.detect.includeThresholdMultiplier = 10.0
-        self.calibrate.photometry.measure = self.photometry.measure
-        
-        # Aperture correction
-        self.calibrate.apCorr.alg1.name = "PSF"
-        self.calibrate.apCorr.alg2.name = "SINC"
-
-        self.calibrate.apCorr.alg1[self.calibrate.apCorr.alg1.name] = \
-            self.photometry.measure.photometry[self.calibrate.apCorr.alg1.name]
-        self.calibrate.apCorr.alg2[self.calibrate.apCorr.alg2.name] = \
-            self.photometry.measure.photometry[self.calibrate.apCorr.alg2.name]
-
-        pexLog.Trace_setVerbosity("ProcessCcdLsstSimTask", 1)
-        pexLog.Trace_setVerbosity("lsst.ip.diffim", 3)
 
 class ProcessCcdLsstSimTask(pipeBase.Task):
     """Process a CCD for LSSTSim
@@ -112,13 +78,19 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
     """
     ConfigClass = ProcessCcdLsstSimConfig
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
         self.makeSubtask("isr", IsrTask)
         self.makeSubtask("ccdIsr", IsrTask)
         self.makeSubtask("snapCombine", SnapCombineTask)
         self.makeSubtask("calibrate", CalibrateTask)
-        self.makeSubtask("photometry", PhotometryTask)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
+        if self.config.doDetection:
+            self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
+                             schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
@@ -190,44 +162,53 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                     visitExposure = sensorRef.get('postISRCCD')
             calib = self.calibrate.run(visitExposure)
             calExposure = calib.exposure
+
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
-                sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
+                sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
-                    #sensorRef.put(calib.apCorr, 'apcorr')
-                    pass
+                    sensorRef.put(calib.apCorr, 'apCorr')
                 if calib.matches is not None:
-                    sensorRef.put(afwDet.PersistableSourceMatchVector(calib.matches, calib.matchMeta),
-                               'icMatch')
+                    normalizedMatches = afwTable.packMatches(calib.matches)
+                    normalizedMatches.table.setMetadata(calib.matchMeta)
+                    sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
 
-        if self.config.doPhotometry:
+        if self.config.doDetection:
             if calExposure is None:
                 calExposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                apCorr = None # sensorRef.get('apcorr')
-            else:
-                psf = calib.psf
-                apCorr = calib.apCorr
-            phot = self.photometry.run(calExposure, psf, apcorr=apCorr)
-            if self.config.doComputeSkyCoords and calExposure.getWcs() is not None:
-                srcMeas.computeSkyCoords(calExposure.getWcs(), phot.sources)
-            if self.config.doWritePhotometry:
-                sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
+                calExposure.setPsf(sensorRef.get('psf'))
+            table = afwTable.SourceTable.make(self.schema)
+            table.setMetadata(self.algMetadata)
+            detRet = self.detection.makeSourceCatalog(table, calExposure)
+            sources = detRet.sources
         else:
-            phot = None
+            sources = None
+
+        if self.config.doMeasurement:
+            assert(sources)
+            assert(calExposure)
+            if calib is None:
+                apCorr = sensorRef.get("apCorr")
+            else:
+                apCorr = calib.apCorr
+            self.measurement.run(calExposure, sources, apCorr)
+
+        if self.config.doWriteSources:
+            sensorRef.put(sources, 'src')
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure if self.config.doIsr else None,
             visitExposure = visitExposure if self.config.doSnapCombine else None,
-            exposure = calExposure,
-            psf = psf,
+            calExposure = calExposure,
+            calib = calib,
             apCorr = apCorr,
-            sources = phot.sources if phot else None,
+            sources = sources,
             matches = calib.matches if calib else None,
             matchMeta = calib.matchMeta if calib else None,
         )
