@@ -34,16 +34,12 @@ import lsst.pipe.base as pipeBase
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
-class _TempPsfMatchConfig(pexConfig.Config):
-    pass # too complex to put here and it belongs in ip_diffim anyway; it makes a great test of pexConfig!
-
-
 class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
     """
     coadd    = pexConfig.ConfigField(dtype = coaddUtils.Coadd.ConfigClass, doc = "")
     warp     = pexConfig.ConfigField(dtype = afwMath.Warper.ConfigClass, doc = "")
-    psfMatch = pexConfig.ConfigField(dtype = _TempPsfMatchConfig, doc = "a hack!")
+    psfMatch = pexConfig.ConfigField(dtype = ipDiffIm.ModelPsfMatchTask.ConfigClass, doc = "a hack!")
 
 
 class CoaddTask(pipeBase.Task):
@@ -53,7 +49,7 @@ class CoaddTask(pipeBase.Task):
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.psfMatcher = ipDiffIm.ModelPsfMatch(self.config.psfMatch)
+        self.makeSubtask("psfMatch", ipDiffIm.ModelPsfMatchTask)
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
@@ -145,7 +141,8 @@ class CoaddTask(pipeBase.Task):
             if desFwhm > 0:
                 modelPsf = self.makeModelPsf(exposure, desFwhm)
                 self.log.log(self.log.INFO, "PSF-match exposure")
-                exposure, psfMatchingKernel, kernelCellSet = self.psfMatcher.matchExposure(exposure, modelPsf)
+                psfRes = self.psfMatch.run(exposure, modelPsf)
+                exposure = psfRes.psfMatchedExposure
             self.log.log(self.log.INFO, "Warp exposure")
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
             coadd.addExposure(exposure)

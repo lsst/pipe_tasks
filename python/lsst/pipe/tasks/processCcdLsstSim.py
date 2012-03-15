@@ -28,18 +28,22 @@ import lsst.meas.algorithms as measAlg
 
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
+from lsst.pipe.tasks.snapCombine import SnapCombineTask
 
 class ProcessCcdLsstSimConfig(pexConfig.Config):
     """Config for ProcessCcdLsstSim"""
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
+    doSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Combine Snaps?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
+    doWriteSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Write snapCombine results?")  
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Amp-level instrumental signature removal")
     ccdIsr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="CCD level instrumental signature removal")
+    snapCombine = pexConfig.ConfigField(dtype=SnapCombineTask.ConfigClass, doc="Combine snaps")
     calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
                                       doc="Calibration (inc. high-threshold detection and measurement)")
     detection = pexConfig.ConfigField(dtype=measAlg.SourceDetectionTask.ConfigClass,
@@ -57,6 +61,17 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.isr.methodList = ['doSaturationInterpolation', 'doMaskAndInterpDefect', 'doMaskAndInterpNan']
         self.isr.doWrite = False
 
+        # FIXME: unless these defaults need to be different from the subtask defaults,
+        #        don't repeat them here
+        self.snapCombine.doPsfMatch = True
+        self.snapCombine.repair.doInterpolate = True
+        self.snapCombine.diffim.kernel.name = "DF"
+        self.snapCombine.diffim.kernel.active.spatialKernelOrder = 1
+        self.snapCombine.coadd.badMaskPlanes = ["EDGE"]
+        if False:
+            self.snapCombine.photometry.detect.thresholdValue = 5.0
+
+
 class ProcessCcdLsstSimTask(pipeBase.Task):
     """Process a CCD for LSSTSim
     
@@ -68,6 +83,7 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwargs)
         self.makeSubtask("isr", IsrTask)
         self.makeSubtask("ccdIsr", IsrTask)
+        self.makeSubtask("snapCombine", SnapCombineTask)
         self.makeSubtask("calibrate", CalibrateTask)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
@@ -92,6 +108,8 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
         - matchMeta: ? if config.doCalibrate, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        snap0 = None
+        snap1 = None
         if self.config.doIsr:
             butler = sensorRef.butlerSubset.butler
             for snapRef in sensorRef.subItems(level="snap"):
@@ -107,26 +125,47 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
                     self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
                 # assemble amps into a CCD
                 tempExposure = self.isr.doCcdAssembly(exposureList)
+
                 del exposureList
                 # perform CCD-level ISR
                 ccdCalibSet = self.ccdIsr.makeCalibDict(butler, snapRef.dataId)
                 ccdIsrRes = self.ccdIsr.run(tempExposure, ccdCalibSet)
                 del tempExposure
-                exposure = ccdIsrRes.postIsrExposure
+                postIsrExposure = ccdIsrRes.postIsrExposure
                 
                 self.display("ccdAssembly", exposure=postIsrExposure)
                 if self.config.doWriteIsr:
-                    snapRef.put(postIsrExposure, 'postISRCCD')
+                    snapRef.put(postIsrExposure, "postISRCCD")
+
+                if snapRef.dataId['snap'] == 0:
+                    snap0 = postIsrExposure
+                elif snapRef.dataId['snap'] == 1:
+                    snap1 = postIsrExposure
+
+        if self.config.doSnapCombine:
+            if snap0 is None or snap1 is None:
+                snap0 = sensorRef.get("postISRCCD", snap=0)
+                snap1 = sensorRef.get("postISRCCD", snap=1)
+
+            combineRes = self.snapCombine.run(snap0, snap1)
+            visitExposure = combineRes.visitExposure
+            self.display("snapCombine", exposure=visitExposure)
+            if self.config.doWriteSnapCombine:
+                snapRef.put(visitExposure, "visitCCD")
         else:
-            exposure = None
+            visitExposure = postIsrExposure
 
         if self.config.doCalibrate:
-            if exposure is None:
-                exposure = sensorRef.get('postISRCCD')
+            if visitExposure is None:
+                if self.config.doSnapCombine:
+                    visitExposure = sensorRef.get('visitCCD')
+                else:
+                    visitExposure = sensorRef.get('postISRCCD')
             calib = self.calibrate.run(exposure)
-            exposure = calib.exposure
+            calExposure = calib.exposure
+
             if self.config.doWriteCalibrate:
-                sensorRef.put(exposure, 'calexp')
+                sensorRef.put(calExposure, 'calexp')
                 # FIXME: SourceCatalog not butlerized
                 #sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
@@ -144,27 +183,27 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             calib = None
 
         if self.config.doDetection:
-            if exposure is None:
-                exposure = sensorRef.get('calexp')
+            if calExposure is None:
+                calExposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                exposure.setPsf(sensorRef.get('psf'))
+                calExposure.setPsf(sensorRef.get('psf'))
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, exposure)
+            sources = self.detection.makeSourceCatalog(table, calExposure)
         else:
             sources = None
 
         if self.config.doMeasurement:
             assert(sources)
-            assert(exposure)
+            assert(calExposure)
             if calib is None:
                 apCorr = None # FIXME: should load from butler
                 if self.measurement.doApplyApCorr:
                     self.log.log(self.log.WARN, "Cannot load aperture correction; will not be applied.")
             else:
                 apCorr = calib.apCorr
-            self.measurement.run(exposure, sources, apCorr)
+            self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
             # FIXME: SourceCatalog not butlerized
@@ -172,7 +211,13 @@ class ProcessCcdLsstSimTask(pipeBase.Task):
             pass
 
         return pipeBase.Struct(
-            exposure = exposure,
+            postIsrExposure = postIsrExposure if self.config.doIsr else None,
+            visitExposure = visitExposure if self.config.doSnapCombine else None,
+            calExposure = calExposure,
             calib = calib,
-            sources = sources,
+            psf = psf,
+            apCorr = apCorr,
+            sources = phot.sources if phot else None,
+            matches = calib.matches if calib else None,
+            matchMeta = calib.matchMeta if calib else None,
         )
