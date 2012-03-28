@@ -31,6 +31,7 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.ip.diffim as ipDiffIm
 import lsst.pipe.base as pipeBase
+from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
@@ -42,10 +43,11 @@ class CoaddConfig(pexConfig.Config):
     psfMatch = pexConfig.ConfigField(dtype = ipDiffIm.ModelPsfMatchTask.ConfigClass, doc = "a hack!")
 
 
-class CoaddTask(pipeBase.Task):
+class CoaddTask(pipeBase.CmdLineTask):
     """Coadd images by PSF-matching (optional), warping and computing a weighted sum
     """
     ConfigClass = CoaddConfig
+    _DefaultName = "coadd"
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
@@ -53,6 +55,42 @@ class CoaddTask(pipeBase.Task):
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
+
+    @classmethod
+    def parseAndRun(cls, args=None, config=None, log=None):
+        """Parse an argument list and run the command
+
+        @param args: list of command-line arguments; if None use sys.arv
+        @param config: config for task (instance of pex_config Config); if None use cls.ConfigClass()
+        @param log: log (instance of pex_logging Log); if None use the default log
+        """
+        argumentParser = cls._makeArgumentParser()
+        if config is None:
+            config = cls.ConfigClass()
+        parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
+        task = cls(name = cls._DefaultName, config = parsedCmd.config, log = parsedCmd.log)
+
+        taskRes = task.run(
+            dataRefList = parsedCmd.dataRefList,
+            bbox = parsedCmd.bbox,
+            wcs = parsedCmd.wcs,
+            desFwhm = parsedCmd.fwhm,
+        )
+        
+        coadd = taskRes.coadd
+        coaddExposure = coadd.getCoadd()
+        weightMap = coadd.getWeightMap()
+    
+        filterName = coaddExposure.getFilter().getName()
+        if filterName == "_unknown_":
+            filterStr = "unk"
+        coaddBaseName = "%s_filter_%s_fwhm_%s" % (task.getName(), filterName, parsedCmd.fwhm)
+        coaddPath = coaddBaseName + ".fits"
+        weightPath = coaddBaseName + "weight.fits"
+        print "Saving coadd as %s" % (coaddPath,)
+        coaddExposure.writeFits(coaddPath)
+        print "saving weight map as %s" % (weightPath,)
+        weightMap.writeFits(weightPath)
     
     def getCalexp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf
@@ -150,3 +188,9 @@ class CoaddTask(pipeBase.Task):
         return pipeBase.Struct(
             coadd = coadd,
         )
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        """Create an argument parser
+        """
+        return CoaddArgumentParser(name=cls._DefaultName)

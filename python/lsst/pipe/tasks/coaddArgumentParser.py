@@ -83,30 +83,32 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         self.add_argument("--overlap", type=float, default = defaultOverlap, required = (defaultScale==None),
             help="Overlap between adjacent sky tracts, in deg")
 
-    def parse_args(self, config, argv=None):
+    def parse_args(self, config, args=None, log=None):
         """Parse arguments for a command-line-driven task
 
         @params config: config for the task being run
-        @params argv: argv to parse; if None then sys.argv[1:] is used
-        @return namespace: an object containing an attribute for most command-line arguments and options.
-            In addition to the standard attributes from pipeBase.ArgumentParser, adds the following
-            coadd-specific attributes:
-            - fwhm: Desired FWHM, in science exposure pixels; 0 for no PSF matching
-            - radec: RA, Dec of center of coadd (an afwGeom.IcrsCoord)
-            - bbox: bounding box for coadd (an afwGeom.Box2I)
-            - wcs: WCS for coadd (an afwMath.Wcs)
-            - skyMap: sky map for coadd (an lsst.skymap.SkyMap)
-            - skyTractInfo: sky tract info for coadd (an lsst.skymap.SkyTractInfo)
+        @params args: argument list; if None use sys.argv[1:]
+        @params log: log (instance pex_logging Log); if None use the default log
 
-            The following command-line options are NOT included in namespace:
-            - llc (get from bbox)
-            - size (get from bbox)
-            - scale (get from skyTractInfo)
-            - projection (get from skyTractInfo)
-            - overlap (get from skyTractInfo)
-            - tract (get from skyTractInfo)
+        @return namespace: an object containing an attribute for most command-line arguments and options.
+        In addition to the standard attributes from pipeBase.ArgumentParser, adds the following
+        coadd-specific attributes:
+        - fwhm: Desired FWHM, in science exposure pixels; 0 for no PSF matching
+        - radec: RA, Dec of center of coadd (an afwGeom.IcrsCoord)
+        - bbox: bounding box for coadd (an afwGeom.Box2I)
+        - wcs: WCS for coadd (an afwMath.Wcs)
+        - skyMap: sky map for coadd (an lsst.skymap.SkyMap)
+        - skyTractInfo: sky tract info for coadd (an lsst.skymap.SkyTractInfo)
+
+        The following command-line options are NOT included in namespace:
+        - llc (get from bbox)
+        - size (get from bbox)
+        - scale (get from skyTractInfo)
+        - projection (get from skyTractInfo)
+        - overlap (get from skyTractInfo)
+        - tract (get from skyTractInfo)
         """
-        namespace = pipeBase.ArgumentParser.parse_args(self, config, argv)
+        namespace = pipeBase.ArgumentParser.parse_args(self, config=config, args=args, log=log)
         
         namespace.skyMap = lsst.skymap.SkyMap(
             projection = namespace.projection,

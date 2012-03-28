@@ -21,30 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.logging as pexLog
-from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
-from lsst.pipe.tasks.outlierRejectedCoadd import OutlierRejectedCoaddTask as TaskClass
+from lsst.pipe.tasks.outlierRejectedCoadd import OutlierRejectedCoaddTask
 
-if __name__ == "__main__":
-    name = "outlierRejectedCoadd"
-    pexLog.Trace.setVerbosity('lsst.coadd', 3)
-    pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
-
-    parser = CoaddArgumentParser(name = name)
-    cmd = parser.parse_args(config=TaskClass.ConfigClass())
-    task = TaskClass(name = name, config = cmd.config, log = cmd.log)
-    taskRes = task.run(
-        dataRefList = cmd.dataRefList,
-        bbox = cmd.bbox,
-        wcs = cmd.wcs,
-        desFwhm = cmd.fwhm,
-    )
-    
-    coaddExposure = taskRes.coaddExposure
-
-    filterName = coaddExposure.getFilter().getName()
-    if filterName == "_unknown_":
-        filterStr = "unk"
-    coaddBaseName = "%s_filter_%s_fwhm_%s" % (name, filterName, cmd.fwhm)
-    coaddPath = coaddBaseName + ".fits"
-    print "Saving coadd as %s" % (coaddPath,)
-    coaddExposure.writeFits(coaddPath)
+OutlierRejectedCoaddTask.parseAndRun()

@@ -71,12 +71,13 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
         self.snapCombine.detection.thresholdValue = 5.0
 
 
-class ProcessCcdLsstSimTask(pipeBase.Task):
+class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
     """Process a CCD for LSSTSim
     
     @todo: this variant of ProcessCcdTask can be eliminated once IsrTask is unified.
     """
     ConfigClass = ProcessCcdLsstSimConfig
+    _DefaultName = "processCcd"
 
     def __init__(self, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
