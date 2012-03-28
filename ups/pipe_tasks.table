@@ -14,7 +14,6 @@ setupOptional(matplotlib)
 
 # mappers; this should go away with the new butler
 setupOptional(obs_subaru)
-setupOptional(obs_cfht)
 setupOptional(obs_lsstSim)
 
 # HSC products
