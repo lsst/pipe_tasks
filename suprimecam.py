@@ -6,12 +6,13 @@ import lsst.afw.image as afwImage
 import lsst.ip.isr as ipIsr
 import lsst.pipe.tasks.processCcd as ptProcessCcd
 import hsc.pipe.tasks.calibrate as hscCalibrate
+import hsc.pipe.tasks.isr as hscIsr
 
-class SuprimeCamIsrTask(ipIsr.IsrTask):
-    def doCcdAssembly(self, exposureList):
-        ccdExposure = super(SuprimeCamIsrTask, self).doCcdAssembly(exposureList)
-        self.guider(ccdExposure)
-        return ccdExposure
+class SuprimeCamIsrTask(hscIsr.HscIsrTask):
+    def run(self, *args, **kwargs):
+        result = super(SuprimeCamIsrTask, self).run(*args, **kwargs)
+        self.guider(result.postIsrExposure)
+        return result
     
     def guider(self, exposure):
         """Mask defects and trim guider shadow
