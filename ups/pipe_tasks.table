@@ -13,12 +13,7 @@ setupOptional(skymap)
 setupOptional(matplotlib)
 
 # mappers; this should go away with the new butler
-setupOptional(obs_subaru)
 setupOptional(obs_lsstSim)
-
-# HSC products
-setupOptional(hscAstrom)
-setupOptional(distEst)
 
 # Extra algorithms
 setupOptional(meas_extensions_shapeHSM)
