@@ -190,7 +190,11 @@ class DetrendCombineTask(Task):
                 if expScales is not None:
                     imageList[i] *= expScales[i]
 
-            afwMath.statisticsStack(subCombined, imageList, self.config.combine, stats)
+            if False:
+                # In-place stacks are now supported on LSST's afw, but not yet on HSC
+                afwMath.statisticsStack(subCombined, imageList, self.config.combine, stats)
+            else:
+                subCombined <<= afwMath.statisticsStack(imageList, self.config.combine, stats)
 
         if finalScale is not None:
             background = self.stats.run(combined)
