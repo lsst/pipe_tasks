@@ -1,8 +1,16 @@
 #!/usr/bin/env python
 
+import numpy
+
 from lsst.pex.config import Config, ConfigField, Field
 from lsst.pipe.base import Task, Struct
+import lsst.afw.math as afwMath
+import lsst.afw.geom as afwGeom
+import lsst.afw.detection as afwDet
+import lsst.afw.image as afwImage
 import lsst.meas.algorithms as measAlg
+
+import hsc.pipe.tasks.isr as hscIsr
 
 #    detrend = ChoiceField(doc="Type of detrend", dtype=str, default="BIAS",
 #                          allowed={"BIAS": "Zero second exposure to measure electronic pedestal",
@@ -20,7 +28,7 @@ class DetrendStatsConfig(Config):
     
 
 class DetrendProcessConfig(Config):
-    isr = ConfigField(dtype=isrTask.IsrTaskConfig, doc="ISR configuration")
+    isr = ConfigField(dtype=hscIsr.HscIsrConfig, doc="ISR configuration")
     detection = ConfigField(dtype=measAlg.SourceDetectionConfig, doc="Detection configuration")
     background = ConfigField(dtype=measAlg.BackgroundConfig, doc="Background configuration")
     stats = ConfigField(dtype=DetrendStatsConfig, doc="Background statistics configuration")
@@ -33,6 +41,8 @@ class DetrendCombineConfig(Config):
     maskDetected = Field(doc="Mask pixels about the detection threshold?", dtype=bool, default=True)
     combine = Field(doc="Statistic to use for combination (from lsst.afw.math)", dtype=int,
                  default=afwMath.MEANCLIP)
+    clip = Field(doc="Clipping threshold for combination", dtype=float, default=3.0)
+    iter = Field(doc="Clipping iterations for combination", dtype=int, default=3)
     stats = ConfigField(dtype=DetrendStatsConfig, doc="Background statistics configuration")
 
 class MaskCombineConfig(Config):
@@ -51,17 +61,26 @@ class DetrendConfig(Config):
 class DetrendStatsTask(Task):
     ConfigClass = DetrendStatsConfig
 
-    def run(self, exposure):
-        stats = afwMath.StatisticsControl(self.config.stats.clip, self.config.stats.iter,
-                                          exposure.getMaskedImage().getMask().getPlaneBitMask("DETECTED"))
-        return afwMath.makeStatistics(exposure, self.config.stats.stat, stats).getValue()
+    def run(self, exposureOrImage):
+        
+        stats = afwMath.StatisticsControl(self.config.clip, self.config.iter,
+                                          afwImage.MaskU.getPlaneBitMask("DETECTED"))
+        try:
+            image = exposureOrImage.getMaskedImage()
+        except:
+            try:
+                image = exposureOrImage.getImage()
+            except:
+                image = exposureOrImage
+
+        return afwMath.makeStatistics(image, self.config.stat, stats).getValue()
 
 
 class DetrendProcessTask(Task):
     ConfigClass = DetrendProcessConfig
     def __init__(self, **kwargs):
         super(DetrendProcessTask, self).__init__(**kwargs)
-        self.makeSubtask("isr", isrTask.IsrTask)
+        self.makeSubtask("isr", hscIsr.HscIsrTask)
         self.makeSubtask("detection", measAlg.SourceDetectionTask)
         self.makeSubtask("stats", DetrendStatsTask)
 
@@ -72,7 +91,7 @@ class DetrendProcessTask(Task):
 
         background = None
         if detrend.lower() in ("flat", "fringe", "mask"):
-            footprintSets = self.detect()
+            footprintSets = self.detect(exposure)
 
             background = self.stats.run(exposure)
 
@@ -85,7 +104,7 @@ class DetrendProcessTask(Task):
 
         return Struct(exposure=exposure, background=background)
 
-    def removeInstrumentSignature(sensorRef):
+    def removeInstrumentSignature(self, sensorRef):
         butler = sensorRef.butlerSubset.butler
         calibSet = self.isr.makeCalibDict(butler, sensorRef.dataId)
         exposure = sensorRef.get("raw")
@@ -94,13 +113,14 @@ class DetrendProcessTask(Task):
         self.display("isr", exposure=exposure, pause=True)
         return exposure
 
-    def detect(exposure):
+    def detect(self, exposure):
         background = self.subtractBackground(exposure)
         footprintSets = self.detection.detectFootprints(exposure)
+        mi = exposure.getMaskedImage()
         mi += background                # Restore background
         return footprintSets
 
-    def subtractBackground(exposure):
+    def subtractBackground(self, exposure):
         mi = exposure.getMaskedImage()
         background = measAlg.getBackground(mi, self.config.background).getImageF()
         mi -= background
@@ -127,7 +147,7 @@ class DetrendScaleTask(Task):
         compScales = numpy.zeros(components) # Initial guess at log(scale) for each component
         expScales = numpy.apply_along_axis(lambda x: numpy.average(x - compScales), 0, bgMatrix)
 
-        for iterate in range(self.config['scale']['iterate']):
+        for iterate in range(self.config.iterations):
             # XXX use masks for each quantity: maskedarrays
             compScales = numpy.apply_along_axis(lambda x: numpy.average(x - expScales), 1, bgMatrix)
             expScales = numpy.apply_along_axis(lambda x: numpy.average(x - compScales), 0, bgMatrix)
@@ -175,29 +195,35 @@ class DetrendCombineTask(Task):
         dim = assertSizes(dimList)
 
         maskVal = afwImage.MaskU.getPlaneBitMask("DETECTED") if self.config.maskDetected else 0
-        stats = afwMath.StatisticsControl(numSigmaClip, numIter, maskVal)
+        stats = afwMath.StatisticsControl(self.config.clip, self.config.iter, maskVal)
 
         # Combine images
         combined = afwImage.ImageF(dim)
-        for start in range(0, dim[2], self.config.rows):
-            rows = min(self.config.rows, dim[2] - start)
-            box = afwGeom.Box2I(afwGeom.Point2I(0, start), afwGeom.Extent2I(dim[1], rows))
+        numImages = len(sensorRefList)
+        imageList = afwImage.vectorMaskedImageF(numImages)
+        for start in range(0, dim.getY(), self.config.rows):
+            rows = min(self.config.rows, dim.getY() - start)
+            box = afwGeom.Box2I(afwGeom.Point2I(0, start), afwGeom.Extent2I(dim.getX(), rows))
             subCombined = combined.Factory(combined, box)
 
-            imageList = []
             for i, sensorRef in enumerate(sensorRefList):
-                imageList.append(sensorRef.get("calexp_sub", llcX=0, llcY=start, width=dim[1], height=rows))
+                exposure = sensorRef.get("calexp_sub", bbox=box)
+                mi = exposure.getMaskedImage()
                 if expScales is not None:
-                    imageList[i] *= expScales[i]
+                    mi /= expScales[i]
+                imageList[i] = mi
 
             if False:
                 # In-place stacks are now supported on LSST's afw, but not yet on HSC
                 afwMath.statisticsStack(subCombined, imageList, self.config.combine, stats)
             else:
-                subCombined <<= afwMath.statisticsStack(imageList, self.config.combine, stats)
+                stack = afwMath.statisticsStack(imageList, self.config.combine, stats)
+                subCombined <<= stack.getImage()
 
         if finalScale is not None:
             background = self.stats.run(combined)
+            self.log.log(self.log.INFO, "Measured background of stack is %f; adjusting to %f" %
+                         (background, finalScale))
             combined *= finalScale / background
 
         return combined
