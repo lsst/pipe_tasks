@@ -38,56 +38,66 @@ class SubaruProcessCcdTask(ptProcessCcd.ProcessCcdTask):
         if self.config.doIsr:
             butler = sensorRef.butlerSubset.butler
             calibSet = self.isr.makeCalibDict(butler, sensorRef.dataId)
-            rawExposure = sensorRef.get("raw")
-            isrRes = self.isr.run(rawExposure, calibSet)
-            self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
+            exposure = sensorRef.get("raw")
+            isrRes = self.isr.run(exposure, calibSet)
+            exposure = isrRes.postIsrExposure
+            self.display("isr", exposure=exposure, pause=True)
             if self.config.doWriteIsr:
-                sensorRef.put(ccdExposure, 'postISRCCD')
+                sensorRef.put(exposure, 'postISRCCD')
         else:
-            ccdExposure = None
+            exposure = None
 
         if self.config.doCalibrate:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(ccdExposure)
-            ccdExposure = calib.exposure
+            if exposure is None:
+                exposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(exposure)
+            exposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(ccdExposure, 'calexp')
-                sensorRef.put(afwDet.PersistableSourceVector(calib.sources), 'icSrc')
+                sensorRef.put(exposure, 'calexp')
+                sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
-                    #sensorRef.put(calib.apCorr, 'apcorr')
-                    pass
+                    sensorRef.put(calib.apCorr, 'apCorr')
                 if calib.matches is not None:
-                    sensorRef.put(afwDet.PersistableSourceMatchVector(calib.matches, calib.matchMeta),
-                               'icMatch')
+                    normalizedMatches = afwTable.packMatches(calib.matches)
+                    normalizedMatches.table.setMetadata(calib.matchMeta)
+                    sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
 
-        if self.config.doPhotometry:
-            if ccdExposure is None:
-                ccdExposure = sensorRef.get('calexp')
+        if self.config.doDetection:
+            if exposure is None:
+                exposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                apCorr = None # sensorRef.get('apcorr')
-            else:
-                psf = calib.psf
-                apCorr = calib.apCorr
-            phot = self.photometry.run(ccdExposure, psf, apcorr=apCorr)
-            if self.config.doWritePhotometry:
-                sensorRef.put(afwDet.PersistableSourceVector(phot.sources), 'src')
+                exposure.setPsf(sensorRef.get('psf'))
+            table = afwTable.SourceTable.make(self.schema)
+            table.setMetadata(self.algMetadata)
+            detRet = self.detection.makeSourceCatalog(table, exposure)
+            sources = detRet.sources
         else:
-            phot = None
+            sources = None
 
+        if self.config.doMeasurement:
+            assert(sources)
+            assert(exposure)
+            if calib is None:
+                apCorr = sensorRef.get("apCorr")
+            else:
+                apCorr = calib.apCorr
+            self.measurement.run(exposure, sources, apCorr)
+ 
+        if self.config.doWriteSources:
+            sensorRef.put(sources, 'src')
+
+        if self.config.doWriteCalibrate:
+            sensorRef.put(exposure, 'calexp')
+            
         return pipeBase.Struct(
-            ccdExposure = isrRes.postIsrExposure if self.config.doIsr else None,
-            exposure = ccdExposure,
-            psf = psf,
-            apCorr = apCorr,
-            sources = phot.sources if phot else None,
-            matches = calib.matches if calib else None,
-            matchMeta = calib.matchMeta if calib else None,
+            exposure = exposure,
+            calib = calib,
+            sources = sources,
         )
 
 
