@@ -32,6 +32,7 @@ class DetrendProcessConfig(Config):
     detection = ConfigField(dtype=measAlg.SourceDetectionConfig, doc="Detection configuration")
     background = ConfigField(dtype=measAlg.BackgroundConfig, doc="Background configuration")
     stats = ConfigField(dtype=DetrendStatsConfig, doc="Background statistics configuration")
+    doDetection = Field(doc="Do detection on image?", dtype=bool, default=False)
 
 class DetrendScaleConfig(Config):
     iterations = Field(doc="Number of iterations", dtype=int, default=10)
@@ -91,7 +92,8 @@ class DetrendProcessTask(Task):
 
         background = None
         if detrend.lower() in ("flat", "fringe", "mask"):
-            footprintSets = self.detect(exposure)
+            if detrend.lower() == "mask" or self.config.doDetection:
+                footprintSets = self.detect(exposure)
 
             background = self.stats.run(exposure)
 
