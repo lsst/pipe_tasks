@@ -40,7 +40,7 @@ class CoaddConfig(pexConfig.Config):
     """
     coadd    = pexConfig.ConfigField(dtype = coaddUtils.Coadd.ConfigClass, doc = "")
     warp     = pexConfig.ConfigField(dtype = afwMath.Warper.ConfigClass, doc = "")
-    psfMatch = pexConfig.ConfigField(dtype = ipDiffIm.ModelPsfMatchTask.ConfigClass, doc = "a hack!")
+    psfMatch = pexConfig.ConfigurableField(target = ipDiffIm.ModelPsfMatchTask, doc = "")
 
 
 class CoaddTask(pipeBase.CmdLineTask):
@@ -51,7 +51,7 @@ class CoaddTask(pipeBase.CmdLineTask):
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("psfMatch", ipDiffIm.ModelPsfMatchTask)
+        self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None

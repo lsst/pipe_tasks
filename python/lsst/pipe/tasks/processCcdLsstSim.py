@@ -24,8 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
-import lsst.meas.algorithms as measAlg
-
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
@@ -41,15 +40,30 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
     doWriteSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Write snapCombine results?")  
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
-    isr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="Amp-level instrumental signature removal")
-    ccdIsr = pexConfig.ConfigField(dtype=IsrTask.ConfigClass, doc="CCD level instrumental signature removal")
-    snapCombine = pexConfig.ConfigField(dtype=SnapCombineTask.ConfigClass, doc="Combine snaps")
-    calibrate = pexConfig.ConfigField(dtype=CalibrateTask.ConfigClass,
-                                      doc="Calibration (inc. high-threshold detection and measurement)")
-    detection = pexConfig.ConfigField(dtype=measAlg.SourceDetectionTask.ConfigClass,
-                                      doc="Low-threshold detection for final measurement")
-    measurement = pexConfig.ConfigField(dtype=measAlg.SourceMeasurementTask.ConfigClass,
-                                        doc="Final source measurement on low-threshold detections")
+    isr = pexConfig.ConfigurableField(
+        target = IsrTask,
+        doc = "Amp-level instrumental signature removal",
+    )
+    ccdIsr = pexConfig.ConfigurableField(
+        target = IsrTask,
+        doc = "CCD level instrumental signature removal (deprecated; isr will soon do it all)",
+    )
+    snapCombine = pexConfig.ConfigurableField(
+        target = SnapCombineTask,
+        doc = "Combine snaps",
+    )
+    calibrate = pexConfig.ConfigurableField(
+        target = CalibrateTask,
+        doc = "Calibration (inc. high-threshold detection and measurement)",
+    )
+    detection = pexConfig.ConfigurableField(
+        target = SourceDetectionTask,
+        doc = "Low-threshold detection for final measurement",
+    )
+    measurement = pexConfig.ConfigurableField(
+        target = SourceMeasurementTask,
+        doc = "Final source measurement on low-threshold detections",
+    )
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -81,17 +95,16 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
 
     def __init__(self, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
-        self.makeSubtask("isr", IsrTask)
-        self.makeSubtask("ccdIsr", IsrTask)
-        self.makeSubtask("snapCombine", SnapCombineTask)
-        self.makeSubtask("calibrate", CalibrateTask)
+        self.makeSubtask("isr")
+        self.makeSubtask("ccdIsr")
+        self.makeSubtask("snapCombine")
+        self.makeSubtask("calibrate")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
-            self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+            self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
-                             schema=self.schema, algMetadata=self.algMetadata)
+            self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
