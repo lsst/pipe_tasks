@@ -31,6 +31,8 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.ip.diffim as ipDiffIm
 import lsst.pipe.base as pipeBase
+import lsst.pipe.tasks.calibrate as pipeCal
+import lsst.meas.algorithms as measAlg
 from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -41,7 +43,15 @@ class CoaddConfig(pexConfig.Config):
     coadd    = pexConfig.ConfigField(dtype = coaddUtils.Coadd.ConfigClass, doc = "")
     warp     = pexConfig.ConfigField(dtype = afwMath.Warper.ConfigClass, doc = "")
     psfMatch = pexConfig.ConfigField(dtype = ipDiffIm.ModelPsfMatchTask.ConfigClass, doc = "a hack!")
-
+    calibrate = pexConfig.ConfigField(dtype=pipeCal.CalibrateTask.ConfigClass,
+                                      doc="Configuration for calibration")
+    detection = pexConfig.ConfigField(dtype=measAlg.SourceDetectionTask.ConfigClass,
+                                      doc="Configuration for source detection")
+    measurement = pexConfig.ConfigField(dtype=measAlg.SourceMeasurementTask.ConfigClass,
+                                        doc="Configuration for source measurement")
+    doCalibrate = pexConfig.Field(doc="Calibrate coadd?", dtype=bool, default=False)
+    doDetection = pexConfig.Field(doc="Detect sources?", dtype=bool, default=False)
+    doMeasurement = pexConfig.Field(doc="Measure sources?", dtype=bool, default=False)
 
 class CoaddTask(pipeBase.CmdLineTask):
     """Coadd images by PSF-matching (optional), warping and computing a weighted sum
@@ -55,6 +65,15 @@ class CoaddTask(pipeBase.CmdLineTask):
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
+
+        self.makeSubtask("calibrate", pipeCal.CalibrateTask)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
+        if self.config.doDetection:
+            self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
+                             schema=self.schema, algMetadata=self.algMetadata)
 
     @classmethod
     def parseAndRun(cls, args=None, config=None, log=None):
@@ -91,6 +110,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         coaddExposure.writeFits(coaddPath)
         print "saving weight map as %s" % (weightPath,)
         weightMap.writeFits(weightPath)
+        # XXX persist additional results: sources, psf, aperture correction
     
     def getCalexp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf
@@ -184,9 +204,29 @@ class CoaddTask(pipeBase.CmdLineTask):
             self.log.log(self.log.INFO, "Warp exposure")
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
             coadd.addExposure(exposure)
+
+        if self.config.doCalibrate:
+            calib = self.calibrate.run(coadd.getCoadd())
+            exposure = calib.exposure
+
+        if self.config.doDetection:
+            if exposure is None or calib is None:
+                raise RuntimeError("Attempting source detection without calibration")
+            table = afwTable.SourceTable.make(self.schema)
+            table.setMetadata(self.algMetadata)
+            detRet = self.detection.makeSourceCatalog(table, exposure)
+            sources = detRet.sources
+
+        if self.config.doMeasurement:
+            if exposure is None or calib is None or sources is None:
+                raise RuntimeError("Attempting source measurement without calibration and detection")
+            self.measurement.run(exposure, sources, calib.apCorr)
+
         
         return pipeBase.Struct(
             coadd = coadd,
+            calib = calib,
+            sources = sources,
         )
 
     @classmethod
