@@ -65,7 +65,7 @@ class RepairTask(pipeBase.Task):
         psf = exposure.getPsf()
         assert psf, "No PSF provided"
 
-        self.display('repair.before', exposure=exposure)
+        self.display('before', exposure=exposure)
 
         if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, defects)
@@ -73,7 +73,7 @@ class RepairTask(pipeBase.Task):
         if self.config.doCosmicRay:
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
-        self.display('repair.after', exposure=exposure)
+        self.display('after', exposure=exposure)
 
     def interpolate(self, exposure, defects):
         """Interpolate over defects
@@ -133,12 +133,9 @@ class RepairTask(pipeBase.Task):
                 ds9.incrDefaultFrame()
                 ds9.mtv(exposure, title="Post-CR")
                 
-                ds9.cmdBuffer.pushSize()
-
-                for cr in crs:
-                    displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
-
-                ds9.cmdBuffer.popSize()
+                with ds9.Buffering():
+                    for cr in crs:
+                        displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
         self.log.log(self.log.INFO, "Identified %s cosmic rays." % (num,))
 
