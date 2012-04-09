@@ -38,6 +38,11 @@ class RepairConfig(pexConfig.Config):
         doc = "Find and mask out cosmic rays?",
         default = True,
     )
+    doCrosstalk = pexConfig.Field(
+        dtype = bool,
+        doc = "Correct for crosstalk",
+        default = True,
+    )
     cosmicray = pexConfig.ConfigField(
         dtype = measAlg.FindCosmicRaysConfig,
         doc = "Options for finding and masking cosmic rays",
@@ -67,6 +72,9 @@ class RepairTask(pipeBase.Task):
 
         self.display('before', exposure=exposure)
 
+        if self.config.doCrosstalk:
+            self.crosstalk(exposure)
+
         if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, defects)
 
@@ -74,6 +82,9 @@ class RepairTask(pipeBase.Task):
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
         self.display('after', exposure=exposure)
+
+    def crosstalk(self, exposure):
+        pass
 
     def interpolate(self, exposure, defects):
         """Interpolate over defects
