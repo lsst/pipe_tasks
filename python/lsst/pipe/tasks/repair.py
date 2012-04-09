@@ -114,7 +114,14 @@ class RepairTask(pipeBase.Task):
 
         if keepCRs is None:
             keepCRs = self.config.cosmicray.keepCRs
-        crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+        try:
+            crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+        except Exception, e:
+            if display:
+                import lsst.afw.display.ds9 as ds9
+                ds9.mtv(exposure, title="Failed CR")
+            raise
+            
         num = 0
         if crs is not None:
             mask = mi.getMask()
@@ -129,12 +136,9 @@ class RepairTask(pipeBase.Task):
                 ds9.incrDefaultFrame()
                 ds9.mtv(exposure, title="Post-CR")
                 
-                ds9.cmdBuffer.pushSize()
-
-                for cr in crs:
-                    displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
-
-                ds9.cmdBuffer.popSize()
+                with ds9.Buffering():
+                    for cr in crs:
+                        displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
         self.log.info("Identified %s cosmic rays." % (num,))
 
