@@ -70,6 +70,9 @@ class CoaddTask(pipeBase.CmdLineTask):
         parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
         task = cls(name = cls._DefaultName, config = parsedCmd.config, log = parsedCmd.log)
 
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        task.config.save("%s_config.py" % (task.getName(),))
+
         taskRes = task.run(
             dataRefList = parsedCmd.dataRefList,
             bbox = parsedCmd.bbox,
@@ -91,6 +94,12 @@ class CoaddTask(pipeBase.CmdLineTask):
         coaddExposure.writeFits(coaddPath)
         print "saving weight map as %s" % (weightPath,)
         weightMap.writeFits(weightPath)
+
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        fullMetadata = task.getFullMetadata()
+        mdStr = fullMetadata.toString()
+        with file("%s_metadata.txt" % (task.getName(),), "w") as mdfile:
+            mdfile.write(mdStr)
     
     def getCalexp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf
@@ -139,6 +148,7 @@ class CoaddTask(pipeBase.CmdLineTask):
                 coreSigma, coreSigma * 2.5, 0.1)
         return self._modelPsf
 
+    @pipeBase.timeMethod
     def run(self, dataRefList, bbox, wcs, desFwhm):
         """Coadd images by PSF-matching (optional), warping and computing a weighted sum
         
@@ -182,7 +192,8 @@ class CoaddTask(pipeBase.CmdLineTask):
                 psfRes = self.psfMatch.run(exposure, modelPsf)
                 exposure = psfRes.psfMatchedExposure
             self.log.log(self.log.INFO, "Warp exposure")
-            exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
+            with self.timer("warp"):
+                exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
             coadd.addExposure(exposure)
         
         return pipeBase.Struct(

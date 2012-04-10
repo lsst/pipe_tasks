@@ -66,6 +66,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
     """Construct an outlier-rejected (robust mean) coadd
     """
     ConfigClass = OutlierRejectedCoaddConfig
+    _DefaultName = "outlierRejectedCoadd"
 
     def __init__(self, *args, **kwargs):
         CoaddTask.__init__(self, *args, **kwargs)
@@ -88,6 +89,9 @@ class OutlierRejectedCoaddTask(CoaddTask):
         parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
         task = cls(name = cls._DefaultName, config = parsedCmd.config, log = parsedCmd.log)
 
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        task.config.save("%s_config.py" % (task.getName(),))
+
         taskRes = task.run(
             dataRefList = parsedCmd.dataRefList,
             bbox = parsedCmd.bbox,
@@ -97,6 +101,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         
         coaddExposure = taskRes.coaddExposure
     
+        # normally the butler would do this, but it doesn't have support for coadds yet
         filterName = coaddExposure.getFilter().getName()
         if filterName == "_unknown_":
             filterStr = "unk"
@@ -104,13 +109,20 @@ class OutlierRejectedCoaddTask(CoaddTask):
         coaddPath = coaddBaseName + ".fits"
         print "Saving coadd as %s" % (coaddPath,)
         coaddExposure.writeFits(coaddPath)
+        
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        fullMetadata = task.getFullMetadata()
+        mdStr = fullMetadata.toString()
+        with file("%s_metadata.txt" % (task.getName(),), "w") as mdfile:
+            mdfile.write(mdStr)
     
     def getBadPixelMask(self):
         return self._badPixelMask
 
     def getCoaddCalib(self):
         return self._coaddCalib
-        
+    
+    @pipeBase.timeMethod
     def run(self, dataRefList, bbox, wcs, desFwhm):
         """PSF-match, warp and coadd images, using outlier rejection
         
@@ -248,7 +260,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     exposure = psfRes.psfMatchedExposure
                 
                 self.log.log(self.log.INFO, "Warp exposure")
-                exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
+                with self.timer("warp"):
+                    exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
                 exposure.setCalib(self.getCoaddCalib())
     
                 self.log.log(self.log.INFO, "Saving intermediate exposure as %s" % (outPath,))
