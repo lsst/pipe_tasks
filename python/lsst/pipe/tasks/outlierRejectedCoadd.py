@@ -66,6 +66,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
     """Construct an outlier-rejected (robust mean) coadd
     """
     ConfigClass = OutlierRejectedCoaddConfig
+    _DefaultName = "outlierRejectedCoadd"
 
     def __init__(self, *args, **kwargs):
         CoaddTask.__init__(self, *args, **kwargs)
@@ -88,6 +89,9 @@ class OutlierRejectedCoaddTask(CoaddTask):
         parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
         task = cls(name = cls._DefaultName, config = parsedCmd.config, log = parsedCmd.log)
 
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        task.config.save("%s_config.py" % (task.getName(),))
+
         taskRes = task.run(
             dataRefList = parsedCmd.dataRefList,
             bbox = parsedCmd.bbox,
@@ -97,6 +101,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         
         coaddExposure = taskRes.coaddExposure
     
+        # normally the butler would do this, but it doesn't have support for coadds yet
         filterName = coaddExposure.getFilter().getName()
         if filterName == "_unknown_":
             filterStr = "unk"
@@ -104,13 +109,20 @@ class OutlierRejectedCoaddTask(CoaddTask):
         coaddPath = coaddBaseName + ".fits"
         print "Saving coadd as %s" % (coaddPath,)
         coaddExposure.writeFits(coaddPath)
+        
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        fullMetadata = task.getFullMetadata()
+        mdStr = fullMetadata.toString()
+        with file("%s_metadata.txt" % (task.getName(),), "w") as mdfile:
+            mdfile.write(mdStr)
     
     def getBadPixelMask(self):
         return self._badPixelMask
 
     def getCoaddCalib(self):
         return self._coaddCalib
-        
+    
+    @pipeBase.timeMethod
     def run(self, dataRefList, bbox, wcs, desFwhm):
         """PSF-match, warp and coadd images, using outlier rejection
         
@@ -187,7 +199,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     maskedImage = afwImage.MaskedImageF(subBBox)
                     maskedImage.getMask().set(edgeMask)
                     maskedImageView = afwImage.MaskedImageF(maskedImage, overlapBBox, afwImage.PARENT, False)
-                    maskedImageView <<= afwImage.MaskedImageF(expMeta.path, 0,dumPS, overlapBBox, afwImage.PARENT)
+                    maskedImageView <<= afwImage.MaskedImageF(expMeta.path, 0, dumPS, overlapBBox,
+                        afwImage.PARENT)
                 maskedImageList.append(maskedImage)
                 weightList.append(expMeta.weight)
             try:
@@ -207,7 +220,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         )
 
     def psfMatchAndWarp(self, dataRefList, bbox, wcs, desFwhm):
-        """Normalize, PSF-match (if desFWhm > 0) and warp exposures; save the resulting exposures as FITS files
+        """Normalize, PSF-match (if desFWhm > 0) and warp exposures; save resulting exposures as FITS files
         
         @param dataRefList: list of sensor-level data references
         @param bbox: bounding box for coadd
@@ -232,7 +245,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
             outPath = outPath.replace(",", "_")
             outPath = outPath + ".fits"
             if True:        
-                self.log.log(self.log.INFO, "Processing exposure %d of %d: dataId=%s" % (ind+1, numExp, dataId))
+                self.log.log(self.log.INFO, "Processing exposure %d of %d: dataId=%s" % \
+                    (ind+1, numExp, dataId))
                 exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
         
                 srcCalib = exposure.getCalib()
@@ -248,7 +262,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     exposure = psfRes.psfMatchedExposure
                 
                 self.log.log(self.log.INFO, "Warp exposure")
-                exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
+                with self.timer("warp"):
+                    exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
                 exposure.setCalib(self.getCoaddCalib())
     
                 self.log.log(self.log.INFO, "Saving intermediate exposure as %s" % (outPath,))

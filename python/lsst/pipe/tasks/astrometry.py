@@ -23,20 +23,15 @@ import math
 import numpy
 
 import lsst.pex.config as pexConfig
-import lsst.afw.detection as afwDet
-import lsst.afw.display.ds9 as ds9
-import lsst.afw.geom as afwGeom
-import lsst.meas.astrom as measAst
-import lsst.meas.astrom.astrom as measAstrometry
-import lsst.meas.astrom.sip as astromSip
-import lsst.meas.astrom.verifyWcs as astromVerify
 import lsst.pipe.base as pipeBase
-import lsst.pipe.tasks.distortion as pipeDist
+from lsst.meas.astrom.astrom import Astrometry
+from lsst.meas.astrom.sip import CreateWcsWithSip
+from lsst.pipe.tasks.distortion import RadialPolyDistorter
 from .detectorUtil import getCcd
 
 class AstrometryConfig(pexConfig.Config):
     solver = pexConfig.ConfigField(
-        dtype=measAst.MeasAstromConfig,
+        dtype = Astrometry.ConfigClass,
         doc = "Configuration for the astrometry solver",
     )
 
@@ -97,7 +92,7 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
 
-        distorter = pipeDist.RadialPolyDistorter(ccd=getCcd(exposure))
+        distorter = RadialPolyDistorter(ccd=getCcd(exposure))
 
         # Distort source positions
         self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter)
@@ -163,7 +158,7 @@ class AstrometryTask(pipeBase.Task):
                 s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) - xMin)
                 s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) - yMin)
                 
-        astrometer = measAstrometry.Astrometry(self.config.solver, log=self.log)
+        astrometer = Astrometry(self.config.solver, log=self.log)
         astrom = astrometer.determineWcs(sources, exposure)
 
         if xMin != 0 or yMin != 0:
@@ -221,7 +216,7 @@ class AstrometryTask(pipeBase.Task):
         # Re-fit the WCS with the distortion undone
         if self.config.solver.calculateSip:
             self.log.log(self.log.INFO, "Refitting WCS with distortion removed")
-            sip = astromSip.CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+            sip = CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
             wcs = sip.getNewWcs()
             self.log.log(self.log.INFO, "Astrometric scatter: %f arcsec (%s non-linear terms)" %
                          (sip.getScatterOnSky().asArcseconds(), "with" if wcs.hasDistortion() else "without"))

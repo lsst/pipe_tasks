@@ -26,9 +26,9 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
-import lsst.meas.photocal as photocal
-from .astrometry import AstrometryTask
 import lsst.pipe.base as pipeBase
+from lsst.meas.photocal import PhotoCalTask
+from .astrometry import AstrometryTask
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
 
@@ -86,25 +86,24 @@ class CalibrateConfig(pexConfig.Config):
         dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
         )
-    repair       = pexConfig.ConfigField(dtype = RepairTask.ConfigClass,            doc = "")
-    detection    = pexConfig.ConfigField(
-        dtype=measAlg.SourceDetectionTask.ConfigClass,
-        doc="Initial (high-threshold) detection phase for calibration"
+    repair       = pexConfig.ConfigurableField(target = RepairTask, doc = "")
+    detection    = pexConfig.ConfigurableField(
+        target = measAlg.SourceDetectionTask,
+        doc = "Initial (high-threshold) detection phase for calibration",
     )
-    initialMeasurement = pexConfig.ConfigField(
-        dtype=measAlg.SourceMeasurementTask.ConfigClass,
-        doc="Initial measurements used to feed PSF determination and aperture correction determination"
+    initialMeasurement = pexConfig.ConfigurableField(
+        target = measAlg.SourceMeasurementTask,
+        doc = "Initial measurements used to feed PSF determination and aperture correction determination",
     )
-    measurePsf   = pexConfig.ConfigField(dtype = MeasurePsfTask.ConfigClass,        doc = "")
-    measurement = pexConfig.ConfigField(
-        dtype=measAlg.SourceMeasurementTask.ConfigClass,
-        doc="Post-PSF-determination measurements used to feed other calibrations"
+    measurePsf   = pexConfig.ConfigurableField(target = MeasurePsfTask, doc = "")
+    measurement = pexConfig.ConfigurableField(
+        target = measAlg.SourceMeasurementTask,
+        doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
     computeApCorr = pexConfig.ConfigField(dtype = measAlg.ApertureCorrectionConfig,
                                           doc = measAlg.ApertureCorrectionConfig.__doc__)
-    astrometry    = pexConfig.ConfigField(dtype = AstrometryTask.ConfigClass,        doc = "")
-    photocal      = pexConfig.ConfigField(dtype = photocal.PhotoCalConfig,
-                                          doc = photocal.PhotoCalConfig.__doc__)
+    astrometry    = pexConfig.ConfigurableField(target = AstrometryTask, doc = "")
+    photocal      = pexConfig.ConfigurableField(target = PhotoCalTask, doc="")
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -137,15 +136,13 @@ class CalibrateTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
-        self.makeSubtask("repair", RepairTask)
-        self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
-        self.makeSubtask("initialMeasurement", measAlg.SourceMeasurementTask,
-                         schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("measurePsf", MeasurePsfTask, schema=self.schema)
-        self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
-                         schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("astrometry", AstrometryTask, schema=self.schema)
-        self.makeSubtask("photocal", photocal.PhotoCalTask, schema=self.schema)
+        self.makeSubtask("repair")
+        self.makeSubtask("detection", schema=self.schema)
+        self.makeSubtask("initialMeasurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("measurePsf", schema=self.schema)
+        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("astrometry", schema=self.schema)
+        self.makeSubtask("photocal", schema=self.schema)
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None):

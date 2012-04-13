@@ -55,12 +55,12 @@ class SnapCombineConfig(pexConfig.Config):
         default = True
     )
 
-    repair      = pexConfig.ConfigField(dtype = RepairTask.ConfigClass, doc = "")
-    diffim      = pexConfig.ConfigField(dtype = SnapPsfMatchTask.ConfigClass, doc = "")
+    repair      = pexConfig.ConfigurableField(target = RepairTask, doc = "")
+    diffim      = pexConfig.ConfigurableField(target = SnapPsfMatchTask, doc = "")
     coadd       = pexConfig.ConfigField(dtype = Coadd.ConfigClass, doc="")
-    detection   = pexConfig.ConfigField(dtype = SourceDetectionTask.ConfigClass, doc = "")
+    detection   = pexConfig.ConfigurableField(target = SourceDetectionTask, doc = "")
     initialPsf  = pexConfig.ConfigField(dtype = InitialPsfConfig, doc = "")
-    measurement = pexConfig.ConfigField(dtype = SourceMeasurementTask.ConfigClass, doc = "")
+    measurement = pexConfig.ConfigurableField(target = SourceMeasurementTask, doc = "")
 
     def setDefaults(self):
         self.detection.thresholdPolarity = "both"
@@ -74,14 +74,13 @@ class SnapCombineTask(pipeBase.Task):
 
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("repair", RepairTask)
-        self.makeSubtask("diffim", SnapPsfMatchTask)
+        self.makeSubtask("repair")
+        self.makeSubtask("diffim")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
-        self.makeSubtask("detection", SourceDetectionTask, schema=self.schema)
+        self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            self.makeSubtask("measurement", SourceMeasurementTask,
-                             schema=self.schema, algMetadata=self.algMetadata)
+            self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
  
     @pipeBase.timeMethod
     def run(self, snap0, snap1, defects=None):

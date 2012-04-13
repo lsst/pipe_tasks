@@ -29,8 +29,8 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
-import lsst.ip.diffim as ipDiffIm
 import lsst.pipe.base as pipeBase
+from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -38,9 +38,18 @@ FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
     """
-    coadd    = pexConfig.ConfigField(dtype = coaddUtils.Coadd.ConfigClass, doc = "")
-    warp     = pexConfig.ConfigField(dtype = afwMath.Warper.ConfigClass, doc = "")
-    psfMatch = pexConfig.ConfigField(dtype = ipDiffIm.ModelPsfMatchTask.ConfigClass, doc = "a hack!")
+    coadd = pexConfig.ConfigField(
+        dtype = coaddUtils.Coadd.ConfigClass,
+        doc = "coaddition task",
+    )
+    warp = pexConfig.ConfigField(
+        dtype = afwMath.Warper.ConfigClass,
+        doc = "warping task",
+    )
+    psfMatch = pexConfig.ConfigurableField(
+        target = ModelPsfMatchTask,
+        doc = "PSF matching model to model task",
+    )
 
 
 class CoaddTask(pipeBase.CmdLineTask):
@@ -51,7 +60,7 @@ class CoaddTask(pipeBase.CmdLineTask):
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
-        self.makeSubtask("psfMatch", ipDiffIm.ModelPsfMatchTask)
+        self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
@@ -69,6 +78,9 @@ class CoaddTask(pipeBase.CmdLineTask):
             config = cls.ConfigClass()
         parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
         task = cls(name = cls._DefaultName, config = parsedCmd.config, log = parsedCmd.log)
+
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        task.config.save("%s_config.py" % (task.getName(),))
 
         taskRes = task.run(
             dataRefList = parsedCmd.dataRefList,
@@ -91,6 +103,12 @@ class CoaddTask(pipeBase.CmdLineTask):
         coaddExposure.writeFits(coaddPath)
         print "saving weight map as %s" % (weightPath,)
         weightMap.writeFits(weightPath)
+
+        # normally the butler would do this, but it doesn't have support for coadds yet
+        fullMetadata = task.getFullMetadata()
+        mdStr = fullMetadata.toString()
+        with file("%s_metadata.txt" % (task.getName(),), "w") as mdfile:
+            mdfile.write(mdStr)
     
     def getCalexp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf
@@ -139,6 +157,7 @@ class CoaddTask(pipeBase.CmdLineTask):
                 coreSigma, coreSigma * 2.5, 0.1)
         return self._modelPsf
 
+    @pipeBase.timeMethod
     def run(self, dataRefList, bbox, wcs, desFwhm):
         """Coadd images by PSF-matching (optional), warping and computing a weighted sum
         
@@ -174,7 +193,8 @@ class CoaddTask(pipeBase.CmdLineTask):
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, dataRef in enumerate(dataRefList):
-            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % (ind+1, numExp, dataRef.dataId))
+            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
+                (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
             if desFwhm > 0:
                 modelPsf = self.makeModelPsf(exposure, desFwhm)
@@ -182,7 +202,8 @@ class CoaddTask(pipeBase.CmdLineTask):
                 psfRes = self.psfMatch.run(exposure, modelPsf)
                 exposure = psfRes.psfMatchedExposure
             self.log.log(self.log.INFO, "Warp exposure")
-            exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
+            with self.timer("warp"):
+                exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
             coadd.addExposure(exposure)
         
         return pipeBase.Struct(

@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-
-import os, math
-import numpy
 import lsst.pex.config as pexConfig
-import lsst.afw.detection as afwDet
-import lsst.afw.cameraGeom as afwCG
 import lsst.afw.geom as afwGeom
 
 """This module defines the CameraDistortion class, which calculates the effects of optical distortions."""
