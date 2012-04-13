@@ -199,7 +199,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     maskedImage = afwImage.MaskedImageF(subBBox)
                     maskedImage.getMask().set(edgeMask)
                     maskedImageView = afwImage.MaskedImageF(maskedImage, overlapBBox, afwImage.PARENT, False)
-                    maskedImageView <<= afwImage.MaskedImageF(expMeta.path, 0,dumPS, overlapBBox, afwImage.PARENT)
+                    maskedImageView <<= afwImage.MaskedImageF(expMeta.path, 0, dumPS, overlapBBox,
+                        afwImage.PARENT)
                 maskedImageList.append(maskedImage)
                 weightList.append(expMeta.weight)
             try:
@@ -219,7 +220,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         )
 
     def psfMatchAndWarp(self, dataRefList, bbox, wcs, desFwhm):
-        """Normalize, PSF-match (if desFWhm > 0) and warp exposures; save the resulting exposures as FITS files
+        """Normalize, PSF-match (if desFWhm > 0) and warp exposures; save resulting exposures as FITS files
         
         @param dataRefList: list of sensor-level data references
         @param bbox: bounding box for coadd
@@ -244,7 +245,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
             outPath = outPath.replace(",", "_")
             outPath = outPath + ".fits"
             if True:        
-                self.log.log(self.log.INFO, "Processing exposure %d of %d: dataId=%s" % (ind+1, numExp, dataId))
+                self.log.log(self.log.INFO, "Processing exposure %d of %d: dataId=%s" % \
+                    (ind+1, numExp, dataId))
                 exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
         
                 srcCalib = exposure.getCalib()

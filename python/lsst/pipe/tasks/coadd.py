@@ -29,8 +29,8 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
-import lsst.ip.diffim as ipDiffIm
 import lsst.pipe.base as pipeBase
+from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -38,9 +38,18 @@ FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
     """
-    coadd    = pexConfig.ConfigField(dtype = coaddUtils.Coadd.ConfigClass, doc = "")
-    warp     = pexConfig.ConfigField(dtype = afwMath.Warper.ConfigClass, doc = "")
-    psfMatch = pexConfig.ConfigurableField(target = ipDiffIm.ModelPsfMatchTask, doc = "")
+    coadd = pexConfig.ConfigField(
+        dtype = coaddUtils.Coadd.ConfigClass,
+        doc = "coaddition task",
+    )
+    warp = pexConfig.ConfigField(
+        dtype = afwMath.Warper.ConfigClass,
+        doc = "warping task",
+    )
+    psfMatch = pexConfig.ConfigurableField(
+        target = ModelPsfMatchTask,
+        doc = "PSF matching model to model task",
+    )
 
 
 class CoaddTask(pipeBase.CmdLineTask):
@@ -184,7 +193,8 @@ class CoaddTask(pipeBase.CmdLineTask):
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, dataRef in enumerate(dataRefList):
-            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % (ind+1, numExp, dataRef.dataId))
+            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
+                (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
             if desFwhm > 0:
                 modelPsf = self.makeModelPsf(exposure, desFwhm)
