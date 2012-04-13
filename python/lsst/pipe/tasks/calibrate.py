@@ -26,9 +26,9 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
+import lsst.pipe.base as pipeBase
 from lsst.meas.photocal import PhotoCalTask
 from .astrometry import AstrometryTask
-import lsst.pipe.base as pipeBase
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
 
