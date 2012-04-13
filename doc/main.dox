@@ -3,9 +3,9 @@
 
 \section pipeBase_introduction Introduction
 
-Each data processing pipeline is implemented as a task that is a subclass of pipeBase.Task.
-Tasks often call subtasks, which are also instances of pipeBase.Task. See pipe_base documentation
-for more information about the basics of writing and using tasks. See the individual tasks in pipe_tasks
-for information about the available pipeline tasks and subtasks.
+Each data processing pipeline is implemented as a task that is a subclass of pipe_base CmdLineTask.
+Tasks often call other tasks as subtasks; these may be derived from CmdLineTask or Task.
+See pipe_base documentation for more information about the basics of writing and using tasks.
+See the individual tasks in pipe_tasks for information about the available pipeline tasks and subtasks.
 */
 }}}
