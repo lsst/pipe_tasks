@@ -23,24 +23,43 @@ import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
+import lsst.meas.algorithms.crosstalk as maCrosstalk
 import lsst.pipe.base as pipeBase
 
 import lsstDebug
 
 class RepairConfig(pexConfig.Config):
+    doCrosstalk = pexConfig.Field(
+        dtype = bool,
+        doc = "Correct for crosstalk",
+        default = True,
+    )
+    crosstalkCoeffs = pexConfig.ConfigField(
+        dtype = maCrosstalk.CrosstalkCoeffsConfig,
+        doc = "Crosstalk coefficients",
+    )
+
+    crosstalkMaskPlane = pexConfig.Field(
+        dtype = str,
+        doc = "Name of Mask plane for crosstalk corrected pixels",
+        default = "CROSSTALK",
+    )
+
+    minPixelToMask = pexConfig.Field(
+        dtype = float,
+        doc = "Minimum pixel value (in electrons) to cause crosstalkMaskPlane bit to be set",
+        default = 45000,        
+    )
+    
     doInterpolate = pexConfig.Field(
         dtype = bool,
         doc = "Interpolate over defects? (ignored unless you provide a list of defects)",
         default = True,
     )
+
     doCosmicRay = pexConfig.Field(
         dtype = bool,
         doc = "Find and mask out cosmic rays?",
-        default = True,
-    )
-    doCrosstalk = pexConfig.Field(
-        dtype = bool,
-        doc = "Correct for crosstalk",
         default = True,
     )
     cosmicray = pexConfig.ConfigField(
@@ -59,7 +78,7 @@ class RepairTask(pipeBase.Task):
     ConfigClass = RepairConfig
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None, keepCRs=None):
+    def run(self, exposure, defects=None, keepCRs=None, fixCrosstalk=None):
         """Repair exposure's instrumental problems
 
         @param[in,out] exposure Exposure to process
@@ -70,9 +89,12 @@ class RepairTask(pipeBase.Task):
         psf = exposure.getPsf()
         assert psf, "No PSF provided"
 
-        self.display('before', exposure=exposure)
+        if fixCrosstalk is None:
+            fixCrosstalk = self.config.doCrosstalk
+            
+        self.display('pre-crosstalk' if fixCrosstalk else 'before', exposure=exposure)
 
-        if self.config.doCrosstalk:
+        if fixCrosstalk:
             self.crosstalk(exposure)
 
         if defects is not None and self.config.doInterpolate:
@@ -84,7 +106,10 @@ class RepairTask(pipeBase.Task):
         self.display('after', exposure=exposure)
 
     def crosstalk(self, exposure):
-        pass
+        coeffs = self.config.crosstalkCoeffs.getCoeffs()
+
+        maCrosstalk.subtractXTalk(exposure.getMaskedImage(), coeffs,
+                                  self.config.minPixelToMask, self.config.crosstalkMaskPlane)
 
     def interpolate(self, exposure, defects):
         """Interpolate over defects

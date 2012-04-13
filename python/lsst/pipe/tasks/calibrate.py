@@ -191,7 +191,7 @@ class CalibrateTask(pipeBase.Task):
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
-            self.repair.run(exposure, defects=defects, keepCRs=None)
+            self.repair.run(exposure, defects=defects, keepCRs=None, fixCrosstalk=False)
             self.display('repair', exposure=exposure)
 
         if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
