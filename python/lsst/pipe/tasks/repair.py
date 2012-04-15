@@ -19,7 +19,10 @@
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import math
 import lsst.pex.config as pexConfig
+import lsst.afw.cameraGeom  as cameraGeom
+import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
@@ -51,6 +54,22 @@ class RepairConfig(pexConfig.Config):
         default = 45000,        
     )
     
+    doLinearize = pexConfig.Field(
+        dtype = bool,
+        doc = "Correct for nonlinearity of the detector's response (ignored if coefficients are 0.0)",
+        default = True,
+    )
+    linearizationThreshold = pexConfig.Field(
+        dtype = float,
+        doc = "Minimum pixel value (in electrons) to apply linearity corrections",
+        default = 0.0,        
+    )
+    linearizationCoefficient = pexConfig.Field(
+        dtype = float,
+        doc = "Linearity correction coefficient",
+        default = 0.0,        
+    )
+
     doInterpolate = pexConfig.Field(
         dtype = bool,
         doc = "Interpolate over defects? (ignored unless you provide a list of defects)",
@@ -78,7 +97,7 @@ class RepairTask(pipeBase.Task):
     ConfigClass = RepairConfig
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None, keepCRs=None, fixCrosstalk=None):
+    def run(self, exposure, defects=None, keepCRs=None, fixCrosstalk=None, linearize=None):
         """Repair exposure's instrumental problems
 
         @param[in,out] exposure Exposure to process
@@ -91,11 +110,16 @@ class RepairTask(pipeBase.Task):
 
         if fixCrosstalk is None:
             fixCrosstalk = self.config.doCrosstalk
+        if linearize is None:
+            linearize = self.config.doLinearize
             
         self.display('pre-crosstalk' if fixCrosstalk else 'before', exposure=exposure)
 
         if fixCrosstalk:
             self.crosstalk(exposure)
+
+        if linearize:
+            self.linearize(exposure)
 
         if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, defects)
@@ -111,6 +135,49 @@ class RepairTask(pipeBase.Task):
         maCrosstalk.subtractXTalk(exposure.getMaskedImage(), coeffs,
                                   self.config.minPixelToMask, self.config.crosstalkMaskPlane)
 
+    def linearize(self, exposure):
+        """Correct for non-linearity
+
+        @param exposure Exposure to process
+        """
+        assert exposure, "No exposure provided"
+
+        image = exposure.getMaskedImage().getImage()
+
+        ccd = cameraGeom.cast_Ccd(exposure.getDetector())
+
+        for amp in ccd:
+            if False:
+                linear_threshold = amp.getElectronicParams().getLinearizationThreshold()
+                linear_c = amp.getElectronicParams().getLinearizationCoefficient()
+            else:
+                linearizationCoefficient = self.config.linearizationCoefficient
+                linearizationThreshold = self.config.linearizationThreshold
+
+            if linearizationCoefficient == 0.0:     # nothing to do
+                continue
+            
+            self.log.log(self.log.INFO,
+                         "Applying linearity corrections to Ccd %s Amp %s" % (ccd.getId(), amp.getId()))
+
+            if linearizationThreshold > 0:
+                log10_thresh = math.log10(linearizationThreshold)
+
+            ampImage = image.Factory(image, amp.getDataSec(), afwImage.LOCAL)
+
+            width, height = ampImage.getDimensions()
+
+            for y in range(height):
+                for x in range(width):
+                    val = ampImage.get(x, y)
+                    if linearizationThreshold <= 0:
+                        val += linearizationCoefficient*val*val
+                        ampImage.set(x, y, val)
+                    else:
+                        if val > linearizationThreshold:
+                            val += val*linearizationCoefficient*(math.log10(val) - log10_thresh)
+                            ampImage.set(x, y, val)
+        
     def interpolate(self, exposure, defects):
         """Interpolate over defects
 
