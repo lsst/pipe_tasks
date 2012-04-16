@@ -10,6 +10,7 @@ import lsst.meas.algorithms as measAlg
 
 import hsc.pipe.tasks.calibrate as hscCalibrate
 
+
 # HSC-DC2 has very round galaxies that look much like stars, so we need to change the order of operations a
 # bit to use the astrometry catalogue to select stars for the PSF determination.
 class HscDc2CalibrateTask(hscCalibrate.HscCalibrateTask):
@@ -23,71 +24,76 @@ class HscDc2CalibrateTask(hscCalibrate.HscCalibrateTask):
         """
         assert exposure is not None, "No exposure provided"
 
-        do = self.config['do']['calibrate']
-
         psf, wcs = self.fakePsf(exposure)
 
         self.repair(exposure, psf, defects=defects, preserve=True)
 
-        if do['psf'] or do['astrometry'] or do['zeropoint']:
+        if self.config.doPsf or self.config.doAstrometry or self.config.doZeropoint:
             sources, footprints = self.phot(exposure, psf)
         else:
             sources, footprints = None, None
 
-        if do['distortion']:
-            dist = self.distortion(exposure)
-        else:
-            dist = None
-
-        if do['astrometry'] or do['zeropoint'] or do['psf']:
+        if self.config.doAstrometry or self.config.doZeropoint or self.config.doPsf:
             # Solving the astrometry prevents us from re-solving for astrometry again later, so save the wcs...
             wcs0 = exposure.getWcs().clone()
-
-            distSources, llc, size = self.distort(exposure, sources, distortion=dist)
-            matches, matchMeta = self.astrometry.run(exposure, sources, distSources,
-                                                     distortion=dist, llc=llc, size=size)
-
-            exposure.setWcs(wcs0)                                            # ... and restore it
+            matches, matchMeta = self.astrometry.run(exposure, sources)
+            exposure.setWcs(wcs0)       # ... and restore it
         else:
             matches = None
 
-        if do['psf']:
-            psf, cellSet = self.psf(exposure, sources, matches)
+        if self.config.doPsf:
+            psf, cellSet = self.measurePsf(exposure, sources, matches)
         else:
             psf, cellSet = None, None
 
-        if do['psf'] and do['apcorr']:
-            apcorr = self.apCorr(exposure, cellSet) # calculate the aperture correction; we may use it later
+        if self.config.doPsf and self.config.doApCorr:
+            apcorr = self.measureApCorr(exposure, cellSet) # calculate the aperture correction
         else:
             apcorr = None
 
         # Wash, rinse, repeat with proper PSF
 
-        if do['psf']:
-            self.repair(exposure, psf, defects=defects, preserve=False)
+        if self.config.doPsf:
+            self.repair.run(exposure, psf, defects=defects, keepCRs=None)
 
-        if do['background']:
-            self.background(exposure, footprints=footprints, background=background)
+        if self.config.doBackground:
+            with self.timer("background"):
+                # Subtract background
+                background, exposure = muDetection.estimateBackground(
+                    exposure, self.config.background, subtract=True)
+                self.log.log(self.log.INFO, "Fit and subtracted background")
+            self.display('background', exposure=exposure)
 
-        if do['psf'] and (do['astrometry'] or do['zeropoint']):
-            sources = self.rephot(exposure, footprints, psf, apcorr=apcorr)
+        if self.config.doPsf and (self.config.doAstrometry or self.config.doZeropoint):
+            rephotRet = self.rephotometry.run(exposure, footprints, psf)
+            for old, new in zip(sources, rephotRet.sources):
+                for flag in (measAlg.Flags.STAR, measAlg.Flags.PSFSTAR):
+                    propagateFlag(flag, old, new)
+            sources = rephotRet.sources
+            del rephotRet
 
-        if do['astrometry'] or do['zeropoint']:
-            distSources, llc, size = self.distort(exposure, sources, distortion=dist)
-            matches, matchMeta = self.astrometry.run(exposure, sources, distSources,
-                                                     distortion=dist, llc=llc, size=size)
-            self.undistort(exposure, sources, matches, distortion=dist)
-            self.verifyAstrometry(exposure, matches)
+        if self.config.doAstrometry or self.config.doZeropoint:
+            astromRet = self.astrometry.run(exposure, sources)
+            matches = astromRet.matches
+            matchMeta = astromRet.matchMeta
+
         else:
             matches, matchMeta = None, None
 
-        if do['zeropoint']:
+        if self.config.doZeropoint:
             self.zeropoint(exposure, matches)
 
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
-        return psf, apcorr, sources, matches, matchMeta
+        return pipeBase.Struct(
+            exposure = exposure,
+            psf = psf,
+            apCorr = apCorr,
+            sources = sources,
+            matches = matches,
+            matchMeta = matchMeta,
+        )
 
-    def psf(self, exposure, sources, matches):
+    def measurePsf(self, exposure, sources, matches):
         """Measure the PSF
 
         @param exposure Exposure to process
@@ -96,33 +102,26 @@ class HscDc2CalibrateTask(hscCalibrate.HscCalibrateTask):
         """
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
-        psfPolicy = self.config['psf']
 
-        algName   = psfPolicy['algorithmName']
-        algPolicy = psfPolicy['algorithm']
-        metadata = dafBase.PropertyList()
-        self.log.log(self.log.INFO, "Measuring PSF")
+        if matches and True:
+            #
+            # The matchList copies of the sources are not identical to the input sources,
+            # so replace them with our pristine originals
+            #
+            matchesIn = matches
+            matches = []
+            for ref, source, distance in matchesIn:
+                mySources = [s for s in sources if s.getId() == source.getId()]
+                if len(mySources) != 1:
+                    raise RuntimeError("Failed to find matchList source ID == %d in input source list" %
+                                       source.getId())
+                mySource = mySources[0]
 
-        if matches:
-            if True:
-                #
-                # The matchList copies of the sources are not identical to the input sources,
-                # so replace them with our pristine originals
-                #
-                matchesIn = matches
-                matches = []
-                for ref, source, distance in matchesIn:
-                    mySources = [s for s in sources if s.getId() == source.getId()]
-                    if len(mySources) != 1:
-                        raise RuntimeError("Failed to find matchList source ID == %d in input source list" %
-                                           source.getId())
-                    mySource = mySources[0]
-                    
-                    matches.append((ref, mySource, distance))
+                matches.append((ref, mySource, distance))
 
-                    if False:
-                        print mySource.getXAstrom(), source.getXAstrom() - mySource.getXAstrom(), \
-                              mySource.getYAstrom(), source.getYAstrom() - mySource.getYAstrom()
+                if False:
+                    print mySource.getXAstrom(), source.getXAstrom() - mySource.getXAstrom(), \
+                          mySource.getYAstrom(), source.getYAstrom() - mySource.getYAstrom()
             
 
         psfCandidateList = self.select(exposure, matches, algPolicy)
@@ -133,7 +132,7 @@ class HscDc2CalibrateTask(hscCalibrate.HscCalibrateTask):
         return psf, cellSet
 
 
-    def select(self, exposure, matches, psfPolicy):
+    def select(self, exposure, matches):
         """Get a list of suitable stars to construct a PSF."""
 
         import lsstDebug
@@ -142,7 +141,7 @@ class HscDc2CalibrateTask(hscCalibrate.HscCalibrateTask):
         #
         # Unpack policy
         #
-        kernelSize   = psfPolicy["kernelSize"]
+        kernelSize   = self.config.psfPolicy["kernelSize"]
         borderWidth  = psfPolicy["borderWidth"]
         #
         mi = exposure.getMaskedImage()
