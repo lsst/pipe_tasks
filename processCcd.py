@@ -144,8 +144,8 @@ class HscProcessCcdTask(SubaruProcessCcdTask):
 
     def __init__(self, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
-        self.makeSubtask("isr", HscIsrTask)
-        self.makeSubtask("calibrate", hscDc2.HscDc2CalibrateTask)
+        self.makeSubtask("isr", hscIsr.HscIsrTask)
+        self.makeSubtask("calibrate", hscCalibrate.HscCalibrateTask)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
