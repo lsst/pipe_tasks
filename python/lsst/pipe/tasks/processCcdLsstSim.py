@@ -164,16 +164,17 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
             visitExposure = combineRes.visitExposure
             self.display("snapCombine", exposure=visitExposure)
             if self.config.doWriteSnapCombine:
-                sensorRef.put(visitExposure, "visitCCD", snap=0)
+                sensorRef.put(visitExposure, "visitCCD")
         else:
-            visitExposure = sensorRef.get("visitCCD", snap=0)
+            visitExposure = None
 
         if self.config.doCalibrate:
             if visitExposure is None:
-                if self.config.doSnapCombine:
+                if sensorRef.datasetExists("visitCCD"):
                     visitExposure = sensorRef.get('visitCCD')
                 else:
-                    visitExposure = sensorRef.get('postISRCCD')
+                    self.log.log(self.log.WARN, "Could not find visitCCD; using postISRCCD snap 0 instead")
+                    visitExposure = sensorRef.get('postISRCCD', snap=0)
             calib = self.calibrate.run(visitExposure)
             calExposure = calib.exposure
 
