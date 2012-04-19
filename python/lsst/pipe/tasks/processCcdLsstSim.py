@@ -170,9 +170,7 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
 
         if self.config.doCalibrate:
             if visitExposure is None:
-                # ugly hack in lieu of ticket #2061
-                butler = sensorRef.butlerSubset.butler
-                if butler.datasetExists("visitCCD", sensorRef.dataId):
+                if sensorRef.datasetExists("visitCCD"):
                     visitExposure = sensorRef.get('visitCCD')
                 else:
                     self.log.log(self.log.WARN, "Could not find visitCCD; using postISRCCD snap 0 instead")
