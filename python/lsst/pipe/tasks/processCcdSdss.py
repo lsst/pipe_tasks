@@ -24,7 +24,9 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.pipe.tasks.calibrate import CalibrateTask
 
 class ProcessCcdSdssConfig(pexConfig.Config):
     """Config for ProcessCcdSdss"""
@@ -53,7 +55,14 @@ class ProcessCcdSdssConfig(pexConfig.Config):
 
     def setDefaults(self):
         # OPTIMIZE FOR SDSS
-        pass
+        #import pdb; pdb.set_trace()
+        self.calibrate.background.binSize = 512
+        self.calibrate.doAstrometry = False     # RuntimeError: Can't find Ccd from detector.
+        self.calibrate.doPhotoCal = False       # ValueError: Cannot do photometric calibration without doing astrometric matching
+        self.doWriteCalibrate = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
+        self.doWriteSources = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
+
+
 
 class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS
@@ -72,6 +81,23 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="fpC")        
+
+    @pipeBase.timeMethod
+    def makeExp(self, frameRef, gain = 1.0):
+        image = frameRef.get("fpC").convertF()
+        mask  = frameRef.get("fpM")
+        wcs   = frameRef.get("asTrans")
+        var   = afwImage.ImageF(image, True)
+        var  /= gain
+
+        mi    = afwImage.MaskedImageF(image, mask, var)
+        exp   = afwImage.ExposureF(mi, wcs)
+        return exp
+
+
     @pipeBase.timeMethod
     def run(self, sensorRef):
         """Process a CCD: including source detection, photometry and WCS determination
@@ -86,28 +112,26 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         - matchMeta: ? if config.doCalibrate, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
-        snap0 = None
-        snap1 = None
 
         if self.config.doCalibrate:
-            if sensorRef.datasetExists("visitCCD"):
-                visitExposure = sensorRef.get('visitCCD')
-            else:
-                self.log.log(self.log.WARN, "Could not find visitCCD")
-            calib = self.calibrate.run(visitExposure)
-            calExposure = calib.exposure
+            for frameRef in sensorRef.subItems(level="frame"):
+                self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
+                exp = self.makeExp(frameRef)
+                calib = self.calibrate.run(exp)
+                calExposure = calib.exposure
+                frameRef.put(calExposure, "calexp")
 
-            if self.config.doWriteCalibrate:
-                sensorRef.put(calExposure, 'calexp')
-                sensorRef.put(calib.sources, 'icSrc')
-                if calib.psf is not None:
-                    sensorRef.put(calib.psf, 'psf')
-                if calib.apCorr is not None:
-                    sensorRef.put(calib.apCorr, 'apCorr')
-                if calib.matches is not None:
-                    normalizedMatches = afwTable.packMatches(calib.matches)
-                    normalizedMatches.table.setMetadata(calib.matchMeta)
-                    sensorRef.put(normalizedMatches, 'icMatch')
+                if self.config.doWriteCalibrate:
+                    sensorRef.put(calExposure, 'calexp')
+                    sensorRef.put(calib.sources, 'icSrc')
+                    if calib.psf is not None:
+                        sensorRef.put(calib.psf, 'psf')
+                    if calib.apCorr is not None:
+                        sensorRef.put(calib.apCorr, 'apCorr')
+                    if calib.matches is not None:
+                        normalizedMatches = afwTable.packMatches(calib.matches)
+                        normalizedMatches.table.setMetadata(calib.matchMeta)
+                        sensorRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
             calExposure = None
