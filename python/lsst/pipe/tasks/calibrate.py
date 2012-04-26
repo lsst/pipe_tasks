@@ -195,7 +195,8 @@ class CalibrateTask(pipeBase.Task):
             with self.timer("background"):
                 # Subtract background
                 background, exposure = measAlg.estimateBackground(
-                    exposure, self.config.background, subtract=True)
+                    exposure, self.config.background, subtract=True,
+                    statsKeys=('BGMEAN2', 'BGVAR2'))
                 self.log.log(self.log.INFO, "Fit and subtracted background")
 
             self.display('background', exposure=exposure)
