@@ -59,13 +59,10 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
 
-        self.calibrate.background.binSize = 512
+        self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
         
         self.calibrate.doAstrometry = False     # RuntimeError: Can't find Ccd from detector.
         self.calibrate.doPhotoCal = False       # ValueError: Cannot do photometric calibration without doing astrometric matching
-        #self.doWriteCalibrate = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
-        #self.doWriteSources = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
-
 
 
 class ProcessCcdSdssTask(pipeBase.CmdLineTask):
