@@ -56,11 +56,15 @@ class ProcessCcdSdssConfig(pexConfig.Config):
     def setDefaults(self):
         # OPTIMIZE FOR SDSS
         #import pdb; pdb.set_trace()
+        self.calibrate.repair.doInterpolate = False
+        self.calibrate.repair.doCosmicRay = False
+
         self.calibrate.background.binSize = 512
+        
         self.calibrate.doAstrometry = False     # RuntimeError: Can't find Ccd from detector.
         self.calibrate.doPhotoCal = False       # ValueError: Cannot do photometric calibration without doing astrometric matching
-        self.doWriteCalibrate = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
-        self.doWriteSources = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
+        #self.doWriteCalibrate = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
+        #self.doWriteSources = False # TypeError: in method 'Persistence_persist', argument 2 of type 'lsst::daf::base::Persistable const &'
 
 
 
