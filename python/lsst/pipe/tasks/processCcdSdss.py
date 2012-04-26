@@ -30,6 +30,9 @@ from lsst.pipe.tasks.calibrate import CalibrateTask
 
 class ProcessCcdSdssConfig(pexConfig.Config):
     """Config for ProcessCcdSdss"""
+    removePedestal = pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS pedestal from fpC file")
+    pedestalVal = pexConfig.Field(dtype=int, default=1000, doc = "Number of counts in the SDSS pedestal")
+
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
@@ -89,6 +92,8 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     @pipeBase.timeMethod
     def makeExp(self, frameRef, gain = 1.0):
         image = frameRef.get("fpC").convertF()
+        if self.config.removePedestal:
+            image -= self.config.pedestalVal
         mask  = frameRef.get("fpM")
         wcs   = frameRef.get("asTrans")
         var   = afwImage.ImageF(image, True)
