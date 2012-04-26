@@ -5,14 +5,17 @@ import gc
 from lsst.pex.config import Config, Field, ConfigField
 from lsst.pipe.base import Task
 
+import lsst.daf.base as dafBase
+import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
-
+import lsst.pipe.tasks.calibrate as ptCal
 
 
 class ForcedPhotConfig(Config):
     calibrate = ConfigField(dtype=ptCal.CalibrateConfig, doc="Configuration for calibration of stack")
-    detect = ConfigField(dtype=measAlg.SourceDetectionConfig, doc="Configuration for detection on stack")
-    measure = ConfigField(dtype=measAlg.SourceMeasurementConfig, doc="Configuration for measurement on CCD")
+    detection = ConfigField(dtype=measAlg.SourceDetectionConfig, doc="Configuration for detection on stack")
+    measurement = ConfigField(dtype=measAlg.SourceMeasurementConfig,
+                              doc="Configuration for measurement on CCD")
 
 class ForcedPhotTask(Task):
     ConfigClass = ForcedPhotConfig
@@ -61,7 +64,7 @@ class ForcedPhotTask(Task):
             gc.collect()
 
 
-    def detect(self, exposure)
+    def detect(self, exposure):
         table = afwTable.SourceTable.make(self.schema)
         table.setMetadata(self.algMetadata)
         return self.detection.makeSourceCatalog(table, exposure)
