@@ -100,10 +100,10 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
 
     @pipeBase.timeMethod
-    def run(self, sensorRef):
+    def run(self, frameRef):
         """Process a CCD: including source detection, photometry and WCS determination
         
-        @param sensorRef: sensor-level butler data reference
+        @param frameRef: frame-level butler data reference
         @return pipe_base Struct containing these fields:
         - exposure: calibrated exposure (calexp)
         - psf: the PSF determined for the exposure
@@ -112,37 +112,35 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         - matches: ? if doCalibrate, else None
         - matchMeta: ? if config.doCalibrate, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        self.log.log(self.log.INFO, "Processing %s" % (frameRef.dataId))
 
         if self.config.doCalibrate:
-            for frameRef in sensorRef.subItems(level="frame"):
-                self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
-                exp = self.makeExp(frameRef)
-                calib = self.calibrate.run(exp)
-                calExposure = calib.exposure
-                frameRef.put(calExposure, "calexp")
+            self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
+            exp = self.makeExp(frameRef)
+            calib = self.calibrate.run(exp)
+            calExposure = calib.exposure
 
-                if self.config.doWriteCalibrate:
-                    sensorRef.put(calExposure, 'calexp')
-                    sensorRef.put(calib.sources, 'icSrc')
-                    if calib.psf is not None:
-                        sensorRef.put(calib.psf, 'psf')
-                    if calib.apCorr is not None:
-                        sensorRef.put(calib.apCorr, 'apCorr')
-                    if calib.matches is not None:
-                        normalizedMatches = afwTable.packMatches(calib.matches)
-                        normalizedMatches.table.setMetadata(calib.matchMeta)
-                        sensorRef.put(normalizedMatches, 'icMatch')
+            if self.config.doWriteCalibrate:
+                frameRef.put(calExposure, 'calexp')
+                frameRef.put(calib.sources, 'icSrc')
+                if calib.psf is not None:
+                    frameRef.put(calib.psf, 'psf')
+                if calib.apCorr is not None:
+                    frameRef.put(calib.apCorr, 'apCorr')
+                if calib.matches is not None:
+                    normalizedMatches = afwTable.packMatches(calib.matches)
+                    normalizedMatches.table.setMetadata(calib.matchMeta)
+                    frameRef.put(normalizedMatches, 'icMatch')
         else:
             calib = None
             calExposure = None
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = sensorRef.get('calexp')
+                calExposure = frameRef.get('calexp')
             if calib is None:
-                psf = sensorRef.get('psf')
-                calExposure.setPsf(sensorRef.get('psf'))
+                psf = frameRef.get('psField')
+                calExposure.setPsf(psf)
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, calExposure)
@@ -154,13 +152,13 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             assert(sources)
             assert(calExposure)
             if calib is None:
-                apCorr = sensorRef.get("apCorr")
+                apCorr = frameRef.get("apCorr")
             else:
                 apCorr = calib.apCorr
             self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            sensorRef.put(sources, 'src')
+            frameRef.put(sources, 'src')
 
         return pipeBase.Struct(
             calExposure = calExposure,
