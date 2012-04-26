@@ -15,7 +15,11 @@ class ForcedPhotConfig(Config):
     measure = ConfigField(dtype=measAlg.SourceMeasurementConfig, doc="Configuration for measurement on CCD")
 
 class ForcedPhotTask(Task):
+    ConfigClass = ForcedPhotConfig
+    _DefaultName = "forcedPhot"
+
     def __init__(self, *args, **kwargs):
+        super(ForcedPhotTask, self).__init__(*args, **kwargs)
         self.makeSubtask("calibrate", ptCal.CalibrateTask)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
