@@ -142,7 +142,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             self.measurement.run(calExposure, sources, apCorr)
             
         return pipeBase.Struct(
-            visitExposure = visitExposure
+            visitExposure = visitExposure,
             exposure = calExposure,
             calib = calib,
             sources = sources,
