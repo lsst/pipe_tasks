@@ -19,6 +19,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import sys
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -344,10 +345,23 @@ class SourceAssocTask(pipeBase.CmdLineTask):
         if config is None:
             config = cls.ConfigClass()
         parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
-        task = cls(name = cls._DefaultName, config = parsedCmd.config, log = parsedCmd.log)
-        task.config.save(str.format("{}_config.py", task.getName()))
+        name = cls._DefaultName
+        task = cls(name=name, config=parsedCmd.config, log=parsedCmd.log)
         if not hasattr(parsedCmd, "skyTileIds") or len(parsedCmd.skyTileIds) == 0:
+            print >>sys.stderr, "Running on all sky-tiles"
             parsedCmd.skyTileIds = parsedCmd.butler.queryMetadata("raw", "skyTile")
         for skyTileId in parsedCmd.skyTileIds:
-            task.run(skyTileId, parsedCmd.butler)
- 
+            parsedCmd.butler.put(
+                parsedCmd.config, name + "_config", skyTile=skyTileId)
+            if parsedCmd.doraise:
+                task.run(skyTileId, parsedCmd.butler)
+            else:
+                try:
+                    task.run(skyTileId, parsedCmd.butler)
+                except Exception, e:
+                    task.log.fatal(str.format(
+                        "Failed on skyTile {}: {}", skyTileId, e))
+                    traceback.print_exc(file=sys.stderr)
+            parsedCmd.butler.put(
+                task.getFullMetadata(), name + "_metadata", skyTile=skyTileId)
+
