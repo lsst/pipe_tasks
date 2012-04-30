@@ -108,7 +108,7 @@ class CalibrateConfig(pexConfig.Config):
 
     def validate(self):
         pexConfig.Config.validate(self)
-        if self.doPsf and (self.doPhotoCal or self.computeApCorr or self.doAstrometry):
+        if self.doPsf and (self.doPhotoCal or self.doComputeApCorr or self.doAstrometry):
             if self.initialMeasurement.prefix == self.measurement.prefix:
                 raise ValueError("CalibrateConfig.initialMeasurement and CalibrateConfig.measurement "\
                                      "have the same prefix; field names may clash.")
