@@ -44,6 +44,11 @@ class SnapCombineConfig(pexConfig.Config):
         doc = "Psf FWHM (pixels) used to detect CRs", 
         default = 2.5 # pixels
     )
+    doSimpleAverage = pexConfig.Field(
+        dtype = bool,
+        doc = "The combined snap is a straight average of the data",
+        default = False,
+    )
     doPsfMatch = pexConfig.Field(
         dtype = bool,
         doc = "Perform difference imaging before combining",
@@ -84,6 +89,11 @@ class SnapCombineTask(pipeBase.Task):
  
     @pipeBase.timeMethod
     def run(self, snap0, snap1, defects=None):
+        if self.config.doSimpleAverage:
+            coaddExp  = afwImage.ExposureF(snap0, True)
+            coaddExp += snap1
+            coaddExp /= 0.5
+            return pipeBase.Struct(visitExposure = coaddExp) 
 
         if self.config.doRepair:
             psf = self.makeInitialPsf(snap0, fwhmPix=self.config.repairPsfFwhm)
