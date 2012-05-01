@@ -47,7 +47,7 @@ class SnapCombineConfig(pexConfig.Config):
     doSimpleAverage = pexConfig.Field(
         dtype = bool,
         doc = "The combined snap is a straight average of the data",
-        default = False,
+        default = True,
     )
     doPsfMatch = pexConfig.Field(
         dtype = bool,
