@@ -90,12 +90,15 @@ class SnapCombineTask(pipeBase.Task):
     @pipeBase.timeMethod
     def run(self, snap0, snap1, defects=None):
         if self.config.doSimpleAverage:
+            self.log.log(self.log.INFO, "snapCombine by straight average")
             coaddExp  = afwImage.ExposureF(snap0, True)
-            coaddExp += snap1
-            coaddExp /= 0.5
+            coaddMi   = coaddExp.getMaskedImage()
+            coaddMi  += snap1.getMaskedImage()
+            coaddMi  *= 0.5
             return pipeBase.Struct(visitExposure = coaddExp) 
 
         if self.config.doRepair:
+            self.log.log(self.log.INFO, "snapCombine repair")
             psf = self.makeInitialPsf(snap0, fwhmPix=self.config.repairPsfFwhm)
             snap0.setPsf(psf)
             snap1.setPsf(psf)
@@ -105,6 +108,7 @@ class SnapCombineTask(pipeBase.Task):
             self.display('repair1', exposure=snap1)
 
         if self.config.doPsfMatch:
+            self.log.log(self.log.INFO, "snapCombine psfMatch")
             diffRet  = self.diffim.run(snap0, snap1, "subtractExposures")
             diffExp  = diffRet.subtractedImage
 
@@ -148,6 +152,7 @@ class SnapCombineTask(pipeBase.Task):
             badMaskPlanes.append(bmp)
         badMaskPlanes.append("DETECTED")
         badPixelMask   = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
+        self.log.log(self.log.INFO, "snapCombine coaddition")
         addToCoadd(coaddMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
         addToCoadd(coaddMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
         coaddMi /= weightMap
