@@ -261,7 +261,7 @@ class SourceAssocTask(pipeBase.CmdLineTask):
             clusters[0].getTable(),
             apCluster.SourceClusterIdFactory(skyTileId),
             spControl)
-        flagsNoiseKey = scTable.getSchema().find("flags.noise").key
+        flagNoiseKey = scTable.getSchema().find("flag.noise").key
         scCat = apCluster.SourceClusterCatalog(scTable)
         algorithmFlags = dict()
         for alg in spControl.fluxFields:
@@ -276,7 +276,7 @@ class SourceAssocTask(pipeBase.CmdLineTask):
                     continue
                 else:
                     sc = scCat.addNew()
-                    sc.set(flagsNoiseKey, True)
+                    sc.set(flagNoiseKey, True)
             else:
                 sc = scCat.addNew()
             sev = apCluster.computeBasicAttributes(
