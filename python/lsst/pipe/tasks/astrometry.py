@@ -22,11 +22,12 @@
 import math
 import numpy
 
+import lsst.afw.geom as afwGeom
+import lsst.afw.cameraGeom as afwCG
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.meas.astrom.astrom import Astrometry
 from lsst.meas.astrom.sip import CreateWcsWithSip
-from lsst.pipe.tasks.distortion import RadialPolyDistorter
 from .detectorUtil import getCcd
 
 class AstrometryConfig(pexConfig.Config):
@@ -92,20 +93,26 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
 
-        distorter = RadialPolyDistorter(ccd=getCcd(exposure))
+        ccd = getCcd(exposure)
+        if ccd is None:
+            self.log.log(self.log.WARN, "No CCD associated with exposure; assuming null distortion")
+            distorter = afwCG.NullDistortion()
+        else:
+            distorter = ccd.getDistortion()
+            if distorter is None:
+                distorter = afwCG.NullDistortion()
 
         # Distort source positions
-        self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter)
+        self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter.prynt())
         for s in sources:
-            x,y = distorter.toCorrected(s.getX(), s.getY())
-            s.set(self.centroidKey.getX(), x)
-            s.set(self.centroidKey.getY(), y)
+            s.set(self.centroidKey, distorter.undistort(s.getCentroid(), ccd))
 
         # Get distorted image size so that astrometry_net does not clip.
         xMin, xMax, yMin, yMax = float("INF"), float("-INF"), float("INF"), float("-INF")
         for x, y in ((0.0, 0.0), (0.0, exposure.getHeight()), (exposure.getWidth(), 0.0),
                      (exposure.getWidth(), exposure.getHeight())):
-            x, y = distorter.toCorrected(x, y)
+            point = distorter.undistort(afwGeom.Point2D(x, y), ccd)
+            x, y = point.getX(), point.getY()
             if x < xMin: xMin = x
             if x > xMax: xMax = x
             if y < yMin: yMin = y
@@ -143,11 +150,6 @@ class AstrometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
             filterName = None
 
-        if False:
-            if distortion is not None:
-                # Removed distortion, so use low order
-                oldOrder = self.config.sipOrder
-                self.config.sipOrder = 2
 #
 # meas_astrom doesn't like -ve coordinates.  The proper thing to do is to fix that; but for now
 # we'll pander to its whims
@@ -165,10 +167,6 @@ class AstrometryTask(pipeBase.Task):
             for s in sources:
                 s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) + xMin)
                 s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) + yMin)
-
-        if False:
-            if distortion is not None:
-                self.config.sipOrder = oldOrder
 
         if astrom is None or astrom.getWcs() is None:
             raise RuntimeError("Unable to solve astrometry for %s", exposure.getDetector().getId())
