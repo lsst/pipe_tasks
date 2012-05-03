@@ -25,6 +25,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
+import lsst.afw.cameraGeom as afwCameraGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
@@ -92,17 +93,23 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="fpC")        
 
     @pipeBase.timeMethod
-    def makeExp(self, frameRef, gain = 1.0):
+    def makeExp(self, frameRef):
         image = frameRef.get("fpC").convertF()
         if self.config.removePedestal:
             image -= self.config.pedestalVal
         mask  = frameRef.get("fpM")
         wcs   = frameRef.get("asTrans")
+        calib, gain = frameRef.get("tsField")
         var   = afwImage.ImageF(image, True)
         var  /= gain
 
         mi    = afwImage.MaskedImageF(image, mask, var)
         exp   = afwImage.ExposureF(mi, wcs)
+        exp.setCalib(calib)
+
+        det   = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" % (frameRef.dataId["band"], frameRef.dataId["camcol"])))
+        exp.setDetector(det)
+
         return exp
 
 
