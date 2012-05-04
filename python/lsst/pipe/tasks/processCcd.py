@@ -24,7 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
@@ -33,6 +33,8 @@ class ProcessCcdConfig(pexConfig.Config):
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
+    ## NOTE, default this to False until it is fully vetted
+    doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
@@ -49,6 +51,10 @@ class ProcessCcdConfig(pexConfig.Config):
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
     )
+    deblend = pexConfig.ConfigurableField(
+        target = SourceDeblendTask,
+        doc = "Split blended sources into their components",
+    )
     measurement = pexConfig.ConfigurableField(
         target = SourceMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
@@ -58,6 +64,8 @@ class ProcessCcdConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
+        #if self.doDeblend and not self.doDetection:
+        #    raise ValueError("Cannot run source deblending without source detection.")
 
     def setDefaults(self):
         self.doWriteIsr = False
@@ -78,12 +86,15 @@ class ProcessCcdTask(pipeBase.Task):
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
-        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s" % (sensorRef.dataId))
+        psf = None
         if self.config.doIsr:
             butler = sensorRef.butlerSubset.butler
             calibSet = self.isr.makeCalibDict(butler, sensorRef.dataId)
@@ -102,6 +113,7 @@ class ProcessCcdTask(pipeBase.Task):
                 exposure = sensorRef.get('postISRCCD')
             calib = self.calibrate.run(exposure)
             exposure = calib.exposure
+            psf = calib.psf
             if self.config.doWriteCalibrate:
                 sensorRef.put(exposure, 'calexp')
                 sensorRef.put(calib.sources, 'icSrc')
@@ -128,6 +140,42 @@ class ProcessCcdTask(pipeBase.Task):
             sources = detRet.sources
         else:
             sources = None
+
+        if self.config.doDeblend:
+            if exposure is None:
+                exposure = sensorRef.get('calexp')
+            if psf is None:
+                psf = sensorRef.get('psf')
+            if sources is None:
+                # This is kind of a strange situation: we're re-reading a 'src'
+                # data item, which may sources that were previously deblended!
+                sources = sensorRef.get('src')
+                self.log.info("Reading 'src' data for deblending: got %i sources" % len(sources))
+                # Make sure the IdFactory exists and doesn't duplicate IDs
+                # (until JimB finishes #2083)
+                f = sources.getTable().getIdFactory()
+                if f is None:
+                    f = afwTable.IdFactory.makeSimple()
+                    sources.getTable().setIdFactory(f)
+                f.notify(max([src.getId() for src in sources]))
+                #
+                # Remove children from the Catalog (don't re-deblend)
+                n0 = len(sources)
+                i=0
+                while i < len(sources):
+                    if sources[i].getParent():
+                        del sources[i]
+                    else:
+                        i += 1
+                n1 = len(sources)
+                if n1 != n0:
+                    self.log.info("Dropped %i of %i 'child' sources (%i remaining)" %
+                                  ((n0-n1), n0, n1))
+                
+            assert(exposure)
+            assert(psf)
+            assert(sources)
+            self.deblend.run(exposure, sources, psf)
 
         if self.config.doMeasurement:
             assert(sources)
