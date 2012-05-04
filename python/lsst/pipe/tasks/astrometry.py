@@ -93,7 +93,7 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
 
-        ccd = getCcd(exposure)
+        ccd = getCcd(exposure, allowRaise=False)
         if ccd is None:
             self.log.log(self.log.WARN, "No CCD associated with exposure; assuming null distortion")
             distorter = None
