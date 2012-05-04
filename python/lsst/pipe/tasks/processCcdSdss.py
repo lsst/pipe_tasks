@@ -59,7 +59,6 @@ class ProcessCcdSdssConfig(pexConfig.Config):
 
     def setDefaults(self):
         # OPTIMIZE FOR SDSS
-        #import pdb; pdb.set_trace()
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
 
@@ -106,9 +105,10 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         mi    = afwImage.MaskedImageF(image, mask, var)
         exp   = afwImage.ExposureF(mi, wcs)
         exp.setCalib(calib)
-
-        det   = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" % (frameRef.dataId["band"], frameRef.dataId["camcol"])))
+        det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
+                                                      (frameRef.dataId["band"], frameRef.dataId["camcol"])))
         exp.setDetector(det)
+        exp.setFilter(afwImage.Filter(frameRef.dataId['band']))
 
         return exp
 
