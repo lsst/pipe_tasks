@@ -96,11 +96,15 @@ class AstrometryTask(pipeBase.Task):
         ccd = getCcd(exposure)
         if ccd is None:
             self.log.log(self.log.WARN, "No CCD associated with exposure; assuming null distortion")
-            distorter = afwCG.NullDistortion()
+            distorter = None
         else:
             distorter = ccd.getDistortion()
-            if distorter is None:
-                distorter = afwCG.NullDistortion()
+
+        if distorter is None:
+            self.log.log(self.log.INFO, "Null distortion correction")
+            for s in sources:
+                s.set(self.centroidKey, s.getCentroid())
+            return (0,0), (exposure.getWidth(), exposure.getHeight())
 
         # Distort source positions
         self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter.prynt())
