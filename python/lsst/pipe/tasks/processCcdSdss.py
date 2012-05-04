@@ -62,14 +62,8 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
 
-        #self.detection.thresholdValue = 3.0    # We are not going very deep, perhaps because the variance is not yet correct
-
         self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
         
-        self.calibrate.doAstrometry = False     # RuntimeError: Can't find Ccd from detector.
-        self.calibrate.doPhotoCal = False       # ValueError: Cannot do photometric calibration without doing astrometric matching
-
-
 class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS
     
