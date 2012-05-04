@@ -25,6 +25,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
+import lsst.meas.algorithms as measAlgorithms
 import lsst.skypix as skypix
 import lsst.ap.match as apMatch
 import lsst.ap.utils as apUtils
@@ -88,6 +89,13 @@ class SourceAssocConfig(pexConfig.Config):
     doWriteBadSourceHistogram = pexConfig.Field(
         dtype=bool, default=True,
         doc="Write bad source histogram?")
+
+    measPrefix = pexConfig.Field(
+        dtype=str, optional=True, default=None,
+        doc="Prefix for all measurement fields")
+    measSlots = pexConfig.ConfigField(
+        dtype=measAlgorithms.SourceSlotConfig,
+        doc="Mapping from algorithms to special aliases in Source")
 
     def setDefaults(self):
         self.sourceProcessing.badFlagFields = ["flags.negative",
@@ -189,6 +197,12 @@ class SourceAssocTask(pipeBase.CmdLineTask):
             try:
                 expMd = butler.get("calexp_md", dataId, immediate=True)
                 expSources = butler.get("src", dataId, immediate=True)
+                expConfig = butler.get("processCcd_config", dataId, immediate=True)
+                if (self.config.measPrefix != expConfig.measurement.prefix or
+                    self.config.measSlots != expConfig.measurement.slots):
+                    self.log.warn(str.format(
+                        "skipping {} : processCcd measurement prefix and slot configuration"
+                        "do not match sourceAssoc configuration", str(dataId)))
             except:
                 self.log.warn(str.format(
                     "skipping {} : failed to unpersist src or calexp_md dataset",
