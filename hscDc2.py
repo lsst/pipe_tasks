@@ -46,7 +46,7 @@ class HscDc2CalibrateTask(hscCalibrate.HscCalibrateTask):
         else:
             psf, cellSet = None, None
 
-        if self.config.doPsf and self.config.doApCorr:
+        if self.config.doPsf and self.config.calculateApCorr:
             apcorr = self.measureApCorr(exposure, cellSet) # calculate the aperture correction
         else:
             apcorr = None
