@@ -92,7 +92,7 @@ class ProcessCcdTask(pipeBase.Task):
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
-    def run(self, sensorRef):
+    def run(self, sensorRef, sources=None):
         self.log.info("Processing %s" % (sensorRef.dataId))
         psf = None
         if self.config.doIsr:
@@ -138,39 +138,12 @@ class ProcessCcdTask(pipeBase.Task):
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, exposure)
             sources = detRet.sources
-        else:
-            sources = None
 
         if self.config.doDeblend:
             if exposure is None:
                 exposure = sensorRef.get('calexp')
             if psf is None:
                 psf = sensorRef.get('psf')
-            if sources is None:
-                # This is kind of a strange situation: we're re-reading a 'src'
-                # data item, which may sources that were previously deblended!
-                sources = sensorRef.get('src')
-                self.log.info("Reading 'src' data for deblending: got %i sources" % len(sources))
-                # Make sure the IdFactory exists and doesn't duplicate IDs
-                # (until JimB finishes #2083)
-                f = sources.getTable().getIdFactory()
-                if f is None:
-                    f = afwTable.IdFactory.makeSimple()
-                    sources.getTable().setIdFactory(f)
-                f.notify(max([src.getId() for src in sources]))
-                #
-                # Remove children from the Catalog (don't re-deblend)
-                n0 = len(sources)
-                i=0
-                while i < len(sources):
-                    if sources[i].getParent():
-                        del sources[i]
-                    else:
-                        i += 1
-                n1 = len(sources)
-                if n1 != n0:
-                    self.log.info("Dropped %i of %i 'child' sources (%i remaining)" %
-                                  ((n0-n1), n0, n1))
                 
             assert(exposure)
             assert(psf)
