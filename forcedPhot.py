@@ -61,9 +61,9 @@ class ForcedPhotTask(Task):
 
             det = self.detect(exposure)
             sources = det.sources
-            self.measurement.run(stack, sources, apCorr=calib.apCorr)
+            self.measurement.run(exposure, sources, apCorr=calib.apCorr)
             butler.put(sources, "stacksources", dataId)
-            butler.put(stack.getPsf(), "stackpsf", dataId)
+            butler.put(exposure.getPsf(), "stackpsf", dataId)
 
         return Struct(sources=sources, wcs=wcs)
 
