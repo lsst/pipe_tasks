@@ -110,15 +110,13 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         namespace.skyMap = lsst.skymap.DodecaSkyMap(
             projection = namespace.projection,
             pixelScale = afwGeom.Angle(namespace.scale, afwGeom.arcseconds),
-            overlap = afwGeom.Angle(namespace.overlap, afwGeom.degrees),
+            tractOverlap = afwGeom.Angle(namespace.overlap, afwGeom.degrees),
         )
 
         if namespace.radec != None:
             radec = [afwGeom.Angle(ang, afwGeom.degrees) for ang in namespace.radec]
             namespace.radec = afwCoord.IcrsCoord(radec[0], radec[1])
 
-        dimensions = afwGeom.Extent2I(namespace.size[0], namespace.size[1])
-        
         tractId = namespace.tract
         if tractId is None:
             if namespace.radec is None:
@@ -126,6 +124,7 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
             tractInfo = namespace.skyMap.findTract(namespace.radec)
         else:
             tractInfo = namespace.skyMap[tractId]
+        namespace.tractInfo = tractInfo
         
         patchIndex = namespace.patch
         if patchIndex is None:
@@ -134,8 +133,7 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
             patchInfo = tractInfo.findPatch(namespace.radec)
         else:
             patchInfo = tractInfo.getPatch(patchIndex)
-
-        namespace.tractInfo = tractInfo
+        namespace.patchInfo = patchInfo
         
         del namespace.scale
         del namespace.projection
