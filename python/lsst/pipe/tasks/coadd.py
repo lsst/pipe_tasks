@@ -79,11 +79,11 @@ class CoaddTask(pipeBase.CmdLineTask):
 
         # normally the butler would do this, but it doesn't have support for coadds yet
         task.config.save("%s_config.py" % (task.getName(),))
-
+        
         taskRes = task.run(
             dataRefList = parsedCmd.dataRefList,
-            bbox = parsedCmd.bbox,
-            wcs = parsedCmd.wcs,
+            bbox = parsedCmd.patchInfo.getOuterBBox(),
+            wcs = parsedCmd.tractInfo.getWcs(),
             desFwhm = parsedCmd.fwhm,
         )
         

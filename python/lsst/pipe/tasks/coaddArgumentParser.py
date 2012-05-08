@@ -35,6 +35,7 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
     
     @todo:
     - Add defaults for:
+      - sdss
       - hscSim
       - cfht (Megacam)
     - Set correct default scale for suprimecam
@@ -62,10 +63,8 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
             help="RA Dec to find tractId; center of coadd unless llc specified (ICRS, degrees)")
         self.add_argument("--tract", type=int,
             help="sky tract ID; if omitted, chooses the best sky tract for --radec")
-        self.add_argument("--llc", nargs=2, type=int,
-            help="x y index of lower left corner (pixels); if omitted, coadd is centered on --radec")
-        self.add_argument("--size", nargs=2, type=int,
-            help="x y size of coadd (pixels)")
+        self.add_argument("--patch", nargs=2, type=int,
+            help="sky patch index; if omitted, chooses the best sky patch for --radec")
         self.add_argument("--projection", default="STG",
             help="WCS projection used for sky tracts, e.g. STG or TAN")
         
@@ -94,61 +93,52 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
         In addition to the standard attributes from pipeBase.ArgumentParser, adds the following
         coadd-specific attributes:
         - fwhm: Desired FWHM, in science exposure pixels; 0 for no PSF matching
-        - radec: RA, Dec of center of coadd (an afwGeom.IcrsCoord)
-        - bbox: bounding box for coadd (an afwGeom.Box2I)
-        - wcs: WCS for coadd (an afwMath.Wcs)
-        - skyMap: sky map for coadd (an lsst.skymap.SkyMap)
-        - skyTractInfo: sky tract info for coadd (an lsst.skymap.SkyTractInfo)
+        - radec: User-specified center of coadd (an afwGeom.IcrsCoord); None if user did not specify
+        - skyMap: sky map for coadd (an lsst.skymap.DodecaSkyMap)
+        - tractInfo: sky tract info for coadd (an lsst.skymap.TractInfo)
+        - patchInfo: sky patch info for coadd (an lsst.skyMap.PatchInfo)
 
         The following command-line options are NOT included in namespace:
-        - llc (get from bbox)
-        - size (get from bbox)
-        - scale (get from skyTractInfo)
-        - projection (get from skyTractInfo)
-        - overlap (get from skyTractInfo)
-        - tract (get from skyTractInfo)
+        - scale (get from tractInfo)
+        - projection (get from tractInfo)
+        - overlap (get from tractInfo)
+        - tract (get from tractInfo)
+        - patch (get from patchInfo)
         """
         namespace = pipeBase.ArgumentParser.parse_args(self, config=config, args=args, log=log)
         
-        namespace.skyMap = lsst.skymap.SkyMap(
+        namespace.skyMap = lsst.skymap.DodecaSkyMap(
             projection = namespace.projection,
             pixelScale = afwGeom.Angle(namespace.scale, afwGeom.arcseconds),
-            overlap = afwGeom.Angle(namespace.overlap, afwGeom.degrees),
+            tractOverlap = afwGeom.Angle(namespace.overlap, afwGeom.degrees),
         )
 
         if namespace.radec != None:
             radec = [afwGeom.Angle(ang, afwGeom.degrees) for ang in namespace.radec]
             namespace.radec = afwCoord.IcrsCoord(radec[0], radec[1])
 
-        dimensions = afwGeom.Extent2I(namespace.size[0], namespace.size[1])
-        
         tractId = namespace.tract
         if tractId is None:
             if namespace.radec is None:
-                raise RuntimeError("Must specify tract or radec")
-            tractId = namespace.skyMap.getSkyTractId(namespace.radec)
-
-        namespace.skyTractInfo = namespace.skyMap.getSkyTractInfo(tractId)
-        namespace.wcs = namespace.skyTractInfo.getWcs()
-        
-        # determine bounding box
-        if namespace.llc != None:
-            llcPixInd = afwGeom.Point2I(namespace.llc[0], namespace.llc[1])
+                raise RuntimeError("Must specify tract (and patch) or radec")
+            tractInfo = namespace.skyMap.findTract(namespace.radec)
         else:
+            tractInfo = namespace.skyMap[tractId]
+        namespace.tractInfo = tractInfo
+        
+        patchIndex = namespace.patch
+        if patchIndex is None:
             if namespace.radec is None:
-                raise RuntimeError("Must specify llc or radec")
-            ctrPixPos = namespace.wcs.skyToPixel(namespace.radec)
-            ctrPixInd = afwGeom.Point2I(ctrPixPos)
-            llcPixInd = ctrPixInd - (dimensions / 2)
-        namespace.bbox = afwGeom.Box2I(llcPixInd, dimensions)
-        if namespace.radec is None:
-            namespace.radec = namespace.skyTractInfo.getCtrCoord()
-
-        del namespace.llc
-        del namespace.size
+                raise RuntimeError("Must specify patch (and tract) or radec")
+            patchInfo = tractInfo.findPatch(namespace.radec)
+        else:
+            patchInfo = tractInfo.getPatch(patchIndex)
+        namespace.patchInfo = patchInfo
+        
         del namespace.scale
         del namespace.projection
         del namespace.overlap
         del namespace.tract
+        del namespace.patch
         
         return namespace
