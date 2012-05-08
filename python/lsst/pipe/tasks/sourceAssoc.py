@@ -115,6 +115,12 @@ class SourceAssocConfig(pexConfig.Config):
             "flux.sinc":     "flux.sinc.flags," + flags,
             "shape.sdss":    "shape.sdss.flags.unweightedbad," + flags,
         }
+        self.measSlots.centroid = "centroid.sdss"
+        self.measSlots.shape = "shape.sdss"
+        self.measSlots.psfFlux = "flux.psf"
+        self.measSlots.apFlux = "flux.naive"
+        self.measSlots.modelFlux = "flux.gaussian"
+        self.measSlots.instFlux = "flux.gaussian"
 
 
 def _flagKeys(schema, config, alg):
