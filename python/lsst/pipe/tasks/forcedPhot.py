@@ -21,6 +21,9 @@ class ForcedPhotConfig(Config):
 class ForcedPhotTask(Task):
     """Task to perform forced photometry.
 
+    This is a base class; it will need sub-classing to implement
+    the getReferences() method.
+
     "Forced photometry" is measurement on an image using the
     position from another source as the centroid, and without
     recentering.
