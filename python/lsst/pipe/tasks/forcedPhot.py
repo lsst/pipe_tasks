@@ -1,116 +1,106 @@
 #!/usr/bin/env python
 
-import gc
-
-from lsst.pex.config import Config, Field, ConfigField
+from lsst.pex.config import Config, ConfigField
 from lsst.pipe.base import Task, Struct
 
 import lsst.daf.base as dafBase
-import lsst.daf.persistence as dafPersist
-import lsst.afw.detection as afwDet
 import lsst.afw.table as afwTable
-import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
-import lsst.ip.isr as ipIsr
 import lsst.meas.algorithms as measAlg
-import lsst.pipe.tasks.calibrate as ptCal
 
 
 class ForcedPhotConfig(Config):
-    calibrate = ConfigField(dtype=ptCal.CalibrateConfig, doc="Configuration for calibration of stack")
-    detection = ConfigField(dtype=measAlg.SourceDetectionConfig, doc="Configuration for detection on stack")
+    """Configuration for forced photometry.
+
+    This is quite bare, but it may be extended by subclasses
+    to support getting the list of reference sources.
+    """
     measurement = ConfigField(dtype=measAlg.SourceMeasurementConfig,
-                              doc="Configuration for measurement on CCD")
-
-    def setDefaults(self):
-        self.calibrate.doAstrometry = False
-        self.calibrate.doPhotoCal = False
-
+                              doc="Configuration for forced measurement")
 
 class ForcedPhotTask(Task):
+    """Task to perform forced photometry.
+
+    "Forced photometry" is measurement on an image using the
+    position from another source as the centroid, and without
+    recentering.
+    """
+
     ConfigClass = ForcedPhotConfig
     _DefaultName = "forcedPhot"
 
     def __init__(self, *args, **kwargs):
         super(ForcedPhotTask, self).__init__(*args, **kwargs)
-        self.makeSubtask("calibrate", ptCal.CalibrateTask)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
-        self.makeSubtask("detection", measAlg.SourceDetectionTask, schema=self.schema)
         self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.algMetadata)
 
-    def run(self, butler, stackId, expIdList):
+    def run(self, dataRef):
+        inputs = self.readInputs(dataRef)
+        exposure = inputs.exposure
+        exposure.setPsf(inputs.psf)
+        references = self.getReferences(dataRef, exposure)
+        references = self.subsetReferences(references, exposure)
+        sources = self.generateSources(len(references))
+        self.measure(sources, exposure, references, apCorr=inputs.apCorr)
+        return Struct(sources=sources, references=references)
 
-        stackMeas = self.measureStack(butler, stackId)
-        for expId in expIdList:
-            self.measureExp(butler, expId, stackMeas)
+    def readInputs(self, dataRef, exposureName="calexp", psfName="psf", apCorrName="apCorr"):
+        """Read inputs for exposure
 
+        @param dataRef         Data reference from butler
+        @param exposureName    Name for exposure in butler
+        @param psfName         Name for PSF in butler
+        @param apCorrName      Name for aperture correction, or None
+        """
+        return Struct(exposure=dataRef.get(exposureName),
+                      psf=dataRef.get(psfName),
+                      apCorr=dataRef.get(apCorrName) if apCorrName is not None else None,
+                      )
 
-    def measureStack(self, butler, dataId):
-        try:
-            sources = foilReadProxy(butler.get("stacksources", dataId))
-            wcs = afwImage.makeWcs(butler.get("stack_md", dataId))
-        except Exception, e:
-            self.log.log(self.log.INFO, "Stack products not available (%s); attempting to create" % e)
-            exposure = butler.get("stack", dataId)
-            self.interpolateNans(exposure, afwDet.createPsf("DoubleGaussian", 15, 15, 1.0))       
-            calib = self.calibrate.run(exposure)
-            exposure = calib.exposure
-            wcs = exposure.getWcs()
+    def getReferences(self, dataRef, exposure):
+        """Get reference sources on (or close to) exposure"""
+        raise NotImplementedError("Don't know how to get reference sources in the generic case")
 
-            det = self.detect(exposure)
-            sources = det.sources
-            self.measurement.run(exposure, sources, apCorr=calib.apCorr)
-            butler.put(sources, "stacksources", dataId)
-            butler.put(exposure.getPsf(), "stackpsf", dataId)
+    def subsetReferences(self, references, exposure):
+        """Generate a subset of reference sources to ensure all are in the exposure
 
-        return Struct(sources=sources, wcs=wcs)
-
-
-    def interpolateNans(self, exposure, psf):
-        exposure.getMaskedImage().getMask().addMaskPlane("UNMASKEDNAN")
-        nanMasker = ipIsr.UnmaskedNanCounterF()
-        nanMasker.apply(exposure.getMaskedImage())
-        nans = ipIsr.Isr().getDefectListFromMask(exposure.getMaskedImage(), maskName='UNMASKEDNAN')
-        self.log.log(self.log.INFO, "Interpolating over %d NANs" % len(nans))
-        measAlg.interpolateOverDefects(exposure.getMaskedImage(), psf, nans, 0.0)
-        
-
-    def detect(self, exposure):
-        table = afwTable.SourceTable.make(self.schema)
-        table.setMetadata(self.algMetadata)
-        return self.detection.makeSourceCatalog(table, exposure)
-
-    def measureExp(self, butler, dataId, stackMeas):
-        exposure = butler.get("calexp", dataId)
-        psf = butler.get("psf", dataId)
-        exposure.setPsf(psf)
-        wcs = exposure.getWcs()
-        apCorr = butler.get("apCorr", dataId)
+        @param references  Reference sources
+        @param exposure    Exposure of interest
+        @return Subset of references
+        """
         box = afwGeom.Box2D(exposure.getBBox())
-
-        # Only bother with sources that are definitely on the image
-        stackSubset = afwTable.SourceCatalog(stackMeas.sources.getTable())
-        sources = afwTable.SourceCatalog(stackMeas.sources.getSchema())
-        table = sources.getTable()
-        for s in stackMeas.sources:
-            coord = s.getCoord()
+        wcs = exposure.getWcs()
+        subset = afwTable.SourceCatalog(references.table)
+        for ref in references:
+            coord = ref.getCoord()
             if box.contains(wcs.skyToPixel(coord)):
-                new = table.makeRecord()
-                new.setCoord(coord)
-                sources.append(new)
-                stackSubset.append(s)
-        self.log.log(self.log.INFO, "Subset of %d/%d sources for %s" % 
-                     (len(sources), len(stackMeas.sources), dataId))
+                subset.append(ref)
+        return subset
 
-        self.measurement.run(exposure, sources, apCorr=apCorr,
-                             references=stackSubset, refWcs=stackMeas.wcs)
+    def generateSources(self, number):
+        """Generate sources to be measured
 
-        butler.put(sources, "src", dataId)
+        @param number  Number of sources to generate
+        @return Sources ready for measurement
+        """
+        sources = afwTable.SourceCatalog(self.schema)
+        table = sources.table
+        table.setMetadata(self.algMetadata)
+        sources.preallocate(number)
+        for i in range(number):
+            src = table.makeRecord()
+            sources.append(src)
+        return sources
 
+    def measure(self, sources, exposure, references, apCorr=None):
+        """Measure sources on the exposure at the position of the references
 
-def foilReadProxy(obj):
-    if isinstance(obj, dafPersist.ReadProxy):
-        obj = obj.__subject__
-    return obj
+        @param sources     Sources to receive measurements
+        @param exposure    Exposure to measure
+        @param references  Reference sources
+        @param apCorr      Aperture correction to apply, or None
+        """
+        self.log.log(self.log.INFO, "Forced measurement of %d sources" % len(
+        self.measurement.run(exposure, sources, apCorr=apCorr, references=references)
