@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from lsst.pex.config import Config, ConfigField
-from lsst.pipe.base import Task, Struct
+from lsst.pipe.base import CmdLineTask, Struct
 
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
@@ -18,7 +18,7 @@ class ForcedPhotConfig(Config):
     measurement = ConfigField(dtype=measAlg.SourceMeasurementConfig,
                               doc="Configuration for forced measurement")
 
-class ForcedPhotTask(Task):
+class ForcedPhotTask(CmdLineTask):
     """Task to perform forced photometry.
 
     This is a base class; it will need sub-classing to implement
@@ -47,7 +47,7 @@ class ForcedPhotTask(Task):
         references = self.subsetReferences(references, exposure)
         sources = self.generateSources(len(references))
         self.measure(sources, exposure, references, apCorr=inputs.apCorr)
-        return Struct(sources=sources, references=references)
+        self.writeOutput(dataRef, sources)
 
     def readInputs(self, dataRef, exposureName="calexp", psfName="psf", apCorrName="apCorr"):
         """Read inputs for exposure
@@ -84,7 +84,7 @@ class ForcedPhotTask(Task):
 
     def generateSources(self, number):
         """Generate sources to be measured
-
+        
         @param number  Number of sources to generate
         @return Sources ready for measurement
         """
@@ -99,11 +99,18 @@ class ForcedPhotTask(Task):
 
     def measure(self, sources, exposure, references, apCorr=None):
         """Measure sources on the exposure at the position of the references
-
+        
         @param sources     Sources to receive measurements
         @param exposure    Exposure to measure
         @param references  Reference sources
         @param apCorr      Aperture correction to apply, or None
         """
-        self.log.log(self.log.INFO, "Forced measurement of %d sources" % len(
+        self.log.log(self.log.INFO, "Forced measurement of %d sources" % len(sources))
         self.measurement.run(exposure, sources, apCorr=apCorr, references=references)
+
+    def writeOutput(self, dataRef, sources, outName="forcedsources"):
+        """Write sources out.
+
+        @param outName     Name of forced sources in butler
+        """
+        dataRef.put(sources, outName)
