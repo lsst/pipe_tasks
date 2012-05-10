@@ -22,10 +22,11 @@ def detectorIsAmp(exposure):
     amp = cameraGeom.cast_Amp(det)
     return False if amp is None else True
 
-def getCcd(exposure):
+def getCcd(exposure, allowRaise=True):
     """Get the Ccd referred to by an exposure
 
     @param exposure Exposure to inspect
+    @param allowRaise  If False, return None if the CCD can't be found rather than raising an exception
     @returns Ccd
     """
     det = exposure.getDetector()
@@ -37,7 +38,11 @@ def getCcd(exposure):
         det = amp.getParent()
         ccd = cameraGeom.cast_Ccd(det)
         return ccd
-    raise RuntimeError("Can't find Ccd from detector.")
+
+    if allowRaise:
+        raise RuntimeError("Can't find Ccd from detector.")
+    else:
+        return None
 
 def getAmp(exposure):
     """Get the Amp referred to by an exposure
