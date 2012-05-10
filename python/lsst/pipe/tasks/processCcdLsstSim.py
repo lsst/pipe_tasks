@@ -168,6 +168,13 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
         else:
             visitExposure = None
 
+        # We make one IdFactory that will be used by both icSrc and src datasets;
+        # I don't know if this is the way we ultimately want to do things, but at least
+        # this ensures the source IDs are fully unique.
+        expBits = sensorRef.get("ccdExposureId_bits")
+        expId = long(sensorRef.get("ccdExposureId"))
+        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
         if self.config.doCalibrate:
             if visitExposure is None:
                 if sensorRef.datasetExists("visitCCD"):
@@ -175,7 +182,7 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
                 else:
                     self.log.log(self.log.WARN, "Could not find visitCCD; using postISRCCD snap 0 instead")
                     visitExposure = sensorRef.get('postISRCCD', snap=0)
-            calib = self.calibrate.run(visitExposure)
+            calib = self.calibrate.run(visitExposure, idFactory=idFactory)
             calExposure = calib.exposure
 
             if self.config.doWriteCalibrate:
@@ -199,7 +206,7 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
             if calib is None:
                 psf = sensorRef.get('psf')
                 calExposure.setPsf(sensorRef.get('psf'))
-            table = afwTable.SourceTable.make(self.schema)
+            table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, calExposure)
             sources = detRet.sources
