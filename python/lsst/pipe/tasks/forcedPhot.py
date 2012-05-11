@@ -66,6 +66,7 @@ class ForcedPhotTask(CmdLineTask):
 
     def getReferences(self, dataRef, exposure):
         """Get reference sources on (or close to) exposure"""
+        # XXX put something in the Mapper???
         raise NotImplementedError("Don't know how to get reference sources in the generic case")
 
     def subsetReferences(self, references, exposure):
