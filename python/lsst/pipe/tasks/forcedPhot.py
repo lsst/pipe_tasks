@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from lsst.pex.config import Config, ConfigField
+from lsst.pex.config import Config, ConfigField, DictField
 from lsst.pipe.base import CmdLineTask, Struct
 
 import lsst.daf.base as dafBase
@@ -17,6 +17,8 @@ class ForcedPhotConfig(Config):
     """
     measurement = ConfigField(dtype=measAlg.SourceMeasurementConfig,
                               doc="Configuration for forced measurement")
+    copyColumns = DictField(keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
+                            default={"id": "objectId"})
 
 class ForcedPhotTask(CmdLineTask):
     """Task to perform forced photometry.
@@ -45,7 +47,7 @@ class ForcedPhotTask(CmdLineTask):
         exposure.setPsf(inputs.psf)
         references = self.getReferences(dataRef, exposure)
         references = self.subsetReferences(references, exposure)
-        sources = self.generateSources(len(references))
+        sources = self.generateSources(references)
         self.measure(sources, exposure, references, apCorr=inputs.apCorr)
         self.writeOutput(dataRef, sources)
 
@@ -82,18 +84,29 @@ class ForcedPhotTask(CmdLineTask):
                 subset.append(ref)
         return subset
 
-    def generateSources(self, number):
+    def generateSources(self, references):
         """Generate sources to be measured
         
         @param number  Number of sources to generate
         @return Sources ready for measurement
         """
-        sources = afwTable.SourceCatalog(self.schema)
+        schema = afwTable.Schema(self.schema)
+
+        copyKeys = []
+        for fromCol, toCol in self.config.copyColumns.items():
+            item = references.schema.find(fromCol)
+            schema.addField(toCol, item.field.getTypeString(), item.field.getDoc(), item.field.getUnits())
+            keys = (item.key, schema.find(toCol).field))
+            copyKeys.append(keys)
+        
+        sources = afwTable.SourceCatalog(schema)
         table = sources.table
         table.setMetadata(self.algMetadata)
-        sources.preallocate(number)
-        for i in range(number):
+        sources.preallocate(len(references))
+        for ref in references:
             src = table.makeRecord()
+            for fromKey, toKey in copyKeys:
+                src.set(toKey, ref.get(fromKey))
             sources.append(src)
         return sources
 
