@@ -49,7 +49,9 @@ class ForcedPhotTask(CmdLineTask):
         exposure = inputs.exposure
         exposure.setPsf(inputs.psf)
         references = self.getReferences(dataRef, exposure)
+        self.log.log(self.log.INFO, "Retrieved %d reference sources" % len(references))
         references = self.subsetReferences(references, exposure)
+        self.log.log(self.log.INFO, "Subset to %d reference sources" % len(references))
         sources = self.generateSources(references)
         self.measure(sources, exposure, references, apCorr=inputs.apCorr)
         self.writeOutput(dataRef, sources)
@@ -81,7 +83,7 @@ class ForcedPhotTask(CmdLineTask):
         """
         box = afwGeom.Box2D(exposure.getBBox())
         wcs = exposure.getWcs()
-        subset = afwTable.SourceCatalog(references.table)
+        subset = references.copy()
         for ref in references:
             coord = ref.getCoord()
             if box.contains(wcs.skyToPixel(coord)):
