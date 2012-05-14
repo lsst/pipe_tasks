@@ -41,6 +41,11 @@ class ForcedPhotTask(CmdLineTask):
         self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
                          schema=self.schema, algMetadata=self.algMetadata)
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        """Overriding CmdLineTask._makeArgumentParser to set dataset type"""
+        return ArgumentParser(name=cls._DefaultName, datasetType="calexp")
+
     def run(self, dataRef):
         inputs = self.readInputs(dataRef)
         exposure = inputs.exposure
