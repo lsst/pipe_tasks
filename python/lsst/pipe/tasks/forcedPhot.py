@@ -97,7 +97,7 @@ class ForcedPhotTask(CmdLineTask):
         for fromCol, toCol in self.config.copyColumns.items():
             item = references.schema.find(fromCol)
             schema.addField(toCol, item.field.getTypeString(), item.field.getDoc(), item.field.getUnits())
-            keys = (item.key, schema.find(toCol).field))
+            keys = (item.key, schema.find(toCol).field)
             copyKeys.append(keys)
         
         sources = afwTable.SourceCatalog(schema)
