@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-from lsst.pex.config import Config, ConfigField, DictField
-from lsst.pipe.base import CmdLineTask, Struct
+from lsst.pex.config import Config, ConfigurableField, DictField
+from lsst.pipe.base import CmdLineTask, Struct, ArgumentParser
 
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
@@ -15,8 +15,7 @@ class ForcedPhotConfig(Config):
     This is quite bare, but it may be extended by subclasses
     to support getting the list of reference sources.
     """
-    measurement = ConfigField(dtype=measAlg.SourceMeasurementConfig,
-                              doc="Configuration for forced measurement")
+    measurement = ConfigurableField(target=measAlg.SourceMeasurementTask, doc="Forced measurement")
     copyColumns = DictField(keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
                             default={"id": "objectId"})
 
@@ -38,8 +37,7 @@ class ForcedPhotTask(CmdLineTask):
         super(ForcedPhotTask, self).__init__(*args, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
-        self.makeSubtask("measurement", measAlg.SourceMeasurementTask,
-                         schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @classmethod
     def _makeArgumentParser(cls):
