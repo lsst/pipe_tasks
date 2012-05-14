@@ -223,9 +223,7 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPhotoCal:
             assert(matches is not None)
-            assert(matchMeta is not None)
-            passband = matchMeta.get('FILTER')
-            photocalRet = self.photocal.run(matches, passband)
+            photocalRet = self.photocal.run(matches, exposure.getFilter().getName())
             zp = photocalRet.photocal
             self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
             exposure.getCalib().setFluxMag0(zp.getFlux(0))
