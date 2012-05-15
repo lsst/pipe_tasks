@@ -83,7 +83,7 @@ class ForcedPhotTask(CmdLineTask):
         """
         box = afwGeom.Box2D(exposure.getBBox())
         wcs = exposure.getWcs()
-        subset = references.copy()
+        subset = afwTable.SourceCatalog(references.table)
         for ref in references:
             coord = ref.getCoord()
             if box.contains(wcs.skyToPixel(coord)):
@@ -102,7 +102,7 @@ class ForcedPhotTask(CmdLineTask):
         for fromCol, toCol in self.config.copyColumns.items():
             item = references.schema.find(fromCol)
             schema.addField(toCol, item.field.getTypeString(), item.field.getDoc(), item.field.getUnits())
-            keys = (item.key, schema.find(toCol).field)
+            keys = (item.key, schema.find(toCol).key)
             copyKeys.append(keys)
         
         sources = afwTable.SourceCatalog(schema)
