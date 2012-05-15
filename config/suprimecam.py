@@ -27,40 +27,22 @@ root.calibrate.measurePsf.starSelector.name = "secondMoment"
 root.calibrate.measurePsf.psfDeterminer.name = "pca"
 root.calibrate.measurePsf.starSelector["secondMoment"].clumpNSigma = 2.0
 root.calibrate.measurePsf.psfDeterminer["pca"].nEigenComponents = 4
-root.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7.0
+root.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7
 root.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 2
 root.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin = 25
 
 # Final photometry
-root.photometry.detect.thresholdValue = 5.0
-root.photometry.detect.includeThresholdMultiplier = 1.0
-root.photometry.measure.source.astrom = "SDSS"
-root.photometry.measure.source.apFlux = "SINC"
-root.photometry.measure.source.modelFlux = "GAUSSIAN"
-root.photometry.measure.source.psfFlux = "PSF"
-root.photometry.measure.source.shape = "SDSS"
-root.photometry.measure.astrometry.names = ["GAUSSIAN", "NAIVE", "SDSS"]
-root.photometry.measure.shape.names = ["SDSS"]
-root.photometry.measure.photometry.names = ["NAIVE", "GAUSSIAN", "PSF", "SINC"]
-root.photometry.measure.photometry["GAUSSIAN"].shiftmax = 10
-root.photometry.measure.photometry["SINC"].radius = 7.0
-root.photometry.measure.photometry["NAIVE"].radius = root.photometry.measure.photometry["SINC"].radius
+root.detection.thresholdValue = 5.0
+root.detection.includeThresholdMultiplier = 1.0
+
+root.measurement.algorithms["flux.gaussian"].shiftmax = 10.0
 
 # Initial photometry
-root.calibrate.photometry.detect.thresholdValue = 5.0
-root.calibrate.photometry.detect.includeThresholdMultiplier = 10.0
-root.calibrate.photometry.measure = root.photometry.measure
+root.calibrate.detection.thresholdValue = 5.0
+root.calibrate.detection.includeThresholdMultiplier = 10.0
 
-# Aperture correction
-root.calibrate.apCorr.alg1.name = root.photometry.measure.source.psfFlux
-root.calibrate.apCorr.alg2.name = root.photometry.measure.source.apFlux
-root.calibrate.apCorr.alg1[root.calibrate.apCorr.alg1.name] = \
-    root.photometry.measure.photometry[root.calibrate.apCorr.alg1.name]
-root.calibrate.apCorr.alg2[root.calibrate.apCorr.alg2.name] = \
-    root.photometry.measure.photometry[root.calibrate.apCorr.alg2.name]
-
-# Astrometry
-root.calibrate.astrometry.distortion.name = "null" # comes from cameraGeom
+root.calibrate.initialMeasurement.algorithms = root.measurement.algorithms
+root.calibrate.measurement.algorithms = root.measurement.algorithms
 
 from lsst.meas.photocal.colorterms import Colorterm
 from lsst.obs.suprimecam.colorterms import colortermsData
