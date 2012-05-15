@@ -61,3 +61,9 @@ root.calibrate.apCorr.alg2[root.calibrate.apCorr.alg2.name] = \
 
 # Astrometry
 root.calibrate.astrometry.distortion.name = "null" # comes from cameraGeom
+
+from lsst.meas.photocal.colorterms import Colorterm
+from lsst.obs.suprimecam.colorterms import colortermsData
+Colorterm.setColorterms(colortermsData)
+
+Colorterm.setActiveDevice("Hamamatsu")
