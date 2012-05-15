@@ -22,6 +22,7 @@
 import math
 import lsst.pex.config as pexConfig
 import lsst.afw.cameraGeom  as cameraGeom
+import lsst.afw.display.ds9 as ds9
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
@@ -222,7 +223,13 @@ class RepairTask(pipeBase.Task):
 
         if keepCRs is None:
             keepCRs = self.config.cosmicray.keepCRs
-        crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+        try:
+            crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+        except Exception, e:
+            if display:
+                ds9.mtv(exposure, title="Failed CR")
+            raise
+            
         num = 0
         if crs is not None:
             mask = mi.getMask()
@@ -231,7 +238,6 @@ class RepairTask(pipeBase.Task):
             num = len(crs)
 
             if display and displayCR:
-                import lsst.afw.display.ds9 as ds9
                 import lsst.afw.display.utils as displayUtils
 
                 ds9.incrDefaultFrame()
