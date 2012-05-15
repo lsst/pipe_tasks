@@ -15,6 +15,9 @@ root.calibrate.repair.crosstalkCoeffs.values = [
     -9.90e-05, -2.28e-05,  0.00e+00, -9.64e-05,
     -9.59e-05, -9.85e-05, -8.77e-05,  0.00e+00,
     ]
+# nonlinearity for SuprimeCam
+root.calibrate.repair.linearizationCoefficient = 2.5e-7
+
 # PSF determination
 root.calibrate.measurePsf.starSelector.name = "secondMoment"
 root.calibrate.measurePsf.psfDeterminer.name = "pca"

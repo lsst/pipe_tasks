@@ -167,13 +167,14 @@ class RepairTask(pipeBase.Task):
 
             width, height = ampImage.getDimensions()
 
-            for y in range(height):
-                for x in range(width):
-                    val = ampImage.get(x, y)
-                    if linearizationThreshold <= 0:
-                        val += linearizationCoefficient*val*val
-                        ampImage.set(x, y, val)
-                    else:
+            if linearizationThreshold <= 0:
+                tmp = ampImage.Factory(ampImage, True)
+                tmp.scaledMultiplies(linearizationCoefficient, ampImage)
+                ampImage += tmp
+            else:
+                for y in range(height):
+                    for x in range(width):
+                        val = ampImage.get(x, y)
                         if val > linearizationThreshold:
                             val += val*linearizationCoefficient*(math.log10(val) - log10_thresh)
                             ampImage.set(x, y, val)
