@@ -206,6 +206,9 @@ class CalibrateTask(pipeBase.Task):
         if self.config.doComputeApCorr or self.config.doAstrometry or self.config.doPhotoCal:
             self.measurement.measure(exposure, sources)   # don't use run, because we don't have apCorr yet
 
+        if self.measurement.config.doCorrectDistortion:
+            self.measurement.correctDistortion(exposure, sources)
+
         if self.config.doComputeApCorr:
             assert(self.config.doPsf)
             apCorr = self.computeApCorr(exposure, cellSet)

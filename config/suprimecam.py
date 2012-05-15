@@ -18,6 +18,10 @@ root.calibrate.repair.crosstalkCoeffs.values = [
 # nonlinearity for SuprimeCam
 root.calibrate.repair.linearizationCoefficient = 2.5e-7
 
+# correct photometry for known radial distortions leading to unreliable flats
+root.calibrate.measurement.doCorrectDistortion = True
+root.measurement.doCorrectDistortion = True
+
 # PSF determination
 root.calibrate.measurePsf.starSelector.name = "secondMoment"
 root.calibrate.measurePsf.psfDeterminer.name = "pca"
