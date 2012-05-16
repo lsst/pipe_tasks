@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from lsst.pex.config import Config, ConfigurableField, DictField
-from lsst.pipe.base import CmdLineTask, Struct, ArgumentParser
+from lsst.pipe.base import CmdLineTask, Struct, ArgumentParser, timeMethod
 
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
@@ -12,18 +12,23 @@ import lsst.meas.algorithms as measAlg
 class ForcedPhotConfig(Config):
     """Configuration for forced photometry.
 
-    This is quite bare, but it may be extended by subclasses
-    to support getting the list of reference sources.
     """
-    measurement = ConfigurableField(target=measAlg.SourceMeasurementTask, doc="Forced measurement")
+    references = ConfigurableField(target=measAlg.SourceMeasurementTask, doc="Forced measurement")
+    measurement = ConfigurableField(target=ReferencesTask, doc="Retrieve reference source catalog")
     copyColumns = DictField(keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
                             default={"id": "objectId"})
 
+class ReferencesConfig(Config):
+    """Configuration for reference source catalog retrieval
+
+    This is bare, but will be extended by subclasses
+    to support getting the list of reference sources.
+    """
+    pass
+
+
 class ForcedPhotTask(CmdLineTask):
     """Task to perform forced photometry.
-
-    This is a base class; it will need sub-classing to implement
-    the getReferences() method.
 
     "Forced photometry" is measurement on an image using the
     position from another source as the centroid, and without
@@ -37,6 +42,7 @@ class ForcedPhotTask(CmdLineTask):
         super(ForcedPhotTask, self).__init__(*args, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
+        self.makeSubtask("references", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @classmethod
@@ -44,16 +50,15 @@ class ForcedPhotTask(CmdLineTask):
         """Overriding CmdLineTask._makeArgumentParser to set dataset type"""
         return ArgumentParser(name=cls._DefaultName, datasetType="calexp")
 
+    @timeMethod
     def run(self, dataRef):
         inputs = self.readInputs(dataRef)
         exposure = inputs.exposure
         exposure.setPsf(inputs.psf)
-        references = self.getReferences(dataRef, exposure)
-        self.log.log(self.log.INFO, "Retrieved %d reference sources" % len(references))
-        references = self.subsetReferences(references, exposure)
-        self.log.log(self.log.INFO, "Subset to %d reference sources" % len(references))
+        references = self.references.run(dataRef, exposure)
+        self.log.log(self.log.INFO, "Performing forced measurement on %d sources" % len(sources))
         sources = self.generateSources(references)
-        self.measure(sources, exposure, references, apCorr=inputs.apCorr)
+        self.measurement.run(exposure, sources, apCorr=apCorr, references=references)
         self.writeOutput(dataRef, sources)
 
     def readInputs(self, dataRef, exposureName="calexp", psfName="psf", apCorrName="apCorr"):
@@ -69,32 +74,11 @@ class ForcedPhotTask(CmdLineTask):
                       apCorr=dataRef.get(apCorrName) if apCorrName is not None else None,
                       )
 
-    def getReferences(self, dataRef, exposure):
-        """Get reference sources on (or close to) exposure"""
-        # XXX put something in the Mapper???
-        raise NotImplementedError("Don't know how to get reference sources in the generic case")
-
-    def subsetReferences(self, references, exposure):
-        """Generate a subset of reference sources to ensure all are in the exposure
-
-        @param references  Reference sources
-        @param exposure    Exposure of interest
-        @return Subset of references
-        """
-        box = afwGeom.Box2D(exposure.getBBox())
-        wcs = exposure.getWcs()
-        subset = afwTable.SourceCatalog(references.table)
-        for ref in references:
-            coord = ref.getCoord()
-            if box.contains(wcs.skyToPixel(coord)):
-                subset.append(ref)
-        return subset
-
     def generateSources(self, references):
         """Generate sources to be measured
         
-        @param number  Number of sources to generate
-        @return Sources ready for measurement
+        @param references  Reference source catalog 
+        @return Source catalog ready for measurement
         """
         schema = afwTable.Schema(self.schema)
 
@@ -116,20 +100,66 @@ class ForcedPhotTask(CmdLineTask):
             sources.append(src)
         return sources
 
-    def measure(self, sources, exposure, references, apCorr=None):
-        """Measure sources on the exposure at the position of the references
-        
-        @param sources     Sources to receive measurements
-        @param exposure    Exposure to measure
-        @param references  Reference sources
-        @param apCorr      Aperture correction to apply, or None
-        """
-        self.log.log(self.log.INFO, "Forced measurement of %d sources" % len(sources))
-        self.measurement.run(exposure, sources, apCorr=apCorr, references=references)
-
     def writeOutput(self, dataRef, sources, outName="forcedsources"):
         """Write sources out.
 
         @param outName     Name of forced sources in butler
         """
         dataRef.put(sources, outName)
+
+
+class ReferencesTask(Task):
+    """Task to generate a reference source catalog for forced photometry
+
+    This is a base class, as it is not clear how to generate the
+    reference sources in the generic case (different projects will
+    want to do this differently: perhaps from measuring a coadd, or
+    perhaps from a database, or ...) and so this class MUST be
+    overridden to properly define the getReferences() method.
+    """
+
+    ConfigClass = ReferencesConfig
+
+    def run(self, dataRef, exposure):
+        references = self.getReferences(dataRef, exposure)
+        self.log.log(self.log.INFO, "Retrieved %d reference sources" % len(references))
+        references = self.subsetReferences(references, exposure)
+        self.log.log(self.log.INFO, "Subset to %d reference sources" % len(references))
+        return references
+
+    def getReferences(self, dataRef, exposure):
+        """Get reference sources on (or close to) exposure.
+
+        This method must be overridden by subclasses to return
+        a lsst.afw.table.SourceCatalog.
+
+        @param dataRef     Data reference from butler
+        @param exposure    Exposure that has been read
+        @return Catalog (lsst.afw.table.SourceCatalog) of reference sources
+        """
+        # XXX put something in the Mapper???
+        self.log.log(self.log.FATAL,
+                     """Calling base class implementation of ReferencesTask.getReferences()!
+            You need to configure a subclass of ReferencesTask.  Put in your configuration
+            override file something like:
+                from some.namespace import SubclassReferencesTask
+                root.references.retarget(SubclassReferencesTask)
+            """
+        raise NotImplementedError("Don't know how to get reference sources in the generic case")
+
+    def subsetReferences(self, references, exposure):
+        """Generate a subset of reference sources to ensure all are in the exposure
+
+        @param references  Reference source catalog
+        @param exposure    Exposure of interest
+        @return Reference catalog with subset
+        """
+        box = afwGeom.Box2D(exposure.getBBox())
+        wcs = exposure.getWcs()
+        subset = afwTable.SourceCatalog(references.table)
+        for ref in references:
+            coord = ref.getCoord()
+            if box.contains(wcs.skyToPixel(coord)):
+                subset.append(ref)
+        return subset
+
