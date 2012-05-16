@@ -32,16 +32,17 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
     def _makeDataRefList(self, namespace):
         """Make namespace.dataRefList from namespace.dataIdList
         """
+        datasetType = self.config.coaddName + "Coadd"
+        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
+
         namespace.dataRefList = []
         for dataId in namespace.dataIdList:
             # tract and patch are required
-            if "tract" not in dataId:
-                self.error("--id must include tract")
-            if "patch" not in dataId:
-                self.error("--id must include patch")
+            for key in validKeys:
+                if key not in dataId:
+                    self.error("--id must include " + key)
             dataRef = namespace.butler.dataRef(
-                datasetType = "deepCoadd",
+                datasetType = datasetType,
                 dataId = dataId,
             )
             namespace.dataRefList.append(dataRef)
-            print "dataRef=", dataRef
