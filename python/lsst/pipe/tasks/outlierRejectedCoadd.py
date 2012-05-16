@@ -20,12 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-"""@todo: 
-- use butler to save and retrieve intermediate images
-- modify debug mode that allow retrieving existing data so that it
-    is controlled by debug or config, and perhaps implement it as "reuse if it exists"
-    (but this is dangerous unless the file name contains enough info to tell if it's the right image)
-"""
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -41,7 +35,7 @@ class OutlierRejectedCoaddConfig(CoaddTask.ConfigClass):
         doc = """width, height of stack subregion size;
                 make small enough that a full stack of images will fit into memory at once""",
         length = 2,
-        default = (200, 200),
+        default = (2000, 2000),
         optional = None,
     )
     sigmaClip = pexConfig.Field(
@@ -78,7 +72,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         return self._coaddCalib
     
     @pipeBase.timeMethod
-    def run(self, dataRefList, bbox, wcs, desFwhm):
+    def run(self, patchRef):
         """PSF-match, warp and coadd images, using outlier rejection
         
         PSF matching is to a double gaussian model with core FWHM = desFwhm
@@ -90,17 +84,14 @@ class OutlierRejectedCoaddTask(CoaddTask):
         PSF-matching is performed before warping so the code can use the PSF models
         associated with the calibrated science exposures (without having to warp those models).
         
-        @param dataRefList: list of sensor-level data references
-        @param bbox: bounding box of coadd
-        @param wcs: WCS of coadd
-        @param desFwhm: desired FWHM of PSF, in science exposure pixels
-                (note that the coadd often has a different scale than the science images);
-                if 0 then no PSF matching is performed.
+        @param patchRef: data reference for sky map. Must include keys "tract", "patch",
+            plus the camera-specific filter key (e.g. "filter" or "band")
 
         @return: a pipeBase.Struct with fields:
         - coaddExposure: coadd exposure
         """
         skyInfo = self.getSkyInfo(patchRef)
+        datasetType = self.config.coaddName + "Coadd"
         
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
@@ -117,19 +108,24 @@ class OutlierRejectedCoaddTask(CoaddTask):
 
         exposureMetadataList = []
         for ind, dataRef in enumerate(imageRefList):
-            
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
             exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
-            tempDataRef = ...?????...
-            tempDataRef.put("coaddTempExp")
+            tempDataId = dataRef.dataId.copy()
+            tempDataId.update(patchRef.dataId)
+            tempDataRef = dataRef.butlerSubset.butler.dataRef(
+                datasetType = "coaddTempExp",
+                dataId = tempDataId,
+            )
+            tempDataRef.put(exposure)
             expMetadata = ExposureMetadata(
                     dataRef = tempDataRef,
                     exposure = exposure,
                     badPixelMask = self.getBadPixelMask(),
                 )
             exposureMetadataList.append(expMetadata)
+        del exposure
 
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
@@ -159,6 +155,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
             weightList = []
             for expMeta in exposureMetadataList:
                 if not subBBox.overlaps(expMeta.bbox):
+                    # there is no overlap between this temporary exposure and this coadd subregion
                     self.log.log(self.log.INFO, "Skipping %s; no overlap" % (expMeta.path,))
                     continue
                 
@@ -168,24 +165,25 @@ class OutlierRejectedCoaddTask(CoaddTask):
                 # If not, then use direct unpersistence, but yecch.
                 # KT says: datatype: {exposureDatatype}_sub
                 # dataid: bbox=afwImage.BBoxI
-                
-                # but first: make real datarefs somehow!!!
 
                 if expMeta.bbox.contains(subBBox):
-                    maskedImage = afwImage.MaskedImageF(expMeta.path, 0, dumPS, subBBox, afwImage.PARENT)
-                elif not subBBox.overlaps(expMeta.bbox):
-                    self.log.log(self.log.INFO, "Skipping %s; no overlap" % (expMeta.path,))
-                    continue
+                    # this temporary image fully overlaps this coadd subregion
+                    exposure = expMeta.dataRef.get("coaddTempExp_sub", bbox=subBBox)
+                    maskedImage = exposure.getMaskedImage()
                 else:
+                    # this temporary image partially overlaps this coadd subregion;
+                    # make a new image of EDGE pixels using the coadd subregion
+                    # and set the overlapping pixels from the temporary exposure
                     overlapBBox = afwGeom.Box2I(expMeta.bbox)
                     overlapBBox.clip(subBBox)
                     self.log.log(self.log.INFO,
                         "Processing %s; grow from %s to %s" % (expMeta.path, overlapBBox, subBBox))
                     maskedImage = afwImage.MaskedImageF(subBBox)
                     maskedImage.getMask().set(edgeMask)
+                    tempExposure = expMeta.dataRef.get("coaddTempExp_sub", bbox=overlapBBox)
+                    tempMaskedImage = tempExposure.getMaskedImage()
                     maskedImageView = afwImage.MaskedImageF(maskedImage, overlapBBox, afwImage.PARENT, False)
-                    maskedImageView <<= afwImage.MaskedImageF(expMeta.path, 0, dumPS, overlapBBox,
-                        afwImage.PARENT)
+                    maskedImageView <<= tempMaskedImage
                 maskedImageList.append(maskedImage)
                 weightList.append(expMeta.weight)
             try:
@@ -199,6 +197,9 @@ class OutlierRejectedCoaddTask(CoaddTask):
                 raise
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
+
+        if self.config.doWrite:
+            patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
     
         return pipeBase.Struct(
             coaddExposure = coaddExposure,

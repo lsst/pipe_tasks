@@ -108,7 +108,8 @@ class CoaddTask(pipeBase.CmdLineTask):
         @param patchRef: data reference for sky map. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
         @return: a pipeBase.Struct with fields:
-        - coadd: a coaddUtils.Coadd object; call coadd.getCoadd() to get the coadd exposure
+        - coadd: a coaddUtils.Coadd object
+        - coaddExposure: coadd exposure, as returned by coadd.getCoadd()
         """
         skyInfo = self.getSkyInfo(patchRef)
         
@@ -136,10 +137,13 @@ class CoaddTask(pipeBase.CmdLineTask):
             exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
             coadd.addExposure(exposure)
         
+        coaddExposure = coadd.getCoadd()
+
         if self.config.doWrite:
-            patchRef.put(coadd.getCoadd(), self.config.coaddName)
+            patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
         
         return pipeBase.Struct(
+            coaddExposure = coaddExposure,
             coadd = coadd,
         )
     
@@ -168,8 +172,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         - wcs: WCS of tract
         - bbox: outer bbox of patch, as an afwGeom Box2I
         """
-        skyMapName = "_skyMap" % (self.config.coaddName,)
-        skyMap = patchRef.get("_skyMap" % (self.config.coaddName,))
+        skyMap = patchRef.get(self.config.coaddName + "Coadd_skyMap")
         tractId = patchRef.dataId["tract"]
         tractInfo = skyMap[tractId]
 

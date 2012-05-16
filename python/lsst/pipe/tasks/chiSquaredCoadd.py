@@ -23,13 +23,17 @@
 import lsst.coadd.chisquared as coaddChiSq
 from .coadd import CoaddTask
 
+class ChiSquaredCoaddConfig(CoaddTask.ConfigClass):
+    def setDefaults(self):
+        self.coaddName = "chiSquaredCoadd"
+
 class ChiSquaredCoaddTask(CoaddTask):
     """Coadd images by PSF-matching (optional), warping and computing a chi squared sum
     """
+    ConfigClass = ChiSquaredCoaddConfig
     _DefaultName = "chiSquaredCoadd"
 
     def makeCoadd(self, bbox, wcs):
         """Make a coadd object; in this case an instance of coaddChiSq.Coadd
         """
         return coaddChiSq.Coadd.fromConfig(bbox=bbox, wcs=wcs, config=self.config.coadd)
-    
