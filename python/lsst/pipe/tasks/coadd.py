@@ -33,6 +33,17 @@ from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
+def _getBox2DCorners(bbox):
+    """Return the four corners of a bounding box (Box2I or Box2D) as four afwGeom Point2D
+    """
+    bbox = afwGeom.Box2D(bbox) # mak
+    return (
+        bbox.getMin(),
+        afwGeom.Point2D(bbox.getMaxX(), bbox.getMinY()),
+        bbox.getMax(),
+        afwGeom.Point2D(bbox.getMinX(), bbox.getMaxY()),
+    )
+
 class NullSelectTask(pipeBase.Task):
     ConfigClass = pexConfig.Config
     def runDataRef(self, dataRef, coordList):
@@ -85,7 +96,6 @@ class CoaddTask(pipeBase.CmdLineTask):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
         self.makeSubtask("psfMatch")
-        self.makeSubtask("backgroundMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
@@ -115,7 +125,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
-        cornerPosList = _getBox2DCorners(afwGeom.Box2D(bbox))
+        cornerPosList = _getBox2DCorners(bbox)
         coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
             
         # determine which images to coadd
@@ -184,8 +194,8 @@ class CoaddTask(pipeBase.CmdLineTask):
             skyMap = skyMap,
             tractInfo = tractInfo,
             patchInfo = patchInfo,
-            wcs = skyInfo.tractInfo.getWcs(),
-            bbox = skyInfo.patchInfo.getOuterBBox(),
+            wcs = tractInfo.getWcs(),
+            bbox = patchInfo.getOuterBBox(),
         )
     
     def makeCoadd(self, bbox, wcs):
