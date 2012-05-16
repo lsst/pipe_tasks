@@ -32,7 +32,7 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
     def _makeDataRefList(self, namespace):
         """Make namespace.dataRefList from namespace.dataIdList
         """
-        datasetType = self.config.coaddName + "Coadd"
+        datasetType = namespace.config.coaddName + "Coadd"
         validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
 
         namespace.dataRefList = []

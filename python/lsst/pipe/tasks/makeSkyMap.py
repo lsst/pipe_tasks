@@ -25,7 +25,6 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
-from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
 
 class MakeSkyMapConfig(pexConfig.Config):
     """Config for MakeSkyMapTask
@@ -56,23 +55,71 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
     
     @pipeBase.timeMethod
-    def run(self, patchRef):
+    def run(self, dataRef):
         """Make a skymap
         
-        @param patchRef: data reference for sky map; purely used to get hold of a butler
+        @param dataRef: data reference for sky map; purely used to get hold of a butler
         @return a pipeBase Struct containing:
         - skyMap: the constructed SkyMap
         """
         skyMap = self.config.skyMap.apply()
         if self.config.doWrite:
-            butler = patchRef.butlerSubset.butler
-            butler.put("%s_skyMap" % (self.config.coaddName,), skyMap)
+            dataRef.put(skyMap)
         return pipeBase.Struct(
             skyMap = skyMap
+        )
+
+    @classmethod
+    def parseAndRun(cls, args=None, config=None, log=None):
+        """Parse an argument list and run the command. This variant does not persist config or metadata.
+
+        @param args: list of command-line arguments; if None use sys.argv
+        @param config: config for task (instance of pex_config Config); if None use cls.ConfigClass()
+        @param log: log (instance of pex_logging Log); if None use the default log
+        
+        @return a Struct containing:
+        - argumentParser: the argument parser
+        - parsedCmd: the parsed command returned by argumentParser.parse_args
+        - task: the instantiated task
+        The return values are primarily for testing and debugging
+        """
+        name = cls._DefaultName
+        argumentParser = cls._makeArgumentParser()
+        if config is None:
+            config = cls.ConfigClass()
+        parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
+        task = cls(name = name, config = parsedCmd.config, log = parsedCmd.log)
+        for dataRef in parsedCmd.dataRefList:
+            if parsedCmd.doraise:
+                task.run(dataRef)
+            else:
+                try:
+                    task.run(dataRef)
+                except Exception, e:
+                    task.log.log(task.log.FATAL, "Failed on dataId=%s: %s" % (dataRef.dataId, e))
+                    traceback.print_exc(file=sys.stderr)
+        return pipeBase.Struct(
+            argumentParser = argumentParser,
+            parsedCmd = parsedCmd,
+            task = task,
         )
 
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+        return MakeSkyMapPaser(name=cls._DefaultName, datasetType="deepCoadd_skyMap")
+
+class MakeSkyMapPaser(pipeBase.ArgumentParser):
+    """A version of lsst.pipe.base.ArgumentParser specialized for making sky maps.
+    """
+    def _makeDataRefList(self, namespace):
+        """Make namespace.dataRefList from namespace.dataIdList
+        """
+        datasetType = namespace.config.coaddName + "Coadd_skyMap"
+        namespace.dataRefList = [
+            namespace.butler.dataRef(
+                datasetType = datasetType,
+                dataId = dict(),
+            )
+        ]
