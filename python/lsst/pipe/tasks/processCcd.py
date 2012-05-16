@@ -87,7 +87,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         
         @param sensorRef: sensor-level butler data reference
         @return pipe_base Struct containing these fields:
-        - visitExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
+        - postIsrExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
         - exposure: calibrated exposure (calexp) if config.doCalibrate or config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
         - sources: detected source if config.doPhotometry, else None
@@ -95,18 +95,18 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
         
         # initialize outputs
-        visitExposure = None
+        postIsrExposure = None
         calExposure = None
         calib = None
         source = None
         
         if self.config.doIsr:
-            visitExposure = self.isr.run(sensorRef).exposure
+            postIsrExposure = self.isr.run(sensorRef).exposure
 
         if self.config.doCalibrate:
-            if visitExposure is None:
-                visitExposure = sensorRef.get('visitCCD')
-            calib = self.calibrate.run(visitExposure)
+            if postIsrExposure is None:
+                postIsrExposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(postIsrExposure)
             calExposure = calib.exposure
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
@@ -142,7 +142,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             self.measurement.run(calExposure, sources, apCorr)
             
         return pipeBase.Struct(
-            visitExposure = visitExposure,
+            postIsrExposure = postIsrExposure,
             exposure = calExposure,
             calib = calib,
             sources = sources,
