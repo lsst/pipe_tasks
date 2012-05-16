@@ -113,8 +113,8 @@ class CoaddTask(pipeBase.CmdLineTask):
         skyInfo = self.getSkyInfo(patchRef)
         
         wcs = skyInfo.wcs
-        box2D = afwGeom.Box2D(skyInfo.bbox)
-        cornerPosList = _getBox2DCorners(box2D)
+        bbox = skyInfo.bbox
+        cornerPosList = _getBox2DCorners(afwGeom.Box2D(bbox))
         coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
             
         # determine which images to coadd
@@ -177,8 +177,6 @@ class CoaddTask(pipeBase.CmdLineTask):
         patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
         patchInfo = tractInfo.getPatchInfo(patchIndex)
         
-        wcs = tractInfo.getWcs()
-        box2D = afwGeom.Box2D(patchInfo.getOuterBBox())
         return pipeBase.Struct(
             skyMap = skyMap,
             tractInfo = tractInfo,
