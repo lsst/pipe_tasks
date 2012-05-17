@@ -90,8 +90,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
 
         taskRes = task.run(
             dataRefList = parsedCmd.dataRefList,
-            bbox = parsedCmd.bbox,
-            wcs = parsedCmd.wcs,
+            bbox = parsedCmd.patchInfo.getOuterBBox(),
+            wcs = parsedCmd.tractInfo.getWcs(),
             desFwhm = parsedCmd.fwhm,
         )
         
