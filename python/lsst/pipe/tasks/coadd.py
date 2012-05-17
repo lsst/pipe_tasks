@@ -58,10 +58,9 @@ class CoaddConfig(pexConfig.Config):
         dtype = float,
         default = 0,
     )
-    coaddZeroPoint = pexConfig.Field(
-        dtype = float,
-        doc = "Photometric zero point of coadd (mag).",
-        default = 27.0,
+    coadd = pexConfig.ConfigField(
+        dtype = coaddUtils.Coadd.ConfigClass,
+        doc = "coadd configuration",
     )
     psfMatch = pexConfig.ConfigurableField(
         target = ModelPsfMatchTask,
@@ -128,7 +127,8 @@ class CoaddTask(pipeBase.CmdLineTask):
             raise RuntimeError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
     
-        if self.config.desFwhm <= 0:
+        doPsfMatch = self.config.desFwhm > 0
+        if not doPsfMatch:
             self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
     
         coadd = self.makeCoadd(bbox, wcs)
