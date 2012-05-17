@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -29,25 +29,17 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
-from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
+from .coaddArgumentParser import CoaddArgumentParser
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
-
-def _getBox2DCorners(bbox):
-    """Return the four corners of a bounding box (Box2I or Box2D) as four afwGeom Point2D
-    """
-    bbox = afwGeom.Box2D(bbox) # mak
-    return (
-        bbox.getMin(),
-        afwGeom.Point2D(bbox.getMaxX(), bbox.getMinY()),
-        bbox.getMax(),
-        afwGeom.Point2D(bbox.getMinX(), bbox.getMaxY()),
-    )
 
 class NullSelectTask(pipeBase.Task):
     ConfigClass = pexConfig.Config
     def runDataRef(self, dataRef, coordList):
-        raise NotImplementedError("No selector specified")
+        raise RuntimeError("No select task specified")
+    
+    def searchWholeSky(self, dataRef):
+        raise RuntimeError("No select task specified")
 
 class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
@@ -269,3 +261,15 @@ class CoaddTask(pipeBase.CmdLineTask):
         """Create an argument parser
         """
         return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+
+
+def _getBox2DCorners(bbox):
+    """Return the four corners of a bounding box (Box2I or Box2D) as four afwGeom Point2D
+    """
+    bbox = afwGeom.Box2D(bbox) # mak
+    return (
+        bbox.getMin(),
+        afwGeom.Point2D(bbox.getMaxX(), bbox.getMinY()),
+        bbox.getMax(),
+        afwGeom.Point2D(bbox.getMinX(), bbox.getMaxY()),
+    )

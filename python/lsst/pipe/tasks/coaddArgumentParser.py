@@ -19,9 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import lsst.afw.coord as afwCoord
-import lsst.afw.geom as afwGeom
-import lsst.skymap
 import lsst.pipe.base as pipeBase
 
 class CoaddArgumentParser(pipeBase.ArgumentParser):

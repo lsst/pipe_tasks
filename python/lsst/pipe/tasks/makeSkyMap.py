@@ -20,6 +20,9 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import sys
+import traceback
+
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
@@ -108,9 +111,9 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return MakeSkyMapPaser(name=cls._DefaultName, datasetType="deepCoadd_skyMap")
+        return SkyMapParser(name=cls._DefaultName, datasetType="deepCoadd_skyMap")
 
-class MakeSkyMapPaser(pipeBase.ArgumentParser):
+class SkyMapParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for making sky maps.
     """
     def _makeDataRefList(self, namespace):
