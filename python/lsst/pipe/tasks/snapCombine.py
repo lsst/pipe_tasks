@@ -94,7 +94,6 @@ class SnapCombineTask(pipeBase.Task):
             coaddExp  = afwImage.ExposureF(snap0, True)
             coaddMi   = coaddExp.getMaskedImage()
             coaddMi  += snap1.getMaskedImage()
-            coaddMi  *= 0.5
             return pipeBase.Struct(visitExposure = coaddExp) 
 
         if self.config.doRepair:
@@ -156,6 +155,7 @@ class SnapCombineTask(pipeBase.Task):
         addToCoadd(coaddMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
         addToCoadd(coaddMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
         coaddMi /= weightMap
+        coaddMi *= 2.0
         setCoaddEdgeBits(coaddMi.getMask(), weightMap)
 
         # Need copy of Filter, Detector, Wcs, Calib in new Exposure
