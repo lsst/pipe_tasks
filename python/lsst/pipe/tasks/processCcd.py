@@ -129,8 +129,8 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
-            if self.config.doWriteSources:
-                sensorRef.put(sources, 'src')
+        else:
+            sources  = None
 
         if self.config.doMeasurement:
             assert(sources is not None)
@@ -140,6 +140,9 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             else:
                 apCorr = calib.apCorr
             self.measurement.run(calExposure, sources, apCorr)
+
+        if sources is not None and self.config.doWriteSources:
+            sensorRef.put(sources, 'src')
             
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,
