@@ -89,6 +89,15 @@ class SnapCombineTask(pipeBase.Task):
  
     @pipeBase.timeMethod
     def run(self, snap0, snap1, defects=None):
+        """Combine two snaps
+        
+        @param[in] snap0: snapshot exposure 0
+        @param[in] snap1: snapshot exposure 1
+        @defects[in] defect list (for repair task)
+        @return a pipe_base Struct with fields:
+        - exposure: snap-combined exposure
+        - sources: detected sources
+        """
         if self.config.doSimpleAverage:
             self.log.log(self.log.INFO, "snapCombine by straight average")
             coaddExp  = afwImage.ExposureF(snap0, True)
@@ -162,7 +171,10 @@ class SnapCombineTask(pipeBase.Task):
         coaddExp = afwImage.ExposureF(snap0, True)
         coaddExp.setMaskedImage(coaddMi)
 
-        return pipeBase.Struct(visitExposure = coaddExp, sources = sources)
+        return pipeBase.Struct(
+            exposure = coaddExp,
+            sources = sources,
+        )
 
     def makeInitialPsf(self, exposure, fwhmPix=None):
         """Initialise the detection procedure by setting the PSF and WCS
