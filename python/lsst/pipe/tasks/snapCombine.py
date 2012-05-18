@@ -96,14 +96,18 @@ class SnapCombineTask(pipeBase.Task):
         @defects[in] defect list (for repair task)
         @return a pipe_base Struct with fields:
         - exposure: snap-combined exposure
-        - sources: detected sources
+        - sources: detected sources, or None if detection not performed
         """
         if self.config.doSimpleAverage:
             self.log.log(self.log.INFO, "snapCombine by straight average")
             coaddExp  = afwImage.ExposureF(snap0, True)
             coaddMi   = coaddExp.getMaskedImage()
             coaddMi  += snap1.getMaskedImage()
-            return pipeBase.Struct(visitExposure = coaddExp) 
+            sources = None
+            return pipeBase.Struct(
+                exposure = coaddExp,
+                sources = None,
+            )
 
         if self.config.doRepair:
             self.log.log(self.log.INFO, "snapCombine repair")
