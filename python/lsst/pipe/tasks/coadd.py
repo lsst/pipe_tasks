@@ -58,9 +58,15 @@ class CoaddConfig(pexConfig.Config):
         dtype = float,
         default = 0,
     )
-    coadd = pexConfig.ConfigField(
-        dtype = coaddUtils.Coadd.ConfigClass,
-        doc = "coadd configuration",
+    badMaskPlanes = pexConfig.ListField(
+        dtype = str,
+        doc = "mask planes that, if set, the associated pixel should not be included in the coadd",
+        default = ("EDGE", "SAT"),
+    )
+    coaddZeroPoint = pexConfig.Field(
+        dtype = float,
+        doc = "Photometric zero point of coadd (mag).",
+        default = 27.0,
     )
     psfMatch = pexConfig.ConfigurableField(
         target = ModelPsfMatchTask,
@@ -88,6 +94,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         self.makeSubtask("select")
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
+        self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
 
@@ -118,7 +125,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         bbox = skyInfo.bbox
         cornerPosList = _getBox2DCorners(bbox)
         coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
-            
+        
         # determine which images to coadd
         imageRefList = self.select.runDataRef(patchRef, coordList).dataRefList
         
@@ -133,11 +140,19 @@ class CoaddTask(pipeBase.CmdLineTask):
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, dataRef in enumerate(imageRefList):
+            if not dataRef.datasetExists("calexp"):
+                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (dataRef.dataId,))
+                continue
+
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
             exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
-            coadd.addExposure(exposure)
+            exposure.writeFits("temp%s.fits" % (ind,))
+            try:
+                coadd.addExposure(exposure)
+            except RuntimeError, e:
+                self.log.log(self.log.WARN, "Could not add exposure to coadd: %s" % (e,))
         
         coaddExposure = coadd.getCoadd()
 
@@ -195,9 +210,10 @@ class CoaddTask(pipeBase.CmdLineTask):
         
         @param[in] bbox: bounding box for coadd
         @param[in] wcs: WCS for coadd
-        """
-        return coaddUtils.Coadd.fromConfig(bbox=bbox, wcs=wcs, config=self.config.coadd)
         
+        This exists to allow subclasses to return a different kind of coadd
+        """
+        return coaddUtils.Coadd(bbox=bbox, wcs=wcs, badMaskPlanes=self.config.badMaskPlanes)
     
     def makeModelPsf(self, kernelDim):
         """Construct a model PSF, or reuse the prior model, if possible
@@ -248,11 +264,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         with self.timer("warp"):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
         
-        # zeropoint-scale the image
-        fluxAtZeropoint = exposure.getCalib().getFlux(self.config.coadd.coaddZeroPoint)
-        scaleFac = 1.0 / fluxAtZeropoint
-        maskedImage = exposure.getMaskedImage()
-        maskedImage *= scaleFac
+        self.zeroPointScaler.scaleExposure(exposure)
 
         return exposure
 
