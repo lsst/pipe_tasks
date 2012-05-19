@@ -77,9 +77,9 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         skyMap = dataRef.get(self.config.coaddName + "Coadd_skyMap")
 
         # determine which images meet coaddition selection criteria
-        ccdInfoList = self.select.searchWholeSky(dataRef).ccdInfoList
+        exposureInfoList = self.select.searchWholeSky(dataRef).exposureInfoList
         
-        numExp = len(ccdInfoList)
+        numExp = len(exposureInfoList)
         self.log.log(self.log.INFO, "Found %s exposures that match your selection criteria" % (numExp,))
         if numExp < 1:
             return
@@ -87,26 +87,19 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         ccdInfoSetDict = dict()
         
         fwhmList = []
-        numOffCoadd = 0
-        for ccdInfo in ccdInfoList:
-            fwhmList.append(ccdInfo.fwhm)
+        for exposureInfo in exposureInfoList:
+            fwhmList.append(exposureInfo.fwhm)
 
-            ctrCoord = afwCoord.IcrsCoord(
-                afwGeom.Angle(ccdInfo.ctrRaDec[0], afwGeom.degrees),
-                afwGeom.Angle(ccdInfo.ctrRaDec[1], afwGeom.degrees),
-            )
-            tractInfo = skyMap.findTract(ctrCoord)
-            try:
-                patchInfo = tractInfo.findPatch(ctrCoord)
-            except LookupError:
-                numOffCoadd += 1
-            
-            key = (tractInfo.getId(), patchInfo.getIndex())
-            ccdInfoSet = ccdInfoSetDict.get(key)
-            if ccdInfoSet is None:
-                ccdInfoSetDict[key] = set([ccdInfo])
-            else:
-                ccdInfoSet.add(ccdInfo)
+            tractInfoList = skyMap.findTractList(exposureInfo.coordList)
+            for tractInfo in tractInfoList:
+                patchInfoList = tractInfo.findPatchList(exposureInfo.coordList)
+                for patchInfo in patchInfoList:
+                    key = (tractInfo.getId(), patchInfo.getIndex())
+                    ccdInfoSet = ccdInfoSetDict.get(key)
+                    if ccdInfoSet is None:
+                        ccdInfoSetDict[key] = set([exposureInfo])
+                    else:
+                        ccdInfoSet.add(exposureInfo)
         
         fwhmList = numpy.array(fwhmList, dtype=float)
         print "FWHM Q1=%0.2f Q2=%0.2f Q3=%0.2f" % (
