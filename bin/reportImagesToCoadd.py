@@ -90,9 +90,8 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         for exposureInfo in exposureInfoList:
             fwhmList.append(exposureInfo.fwhm)
 
-            tractInfoList = skyMap.findTractList(exposureInfo.coordList)
-            for tractInfo in tractInfoList:
-                patchInfoList = tractInfo.findPatchList(exposureInfo.coordList)
+            tractPatchList = skyMap.findTractPatchList(exposureInfo.coordList)
+            for tractInfo, patchInfoList in tractPatchList:
                 for patchInfo in patchInfoList:
                     key = (tractInfo.getId(), patchInfo.getIndex())
                     ccdInfoSet = ccdInfoSetDict.get(key)
