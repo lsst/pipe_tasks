@@ -59,7 +59,7 @@ class BaseExposureInfo(object):
         
         The object has the following fields:
         - dataId: data ID of exposure (a dict)
-        - coordList: a list of corner coordinates of the exposure (list of afwCoord.Coord)
+        - coordList: a list of corner coordinates of the exposure (list of afwCoord.IcrsCoord)
         plus any others items that are desired
         
         Subclasses must override _setData and getColumnNames.
@@ -77,7 +77,7 @@ class BaseExposureInfo(object):
         
         Must set at least the following fields:
         - dataId: data ID of exposure (a dict)
-        - coordList: coordinates of the corner of the exposure (list of afwCoord.Coord)
+        - coordList: coordinates of the corner of the exposure (list of afwCoord.IcrsCoord)
         """
         raise NotImplementedError()
 
@@ -108,7 +108,7 @@ class BaseSelectImagesTask(pipeBase.Task):
         - exposureInfoList: a list of exposure information objects (subclasses of BaseExposureInfo),
             which have at least the following fields:
             - dataId: data ID dictionary
-            - coordList: coordinates of the corner of the exposure (list of afwCoord.Coord)
+            - coordList: coordinates of the corner of the exposure (list of afwCoord.IcrsCoord)
         """
         raise NotImplementedError()
     

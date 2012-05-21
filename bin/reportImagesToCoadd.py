@@ -54,8 +54,9 @@ class ReportImagesToCoaddConfig(pexConfig.Config):
 class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
     """Report which tracts and patches are needed for coaddition
     
-    @warning: this is very crude at the moment. It only selects tracts and patches
-    that are best for the center of a given image, so it misses all overlaps.
+    @todo: fix argument parser to not accept patch or tract; at present they are required but ignored.
+    One way to do this is get the required arguments from the selector, though that seems lame;
+    best if they are in the parser, but I'm not sure how to make that happen.
     """
     ConfigClass = ReportImagesToCoaddConfig
     _DefaultName = "reportImagesToCoadd"
