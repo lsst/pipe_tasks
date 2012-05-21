@@ -72,7 +72,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     _DefaultName = "processCcd"
 
     def __init__(self, **kwargs):
-        pipeBase.Task.__init__(self, **kwargs)
+        pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("calibrate")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
