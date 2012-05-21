@@ -148,7 +148,6 @@ class CoaddTask(pipeBase.CmdLineTask):
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
             exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
-            exposure.writeFits("temp%s.fits" % (ind,))
             try:
                 coadd.addExposure(exposure)
             except RuntimeError, e:
