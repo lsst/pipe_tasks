@@ -113,7 +113,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         
         Coaddition is performed as a weighted sum. See lsst.coadd.utils.Coadd for details.
     
-        @param patchRef: data reference for sky map. Must include keys "tract", "patch",
+        @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
         @return: a pipeBase.Struct with fields:
         - coadd: a coaddUtils.Coadd object
@@ -123,11 +123,8 @@ class CoaddTask(pipeBase.CmdLineTask):
         
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
-        cornerPosList = _getBox2DCorners(bbox)
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
         
-        # determine which images to coadd
-        imageRefList = self.select.runDataRef(patchRef, coordList).dataRefList
+        imageRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
         
         numExp = len(imageRefList)
         if numExp < 1:
@@ -162,6 +159,19 @@ class CoaddTask(pipeBase.CmdLineTask):
             coaddExposure = coaddExposure,
             coadd = coadd,
         )
+    
+    def selectExposures(self, patchRef, wcs, bbox):
+        """Select exposures to coadd
+        
+        @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
+            plus the camera-specific filter key (e.g. "filter" or "band")
+        @param[in] wcs: WCS of coadd patch
+        @param[in] bbox: bbox of coadd patch
+        @return a list of science exposures to coadd, as butler data references
+        """
+        cornerPosList = _getBox2DCorners(bbox)
+        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
+        return self.select.runDataRef(patchRef, coordList).dataRefList
     
     def getCalexp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf

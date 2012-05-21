@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -20,12 +20,11 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
-import lsst.daf.base as dafBase
-import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .coadd import CoaddTask
 
@@ -60,16 +59,10 @@ class OutlierRejectedCoaddTask(CoaddTask):
 
     def __init__(self, *args, **kwargs):
         CoaddTask.__init__(self, *args, **kwargs)
-
-        coaddConfig = self.config.coadd
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(coaddConfig.badMaskPlanes)
-        self._coaddCalib = coaddUtils.makeCalib(coaddConfig.coaddZeroPoint)
+        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
     def getBadPixelMask(self):
         return self._badPixelMask
-
-    def getCoaddCalib(self):
-        return self._coaddCalib
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -95,16 +88,17 @@ class OutlierRejectedCoaddTask(CoaddTask):
         
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
-        cornerPosList = _getBox2DCorners(afwGeom.Box2D(bbox))
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
-            
-        # determine which images to coadd
-        imageRefList = self.select.runDataRef(patchRef, coordList).dataRefList
+        
+        imageRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
         
         numExp = len(imageRefList)
         if numExp < 1:
             raise RuntimeError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
+    
+        doPsfMatch = self.config.desFwhm > 0
+        if not doPsfMatch:
+            self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
 
         exposureMetadataList = []
         for ind, dataRef in enumerate(imageRefList):
@@ -135,7 +129,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         statsCtrl.setAndMask(self.getBadPixelMask())
     
         coaddExposure = afwImage.ExposureF(bbox, wcs)
-        coaddExposure.setCalib(self.getCoaddCalib())
+        coaddExposure.setCalib(self.zeroPointScaler.getCalib())
     
         filterDict = {} # dict of name: Filter
         for expMeta in exposureMetadataList:
@@ -147,7 +141,6 @@ class OutlierRejectedCoaddTask(CoaddTask):
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
-        dumPS = dafBase.PropertySet()
         for subBBox in _subBBoxIter(bbox, subregionSize):
             self.log.log(self.log.INFO, "Computing coadd %s" % (subBBox,))
             coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
@@ -159,16 +152,9 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     self.log.log(self.log.INFO, "Skipping %s; no overlap" % (expMeta.path,))
                     continue
                 
-                #!!! How to read just a bit of an exposure into memory
-                # without first reading all pixels and then copying those?
-                # I wonder if the butler can do this at all?
-                # If not, then use direct unpersistence, but yecch.
-                # KT says: datatype: {exposureDatatype}_sub
-                # dataid: bbox=afwImage.BBoxI
-
                 if expMeta.bbox.contains(subBBox):
                     # this temporary image fully overlaps this coadd subregion
-                    exposure = expMeta.dataRef.get("coaddTempExp_sub", bbox=subBBox)
+                    exposure = expMeta.dataRef.get("coaddTempExp_sub", bbox=subBBox, imageOrigin="PARENT")
                     maskedImage = exposure.getMaskedImage()
                 else:
                     # this temporary image partially overlaps this coadd subregion;
@@ -180,7 +166,8 @@ class OutlierRejectedCoaddTask(CoaddTask):
                         "Processing %s; grow from %s to %s" % (expMeta.path, overlapBBox, subBBox))
                     maskedImage = afwImage.MaskedImageF(subBBox)
                     maskedImage.getMask().set(edgeMask)
-                    tempExposure = expMeta.dataRef.get("coaddTempExp_sub", bbox=overlapBBox)
+                    tempExposure = expMeta.dataRef.get("coaddTempExp_sub",
+                        bbox=overlapBBox, imageOrigin="PARENT")
                     tempMaskedImage = tempExposure.getMaskedImage()
                     maskedImageView = afwImage.MaskedImageF(maskedImage, overlapBBox, afwImage.PARENT, False)
                     maskedImageView <<= tempMaskedImage
