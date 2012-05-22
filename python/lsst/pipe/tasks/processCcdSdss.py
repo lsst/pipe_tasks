@@ -156,7 +156,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             if calib is None:
                 psf = frameRef.get('psField')
                 calExposure.setPsf(psf)
-            table = afwTable.SourceTable.make(self.schema)
+            table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, calExposure)
             sources = detRet.sources

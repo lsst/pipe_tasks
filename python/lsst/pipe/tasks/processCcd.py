@@ -93,7 +93,14 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         - sources: detected source if config.doPhotometry, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
-        
+
+        # We make one IdFactory that will be used by both icSrc and src datasets;
+        # I don't know if this is the way we ultimately want to do things, but at least
+        # this ensures the source IDs are fully unique.
+        expBits = sensorRef.get("ccdExposureId_bits")
+        expId = long(sensorRef.get("ccdExposureId"))
+        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
         # initialize outputs
         postIsrExposure = None
         calExposure = None
@@ -106,7 +113,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         if self.config.doCalibrate:
             if postIsrExposure is None:
                 postIsrExposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(postIsrExposure)
+            calib = self.calibrate.run(postIsrExposure, idFactory=idFactory)
             calExposure = calib.exposure
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
@@ -126,7 +133,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             if calib is None:
                 psf = sensorRef.get('psf')
                 calExposure.setPsf(sensorRef.get('psf'))
-            table = afwTable.SourceTable.make(self.schema)
+            table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
         else:
