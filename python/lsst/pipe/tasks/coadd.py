@@ -239,7 +239,6 @@ class CoaddTask(pipeBase.CmdLineTask):
         desFwhm = self.config.desFwhm
         if desFwhm <= 0:
             raise RuntimeError("desFwhm = %s; must be positive" % (desFwhm,))
-        kernelDim = exposure.getPsf().getKernel().getDimensions()
         if self._modelPsf is None or kernelDim != self._prevKernelDim:
             self._prevKernelDim = kernelDim
             self.log.log(self.log.INFO,
