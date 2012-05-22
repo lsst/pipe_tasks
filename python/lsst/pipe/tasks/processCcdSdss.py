@@ -122,10 +122,17 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         """
         self.log.log(self.log.INFO, "Processing %s" % (frameRef.dataId))
 
+        # We make one IdFactory that will be used by both icSrc and src datasets;
+        # I don't know if this is the way we ultimately want to do things, but at least
+        # this ensures the source IDs are fully unique.
+        expBits = frameRef.get("ccdExposureId_bits")
+        expId = long(frameRef.get("ccdExposureId"))
+        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
         if self.config.doCalibrate:
             self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
             exp = self.makeExp(frameRef)
-            calib = self.calibrate.run(exp)
+            calib = self.calibrate.run(exp, idFactory=idFactory)
             calExposure = calib.exposure
 
             if self.config.doWriteCalibrate:
