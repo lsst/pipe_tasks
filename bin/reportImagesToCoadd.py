@@ -35,7 +35,8 @@ import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 from lsst.pipe.tasks.coadd import NullSelectTask
-from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
+
+__all__ = ["ReportImagesToCoaddTask", "ReportImagesToCoaddArgumentParser"]
 
 class ReportImagesToCoaddConfig(pexConfig.Config):
     """Config for ReportImagesToCoaddTask
@@ -120,7 +121,35 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
+        
+        Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
+        need filter information for this particular task).
         """
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+        return ReportImagesToCoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
 
-ReportImagesToCoaddTask.parseAndRun()
+
+class ReportImagesToCoaddArgumentParser(pipeBase.ArgumentParser):
+    """A version of lsst.pipe.base.ArgumentParser specialized for reporting images.
+    
+    Required because there is no dataset type that is has exactly the right keys for this task.
+    datasetType = namespace.config.coaddName + "Coadd" comes closest, but includes "patch" and "tract",
+    which are irrelevant to the task, but required to make a data reference of this dataset type.
+    Also required because butler.subset cannot handle this dataset type.
+    """
+    def _makeDataRefList(self, namespace):
+        """Make namespace.dataRefList from namespace.dataIdList
+        """
+        datasetType = namespace.config.coaddName + "Coadd"
+
+        namespace.dataRefList = []
+        for dataId in namespace.dataIdList:
+            expandedDataId = dict(patch=0, tract=(0,0))
+            expandedDataId.update(dataId)
+            dataRef = namespace.butler.dataRef(
+                datasetType = datasetType,
+                dataId = expandedDataId,
+            )
+            namespace.dataRefList.append(dataRef)
+
+if __name__ == "__main__":
+    ReportImagesToCoaddTask.parseAndRun()

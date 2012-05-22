@@ -29,7 +29,8 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
-from .coaddArgumentParser import CoaddArgumentParser
+
+__all__ = ["CoaddTask", "CoaddArgumentParser"]
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
@@ -282,6 +283,30 @@ class CoaddTask(pipeBase.CmdLineTask):
         """Create an argument parser
         """
         return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+
+
+class CoaddArgumentParser(pipeBase.ArgumentParser):
+    """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
+    
+    Required because butler.subset does not support patch and tract
+    """
+    def _makeDataRefList(self, namespace):
+        """Make namespace.dataRefList from namespace.dataIdList
+        """
+        datasetType = namespace.config.coaddName + "Coadd"
+        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
+
+        namespace.dataRefList = []
+        for dataId in namespace.dataIdList:
+            # tract and patch are required
+            for key in validKeys:
+                if key not in dataId:
+                    self.error("--id must include " + key)
+            dataRef = namespace.butler.dataRef(
+                datasetType = datasetType,
+                dataId = dataId,
+            )
+            namespace.dataRefList.append(dataRef)
 
 
 def _getBox2DCorners(bbox):
