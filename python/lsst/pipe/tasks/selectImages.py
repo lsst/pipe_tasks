@@ -20,10 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-"""Note: this code uses MySQLdb primarily because daf_persistence cannot call scisql.scisql_s2CPolyRegion
-"""
-import MySQLdb
-from lsst.daf.persistence import DbAuth
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
@@ -54,7 +50,7 @@ class SelectImagesConfig(pexConfig.Config):
 class BaseExposureInfo(object):
     """Data about a selected exposure
     """
-    def __init__(self, result):
+    def __init__(self):
         """Create exposure information from a query result from a db connection
         
         The object has the following fields:
@@ -62,24 +58,14 @@ class BaseExposureInfo(object):
         - coordList: a list of corner coordinates of the exposure (list of afwCoord.IcrsCoord)
         plus any others items that are desired
         
-        Subclasses must override _setData and getColumnNames.
+        Subclasses must provide __init__ (which calls this one) and override getColumnNames.
         """
         self._ind = -1
-        self._setData(result)
 
     @property
     def _nextInd(self):
         self._ind += 1
         return self._ind
-    
-    def _setData(self, result):
-        """Set exposure information based on a query result from a db connection
-        
-        Must set at least the following fields:
-        - dataId: data ID of exposure (a dict)
-        - coordList: coordinates of the corner of the exposure (list of afwCoord.IcrsCoord)
-        """
-        raise NotImplementedError()
 
     @staticmethod
     def getColumnNames():
