@@ -68,7 +68,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
     def run(self, patchRef):
         """PSF-match, warp and coadd images, using outlier rejection
         
-        PSF matching is to a double gaussian model with core FWHM = desFwhm
+        PSF matching is to a double gaussian model with core FWHM = desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         The size of the PSF matching kernel is the same as the size of the kernel
         found in the first calibrated science exposure, since there is no benefit
@@ -96,15 +96,15 @@ class OutlierRejectedCoaddTask(CoaddTask):
             raise RuntimeError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
     
-        doPsfMatch = self.config.desFwhm > 0
+        doPsfMatch = self.config.desiredFwhm > 0
         if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
+            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm <= 0)")
 
         exposureMetadataList = []
         for ind, dataRef in enumerate(imageRefList):
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
-            exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
+            exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
             exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
             tempDataId = dataRef.dataId.copy()
             tempDataId.update(patchRef.dataId)

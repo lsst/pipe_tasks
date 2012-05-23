@@ -54,7 +54,7 @@ class CoaddConfig(pexConfig.Config):
         doc = "image selection subtask",
         target = NullSelectTask, # must be retargeted
     )
-    desFwhm = pexConfig.Field(
+    desiredFwhm = pexConfig.Field(
         doc = "desired FWHM of coadd; 0 for no FWHM matching",
         dtype = float,
         default = 0,
@@ -103,7 +103,7 @@ class CoaddTask(pipeBase.CmdLineTask):
     def run(self, patchRef):
         """Coadd images by PSF-matching (optional), warping and computing a weighted sum
         
-        PSF matching is to a double gaussian model with core FWHM = self.config.desFwhm
+        PSF matching is to a double gaussian model with core FWHM = self.config.desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         The size of the PSF matching kernel is the same as the size of the kernel
         found in the first calibrated science exposure, since there is no benefit
@@ -132,9 +132,9 @@ class CoaddTask(pipeBase.CmdLineTask):
             raise RuntimeError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
     
-        doPsfMatch = self.config.desFwhm > 0
+        doPsfMatch = self.config.desiredFwhm > 0
         if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
+            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm <= 0)")
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, dataRef in enumerate(imageRefList):
@@ -144,7 +144,7 @@ class CoaddTask(pipeBase.CmdLineTask):
 
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
-            exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
+            exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
             exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
             try:
                 coadd.addExposure(exposure)
@@ -174,7 +174,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
         return self.select.runDataRef(patchRef, coordList).dataRefList
     
-    def getCalexp(self, dataRef, getPsf=True):
+    def getCalExp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf
         
         @param dataRef: a sensor-level data reference
@@ -228,29 +228,29 @@ class CoaddTask(pipeBase.CmdLineTask):
     def makeModelPsf(self, kernelDim):
         """Construct a model PSF, or reuse the prior model, if possible
         
-        The model PSF is a double Gaussian with core FWHM = self.config.desFwhm
+        The model PSF is a double Gaussian with core FWHM = self.config.desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         
         @param kernelDim: desired dimensions of PSF kernel
         @return model PSF
         
-        @raise RuntimeError if self.config.desFwhm <= 0
+        @raise RuntimeError if self.config.desiredFwhm <= 0
         """
-        desFwhm = self.config.desFwhm
-        if desFwhm <= 0:
-            raise RuntimeError("desFwhm = %s; must be positive" % (desFwhm,))
+        desiredFwhm = self.config.desiredFwhm
+        if desiredFwhm <= 0:
+            raise RuntimeError("desiredFwhm = %s; must be positive" % (desiredFwhm,))
         if self._modelPsf is None or kernelDim != self._prevKernelDim:
             self._prevKernelDim = kernelDim
             self.log.log(self.log.INFO,
                 "Create double Gaussian PSF model with core fwhm %0.1f and size %dx%d" % \
-                (desFwhm, kernelDim[0], kernelDim[1]))
-            coreSigma = desFwhm / FWHMPerSigma
+                (desiredFwhm, kernelDim[0], kernelDim[1]))
+            coreSigma = desiredFwhm / FWHMPerSigma
             self._modelPsf = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
                 coreSigma, coreSigma * 2.5, 0.1)
         return self._modelPsf
     
     def preprocessExposure(self, exposure, wcs, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if self.config.desFwhm > 0), warp and scale
+        """PSF-match exposure (if self.config.desiredFwhm > 0), warp and scale
         
         @param[in,out] exposure: exposure to preprocess; FWHM fitting is done in place
         @param[in] wcs: desired WCS of temporary images
@@ -263,7 +263,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         
         @return preprocessed exposure
         """
-        if self.config.desFwhm > 0:
+        if self.config.desiredFwhm > 0:
             kernelDim = exposure.getPsf().getKernel().getDimensions()
             modelPsf = self.makeModelPsf(kernelDim=kernelDim)
             self.log.log(self.log.INFO, "PSF-match exposure")
