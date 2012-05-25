@@ -36,109 +36,59 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 from lsst.pipe.tasks.coadd import NullSelectTask
 
-__all__ = ["ReportImagesToCoaddTask", "ReportImagesToCoaddArgumentParser"]
+__all__ = ["ReportPatchesTask", "ReportPatchesArgumentParser"]
 
-class ReportImagesToCoaddConfig(pexConfig.Config):
-    """Config for ReportImagesToCoaddTask
+class ReportPatchesConfig(pexConfig.Config):
+    """Config for ReportPatchesTask
     """
     coaddName = pexConfig.Field(
         doc = "coadd name: one of deep or goodSeeing",
         dtype = str,
         default = "deep",
     )
-    select = pexConfig.ConfigurableField(
-        doc = "image selection subtask",
-        target = NullSelectTask, # must be retargeted
-    )
     raDecRange = pexConfig.ListField(
-        doc = "min RA, min Dec, max RA, max Dec (ICRS, deg); if omitted then search whole sky",
+        doc = "min RA, min Dec, max RA, max Dec (ICRS, deg)",
         dtype = float,
         length = 4,
-        optional = True,
     )
 
 
-class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
+class ReportPatchesTask(pipeBase.CmdLineTask):
     """Report which tracts and patches are needed for coaddition
     """
-    ConfigClass = ReportImagesToCoaddConfig
-    _DefaultName = "reportImagesToCoadd"
+    ConfigClass = ReportPatchesConfig
+    _DefaultName = "reportPatches"
     
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
-        self.makeSubtask("select")
 
     @pipeBase.timeMethod
     def run(self, dataRef):
-        """Select images across the sky and report how many are in each tract and patch
-        
-        Also report quartiles of FWHM 
-    
+        """Report tracts and patches that are within a given region of a skymap
+
         @param dataRef: data reference for sky map.
         @return: a pipeBase.Struct with fields:
         - ccdInfoSetDict: a dict of (tractId, patchIndex): set of CcdExposureInfo
         """
         skyMap = dataRef.get(self.config.coaddName + "Coadd_skyMap")
 
-        # determine which images meet coaddition selection criteria
-        if self.config.raDecRange is None:
-            coordList = None
-        else:
-            # make coords in the correct order to form an enclosed space
-            raRange  = (self.config.raDecRange[0], self.config.raDecRange[2])
-            decRange = (self.config.raDecRange[1], self.config.raDecRange[3])
-            raDecList = [
-                (raRange[0], decRange[0]),
-                (raRange[1], decRange[0]),
-                (raRange[1], decRange[1]),
-                (raRange[0], decRange[1]),
-            ]
-            coordList = [
-                afwCoord.IcrsCoord(afwGeom.Angle(ra, afwGeom.degrees), afwGeom.Angle(dec, afwGeom.degrees))
-                for ra, dec in raDecList]
-
-        exposureInfoList = self.select.runDataRef(
-            dataRef = dataRef,
-            coordList = coordList,
-            makeDataRefList = False,
-        ).exposureInfoList
-        
-        numExp = len(exposureInfoList)
-        self.log.log(self.log.INFO, "Found %s exposures that match your selection criteria" % (numExp,))
-        if numExp < 1:
-            return
-        
-        ccdInfoSetDict = dict()
-        
-        fwhmList = []
-        for exposureInfo in exposureInfoList:
-            fwhmList.append(exposureInfo.fwhm)
-
-            tractPatchList = skyMap.findTractPatchList(exposureInfo.coordList)
-            for tractInfo, patchInfoList in tractPatchList:
-                for patchInfo in patchInfoList:
-                    key = (tractInfo.getId(), patchInfo.getIndex())
-                    ccdInfoSet = ccdInfoSetDict.get(key)
-                    if ccdInfoSet is None:
-                        ccdInfoSetDict[key] = set([exposureInfo])
-                    else:
-                        ccdInfoSet.add(exposureInfo)
-        
-        fwhmList = numpy.array(fwhmList, dtype=float)
-        print "FWHM Q1=%0.2f Q2=%0.2f Q3=%0.2f" % (
-            numpy.percentile(fwhmList, 25.0),
-            numpy.percentile(fwhmList, 50.0),
-            numpy.percentile(fwhmList, 75.0),
-        )
-        
-        print "Tract  patchX  patchY  numExp"
-        for key in sorted(ccdInfoSetDict.keys()):
-            ccdInfoSet = ccdInfoSetDict[key]
-            print "%5d   %5d   %5d  %5d" % (key[0], key[1][0], key[1][1], len(ccdInfoSet))
-        
-        return pipeBase.Struct(
-            ccdInfoSetDict = ccdInfoSetDict,
-        )
+        # make coords in the correct order to form an enclosed space
+        raRange  = (self.config.raDecRange[0], self.config.raDecRange[2])
+        decRange = (self.config.raDecRange[1], self.config.raDecRange[3])
+        raDecList = [
+            (raRange[0], decRange[0]),
+            (raRange[1], decRange[0]),
+            (raRange[1], decRange[1]),
+            (raRange[0], decRange[1]),
+        ]
+        coordList = [
+            afwCoord.IcrsCoord(afwGeom.Angle(ra, afwGeom.degrees), afwGeom.Angle(dec, afwGeom.degrees))
+            for ra, dec in raDecList]
+        tractPatchList = skyMap.findTractPatchList(coordList)
+        for tractInfo, patchInfoList in tractPatchList:
+            for patchInfo in patchInfoList:
+                patchIndex = patchInfo.getIndex()
+                print "tract=%d patch=%d,%d" % (tractInfo.getId(), patchIndex[0], patchIndex[1])
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -147,10 +97,10 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
-        return ReportImagesToCoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+        return ReportPatchesArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
 
 
-class ReportImagesToCoaddArgumentParser(pipeBase.ArgumentParser):
+class ReportPatchesArgumentParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for reporting images.
     
     Required because there is no dataset type that is has exactly the right keys for this task.
@@ -173,5 +123,6 @@ class ReportImagesToCoaddArgumentParser(pipeBase.ArgumentParser):
             )
             namespace.dataRefList.append(dataRef)
 
+
 if __name__ == "__main__":
-    ReportImagesToCoaddTask.parseAndRun()
+    ReportPatchesTask.parseAndRun()

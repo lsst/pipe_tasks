@@ -105,32 +105,29 @@ class BaseSelectImagesTask(pipeBase.Task):
         """
         raise NotImplementedError()
     
-    def runDataRef(self, dataRef, coordList):
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True):
         """Run based on a data reference
         
-        @param[in] dataRef: data reference; must contain any extra keys needed by coordList
-        @param[in] coordList: list of coordinates defining region of interest
+        @param[in] dataRef: data reference; must contain any extra keys needed by the subclass
+        @param[in] coordList: list of coordinates defining region of interest; if None, search the whole sky
+        @param[in] makeDataRefList: if True, return dataRefList
         @return a pipeBase Struct containing:
-        - dataRefList: a list of data references
         - exposureInfoList: a list of ccdInfo objects
+        - dataRefList: a list of data references (None if makeDataRefList False)
         """
-        butler = dataRef.butlerSubset.butler
         runArgDict = self._runArgDictFromDataId(dataRef.dataId)
         exposureInfoList = self.run(coordList, **runArgDict).exposureInfoList
-        dataRefList = [butler.dataRef(
-            datasetType = "calexp",
-            dataId = ccdInfo.dataId,
-        ) for ccdInfo in exposureInfoList]
+
+        if makeDataRefList:        
+            butler = dataRef.butlerSubset.butler
+            dataRefList = [butler.dataRef(
+                datasetType = "calexp",
+                dataId = ccdInfo.dataId,
+            ) for ccdInfo in exposureInfoList]
+        else:
+            dataRefList = None
+
         return pipeBase.Struct(
             dataRefList = dataRefList,
             exposureInfoList = exposureInfoList,
         )
-    
-    def searchWholeSky(self, dataRef):
-        """Search the whole sky using a data reference
-        @param[in] dataRef: data reference; must contain key "filter"
-        @return a pipeBase Struct containing:
-        - exposureInfoList: a list of ccdInfo objects
-        """
-        runArgDict = self._runArgDictFromDataId(dataRef.dataId)
-        return self.run(coordList=None, **runArgDict)

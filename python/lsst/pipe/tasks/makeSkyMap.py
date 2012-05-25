@@ -24,8 +24,6 @@ import sys
 import traceback
 
 import lsst.pex.config as pexConfig
-import lsst.afw.geom as afwGeom
-import lsst.afw.math as afwMath
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
 
