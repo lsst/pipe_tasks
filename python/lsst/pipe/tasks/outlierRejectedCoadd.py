@@ -102,6 +102,10 @@ class OutlierRejectedCoaddTask(CoaddTask):
 
         exposureMetadataList = []
         for ind, dataRef in enumerate(imageRefList):
+            if not dataRef.datasetExists("calexp"):
+                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (dataRef.dataId,))
+                continue
+
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
