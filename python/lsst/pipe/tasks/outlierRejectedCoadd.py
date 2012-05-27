@@ -123,7 +123,9 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     badPixelMask = self.getBadPixelMask(),
                 )
             exposureMetadataList.append(expMetadata)
-        del exposure
+            del exposure
+        if not exposureMetadataList:
+            raise RuntimeError("No images to coadd")
 
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
@@ -177,15 +179,17 @@ class OutlierRejectedCoaddTask(CoaddTask):
                     maskedImageView <<= tempMaskedImage
                 maskedImageList.append(maskedImage)
                 weightList.append(expMeta.weight)
-            try:
-                coaddSubregion = afwMath.statisticsStack(
-                    maskedImageList, afwMath.MEANCLIP, statsCtrl, weightList)
-    
-                coaddView <<= coaddSubregion
-            except Exception, e:
-                self.log.log(self.log.ERR, "Outlier rejection failed; setting EDGE mask: %s" % (e,))
-                # re-raise the exception so setCoaddEdgeBits will set the whole coadd mask to EDGE
-                raise
+
+            if len(maskedImageList) > 0:
+                try:
+                    coaddSubregion = afwMath.statisticsStack(
+                        maskedImageList, afwMath.MEANCLIP, statsCtrl, weightList)
+        
+                    coaddView <<= coaddSubregion
+                except Exception, e:
+                    self.log.log(self.log.ERR, "Cannot compute this subregion: %s" % (e,))
+            else:
+                self.log.log(self.log.WARN, "No images to coadd in this subregion")
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
