@@ -63,8 +63,7 @@ class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
         self.calibrate.repair.doCosmicRay = False
 
         self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
-
-        self.calibrate.initialPsf.fwhm = 2.5 # Degraded the seeing for coadd
+        self.calibrate.initialPsf.fwhm = 2.5    # Degraded the seeing for coadd to 2.5 arcseconds
 
 class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
     """Process a CCD for SDSS Coadd (V3)
