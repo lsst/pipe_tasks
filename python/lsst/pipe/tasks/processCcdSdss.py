@@ -134,6 +134,9 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             exp = self.makeExp(frameRef)
             calib = self.calibrate.run(exp, idFactory=idFactory)
             calExposure = calib.exposure
+            if not self.config.calibrate.doPsf:
+                psf = frameRef.get('psField')
+                calib.psf = psf
 
             if self.config.doWriteCalibrate:
                 frameRef.put(calExposure, 'calexp')
@@ -152,7 +155,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = frameRef.get('calexp')
+                calExposure = self.makeExp(frameRef)
             if calib is None:
                 psf = frameRef.get('psField')
                 calExposure.setPsf(psf)
