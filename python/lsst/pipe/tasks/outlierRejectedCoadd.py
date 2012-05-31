@@ -35,19 +35,21 @@ class OutlierRejectedCoaddConfig(CoaddTask.ConfigClass):
                 make small enough that a full stack of images will fit into memory at once""",
         length = 2,
         default = (2000, 2000),
-        optional = None,
+    )
+    doSigmaClip = pexConfig.Field(
+        dtype = bool,
+        doc = "perform sigma clipping (if False then compute simple mean)",
+        default = True,
     )
     sigmaClip = pexConfig.Field(
         dtype = float,
-        doc = "sigma for outlier rejection",
+        doc = "sigma for outlier rejection; ignored if doSigmaClip false",
         default = 3.0,
-        optional = None,
     )
     clipIter = pexConfig.Field(
         dtype = int,
-        doc = "number of iterations of outlier rejection",
+        doc = "number of iterations of outlier rejection; ignored if doSigmaClip false",
         default = 2,
-        optional = False,
     )
     
 
@@ -133,6 +135,13 @@ class OutlierRejectedCoaddTask(CoaddTask):
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
         statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self.getBadPixelMask())
+        statsCtrl.setNanSafe(True)
+        statsCtrl.setCalcErrorFromInputVariance(True)
+
+        if self.config.doSigmaClip:
+            statsFlags = afwMath.MEANCLIP
+        else:
+            statsFlags = afwMath.MEAN
     
         coaddExposure = afwImage.ExposureF(bbox, wcs)
         coaddExposure.setCalib(self.zeroPointScaler.getCalib())
@@ -183,7 +192,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
             if len(maskedImageList) > 0:
                 try:
                     coaddSubregion = afwMath.statisticsStack(
-                        maskedImageList, afwMath.MEANCLIP, statsCtrl, weightList)
+                        maskedImageList, statsFlags, statsCtrl, weightList)
         
                     coaddView <<= coaddSubregion
                 except Exception, e:
@@ -230,6 +239,7 @@ class ExposureMetadata(object):
         statsCtrl.setNumSigmaClip(3.0)
         statsCtrl.setNumIter(2)
         statsCtrl.setAndMask(badPixelMask)
+        statsCtrl.setNanSafe(True)
         statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
             afwMath.MEANCLIP, statsCtrl)
         meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
