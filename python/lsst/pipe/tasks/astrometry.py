@@ -52,7 +52,7 @@ class AstrometryTask(pipeBase.Task):
 
     def __init__(self, schema, **kwds):
         pipeBase.Task.__init__(self, **kwds)
-        self.centroidKey = schema.addField("centroid.distorted", type="Point<F8>",
+        self.centroidKey = schema.addField("centroid.distorted", type="PointD",
                                            doc="centroid distorted for astrometry solver")
 
     @pipeBase.timeMethod
