@@ -139,16 +139,16 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
                 calib.psf = psf
 
             if self.config.doWriteCalibrate:
-                frameRef.put(calExposure, 'calexp')
-                frameRef.put(calib.sources, 'icSrc')
+                frameRef.put(calExposure, 'fpC_calexp')
+                frameRef.put(calib.sources, 'fpC_icSrc')
                 if calib.psf is not None:
-                    frameRef.put(calib.psf, 'psf')
+                    frameRef.put(calib.psf, 'fpC_psf')
                 if calib.apCorr is not None:
-                    frameRef.put(calib.apCorr, 'apCorr')
+                    frameRef.put(calib.apCorr, 'fpC_apCorr')
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    frameRef.put(normalizedMatches, 'icMatch')
+                    frameRef.put(normalizedMatches, 'fpC_icMatch')
         else:
             calib = None
             calExposure = None
@@ -170,13 +170,13 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             assert(sources)
             assert(calExposure)
             if calib is None:
-                apCorr = frameRef.get("apCorr")
+                apCorr = frameRef.get("fpC_apCorr")
             else:
                 apCorr = calib.apCorr
             self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            frameRef.put(sources, 'src')
+            frameRef.put(sources, 'fpC_src')
 
         return pipeBase.Struct(
             calExposure = calExposure,
