@@ -24,7 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
@@ -35,6 +35,8 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
     doSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Combine Snaps?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
+    ## NOTE, default this to False until it is fully vetted
+    doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteSnapCombine = pexConfig.Field(dtype=bool, default=True, doc = "Write snapCombine results?")  
@@ -59,6 +61,10 @@ class ProcessCcdLsstSimConfig(pexConfig.Config):
     detection = pexConfig.ConfigurableField(
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
+    )
+    deblend = pexConfig.ConfigurableField(
+        target = SourceDeblendTask,
+        doc = "Split blended sources into their components",
     )
     measurement = pexConfig.ConfigurableField(
         target = SourceMeasurementTask,
@@ -103,11 +109,13 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
-    def run(self, sensorRef):
+    def run(self, sensorRef, sources=None):
         """Process a CCD: including ISR, source detection, photometry and WCS determination
         
         @param sensorRef: sensor-level butler data reference
@@ -203,8 +211,17 @@ class ProcessCcdLsstSimTask(pipeBase.CmdLineTask):
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, calExposure)
             sources = detRet.sources
-        else:
-            sources = None
+
+        if self.config.doDeblend:
+            if calExposure is None:
+                calExposure = sensorRef.get('calexp')
+            if psf is None:
+                psf = sensorRef.get('psf')
+                
+            assert(calExposure)
+            assert(psf)
+            assert(sources)
+            self.deblend.run(calExposure, sources, psf)
 
         if self.config.doMeasurement:
             assert(sources)
