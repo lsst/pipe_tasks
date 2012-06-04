@@ -145,11 +145,12 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("photocal", schema=self.schema)
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None):
+    def run(self, exposure, defects=None, idFactory=None):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
 
         @param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
         @param[in]      defects    List of defects on exposure
+        @param[in]      idFactory  afw.table.IdFactory to use for source catalog.
         @return a pipeBase.Struct with fields:
         - psf: Point spread function
         - apCorr: Aperture correction
@@ -160,6 +161,8 @@ class CalibrateTask(pipeBase.Task):
         assert exposure is not None, "No exposure provided"
 
         self.installInitialPsf(exposure)
+        if idFactory is None:
+            idFactory = afwTable.IdFactory.makeSimple()
 
         keepCRs = True                  # At least until we know the PSF
         self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
@@ -171,8 +174,7 @@ class CalibrateTask(pipeBase.Task):
                 del bg
 
             self.display('background', exposure=exposure)
-        
-        table = afwTable.SourceTable.make(self.schema) # TODO: custom IdFactory for globally unique IDs
+        table = afwTable.SourceTable.make(self.schema, idFactory)
         table.setMetadata(self.algMetadata)
         detRet = self.detection.makeSourceCatalog(table, exposure)
         sources = detRet.sources
@@ -223,7 +225,7 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPhotoCal:
             assert(matches is not None)
-            photocalRet = self.photocal.run(matches)
+            photocalRet = self.photocal.run(matches, exposure.getFilter().getName())
             zp = photocalRet.photocal
             self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
             exposure.getCalib().setFluxMag0(zp.getFlux(0))

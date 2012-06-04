@@ -20,25 +20,35 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import numpy as num
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
-from lsst.pipe.tasks.calibrate import CalibrateTask
+import lsst.afw.math as afwMath
 
-class ProcessCcdSdssConfig(pexConfig.Config):
-    """Config for ProcessCcdSdss"""
-    removePedestal = pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS pedestal from fpC file")
-    pedestalVal = pexConfig.Field(dtype=int, default=1000, doc = "Number of counts in the SDSS pedestal")
+# Specific to NaN interpolation
+import lsst.meas.algorithms as measAlg
+import lsst.afw.detection as afwDet
+import lsst.ip.isr as ipIsr
+
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from .calibrate import CalibrateTask
+
+class ProcessCcdSdssCoaddConfig(pexConfig.Config):
+    """Config for ProcessCcdSdssCoadd"""
+    coaddName = pexConfig.Field(dtype=str, default="goodSeeingCoadd", doc = "Type of coadd")
+    doInterpolate = pexConfig.Field(dtype=bool, default=True, doc = "Perform NaN interpolation") 
+    doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise") 
 
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
+
     calibrate = pexConfig.ConfigurableField(
         target = CalibrateTask,
         doc = "Calibration (inc. high-threshold detection and measurement)",
@@ -61,14 +71,20 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         # OPTIMIZE FOR SDSS
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
+        self.calibrate.initialPsf.fwhm = 1.4   # Arcseconds
 
-        self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
-        
-class ProcessCcdSdssTask(pipeBase.CmdLineTask):
-    """Process a CCD for SDSS
+        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 1 # Should be spatially invariant
+
+        self.calibrate.doBackground = False
+        self.calibrate.detection.reEstimateBackground = False
+        self.detection.reEstimateBackground = False
+
+
+class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
+    """Process a CCD for SDSS Coadd
     
     """
-    ConfigClass = ProcessCcdSdssConfig
+    ConfigClass = ProcessCcdSdssCoaddConfig
     _DefaultName = "processCcd"
 
     def __init__(self, **kwargs):
@@ -83,29 +99,36 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
     @classmethod
     def _makeArgumentParser(cls):
-        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="fpC")        
+        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType=cls.ConfigClass().coaddName)        
 
     @pipeBase.timeMethod
-    def makeExp(self, frameRef):
-        image = frameRef.get("fpC").convertF()
-        if self.config.removePedestal:
-            image -= self.config.pedestalVal
-        mask  = frameRef.get("fpM")
-        wcs   = frameRef.get("asTrans")
-        calib, gain = frameRef.get("tsField")
-        var   = afwImage.ImageF(image, True)
-        var  /= gain
+    def interpolateNans(self, exposure):
+        wcs = exposure.getWcs()
+        size = self.config.calibrate.initialPsf.size
+        model = self.config.calibrate.initialPsf.model
+        fwhmPix = self.config.calibrate.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
+        sigmaPix = fwhmPix/(2.0*num.sqrt(2*num.log(2.0)))
+        self.log.info("interpolateNans fwhm=%.3f asec; fwhm=%.3f pixels; sigma=%.3f pixels; size=%s pixels" % (self.config.calibrate.initialPsf.fwhm, fwhmPix, sigmaPix, size))
+        self.psf = afwDet.createPsf(model, size, size, sigmaPix)
 
-        mi    = afwImage.MaskedImageF(image, mask, var)
-        exp   = afwImage.ExposureF(mi, wcs)
-        exp.setCalib(calib)
-        det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
-                                                      (frameRef.dataId["band"], frameRef.dataId["camcol"])))
-        exp.setDetector(det)
-        exp.setFilter(afwImage.Filter(frameRef.dataId['band']))
-
-        return exp
-
+        exposure.getMaskedImage().getMask().addMaskPlane("UNMASKEDNAN")
+        nanMasker = ipIsr.UnmaskedNanCounterF()
+        nanMasker.apply(exposure.getMaskedImage())
+        nans = ipIsr.getDefectListFromMask(exposure.getMaskedImage(), maskName="UNMASKEDNAN")
+        self.log.info("Interpolating over %d NANs" % len(nans))
+        measAlg.interpolateOverDefects(exposure.getMaskedImage(), self.psf, nans, 0.0)
+    
+    @pipeBase.timeMethod
+    def scaleVariance(self, exposure):
+        ctrl = afwMath.StatisticsControl()
+        ctrl.setAndMask(~0x0)
+        var    = exposure.getMaskedImage().getVariance()
+        mask   = exposure.getMaskedImage().getMask()
+        dstats = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.VARIANCECLIP, ctrl).getValue(afwMath.VARIANCECLIP)
+        vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue(afwMath.MEANCLIP)
+        vrat   = dstats / vstats
+        self.log.info("Renormalising variance by %f" % (vrat))
+        var   *= vrat
 
     @pipeBase.timeMethod
     def run(self, frameRef):
@@ -120,23 +143,20 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         - matches: ? if doCalibrate, else None
         - matchMeta: ? if config.doCalibrate, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (frameRef.dataId))
+        self.log.info("Processing %s" % (frameRef.dataId))
 
-        # We make one IdFactory that will be used by both icSrc and src datasets;
-        # I don't know if this is the way we ultimately want to do things, but at least
-        # this ensures the source IDs are fully unique.
-        expBits = frameRef.get("ccdExposureId_bits")
-        expId = long(frameRef.get("ccdExposureId"))
-        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
+        import debug
 
         if self.config.doCalibrate:
-            self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
-            exp = self.makeExp(frameRef)
-            calib = self.calibrate.run(exp, idFactory=idFactory)
+            self.log.info("Performing Calibrate on coadd %s" % (frameRef.dataId))
+            coadd = frameRef.get(self.config.coaddName)
+            if self.config.doInterpolate:
+                self.interpolateNans(coadd)
+            if self.config.doScaleVariance:
+                self.scaleVariance(coadd)
+
+            calib = self.calibrate.run(coadd)
             calExposure = calib.exposure
-            if not self.config.calibrate.doPsf:
-                psf = frameRef.get('psField')
-                calib.psf = psf
 
             if self.config.doWriteCalibrate:
                 frameRef.put(calExposure, 'calexp')
@@ -155,11 +175,8 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = self.makeExp(frameRef)
-            if calib is None:
-                psf = frameRef.get('psField')
-                calExposure.setPsf(psf)
-            table = afwTable.SourceTable.make(self.schema, idFactory)
+                calExposure = frameRef.get('calexp')
+            table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, calExposure)
             sources = detRet.sources

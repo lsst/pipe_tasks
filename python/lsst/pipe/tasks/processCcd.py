@@ -36,7 +36,6 @@ class ProcessCcdConfig(pexConfig.Config):
     ## NOTE, default this to False until it is fully vetted
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
-    doWriteIsr = pexConfig.Field(dtype=bool, default=True, doc = "Write ISR results?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     isr = pexConfig.ConfigurableField(
@@ -67,14 +66,15 @@ class ProcessCcdConfig(pexConfig.Config):
         #if self.doDeblend and not self.doDetection:
         #    raise ValueError("Cannot run source deblending without source detection.")
 
-    def setDefaults(self):
-        self.doWriteIsr = False
-        self.isr.methodList = ["doConversionForIsr", "doSaturationDetection",
-                               "doOverscanCorrection", "doVariance", "doFlatCorrection"]
-        self.isr.doWrite = False
-
-class ProcessCcdTask(pipeBase.Task):
-    """Process a CCD"""
+class ProcessCcdTask(pipeBase.CmdLineTask):
+    """Process a CCD
+    
+    Available steps include:
+    - instrument signature removal (ISR)
+    - calibrate
+    - detect sources
+    - measure sources
+    """
     ConfigClass = ProcessCcdConfig
     _DefaultName = "processCcd"
 
@@ -93,29 +93,42 @@ class ProcessCcdTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, sensorRef, sources=None):
-        self.log.info("Processing %s" % (sensorRef.dataId))
+        """Process one CCD
+        
+        @param sensorRef: sensor-level butler data reference
+        @return pipe_base Struct containing these fields:
+        - postIsrExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
+        - exposure: calibrated exposure (calexp) if config.doCalibrate or config.doDetection, else None
+        - calib: object returned by calibration process if config.doCalibrate, else None
+        - sources: detected source if config.doPhotometry, else None
+        """
+        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+
+        # We make one IdFactory that will be used by both icSrc and src datasets;
+        # I don't know if this is the way we ultimately want to do things, but at least
+        # this ensures the source IDs are fully unique.
+        expBits = sensorRef.get("ccdExposureId_bits")
+        expId = long(sensorRef.get("ccdExposureId"))
+        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
+        # initialize outputs
+        postIsrExposure = None
+        calExposure = None
+        calib = None
+        sources = None
         psf = None
+        
         if self.config.doIsr:
-            butler = sensorRef.butlerSubset.butler
-            calibSet = self.isr.makeCalibDict(butler, sensorRef.dataId)
-            rawExposure = sensorRef.get("raw")
-            isrRes = self.isr.run(rawExposure, calibSet)
-            self.display("isr", exposure=isrRes.postIsrExposure, pause=True)
-            exposure = self.isr.doCcdAssembly([isrRes.postIsrExposure])
-            self.display("ccdAssembly", exposure=exposure)
-            if self.config.doWriteIsr:
-                sensorRef.put(exposure, 'postISRCCD')
-        else:
-            exposure = None
+            postIsrExposure = self.isr.run(sensorRef).exposure
 
         if self.config.doCalibrate:
-            if exposure is None:
-                exposure = sensorRef.get('postISRCCD')
-            calib = self.calibrate.run(exposure)
-            exposure = calib.exposure
+            if postIsrExposure is None:
+                postIsrExposure = sensorRef.get('postISRCCD')
+            calib = self.calibrate.run(postIsrExposure, idFactory=idFactory)
             psf = calib.psf
+            calExposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(exposure, 'calexp')
+                sensorRef.put(calExposure, 'calexp')
                 sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
@@ -125,19 +138,16 @@ class ProcessCcdTask(pipeBase.Task):
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     sensorRef.put(normalizedMatches, 'icMatch')
-        else:
-            calib = None
 
         if self.config.doDetection:
-            if exposure is None:
-                exposure = sensorRef.get('calexp')
+            if calExposure is None:
+                calExposure = sensorRef.get('calexp')
             if calib is None:
                 psf = sensorRef.get('psf')
-                exposure.setPsf(sensorRef.get('psf'))
-            table = afwTable.SourceTable.make(self.schema)
+                calExposure.setPsf(sensorRef.get('psf'))
+            table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            detRet = self.detection.makeSourceCatalog(table, exposure)
-            sources = detRet.sources
+            sources = self.detection.makeSourceCatalog(table, calExposure).sources
 
         if self.config.doDeblend:
             if exposure is None:
@@ -151,22 +161,20 @@ class ProcessCcdTask(pipeBase.Task):
             self.deblend.run(exposure, sources, psf)
 
         if self.config.doMeasurement:
-            assert(sources)
-            assert(exposure)
+            assert(sources is not None)
+            assert(calExposure is not None)
             if calib is None:
                 apCorr = sensorRef.get("apCorr")
             else:
                 apCorr = calib.apCorr
-            self.measurement.run(exposure, sources, apCorr)
- 
-        if self.config.doWriteSources:
-            sensorRef.put(sources, 'src')
+            self.measurement.run(calExposure, sources, apCorr)
 
-        if self.config.doWriteCalibrate:
-            sensorRef.put(exposure, 'calexp')
+        if sources is not None and self.config.doWriteSources:
+            sensorRef.put(sources, 'src')
             
         return pipeBase.Struct(
-            exposure = exposure,
+            postIsrExposure = postIsrExposure,
+            exposure = calExposure,
             calib = calib,
             sources = sources,
         )

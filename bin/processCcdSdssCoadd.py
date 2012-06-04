@@ -20,6 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.processCcdLsstSim import ProcessCcdLsstSimTask
+from lsst.pipe.tasks.processCcdSdssCoadd import ProcessCcdSdssCoaddTask
 
-ProcessCcdLsstSimTask.parseAndRun()
+ProcessCcdSdssCoaddTask.parseAndRun()

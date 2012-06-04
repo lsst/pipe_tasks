@@ -29,10 +29,10 @@ import lsst.afw.cameraGeom as afwCameraGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
-class ProcessCcdSdssConfig(pexConfig.Config):
-    """Config for ProcessCcdSdss"""
-    removePedestal = pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS pedestal from fpC file")
-    pedestalVal = pexConfig.Field(dtype=int, default=1000, doc = "Number of counts in the SDSS pedestal")
+class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
+    """Config for ProcessCcdSdssCoaddV3"""
+    doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale the variance plane, which are incorrect in V3 coadds?")
+    varScaleFactor  = pexConfig.Field(dtype=float, default=10.0, doc = "Value to scale the variance by")
 
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
@@ -63,12 +63,13 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         self.calibrate.repair.doCosmicRay = False
 
         self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
-        
-class ProcessCcdSdssTask(pipeBase.CmdLineTask):
-    """Process a CCD for SDSS
+        self.calibrate.initialPsf.fwhm = 2.5    # Degraded the seeing for coadd to 2.5 arcseconds
+
+class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
+    """Process a CCD for SDSS Coadd (V3)
     
     """
-    ConfigClass = ProcessCcdSdssConfig
+    ConfigClass = ProcessCcdSdssCoaddV3Config
     _DefaultName = "processCcd"
 
     def __init__(self, **kwargs):
@@ -83,29 +84,21 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
     @classmethod
     def _makeArgumentParser(cls):
-        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="fpC")        
+        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="coadd")        
 
     @pipeBase.timeMethod
     def makeExp(self, frameRef):
-        image = frameRef.get("fpC").convertF()
-        if self.config.removePedestal:
-            image -= self.config.pedestalVal
-        mask  = frameRef.get("fpM")
-        wcs   = frameRef.get("asTrans")
-        calib, gain = frameRef.get("tsField")
-        var   = afwImage.ImageF(image, True)
-        var  /= gain
+        exp = frameRef.get("coadd")
+        if self.config.doScaleVariance:
+            var  = exp.getMaskedImage().getVariance()
+            var *= self.config.varScaleFactor
 
-        mi    = afwImage.MaskedImageF(image, mask, var)
-        exp   = afwImage.ExposureF(mi, wcs)
-        exp.setCalib(calib)
         det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
                                                       (frameRef.dataId["band"], frameRef.dataId["camcol"])))
         exp.setDetector(det)
         exp.setFilter(afwImage.Filter(frameRef.dataId['band']))
 
         return exp
-
 
     @pipeBase.timeMethod
     def run(self, frameRef):
@@ -122,21 +115,11 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         """
         self.log.log(self.log.INFO, "Processing %s" % (frameRef.dataId))
 
-        # We make one IdFactory that will be used by both icSrc and src datasets;
-        # I don't know if this is the way we ultimately want to do things, but at least
-        # this ensures the source IDs are fully unique.
-        expBits = frameRef.get("ccdExposureId_bits")
-        expId = long(frameRef.get("ccdExposureId"))
-        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
-
         if self.config.doCalibrate:
-            self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
+            self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (frameRef.dataId))
             exp = self.makeExp(frameRef)
-            calib = self.calibrate.run(exp, idFactory=idFactory)
+            calib = self.calibrate.run(exp)
             calExposure = calib.exposure
-            if not self.config.calibrate.doPsf:
-                psf = frameRef.get('psField')
-                calib.psf = psf
 
             if self.config.doWriteCalibrate:
                 frameRef.put(calExposure, 'calexp')
@@ -155,11 +138,8 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = self.makeExp(frameRef)
-            if calib is None:
-                psf = frameRef.get('psField')
-                calExposure.setPsf(psf)
-            table = afwTable.SourceTable.make(self.schema, idFactory)
+                calExposure = frameRef.get('calexp')
+            table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, calExposure)
             sources = detRet.sources

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -29,24 +29,58 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
-from lsst.pipe.tasks.coaddArgumentParser import CoaddArgumentParser
+
+__all__ = ["CoaddTask", "CoaddArgumentParser"]
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
+
+class NullSelectTask(pipeBase.Task):
+    ConfigClass = pexConfig.Config
+    def runDataRef(self, dataRef, coordList):
+        raise RuntimeError("No select task specified")
+    
+    def searchWholeSky(self, dataRef):
+        raise RuntimeError("No select task specified")
 
 class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
     """
-    coadd = pexConfig.ConfigField(
-        dtype = coaddUtils.Coadd.ConfigClass,
-        doc = "coaddition task",
+    coaddName = pexConfig.Field(
+        doc = "coadd name: one of deep or goodSeeing",
+        dtype = str,
+        default = "deep",
     )
-    warp = pexConfig.ConfigField(
-        dtype = afwMath.Warper.ConfigClass,
-        doc = "warping task",
+    select = pexConfig.ConfigurableField(
+        doc = "image selection subtask",
+        target = NullSelectTask, # must be retargeted
+    )
+    desiredFwhm = pexConfig.Field(
+        doc = "desired FWHM of coadd; 0 for no FWHM matching",
+        dtype = float,
+        default = 0,
+    )
+    badMaskPlanes = pexConfig.ListField(
+        dtype = str,
+        doc = "mask planes that, if set, the associated pixel should not be included in the coadd",
+        default = ("EDGE", "SAT"),
+    )
+    coaddZeroPoint = pexConfig.Field(
+        dtype = float,
+        doc = "Photometric zero point of coadd (mag).",
+        default = 27.0,
     )
     psfMatch = pexConfig.ConfigurableField(
         target = ModelPsfMatchTask,
         doc = "PSF matching model to model task",
+    )
+    warp = pexConfig.ConfigField(
+        dtype = afwMath.Warper.ConfigClass,
+        doc = "warper configuration",
+    )
+    doWrite = pexConfig.Field(
+        doc = "persist coadd?",
+        dtype = bool,
+        default = True,
     )
 
 
@@ -58,57 +92,89 @@ class CoaddTask(pipeBase.CmdLineTask):
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
+        self.makeSubtask("select")
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
+        self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
         self._prevKernelDim = afwGeom.Extent2I(0, 0)
         self._modelPsf = None
 
-    @classmethod
-    def parseAndRun(cls, args=None, config=None, log=None):
-        """Parse an argument list and run the command
-
-        @param args: list of command-line arguments; if None use sys.argv
-        @param config: config for task (instance of pex_config Config); if None use cls.ConfigClass()
-        @param log: log (instance of pex_logging Log); if None use the default log
-        """
-        argumentParser = cls._makeArgumentParser()
-        if config is None:
-            config = cls.ConfigClass()
-        parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
-        task = cls(name = cls._DefaultName, config = parsedCmd.config, log = parsedCmd.log)
-
-        # normally the butler would do this, but it doesn't have support for coadds yet
-        task.config.save("%s_config.py" % (task.getName(),))
-
-        taskRes = task.run(
-            dataRefList = parsedCmd.dataRefList,
-            bbox = parsedCmd.bbox,
-            wcs = parsedCmd.wcs,
-            desFwhm = parsedCmd.fwhm,
-        )
+    @pipeBase.timeMethod
+    def run(self, patchRef):
+        """Coadd images by PSF-matching (optional), warping and computing a weighted sum
         
-        coadd = taskRes.coadd
-        coaddExposure = coadd.getCoadd()
-        weightMap = coadd.getWeightMap()
+        PSF matching is to a double gaussian model with core FWHM = self.config.desiredFwhm
+        and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
+        The size of the PSF matching kernel is the same as the size of the kernel
+        found in the first calibrated science exposure, since there is no benefit
+        to making it any other size.
+        
+        PSF-matching is performed before warping so the code can use the PSF models
+        associated with the calibrated science exposures (without having to warp those models).
+        
+        Coaddition is performed as a weighted sum. See lsst.coadd.utils.Coadd for details.
     
-        filterName = coaddExposure.getFilter().getName()
-        if filterName == "_unknown_":
-            filterStr = "unk"
-        coaddBaseName = "%s_filter_%s_fwhm_%s" % (task.getName(), filterName, parsedCmd.fwhm)
-        coaddPath = coaddBaseName + ".fits"
-        weightPath = coaddBaseName + "weight.fits"
-        print "Saving coadd as %s" % (coaddPath,)
-        coaddExposure.writeFits(coaddPath)
-        print "saving weight map as %s" % (weightPath,)
-        weightMap.writeFits(weightPath)
+        @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
+            plus the camera-specific filter key (e.g. "filter" or "band")
+        @return: a pipeBase.Struct with fields:
+        - coadd: a coaddUtils.Coadd object
+        - coaddExposure: coadd exposure, as returned by coadd.getCoadd()
+        """
+        skyInfo = self.getSkyInfo(patchRef)
+        
+        wcs = skyInfo.wcs
+        bbox = skyInfo.bbox
+        
+        imageRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
+        
+        numExp = len(imageRefList)
+        if numExp < 1:
+            raise RuntimeError("No exposures to coadd")
+        self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
+    
+        doPsfMatch = self.config.desiredFwhm > 0
+        if not doPsfMatch:
+            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm <= 0)")
+    
+        coadd = self.makeCoadd(bbox, wcs)
+        for ind, dataRef in enumerate(imageRefList):
+            if not dataRef.datasetExists("calexp"):
+                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (dataRef.dataId,))
+                continue
 
-        # normally the butler would do this, but it doesn't have support for coadds yet
-        fullMetadata = task.getFullMetadata()
-        mdStr = fullMetadata.toString()
-        with file("%s_metadata.txt" % (task.getName(),), "w") as mdfile:
-            mdfile.write(mdStr)
+            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
+                (ind+1, numExp, dataRef.dataId))
+            exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
+            exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
+            try:
+                coadd.addExposure(exposure)
+            except RuntimeError, e:
+                self.log.log(self.log.WARN, "Could not add exposure to coadd: %s" % (e,))
+        
+        coaddExposure = coadd.getCoadd()
+
+        if self.config.doWrite:
+            patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
+        
+        return pipeBase.Struct(
+            coaddExposure = coaddExposure,
+            coadd = coadd,
+        )
     
-    def getCalexp(self, dataRef, getPsf=True):
+    def selectExposures(self, patchRef, wcs, bbox):
+        """Select exposures to coadd
+        
+        @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
+            plus the camera-specific filter key (e.g. "filter" or "band")
+        @param[in] wcs: WCS of coadd patch
+        @param[in] bbox: bbox of coadd patch
+        @return a list of science exposures to coadd, as butler data references
+        """
+        cornerPosList = _getBox2DCorners(bbox)
+        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
+        return self.select.runDataRef(patchRef, coordList).dataRefList
+    
+    def getCalExp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf
         
         @param dataRef: a sensor-level data reference
@@ -120,96 +186,135 @@ class CoaddTask(pipeBase.CmdLineTask):
             psf = dataRef.get("psf")
             exposure.setPsf(psf)
         return exposure
+
+    def getSkyInfo(self, patchRef):
+        """Return SkyMap, tract and patch
+
+        @param patchRef: data reference for sky map. Must include keys "tract" and "patch"
+        
+        @return pipe_base Struct containing:
+        - skyMap: sky map
+        - tractInfo: information for chosen tract of sky map
+        - patchInfo: information about chosen patch of tract
+        - wcs: WCS of tract
+        - bbox: outer bbox of patch, as an afwGeom Box2I
+        """
+        skyMap = patchRef.get(self.config.coaddName + "Coadd_skyMap")
+        tractId = patchRef.dataId["tract"]
+        tractInfo = skyMap[tractId]
+
+        # patch format is "xIndex,yIndex"
+        patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
+        patchInfo = tractInfo.getPatchInfo(patchIndex)
+        
+        return pipeBase.Struct(
+            skyMap = skyMap,
+            tractInfo = tractInfo,
+            patchInfo = patchInfo,
+            wcs = tractInfo.getWcs(),
+            bbox = patchInfo.getOuterBBox(),
+        )
     
     def makeCoadd(self, bbox, wcs):
         """Make a coadd object, e.g. lsst.coadd.utils.Coadd
         
         @param[in] bbox: bounding box for coadd
         @param[in] wcs: WCS for coadd
+        
+        This exists to allow subclasses to return a different kind of coadd
         """
-        return coaddUtils.Coadd.fromConfig(bbox=bbox, wcs=wcs, config=self.config.coadd)
+        return coaddUtils.Coadd(bbox=bbox, wcs=wcs, badMaskPlanes=self.config.badMaskPlanes)
     
-    def makeModelPsf(self, exposure, desFwhm):
+    def makeModelPsf(self, kernelDim):
         """Construct a model PSF, or reuse the prior model, if possible
         
-        The model PSF is a double Gaussian with core FWHM = desFwhm
+        The model PSF is a double Gaussian with core FWHM = self.config.desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         
-        @param exposure: exposure containing a psf; the model PSF will have the same dimensions
-        @param desFwhm: desired FWHM of PSF, in pixels
+        @param kernelDim: desired dimensions of PSF kernel
         @return model PSF
         
-        @raise RuntimeError if desFwhm <= 0
+        @raise RuntimeError if self.config.desiredFwhm <= 0
         """
-        if desFwhm <= 0:
-            raise RuntimeError("desFwhm = %s; must be positive" % (desFwhm,))
-        psfKernel = exposure.getPsf().getKernel()
-        kernelDim = psfKernel.getDimensions()
+        desiredFwhm = self.config.desiredFwhm
+        if desiredFwhm <= 0:
+            raise RuntimeError("desiredFwhm = %s; must be positive" % (desiredFwhm,))
         if self._modelPsf is None or kernelDim != self._prevKernelDim:
             self._prevKernelDim = kernelDim
             self.log.log(self.log.INFO,
                 "Create double Gaussian PSF model with core fwhm %0.1f and size %dx%d" % \
-                (desFwhm, kernelDim[0], kernelDim[1]))
-            coreSigma = desFwhm / FWHMPerSigma
+                (desiredFwhm, kernelDim[0], kernelDim[1]))
+            coreSigma = desiredFwhm / FWHMPerSigma
             self._modelPsf = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
                 coreSigma, coreSigma * 2.5, 0.1)
         return self._modelPsf
-
-    @pipeBase.timeMethod
-    def run(self, dataRefList, bbox, wcs, desFwhm):
-        """Coadd images by PSF-matching (optional), warping and computing a weighted sum
-        
-        PSF matching is to a double gaussian model with core FWHM = desFwhm
-        and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
-        The size of the PSF matching kernel is the same as the size of the kernel
-        found in the first calibrated science exposure, since there is no benefit
-        to making it any other size.
-        
-        PSF-matching is performed before warping so the code can use the PSF models
-        associated with the calibrated science exposures (without having to warp those models).
-        
-        Coaddition is performed as a weighted sum. See lsst.coadd.utils.Coadd for details.
     
-        @param dataRefList: list of data identity dictionaries
-        @param bbox: bounding box of coadd
-        @param wcs: WCS of coadd
-        @param desFwhm: desired FWHM of PSF, in science exposure pixels
-                (note that the coadd often has a different scale than the science images);
-                if 0 then no PSF matching is performed.
-        @return: a pipeBase.Struct with fields:
-        - coadd: a coaddUtils.Coadd object; call coadd.getCoadd() to get the coadd exposure
+    def preprocessExposure(self, exposure, wcs, maxBBox=None, destBBox=None):
+        """PSF-match exposure (if self.config.desiredFwhm > 0), warp and scale
+        
+        @param[in,out] exposure: exposure to preprocess; FWHM fitting is done in place
+        @param[in] wcs: desired WCS of temporary images
+        @param maxBBox: maximum allowed parent bbox of warped exposure (an afwGeom.Box2I or None);
+            if None then the warped exposure will be just big enough to contain all warped pixels;
+            if provided then the warped exposure may be smaller, and so missing some warped pixels;
+            ignored if destBBox is not None
+        @param destBBox: exact parent bbox of warped exposure (an afwGeom.Box2I or None);
+            if None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored
+        
+        @return preprocessed exposure
         """
-        numExp = len(dataRefList)
-        if numExp < 1:
-            raise RuntimeError("No exposures to coadd")
-        self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
-
-        doPsfMatch = desFwhm > 0
-    
-        if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
-    
-        coadd = self.makeCoadd(bbox, wcs)
-        for ind, dataRef in enumerate(dataRefList):
-            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
-                (ind+1, numExp, dataRef.dataId))
-            exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
-            if desFwhm > 0:
-                modelPsf = self.makeModelPsf(exposure, desFwhm)
-                self.log.log(self.log.INFO, "PSF-match exposure")
-                psfRes = self.psfMatch.run(exposure, modelPsf)
-                exposure = psfRes.psfMatchedExposure
-            self.log.log(self.log.INFO, "Warp exposure")
-            with self.timer("warp"):
-                exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
-            coadd.addExposure(exposure)
+        if self.config.desiredFwhm > 0:
+            kernelDim = exposure.getPsf().getKernel().getDimensions()
+            modelPsf = self.makeModelPsf(kernelDim=kernelDim)
+            self.log.log(self.log.INFO, "PSF-match exposure")
+            exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
         
-        return pipeBase.Struct(
-            coadd = coadd,
-        )
+        self.log.log(self.log.INFO, "Warp exposure")
+        with self.timer("warp"):
+            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
+        
+        self.zeroPointScaler.scaleExposure(exposure)
+
+        return exposure
 
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return CoaddArgumentParser(name=cls._DefaultName)
+        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+
+
+class CoaddArgumentParser(pipeBase.ArgumentParser):
+    """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
+    
+    Required because butler.subset does not support patch and tract
+    """
+    def _makeDataRefList(self, namespace):
+        """Make namespace.dataRefList from namespace.dataIdList
+        """
+        datasetType = namespace.config.coaddName + "Coadd"
+        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
+
+        namespace.dataRefList = []
+        for dataId in namespace.dataIdList:
+            # tract and patch are required
+            for key in validKeys:
+                if key not in dataId:
+                    self.error("--id must include " + key)
+            dataRef = namespace.butler.dataRef(
+                datasetType = datasetType,
+                dataId = dataId,
+            )
+            namespace.dataRefList.append(dataRef)
+
+
+def _getBox2DCorners(bbox):
+    """Return the four corners of a bounding box (Box2I or Box2D) as four afwGeom Point2D
+    """
+    bbox = afwGeom.Box2D(bbox) # mak
+    return (
+        bbox.getMin(),
+        afwGeom.Point2D(bbox.getMaxX(), bbox.getMinY()),
+        bbox.getMax(),
+        afwGeom.Point2D(bbox.getMinX(), bbox.getMaxY()),
+    )
