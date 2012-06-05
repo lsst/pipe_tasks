@@ -100,9 +100,9 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         exp   = afwImage.ExposureF(mi, wcs)
         exp.setCalib(calib)
         det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
-                                                      (frameRef.dataId["band"], frameRef.dataId["camcol"])))
+                                                      (frameRef.dataId["filter"], frameRef.dataId["camcol"])))
         exp.setDetector(det)
-        exp.setFilter(afwImage.Filter(frameRef.dataId['band']))
+        exp.setFilter(afwImage.Filter(frameRef.dataId['filter']))
 
         return exp
 
