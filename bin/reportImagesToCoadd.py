@@ -56,6 +56,11 @@ class ReportImagesToCoaddConfig(pexConfig.Config):
         length = 4,
         optional = True,
     )
+    showImageIds = pexConfig.Field(
+        doc = "show individual image IDs in addition to a summary?",
+        dtype = bool,
+        default = False,
+    )
 
 
 class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
@@ -131,10 +136,20 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
             numpy.percentile(fwhmList, 75.0),
         )
         
-        print "Tract  patchX  patchY  numExp"
+        print "\nTract  patchX  patchY  numExp"
         for key in sorted(ccdInfoSetDict.keys()):
             ccdInfoSet = ccdInfoSetDict[key]
             print "%5d   %5d   %5d  %5d" % (key[0], key[1][0], key[1][1], len(ccdInfoSet))
+        
+        if self.config.showImageIds:
+            print "\nImage IDs:"
+            if len(exposureInfoList) > 0:
+                keys = sorted(exposureInfoList[0].dataId.keys())
+                # use set to remove duplicates, then list to sort
+                idTupleList = list(set(tuple(expInfo.dataId[k] for k in keys) for expInfo in exposureInfoList))
+                idTupleList.sort()
+                for idTuple in idTupleList:
+                    print " ".join("%s=%s" % (key, val) for key, val in zip(keys, idTuple))
         
         return pipeBase.Struct(
             ccdInfoSetDict = ccdInfoSetDict,
