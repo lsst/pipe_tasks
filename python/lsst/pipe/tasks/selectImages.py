@@ -105,7 +105,7 @@ class BaseSelectImagesTask(pipeBase.Task):
         """
         raise NotImplementedError()
     
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True):
+    def runDataRef(self, dataRef, coordList, datasetType="calexp", makeDataRefList=True):
         """Run based on a data reference
         
         @param[in] dataRef: data reference; must contain any extra keys needed by the subclass
@@ -121,7 +121,7 @@ class BaseSelectImagesTask(pipeBase.Task):
         if makeDataRefList:        
             butler = dataRef.butlerSubset.butler
             dataRefList = [butler.dataRef(
-                datasetType = "calexp",
+                datasetType = datasetType,
                 dataId = ccdInfo.dataId,
             ) for ccdInfo in exposureInfoList]
         else:

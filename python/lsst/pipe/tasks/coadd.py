@@ -82,6 +82,12 @@ class CoaddConfig(pexConfig.Config):
         dtype = bool,
         default = True,
     )
+    datasetType = pexConfig.Field(
+        doc = "datasetType to search for",
+        dtype = str,
+        optional = False,
+        default = "calexp"
+    )
 
 
 class CoaddTask(pipeBase.CmdLineTask):
@@ -138,7 +144,7 @@ class CoaddTask(pipeBase.CmdLineTask):
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, dataRef in enumerate(imageRefList):
-            if not dataRef.datasetExists("calexp"):
+            if not dataRef.datasetExists(self.config.datasetType):
                 self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (dataRef.dataId,))
                 continue
 
@@ -172,7 +178,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         """
         cornerPosList = _getBox2DCorners(bbox)
         coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
-        return self.select.runDataRef(patchRef, coordList).dataRefList
+        return self.select.runDataRef(patchRef, coordList, datasetType=self.config.datasetType).dataRefList
     
     def getCalExp(self, dataRef, getPsf=True):
         """Return one "calexp" calibrated exposure, perhaps with psf
@@ -181,7 +187,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         @param getPsf: include the PSF?
         @return calibrated exposure with psf
         """
-        exposure = dataRef.get("calexp")
+        exposure = dataRef.get(self.config.datasetType)
         if getPsf:
             psf = dataRef.get("psf")
             exposure.setPsf(psf)
