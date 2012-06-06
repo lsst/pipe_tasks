@@ -71,7 +71,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     _DefaultName = "processCcd"
 
     def __init__(self, **kwargs):
-        pipeBase.Task.__init__(self, **kwargs)
+        pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
         self.makeSubtask("calibrate")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
@@ -88,8 +88,11 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         @param sensorRef: sensor-level butler data reference
         @return pipe_base Struct containing these fields:
         - postIsrExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
-        - exposure: calibrated exposure (calexp) if config.doCalibrate or config.doDetection, else None
+        - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
+            else as upersisted if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
+        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
+            if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
@@ -105,7 +108,8 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         postIsrExposure = None
         calExposure = None
         calib = None
-        source = None
+        apCorr = None
+        sources = None
         
         if self.config.doIsr:
             postIsrExposure = self.isr.run(sensorRef).exposure
@@ -115,6 +119,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                 postIsrExposure = sensorRef.get('postISRCCD')
             calib = self.calibrate.run(postIsrExposure, idFactory=idFactory)
             calExposure = calib.exposure
+            apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
                 sensorRef.put(calExposure, 'calexp')
                 sensorRef.put(calib.sources, 'icSrc')
@@ -130,30 +135,25 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             if calExposure is None:
                 calExposure = sensorRef.get('calexp')
-            if calib is None:
+            if calib is None or calib.psf is None:
                 psf = sensorRef.get('psf')
-                calExposure.setPsf(sensorRef.get('psf'))
+                calExposure.setPsf(psf)
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
-        else:
-            sources  = None
 
         if self.config.doMeasurement:
-            assert(sources is not None)
-            assert(calExposure is not None)
-            if calib is None:
+            if apCorr is None:
                 apCorr = sensorRef.get("apCorr")
-            else:
-                apCorr = calib.apCorr
             self.measurement.run(calExposure, sources, apCorr)
 
         if sources is not None and self.config.doWriteSources:
             sensorRef.put(sources, 'src')
-            
+
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,
             exposure = calExposure,
             calib = calib,
+            apCorr = apCorr,
             sources = sources,
         )
