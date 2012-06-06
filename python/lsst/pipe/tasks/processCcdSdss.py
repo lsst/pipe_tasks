@@ -66,7 +66,6 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         
 class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS
-    
     """
     ConfigClass = ProcessCcdSdssConfig
     _DefaultName = "processCcd"
@@ -113,12 +112,12 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         
         @param frameRef: frame-level butler data reference
         @return pipe_base Struct containing these fields:
-        - exposure: calibrated exposure (calexp)
-        - psf: the PSF determined for the exposure
-        - apCorr: aperture correction
-        - sources: detected source if calib.doPhotometry run, else None
-        - matches: ? if doCalibrate, else None
-        - matchMeta: ? if config.doCalibrate, else None
+        - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
+            else as upersisted if config.doDetection, else None
+        - calib: object returned by calibration process if config.doCalibrate, else None
+        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
+            if config.doMeasure, else None
+        - sources: detected source if config.doPhotometry, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (frameRef.dataId))
 
@@ -129,15 +128,18 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         expId = long(frameRef.get("ccdExposureId"))
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
+        # initialize outputs
+        calExposure = None
+        calib = None
+        apCorr = None
+        sources = None
+
         if self.config.doCalibrate:
             self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
             exp = self.makeExp(frameRef)
             calib = self.calibrate.run(exp, idFactory=idFactory)
             calExposure = calib.exposure
-            if not self.config.calibrate.doPsf:
-                psf = frameRef.get('psField')
-                calib.psf = psf
-
+            apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
                 frameRef.put(calExposure, 'calexp')
                 frameRef.put(calib.sources, 'icSrc')
@@ -149,40 +151,28 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     frameRef.put(normalizedMatches, 'icMatch')
-        else:
-            calib = None
-            calExposure = None
 
         if self.config.doDetection:
             if calExposure is None:
                 calExposure = self.makeExp(frameRef)
-            if calib is None:
+            if calib is None or calib.psf is None:
                 psf = frameRef.get('psField')
                 calExposure.setPsf(psf)
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            detRet = self.detection.makeSourceCatalog(table, calExposure)
-            sources = detRet.sources
-        else:
-            sources = None
+            sources = self.detection.makeSourceCatalog(table, calExposure).sources
 
         if self.config.doMeasurement:
-            assert(sources)
-            assert(calExposure)
-            if calib is None:
+            if apCorr is None:
                 apCorr = frameRef.get("apCorr")
-            else:
-                apCorr = calib.apCorr
             self.measurement.run(calExposure, sources, apCorr)
 
-        if self.config.doWriteSources:
+        if sources is not None and self.config.doWriteSources:
             frameRef.put(sources, 'src')
 
         return pipeBase.Struct(
-            calExposure = calExposure,
+            exposure = calExposure,
             calib = calib,
             apCorr = apCorr,
             sources = sources,
-            matches = calib.matches if calib else None,
-            matchMeta = calib.matchMeta if calib else None,
         )
