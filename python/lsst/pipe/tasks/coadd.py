@@ -29,18 +29,11 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
+from lsst.pipe.tasks.selectImages import BadSelectImagesTask
 
 __all__ = ["CoaddTask", "CoaddArgumentParser"]
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
-
-class NullSelectTask(pipeBase.Task):
-    ConfigClass = pexConfig.Config
-    def runDataRef(self, dataRef, coordList):
-        raise RuntimeError("No select task specified")
-    
-    def searchWholeSky(self, dataRef):
-        raise RuntimeError("No select task specified")
 
 class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
@@ -52,7 +45,7 @@ class CoaddConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc = "image selection subtask",
-        target = NullSelectTask, # must be retargeted
+        target = BadSelectImagesTask,
     )
     desiredFwhm = pexConfig.Field(
         doc = "desired FWHM of coadd; 0 for no FWHM matching",

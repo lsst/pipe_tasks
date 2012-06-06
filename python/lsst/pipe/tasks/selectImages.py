@@ -23,7 +23,7 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo"]
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask"]
 
 class SelectImagesConfig(pexConfig.Config):
     """Config for BaseSelectImagesTask
@@ -131,3 +131,12 @@ class BaseSelectImagesTask(pipeBase.Task):
             dataRefList = dataRefList,
             exposureInfoList = exposureInfoList,
         )
+
+class BadSelectImagesTask(BaseSelectImagesTask):
+    """Non-functional selection task intended as a placeholder subtask
+    """
+    def run(self, coordList):
+        raise RuntimeError("No select task specified")
+
+    def _runArgDictFromDataId(self, dataId):        
+        raise RuntimeError("No select task specified")
