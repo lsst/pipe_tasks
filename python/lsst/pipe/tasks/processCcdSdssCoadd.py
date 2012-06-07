@@ -71,9 +71,10 @@ class ProcessCcdSdssCoaddConfig(pexConfig.Config):
         # OPTIMIZE FOR SDSS
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
-        self.calibrate.initialPsf.fwhm = 1.4   # Arcseconds
 
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 1 # Should be spatially invariant
+        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder    = 1  # Should be spatially invariant
+        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin   = 31 # Larger Psfs
+        self.calibrate.measurePsf.starSelector["secondMoment"].fluxLim = 3000.0
 
         self.calibrate.doBackground = False
         self.calibrate.detection.reEstimateBackground = False
@@ -145,8 +146,6 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
         """
         self.log.info("Processing %s" % (frameRef.dataId))
 
-        import debug
-
         if self.config.doCalibrate:
             self.log.info("Performing Calibrate on coadd %s" % (frameRef.dataId))
             coadd = frameRef.get(self.config.coaddName)
@@ -159,23 +158,23 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             calExposure = calib.exposure
 
             if self.config.doWriteCalibrate:
-                frameRef.put(calExposure, 'calexp')
-                frameRef.put(calib.sources, 'icSrc')
+                frameRef.put(calExposure, self.config.coaddName+"_calexp")
+                frameRef.put(calib.sources, self.config.coaddName+"_icSrc")
                 if calib.psf is not None:
-                    frameRef.put(calib.psf, 'psf')
+                    frameRef.put(calib.psf, self.config.coaddName+"_psf")
                 if calib.apCorr is not None:
-                    frameRef.put(calib.apCorr, 'apCorr')
+                    frameRef.put(calib.apCorr, self.config.coaddName+"_apCorr")
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    frameRef.put(normalizedMatches, 'icMatch')
+                    frameRef.put(normalizedMatches, self.config.coaddName+"_icMatch")
         else:
             calib = None
             calExposure = None
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = frameRef.get('calexp')
+                calExposure = frameRef.get(self.config.coaddName+"_calexp")
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
             detRet = self.detection.makeSourceCatalog(table, calExposure)
@@ -187,13 +186,13 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             assert(sources)
             assert(calExposure)
             if calib is None:
-                apCorr = frameRef.get("apCorr")
+                apCorr = frameRef.get(self.config.coaddName+"_apCorr")
             else:
                 apCorr = calib.apCorr
             self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            frameRef.put(sources, 'src')
+            frameRef.put(sources, self.config.coaddName+"_src")
 
         return pipeBase.Struct(
             calExposure = calExposure,
