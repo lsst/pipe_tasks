@@ -72,7 +72,9 @@ class ProcessCcdSdssCoaddConfig(pexConfig.Config):
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
 
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 1 # Should be spatially invariant
+        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder    = 1  # Should be spatially invariant
+        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin   = 31 # Larger Psfs
+        self.calibrate.measurePsf.starSelector["secondMoment"].fluxLim = 3000.0
 
         self.calibrate.doBackground = False
         self.calibrate.detection.reEstimateBackground = False
