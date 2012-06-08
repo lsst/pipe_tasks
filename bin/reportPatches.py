@@ -34,7 +34,6 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
-from lsst.pipe.tasks.coadd import NullSelectTask
 
 __all__ = ["ReportPatchesTask", "ReportPatchesArgumentParser"]
 

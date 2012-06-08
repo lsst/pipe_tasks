@@ -23,6 +23,8 @@
 import sys
 import traceback
 
+import lsst.afw.coord as afwCoord
+import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
@@ -64,6 +66,21 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         - skyMap: the constructed SkyMap
         """
         skyMap = self.config.skyMap.apply()
+        self.log.log(self.log.INFO, "sky map has %s tracts" % (len(skyMap),))
+        for tractInfo in skyMap:
+            wcs = tractInfo.getWcs()
+            posBox = afwGeom.Box2D(tractInfo.getBBox())
+            pixelPosList = (
+                posBox.getMin(),
+                afwGeom.Point2D(posBox.getMaxX(), posBox.getMinY()),
+                posBox.getMax(),
+                afwGeom.Point2D(posBox.getMinX(), posBox.getMaxY()),
+            )
+            skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
+            posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
+            self.log.log(self.log.INFO, "tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
+                (tractInfo.getId(), ", ".join(posStrList), \
+                tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
         if self.config.doWrite:
             dataRef.put(skyMap)
         return pipeBase.Struct(

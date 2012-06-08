@@ -34,7 +34,7 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
-from lsst.pipe.tasks.coadd import NullSelectTask
+from lsst.pipe.tasks.selectImages import BadSelectImagesTask
 
 __all__ = ["ReportImagesToCoaddTask", "ReportImagesToCoaddArgumentParser"]
 
@@ -48,7 +48,7 @@ class ReportImagesToCoaddConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc = "image selection subtask",
-        target = NullSelectTask, # must be retargeted
+        target = BadSelectImagesTask, # must be retargeted
     )
     raDecRange = pexConfig.ListField(
         doc = "min RA, min Dec, max RA, max Dec (ICRS, deg); if omitted then search whole sky",

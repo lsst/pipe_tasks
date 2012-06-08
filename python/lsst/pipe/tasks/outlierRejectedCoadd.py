@@ -111,7 +111,13 @@ class OutlierRejectedCoaddTask(CoaddTask):
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
-            exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
+            try:
+                raise RuntimeError("test")
+                exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
+            except Exception:
+                self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
+                    (dataRef.dataId, e))
+                continue
             tempDataId = dataRef.dataId.copy()
             tempDataId.update(patchRef.dataId)
             tempDataRef = dataRef.butlerSubset.butler.dataRef(
