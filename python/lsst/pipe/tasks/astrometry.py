@@ -173,7 +173,7 @@ class AstrometryTask(pipeBase.Task):
                 s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) + yMin)
 
         if astrom is None or astrom.getWcs() is None:
-            raise RuntimeError("Unable to solve astrometry for %s", exposure.getDetector().getId())
+            raise RuntimeError("Unable to solve astrometry")
 
         wcs = astrom.getWcs()
         wcs.shiftReferencePixel(llc[0], llc[1])
@@ -181,9 +181,8 @@ class AstrometryTask(pipeBase.Task):
         matches = astrom.getMatches()
         matchMeta = astrom.getMatchMetadata()
         if matches is None or len(matches) == 0:
-            raise RuntimeError("No astrometric matches for %s", exposure.getDetector().getId())
-        self.log.log(self.log.INFO, "%d astrometric matches for %s" % \
-                     (len(matches), exposure.getDetector().getId()))
+            raise RuntimeError("No astrometric matches")
+        self.log.log(self.log.INFO, "%d astrometric matches" %  (len(matches)))
         exposure.setWcs(wcs)
 
         # Apply WCS to sources
