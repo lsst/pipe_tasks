@@ -138,7 +138,12 @@ class CoaddTask(pipeBase.CmdLineTask):
             self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
-            exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
+            try:
+                exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
+            except Exception, e:
+                self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
+                    (dataRef.dataId, e))
+                continue
             try:
                 coadd.addExposure(exposure)
             except RuntimeError, e:

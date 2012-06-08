@@ -145,11 +145,15 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
             print "\nImage IDs:"
             if len(exposureInfoList) > 0:
                 keys = sorted(exposureInfoList[0].dataId.keys())
-                # use set to remove duplicates, then list to sort
-                idTupleList = list(set(tuple(expInfo.dataId[k] for k in keys) for expInfo in exposureInfoList))
-                idTupleList.sort()
-                for idTuple in idTupleList:
-                    print " ".join("%s=%s" % (key, val) for key, val in zip(keys, idTuple))
+                # use a dict to remove duplicates, then sort keys and report information
+                exposureInfoDict = dict((tuple(expInfo.dataId[k] for k in keys), expInfo) for expInfo in exposureInfoList)
+                for idTuple in sorted(exposureInfoDict.keys()):
+                    exposureInfo = exposureInfoDict[idTuple]
+                    idStr = " ".join("%s=%s" % (key, val) for key, val in zip(keys, idTuple))
+                    skyPosList = [coord.getPosition(afwGeom.degrees) for coord in exposureInfo.coordList]
+                    skyPosStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
+                    skyPosStr = ", ".join(skyPosStrList)
+                    print "dataId=%s; corner RA/Dec=%s" % (idStr, skyPosStr)
         
         return pipeBase.Struct(
             ccdInfoSetDict = ccdInfoSetDict,
