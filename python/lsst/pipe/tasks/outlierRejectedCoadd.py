@@ -206,6 +206,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
                 self.log.log(self.log.WARN, "No images to coadd in this subregion")
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
+        self.postprocessCoadd(coaddExposure)
 
         if self.config.doWrite:
             patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
@@ -213,7 +214,6 @@ class OutlierRejectedCoaddTask(CoaddTask):
         return pipeBase.Struct(
             coaddExposure = coaddExposure,
         )
-
 
 
 class ExposureMetadata(object):
