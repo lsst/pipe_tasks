@@ -26,8 +26,10 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
+import lsst.meas.algorithms as measAlg
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
+import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.pipe.tasks.selectImages import BadSelectImagesTask
 
@@ -48,9 +50,9 @@ class CoaddConfig(pexConfig.Config):
         target = BadSelectImagesTask,
     )
     desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd; 0 for no FWHM matching",
+        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
         dtype = float,
-        default = 0,
+        optional = True,
     )
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
@@ -59,7 +61,7 @@ class CoaddConfig(pexConfig.Config):
     )
     coaddZeroPoint = pexConfig.Field(
         dtype = float,
-        doc = "Photometric zero point of coadd (mag).",
+        doc = "photometric zero point of coadd (mag)",
         default = 27.0,
     )
     psfMatch = pexConfig.ConfigurableField(
@@ -69,6 +71,22 @@ class CoaddConfig(pexConfig.Config):
     warp = pexConfig.ConfigField(
         dtype = afwMath.Warper.ConfigClass,
         doc = "warper configuration",
+    )
+    doInterp = pexConfig.Field(
+        doc = "interpolate over EDGE pixels?",
+        dtype = bool,
+        default = True,
+    )
+    interpKernelFallbackFwhm = pexConfig.Field(
+        dtype = float,
+        doc = """normally desiredFwhm is used as the FWHM of PSF kernel for interpolating NaNs,
+            but if desiredFwhm is None then interpKernelFallbackFwhm is used (arc seconds)""",
+        default = 1.5,
+    )
+    interpKernelSizeFactor = pexConfig.Field(
+        dtype = float,
+        doc = "interpolation kernel size = interpFwhm converted to pixels * interpKernelSizeFactor",
+        default = 3.0,
     )
     doWrite = pexConfig.Field(
         doc = "persist coadd?",
@@ -89,8 +107,6 @@ class CoaddTask(pipeBase.CmdLineTask):
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
-        self._prevKernelDim = afwGeom.Extent2I(0, 0)
-        self._modelPsf = None
 
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -125,9 +141,9 @@ class CoaddTask(pipeBase.CmdLineTask):
             raise RuntimeError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
     
-        doPsfMatch = self.config.desiredFwhm > 0
+        doPsfMatch = self.config.desiredFwhm is not None
         if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm <= 0)")
+            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm is None)")
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, dataRef in enumerate(imageRefList):
@@ -150,6 +166,7 @@ class CoaddTask(pipeBase.CmdLineTask):
                 self.log.log(self.log.WARN, "Could not add exposure to coadd: %s" % (e,))
         
         coaddExposure = coadd.getCoadd()
+        self.postprocessCoadd(coaddExposure)
 
         if self.config.doWrite:
             patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
@@ -212,6 +229,28 @@ class CoaddTask(pipeBase.CmdLineTask):
             wcs = tractInfo.getWcs(),
             bbox = patchInfo.getOuterBBox(),
         )
+
+    @pipeBase.timeMethod
+    def interpolateEdgePixels(self, exposure):
+        """Interpolate over edge pixels
+        
+        This interpolates over things like saturated pixels and replaces edge pixels with 0.
+        
+        @param[in,out] exposure: exposure over which to interpolate over edge pixels
+        @param[in] PSF to use to detect NaNs
+        """
+        self.log.info("Interpolate over EDGE pixels")
+        wcs = exposure.getWcs()
+        fwhm = self.config.desiredFwhm if self.config.desiredFwhm is not None \
+            else self.config.interpKernelFallbackFwhm
+        fwhmPixels = fwhm / wcs.pixelScale().asArcseconds()
+        kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
+        kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
+        psfModel = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
+
+        maskedImage = exposure.getMaskedImage()
+        nanDefectList = ipIsr.getDefectListFromMask(maskedImage, "EDGE", growFootprints=0)
+        measAlg.interpolateOverDefects(exposure.getMaskedImage(), psfModel, nanDefectList, 0.0)
     
     def makeCoadd(self, bbox, wcs):
         """Make a coadd object, e.g. lsst.coadd.utils.Coadd
@@ -223,32 +262,25 @@ class CoaddTask(pipeBase.CmdLineTask):
         """
         return coaddUtils.Coadd(bbox=bbox, wcs=wcs, badMaskPlanes=self.config.badMaskPlanes)
     
-    def makeModelPsf(self, kernelDim):
+    def makeModelPsf(self, fwhmPixels, kernelDim):
         """Construct a model PSF, or reuse the prior model, if possible
         
-        The model PSF is a double Gaussian with core FWHM = self.config.desiredFwhm
+        The model PSF is a double Gaussian with core FWHM = fwhmPixels
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         
-        @param kernelDim: desired dimensions of PSF kernel
+        @param fwhmPixels: desired FWHM of core Gaussian, in pixels
+        @param kernelDim: desired dimensions of PSF kernel, in pixels
         @return model PSF
-        
-        @raise RuntimeError if self.config.desiredFwhm <= 0
         """
-        desiredFwhm = self.config.desiredFwhm
-        if desiredFwhm <= 0:
-            raise RuntimeError("desiredFwhm = %s; must be positive" % (desiredFwhm,))
-        if self._modelPsf is None or kernelDim != self._prevKernelDim:
-            self._prevKernelDim = kernelDim
-            self.log.log(self.log.INFO,
-                "Create double Gaussian PSF model with core fwhm %0.1f and size %dx%d" % \
-                (desiredFwhm, kernelDim[0], kernelDim[1]))
-            coreSigma = desiredFwhm / FWHMPerSigma
-            self._modelPsf = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-                coreSigma, coreSigma * 2.5, 0.1)
-        return self._modelPsf
+        self.log.log(self.log.INFO,
+            "Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" % \
+            (fwhmPixels, kernelDim[0], kernelDim[1]))
+        coreSigma = fwhmPixels / FWHMPerSigma
+        return afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
+            coreSigma, coreSigma * 2.5, 0.1)
     
     def preprocessExposure(self, exposure, wcs, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if self.config.desiredFwhm > 0), warp and scale
+        """PSF-match exposure (if self.config.desiredFwhm is not None), warp and scale
         
         @param[in,out] exposure: exposure to preprocess; FWHM fitting is done in place
         @param[in] wcs: desired WCS of temporary images
@@ -261,10 +293,11 @@ class CoaddTask(pipeBase.CmdLineTask):
         
         @return preprocessed exposure
         """
-        if self.config.desiredFwhm > 0:
-            kernelDim = exposure.getPsf().getKernel().getDimensions()
-            modelPsf = self.makeModelPsf(kernelDim=kernelDim)
+        if self.config.desiredFwhm is not None:
             self.log.log(self.log.INFO, "PSF-match exposure")
+            fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
+            kernelDim = exposure.getPsf().getKernel().getDimensions()
+            modelPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
         
         self.log.log(self.log.INFO, "Warp exposure")
@@ -274,6 +307,14 @@ class CoaddTask(pipeBase.CmdLineTask):
         self.zeroPointScaler.scaleExposure(exposure)
 
         return exposure
+    
+    def postprocessCoadd(self, coaddExposure):
+        """Postprocess the exposure coadd, e.g. interpolate over edge pixels
+        """
+        if self.config.doInterp:
+            self.interpolateEdgePixels(exposure=coaddExposure)
+        else:
+            self.log.log(self.log.INFO, "config.doInterp is None; do not interpolate over EDGE pixels")
 
     @classmethod
     def _makeArgumentParser(cls):
