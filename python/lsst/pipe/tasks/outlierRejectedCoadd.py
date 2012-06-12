@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -20,22 +20,11 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-"""@todo: 
-- use butler to save and retrieve intermediate images
-- modify debug mode that allow retrieving existing data so that it
-    is controlled by debug or config, and perhaps implement it as "reuse if it exists"
-    (but this is dangerous unless the file name contains enough info to tell if it's the right image)
-"""
-import math
-import os
-import sys
-
+import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
-import lsst.daf.base as dafBase
-import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .coadd import CoaddTask
 
@@ -45,20 +34,22 @@ class OutlierRejectedCoaddConfig(CoaddTask.ConfigClass):
         doc = """width, height of stack subregion size;
                 make small enough that a full stack of images will fit into memory at once""",
         length = 2,
-        default = (200, 200),
-        optional = None,
+        default = (2000, 2000),
+    )
+    doSigmaClip = pexConfig.Field(
+        dtype = bool,
+        doc = "perform sigma clipping (if False then compute simple mean)",
+        default = True,
     )
     sigmaClip = pexConfig.Field(
         dtype = float,
-        doc = "sigma for outlier rejection",
+        doc = "sigma for outlier rejection; ignored if doSigmaClip false",
         default = 3.0,
-        optional = None,
     )
     clipIter = pexConfig.Field(
         dtype = int,
-        doc = "number of iterations of outlier rejection",
+        doc = "number of iterations of outlier rejection; ignored if doSigmaClip false",
         default = 2,
-        optional = False,
     )
     
 
@@ -66,24 +57,20 @@ class OutlierRejectedCoaddTask(CoaddTask):
     """Construct an outlier-rejected (robust mean) coadd
     """
     ConfigClass = OutlierRejectedCoaddConfig
+    _DefaultName = "outlierRejectedCoadd"
 
     def __init__(self, *args, **kwargs):
         CoaddTask.__init__(self, *args, **kwargs)
+        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
-        coaddConfig = self.config.coadd
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(coaddConfig.badMaskPlanes)
-        self._coaddCalib = coaddUtils.makeCalib(coaddConfig.coaddZeroPoint)
-    
     def getBadPixelMask(self):
         return self._badPixelMask
-
-    def getCoaddCalib(self):
-        return self._coaddCalib
-        
-    def run(self, dataRefList, bbox, wcs, desFwhm):
+    
+    @pipeBase.timeMethod
+    def run(self, patchRef):
         """PSF-match, warp and coadd images, using outlier rejection
         
-        PSF matching is to a double gaussian model with core FWHM = desFwhm
+        PSF matching is to a double gaussian model with core FWHM = desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         The size of the PSF matching kernel is the same as the size of the kernel
         found in the first calibrated science exposure, since there is no benefit
@@ -92,37 +79,77 @@ class OutlierRejectedCoaddTask(CoaddTask):
         PSF-matching is performed before warping so the code can use the PSF models
         associated with the calibrated science exposures (without having to warp those models).
         
-        @param dataRefList: list of sensor-level data references
-        @param bbox: bounding box of coadd
-        @param wcs: WCS of coadd
-        @param desFwhm: desired FWHM of PSF, in science exposure pixels
-                (note that the coadd often has a different scale than the science images);
-                if 0 then no PSF matching is performed.
+        @param patchRef: data reference for sky map. Must include keys "tract", "patch",
+            plus the camera-specific filter key (e.g. "filter" or "band")
 
         @return: a pipeBase.Struct with fields:
         - coaddExposure: coadd exposure
         """
-        numExp = len(dataRefList)
+        skyInfo = self.getSkyInfo(patchRef)
+        datasetType = self.config.coaddName + "Coadd"
+        
+        wcs = skyInfo.wcs
+        bbox = skyInfo.bbox
+        
+        imageRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
+        
+        numExp = len(imageRefList)
         if numExp < 1:
             raise RuntimeError("No exposures to coadd")
-        self.log.log(self.log.INFO, "Coadd %s calexp" % (len(dataRefList),))
+        self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
     
-        exposureMetadataList = self.psfMatchAndWarp(
-            dataRefList = dataRefList,
-            desFwhm = desFwhm,
-            wcs = wcs,
-            bbox = bbox,
-        )
-        
+        doPsfMatch = self.config.desiredFwhm > 0
+        if not doPsfMatch:
+            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm <= 0)")
+
+        exposureMetadataList = []
+        for ind, dataRef in enumerate(imageRefList):
+            if not dataRef.datasetExists("calexp"):
+                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (dataRef.dataId,))
+                continue
+
+            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
+                (ind+1, numExp, dataRef.dataId))
+            exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
+            try:
+                exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
+            except Exception, e:
+                self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
+                    (dataRef.dataId, e))
+                continue
+            tempDataId = dataRef.dataId.copy()
+            tempDataId.update(patchRef.dataId)
+            tempDataRef = dataRef.butlerSubset.butler.dataRef(
+                datasetType = "coaddTempExp",
+                dataId = tempDataId,
+            )
+            tempDataRef.put(exposure)
+            expMetadata = ExposureMetadata(
+                    dataRef = tempDataRef,
+                    exposure = exposure,
+                    badPixelMask = self.getBadPixelMask(),
+                )
+            exposureMetadataList.append(expMetadata)
+            del exposure
+        if not exposureMetadataList:
+            raise RuntimeError("No images to coadd")
+
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
         statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self.getBadPixelMask())
+        statsCtrl.setNanSafe(True)
+        statsCtrl.setCalcErrorFromInputVariance(True)
+
+        if self.config.doSigmaClip:
+            statsFlags = afwMath.MEANCLIP
+        else:
+            statsFlags = afwMath.MEAN
     
         coaddExposure = afwImage.ExposureF(bbox, wcs)
-        coaddExposure.setCalib(self.getCoaddCalib())
+        coaddExposure.setCalib(self.zeroPointScaler.getCalib())
     
         filterDict = {} # dict of name: Filter
         for expMeta in exposureMetadataList:
@@ -130,132 +157,83 @@ class OutlierRejectedCoaddTask(CoaddTask):
         if len(filterDict) == 1:
             coaddExposure.setFilter(filterDict.values()[0])
         self.log.log(self.log.INFO, "Filter=%s" % (coaddExposure.getFilter().getName(),))
-        
-        coaddExposure.writeFits("blankCoadd.fits")
     
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
-        dumPS = dafBase.PropertySet()
         for subBBox in _subBBoxIter(bbox, subregionSize):
             self.log.log(self.log.INFO, "Computing coadd %s" % (subBBox,))
             coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
             maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
             weightList = []
             for expMeta in exposureMetadataList:
-                if expMeta.bbox.contains(subBBox):
-                    maskedImage = afwImage.MaskedImageF(expMeta.path, 0, dumPS, subBBox, afwImage.PARENT)
-                elif not subBBox.overlaps(expMeta.bbox):
+                if not subBBox.overlaps(expMeta.bbox):
+                    # there is no overlap between this temporary exposure and this coadd subregion
                     self.log.log(self.log.INFO, "Skipping %s; no overlap" % (expMeta.path,))
                     continue
+                
+                if expMeta.bbox.contains(subBBox):
+                    # this temporary image fully overlaps this coadd subregion
+                    exposure = expMeta.dataRef.get("coaddTempExp_sub", bbox=subBBox, imageOrigin="PARENT")
+                    maskedImage = exposure.getMaskedImage()
                 else:
+                    # this temporary image partially overlaps this coadd subregion;
+                    # make a new image of EDGE pixels using the coadd subregion
+                    # and set the overlapping pixels from the temporary exposure
                     overlapBBox = afwGeom.Box2I(expMeta.bbox)
                     overlapBBox.clip(subBBox)
                     self.log.log(self.log.INFO,
                         "Processing %s; grow from %s to %s" % (expMeta.path, overlapBBox, subBBox))
                     maskedImage = afwImage.MaskedImageF(subBBox)
                     maskedImage.getMask().set(edgeMask)
+                    tempExposure = expMeta.dataRef.get("coaddTempExp_sub",
+                        bbox=overlapBBox, imageOrigin="PARENT")
+                    tempMaskedImage = tempExposure.getMaskedImage()
                     maskedImageView = afwImage.MaskedImageF(maskedImage, overlapBBox, afwImage.PARENT, False)
-                    maskedImageView <<= afwImage.MaskedImageF(expMeta.path, 0,dumPS, overlapBBox, afwImage.PARENT)
+                    maskedImageView <<= tempMaskedImage
                 maskedImageList.append(maskedImage)
                 weightList.append(expMeta.weight)
-            try:
-                coaddSubregion = afwMath.statisticsStack(
-                    maskedImageList, afwMath.MEANCLIP, statsCtrl, weightList)
-    
-                coaddView <<= coaddSubregion
-            except Exception, e:
-                self.log.log(self.log.ERR, "Outlier rejection failed; setting EDGE mask: %s" % (e,))
-                # re-raise the exception so setCoaddEdgeBits will set the whole coadd mask to EDGE
-                raise
+
+            if len(maskedImageList) > 0:
+                try:
+                    coaddSubregion = afwMath.statisticsStack(
+                        maskedImageList, statsFlags, statsCtrl, weightList)
+        
+                    coaddView <<= coaddSubregion
+                except Exception, e:
+                    self.log.log(self.log.ERR, "Cannot compute this subregion: %s" % (e,))
+            else:
+                self.log.log(self.log.WARN, "No images to coadd in this subregion")
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
+        self.postprocessCoadd(coaddExposure)
+
+        if self.config.doWrite:
+            patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
     
         return pipeBase.Struct(
             coaddExposure = coaddExposure,
         )
-
-    def psfMatchAndWarp(self, dataRefList, bbox, wcs, desFwhm):
-        """Normalize, PSF-match (if desFWhm > 0) and warp exposures; save the resulting exposures as FITS files
-        
-        @param dataRefList: list of sensor-level data references
-        @param bbox: bounding box for coadd
-        @param wcs: desired WCS of coadd
-        @param desFwhm: desired FWHM (pixels)
-
-        @return
-        - exposureMetadataList: a list of ExposureMetadata objects
-            describing the saved psf-matched and warped exposures
-        """
-        numExp = len(dataRefList)
-
-        doPsfMatch = desFwhm > 0
-    
-        if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desFwhm <= 0)")
-
-        exposureMetadataList = []
-        for ind, dataRef in enumerate(dataRefList):
-            dataId = dataRef.dataId
-            outPath = "_".join(["%s_%s" % (k, dataId[k]) for k in sorted(dataId.keys())])
-            outPath = outPath.replace(",", "_")
-            outPath = outPath + ".fits"
-            if True:        
-                self.log.log(self.log.INFO, "Processing exposure %d of %d: dataId=%s" % (ind+1, numExp, dataId))
-                exposure = self.getCalexp(dataRef, getPsf=doPsfMatch)
-        
-                srcCalib = exposure.getCalib()
-                scaleFac = 1.0 / srcCalib.getFlux(self.config.coadd.coaddZeroPoint)
-                maskedImage = exposure.getMaskedImage()
-                maskedImage *= scaleFac
-                self.log.log(self.log.INFO, "Normalized using scaleFac=%0.3g" % (scaleFac,))
-    
-                if desFwhm > 0:
-                    modelPsf = self.makeModelPsf(exposure, desFwhm)
-                    self.log.log(self.log.INFO, "PSF-match exposure")
-                    exposure, psfMatchingKernel, kernelCellSet = \
-                        self.psfMatcher.matchExposure(exposure, modelPsf)
-                
-                self.log.log(self.log.INFO, "Warp exposure")
-                exposure = self.warper.warpExposure(wcs, exposure, maxBBox = bbox)
-                exposure.setCalib(self.getCoaddCalib())
-    
-                self.log.log(self.log.INFO, "Saving intermediate exposure as %s" % (outPath,))
-                exposure.writeFits(outPath)
-            else:
-                # debug mode; exposures already exist
-                self.log.log(self.log.WARN, "DEBUG MODE; Processing dataId=%s; retrieving from %s" % \
-                    (dataId, outPath))
-                exposure = afwImage.ExposureF(outPath)
-    
-            expMetadata = ExposureMetadata(
-                    path = outPath,
-                    exposure = exposure,
-                    badPixelMask = self.getBadPixelMask(),
-                )
-            exposureMetadataList.append(expMetadata)
-            
-        return exposureMetadataList
 
 
 class ExposureMetadata(object):
     """Metadata for an exposure
         
     Attributes:
-    - path: path to exposure FITS file
+    - dataRef: data reference for exposure
     - wcs: WCS of exposure
     - bbox: parent bounding box of exposure
     - weight = weightFactor / clipped mean variance
     """
-    def __init__(self, path, exposure, badPixelMask, weightFactor = 1.0):
+    def __init__(self, dataRef, exposure, badPixelMask, weightFactor = 1.0):
         """Create an ExposureMetadata
         
-        @param[in] path: path to Exposure FITS file
+        @param[in] dataRef: data reference for exposure
         @param[in] exposure: Exposure
         @param[in] badPixelMask: bad pixel mask for pixels to ignore
         @param[in] weightFactor: additional scaling factor for weight:
         """
-        self.path = path
+        self.dataRef = dataRef
         self.wcs = exposure.getWcs()
         self.bbox = exposure.getBBox(afwImage.PARENT)
         self.filter = exposure.getFilter()
@@ -266,6 +244,7 @@ class ExposureMetadata(object):
         statsCtrl.setNumSigmaClip(3.0)
         statsCtrl.setNumIter(2)
         statsCtrl.setAndMask(badPixelMask)
+        statsCtrl.setNanSafe(True)
         statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
             afwMath.MEANCLIP, statsCtrl)
         meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
