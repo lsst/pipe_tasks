@@ -20,20 +20,20 @@ class TestForceWcs(unittest.TestCase):
         print 'Setup astrometry_net_data', ver
 
     def test1(self):
-        '''
-        > bb = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Point2I(255,255))
-        > e2 = afwImg.ExposureF('../afwdata/ImSim/calexp/v85408556-fr/R23/S11.fits', 0, bb)
-        > e2.writeFits('mini-v85408556-fr-R23-S11.fits')
-        '''
         #exposure = afwImage.ExposureF('mini-v85408556-fr-R23-S11.fits')
         #exposure = afwImage.ExposureF('../afwdata/ImSim/calexp/v85408556-fr/R23/S11.fits')
-        exposure = afwImage.ExposureF('data/goodSeeingCoadd/r/3/113,0/coadd-r-3-113,0.fits')
+        #bb = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Point2I(511,511))
+        #exposure = afwImage.ExposureF('data/goodSeeingCoadd/r/3/113,0/coadd-r-3-113,0.fits', 0, bb)
+        #exposure.writeFits('mini-r-3-113,0.fits')
+        fn = os.path.join(os.path.dirname(__file__), 'data', 'mini-r-3-113,0.fits.gz')
+        print 'Reading image', fn
+        exposure = afwImage.ExposureF(fn)
         schema = afwTable.SourceTable.makeMinimalSchema()
         idFactory = afwTable.IdFactory.makeSimple()
 
         dconf = SourceDetectionConfig()
         dconf.reEstimateBackground = False
-        dconf.includeThresholdMultiplier = 10.
+        dconf.includeThresholdMultiplier = 5.
 
         mconf = SourceMeasurementConfig()
 
@@ -60,7 +60,7 @@ class TestForceWcs(unittest.TestCase):
         print 'inwcs:', instr
         print 'outwcs:', outstr
         print len(ast.matches), 'matches'
-        self.assertTrue(len(ast.matches) > 200)
+        self.assertTrue(len(ast.matches) > 10)
 
 def suite():
     """Returns a suite containing all the test cases in this module."""
