@@ -269,10 +269,11 @@ class CalibrateTask(pipeBase.Task):
         assert cellSet, "No cellSet provided"
         metadata = dafBase.PropertyList()
         apCorr = measAlg.ApertureCorrection(exposure, cellSet, metadata, self.config.computeApCorr, self.log)
-        x, y = exposure.getWidth() / 2.0, exposure.getHeight() / 2.0
+        x0, y0 = exposure.getXY0()
+        x, y = exposure.getWidth() / 2.0 + x0, exposure.getHeight() / 2.0 + y0
         value, error = apCorr.computeAt(x, y)
-        self.log.log(self.log.INFO, "Aperture correction using %d/%d stars: %f +/- %f" %
-                     (metadata.get("numAvailStars"), metadata.get("numGoodStars"), value, error))
+        self.log.log(self.log.INFO, "Central aperture correction using %d/%d stars: %f +/- %f" %
+                     (metadata.get("numGoodStars"), metadata.get("numAvailStars"), value, error))
         for key in metadata.names():
             self.metadata.add("apCorr.%s" % key, metadata.get(key))
         # XXX metadata?
