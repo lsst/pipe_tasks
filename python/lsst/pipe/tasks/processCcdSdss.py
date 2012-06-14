@@ -62,7 +62,9 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
 
-        self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
+        self.calibrate.background.binSize = 512 
+        self.calibrate.detection.background.binSize = 512
+        self.detection.background.binSize = 512
         
 class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS
