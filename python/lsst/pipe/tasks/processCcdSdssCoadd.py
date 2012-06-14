@@ -29,18 +29,12 @@ import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
 import lsst.afw.math as afwMath
 
-# Specific to NaN interpolation
-import lsst.meas.algorithms as measAlg
-import lsst.afw.detection as afwDet
-import lsst.ip.isr as ipIsr
-
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from .calibrate import CalibrateTask
 
 class ProcessCcdSdssCoaddConfig(pexConfig.Config):
     """Config for ProcessCcdSdssCoadd"""
     coaddName = pexConfig.Field(dtype=str, default="goodSeeingCoadd", doc = "Type of coadd")
-    doInterpolate = pexConfig.Field(dtype=bool, default=True, doc = "Perform NaN interpolation") 
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise") 
 
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
@@ -79,7 +73,7 @@ class ProcessCcdSdssCoaddConfig(pexConfig.Config):
         self.calibrate.doBackground = False
         self.calibrate.detection.reEstimateBackground = False
         self.detection.reEstimateBackground = False
-
+        self.detection.thresholdType = "pixel_stdev"
 
 class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS Coadd
@@ -102,23 +96,6 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
     def _makeArgumentParser(cls):
         return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType=cls.ConfigClass().coaddName)        
 
-    @pipeBase.timeMethod
-    def interpolateNans(self, exposure):
-        wcs = exposure.getWcs()
-        size = self.config.calibrate.initialPsf.size
-        model = self.config.calibrate.initialPsf.model
-        fwhmPix = self.config.calibrate.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
-        sigmaPix = fwhmPix/(2.0*num.sqrt(2*num.log(2.0)))
-        self.log.info("interpolateNans fwhm=%.3f asec; fwhm=%.3f pixels; sigma=%.3f pixels; size=%s pixels" % (self.config.calibrate.initialPsf.fwhm, fwhmPix, sigmaPix, size))
-        self.psf = afwDet.createPsf(model, size, size, sigmaPix)
-
-        exposure.getMaskedImage().getMask().addMaskPlane("UNMASKEDNAN")
-        nanMasker = ipIsr.UnmaskedNanCounterF()
-        nanMasker.apply(exposure.getMaskedImage())
-        nans = ipIsr.getDefectListFromMask(exposure.getMaskedImage(), maskName="UNMASKEDNAN")
-        self.log.info("Interpolating over %d NANs" % len(nans))
-        measAlg.interpolateOverDefects(exposure.getMaskedImage(), self.psf, nans, 0.0)
-    
     @pipeBase.timeMethod
     def scaleVariance(self, exposure):
         ctrl = afwMath.StatisticsControl()
@@ -145,12 +122,9 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
         - matchMeta: ? if config.doCalibrate, else None
         """
         self.log.info("Processing %s" % (frameRef.dataId))
-
         if self.config.doCalibrate:
             self.log.info("Performing Calibrate on coadd %s" % (frameRef.dataId))
             coadd = frameRef.get(self.config.coaddName)
-            if self.config.doInterpolate:
-                self.interpolateNans(coadd)
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
 
