@@ -75,6 +75,8 @@ class ProcessCcdSdssCoaddConfig(pexConfig.Config):
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
 
+        self.calibrate.photocal.badFlags=['flags.pixel.edge','flags.pixel.saturated.any'] # Remove flags.pixel.interpolated.any
+
 class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS Coadd
     
