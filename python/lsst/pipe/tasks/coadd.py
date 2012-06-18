@@ -299,7 +299,6 @@ class CoaddTask(pipeBase.CmdLineTask):
             kernelDim = exposure.getPsf().getKernel().getDimensions()
             modelPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-        
         self.log.log(self.log.INFO, "Warp exposure")
         with self.timer("warp"):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)

@@ -26,6 +26,7 @@ import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
+import lsst.afw.geom as afwGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
@@ -33,6 +34,9 @@ class ProcessCcdSdssConfig(pexConfig.Config):
     """Config for ProcessCcdSdss"""
     removePedestal = pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS pedestal from fpC file")
     pedestalVal = pexConfig.Field(dtype=int, default=1000, doc = "Number of counts in the SDSS pedestal")
+
+    removeOverlap =  pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS field overlap from fpC file")
+    overlapSize = pexConfig.Field(dtype=int, default=128, doc = "Number of pixels to remove from top of the fpC file")
 
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
@@ -98,6 +102,15 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         var  /= gain
 
         mi    = afwImage.MaskedImageF(image, mask, var)
+
+        if self.config.removeOverlap:
+            bbox    = mi.getBBox()
+            begin   = bbox.getBegin()
+            extent  = bbox.getDimensions()
+            extent -= afwGeom.Extent2I(0, self.config.overlapSize)
+            tbbox   = afwGeom.BoxI(begin, extent)
+            mi      = afwImage.MaskedImageF(mi, tbbox, True)
+
         exp   = afwImage.ExposureF(mi, wcs)
         exp.setCalib(calib)
         det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
