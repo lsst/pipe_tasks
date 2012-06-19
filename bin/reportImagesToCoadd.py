@@ -21,11 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 """Select images and report which tracts and patches they are in
-
-@warning: this is a very basic start. Misfeatures include:
-- Only reports the best tract and patch containing the center of each image;
-  a proper implementation will report all tracts and patches that overlap each image
-- One must specify a patch and tract even though those arguments are ignored.
 """
 import numpy
 
