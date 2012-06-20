@@ -120,15 +120,14 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
         return exp
 
-
     @pipeBase.timeMethod
     def run(self, sensorRef):
         """Process a CCD: including source detection, photometry and WCS determination
         
-        @param sensorRef: sensor-level butler data reference to SDSS frame
+        @param sensorRef: sensor-level butler data reference to SDSS fpC file
         @return pipe_base Struct containing these fields:
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
-            else as upersisted if config.doDetection, else None
+            else as upersisted and updated if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
         - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
             if config.doMeasure, else None

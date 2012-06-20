@@ -28,9 +28,8 @@ import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
 import lsst.afw.math as afwMath
-
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
-from .calibrate import CalibrateTask
+from lsst.pipe.tasks.calibrate import CalibrateTask
 
 class ProcessCcdSdssCoaddConfig(pexConfig.Config):
     """Config for ProcessCcdSdssCoadd"""
@@ -111,70 +110,76 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
         var   *= vrat
 
     @pipeBase.timeMethod
-    def run(self, frameRef):
+    def run(self, sensorRef):
         """Process a CCD: including source detection, photometry and WCS determination
         
-        @param frameRef: frame-level butler data reference
+        @param sensorRef: sensor-level butler data reference to SDSS coadd patch
         @return pipe_base Struct containing these fields:
-        - exposure: calibrated exposure (calexp)
-        - psf: the PSF determined for the exposure
-        - apCorr: aperture correction
-        - sources: detected source if calib.doPhotometry run, else None
-        - matches: ? if doCalibrate, else None
-        - matchMeta: ? if config.doCalibrate, else None
+        - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
+            else as upersisted and updated if config.doDetection, else None
+        - calib: object returned by calibration process if config.doCalibrate, else None
+        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
+            if config.doMeasure, else None
+        - sources: detected source if config.doPhotometry, else None
         """
-        self.log.info("Processing %s" % (frameRef.dataId))
+        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+
+        # initialize outputs
+        calExposure = None
+        calib = None
+        apCorr = None
+        sources = None
+
         if self.config.doCalibrate:
-            self.log.info("Performing Calibrate on coadd %s" % (frameRef.dataId))
-            coadd = frameRef.get(self.config.coaddName)
+            self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (sensorRef.dataId))
+            coadd = sensorRef.get(self.config.coaddName)
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
 
             calib = self.calibrate.run(coadd)
             calExposure = calib.exposure
-
+            apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
-                frameRef.put(calExposure, self.config.coaddName+"_calexp")
-                frameRef.put(calib.sources, self.config.coaddName+"_icSrc")
+                sensorRef.put(calib.sources, self.config.coaddName+"_icSrc")
                 if calib.psf is not None:
-                    frameRef.put(calib.psf, self.config.coaddName+"_psf")
+                    sensorRef.put(calib.psf, self.config.coaddName+"_psf")
                 if calib.apCorr is not None:
-                    frameRef.put(calib.apCorr, self.config.coaddName+"_apCorr")
+                    sensorRef.put(calib.apCorr, self.config.coaddName+"_apCorr")
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    frameRef.put(normalizedMatches, self.config.coaddName+"_icMatch")
-        else:
-            calib = None
-            calExposure = None
+                    sensorRef.put(normalizedMatches, self.config.coaddName+"_icMatch")
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = frameRef.get(self.config.coaddName+"_calexp")
+                calexpName = self.config.coaddName+"_calexp"
+                if not sensorRef.datasetExists(calexpName):
+                    raise RuntimeError("doCalibrate false, doDetection true and %s does not exist" % \
+                        (calexpName,))
+                calExposure = sensorRef.get(calexpName)
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
-            detRet = self.detection.makeSourceCatalog(table, calExposure)
-            sources = detRet.sources
-        else:
-            sources = None
+            sources = self.detection.makeSourceCatalog(table, calExposure).sources
+
+        if self.config.doWriteCalibrate:
+            # wait until after detection, since that sets detected mask bits may tweak the background;
+            # note that this overwrites an existing calexp if doCalibrate false
+            if calExposure is None:
+                self.log.log(self.log.WARN, "coadd_calexp is None; cannot save it")
+            else:
+                sensorRef.put(calExposure, self.config.coaddName+"_calexp")
 
         if self.config.doMeasurement:
-            assert(sources)
-            assert(calExposure)
             if calib is None:
-                apCorr = frameRef.get(self.config.coaddName+"_apCorr")
-            else:
-                apCorr = calib.apCorr
+                apCorr = sensorRef.get(self.config.coaddName+"_apCorr")
             self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            frameRef.put(sources, self.config.coaddName+"_src")
+            sensorRef.put(sources, self.config.coaddName+"_src")
 
         return pipeBase.Struct(
-            calExposure = calExposure,
+            exposure = calExposure,
             calib = calib,
             apCorr = apCorr,
             sources = sources,
-            matches = calib.matches if calib else None,
-            matchMeta = calib.matchMeta if calib else None,
         )
