@@ -36,6 +36,12 @@ class AstrometryConfig(pexConfig.Config):
         doc = "Configuration for the astrometry solver",
     )
 
+    forceKnownWcs = pexConfig.Field(dtype=bool, doc=(
+        "Assume that the input image's WCS is correct, without comparing it to any external reality." +
+        " (In contrast to using Astrometry.net).  NOTE, if you set this, you probably also want to" +
+        " un-set 'solver.calculateSip'; otherwise we'll still try to find a TAN-SIP WCS starting " +
+        " from the existing WCS"), default=False)
+
 class AstrometryTask(pipeBase.Task):
     """Conversion notes:
     
@@ -154,23 +160,15 @@ class AstrometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
             filterName = None
 
-#
-# meas_astrom doesn't like -ve coordinates.  The proper thing to do is to fix that; but for now
-# we'll pander to its whims
-#
-        xMin, yMin = llc
-        if xMin != 0 or yMin != 0:
-            for s in sources:
-                s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) - xMin)
-                s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) - yMin)
-                
         astrometer = Astrometry(self.config.solver, log=self.log)
-        astrom = astrometer.determineWcs(sources, exposure)
-
-        if xMin != 0 or yMin != 0:
-            for s in sources:
-                s.set(self.centroidKey.getX(), s.get(self.centroidKey.getX()) + xMin)
-                s.set(self.centroidKey.getY(), s.get(self.centroidKey.getY()) + yMin)
+        if self.config.forceKnownWcs:
+            self.log.info("forceKnownWcs is set: using the input exposure's WCS")
+            if self.config.solver.calculateSip:
+                self.log.warn("Astrometry: 'forceKnownWcs' and 'solver.calculateSip' options are both set." +
+                              " Will try to compute a TAN-SIP WCS starting from the assumed-correct input WCS.")
+            astrom = astrometer.useKnownWcs(sources, exposure=exposure)
+        else:
+            astrom = astrometer.determineWcs(sources, exposure)
 
         if astrom is None or astrom.getWcs() is None:
             raise RuntimeError("Unable to solve astrometry")
@@ -183,7 +181,9 @@ class AstrometryTask(pipeBase.Task):
         if matches is None or len(matches) == 0:
             raise RuntimeError("No astrometric matches")
         self.log.log(self.log.INFO, "%d astrometric matches" %  (len(matches)))
-        exposure.setWcs(wcs)
+
+        if not self.config.forceKnownWcs:
+            exposure.setWcs(wcs)
 
         # Apply WCS to sources
         # This should be unnecessary - we update the RA/DEC in a zillion different places.  But I'm
