@@ -121,7 +121,6 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
-                sensorRef.put(calExposure, 'calexp')
                 sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
                     sensorRef.put(calib.psf, 'psf')
@@ -134,6 +133,8 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
         if self.config.doDetection:
             if calExposure is None:
+                if not sensorRef.datasetExists('calexp'):
+                    raise RuntimeError("doCalibrate false, doDetection true and calexp does not exist")
                 calExposure = sensorRef.get('calexp')
             if calib is None or calib.psf is None:
                 psf = sensorRef.get('psf')
@@ -141,6 +142,14 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
+
+        if self.config.doWriteCalibrate:
+            # wait until after detection, since that sets detected mask bits may tweak the background;
+            # note that this overwrites an existing calexp if doCalibrate false
+            if calExposure is None:
+                self.log.log(self.log.WARN, "calexp is None; cannot save it")
+            else:
+                sensorRef.put(calExposure, 'calexp')
 
         if self.config.doMeasurement:
             if apCorr is None:
