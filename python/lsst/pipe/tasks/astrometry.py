@@ -38,7 +38,9 @@ class AstrometryConfig(pexConfig.Config):
 
     forceKnownWcs = pexConfig.Field(dtype=bool, doc=(
         "Assume that the input image's WCS is correct, without comparing it to any external reality." +
-        " (In contrast to using Astrometry.net)."), default=False)
+        " (In contrast to using Astrometry.net).  NOTE, if you set this, you probably also want to" +
+        " un-set 'solver.calculateSip'; otherwise we'll still try to find a TAN-SIP WCS starting " +
+        " from the existing WCS"), default=False)
 
 class AstrometryTask(pipeBase.Task):
     """Conversion notes:
@@ -161,7 +163,10 @@ class AstrometryTask(pipeBase.Task):
         astrometer = Astrometry(self.config.solver, log=self.log)
         if self.config.forceKnownWcs:
             self.log.info("forceKnownWcs is set: using the input exposure's WCS")
-            astrom = astrometer.useKnownWcs(exposure.getWcs(), sources, exposure=exposure)
+            if self.config.solver.calculateSip:
+                self.log.warn("Astrometry: 'forceKnownWcs' and 'solver.calculateSip' options are both set." +
+                              " Will try to compute a TAN-SIP WCS starting from the assumed-correct input WCS.")
+            astrom = astrometer.useKnownWcs(sources, exposure=exposure)
         else:
             astrom = astrometer.determineWcs(sources, exposure)
 

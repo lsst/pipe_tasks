@@ -39,7 +39,6 @@ class TestForceWcs(unittest.TestCase):
 
         aconf = pipeTasksAstrom.AstrometryConfig()
         aconf.forceKnownWcs = True
-        aconf.solver.calculateSip = False
 
         det = SourceDetectionTask(schema=schema, config=dconf)
         meas = SourceMeasurementTask(schema, config=mconf)
@@ -48,19 +47,26 @@ class TestForceWcs(unittest.TestCase):
         astrom.log.setThreshold(pexLog.Log.DEBUG)
 
         inwcs = exposure.getWcs()
+        print 'inwcs:', inwcs
         instr = inwcs.getFitsMetadata().toString()
+        print 'inwcs:', instr
         table = afwTable.SourceTable.make(schema, idFactory)
         sources = det.makeSourceCatalog(table, exposure).sources
         meas.measure(exposure, sources)
-        ast = astrom.run(exposure, sources)
-        outwcs = exposure.getWcs()
-        outstr = outwcs.getFitsMetadata().toString()
-        self.assertEqual(inwcs, outwcs)
-        self.assertEqual(instr, outstr)
-        print 'inwcs:', instr
-        print 'outwcs:', outstr
-        print len(ast.matches), 'matches'
-        self.assertTrue(len(ast.matches) > 10)
+
+        for dosip in [False, True]:
+            aconf.solver.calculateSip = dosip
+            ast = astrom.run(exposure, sources)
+            outwcs = exposure.getWcs()
+            outstr = outwcs.getFitsMetadata().toString()
+            if dosip is False:
+                self.assertEqual(inwcs, outwcs)
+                self.assertEqual(instr, outstr)
+            print 'inwcs:', instr
+            print 'outwcs:', outstr
+            print len(ast.matches), 'matches'
+            self.assertTrue(len(ast.matches) > 10)
+        #exposure.writeFits('out-2155.fits')
 
 def suite():
     """Returns a suite containing all the test cases in this module."""
