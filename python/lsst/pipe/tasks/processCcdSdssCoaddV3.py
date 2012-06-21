@@ -28,6 +28,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
+from .coadd import CoaddArgumentParser
 
 class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
     """Config for ProcessCcdSdssCoaddV3"""
@@ -85,7 +86,7 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
 
     @classmethod
     def _makeArgumentParser(cls):
-        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="coadd")        
+        return CoaddArgumentParser(name=cls._DefaultName, datasetType="keithCoadd")
 
     @pipeBase.timeMethod
     def makeExp(self, sensorRef):
@@ -97,7 +98,7 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
         det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
                                                       (sensorRef.dataId["filter"], sensorRef.dataId["camcol"])))
         exp.setDetector(det)
-        exp.setFilter(afwImage.Filter(sensorRef.dataId['filter']))
+        exp.setFilter(afwImage.Filter(sensorRef.dataId["filter"]))
 
         return exp
 
@@ -115,6 +116,7 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
         - sources: detected source if config.doPhotometry, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        outPrefix = "keithCoadd_"
 
         # initialize outputs
         calExposure = None
@@ -129,21 +131,23 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
-                sensorRef.put(calib.sources, 'coadd_icSrc')
+                sensorRef.put(calib.sources, outPrefix+"icSrc")
                 if calib.psf is not None:
-                    sensorRef.put(calib.psf, 'coadd_psf')
+                    sensorRef.put(calib.psf, outPrefix+"psf")
                 if calib.apCorr is not None:
-                    sensorRef.put(calib.apCorr, 'coadd_apCorr')
+                    sensorRef.put(calib.apCorr, outPrefix+"apCorr")
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    sensorRef.put(normalizedMatches, 'coadd_icMatch')
+                    sensorRef.put(normalizedMatches, outPrefix+"icMatch")
 
         if self.config.doDetection:
             if calExposure is None:
-                if not sensorRef.datasetExists('coadd_calexp'):
-                    raise RuntimeError("doCalibrate false, doDetection true and coadd_calexp does not exist")
-                calExposure = sensorRef.get('coadd_calexp')
+                calexpName = outPrefix+"calexp"
+                if not sensorRef.datasetExists(calexpName):
+                    raise RuntimeError("doCalibrate false, doDetection true and %s does not exist" % \
+                        (calexpName,))
+                calExposure = sensorRef.get(calexpName)
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
@@ -152,17 +156,17 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
             # wait until after detection, since that sets detected mask bits may tweak the background;
             # note that this overwrites an existing calexp if doCalibrate false
             if calExposure is None:
-                self.log.log(self.log.WARN, "coadd_calexp is None; cannot save it")
+                self.log.log(self.log.WARN, "calibrated exposure is None; cannot save it")
             else:
-                sensorRef.put(calExposure, 'coadd_calexp')
+                sensorRef.put(calExposure, outPrefix+"calexp")
 
         if self.config.doMeasurement:
             if calib is None:
-                apCorr = sensorRef.get("coadd_apCorr")
+                apCorr = sensorRef.get(outPrefix+"apCorr")
             self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            sensorRef.put(sources, 'coadd_src')
+            sensorRef.put(sources, outPrefix+"src")
 
         return pipeBase.Struct(
             exposure = calExposure,
