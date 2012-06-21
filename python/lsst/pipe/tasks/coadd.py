@@ -41,7 +41,7 @@ class CoaddConfig(pexConfig.Config):
     """Config for CoaddTask
     """
     coaddName = pexConfig.Field(
-        doc = "coadd name: one of deep or goodSeeing",
+        doc = "coadd name: typically one of deep or goodSeeing",
         dtype = str,
         default = "deep",
     )
