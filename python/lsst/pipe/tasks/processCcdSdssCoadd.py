@@ -168,7 +168,7 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
 
         if self.config.doWriteCalibrate:
-            # wait until after detection, since that sets detected mask bits may tweak the background;
+            # wait until after detection, since that sets detected mask bits and may tweak the background;
             # note that this overwrites an existing calexp if doCalibrate false
             if calExposure is None:
                 self.log.log(self.log.WARN, "calibrated exposure is None; cannot save it")
