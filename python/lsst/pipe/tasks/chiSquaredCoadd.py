@@ -25,7 +25,7 @@ from .coadd import CoaddTask
 
 class ChiSquaredCoaddConfig(CoaddTask.ConfigClass):
     def setDefaults(self):
-        self.coaddName = "chiSquaredCoadd"
+        self.coaddName = "chiSquared"
 
 class ChiSquaredCoaddTask(CoaddTask):
     """Coadd images by PSF-matching (optional), warping and computing a chi squared sum

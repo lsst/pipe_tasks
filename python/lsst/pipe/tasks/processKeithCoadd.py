@@ -20,26 +20,20 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import numpy as num
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
-import lsst.afw.math as afwMath
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from .coadd import CoaddArgumentParser
 
-class ProcessCcdSdssCoaddConfig(pexConfig.Config):
-    """Config for ProcessCcdSdssCoadd"""
-    coaddName = pexConfig.Field(
-        doc = "coadd name: typically one of deep or goodSeeing",
-        dtype = str,
-        default = "deep",
-    )
-    doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise") 
+class ProcessKeithCoaddConfig(pexConfig.Config):
+    """Config for ProcessKeithCoadd"""
+    doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale the variance plane, which are incorrect in V3 coadds?")
+    varScaleFactor  = pexConfig.Field(dtype=float, default=10.0, doc = "Value to scale the variance by")
 
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
@@ -70,23 +64,15 @@ class ProcessCcdSdssCoaddConfig(pexConfig.Config):
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
 
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder    = 1  # Should be spatially invariant
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin   = 31 # Larger Psfs
-        self.calibrate.measurePsf.starSelector["secondMoment"].fluxLim = 3000.0
+        self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
+        self.calibrate.initialPsf.fwhm = 2.5    # Degraded the seeing for coadd to 2.5 arcseconds
 
-        self.calibrate.doBackground = False
-        self.calibrate.detection.reEstimateBackground = False
-        self.detection.reEstimateBackground = False
-        self.detection.thresholdType = "pixel_stdev"
-
-        self.calibrate.photocal.badFlags=['flags.pixel.edge','flags.pixel.saturated.any'] # Remove flags.pixel.interpolated.any
-
-class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
-    """Process a CCD for SDSS Coadd
+class ProcessKeithCoaddTask(pipeBase.CmdLineTask):
+    """Process a CCD for SDSS Coadd (V3)
     
     """
-    ConfigClass = ProcessCcdSdssCoaddConfig
-    _DefaultName = "processCcd"
+    ConfigClass = ProcessKeithCoaddConfig
+    _DefaultName = "processCoadd"
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -98,21 +84,19 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
-    @classmethod
-    def _makeArgumentParser(cls):
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
-
     @pipeBase.timeMethod
-    def scaleVariance(self, exposure):
-        ctrl = afwMath.StatisticsControl()
-        ctrl.setAndMask(~0x0)
-        var    = exposure.getMaskedImage().getVariance()
-        mask   = exposure.getMaskedImage().getMask()
-        dstats = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.VARIANCECLIP, ctrl).getValue(afwMath.VARIANCECLIP)
-        vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue(afwMath.MEANCLIP)
-        vrat   = dstats / vstats
-        self.log.info("Renormalising variance by %f" % (vrat))
-        var   *= vrat
+    def makeExp(self, sensorRef):
+        exp = sensorRef.get("coadd")
+        if self.config.doScaleVariance:
+            var  = exp.getMaskedImage().getVariance()
+            var *= self.config.varScaleFactor
+
+        det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
+                                                      (sensorRef.dataId["filter"], sensorRef.dataId["camcol"])))
+        exp.setDetector(det)
+        exp.setFilter(afwImage.Filter(sensorRef.dataId["filter"]))
+
+        return exp
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
@@ -128,7 +112,7 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
         - sources: detected source if config.doPhotometry, else None
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
-        outPrefix = self.config.coaddName + "Coadd_"
+        outPrefix = "keithCoadd_"
 
         # initialize outputs
         calExposure = None
@@ -138,11 +122,8 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
 
         if self.config.doCalibrate:
             self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (sensorRef.dataId))
-            coadd = sensorRef.get(self.config.coaddName+"Coadd")
-            if self.config.doScaleVariance:
-                self.scaleVariance(coadd)
-
-            calib = self.calibrate.run(coadd)
+            exp = self.makeExp(sensorRef)
+            calib = self.calibrate.run(exp)
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
@@ -160,7 +141,7 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             if calExposure is None:
                 calexpName = outPrefix+"calexp"
                 if not sensorRef.datasetExists(calexpName):
-                    raise RuntimeError("doCalibrate false, doDetection true and %s does not exist" % \
+                    raise pipeBase.TaskError("doCalibrate false, doDetection true and %s does not exist" % \
                         (calexpName,))
                 calExposure = sensorRef.get(calexpName)
             table = afwTable.SourceTable.make(self.schema)
@@ -189,3 +170,17 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             apCorr = apCorr,
             sources = sources,
         )
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        return CoaddArgumentParser(name=cls._DefaultName, datasetType="keithCoadd")
+
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%s_processCoadd_config" % (self.config.coaddName,)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%s_processCoadd_metadata" % (self.config.coaddName,)

@@ -168,7 +168,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             if calExposure is None:
                 if not sensorRef.datasetExists('calexp'):
-                    raise RuntimeError("doCalibrate false, doDetection true and calexp does not exist")
+                    raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
                 calExposure = sensorRef.get('calexp')
             if calib is None or calib.psf is None:
                 psf = sensorRef.get('psField')
