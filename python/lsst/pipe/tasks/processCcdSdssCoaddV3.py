@@ -118,6 +118,13 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
         outPrefix = "keithCoadd_"
 
+        # We make one IdFactory that will be used by both icSrc and src datasets;
+        # I don't know if this is the way we ultimately want to do things, but at least
+        # this ensures the source IDs are fully unique.
+        expBits = sensorRef.get("keithCoaddId_bits")
+        expId = long(sensorRef.get("keithCoaddId"))
+        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
         # initialize outputs
         calExposure = None
         calib = None
@@ -127,7 +134,7 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
         if self.config.doCalibrate:
             self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (sensorRef.dataId))
             exp = self.makeExp(sensorRef)
-            calib = self.calibrate.run(exp)
+            calib = self.calibrate.run(exp, idFactory=idFactory)
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
@@ -148,7 +155,7 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
                     raise RuntimeError("doCalibrate false, doDetection true and %s does not exist" % \
                         (calexpName,))
                 calExposure = sensorRef.get(calexpName)
-            table = afwTable.SourceTable.make(self.schema)
+            table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
 
