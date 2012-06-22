@@ -91,13 +91,13 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="fpC")        
 
     @pipeBase.timeMethod
-    def makeExp(self, frameRef):
-        image = frameRef.get("fpC").convertF()
+    def makeExp(self, sensorRef):
+        image = sensorRef.get("fpC").convertF()
         if self.config.removePedestal:
             image -= self.config.pedestalVal
-        mask  = frameRef.get("fpM")
-        wcs   = frameRef.get("asTrans")
-        calib, gain = frameRef.get("tsField")
+        mask  = sensorRef.get("fpM")
+        wcs   = sensorRef.get("asTrans")
+        calib, gain = sensorRef.get("tsField")
         var   = afwImage.ImageF(image, True)
         var  /= gain
 
@@ -114,33 +114,32 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         exp   = afwImage.ExposureF(mi, wcs)
         exp.setCalib(calib)
         det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
-                                                      (frameRef.dataId["filter"], frameRef.dataId["camcol"])))
+                                                      (sensorRef.dataId["filter"], sensorRef.dataId["camcol"])))
         exp.setDetector(det)
-        exp.setFilter(afwImage.Filter(frameRef.dataId['filter']))
+        exp.setFilter(afwImage.Filter(sensorRef.dataId['filter']))
 
         return exp
 
-
     @pipeBase.timeMethod
-    def run(self, frameRef):
+    def run(self, sensorRef):
         """Process a CCD: including source detection, photometry and WCS determination
         
-        @param frameRef: frame-level butler data reference
+        @param sensorRef: sensor-level butler data reference to SDSS fpC file
         @return pipe_base Struct containing these fields:
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
-            else as upersisted if config.doDetection, else None
+            else as upersisted and updated if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
         - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
             if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (frameRef.dataId))
+        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
         # I don't know if this is the way we ultimately want to do things, but at least
         # this ensures the source IDs are fully unique.
-        expBits = frameRef.get("ccdExposureId_bits")
-        expId = long(frameRef.get("ccdExposureId"))
+        expBits = sensorRef.get("ccdExposureId_bits")
+        expId = long(sensorRef.get("ccdExposureId"))
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
         # initialize outputs
@@ -150,41 +149,50 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         sources = None
 
         if self.config.doCalibrate:
-            self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (frameRef.dataId))
-            exp = self.makeExp(frameRef)
+            self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (sensorRef.dataId))
+            exp = self.makeExp(sensorRef)
             calib = self.calibrate.run(exp, idFactory=idFactory)
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
-                frameRef.put(calExposure, 'calexp')
-                frameRef.put(calib.sources, 'icSrc')
+                sensorRef.put(calib.sources, 'icSrc')
                 if calib.psf is not None:
-                    frameRef.put(calib.psf, 'psf')
+                    sensorRef.put(calib.psf, 'psf')
                 if calib.apCorr is not None:
-                    frameRef.put(calib.apCorr, 'apCorr')
+                    sensorRef.put(calib.apCorr, 'apCorr')
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    frameRef.put(normalizedMatches, 'icMatch')
+                    sensorRef.put(normalizedMatches, 'icMatch')
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = self.makeExp(frameRef)
+                if not sensorRef.datasetExists('calexp'):
+                    raise RuntimeError("doCalibrate false, doDetection true and calexp does not exist")
+                calExposure = sensorRef.get('calexp')
             if calib is None or calib.psf is None:
-                psf = frameRef.get('psField')
+                psf = sensorRef.get('psField')
                 calExposure.setPsf(psf)
-                frameRef.put(psf, 'psf')
+                sensorRef.put(psf, 'psf')
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
 
+        if self.config.doWriteCalibrate:
+            # wait until after detection, since that sets detected mask bits and may tweak the background;
+            # note that this overwrites an existing calexp if doCalibrate false
+            if calExposure is None:
+                self.log.log(self.log.WARN, "calexp is None; cannot save it")
+            else:
+                sensorRef.put(calExposure, 'calexp')
+
         if self.config.doMeasurement:
             if apCorr is None:
-                apCorr = frameRef.get("apCorr")
+                apCorr = sensorRef.get("apCorr")
             self.measurement.run(calExposure, sources, apCorr)
 
         if sources is not None and self.config.doWriteSources:
-            frameRef.put(sources, 'src')
+            sensorRef.put(sources, 'src')
 
         return pipeBase.Struct(
             exposure = calExposure,
