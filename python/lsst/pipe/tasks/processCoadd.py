@@ -32,8 +32,8 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from .coadd import CoaddArgumentParser
 
-class ProcessCcdSdssCoaddConfig(pexConfig.Config):
-    """Config for ProcessCcdSdssCoadd"""
+class ProcessCoaddConfig(pexConfig.Config):
+    """Config for ProcessCoadd"""
     coaddName = pexConfig.Field(
         doc = "coadd name: typically one of deep or goodSeeing",
         dtype = str,
@@ -81,12 +81,12 @@ class ProcessCcdSdssCoaddConfig(pexConfig.Config):
         self.calibrate.computeApCorr.badFlags = ("flags.pixel.edge", "flags.pixel.saturated.any") # Remove flags.pixel.interpolated.any
         self.calibrate.photocal.badFlags=['flags.pixel.edge','flags.pixel.saturated.any'] # Remove flags.pixel.interpolated.any
 
-class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
+class ProcessCoaddTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS Coadd
     
     """
-    ConfigClass = ProcessCcdSdssCoaddConfig
-    _DefaultName = "processCcd"
+    ConfigClass = ProcessCoaddConfig
+    _DefaultName = "processCoadd"
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -97,10 +97,6 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
 
     @pipeBase.timeMethod
     def scaleVariance(self, exposure):
@@ -160,7 +156,7 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             if calExposure is None:
                 calexpName = outPrefix+"calexp"
                 if not sensorRef.datasetExists(calexpName):
-                    raise RuntimeError("doCalibrate false, doDetection true and %s does not exist" % \
+                    raise pipeBase.TaskError("doCalibrate false, doDetection true and %s does not exist" % \
                         (calexpName,))
                 calExposure = sensorRef.get(calexpName)
             table = afwTable.SourceTable.make(self.schema)
@@ -189,3 +185,17 @@ class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
             apCorr = apCorr,
             sources = sources,
         )
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%s_processCoadd_config" % (self.config.coaddName,)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%s_processCoadd_metadata" % (self.config.coaddName,)
