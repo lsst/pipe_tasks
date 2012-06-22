@@ -73,12 +73,12 @@ class ProcessCcdSdssCoaddConfig(pexConfig.Config):
         self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder    = 1  # Should be spatially invariant
         self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin   = 31 # Larger Psfs
         self.calibrate.measurePsf.starSelector["secondMoment"].fluxLim = 3000.0
-
         self.calibrate.doBackground = False
         self.calibrate.detection.reEstimateBackground = False
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
 
+        self.calibrate.computeApCorr.badFlags = ("flags.pixel.edge", "flags.pixel.saturated.any") # Remove flags.pixel.interpolated.any
         self.calibrate.photocal.badFlags=['flags.pixel.edge','flags.pixel.saturated.any'] # Remove flags.pixel.interpolated.any
 
 class ProcessCcdSdssCoaddTask(pipeBase.CmdLineTask):
