@@ -138,7 +138,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         
         numExp = len(imageRefList)
         if numExp < 1:
-            raise RuntimeError("No exposures to coadd")
+            raise pipeBase.TaskError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
     
         doPsfMatch = self.config.desiredFwhm is not None
@@ -320,6 +320,16 @@ class CoaddTask(pipeBase.CmdLineTask):
         """Create an argument parser
         """
         return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%s_coadd_config" % (self.config.coaddName,)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%s_coadd_metadata" % (self.config.coaddName,)
 
 
 class CoaddArgumentParser(pipeBase.ArgumentParser):

@@ -30,8 +30,8 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from .coadd import CoaddArgumentParser
 
-class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
-    """Config for ProcessCcdSdssCoaddV3"""
+class ProcessKeithCoaddConfig(pexConfig.Config):
+    """Config for ProcessKeithCoadd"""
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale the variance plane, which are incorrect in V3 coadds?")
     varScaleFactor  = pexConfig.Field(dtype=float, default=10.0, doc = "Value to scale the variance by")
 
@@ -67,12 +67,12 @@ class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
         self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
         self.calibrate.initialPsf.fwhm = 2.5    # Degraded the seeing for coadd to 2.5 arcseconds
 
-class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
+class ProcessKeithCoaddTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS Coadd (V3)
     
     """
-    ConfigClass = ProcessCcdSdssCoaddV3Config
-    _DefaultName = "processCcd"
+    ConfigClass = ProcessKeithCoaddConfig
+    _DefaultName = "processCoadd"
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -83,10 +83,6 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="keithCoadd")
 
     @pipeBase.timeMethod
     def makeExp(self, sensorRef):
@@ -145,7 +141,7 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
             if calExposure is None:
                 calexpName = outPrefix+"calexp"
                 if not sensorRef.datasetExists(calexpName):
-                    raise RuntimeError("doCalibrate false, doDetection true and %s does not exist" % \
+                    raise pipeBase.TaskError("doCalibrate false, doDetection true and %s does not exist" % \
                         (calexpName,))
                 calExposure = sensorRef.get(calexpName)
             table = afwTable.SourceTable.make(self.schema)
@@ -174,3 +170,17 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
             apCorr = apCorr,
             sources = sources,
         )
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        return CoaddArgumentParser(name=cls._DefaultName, datasetType="keithCoadd")
+
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%s_processCoadd_config" % (self.config.coaddName,)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%s_processCoadd_metadata" % (self.config.coaddName,)
