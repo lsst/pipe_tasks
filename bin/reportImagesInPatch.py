@@ -125,6 +125,17 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         need filter information for this particular task).
         """
         return ReportImagesInPatchArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+    
+    def _getConfigName(self):
+        """Don't persist config, so return None
+        """
+        return None
+    
+    def _getMetadataName(self):
+        """Don't persist metadata, so return None
+        """
+        return None
+    
 
 
 class ReportImagesInPatchArgumentParser(pipeBase.ArgumentParser):

@@ -89,7 +89,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         @return pipe_base Struct containing these fields:
         - postIsrExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
-            else as upersisted if config.doDetection, else None
+            else as upersisted and updated if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
         - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
             if config.doMeasure, else None
@@ -116,31 +116,40 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
         if self.config.doCalibrate:
             if postIsrExposure is None:
-                postIsrExposure = sensorRef.get('postISRCCD')
+                postIsrExposure = sensorRef.get("postISRCCD")
             calib = self.calibrate.run(postIsrExposure, idFactory=idFactory)
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
-                sensorRef.put(calExposure, 'calexp')
-                sensorRef.put(calib.sources, 'icSrc')
+                sensorRef.put(calib.sources, "icSrc")
                 if calib.psf is not None:
-                    sensorRef.put(calib.psf, 'psf')
+                    sensorRef.put(calib.psf, "psf")
                 if calib.apCorr is not None:
-                    sensorRef.put(calib.apCorr, 'apCorr')
+                    sensorRef.put(calib.apCorr, "apCorr")
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    sensorRef.put(normalizedMatches, 'icMatch')
+                    sensorRef.put(normalizedMatches, "icMatch")
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = sensorRef.get('calexp')
+                if not sensorRef.datasetExists("calexp"):
+                    raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
+                calExposure = sensorRef.get("calexp")
             if calib is None or calib.psf is None:
-                psf = sensorRef.get('psf')
+                psf = sensorRef.get("psf")
                 calExposure.setPsf(psf)
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
+
+        if self.config.doWriteCalibrate:
+            # wait until after detection, since that sets detected mask bits and may tweak the background;
+            # note that this overwrites an existing calexp if doCalibrate false
+            if calExposure is None:
+                self.log.log(self.log.WARN, "calibrated exposure is None; cannot save it")
+            else:
+                sensorRef.put(calExposure, "calexp")
 
         if self.config.doMeasurement:
             if apCorr is None:
@@ -148,7 +157,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             self.measurement.run(calExposure, sources, apCorr)
 
         if sources is not None and self.config.doWriteSources:
-            sensorRef.put(sources, 'src')
+            sensorRef.put(sources, "src")
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,

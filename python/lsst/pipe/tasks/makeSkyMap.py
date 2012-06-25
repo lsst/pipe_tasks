@@ -88,45 +88,21 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         )
 
     @classmethod
-    def parseAndRun(cls, args=None, config=None, log=None):
-        """Parse an argument list and run the command. This variant does not persist config or metadata.
-
-        @param args: list of command-line arguments; if None use sys.argv
-        @param config: config for task (instance of pex_config Config); if None use cls.ConfigClass()
-        @param log: log (instance of pex_logging Log); if None use the default log
-        
-        @return a Struct containing:
-        - argumentParser: the argument parser
-        - parsedCmd: the parsed command returned by argumentParser.parse_args
-        - task: the instantiated task
-        The return values are primarily for testing and debugging
-        """
-        name = cls._DefaultName
-        argumentParser = cls._makeArgumentParser()
-        if config is None:
-            config = cls.ConfigClass()
-        parsedCmd = argumentParser.parse_args(config=config, args=args, log=log)
-        task = cls(name = name, config = parsedCmd.config, log = parsedCmd.log)
-        for dataRef in parsedCmd.dataRefList:
-            if parsedCmd.doraise:
-                task.run(dataRef)
-            else:
-                try:
-                    task.run(dataRef)
-                except Exception, e:
-                    task.log.log(task.log.FATAL, "Failed on dataId=%s: %s" % (dataRef.dataId, e))
-                    traceback.print_exc(file=sys.stderr)
-        return pipeBase.Struct(
-            argumentParser = argumentParser,
-            parsedCmd = parsedCmd,
-            task = task,
-        )
-
-    @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
         return SkyMapParser(name=cls._DefaultName, datasetType="deepCoadd_skyMap")
+    
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%s_makeSkyMap_config" % (self.config.coaddName,)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%s_makeSkyMap_metadata" % (self.config.coaddName,)
+
 
 class SkyMapParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for making sky maps.

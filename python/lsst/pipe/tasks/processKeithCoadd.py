@@ -28,9 +28,10 @@ import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
+from .coadd import CoaddArgumentParser
 
-class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
-    """Config for ProcessCcdSdssCoaddV3"""
+class ProcessKeithCoaddConfig(pexConfig.Config):
+    """Config for ProcessKeithCoadd"""
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale the variance plane, which are incorrect in V3 coadds?")
     varScaleFactor  = pexConfig.Field(dtype=float, default=10.0, doc = "Value to scale the variance by")
 
@@ -39,6 +40,7 @@ class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
+
     calibrate = pexConfig.ConfigurableField(
         target = CalibrateTask,
         doc = "Calibration (inc. high-threshold detection and measurement)",
@@ -65,12 +67,12 @@ class ProcessCcdSdssCoaddV3Config(pexConfig.Config):
         self.calibrate.background.binSize = 512 # Message: nySample has too few points for requested interpolation style.
         self.calibrate.initialPsf.fwhm = 2.5    # Degraded the seeing for coadd to 2.5 arcseconds
 
-class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
+class ProcessKeithCoaddTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS Coadd (V3)
     
     """
-    ConfigClass = ProcessCcdSdssCoaddV3Config
-    _DefaultName = "processCcd"
+    ConfigClass = ProcessKeithCoaddConfig
+    _DefaultName = "processCoadd"
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -82,87 +84,103 @@ class ProcessCcdSdssCoaddV3Task(pipeBase.CmdLineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
-    @classmethod
-    def _makeArgumentParser(cls):
-        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="coadd")        
-
     @pipeBase.timeMethod
-    def makeExp(self, frameRef):
-        exp = frameRef.get("coadd")
+    def makeExp(self, sensorRef):
+        exp = sensorRef.get("coadd")
         if self.config.doScaleVariance:
             var  = exp.getMaskedImage().getVariance()
             var *= self.config.varScaleFactor
 
         det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
-                                                      (frameRef.dataId["filter"], frameRef.dataId["camcol"])))
+                                                      (sensorRef.dataId["filter"], sensorRef.dataId["camcol"])))
         exp.setDetector(det)
-        exp.setFilter(afwImage.Filter(frameRef.dataId['filter']))
+        exp.setFilter(afwImage.Filter(sensorRef.dataId["filter"]))
 
         return exp
 
     @pipeBase.timeMethod
-    def run(self, frameRef):
+    def run(self, sensorRef):
         """Process a CCD: including source detection, photometry and WCS determination
         
-        @param frameRef: frame-level butler data reference
+        @param sensorRef: sensor-level butler data reference to SDSS coadd patch
         @return pipe_base Struct containing these fields:
-        - exposure: calibrated exposure (calexp)
-        - psf: the PSF determined for the exposure
-        - apCorr: aperture correction
-        - sources: detected source if calib.doPhotometry run, else None
-        - matches: ? if doCalibrate, else None
-        - matchMeta: ? if config.doCalibrate, else None
+        - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
+            else as upersisted and updated if config.doDetection, else None
+        - calib: object returned by calibration process if config.doCalibrate, else None
+        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
+            if config.doMeasure, else None
+        - sources: detected source if config.doPhotometry, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (frameRef.dataId))
+        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        outPrefix = "keithCoadd_"
+
+        # initialize outputs
+        calExposure = None
+        calib = None
+        apCorr = None
+        sources = None
 
         if self.config.doCalibrate:
-            self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (frameRef.dataId))
-            exp = self.makeExp(frameRef)
+            self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (sensorRef.dataId))
+            exp = self.makeExp(sensorRef)
             calib = self.calibrate.run(exp)
             calExposure = calib.exposure
-
+            apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
-                frameRef.put(calExposure, 'coadd_calexp')
-                frameRef.put(calib.sources, 'coadd_icSrc')
+                sensorRef.put(calib.sources, outPrefix+"icSrc")
                 if calib.psf is not None:
-                    frameRef.put(calib.psf, 'coadd_psf')
+                    sensorRef.put(calib.psf, outPrefix+"psf")
                 if calib.apCorr is not None:
-                    frameRef.put(calib.apCorr, 'coadd_apCorr')
+                    sensorRef.put(calib.apCorr, outPrefix+"apCorr")
                 if calib.matches is not None:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
-                    frameRef.put(normalizedMatches, 'coadd_icMatch')
-        else:
-            calib = None
-            calExposure = None
+                    sensorRef.put(normalizedMatches, outPrefix+"icMatch")
 
         if self.config.doDetection:
             if calExposure is None:
-                calExposure = frameRef.get('coadd_calexp')
+                calexpName = outPrefix+"calexp"
+                if not sensorRef.datasetExists(calexpName):
+                    raise pipeBase.TaskError("doCalibrate false, doDetection true and %s does not exist" % \
+                        (calexpName,))
+                calExposure = sensorRef.get(calexpName)
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
-            detRet = self.detection.makeSourceCatalog(table, calExposure)
-            sources = detRet.sources
-        else:
-            sources = None
+            sources = self.detection.makeSourceCatalog(table, calExposure).sources
+
+        if self.config.doWriteCalibrate:
+            # wait until after detection, since that sets detected mask bits and may tweak the background;
+            # note that this overwrites an existing calexp if doCalibrate false
+            if calExposure is None:
+                self.log.log(self.log.WARN, "calibrated exposure is None; cannot save it")
+            else:
+                sensorRef.put(calExposure, outPrefix+"calexp")
 
         if self.config.doMeasurement:
-            assert(sources)
-            assert(calExposure)
             if calib is None:
-                apCorr = frameRef.get("coadd_apCorr")
-            else:
-                apCorr = calib.apCorr
+                apCorr = sensorRef.get(outPrefix+"apCorr")
             self.measurement.run(calExposure, sources, apCorr)
 
         if self.config.doWriteSources:
-            frameRef.put(sources, 'coadd_src')
+            sensorRef.put(sources, outPrefix+"src")
 
         return pipeBase.Struct(
-            calExposure = calExposure,
+            exposure = calExposure,
             calib = calib,
             apCorr = apCorr,
             sources = sources,
-            matches = calib.matches if calib else None,
-            matchMeta = calib.matchMeta if calib else None,
         )
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        return CoaddArgumentParser(name=cls._DefaultName, datasetType="keithCoadd")
+
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%s_processCoadd_config" % (self.config.coaddName,)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%s_processCoadd_metadata" % (self.config.coaddName,)

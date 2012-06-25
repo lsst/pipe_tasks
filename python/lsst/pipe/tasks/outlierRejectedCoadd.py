@@ -95,7 +95,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         
         numExp = len(imageRefList)
         if numExp < 1:
-            raise RuntimeError("No exposures to coadd")
+            raise pipeBase.TaskError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
     
         doPsfMatch = self.config.desiredFwhm > 0
@@ -132,7 +132,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
             exposureMetadataList.append(expMetadata)
             del exposure
         if not exposureMetadataList:
-            raise RuntimeError("No images to coadd")
+            raise pipeBase.TaskError("No images to coadd")
 
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
@@ -208,8 +208,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
         self.postprocessCoadd(coaddExposure)
 
-        if self.config.doWrite:
-            patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
+        self.persistCoadd(patchRef, coaddExposure)
     
         return pipeBase.Struct(
             coaddExposure = coaddExposure,
