@@ -118,6 +118,10 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         exp.setDetector(det)
         exp.setFilter(afwImage.Filter(frameRef.dataId['filter']))
 
+        # Install the SDSS PSF here; if we want to overwrite it later, we can.
+        psf = frameRef.get('psField')
+        exp.setPsf(psf)
+
         return exp
 
 
@@ -171,9 +175,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             if calExposure is None:
                 calExposure = self.makeExp(frameRef)
             if calib is None or calib.psf is None:
-                psf = frameRef.get('psField')
-                calExposure.setPsf(psf)
-                frameRef.put(psf, 'psf')
+                frameRef.put(calExpsoure, 'psf')
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
