@@ -72,6 +72,11 @@ class CoaddConfig(pexConfig.Config):
         dtype = afwMath.Warper.ConfigClass,
         doc = "warper configuration",
     )
+    coaddKernelSizeFactor = pexConfig.Field(
+        dtype = float,
+        doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
+        default = 3.0,
+    )
     doInterp = pexConfig.Field(
         doc = "interpolate over EDGE pixels?",
         dtype = bool,
@@ -168,13 +173,35 @@ class CoaddTask(pipeBase.CmdLineTask):
         coaddExposure = coadd.getCoadd()
         self.postprocessCoadd(coaddExposure)
 
-        if self.config.doWrite:
-            patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
+        self.persistCoadd(patchRef, coaddExposure)
         
         return pipeBase.Struct(
             coaddExposure = coaddExposure,
             coadd = coadd,
         )
+    
+    def persistCoadd(self, patchRef, coaddExposure):
+        """Persist coadd and PSF, as appropriate
+        
+        If self.config.doWrite is False then do nothing.
+        If self.config.desiredFwhm is not None, then compute the model PSF and persist it.
+        
+        @param[in] patchRef: data reference to coadd patch
+        @param[in] coaddExposure: coadd exposure
+        """
+        if self.config.doWrite:
+            coaddName = self.config.coaddName + "Coadd"
+            self.log.log(self.log.INFO, "Persisting %s" % (coaddName,))
+            patchRef.put(coaddExposure, coaddName)
+            if self.config.desiredFwhm is not None:
+                psfName = self.config.coaddName + "Coadd_initPsf"
+                self.log.log(self.log.INFO, "Persisting %s" % (psfName,))
+                wcs = coaddExposure.getWcs()
+                fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
+                kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
+                kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
+                coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
+                patchRef.put(coaddPsf, psfName)
     
     def selectExposures(self, patchRef, wcs, bbox):
         """Select exposures to coadd
@@ -272,7 +299,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         @param kernelDim: desired dimensions of PSF kernel, in pixels
         @return model PSF
         """
-        self.log.log(self.log.INFO,
+        self.log.log(self.log.DEBUG,
             "Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" % \
             (fwhmPixels, kernelDim[0], kernelDim[1]))
         coreSigma = fwhmPixels / FWHMPerSigma
