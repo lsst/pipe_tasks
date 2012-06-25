@@ -65,22 +65,6 @@ class ProcessCoaddConfig(pexConfig.Config):
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
 
-    def setDefaults(self):
-        # OPTIMIZE FOR SDSS
-        self.calibrate.repair.doInterpolate = False
-        self.calibrate.repair.doCosmicRay = False
-
-        self.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder    = 1  # Should be spatially invariant
-        self.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin   = 31 # Larger Psfs
-        self.calibrate.measurePsf.starSelector["secondMoment"].fluxLim = 3000.0
-        self.calibrate.doBackground = False
-        self.calibrate.detection.reEstimateBackground = False
-        self.detection.reEstimateBackground = False
-        self.detection.thresholdType = "pixel_stdev"
-
-        self.calibrate.computeApCorr.badFlags = ("flags.pixel.edge", "flags.pixel.saturated.any") # Remove flags.pixel.interpolated.any
-        self.calibrate.photocal.badFlags=['flags.pixel.edge','flags.pixel.saturated.any'] # Remove flags.pixel.interpolated.any
-
 class ProcessCoaddTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS Coadd
     
@@ -135,6 +119,11 @@ class ProcessCoaddTask(pipeBase.CmdLineTask):
         if self.config.doCalibrate:
             self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (sensorRef.dataId))
             coadd = sensorRef.get(self.config.coaddName+"Coadd")
+            initPsfName = outPrefix + "initPsf"
+            if not sensorRef.datasetExists(initPsfName):
+                initPsf = sensorRef.get(initPsfName)
+            coadd.setPsf(initPsf)
+            
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
 
