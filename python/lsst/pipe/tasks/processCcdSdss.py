@@ -110,7 +110,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         exp.setFilter(afwImage.Filter(sensorRef.dataId['filter']))
 
         # Install the SDSS PSF here; if we want to overwrite it later, we can.
-        psf = frameRef.get('psField')
+        psf = sensorRef.get('psField')
         exp.setPsf(psf)
 
         return exp
