@@ -208,8 +208,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
         self.postprocessCoadd(coaddExposure)
 
-        if self.config.doWrite:
-            patchRef.put(coaddExposure, self.config.coaddName + "Coadd")
+        self.persistCoadd(patchRef, coaddExposure)
     
         return pipeBase.Struct(
             coaddExposure = coaddExposure,
