@@ -60,15 +60,6 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
-
-    def setDefaults(self):
-        # OPTIMIZE FOR SDSS
-        self.calibrate.repair.doInterpolate = False
-        self.calibrate.repair.doCosmicRay = False
-
-        self.calibrate.background.binSize = 512 
-        self.calibrate.detection.background.binSize = 512
-        self.detection.background.binSize = 512
         
 class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS
@@ -117,6 +108,10 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
                                                       (sensorRef.dataId["filter"], sensorRef.dataId["camcol"])))
         exp.setDetector(det)
         exp.setFilter(afwImage.Filter(sensorRef.dataId['filter']))
+
+        # Install the SDSS PSF here; if we want to overwrite it later, we can.
+        psf = sensorRef.get('psField')
+        exp.setPsf(psf)
 
         return exp
 
@@ -170,10 +165,6 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
                 if not sensorRef.datasetExists('calexp'):
                     raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
                 calExposure = sensorRef.get('calexp')
-            if calib is None or calib.psf is None:
-                psf = sensorRef.get('psField')
-                calExposure.setPsf(psf)
-                sensorRef.put(psf, 'psf')
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             sources = self.detection.makeSourceCatalog(table, calExposure).sources
