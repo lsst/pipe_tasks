@@ -121,8 +121,11 @@ class ProcessCoaddTask(pipeBase.CmdLineTask):
             coadd = sensorRef.get(self.config.coaddName+"Coadd")
             initPsfName = outPrefix + "initPsf"
             if not sensorRef.datasetExists(initPsfName):
-                initPsf = sensorRef.get(initPsfName)
-            coadd.setPsf(initPsf)
+                try:
+                    initPsf = sensorRef.get(initPsfName)
+                    coadd.setPsf(initPsf)
+                except Exception as err:
+                    self.log.warn("Could not load initial PSF: %s" % err)
             
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
