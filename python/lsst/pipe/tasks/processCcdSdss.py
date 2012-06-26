@@ -60,10 +60,6 @@ class ProcessCcdSdssConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
-
-    def setDefaults(self):
-        # OPTIMIZE FOR SDSS
-        self.detection.background.binSize = 512
         
 class ProcessCcdSdssTask(pipeBase.CmdLineTask):
     """Process a CCD for SDSS
