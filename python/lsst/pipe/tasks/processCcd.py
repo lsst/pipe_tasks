@@ -33,7 +33,7 @@ class ProcessCcdConfig(pexConfig.Config):
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
-    ## NOTE, default this to False until it is fully vetted
+    ## NOTE, default this to False until it is fully vetted; #2138
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
