@@ -27,7 +27,7 @@ root.calibrate.measurePsf.starSelector.name = "secondMoment"
 root.calibrate.measurePsf.psfDeterminer.name = "pca"
 root.calibrate.measurePsf.starSelector["secondMoment"].clumpNSigma = 2.0
 root.calibrate.measurePsf.psfDeterminer["pca"].nEigenComponents = 4
-root.calibrate.measurePsf.psfDeterminer["pca"].kernelSize = 7
+root.calibrate.measurePsf.psfDeterminer["pca"].kernelScaling = 7.0
 root.calibrate.measurePsf.psfDeterminer["pca"].spatialOrder = 2
 root.calibrate.measurePsf.psfDeterminer["pca"].kernelSizeMin = 25
 
