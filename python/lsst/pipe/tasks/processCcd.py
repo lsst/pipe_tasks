@@ -24,7 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
@@ -33,9 +33,13 @@ class ProcessCcdConfig(pexConfig.Config):
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
+    ## NOTE, default this to False until it is fully vetted; #2138
+    doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
+    doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
+                                                      doc = "Include HeavyFootprint data in source table?")
     isr = pexConfig.ConfigurableField(
         target = IsrTask,
         doc = "Instrumental Signature Removal",
@@ -48,6 +52,10 @@ class ProcessCcdConfig(pexConfig.Config):
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
     )
+    deblend = pexConfig.ConfigurableField(
+        target = SourceDeblendTask,
+        doc = "Split blended sources into their components",
+    )
     measurement = pexConfig.ConfigurableField(
         target = SourceMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
@@ -57,6 +65,10 @@ class ProcessCcdConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
+        if self.doDeblend and not self.doDetection:
+            raise ValueError("Cannot run source deblending without source detection.")
+        if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
+            raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
 
 class ProcessCcdTask(pipeBase.CmdLineTask):
     """Process a CCD
@@ -78,11 +90,13 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
-    def run(self, sensorRef):
+    def run(self, sensorRef, sources=None):
         """Process one CCD
         
         @param sensorRef: sensor-level butler data reference
@@ -110,6 +124,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         calib = None
         apCorr = None
         sources = None
+        psf = None
         
         if self.config.doIsr:
             postIsrExposure = self.isr.run(sensorRef).exposure
@@ -118,6 +133,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             if postIsrExposure is None:
                 postIsrExposure = sensorRef.get("postISRCCD")
             calib = self.calibrate.run(postIsrExposure, idFactory=idFactory)
+            psf = calib.psf
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
@@ -151,14 +167,28 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             else:
                 sensorRef.put(calExposure, "calexp")
 
+        if self.config.doDeblend:
+            if calExposure is None:
+                calExposure = sensorRef.get('calexp')
+            if psf is None:
+                psf = sensorRef.get('psf')
+
+            assert(calExposure)
+            assert(psf)
+            assert(sources)
+            self.deblend.run(calExposure, sources, psf)
+
+
         if self.config.doMeasurement:
             if apCorr is None:
                 apCorr = sensorRef.get("apCorr")
             self.measurement.run(calExposure, sources, apCorr)
 
         if sources is not None and self.config.doWriteSources:
-            sensorRef.put(sources, "src")
-
+            if self.config.doWriteHeavyFootprintsInSources:
+                sources.setWriteHeavyFootprints(True)
+            sensorRef.put(sources, 'src')
+            
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,
             exposure = calExposure,
