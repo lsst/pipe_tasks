@@ -36,7 +36,12 @@ from .coadd import CoaddTask
 import lsst.afw.display.ds9 as ds9      # useful for debugging. Can go in production
 
 class SkyMatchedOutlierRejectedCoaddConfig(OutlierRejectedCoaddConfig):
-    readExposures = pexConfig.Field(
+    nRunMax = pexConfig.Field(
+        doc = "If > 0, process at most this many runs (debugging only)",
+        dtype = int,
+        default = 0,
+    )
+    readMergedExposure = pexConfig.Field(
         doc = "Read per-run merged exposures from disk (if available) rather than recomputing them",
         dtype = bool,
         default = True,
@@ -186,8 +191,8 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
 
             runs = [canonicalRun] + [r for r in runs if r != canonicalRun]
 
-        if False:
-            runs = runs[0:3]
+        if self.config.nRunMax > 0 and self.config.nRunMax < len(runs):
+            runs = runs[0:self.config.nRunMax]
             numExp = 0
             for run in runs:
                 numExp += len([x for x in imageRefList if x.dataId["run"] == run])
