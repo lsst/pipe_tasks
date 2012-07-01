@@ -215,7 +215,7 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
                 dataId = tempDataId,
             )
 
-            if self.config.readExposures and tempDataRef.datasetExists():
+            if self.config.readMergedExposure and tempDataRef.datasetExists():
                 nExp = len(thisRunImageRefList)
                 self.log.log(self.log.INFO, "Reading %d..%d of %d: merge of %s for %s" % \
                                  (ind + 1, ind + nExp, numExp,
@@ -441,7 +441,7 @@ def mergeMaskedImagesFromRun(maskedImageList):
     statsCtrl.setCalcErrorFromInputVariance(True)
 
     weights = [1.0]*len(maskedImageList)
-    mi = afwMath.statisticsStack(maskedImageList, afwMath.MEDIAN, statsCtrl, weights)
+    mi = afwMath.statisticsStack(maskedImageList, afwMath.MEAN, statsCtrl, weights)
     mi.setXY0(maskedImageList[0].getXY0())
 
     return mi
