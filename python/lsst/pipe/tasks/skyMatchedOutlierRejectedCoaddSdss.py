@@ -421,7 +421,8 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
         @return calibrated exposure with psf
         """
         task = ProcessCcdSdssTask()
-        task.config.removeOverlap = False
+        task.config.removeOverlap = True
+        task.config.overlapSize = 128 - 19     # leave enough for the Lanczos kernel
 
         exposure = task.makeExp(dataRef)
         if getPsf:
