@@ -395,6 +395,16 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
         self.postprocessCoadd(coaddExposure)
+        #
+        # Add metadata about this coadd
+        #
+        md = coaddExposure.getMetadata()
+        md.setInt("CANONRUN", canonicalRun)
+        for i, run in enumerate(runs):
+            thisRunImageRefList = [x for x in imageRefList if x.dataId["run"] == run]
+            for dataRef in thisRunImageRefList:
+                md.addString("INPUT_FPC", "%(run)s %(filter)s%(camcol)s %(field)s" % dataRef.dataId)
+        del md
 
         self.persistCoadd(patchRef, coaddExposure)
         #
