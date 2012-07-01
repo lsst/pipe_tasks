@@ -20,7 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import os
+import math, os
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
@@ -61,6 +61,12 @@ class SkyMatchedOutlierRejectedCoaddConfig(OutlierRejectedCoaddConfig):
         dtype = int,
         default = -1,
     )
+    usePerRunCalib = pexConfig.Field(
+        doc = "Use a single zero point for a patch for all the fields of a run",
+        dtype = bool,
+        default = True,
+        )
+
     statisticsProperty = pexConfig.ChoiceField(
         doc="type of statistic to use for grid points when matching",
         dtype=str, default="MEDIAN",
@@ -85,6 +91,30 @@ class SkyMatchedOutlierRejectedCoaddConfig(OutlierRejectedCoaddConfig):
         min=10
         )
     
+class PerRunZeroPointScaler(coaddUtils.ZeroPointScaler):
+    def __init__(self, *args, **kwargs):
+        coaddUtils.ZeroPointScaler.__init__(self, *args, **kwargs)
+        self.perRunCalib = None
+        
+    def scaleExposure(self, exposure):
+        """Scale exposure to the desired photometric zeroPoint, in place
+        
+        @param[in,out] exposure: exposure to scale; it must have a valid Calib;
+            the pixel values and Calib zeroPoint are scaled
+        @return scaleFac: scale factor, where new image values = original image values * scaleFac
+        """
+        exposureCalib = self.perRunCalib if self.perRunCalib else exposure.getCalib()
+
+        exposureFluxMag0Sigma = exposureCalib.getFluxMag0()[1]
+        fluxAtZeroPoint = exposureCalib.getFlux(self._zeroPoint)
+        scaleFac = 1.0 / fluxAtZeroPoint
+        maskedImage = exposure.getMaskedImage()
+        maskedImage *= scaleFac
+        exposureFluxMag0Sigma *= scaleFac
+        exposure.getCalib().setFluxMag0(self.getCalib().getFluxMag0()[0], exposureFluxMag0Sigma)
+        
+        return scaleFac
+
 class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
     """Construct a sky-matched outlier-rejected (robust mean) coadd
     """
@@ -93,6 +123,7 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
 
     def __init__(self, *args, **kwargs):
         OutlierRejectedCoaddTask.__init__(self, *args, **kwargs)
+        self.zeroPointScaler = PerRunZeroPointScaler(self.config.coaddZeroPoint)
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -157,7 +188,11 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
 
         if False:
             runs = runs[0:3]
-            print "Trimming to %d runs" % len(runs)
+            numExp = 0
+            for run in runs:
+                numExp += len([x for x in imageRefList if x.dataId["run"] == run])
+
+            print "Trimming to %d runs, %d fields" % (len(runs), numExp)
 
         exposureMetadataList = []
         ind = 0                         # counter for exposures we're processing
@@ -175,11 +210,6 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
                 dataId = tempDataId,
             )
 
-            try:
-                tempDataRef.datasetExists()
-            except Exception, e:
-                import pdb; pdb.set_trace() 
-
             if self.config.readExposures and tempDataRef.datasetExists():
                 nExp = len(thisRunImageRefList)
                 self.log.log(self.log.INFO, "Reading %d..%d of %d: merge of %s for %s" % \
@@ -189,11 +219,34 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
                 exposure = tempDataRef.get()
                 ind += nExp
             else:
+                # Get the read-proxies for all the exposures belonging to this run
+                exposures = []
+                for dataRef in thisRunImageRefList:
+                    if dataRef.datasetExists("fpC"):
+                        exposures.append(self.getCalExp(dataRef, getPsf=doPsfMatch))
+                    else:
+                        exposures.append(None)
+
+                if self.config.usePerRunCalib:
+                    fluxMag0, fluxMagErr0, nexp = 0.0, 0.0, 0
+                    for exposure in exposures:
+                        if exposure:
+                            fm0, fm0Err = exposure.getCalib().getFluxMag0()
+
+                            nexp += 1
+                            fluxMag0 += fm0
+                            fluxMagErr0 += fm0Err**2
+
+                    fluxMag0 /= nexp
+                    fluxMagErr0 /= nexp
+                    self.zeroPointScaler.perRunCalib = afwImage.Calib()
+                    self.zeroPointScaler.perRunCalib.setFluxMag0(fluxMag0, math.sqrt(fluxMagErr0))
+
                 runPatchExposure = None                         # where we'll mosaic all the fields in the run
                 maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-                for dataRef in thisRunImageRefList:
+                for dataRef, exposure in zip(thisRunImageRefList, exposures):
                     ind += 1
-                    if not dataRef.datasetExists("fpC"):
+                    if not exposure:
                         self.log.log(self.log.WARN, "Could not find fpC %s; skipping it" % (dataRef.dataId,))
                         continue
 
@@ -202,7 +255,6 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
                                       "run %(run)s %(filter)s%(camcol)s %(field)s" % dataRef.dataId,
                                       "tract %(tract)d patch %(patch)s" % patchRef.dataId))
 
-                    exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
                     try:
                         exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
                     except Exception, e:
@@ -280,8 +332,7 @@ class SkyMatchedOutlierRejectedCoaddTask(OutlierRejectedCoaddTask):
             statsFlags = afwMath.MEAN
     
         coaddExposure = afwImage.ExposureF(bbox, wcs)
-        if self.zeroPointScaler.getCalib():
-            coaddExposure.setCalib(self.zeroPointScaler.getCalib())
+        coaddExposure.setCalib(self.zeroPointScaler.getCalib())
     
         filterDict = {} # dict of name: Filter
         for expMeta in exposureMetadataList:
