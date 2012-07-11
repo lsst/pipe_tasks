@@ -130,13 +130,11 @@ class ProcessCoaddTask(pipeBase.CmdLineTask):
             self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (sensorRef.dataId))
             coadd = sensorRef.get(self.config.coaddName+"Coadd")
             initPsfName = outPrefix + "initPsf"
-            if not sensorRef.datasetExists(initPsfName):
-                try:
-                    initPsf = sensorRef.get(initPsfName)
-                    coadd.setPsf(initPsf)
-                except Exception as err:
-                    self.log.warn("Could not load initial PSF: %s" % err)
-            
+            if sensorRef.datasetExists(initPsfName):
+                initPsf = sensorRef.get(initPsfName)
+                coadd.setPsf(initPsf)
+            else:
+                self.log.warn("Could not load initial PSF; dataset does not exist")
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
 

@@ -102,12 +102,9 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         
         print "Image IDs:"
         if len(exposureInfoList) > 0:
-            keys = sorted(exposureInfoList[0].dataId.keys())
-            # use a dict to remove duplicates, then sort keys and report information
-            exposureInfoDict = dict((tuple(expInfo.dataId[k] for k in keys), expInfo) for expInfo in exposureInfoList)
-            for idTuple in sorted(exposureInfoDict.keys()):
-                exposureInfo = exposureInfoDict[idTuple]
-                idStr = " ".join("%s=%s" % (key, val) for key, val in zip(keys, idTuple))
+            idKeys = sorted(exposureInfoList[0].dataId.keys())
+            for exposureInfo in exposureInfoList:
+                idStr = " ".join("%s=%s" % (key, exposureInfo.dataId[key]) for key in idKeys)
                 skyPosList = [coord.getPosition(afwGeom.degrees) for coord in exposureInfo.coordList]
                 skyPosStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
                 skyPosStr = ", ".join(skyPosStrList)

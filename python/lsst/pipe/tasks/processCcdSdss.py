@@ -37,6 +37,11 @@ class ProcessCcdSdssConfig(pexConfig.Config):
 
     removeOverlap =  pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS field overlap from fpC file")
     overlapSize = pexConfig.Field(dtype=int, default=128, doc = "Number of pixels to remove from top of the fpC file")
+    loadSdssWcs = pexConfig.Field(
+        dtype=bool, default=False,
+        doc = ("Load WCS from asTrans; it can then be used as-is or updated by our own code, "
+               "dependening on calibrate.astrometry parameters.")
+    )
 
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
@@ -146,6 +151,10 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         if self.config.doCalibrate:
             self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (sensorRef.dataId))
             exp = self.makeExp(sensorRef)
+            if self.config.loadSdssWcs:
+                self.log.log(self.log.INFO, "Loading WCS from asTrans")
+                wcs = sensorRef.get("asTrans")
+                exp.setWcs(wcs)
             calib = self.calibrate.run(exp, idFactory=idFactory)
             calExposure = calib.exposure
             apCorr = calib.apCorr
