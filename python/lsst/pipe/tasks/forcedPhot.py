@@ -110,9 +110,14 @@ class ForcedPhotTask(CmdLineTask):
         inputs = self.readInputs(dataRef)
         exposure = inputs.exposure
         exposure.setPsf(inputs.psf)
+
+        expBits = dataRef.get("ccdExposureId_bits")
+        expId = long(dataRef.get("ccdExposureId"))
+        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
         references = self.references.run(dataRef, exposure)
         self.log.log(self.log.INFO, "Performing forced measurement on %d sources" % len(references))
-        sources = self.generateSources(references)
+        sources = self.generateSources(references, idFactory)
         self.measurement.run(exposure, sources, apCorr=inputs.apCorr, references=references)
         self.writeOutput(dataRef, sources)
 
@@ -129,10 +134,11 @@ class ForcedPhotTask(CmdLineTask):
                       apCorr=dataRef.get(apCorrName) if apCorrName is not None else None,
                       )
 
-    def generateSources(self, references):
+    def generateSources(self, references, idFactory):
         """Generate sources to be measured
         
         @param references  Reference source catalog 
+        @param idFactory   Factory to generate unique ids for forced sources
         @return Source catalog ready for measurement
         """
         schema = afwTable.Schema(self.schema)
@@ -144,7 +150,8 @@ class ForcedPhotTask(CmdLineTask):
             keys = (item.key, schema.find(toCol).key)
             copyKeys.append(keys)
         
-        sources = afwTable.SourceCatalog(schema)
+        table = afwTable.SourceTable.make(schema, idFactory)
+        sources = afwTable.SourceCatalog(table)
         table = sources.table
         table.setMetadata(self.algMetadata)
         sources.preallocate(len(references))
