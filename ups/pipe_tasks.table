@@ -13,9 +13,9 @@ setupOptional(skymap)
 setupOptional(matplotlib)
 
 # Extra algorithms
-setupOptional(meas_extensions_shapeHSM)
-setupOptional(meas_extensions_photometryKron)
-setupOptional(meas_extensions_rotAngle)
+# setupOptional(meas_extensions_shapeHSM)
+# setupOptional(meas_extensions_photometryKron)
+# setupOptional(meas_extensions_rotAngle)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
