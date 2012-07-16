@@ -95,20 +95,19 @@ class ReferencesTask(Task):
             if src.getPsfFlux() < self.config.minFlux:
                 continue
             ref = m.second
-            offset = src.getCoord().getOffsetFrom(ref.getCoord(), afwGeom.arcseconds)
+            offset = ref.getCoord().getOffsetFrom(src.getCoord(), afwGeom.arcseconds)
             dra.push_back(offset[0])
             ddec.push_back(offset[1])
         num = len(dra)
         draStats = afwMath.makeStatistics(dra, afwMath.MEANCLIP | afwMath.STDEVCLIP, stats)
         ddecStats = afwMath.makeStatistics(ddec, afwMath.MEANCLIP | afwMath.STDEVCLIP, stats)
-        draMean, ddecMean = draStats.getValue(afwMath.MEANCLIP), ddecStats.getValue(afwMath.MEANCLIP)
+        offset = afwGeom.Point2D(draStats.getValue(afwMath.MEANCLIP), ddecStats.getValue(afwMath.MEANCLIP))
         self.log.info("Offset from %d sources is dRA = %f +/- %f arcsec, dDec = %f +/- %f arcsec" %
-                      (num, draMean, draStats.getValue(afwMath.STDEVCLIP), ddecMean,
+                      (num, offset.getX(), draStats.getValue(afwMath.STDEVCLIP), offset.getY(),
                        ddecStats.getValue(afwMath.STDEVCLIP)))
         for ref in references:
             coord = ref.getCoord()
-            coord.offset(0.0 * afwGeom.degrees, -draMean * afwGeom.arcseconds)
-            coord.offset(-90.0 * afwGeom.degrees, -ddecMean * afwGeom.arcseconds)
+            coord.offset(offset, afwGeom.arcseconds)
             ref.setCoord(coord)
         return references
 
