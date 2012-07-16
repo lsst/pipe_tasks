@@ -17,7 +17,7 @@ class ReferencesConfig(Config):
     This is bare, but will be extended by subclasses
     to support getting the list of reference sources.
     """
-    correct = Field(dtype=bool, default=True, doc="Correct references for astrometric offsets?")
+    correct = Field(dtype=bool, default=False, doc="Correct references for astrometric offsets?")
     minFlux = Field(dtype=float, default=3000, doc="Minimum flux for calculating offsets")
     radius = Field(dtype=float, default=0.5, doc="Association radius for matching, arcsec")
 
