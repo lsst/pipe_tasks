@@ -228,7 +228,9 @@ class AstrometryTask(pipeBase.Task):
                 sky = wcs.pixelToSky(source.getX(), source.getY())
                 source.setCoord(sky)
         else:
+            sip = None
             self.log.log(self.log.WARN, "Not calculating a SIP solution; matches may be suspect")
         
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
+        return sip
