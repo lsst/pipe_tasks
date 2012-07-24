@@ -329,7 +329,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         self.log.log(self.log.INFO, "Warp exposure")
         with self.timer("warp"):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
-        
+
         self.zeroPointScaler.scaleExposure(exposure)
 
         return exposure
@@ -357,7 +357,6 @@ class CoaddTask(pipeBase.CmdLineTask):
         """Return the name of the metadata dataset
         """
         return "%s_coadd_metadata" % (self.config.coaddName,)
-
 
 class CoaddArgumentParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.

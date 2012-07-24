@@ -181,6 +181,11 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPsf:
             self.initialMeasurement.measure(exposure, sources)
+
+            if self.config.doAstrometry:
+                oldWcs = exposure.getWcs()
+                self.astrometry.run(exposure, sources)
+
             psfRet = self.measurePsf.run(exposure, sources)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
@@ -190,7 +195,7 @@ class CalibrateTask(pipeBase.Task):
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
-            self.repair.run(exposure, defects=defects, keepCRs=None)
+            self.repair.run(exposure, defects=defects, keepCRs=None, fixCrosstalk=False, linearize=False)
             self.display('repair', exposure=exposure)
 
         if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
@@ -205,6 +210,9 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doComputeApCorr or self.config.doAstrometry or self.config.doPhotoCal:
             self.measurement.measure(exposure, sources)   # don't use run, because we don't have apCorr yet
+
+        if self.measurement.config.doCorrectDistortion:
+            self.measurement.correctDistortion(exposure, sources)
 
         if self.config.doComputeApCorr:
             assert(self.config.doPsf)

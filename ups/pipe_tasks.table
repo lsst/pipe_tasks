@@ -7,6 +7,7 @@ setupOptional(meas_deblender)
 setupOptional(astrometry_net_data)
 setupOptional(ip_isr)
 setupOptional(ip_diffim)
+
 setupOptional(coadd_utils)
 setupOptional(coadd_chisquared)
 setupOptional(skymap)
