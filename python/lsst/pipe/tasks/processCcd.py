@@ -95,16 +95,7 @@ class ProcessCcdTask(pipeBase.Task):
             calib = self.calibrate.run(exposure)
             exposure = calib.exposure
             if self.config.doWriteCalibrate:
-                sensorRef.put(exposure, 'calexp')
-                sensorRef.put(calib.sources, 'icSrc')
-                if calib.psf is not None:
-                    sensorRef.put(calib.psf, 'psf')
-                if calib.apCorr is not None:
-                    sensorRef.put(calib.apCorr, 'apCorr')
-                if calib.matches is not None:
-                    normalizedMatches = afwTable.packMatches(calib.matches)
-                    normalizedMatches.table.setMetadata(calib.matchMeta)
-                    sensorRef.put(normalizedMatches, 'icMatch')
+                self.writeCalib(sensorRef, calib)
         else:
             calib = None
 
@@ -135,9 +126,25 @@ class ProcessCcdTask(pipeBase.Task):
 
         if self.config.doWriteCalibrate:
             sensorRef.put(exposure, 'calexp')
-            
+
         return pipeBase.Struct(
             exposure = exposure,
             calib = calib,
             sources = sources,
         )
+
+    def writeCalib(self, sensorRef, calib):
+        """Write calibration products
+       
+        @param sensorRef   Data reference for sensor
+        @param calib       Results of calibration
+        """
+        sensorRef.put(calib.sources, 'icSrc')
+        if calib.psf is not None:
+            sensorRef.put(calib.psf, 'psf')
+        if calib.apCorr is not None:
+            sensorRef.put(calib.apCorr, 'apCorr')
+        if calib.matches is not None:
+            normalizedMatches = afwTable.packMatches(calib.matches)
+            normalizedMatches.table.setMetadata(calib.matchMeta)
+            sensorRef.put(normalizedMatches, 'icMatch')
