@@ -211,6 +211,8 @@ class AstrometryTask(pipeBase.Task):
         assert sources, "No sources provided"
         assert matches, "No matches provided"
 
+        sip = None
+
         # Undo distortion in matches
         self.log.log(self.log.INFO, "Removing distortion correction.")
 
@@ -232,3 +234,4 @@ class AstrometryTask(pipeBase.Task):
         
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
+        return sip
