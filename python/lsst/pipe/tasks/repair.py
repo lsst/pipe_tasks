@@ -27,8 +27,8 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
-import lsst.meas.algorithms.crosstalk as maCrosstalk
 import lsst.pipe.base as pipeBase
+from .crosstalk import CrosstalkTask
 
 import lsstDebug
 
@@ -38,21 +38,9 @@ class RepairConfig(pexConfig.Config):
         doc = "Correct for crosstalk",
         default = True,
     )
-    crosstalkCoeffs = pexConfig.ConfigField(
-        dtype = maCrosstalk.CrosstalkCoeffsConfig,
-        doc = "Crosstalk coefficients",
-    )
-
-    crosstalkMaskPlane = pexConfig.Field(
-        dtype = str,
-        doc = "Name of Mask plane for crosstalk corrected pixels",
-        default = "CROSSTALK",
-    )
-
-    minPixelToMask = pexConfig.Field(
-        dtype = float,
-        doc = "Minimum pixel value (in electrons) to cause crosstalkMaskPlane bit to be set",
-        default = 45000,        
+    crosstalk = pexConfig.ConfigurableField(
+        target = CrosstalkTask,
+        doc = "Subtask for crosstalk correction (default is a no-op subtask)"
     )
     
     doLinearize = pexConfig.Field(
@@ -94,6 +82,10 @@ class RepairTask(pipeBase.Task):
     """
     ConfigClass = RepairConfig
 
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
+        self.makeSubtask("crosstalk")
+
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, keepCRs=None, fixCrosstalk=None, linearize=None):
         """Repair exposure's instrumental problems
@@ -114,7 +106,7 @@ class RepairTask(pipeBase.Task):
         self.display('pre-crosstalk' if fixCrosstalk else 'before', exposure=exposure)
 
         if fixCrosstalk:
-            self.crosstalk(exposure)
+            self.crosstalk.run(exposure)
 
         if linearize:
             self.linearize(exposure)
@@ -126,12 +118,6 @@ class RepairTask(pipeBase.Task):
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
         self.display('after', exposure=exposure)
-
-    def crosstalk(self, exposure):
-        coeffs = self.config.crosstalkCoeffs.getCoeffs()
-
-        maCrosstalk.subtractXTalk(exposure.getMaskedImage(), coeffs,
-                                  self.config.minPixelToMask, self.config.crosstalkMaskPlane)
 
     def linearize(self, exposure):
         """Correct for non-linearity
