@@ -234,19 +234,25 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPhotoCal:
             assert(matches is not None)
-            photocalRet = self.photocal.run(matches, exposure.getFilter().getName())
-            self.log.log(self.log.INFO, "Photometric zero-point: %f" % photocalRet.photocal.getMag(1.0))
-            exposure.getCalib().setFluxMag0(photocalRet.photocal.getFlux(0))
+            try:
+                photocalRet = self.photocal.run(exposure, matches)
+            except Exception, e:
+                self.log.log(self.log.WARN, "Failed to determine photometric zero-point: %s" % e)
+                photocalRet = None
+                self.metadata.set('MAGZERO', float("NaN"))
+                
+            if photocalRet:
+                self.log.log(self.log.INFO, "Photometric zero-point: %f" % photocalRet.photocal.getMag(1.0))
+                exposure.getCalib().setFluxMag0(photocalRet.photocal.getFlux(0))
             
-            # convert to (mag/sec/adu) for metadata
-            magZero = photocalRet.zp - 2.5 * math.log10(exposure.getCalib().getExptime())
-            self.metadata.set('MAGZERO', magZero)
-            self.metadata.set('MAGZERO_RMS', photocalRet.sigma)
-            self.metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
-            self.metadata.set('COLORTERM1', 0.0)
-            self.metadata.set('COLORTERM2', 0.0)
-            self.metadata.set('COLORTERM3', 0.0)
-
+                # convert to (mag/sec/adu) for metadata
+                magZero = photocalRet.zp - 2.5 * math.log10(exposure.getCalib().getExptime())
+                self.metadata.set('MAGZERO', magZero)
+                self.metadata.set('MAGZERO_RMS', photocalRet.sigma)
+                self.metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
+                self.metadata.set('COLORTERM1', 0.0)
+                self.metadata.set('COLORTERM2', 0.0)
+                self.metadata.set('COLORTERM3', 0.0)
         else:
             photocalRet = None
 
