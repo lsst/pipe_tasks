@@ -28,7 +28,7 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, Sou
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
-class ProcessCcdConfig(pipeBase.CmdLineTask.ConfigClass):
+class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
     doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
     doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
