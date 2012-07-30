@@ -24,6 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
+import lsst.afw.geom as afwGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -91,6 +92,12 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         self.makeSubtask("isr")
         self.makeSubtask("calibrate")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
+        # add fields needed to identify stars used in the calibration step
+        self.calibSourceKey = self.schema.addField("calib.referenceSource",
+                                                   type="Flag", doc="Source was detected as an icSrc")
+        self.psfStarKey = self.schema.addField("calib.psfStar",
+                                               type="Flag", doc="Source was used to determine the PSF")
+
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
@@ -150,6 +157,8 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     sensorRef.put(normalizedMatches, "icMatch")
+        else:
+            calib = None
 
         if self.config.doDetection:
             if calExposure is None:
@@ -183,6 +192,9 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             if apCorr is None:
                 apCorr = sensorRef.get("apCorr")
             self.measurement.run(calExposure, sources, apCorr)
+
+        if calib is not None:
+            self.propagateIcFlags(calib.sources, sources)
 
         if sources is not None and self.config.doWriteSources:
             if self.config.doWriteHeavyFootprintsInSources:
@@ -220,3 +232,44 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
         # N.b. yes, this is what useKnownWcs calls the returned values
         return astromRet.matches, astromRet.matchMetadata
+
+    def propagateIcFlags(self, icSources, sources, matchRadius=1):
+        """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
+        """
+        if icSources is None or sources is None:
+            return
+
+        closest = False                 # return all matched objects
+        matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
+        matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+        #
+        # Because we had to allow multiple matches to handle parents, we now need to
+        # prune to the best matches
+        #
+        bestMatches = {}
+        for m0, m1, d in matched:
+            id0 = m0.getId()
+            if bestMatches.has_key(id0):
+                if d > bestMatches[id0][2]:
+                    continue
+
+            bestMatches[id0] = (m0, m1, d)
+
+        matched = bestMatches.values()
+        #
+        # Check that we got it right
+        #
+        if len(set(m[0].getId() for m in matched)) != len(matched):
+            self.log.log(self.log.WARN, "At least one icSource is matched to more than one Source")
+        #
+        # Copy over the desired flags
+        #
+        psfStarKey_ic = icSources.getSchema().find("classification.psfstar").getKey()
+        #
+        # Actually set flags in sources
+        #
+        for ics, s, d in matched:
+            s.set(self.calibSourceKey, True)
+            s.set(self.psfStarKey, ics.get(psfStarKey_ic))
+        return
+    
