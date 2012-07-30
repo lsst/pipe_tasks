@@ -224,16 +224,22 @@ class AstrometryTask(pipeBase.Task):
         self.log.log(self.log.INFO, "Refitting WCS")
         # Re-fit the WCS using the current matches
         if self.config.solver.calculateSip:
-            sip = CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
-            wcs = sip.getNewWcs()
-            self.log.log(self.log.INFO, "Astrometric scatter: %f arcsec (%s non-linear terms)" %
-                         (sip.getScatterOnSky().asArcseconds(), "with" if wcs.hasDistortion() else "without"))
-            exposure.setWcs(wcs)
+            try:
+                sip = CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+            except Exception, e:
+                self.log.log(self.log.WARN, "Fitting SIP failed: %s" % e)
+                sip = None
+
+            if sip:
+                wcs = sip.getNewWcs()
+                self.log.log(self.log.INFO, "Astrometric scatter: %f arcsec (%s non-linear terms)" %
+                             (sip.getScatterOnSky().asArcseconds(), "with" if wcs.hasDistortion() else "without"))
+                exposure.setWcs(wcs)
             
-            # Apply WCS to sources
-            for index, source in enumerate(sources):
-                sky = wcs.pixelToSky(source.getX(), source.getY())
-                source.setCoord(sky)
+                # Apply WCS to sources
+                for index, source in enumerate(sources):
+                    sky = wcs.pixelToSky(source.getX(), source.getY())
+                    source.setCoord(sky)
         else:
             self.log.log(self.log.WARN, "Not calculating a SIP solution; matches may be suspect")
         
