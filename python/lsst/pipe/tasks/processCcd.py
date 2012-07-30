@@ -173,11 +173,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             if psf is None:
                 psf = sensorRef.get('psf')
 
-            assert(calExposure)
-            assert(psf)
-            assert(sources)
             self.deblend.run(calExposure, sources, psf)
-
 
         if self.config.doMeasurement:
             if apCorr is None:
