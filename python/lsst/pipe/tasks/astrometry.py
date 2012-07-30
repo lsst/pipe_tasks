@@ -60,6 +60,7 @@ class AstrometryTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwds)
         self.centroidKey = schema.addField("centroid.distorted", type="PointD",
                                            doc="centroid distorted for astrometry solver")
+        self.astrometer = None
 
     @pipeBase.timeMethod
     def run(self, exposure, sources):
@@ -149,7 +150,8 @@ class AstrometryTask(pipeBase.Task):
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
 
-        self.log.log(self.log.INFO, "Solving astrometry")
+        if not self.config.forceKnownWcs:
+            self.log.log(self.log.INFO, "Solving astrometry")
 
         if size is None:
             size = (exposure.getWidth(), exposure.getHeight())
@@ -161,15 +163,17 @@ class AstrometryTask(pipeBase.Task):
             self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
             filterName = None
 
-        astrometer = Astrometry(self.config.solver, log=self.log)
+        if not self.astrometer:
+            self.astrometer = Astrometry(self.config.solver, log=self.log)
+
         if self.config.forceKnownWcs:
             self.log.info("forceKnownWcs is set: using the input exposure's WCS")
             if self.config.solver.calculateSip:
                 self.log.warn("Astrometry: 'forceKnownWcs' and 'solver.calculateSip' options are both set." +
                               " Will try to compute a TAN-SIP WCS starting from the assumed-correct input WCS.")
-            astrom = astrometer.useKnownWcs(sources, exposure=exposure)
+            astrom = self.astrometer.useKnownWcs(sources, exposure=exposure)
         else:
-            astrom = astrometer.determineWcs(sources, exposure)
+            astrom = self.astrometer.determineWcs(sources, exposure)
 
         if astrom is None or astrom.getWcs() is None:
             raise RuntimeError("Unable to solve astrometry")
