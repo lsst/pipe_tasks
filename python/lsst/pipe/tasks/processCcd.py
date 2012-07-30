@@ -37,7 +37,11 @@ class ProcessCcdConfig(pexConfig.Config):
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
+    doWriteCalibrateMatches = pexConfig.Field(dtype=bool, default=True,
+                                              doc = "Write icSrc to reference matches?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
+    doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False,
+                                           doc = "Compute and write src to reference matches?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
                                                       doc = "Include HeavyFootprint data in source table?")
     isr = pexConfig.ConfigurableField(
@@ -142,7 +146,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                     sensorRef.put(calib.psf, "psf")
                 if calib.apCorr is not None:
                     sensorRef.put(calib.apCorr, "apCorr")
-                if calib.matches is not None:
+                if calib.matches is not None and self.config.doWriteCalibrateMatches:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     sensorRef.put(normalizedMatches, "icMatch")
@@ -185,10 +189,34 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                 sources.setWriteHeavyFootprints(True)
             sensorRef.put(sources, 'src')
             
+        if self.config.doWriteSourceMatches:
+            self.log.log(self.log.INFO, "Matching src to reference catalogue" % (sensorRef.dataId))
+            srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
+
+            normalizedSrcMatches = afwTable.packMatches(srcMatches)
+            normalizedSrcMatches.table.setMetadata(srcMatchMeta)
+            sensorRef.put(normalizedSrcMatches, "srcMatch")
+        else:
+            srcMatches = None; srcMatchMeta = None
+
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,
             exposure = calExposure,
             calib = calib,
             apCorr = apCorr,
             sources = sources,
+            matches = srcMatches,
+            matchMeta = srcMatchMeta,
         )
+
+    def matchSources(self, exposure, sources):
+        """Match the sources to the reference object loaded by the calibrate task"""
+        try:
+            astrometer = self.calibrate.astrometry.astrometer
+        except AttributeError:
+            self.log.log(self.log.WARN, "Failed to find an astrometer in calibrate's astronomy task")
+            return None, None
+
+        astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
+        # N.b. yes, this is what useKnownWcs calls the returned values
+        return astromRet.matches, astromRet.matchMetadata
