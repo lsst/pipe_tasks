@@ -246,13 +246,16 @@ class CalibrateTask(pipeBase.Task):
                 exposure.getCalib().setFluxMag0(photocalRet.photocal.getFlux(0))
                 metadata = exposure.getMetadata()
                 # convert to (mag/sec/adu) for metadata
-                magZero = photocalRet.zp - 2.5 * math.log10(exposure.getCalib().getExptime())
-                metadata.set('MAGZERO', magZero)
+                try:
+                    magZero = photocalRet.zp - 2.5 * math.log10(exposure.getCalib().getExptime() )
+                    metadata.set('MAGZERO', magZero)
+                except:
+                    self.log.warn("Could not set normalized MAGZERO in header: no exposure time")
                 metadata.set('MAGZERO_RMS', photocalRet.sigma)
                 metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
                 metadata.set('COLORTERM1', 0.0)
                 metadata.set('COLORTERM2', 0.0)
-                metadata.set('COLORTERM3', 0.0)
+                metadata.set('COLORTERM3', 0.0)    
         else:
             photocalRet = None
 
