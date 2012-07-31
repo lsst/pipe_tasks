@@ -196,7 +196,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             self.measurement.run(calExposure, sources, apCorr)
 
         if calib is not None:
-            self.propagateIcFlags(calib.sources, sources)
+            self.propagateCalibFlags(calib.sources, sources)
 
         if sources is not None and self.config.doWriteSources:
             if self.config.doWriteHeavyFootprintsInSources:
@@ -235,7 +235,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         # N.b. yes, this is what useKnownWcs calls the returned values
         return astromRet.matches, astromRet.matchMetadata
 
-    def propagateIcFlags(self, icSources, sources, matchRadius=1):
+    def propagateCalibFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
         """
         if icSources is None or sources is None:
