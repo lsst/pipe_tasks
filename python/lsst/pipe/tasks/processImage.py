@@ -95,7 +95,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                                                    type="Flag", doc="Source was detected as an icSrc")
         self.psfStarKey = self.schema.addField("calib.psfStar",
                                                type="Flag", doc="Source was used to determine the PSF")
-
+        self.psfStarCandidateKey = self.schema.addField("calib.psfStarCandidate", type="Flag",
+                                                        doc="Source was a candidate to determine the PSF")
+ 
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
@@ -255,11 +257,13 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         # Copy over the desired flags
         #
         psfStarKey_ic = icSources.getSchema().find("classification.psfstar").getKey()
+        psfStarCandidate_ic = icSources.getSchema().find("psfStarCandidate").getKey()
         #
         # Actually set flags in sources
         #
         for ics, s, d in matched:
             s.set(self.calibSourceKey, True)
             s.set(self.psfStarKey, ics.get(psfStarKey_ic))
+            s.set(self.psfStarCandidateKey, ics.get(psfStarCandidate_ic))
         return
     

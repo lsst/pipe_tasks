@@ -86,4 +86,3 @@ class ProcessCcdTask(ProcessImageTask):
         result = self.process(sensorRef, postIsrExposure)
         result.postIsrExposure = postIsrExposure
         return result
-    
