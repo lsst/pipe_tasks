@@ -20,17 +20,12 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import numpy as num
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
-import lsst.afw.image as afwImage
-import lsst.afw.cameraGeom as afwCameraGeom
 import lsst.afw.math as afwMath
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
-from lsst.pipe.tasks.calibrate import CalibrateTask
 from .coadd import CoaddArgumentParser
 from .processImage import ProcessImageTask
 
@@ -52,7 +47,7 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
 
     def __init__(self, **kwargs):
         ProcessImageTask.__init__(self, **kwargs)
-        self.dataPrefix = self.coaddName + "Coadd_"
+        self.dataPrefix = self.config.coaddName + "Coadd_"
 
     @pipeBase.timeMethod
     def scaleVariance(self, exposure):
@@ -94,8 +89,7 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
         psf = None
 
         if self.config.doCalibrate:
-            coadd = dataRef.get(self.config.coaddName+"Coadd")
-            initPsfName = outPrefix + "initPsf"
+            coadd = dataRef.get(self.config.coaddName + "Coadd")
             if dataRef.datasetExists(self.dataPrefix + "initPsf"):
                 initPsf = dataRef.get(self.dataPrefix + "initPsf")
                 coadd.setPsf(initPsf)
@@ -107,7 +101,7 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
             coadd = None
 
         # delegate most of the work to ProcessImageTask
-        result = self.process(dataRef, postIsrExposure)
+        result = self.process(dataRef, coadd)
         result.coadd = coadd
         return result
 
