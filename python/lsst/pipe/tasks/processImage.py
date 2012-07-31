@@ -257,7 +257,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         # Copy over the desired flags
         #
         psfStarKey_ic = icSources.getSchema().find("classification.psfstar").getKey()
-        psfStarCandidate_ic = icSources.getSchema().find("psfStarCandidate").getKey()
+        psfStarCandidate_ic = icSources.getSchema().find("calib.psfStarCandidate").getKey()
         #
         # Actually set flags in sources
         #

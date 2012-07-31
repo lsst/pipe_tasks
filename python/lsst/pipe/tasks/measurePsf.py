@@ -51,7 +51,9 @@ class MeasurePsfTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwargs)
         self.starSelector = self.config.starSelector.apply(schema=schema)
         self.psfDeterminer = self.config.psfDeterminer.apply(schema=schema)
-        
+        self.psfStarCandidateKey = schema.addField("calib.psfStarCandidate", type="Flag",
+                                                   doc="Source was a candidate to determine the PSF")
+
     @pipeBase.timeMethod
     def run(self, exposure, sources):
         """Measure the PSF
@@ -66,12 +68,9 @@ class MeasurePsfTask(pipeBase.Task):
 
         psfCandidateList = self.starSelector.selectStars(exposure, sources)
         if psfCandidateList:
-            sch = psfCandidateList[0].getSource().getSchema()
-            psfStarCandidateKey = sch.find("psfStarCandidate").getKey()
-
             for cand in psfCandidateList:
                 source = cand.getSource()
-                source.set(psfStarCandidateKey, True)
+                source.set(self.psfStarCandidateKey, True)
 
         self.log.log(self.log.INFO, "PSF star selector found %d candidates" % len(psfCandidateList))
 
