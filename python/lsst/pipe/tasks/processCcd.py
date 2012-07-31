@@ -93,10 +93,12 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         self.makeSubtask("calibrate")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         # add fields needed to identify stars used in the calibration step
-        self.calibSourceKey = self.schema.addField("calib.referenceSource",
-                                                   type="Flag", doc="Source was detected as an icSrc")
-        self.psfStarKey = self.schema.addField("calib.psfStar",
-                                               type="Flag", doc="Source was used to determine the PSF")
+        self.calibSourceKey = self.schema.addField("calib.referenceSource", type="Flag",
+                                                   doc="Source was detected as an icSrc")
+        self.psfStarCandidateKey = self.schema.addField("calib.psfStarCandidate", type="Flag",
+                                                        doc="Source was a candidate to determine the PSF")
+        self.psfStarKey = self.schema.addField("calib.psfStar", type="Flag",
+                                               doc="Source was used to determine the PSF")
 
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
@@ -265,11 +267,13 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         # Copy over the desired flags
         #
         psfStarKey_ic = icSources.getSchema().find("classification.psfstar").getKey()
+        psfStarCandidate_ic = icSources.getSchema().find("psfStarCandidate").getKey()
         #
         # Actually set flags in sources
         #
         for ics, s, d in matched:
             s.set(self.calibSourceKey, True)
+            s.set(self.psfStarCandidateKey, ics.get(psfStarCandidate_ic))
             s.set(self.psfStarKey, ics.get(psfStarKey_ic))
         return
     

@@ -67,6 +67,13 @@ class MeasurePsfTask(pipeBase.Task):
         self.log.log(self.log.INFO, "Measuring PSF")
 
         psfCandidateList = self.starSelector.selectStars(exposure, sources, matches=matches)
+        if psfCandidateList:
+            sch = psfCandidateList[0].getSource().getSchema()
+            psfStarCandidateKey = sch.find("psfStarCandidate").getKey()
+
+            for cand in psfCandidateList:
+                source = cand.getSource()
+                source.set(psfStarCandidateKey, True)
 
         self.log.log(self.log.INFO, "PSF star selector found %d candidates" % len(psfCandidateList))
 
