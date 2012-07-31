@@ -233,7 +233,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
 
         closest = False                 # return all matched objects
         matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
-        matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+        if self.config.doDeblend:
+            matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # keep children
         #
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches
