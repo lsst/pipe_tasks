@@ -181,6 +181,11 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPsf:
             self.initialMeasurement.measure(exposure, sources)
+
+            if self.config.doAstrometry:
+                oldWcs = exposure.getWcs()
+                self.astrometry.run(exposure, sources)
+
             psfRet = self.measurePsf.run(exposure, sources)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
