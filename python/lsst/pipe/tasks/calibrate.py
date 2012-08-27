@@ -184,9 +184,13 @@ class CalibrateTask(pipeBase.Task):
 
             if self.config.doAstrometry:
                 oldWcs = exposure.getWcs()
-                self.astrometry.run(exposure, sources)
-
-            psfRet = self.measurePsf.run(exposure, sources)
+                astromRet = self.astrometry.run(exposure, sources)
+                matches = astromRet.matches
+            else:
+                # If doAstrometry is False, we force the Star Selector to either make them itself
+                # or hope it doesn't need them.
+                matches = None
+            psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
         else:
