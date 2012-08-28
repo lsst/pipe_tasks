@@ -157,6 +157,7 @@ class CalibrateTask(pipeBase.Task):
         - sources: Sources used in calibration
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
+        - photocal: Output of photocal subtask
         """
         assert exposure is not None, "No exposure provided"
 

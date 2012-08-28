@@ -206,6 +206,8 @@ class AstrometryTask(pipeBase.Task):
         @param sources Sources on image (no distortion applied)
         @param matches Astrometric matches
         @param distortion Distortion model
+
+        @return the resolved-Wcs object, or None if config.solver.calculateSip is False.
         """
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
