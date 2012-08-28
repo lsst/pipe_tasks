@@ -206,6 +206,8 @@ class AstrometryTask(pipeBase.Task):
         @param sources Sources on image (no distortion applied)
         @param matches Astrometric matches
         @param distortion Distortion model
+
+        @return the resolved-Wcs object, or None if config.solver.calculateSip is False.
         """
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
@@ -228,7 +230,9 @@ class AstrometryTask(pipeBase.Task):
                 sky = wcs.pixelToSky(source.getX(), source.getY())
                 source.setCoord(sky)
         else:
+            sip = None
             self.log.log(self.log.WARN, "Not calculating a SIP solution; matches may be suspect")
         
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
+        return sip

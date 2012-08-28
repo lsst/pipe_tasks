@@ -157,6 +157,7 @@ class CalibrateTask(pipeBase.Task):
         - sources: Sources used in calibration
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
+        - photocal: Output of photocal subtask
         """
         assert exposure is not None, "No exposure provided"
 
@@ -229,6 +230,8 @@ class CalibrateTask(pipeBase.Task):
             zp = photocalRet.photocal
             self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
             exposure.getCalib().setFluxMag0(zp.getFlux(0))
+        else:
+            photocalRet = None
 
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
 
@@ -239,6 +242,7 @@ class CalibrateTask(pipeBase.Task):
             sources = sources,
             matches = matches,
             matchMeta = matchMeta,
+            photocal = photocalRet,
         )
 
     def installInitialPsf(self, exposure):

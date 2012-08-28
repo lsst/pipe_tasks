@@ -63,7 +63,6 @@ class RepairTask(pipeBase.Task):
         assert psf, "No PSF provided"
 
         self.display('repair.before', exposure=exposure)
-
         if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, defects)
 
