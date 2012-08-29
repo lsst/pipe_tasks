@@ -183,7 +183,6 @@ class CalibrateTask(pipeBase.Task):
             self.initialMeasurement.measure(exposure, sources)
 
             if self.config.doAstrometry:
-                oldWcs = exposure.getWcs()
                 astromRet = self.astrometry.run(exposure, sources)
                 matches = astromRet.matches
             else:
