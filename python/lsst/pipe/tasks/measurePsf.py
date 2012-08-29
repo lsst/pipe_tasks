@@ -53,18 +53,20 @@ class MeasurePsfTask(pipeBase.Task):
         self.psfDeterminer = self.config.psfDeterminer.apply(schema=schema)
         
     @pipeBase.timeMethod
-    def run(self, exposure, sources):
+    def run(self, exposure, sources, matches=None):
         """Measure the PSF
 
         @param[in,out]   exposure      Exposure to process; measured PSF will be installed here as well.
         @param[in,out]   sources       Measured sources on exposure; flag fields will be set marking
                                        stars chosen by the star selector and PSF determiner.
+        @param[in]       matches       ReferenceMatchVector, as returned by the AstrometryTask, used
+                                       by star selectors that refer to an external catalog.
         """
         assert exposure, "No exposure provided"
         assert sources, "No sources provided"
         self.log.log(self.log.INFO, "Measuring PSF")
 
-        psfCandidateList = self.starSelector.selectStars(exposure, sources)
+        psfCandidateList = self.starSelector.selectStars(exposure, sources, matches=matches)
 
         self.log.log(self.log.INFO, "PSF star selector found %d candidates" % len(psfCandidateList))
 
