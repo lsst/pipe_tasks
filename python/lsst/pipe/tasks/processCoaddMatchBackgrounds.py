@@ -135,7 +135,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     outputPath = pexConfig.Field(
         dtype = str,
         doc = """Location of output files""",
-        default = "/astro/net/pogo3/yusra/fits/testTimes4145/"
+        default = "/astro/net/pogo3/yusra/fits/testTimesBkgd/"
     )
     
     psfMatch = pexConfig.Field(
@@ -156,14 +156,14 @@ class MatchBackgroundsConfig(pexConfig.Config):
     useNN2 = pexConfig.Field(
         dtype = bool,
         doc = """Use NN2 to estimate difference image backgrounds.""",
-        default = True
+        default = False
     )
     
     commonMask = pexConfig.Field(
         dtype = bool,
         doc = """True -  uses sum(all masks) for a common mask for all images in background estimate
                  False - uses only sum(2 mask) appropriate for each pair of images being matched""",
-        default = True
+        default = False
     )
     
     useMean = pexConfig.Field(
@@ -178,6 +178,11 @@ class MatchBackgroundsConfig(pexConfig.Config):
                 False - masks, grids and fits Chebyshev polynomials to the backgrounds """,
         default = False
     )
+    detectionBinSize = pexConfig.Field(
+        dtype = int,
+        doc = """sets the binsize for detection.getbackground, if useDetectionBackground = True """,
+        default = 512
+    )    
    
     # With linear background model, this should fail
     # /astro/net/pogo1/stripe82/imaging/6447/40/corr/1/fpC-006447-r1-0718.fit.gz
@@ -359,6 +364,8 @@ class MatchBackgrounds(pipeBase.Task):
         self.loadMatches(matches, nMax = nMax)
         timeMatch =  datetime.datetime.now()
         
+        self.normalizeFlux()
+        
         if self.config.useDetectionBackground:
             self.matchBackgroundsBkgd()
         else:
@@ -378,8 +385,8 @@ class MatchBackgrounds(pipeBase.Task):
         DBconnection = pymssql.connect(user="LSST-2",password="L$$TUser",host="fatboy",database="[dev-yusra]")
         db = DBconnection.cursor()
         sql  = "INSERT INTO backgroundMatchTimes ("
-        sql += "refrun, field, filter, camcol, psfMatch, useNN2, commonMask,backgroundOrder, numImages, timeLoad, timeMatch, timeCoadd) "
-        sql += "VALUES (%d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %d, %d)"% (self.refrun, self.field, self.filt, self.camcol, self.config.psfMatch, self.config.useNN2, self.config.commonMask, self.config.backgroundOrder, self.numImages,  secondsLoad, secondsMatch, secondsCoadd)
+        sql += "refrun, field, filter, camcol, psfMatch, useNN2, commonMask, useMean, backgroundOrder, numImages, timeLoad, timeMatch, timeCoadd) "
+        sql += "VALUES (%d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)"% (self.refrun, self.field, self.filt, self.camcol, self.config.psfMatch, self.config.useNN2, self.config.commonMask, self.config.useMean, self.config.backgroundOrder, self.numImages,  secondsLoad, secondsMatch, secondsCoadd)
         print sql 
         db.execute(sql)
         DBconnection.commit()     
@@ -716,13 +723,7 @@ class MatchBackgrounds(pipeBase.Task):
         poly.setParameters(Soln)
         return poly 
 
-    @pipeBase.timeMethod   
-    def matchBackgroundsNew(self):
-        """Puts images on a common zeropoint by interpolating across matches;
-        then background matches them;
-        saves results in self.bgMatchedExp after checking some
-        quality flags
-        """
+    def normalizeFlux(self):
         # IMPORTANT DETAIL : match zeropoints before matching backgrounds!
         self.refExp = self.coadder.normalizeForCoadd(self.refExp)
         for run in self.warpedExp.keys():
@@ -732,8 +733,19 @@ class MatchBackgrounds(pipeBase.Task):
         if self.config.writeFits:
             self.refExp.writeFits(os.path.join(self.config.outputPath, 
                                                "exp-%06d-%s%d-%04d.fits" % 
-                                               (self.refrun, self.filt, self.camcol, self.field)))
+                                               (self.refrun, self.filt, self.camcol, self.field)))    
+            for i in range(Nim):
+                expsToMatch[i].writeFits(os.path.join(self.config.outputPath, 
+                                           "scaled-%06d-%s%d-%04d-r%06d.fits" % 
+                                           (self.refrun, self.filt, self.camcol, self.field, runsToMatch[i])))        
 
+    @pipeBase.timeMethod   
+    def matchBackgroundsNew(self):
+        """Puts images on a common zeropoint by interpolating across matches;
+        then background matches them;
+        saves results in self.bgMatchedExp after checking some
+        quality flags
+        """
         refMask = self.refExp.getMaskedImage().getMask().getArray()
         refArr = self.refExp.getMaskedImage().getImage().getArray()
         
@@ -888,7 +900,7 @@ class MatchBackgrounds(pipeBase.Task):
             # Lets see some stats!
             area = tmp.getImage().getArray()[idx]
             self.log.log(self.log.INFO, "Diff BG %06d: mean=%0.3g med=%0.3g std=%0.3g npts=%d" % (
-                    run, num.mean(area), num.median(area), num.std(area), len(area))
+                    run, num.mean(area[num.where(~num.isnan(area))]), num.median(area[num.where(~num.isnan(area))]), num.std(area[num.where(~num.isnan(area))]), len(area[num.where(~num.isnan(area))]))
             )
             
             if num.std(area) < self.config.maxBgRms:
@@ -908,16 +920,6 @@ class MatchBackgrounds(pipeBase.Task):
         #from matplotlib.backends.backend_pdf import PdfPages
         #pdf = PdfPages('BackgroundMatching.pdf')
         # IMPORTANT DETAIL : match zeropoints before matching backgrounds!
-        self.refExp = self.coadder.normalizeForCoadd(self.refExp)
-        for run in self.warpedExp.keys():
-            self.warpedExp[run] = self.normalizeByInterpZeroPoint(run)
-        # IMPORTANT DETAIL : match zeropoints before matching b0ackgrounds!
-
-        if self.config.writeFits:
-            self.refExp.writeFits(os.path.join(self.config.outputPath, 
-                                               "exp-%06d-%s%d-%04d.fits" % 
-                                               (self.refrun, self.filt, self.camcol, self.field)))
-
 
         refMask   = self.refExp.getMaskedImage().getMask().getArray()
         refArr    = self.refExp.getMaskedImage().getImage().getArray()        
@@ -926,16 +928,15 @@ class MatchBackgrounds(pipeBase.Task):
         skyMask  = num.sum(num.array([x.getMaskedImage().getMask().getArray() for x in expsToMatch]), 0)
         skyArr   = num.array([x.getMaskedImage().getImage().getArray() for x in expsToMatch])
         Nim      = len(skyArr)
-        for i in range(Nim):
-            if self.config.writeFits:
-                expsToMatch[i].writeFits(os.path.join(self.config.outputPath, 
-                                           "scaled-%06d-%s%d-%04d-r%06d.fits" % 
-                                           (self.refrun, self.filt, self.camcol, self.field, runsToMatch[i])))
+        
         import lsst.meas.algorithms.detection as detection
+        
         dconfig = detection.BackgroundConfig()
+        dconfig.binSize =  self.config.detectionBinSize
+        #Change these?#######################################
         dconfig.statisticsProperty = dconfig.statisticsProperty
         dconfig.undersampleStyle = dconfig.undersampleStyle
-        dconfig.binSize = 512                 
+        ####################################################
         # Function for each image
         for i in range(Nim):
             run = runsToMatch[i]
@@ -967,8 +968,7 @@ class MatchBackgrounds(pipeBase.Task):
             idx = num.where((refMask + skyMask) == 0)
             area = tmp.getImage().getArray()[idx]
             self.log.log(self.log.INFO, "Diff BG %06d: mean=%0.3g med=%0.3g std=%0.3g npts=%d" % (
-                    run, num.mean(area), num.median(area), num.std(area), len(area))
-            )
+                    run, num.mean(area[num.where(~num.isnan(area))]), num.median(area[num.where(~num.isnan(area))]), num.std(area[num.where(~num.isnan(area))]), len(area[num.where(~num.isnan(area))])))
             
             if num.std(area) < self.config.maxBgRms:
                 self.bgMatchedExp[run] = exp
@@ -981,18 +981,22 @@ class MatchBackgrounds(pipeBase.Task):
         coaddExp = self.coadder.run(self.refExp, self.bgMatchedExp.values())
         coaddExp.setPsf(self.refPsf)
         #put options in the coadd file name:
-        if self.config.commonMask:
-            nameStr = "oneMask"
+        if self.config.useDetectionBackground:
+            nameStr = "detection%d"%(self.config.detectionBinSize)
         else:
-            nameStr = "maskPairs"            
-        if self.config.useNN2:
-            nameStr += "NN2"
+            if self.config.commonMask:
+                nameStr = "oneMask"
+            else:
+                nameStr = "maskPairs"            
+            if self.config.useNN2:
+                nameStr += "NN2"
+            nameStr += "-Cheb%d"%(self.config.backgroundOrder)
         if self.config.psfMatch:
             nameStr += "psf%d"%(self.config.refPsfSigma)
             
         coaddExp.writeFits(os.path.join(self.config.outputPath, 
-                                        "coadd-%06d-%s%d-%04d-%03d-%s-Cheb%d.fits" % 
-                                        (self.refrun, self.filt, self.camcol, self.field,self.numImages,nameStr,self.config.backgroundOrder)))
+                                        "coadd-%06d-%s%d-%04d-%03d-%s.fits" % 
+                                        (self.refrun, self.filt, self.camcol, self.field,self.numImages,nameStr)))
 
 
     def calcAECommonMask(self, area0, Nim, skyArr, idx, inreg):
@@ -1038,11 +1042,11 @@ class MatchBackgrounds(pipeBase.Task):
         nRange = range(n) #The plus 1 because we're adding the reference image
         #do zero first (reference image)
         i=0
+        mask = refMask + sMaskArr
         for j in range(i+1, n):
             #get mask for pair
-            mask = refMask + sMaskArr[j-1]
             #find indexes where mask is zero
-            idx, idy = num.where(mask == 0)
+            idx, idy = num.where(mask[j-1] == 0)
             areaj  = sArr[j-1][idx,idy]
             area0  = ref[idx,idy]
             area = area0 - areaj
@@ -1054,9 +1058,9 @@ class MatchBackgrounds(pipeBase.Task):
             Eij[i][j] = num.std(area[num.where(~num.isnan(area))])/num.sqrt(num.size(area[num.where(~num.isnan(area))]))
             Eij[j][i] = Eij[i][j]
         for i in range(1,n):
+            mask = sMaskArr[i-1] + sMaskArr
             for j in range(i+1, Nim+1):
-                mask = sMaskArr[i-1] + sMaskArr[j-1]
-                idx, idy = num.where(mask == 0)
+                idx, idy = num.where(mask[j-1] == 0)
                 areai  = sArr[i-1][idx,idy]
                 areaj  = sArr[j-1][idx,idy]
                 area = areai - areaj
