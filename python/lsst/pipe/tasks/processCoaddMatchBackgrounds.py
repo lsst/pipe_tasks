@@ -135,7 +135,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     outputPath = pexConfig.Field(
         dtype = str,
         doc = """Location of output files""",
-        default = "/astro/net/pogo3/yusra/fits/testTimesBkgd/"
+        default = "/astro/net/pogo3/yusra/fits/testTimesBkgd50/"
     )
     
     psfMatch = pexConfig.Field(
@@ -734,10 +734,10 @@ class MatchBackgrounds(pipeBase.Task):
             self.refExp.writeFits(os.path.join(self.config.outputPath, 
                                                "exp-%06d-%s%d-%04d.fits" % 
                                                (self.refrun, self.filt, self.camcol, self.field)))    
-            for i in range(Nim):
-                expsToMatch[i].writeFits(os.path.join(self.config.outputPath, 
+            for run in self.warpedExp.keys():
+                self.warpedExp[run].writeFits(os.path.join(self.config.outputPath, 
                                            "scaled-%06d-%s%d-%04d-r%06d.fits" % 
-                                           (self.refrun, self.filt, self.camcol, self.field, runsToMatch[i])))        
+                                           (self.refrun, self.filt, self.camcol, self.field, run)))        
 
     @pipeBase.timeMethod   
     def matchBackgroundsNew(self):
@@ -847,6 +847,7 @@ class MatchBackgrounds(pipeBase.Task):
                         A, E = self.calcAEMaskPairs(area0, area0Mask, areaSky, areaSkyMask, Nim)
                         V, Verr, Vint, Vext, chi   = self.NN2(A,E)
                     #fill arrays
+                    mask = area0Mask + areaSkyMask
                     for i in range(Nim):              
                         bgX[i]    =  num.append(bgX[i], 0.5 * (xmin + xmax))
                         bgY[i]    =  num.append(bgY[i], 0.5 * (ymin + ymax))
@@ -854,9 +855,7 @@ class MatchBackgrounds(pipeBase.Task):
                             bgZ[i] = num.append(bgZ[i],V[i+1]-V[0])                 
                             bgdZ[i] = num.append(bgdZ[i],Verr[i+1])
                         else:
-                            mask = area0Mask + areaSkyMask[i]
-                            ix, iy = num.where(mask == 0)
-                            #print area0[ix,iy], areaSky[i][ix,iy]
+                            ix, iy = num.where(mask[i] == 0)
                             area =  area0[ix,iy] - areaSky[i][ix,iy]
                             if self.config.useMean:
                                 bgZ[i]    =  num.append(bgZ[i],
@@ -972,7 +971,8 @@ class MatchBackgrounds(pipeBase.Task):
             
             if num.std(area) < self.config.maxBgRms:
                 self.bgMatchedExp[run] = exp
-            
+
+
             self.warpedExp[run] = None # Clear memory
 
 
