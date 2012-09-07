@@ -45,12 +45,12 @@ class MeasurePsfTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwargs)
         if schema is not None:
             self.candidateKey = schema.addField(
-                type="Flag", name="calib.psf.candidate",
+                "calib.psf.candidate", type="Flag",
                 doc=("Flag set if the source was a candidate for PSF determination, "
                      "as determined by the '%s' star selector.") % self.config.starSelector.name
                 )
             self.usedKey = schema.addField(
-                type="Flag", name="calib.psf.used",
+                "calib.psf.used", type="Flag",
                 doc=("Flag set if the source was actually used for PSF determination, "
                      "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
                 )

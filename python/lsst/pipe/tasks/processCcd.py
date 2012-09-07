@@ -91,14 +91,17 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
         self.makeSubtask("calibrate")
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
-        # add fields needed to identify stars used in the calibration step
-        self.calibSourceKey = self.schema.addField("calib.referenceSource", type="Flag",
-                                                   doc="Source was detected as an icSrc")
-        self.psfStarCandidateKey = self.schema.addField("calib.psfStarCandidate", type="Flag",
-                                                        doc="Source was a candidate to determine the PSF")
-        self.psfStarKey = self.schema.addField("calib.psfStar", type="Flag",
-                                               doc="Source was used to determine the PSF")
+
+        # Setup our schema by starting with fields we want to propagate from icSrc.
+        calibSchema = self.calibrate.schema
+        self.schemaMapper = afwTable.SchemaMapper(calibSchema)
+        self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
+        self.calibSourceKey = self.schemaMapper.addOutputField(
+            afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
+            )
+        for key in self.calibrate.getCalibKeys():
+            self.schemaMapper.addMapping(key)
+        self.schema = self.schemaMapper.getOutputSchema()
 
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
@@ -238,12 +241,14 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     def propagateIcFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
         """
+        self.log.log(self.log.INFO, "Matching icSource and Source catalogs to propagate flags.")
         if icSources is None or sources is None:
             return
 
         closest = False                 # return all matched objects
         matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
-        matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+        if self.config.doDeblend:
+            matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
         #
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches
@@ -266,14 +271,9 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         #
         # Copy over the desired flags
         #
-        psfStarKey_ic = icSources.getSchema().find("classification.psfstar").getKey()
-        psfStarCandidate_ic = icSources.getSchema().find("psfStarCandidate").getKey()
-        #
-        # Actually set flags in sources
-        #
         for ics, s, d in matched:
-            s.set(self.calibSourceKey, True)
-            s.set(self.psfStarCandidateKey, ics.get(psfStarCandidate_ic))
-            s.set(self.psfStarKey, ics.get(psfStarKey_ic))
+            s.setFlag(self.calibSourceKey, True)
+            s.assign(ics, self.schemaMapper)
+
         return
     

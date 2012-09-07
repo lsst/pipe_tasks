@@ -144,6 +144,13 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("astrometry", schema=self.schema)
         self.makeSubtask("photocal", schema=self.schema)
 
+    def getCalibKeys(self):
+        """
+        Return a sequence of schema keys that represent fields that should be propagated from
+        icSrc to src by ProcessCcdTask.
+        """
+        return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, idFactory=None):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
