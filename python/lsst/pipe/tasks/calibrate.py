@@ -239,7 +239,6 @@ class CalibrateTask(pipeBase.Task):
             except Exception, e:
                 self.log.log(self.log.WARN, "Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
-                self.metadata.set('MAGZERO', float("NaN"))
                 
             if photocalRet:
                 self.log.log(self.log.INFO, "Photometric zero-point: %f" % photocalRet.photocal.getMag(1.0))
