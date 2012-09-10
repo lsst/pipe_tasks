@@ -72,8 +72,6 @@ class AstrometryTask(pipeBase.Task):
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
         """
-        assert exposure is not None, "No exposure provided"
-
         llc, size = self.distort(exposure, sources)
         oldCentroidKey = sources.table.getCentroidKey()
         sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
@@ -97,9 +95,6 @@ class AstrometryTask(pipeBase.Task):
                                 with distorted points in "centroid.distorted" field.
         @return Lower-left corner, size of distorted image
         """
-        assert exposure, "No exposure provided"
-        assert sources, "No sources provided"
-
         ccd = getCcd(exposure, allowRaise=False)
         if ccd is None:
             self.log.log(self.log.WARN, "No CCD associated with exposure; assuming null distortion")
@@ -147,9 +142,6 @@ class AstrometryTask(pipeBase.Task):
         @param size Size of exposure
         @return Star matches, match metadata
         """
-        assert exposure, "No exposure provided"
-        assert sources, "No sources provided"
-
         if not self.config.forceKnownWcs:
             self.log.log(self.log.INFO, "Solving astrometry")
 
@@ -213,10 +205,6 @@ class AstrometryTask(pipeBase.Task):
 
         @return the resolved-Wcs object, or None if config.solver.calculateSip is False.
         """
-        assert exposure, "No exposure provided"
-        assert sources, "No sources provided"
-        assert matches, "No matches provided"
-
         wcs = exposure.getWcs()
 
         sip = None
