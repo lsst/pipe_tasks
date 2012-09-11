@@ -89,25 +89,29 @@ class ReferencesTask(Task):
         dra, ddec = afwMath.vectorF(), afwMath.vectorF()
         dra.reserve(num)
         ddec.reserve(num)
+        units = afwGeom.arcseconds
         # XXX errors in positions?
         for m in matches:
             src = m.first
             if src.getPsfFlux() < self.config.minFlux:
                 continue
             ref = m.second
-            offset = ref.getCoord().getOffsetFrom(src.getCoord(), afwGeom.arcseconds)
-            dra.push_back(offset[0])
-            ddec.push_back(offset[1])
+            offset = ref.getCoord().getTangentPlaneOffset(src.getCoord())
+            dra.push_back(offset[0].asAngularUnits(units))
+            ddec.push_back(offset[1].asAngularUnits(units))
         num = len(dra)
         draStats = afwMath.makeStatistics(dra, afwMath.MEANCLIP | afwMath.STDEVCLIP, stats)
         ddecStats = afwMath.makeStatistics(ddec, afwMath.MEANCLIP | afwMath.STDEVCLIP, stats)
-        offset = afwGeom.Point2D(draStats.getValue(afwMath.MEANCLIP), ddecStats.getValue(afwMath.MEANCLIP))
+        draMean = draStats.getValue(afwMath.MEANCLIP)
+        ddecMean = ddecStats.getValue(afwMath.MEANCLIP)
         self.log.info("Offset from %d sources is dRA = %f +/- %f arcsec, dDec = %f +/- %f arcsec" %
-                      (num, offset.getX(), draStats.getValue(afwMath.STDEVCLIP), offset.getY(),
+                      (num, draMean, draStats.getValue(afwMath.STDEVCLIP), dDecMean,
                        ddecStats.getValue(afwMath.STDEVCLIP)))
+        angle = math.atan2(ddecMean, draMean)*afwGeom.radians
+        distance = math.hypot(draMean, ddecMean)*units
         for ref in references:
             coord = ref.getCoord()
-            coord.offset(offset, afwGeom.arcseconds)
+            coord.offset(angle, distance)
             ref.setCoord(coord)
         return references
 
