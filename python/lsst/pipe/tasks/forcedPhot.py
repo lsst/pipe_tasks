@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 
-from lsst.pex.config import Config, ConfigurableField, DictField
+import math
+
+from lsst.pex.config import Config, ConfigurableField, DictField, Field
 from lsst.pipe.base import Task, CmdLineTask, Struct, ArgumentParser, timeMethod
 
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
+import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
 import lsst.meas.algorithms as measAlg
 
@@ -14,7 +17,9 @@ class ReferencesConfig(Config):
     This is bare, but will be extended by subclasses
     to support getting the list of reference sources.
     """
-    pass
+    correct = Field(dtype=bool, default=False, doc="Correct references for astrometric offsets?")
+    minFlux = Field(dtype=float, default=3000, doc="Minimum flux for calculating offsets")
+    radius = Field(dtype=float, default=0.5, doc="Association radius for matching, arcsec")
 
 class ReferencesTask(Task):
     """Task to generate a reference source catalog for forced photometry
@@ -33,6 +38,8 @@ class ReferencesTask(Task):
         self.log.log(self.log.INFO, "Retrieved %d reference sources" % len(references))
         references = self.subsetReferences(references, exposure)
         self.log.log(self.log.INFO, "Subset to %d reference sources" % len(references))
+        if self.config.correct:
+            references = self.correctReferences(dataRef, references)
         return references
 
     def getReferences(self, dataRef, exposure):
@@ -71,6 +78,42 @@ class ReferencesTask(Task):
                 subset.append(ref)
         return subset
 
+    def correctReferences(self, dataRef, references):
+        self.log.info("Correcting reference positions...")
+        sources = dataRef.get("src")
+        matches = afwTable.matchRaDec(sources, references, self.config.radius * afwGeom.arcseconds)
+        num = len(matches)
+        self.log.info("%d matches between source and reference catalogs" % num)
+        stats = afwMath.StatisticsControl()
+        # XXX statistics parameters?
+        dra, ddec = afwMath.vectorF(), afwMath.vectorF()
+        dra.reserve(num)
+        ddec.reserve(num)
+        units = afwGeom.arcseconds
+        # XXX errors in positions?
+        for m in matches:
+            src = m.first
+            if src.getPsfFlux() < self.config.minFlux:
+                continue
+            ref = m.second
+            offset = ref.getCoord().getTangentPlaneOffset(src.getCoord())
+            dra.push_back(offset[0].asAngularUnits(units))
+            ddec.push_back(offset[1].asAngularUnits(units))
+        num = len(dra)
+        draStats = afwMath.makeStatistics(dra, afwMath.MEANCLIP | afwMath.STDEVCLIP, stats)
+        ddecStats = afwMath.makeStatistics(ddec, afwMath.MEANCLIP | afwMath.STDEVCLIP, stats)
+        draMean = draStats.getValue(afwMath.MEANCLIP)
+        ddecMean = ddecStats.getValue(afwMath.MEANCLIP)
+        self.log.info("Offset from %d sources is dRA = %f +/- %f arcsec, dDec = %f +/- %f arcsec" %
+                      (num, draMean, draStats.getValue(afwMath.STDEVCLIP), dDecMean,
+                       ddecStats.getValue(afwMath.STDEVCLIP)))
+        angle = math.atan2(ddecMean, draMean)*afwGeom.radians
+        distance = math.hypot(draMean, ddecMean)*units
+        for ref in references:
+            coord = ref.getCoord()
+            coord.offset(angle, distance)
+            ref.setCoord(coord)
+        return references
 
 class ForcedPhotConfig(Config):
     """Configuration for forced photometry.
