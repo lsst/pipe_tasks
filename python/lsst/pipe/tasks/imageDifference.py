@@ -26,7 +26,7 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask # , SourceDeblendTask
 from lsst.ip.diffim import ImagePsfMatchTask
 
 class ImageDifferenceConfig(pexConfig.Config):
@@ -54,10 +54,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
     )
-    deblend = pexConfig.ConfigurableField(
-        target = SourceDeblendTask,
-        doc = "Split blended sources into their components",
-    )
+#     deblend = pexConfig.ConfigurableField(
+#         target = SourceDeblendTask,
+#         doc = "Split blended sources into their components",
+#     )
     measurement = pexConfig.ConfigurableField(
         target = SourceMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
@@ -86,7 +86,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     - measure sources
     """
     ConfigClass = ImageDifferenceConfig
-    _DefaultName = "differenceImage"
+    _DefaultName = "imageDifference"
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -95,8 +95,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
-        if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
+#         if self.config.doDeblend:
+#             self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
@@ -104,7 +104,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def run(self, sensorRef, sources=None):
         """Process one CCD
         
-        @param sensorRef: sensor-level butler data reference
+        @param sensorRef: sensor-level butler data reference to calexp
         @return pipe_base Struct containing these fields:
         - subtractedExposure: exposure after subtracting template;
             the unpersisted version if subtraction not run but detection run
@@ -127,7 +127,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
         
         exposure = sensorRef.get("calexp")
-        subtractedExposureName = self.config.coaddName + "SubtractedExp"
+# if we start PSF matching model to model then this will be needed; meanwhile it is not
+#         psf = sensorRef.get("psf")
+#         exposure.setPsf(psf)
+
+        subtractedExposureName = self.config.coaddName + "Diff_subtractedExp"
         
         if self.config.doSubtract:
             templateExposure = self.getTemplate(exposure, sensorRef)
@@ -148,7 +152,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             if subtractedExposure is None:
                 subtractedExposure = sensorRef.get(subtractedExposureName)
-                psf = sensorRef.get("psf")
+                psf = sensorRef.get("psf") # get from calexp
                 subtractedExposure.setPsf(psf)
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
@@ -156,7 +160,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             sources = self.detection.makeSourceCatalog(table, subtractedExposure).sources
 
             if self.config.doDeblend:
-                self.deblend.run(subtractedExposure, sources, psf)
+                raise RuntimeError("deblending is disabled")
+#                self.deblend.run(subtractedExposure, sources, psf)
     
             if self.config.doMeasurement:
                 apCorr = sensorRef.get("apCorr")
@@ -165,7 +170,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if sources is not None and self.config.doWriteSources:
                 if self.config.doWriteHeavyFootprintsInSources:
                     sources.setWriteHeavyFootprints(True)
-                sensorRef.put(sources, self.config.coaddName + "SubtractedExposure_src")
+                sensorRef.put(sources, self.config.coaddName + "Diff_src")
             
         return pipeBase.Struct(
             subtractedExposure = subtractedExposure,
@@ -204,17 +209,37 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             (exposure.getDimensions(), coaddBBox.getDimensions()))
         
         coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
+        nPatchesFound = 0
         for patchInfo in patchList:
-            coaddPatch = sensorRef.get(
+            patchArgDict = dict(
                 datasetType = self.config.coaddName + "Coadd",
                 tract = tractInfo.getId(),
                 patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
             )
+            if not sensorRef.datasetExists(**patchArgDict):
+                self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchArgDict)
+                continue
+
+            nPatchesFound += 1
+            coaddPatch = sensorRef.get(**patchArgDict)
             coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
-                coaddPatch.getBBox(afwImage.PARENT))
+                patchInfo.getOuterBBox(), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
         
+        if nPatchesFound == 0:
+            raise RuntimeError("No patches found!")
+        
         return coaddExposure
+
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%sDiff_config" % (self.config.coaddName,)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%sDiff_metadata" % (self.config.coaddName,)
 
     @classmethod
     def _makeArgumentParser(cls):
