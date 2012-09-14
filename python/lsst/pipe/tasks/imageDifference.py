@@ -30,13 +30,20 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask # , 
 from lsst.ip.diffim import ImagePsfMatchTask
 
 class ImageDifferenceConfig(pexConfig.Config):
-    """Config for ImageDifferenceTask"""
+    """Config for ImageDifferenceTask
+    
+    @todo: make default for doWriteSubtractedExp false
+    @todo: clean up deblending: either include it (if I can find it) or ditch the code;
+        right now my version of meas_algorithms does not have SourceDeblendTask
+    """
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doDeblend = pexConfig.Field(dtype=bool, default=False,
         doc = "Deblend sources? Off by default because it may not be useful")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
-    doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc = "Write difference image?")
+    doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc = "Write difference exposure?")
+    doWriteMatchedExp = pexConfig.Field(dtype=bool, default=True,
+        doc = "Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
         doc = "Include HeavyFootprint data in source table?")
@@ -127,9 +134,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
         
         exposure = sensorRef.get("calexp")
-# if we start PSF matching model to model then this will be needed; meanwhile it is not
-#         psf = sensorRef.get("psf")
-#         exposure.setPsf(psf)
+        psf = sensorRef.get("psf")
+        exposure.setPsf(psf)
 
         subtractedExposureName = self.config.coaddName + "Diff_subtractedExp"
         
@@ -139,15 +145,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
             # then return the difference
-            subtractRes = self.subtract.run(
-                imageToConvolve = templateExposure,
-                imageToNotConvolve = exposure,
-                mode = "subtractExposures",
+            subtractRes = self.subtract.subtractExposures(
+                exposureToConvolve = templateExposure,
+                exposureToNotConvolve = exposure,
             )
             subtractedExposure = subtractRes.subtractedImage
             
             if self.config.doWriteSubtractedExp:
-                 sensorRef.put(subtractedExposure, subtractedExposureName)
+                sensorRef.put(subtractedExposure, subtractedExposureName)
+            if self.config.doWriteMatchedExp:
+                sensorRef.put(subtractedRes.matchedImage, self.config.coaddName + "Diff_matchedExp")
         
         if self.config.doDetection:
             if subtractedExposure is None:
