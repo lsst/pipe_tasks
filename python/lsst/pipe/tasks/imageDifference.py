@@ -26,15 +26,13 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask # , SourceDeblendTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
 from lsst.ip.diffim import ImagePsfMatchTask
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
     
-    @todo: make default for doWriteSubtractedExp false
-    @todo: clean up deblending: either include it (if I can find it) or ditch the code;
-        right now my version of meas_algorithms does not have SourceDeblendTask
+    @todo: make default for doWriteMatchedExp false
     """
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
@@ -61,14 +59,17 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
     )
-#     deblend = pexConfig.ConfigurableField(
-#         target = SourceDeblendTask,
-#         doc = "Split blended sources into their components",
-#     )
+    deblend = pexConfig.ConfigurableField(
+        target = SourceDeblendTask,
+        doc = "Split blended sources into their components",
+    )
     measurement = pexConfig.ConfigurableField(
         target = SourceMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
     )
+    
+    def setDefaults(self):
+        self.detection.thresholdPolarity = "both"
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -102,8 +103,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
-#         if self.config.doDeblend:
-#             self.makeSubtask("deblend", schema=self.schema)
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
@@ -167,8 +168,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             sources = self.detection.makeSourceCatalog(table, subtractedExposure).sources
 
             if self.config.doDeblend:
-                raise RuntimeError("deblending is disabled")
-#                self.deblend.run(subtractedExposure, sources, psf)
+               self.deblend.run(subtractedExposure, sources, psf)
     
             if self.config.doMeasurement:
                 apCorr = sensorRef.get("apCorr")
