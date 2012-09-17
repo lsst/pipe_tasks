@@ -20,6 +20,8 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import numpy
+
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
@@ -117,7 +119,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - subtractedExposure: exposure after subtracting template;
             the unpersisted version if subtraction not run but detection run
             None if neither subtraction nor detection run (i.e. nothing useful done)
-        - subtractedRes: results of subtraction task; None if subtraction not run
+        - subtractRes: results of subtraction task; None if subtraction not run
         - sources: detected and possibly measured and deblended sources; None if detection not run
         """
         self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
@@ -155,7 +157,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if self.config.doWriteSubtractedExp:
                 sensorRef.put(subtractedExposure, subtractedExposureName)
             if self.config.doWriteMatchedExp:
-                sensorRef.put(subtractedRes.matchedImage, self.config.coaddName + "Diff_matchedExp")
+                sensorRef.put(subtractRes.matchedImage, self.config.coaddName + "Diff_matchedExp")
         
         if self.config.doDetection:
             if subtractedExposure is None:
@@ -216,6 +218,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             (exposure.getDimensions(), coaddBBox.getDimensions()))
         
         coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
+        edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
+        coaddExposure.set(numpy.nan, edgeMask, numpy.nan)
         nPatchesFound = 0
         for patchInfo in patchList:
             patchArgDict = dict(
