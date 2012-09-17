@@ -219,7 +219,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.set(numpy.nan, edgeMask, numpy.nan)
+        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
         nPatchesFound = 0
         for patchInfo in patchList:
             patchArgDict = dict(
