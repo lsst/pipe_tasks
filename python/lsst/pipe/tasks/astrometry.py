@@ -60,6 +60,7 @@ class AstrometryTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwds)
         self.centroidKey = schema.addField("centroid.distorted", type="PointD",
                                            doc="centroid distorted for astrometry solver")
+        self.astrometer = None
 
     @pipeBase.timeMethod
     def run(self, exposure, sources):
@@ -71,8 +72,6 @@ class AstrometryTask(pipeBase.Task):
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
         """
-        assert exposure is not None, "No exposure provided"
-
         llc, size = self.distort(exposure, sources)
         oldCentroidKey = sources.table.getCentroidKey()
         sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
@@ -80,7 +79,7 @@ class AstrometryTask(pipeBase.Task):
         matches, matchMeta = self.astrometry(exposure, sources, llc=llc, size=size)
         sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
                                      sources.table.getCentroidFlagKey())
-        self.undistort(exposure, sources, matches)
+        self.refitWcs(exposure, sources, matches)
 
         return pipeBase.Struct(
             matches = matches,
@@ -96,24 +95,22 @@ class AstrometryTask(pipeBase.Task):
                                 with distorted points in "centroid.distorted" field.
         @return Lower-left corner, size of distorted image
         """
-        assert exposure, "No exposure provided"
-        assert sources, "No sources provided"
-
         ccd = getCcd(exposure, allowRaise=False)
         if ccd is None:
-            self.log.log(self.log.WARN, "No CCD associated with exposure; assuming null distortion")
+            self.log.warn("No CCD associated with exposure; assuming null distortion")
             distorter = None
         else:
             distorter = ccd.getDistortion()
 
-        if distorter is None:
-            self.log.log(self.log.INFO, "Null distortion correction")
+        if distorter is None or exposure.getWcs().hasDistortion():
+            if distorter is None:
+                self.log.info("Null distortion correction")
             for s in sources:
                 s.set(self.centroidKey, s.getCentroid())
             return (0,0), (exposure.getWidth(), exposure.getHeight())
 
         # Distort source positions
-        self.log.log(self.log.INFO, "Applying distortion correction: %s" % distorter.prynt())
+        self.log.info("Applying distortion correction: %s" % distorter.prynt())
         for s in sources:
             s.set(self.centroidKey, distorter.undistort(s.getCentroid(), ccd))
 
@@ -145,30 +142,30 @@ class AstrometryTask(pipeBase.Task):
         @param size Size of exposure
         @return Star matches, match metadata
         """
-        assert exposure, "No exposure provided"
-        assert sources, "No sources provided"
-
-        self.log.log(self.log.INFO, "Solving astrometry")
+        if not self.config.forceKnownWcs:
+            self.log.info("Solving astrometry")
 
         if size is None:
             size = (exposure.getWidth(), exposure.getHeight())
 
         try:
             filterName = exposure.getFilter().getName()
-            self.log.log(self.log.INFO, "Using filter: '%s'" % filterName)
+            self.log.info("Using filter: '%s'" % filterName)
         except:
-            self.log.log(self.log.WARN, "Unable to determine filter name from exposure")
+            self.log.warn("Unable to determine filter name from exposure")
             filterName = None
 
-        astrometer = Astrometry(self.config.solver, log=self.log)
+        if not self.astrometer:
+            self.astrometer = Astrometry(self.config.solver, log=self.log)
+
         if self.config.forceKnownWcs:
             self.log.info("forceKnownWcs is set: using the input exposure's WCS")
             if self.config.solver.calculateSip:
                 self.log.warn("Astrometry: 'forceKnownWcs' and 'solver.calculateSip' options are both set." +
                               " Will try to compute a TAN-SIP WCS starting from the assumed-correct input WCS.")
-            astrom = astrometer.useKnownWcs(sources, exposure=exposure)
+            astrom = self.astrometer.useKnownWcs(sources, exposure=exposure)
         else:
-            astrom = astrometer.determineWcs(sources, exposure)
+            astrom = self.astrometer.determineWcs(sources, exposure)
 
         if astrom is None or astrom.getWcs() is None:
             raise RuntimeError("Unable to solve astrometry")
@@ -180,7 +177,7 @@ class AstrometryTask(pipeBase.Task):
         matchMeta = astrom.getMatchMetadata()
         if matches is None or len(matches) == 0:
             raise RuntimeError("No astrometric matches")
-        self.log.log(self.log.INFO, "%d astrometric matches" %  (len(matches)))
+        self.log.info("%d astrometric matches" %  (len(matches)))
 
         if not self.config.forceKnownWcs:
             exposure.setWcs(wcs)
@@ -199,39 +196,40 @@ class AstrometryTask(pipeBase.Task):
         return matches, matchMeta
 
     @pipeBase.timeMethod
-    def undistort(self, exposure, sources, matches):
-        """Undistort matches after solving astrometry, resolving WCS
+    def refitWcs(self, exposure, sources, matches):
+        """We have better matches after solving astrometry, so re-solve the WCS
 
         @param exposure Exposure of interest
         @param sources Sources on image (no distortion applied)
         @param matches Astrometric matches
-        @param distortion Distortion model
 
         @return the resolved-Wcs object, or None if config.solver.calculateSip is False.
         """
-        assert exposure, "No exposure provided"
-        assert sources, "No sources provided"
-        assert matches, "No matches provided"
+        wcs = exposure.getWcs()
 
-        # Undo distortion in matches
-        self.log.log(self.log.INFO, "Removing distortion correction.")
+        sip = None
 
-        # Re-fit the WCS with the distortion undone
+        self.log.info("Refitting WCS")
+        # Re-fit the WCS using the current matches
         if self.config.solver.calculateSip:
-            self.log.log(self.log.INFO, "Refitting WCS with distortion removed")
-            sip = CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
-            wcs = sip.getNewWcs()
-            self.log.log(self.log.INFO, "Astrometric scatter: %f arcsec (%s non-linear terms)" %
-                         (sip.getScatterOnSky().asArcseconds(), "with" if wcs.hasDistortion() else "without"))
-            exposure.setWcs(wcs)
+            try:
+                sip = CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+            except Exception, e:
+                self.log.warn("Fitting SIP failed: %s" % e)
+                sip = None
+
+            if sip:
+                wcs = sip.getNewWcs()
+                self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms)" %
+                              (sip.getScatterOnSky().asArcseconds(), "with" if wcs.hasDistortion() else "without"))
+                exposure.setWcs(wcs)
             
-            # Apply WCS to sources
-            for index, source in enumerate(sources):
-                sky = wcs.pixelToSky(source.getX(), source.getY())
-                source.setCoord(sky)
+                # Apply WCS to sources
+                for index, source in enumerate(sources):
+                    sky = wcs.pixelToSky(source.getX(), source.getY())
+                    source.setCoord(sky)
         else:
-            sip = None
-            self.log.log(self.log.WARN, "Not calculating a SIP solution; matches may be suspect")
+            self.log.warn("Not calculating a SIP solution; matches may be suspect")
         
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
