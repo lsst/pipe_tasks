@@ -23,6 +23,7 @@
 import numpy
 
 import lsst.pex.config as pexConfig
+import lsst.pex.logging as pexLogging
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
@@ -53,6 +54,17 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype = str,
         default = "deep",
     )
+    templateFwhm = pexConfig.Field(
+        doc = "FWHM (arcsec) of Psf in template",
+        dtype = float,
+        default = 1.0
+    )
+    swapImages = pexConfig.Field(
+        doc = "Swap the order of which image gets convolved (default = template)"
+        dtype = bool,
+        default = False
+    )
+
     subtract = pexConfig.ConfigurableField(
         target = ImagePsfMatchTask,
         doc = "Warp and PSF match template to exposure, then subtract",
@@ -144,13 +156,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         if self.config.doSubtract:
             templateExposure = self.getTemplate(exposure, sensorRef)
-            
+            if self.config.templateFwhm:
+                wcs = templateExposure.getWcs()
+                fwhmPixels = self.config.templateFwhm / wcs.pixelScale().asArcseconds()
+            else:
+                fwhmPixels = None
+                
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
             # then return the difference
             subtractRes = self.subtract.subtractExposures(
                 exposureToConvolve = templateExposure,
                 exposureToNotConvolve = exposure,
+                psfFwhmPixTc = fwhmPixels,
             )
             subtractedExposure = subtractRes.subtractedImage
             
@@ -239,7 +257,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         if nPatchesFound == 0:
             raise RuntimeError("No patches found!")
-        
+
         return coaddExposure
 
     def _getConfigName(self):
