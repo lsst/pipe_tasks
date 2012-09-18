@@ -59,8 +59,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype = float,
         default = 1.0
     )
-    swapImages = pexConfig.Field(
-        doc = "Swap the order of which image gets convolved (default = template)"
+    swapImageToConvolve = pexConfig.Field(
+        doc = "Swap the order of which image gets convolved (default = template)",
         dtype = bool,
         default = False
     )
