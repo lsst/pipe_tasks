@@ -215,7 +215,7 @@ class CalibrateTask(pipeBase.Task):
                 background, exposure = measAlg.estimateBackground(
                     exposure, self.config.background, subtract=True,
                     statsKeys=('BGMEAN2', 'BGVAR2'))
-                self.log.log(self.log.INFO, "Fit and subtracted background")
+                self.log.info("Fit and subtracted background")
 
             self.display('background', exposure=exposure)
 
@@ -243,7 +243,7 @@ class CalibrateTask(pipeBase.Task):
             assert(matches is not None)
             photocalRet = self.photocal.run(matches, exposure.getFilter().getName())
             zp = photocalRet.photocal
-            self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
+            self.log.info("Photometric zero-point: %f" % zp.getMag(1.0))
             exposure.getCalib().setFluxMag0(zp.getFlux(0))
         else:
             photocalRet = None
@@ -273,7 +273,7 @@ class CalibrateTask(pipeBase.Task):
         model = self.config.initialPsf.model
         fwhm = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
         size = self.config.initialPsf.size
-        self.log.log(self.log.INFO, "installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
+        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
         psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)
 
@@ -291,7 +291,7 @@ class CalibrateTask(pipeBase.Task):
         x0, y0 = exposure.getXY0()
         x, y = exposure.getWidth() / 2.0 + x0, exposure.getHeight() / 2.0 + y0
         value, error = apCorr.computeAt(x, y)
-        self.log.log(self.log.INFO, "Central aperture correction using %d/%d stars: %f +/- %f" %
+        self.log.info("Central aperture correction using %d/%d stars: %f +/- %f" %
                      (metadata.get("numGoodStars"), metadata.get("numAvailStars"), value, error))
         for key in metadata.names():
             self.metadata.add("apCorr.%s" % key, metadata.get(key))

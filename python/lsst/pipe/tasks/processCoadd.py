@@ -80,7 +80,7 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
             if config.doMeasure, else None
         - sources: detected source if config.doDetection, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (dataRef.dataId))
+        self.log.info("Processing %s" % (dataRef.dataId))
 
         # initialize outputs
         calExposure = None

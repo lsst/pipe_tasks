@@ -70,7 +70,7 @@ class ProcessCcdTask(ProcessImageTask):
             if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s" % (sensorRef.dataId))
 
         # initialize outputs
         postIsrExposure = None

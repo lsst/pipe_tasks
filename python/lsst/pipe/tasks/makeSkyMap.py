@@ -66,7 +66,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         - skyMap: the constructed SkyMap
         """
         skyMap = self.config.skyMap.apply()
-        self.log.log(self.log.INFO, "sky map has %s tracts" % (len(skyMap),))
+        self.log.info("sky map has %s tracts" % (len(skyMap),))
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
             posBox = afwGeom.Box2D(tractInfo.getBBox())
@@ -78,7 +78,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
             )
             skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
-            self.log.log(self.log.INFO, "tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
+            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
                 (tractInfo.getId(), ", ".join(posStrList), \
                 tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
         if self.config.doWrite:

@@ -111,7 +111,7 @@ class ProcessKeithCoaddTask(pipeBase.CmdLineTask):
             if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s" % (sensorRef.dataId))
         outPrefix = "keithCoadd_"
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
@@ -128,7 +128,7 @@ class ProcessKeithCoaddTask(pipeBase.CmdLineTask):
         sources = None
 
         if self.config.doCalibrate:
-            self.log.log(self.log.INFO, "Performing Calibrate on coadd %s" % (sensorRef.dataId))
+            self.log.info("Performing Calibrate on coadd %s" % (sensorRef.dataId))
             exp = self.makeExp(sensorRef)
             calib = self.calibrate.run(exp, idFactory=idFactory)
             calExposure = calib.exposure
@@ -159,7 +159,7 @@ class ProcessKeithCoaddTask(pipeBase.CmdLineTask):
             # wait until after detection, since that sets detected mask bits and may tweak the background;
             # note that this overwrites an existing calexp if doCalibrate false
             if calExposure is None:
-                self.log.log(self.log.WARN, "calibrated exposure is None; cannot save it")
+                self.log.warn("calibrated exposure is None; cannot save it")
             else:
                 sensorRef.put(calExposure, outPrefix+"calexp")
 

@@ -133,7 +133,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s" % (sensorRef.dataId))
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
         # I don't know if this is the way we ultimately want to do things, but at least
@@ -149,10 +149,10 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
         sources = None
 
         if self.config.doCalibrate:
-            self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (sensorRef.dataId))
+            self.log.info("Performing Calibrate on fpC %s" % (sensorRef.dataId))
             exp = self.makeExp(sensorRef)
             if self.config.loadSdssWcs:
-                self.log.log(self.log.INFO, "Loading WCS from asTrans")
+                self.log.info("Loading WCS from asTrans")
                 wcs = sensorRef.get("asTrans")
                 exp.setWcs(wcs)
             calib = self.calibrate.run(exp, idFactory=idFactory)
@@ -182,7 +182,7 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             # wait until after detection, since that sets detected mask bits and may tweak the background;
             # note that this overwrites an existing calexp if doCalibrate false
             if calExposure is None:
-                self.log.log(self.log.WARN, "calexp is None; cannot save it")
+                self.log.warn("calexp is None; cannot save it")
             else:
                 sensorRef.put(calExposure, 'calexp')
 

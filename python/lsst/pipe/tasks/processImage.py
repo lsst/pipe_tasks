@@ -173,7 +173,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             # wait until after detection, since that sets detected mask bits and may tweak the background;
             # note that this overwrites an existing calexp if doCalibrate false
             if calExposure is None:
-                self.log.log(self.log.WARN, "calibrated exposure is None; cannot save it")
+                self.log.warn("calibrated exposure is None; cannot save it")
             else:
                 dataRef.put(calExposure, self.dataPrefix + "calexp")
 
@@ -199,7 +199,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             dataRef.put(sources, self.dataPrefix + 'src')
             
         if self.config.doWriteSourceMatches:
-            self.log.log(self.log.INFO, "Matching src to reference catalogue" % (dataRef.dataId))
+            self.log.info("Matching src to reference catalogue" % (dataRef.dataId))
             srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
 
             normalizedSrcMatches = afwTable.packMatches(srcMatches)
@@ -223,7 +223,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         try:
             astrometer = self.calibrate.astrometry.astrometer
         except AttributeError:
-            self.log.log(self.log.WARN, "Failed to find an astrometer in calibrate's astronomy task")
+            self.log.warn("Failed to find an astrometer in calibrate's astronomy task")
             return None, None
 
         astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
@@ -233,7 +233,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     def propagateCalibFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
         """
-        self.log.log(self.log.INFO, "Matching icSource and Source catalogs to propagate flags.")
+        self.log.info("Matching icSource and Source catalogs to propagate flags.")
         if icSources is None or sources is None:
             return
 
@@ -259,7 +259,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         # Check that we got it right
         #
         if len(set(m[0].getId() for m in matched)) != len(matched):
-            self.log.log(self.log.WARN, "At least one icSource is matched to more than one Source")
+            self.log.warn("At least one icSource is matched to more than one Source")
         #
         # Copy over the desired flags
         #
