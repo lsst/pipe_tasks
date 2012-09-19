@@ -24,6 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
+import lsst.afw.geom as afwGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -37,7 +38,11 @@ class ProcessCcdConfig(pexConfig.Config):
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
+    doWriteCalibrateMatches = pexConfig.Field(dtype=bool, default=True,
+                                              doc = "Write icSrc to reference matches?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
+    doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False,
+                                           doc = "Compute and write src to reference matches?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
                                                       doc = "Include HeavyFootprint data in source table?")
     isr = pexConfig.ConfigurableField(
@@ -86,7 +91,18 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
         self.makeSubtask("calibrate")
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
+
+        # Setup our schema by starting with fields we want to propagate from icSrc.
+        calibSchema = self.calibrate.schema
+        self.schemaMapper = afwTable.SchemaMapper(calibSchema)
+        self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
+        self.calibSourceKey = self.schemaMapper.addOutputField(
+            afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
+            )
+        for key in self.calibrate.getCalibKeys():
+            self.schemaMapper.addMapping(key)
+        self.schema = self.schemaMapper.getOutputSchema()
+
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
@@ -142,10 +158,12 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                     sensorRef.put(calib.psf, "psf")
                 if calib.apCorr is not None:
                     sensorRef.put(calib.apCorr, "apCorr")
-                if calib.matches is not None:
+                if calib.matches is not None and self.config.doWriteCalibrateMatches:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     sensorRef.put(normalizedMatches, "icMatch")
+        else:
+            calib = None
 
         if self.config.doDetection:
             if calExposure is None:
@@ -173,26 +191,89 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             if psf is None:
                 psf = sensorRef.get('psf')
 
-            assert(calExposure)
-            assert(psf)
-            assert(sources)
             self.deblend.run(calExposure, sources, psf)
-
 
         if self.config.doMeasurement:
             if apCorr is None:
                 apCorr = sensorRef.get("apCorr")
             self.measurement.run(calExposure, sources, apCorr)
 
+        if calib is not None:
+            self.propagateCalibFlags(calib.sources, sources)
+
         if sources is not None and self.config.doWriteSources:
             if self.config.doWriteHeavyFootprintsInSources:
                 sources.setWriteHeavyFootprints(True)
             sensorRef.put(sources, 'src')
             
+        if self.config.doWriteSourceMatches:
+            self.log.log(self.log.INFO, "Matching src to reference catalogue" % (sensorRef.dataId))
+            srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
+
+            normalizedSrcMatches = afwTable.packMatches(srcMatches)
+            normalizedSrcMatches.table.setMetadata(srcMatchMeta)
+            sensorRef.put(normalizedSrcMatches, "srcMatch")
+        else:
+            srcMatches = None; srcMatchMeta = None
+
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,
             exposure = calExposure,
             calib = calib,
             apCorr = apCorr,
             sources = sources,
+            matches = srcMatches,
+            matchMeta = srcMatchMeta,
         )
+
+    def matchSources(self, exposure, sources):
+        """Match the sources to the reference object loaded by the calibrate task"""
+        try:
+            astrometer = self.calibrate.astrometry.astrometer
+        except AttributeError:
+            self.log.log(self.log.WARN, "Failed to find an astrometer in calibrate's astronomy task")
+            return None, None
+
+        astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
+        # N.b. yes, this is what useKnownWcs calls the returned values
+        return astromRet.matches, astromRet.matchMetadata
+
+    def propagateCalibFlags(self, icSources, sources, matchRadius=1):
+        """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
+        """
+        self.log.log(self.log.INFO, "Matching icSource and Source catalogs to propagate flags.")
+        if icSources is None or sources is None:
+            return
+
+        closest = False                 # return all matched objects
+        matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
+        if self.config.doDeblend:
+            matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+        #
+        # Because we had to allow multiple matches to handle parents, we now need to
+        # prune to the best matches
+        #
+        bestMatches = {}
+        for m0, m1, d in matched:
+            id0 = m0.getId()
+            if bestMatches.has_key(id0):
+                if d > bestMatches[id0][2]:
+                    continue
+
+            bestMatches[id0] = (m0, m1, d)
+
+        matched = bestMatches.values()
+        #
+        # Check that we got it right
+        #
+        if len(set(m[0].getId() for m in matched)) != len(matched):
+            self.log.log(self.log.WARN, "At least one icSource is matched to more than one Source")
+        #
+        # Copy over the desired flags
+        #
+        for ics, s, d in matched:
+            s.setFlag(self.calibSourceKey, True)
+            s.assign(ics, self.schemaMapper)
+
+        return
+    
