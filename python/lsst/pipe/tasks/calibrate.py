@@ -238,8 +238,8 @@ class CalibrateTask(pipeBase.Task):
                 self.metadata.set('MAGZERO', float("NaN"))
                 
             if photocalRet:
-                self.log.log(self.log.INFO, "Photometric zero-point: %f" % photocalRet.photocal.getMag(1.0))
-                exposure.getCalib().setFluxMag0(photocalRet.photocal.getFlux(0))
+                self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
+                exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
                 metadata = exposure.getMetadata()
                 # convert to (mag/sec/adu) for metadata
                 try:
