@@ -29,7 +29,7 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, starSelectorRegistry
 from lsst.ip.diffim import ImagePsfMatchTask
 
 class ImageDifferenceConfig(pexConfig.Config):
@@ -37,6 +37,7 @@ class ImageDifferenceConfig(pexConfig.Config):
     
     @todo: make default for doWriteMatchedExp false
     """
+    doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doDeblend = pexConfig.Field(dtype=bool, default=False,
@@ -65,6 +66,16 @@ class ImageDifferenceConfig(pexConfig.Config):
         default = False
     )
 
+    starSelector = starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
+    selectDetection = pexConfig.ConfigurableField(
+        target = SourceDetectionTask,
+        doc = "Initial detections used to feed stars to kernel fitting",
+    )
+    selectMeasurement = pexConfig.ConfigurableField(
+        target = SourceMeasurementTask,
+        doc = "Initial measurements used to feed stars to kernel fitting",
+    )
+
     subtract = pexConfig.ConfigurableField(
         target = ImagePsfMatchTask,
         doc = "Warp and PSF match template to exposure, then subtract",
@@ -83,6 +94,12 @@ class ImageDifferenceConfig(pexConfig.Config):
     )
     
     def setDefaults(self):
+        self.selectDetection.reEstimateBackground = False
+        #self.selectMeasurement.algorithms.names = ("flags.pixel", "centroid.naive", "shape.sdss", "flux.psf")
+        self.selectMeasurement.prefix = "select."
+        self.selectMeasurement.doApplyApCorr = False
+        self.starSelector["secondMoment"].clumpNSigma = 2.0
+
         self.detection.thresholdPolarity = "both"
 
     def validate(self):
@@ -115,6 +132,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.makeSubtask("subtract")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
+
+        if self.config.doSelectSources:
+            self.starSelector = self.config.starSelector.apply(schema=self.schema)
+            self.makeSubtask("selectDetection", schema=self.schema)
+            self.makeSubtask("selectMeasurement", schema=self.schema, algMetadata=self.algMetadata)
+
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doDeblend:
@@ -161,6 +184,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 fwhmPixels = self.config.templateFwhm / wcs.pixelScale().asArcseconds()
             else:
                 fwhmPixels = None
+
+            if self.config.doSelectSources:
+                table = afwTable.SourceTable.make(self.schema, idFactory)
+                table.setMetadata(self.algMetadata) 
+                detRet = self.selectDetection.makeSourceCatalog(table, exposure)
+                sources = detRet.sources
+                self.selectMeasurement.measure(exposure, sources)
+                kernelCandidateList = self.starSelector.selectStars(templateExposure, sources)
+                import pdb; pdb.set_trace()
                 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
@@ -169,13 +201,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 exposureToConvolve = templateExposure,
                 exposureToNotConvolve = exposure,
                 psfFwhmPixTc = fwhmPixels,
+                swapImageToConvolve = self.config.swapImageToConvolve
             )
-            subtractedExposure = subtractRes.subtractedImage
+            subtractedExposure = subtractRes.subtractedExposure
             
             if self.config.doWriteSubtractedExp:
                 sensorRef.put(subtractedExposure, subtractedExposureName)
             if self.config.doWriteMatchedExp:
-                sensorRef.put(subtractRes.matchedImage, self.config.coaddName + "Diff_matchedExp")
+                sensorRef.put(subtractRes.matchedExposure, self.config.coaddName + "Diff_matchedExp")
         
         if self.config.doDetection:
             if subtractedExposure is None:
