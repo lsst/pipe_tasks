@@ -98,7 +98,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         #self.selectMeasurement.algorithms.names = ("flags.pixel", "centroid.naive", "shape.sdss", "flux.psf")
         self.selectMeasurement.prefix = "select."
         self.selectMeasurement.doApplyApCorr = False
-        self.starSelector["secondMoment"].clumpNSigma = 2.0
+        self.starSelector["secondMoment"].clumpNSigma  = 2.0
+        self.starSelector['secondMoment'].badFlags = [self.selectMeasurement.prefix+x for x in self.starSelector['secondMoment'].badFlags]
 
         self.detection.thresholdPolarity = "both"
 
@@ -188,9 +189,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if self.config.doSelectSources:
                 table = afwTable.SourceTable.make(self.schema, idFactory)
                 table.setMetadata(self.algMetadata) 
-                detRet = self.selectDetection.makeSourceCatalog(table, exposure)
+                detRet = self.selectDetection.makeSourceCatalog(table, templateExposure)
                 sources = detRet.sources
-                self.selectMeasurement.measure(exposure, sources)
+                self.selectMeasurement.measure(templateExposure, sources)
                 kernelCandidateList = self.starSelector.selectStars(templateExposure, sources)
                 import pdb; pdb.set_trace()
                 
