@@ -135,7 +135,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.algMetadata = dafBase.PropertyList()
 
         if self.config.doSelectSources:
-            self.starSelector = self.config.starSelector.apply(schema=self.schema)
+            self.starSelector = self.config.starSelector.apply()
             self.makeSubtask("selectDetection", schema=self.schema)
             self.makeSubtask("selectMeasurement", schema=self.schema, algMetadata=self.algMetadata)
 
