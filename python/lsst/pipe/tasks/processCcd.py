@@ -79,8 +79,6 @@ class ProcessCcdTask(ProcessImageTask):
             postIsrExposure = self.isr.run(sensorRef).exposure
         elif self.config.doCalibrate:
             postIsrExposure = sensorRef.get(self.dataPrefix + "postISRCCD")
-        else:
-            postIsrExposure = None
         
         # delegate most of the work to ProcessImageTask
         result = self.process(sensorRef, postIsrExposure)

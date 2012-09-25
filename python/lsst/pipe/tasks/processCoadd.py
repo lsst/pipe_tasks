@@ -83,10 +83,7 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
         self.log.info("Processing %s" % (dataRef.dataId))
 
         # initialize outputs
-        calExposure = None
-        calib = None
-        apCorr = None
-        psf = None
+        coadd = None
 
         if self.config.doCalibrate:
             coadd = dataRef.get(self.config.coaddName + "Coadd")
@@ -97,8 +94,6 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
                 self.log.warn("Could not load initial PSF; dataset does not exist")
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
-        else:
-            coadd = None
 
         # delegate most of the work to ProcessImageTask
         result = self.process(dataRef, coadd)
