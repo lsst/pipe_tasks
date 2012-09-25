@@ -60,6 +60,11 @@ class ProcessCcdSdssTask(ProcessImageTask):
     def _makeArgumentParser(cls):
         return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="fpC")        
 
+    def makeIdFactory(self, sensorRef):
+        expBits = sensorRef.get("ccdExposureId_bits")
+        expId = long(sensorRef.get("ccdExposureId"))
+        return afwTable.IdFactory.makeSource(expId, 64 - expBits)        
+
     @pipeBase.timeMethod
     def makeExp(self, sensorRef):
         image = sensorRef.get("fpC").convertF()
