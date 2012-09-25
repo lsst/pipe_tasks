@@ -28,63 +28,42 @@ import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCameraGeom
 import lsst.afw.geom as afwGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
-from lsst.pipe.tasks.calibrate import CalibrateTask
+from .processImage import ProcessImageTask
+from .calibrate import CalibrateTask
 
-class ProcessCcdSdssConfig(pexConfig.Config):
+class ProcessCcdSdssConfig(ProcessImageTask.ConfigClass):
     """Config for ProcessCcdSdss"""
-    removePedestal = pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS pedestal from fpC file")
-    pedestalVal = pexConfig.Field(dtype=int, default=1000, doc = "Number of counts in the SDSS pedestal")
+    removePedestal = pexConfig.Field(dtype=bool, default=True, doc="Remove SDSS pedestal from fpC file")
+    pedestalVal = pexConfig.Field(dtype=int, default=1000, doc="Number of counts in the SDSS pedestal")
 
-    removeOverlap =  pexConfig.Field(dtype=bool, default=True, doc = "Remove SDSS field overlap from fpC file")
-    overlapSize = pexConfig.Field(dtype=int, default=128, doc = "Number of pixels to remove from top of the fpC file")
+    removeOverlap =  pexConfig.Field(dtype=bool, default=True, 
+                                     doc="Remove SDSS field overlap from fpC file")
+    overlapSize = pexConfig.Field(dtype=int, default=128,
+                                  doc="Number of pixels to remove from top of the fpC file")
     loadSdssWcs = pexConfig.Field(
         dtype=bool, default=False,
         doc = ("Load WCS from asTrans; it can then be used as-is or updated by our own code, "
                "dependening on calibrate.astrometry parameters.")
     )
-
-    doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
-    doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
-    doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
-    doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
-    doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
-    calibrate = pexConfig.ConfigurableField(
-        target = CalibrateTask,
-        doc = "Calibration (inc. high-threshold detection and measurement)",
-    )
-    detection = pexConfig.ConfigurableField(
-        target = SourceDetectionTask,
-        doc = "Low-threshold detection for final measurement",
-    )
-    measurement = pexConfig.ConfigurableField(
-        target = SourceMeasurementTask,
-        doc = "Final source measurement on low-threshold detections",
-    )
-
-    def validate(self):
-        pexConfig.Config.validate(self)
-        if self.doMeasurement and not self.doDetection:
-            raise ValueError("Cannot run source measurement without source detection.")
         
-class ProcessCcdSdssTask(pipeBase.CmdLineTask):
+class ProcessCcdSdssTask(ProcessImageTask):
     """Process a CCD for SDSS
     """
     ConfigClass = ProcessCcdSdssConfig
     _DefaultName = "processCcd"
+    dataPrefix = ""
 
     def __init__(self, **kwargs):
-        pipeBase.CmdLineTask.__init__(self, **kwargs)
-        self.makeSubtask("calibrate")
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
-        self.algMetadata = dafBase.PropertyList()
-        if self.config.doDetection:
-            self.makeSubtask("detection", schema=self.schema)
-        if self.config.doMeasurement:
-            self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        ProcessImageTask.__init__(self, **kwargs)
 
     @classmethod
     def _makeArgumentParser(cls):
         return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="fpC")        
+
+    def makeIdFactory(self, sensorRef):
+        expBits = sensorRef.get("ccdExposureId_bits")
+        expId = long(sensorRef.get("ccdExposureId"))
+        return afwTable.IdFactory.makeSource(expId, 64 - expBits)        
 
     @pipeBase.timeMethod
     def makeExp(self, sensorRef):
@@ -109,8 +88,9 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
 
         exp   = afwImage.ExposureF(mi, wcs)
         exp.setCalib(calib)
-        det = afwCameraGeom.Detector(afwCameraGeom.Id("%s%d" %
-                                                      (sensorRef.dataId["filter"], sensorRef.dataId["camcol"])))
+        det = afwCameraGeom.Detector(
+            afwCameraGeom.Id("%s%d" % (sensorRef.dataId["filter"], sensorRef.dataId["camcol"]))
+        )
         exp.setDetector(det)
         exp.setFilter(afwImage.Filter(sensorRef.dataId['filter']))
 
@@ -133,70 +113,17 @@ class ProcessCcdSdssTask(pipeBase.CmdLineTask):
             if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
-
-        # We make one IdFactory that will be used by both icSrc and src datasets;
-        # I don't know if this is the way we ultimately want to do things, but at least
-        # this ensures the source IDs are fully unique.
-        expBits = sensorRef.get("ccdExposureId_bits")
-        expId = long(sensorRef.get("ccdExposureId"))
-        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
-
-        # initialize outputs
-        calExposure = None
-        calib = None
-        apCorr = None
-        sources = None
+        self.log.info("Processing %s" % (sensorRef.dataId))
 
         if self.config.doCalibrate:
-            self.log.log(self.log.INFO, "Performing Calibrate on fpC %s" % (sensorRef.dataId))
             exp = self.makeExp(sensorRef)
             if self.config.loadSdssWcs:
-                self.log.log(self.log.INFO, "Loading WCS from asTrans")
+                self.log.info("Loading WCS from asTrans")
                 wcs = sensorRef.get("asTrans")
                 exp.setWcs(wcs)
-            calib = self.calibrate.run(exp, idFactory=idFactory)
-            calExposure = calib.exposure
-            apCorr = calib.apCorr
-            if self.config.doWriteCalibrate:
-                sensorRef.put(calib.sources, 'icSrc')
-                if calib.psf is not None:
-                    sensorRef.put(calib.psf, 'psf')
-                if calib.apCorr is not None:
-                    sensorRef.put(calib.apCorr, 'apCorr')
-                if calib.matches is not None:
-                    normalizedMatches = afwTable.packMatches(calib.matches)
-                    normalizedMatches.table.setMetadata(calib.matchMeta)
-                    sensorRef.put(normalizedMatches, 'icMatch')
+        else:
+            exp = None
 
-        if self.config.doDetection:
-            if calExposure is None:
-                if not sensorRef.datasetExists('calexp'):
-                    raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
-                calExposure = sensorRef.get('calexp')
-            table = afwTable.SourceTable.make(self.schema, idFactory)
-            table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, calExposure).sources
-
-        if self.config.doWriteCalibrate:
-            # wait until after detection, since that sets detected mask bits and may tweak the background;
-            # note that this overwrites an existing calexp if doCalibrate false
-            if calExposure is None:
-                self.log.log(self.log.WARN, "calexp is None; cannot save it")
-            else:
-                sensorRef.put(calExposure, 'calexp')
-
-        if self.config.doMeasurement:
-            if apCorr is None:
-                apCorr = sensorRef.get("apCorr")
-            self.measurement.run(calExposure, sources, apCorr)
-
-        if sources is not None and self.config.doWriteSources:
-            sensorRef.put(sources, 'src')
-
-        return pipeBase.Struct(
-            exposure = calExposure,
-            calib = calib,
-            apCorr = apCorr,
-            sources = sources,
-        )
+        # delegate most of the work to ProcessImageTask
+        result = self.process(sensorRef, exp)
+        return result

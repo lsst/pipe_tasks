@@ -104,7 +104,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         ).exposureInfoList
         
         numExp = len(exposureInfoList)
-        self.log.log(self.log.INFO, "Found %s exposures that match your selection criteria" % (numExp,))
+        self.log.info("Found %s exposures that match your selection criteria" % (numExp,))
         if numExp < 1:
             return
         

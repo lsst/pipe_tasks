@@ -35,9 +35,9 @@ class ReferencesTask(Task):
 
     def run(self, dataRef, exposure):
         references = self.getReferences(dataRef, exposure)
-        self.log.log(self.log.INFO, "Retrieved %d reference sources" % len(references))
+        self.log.info("Retrieved %d reference sources" % len(references))
         references = self.subsetReferences(references, exposure)
-        self.log.log(self.log.INFO, "Subset to %d reference sources" % len(references))
+        self.log.info("Subset to %d reference sources" % len(references))
         if self.config.correct:
             references = self.correctReferences(dataRef, references)
         return references
@@ -159,7 +159,7 @@ class ForcedPhotTask(CmdLineTask):
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
         references = self.references.run(dataRef, exposure)
-        self.log.log(self.log.INFO, "Performing forced measurement on %d sources" % len(references))
+        self.log.info("Performing forced measurement on %d sources" % len(references))
         sources = self.generateSources(references, idFactory)
         self.measurement.run(exposure, sources, apCorr=inputs.apCorr, references=references)
         self.writeOutput(dataRef, sources)

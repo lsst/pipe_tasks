@@ -70,7 +70,7 @@ class MeasurePsfTask(pipeBase.Task):
         @param[in]       matches       ReferenceMatchVector, as returned by the AstrometryTask, used
                                        by star selectors that refer to an external catalog.
         """
-        self.log.log(self.log.INFO, "Measuring PSF")
+        self.log.info("Measuring PSF")
 
         psfCandidateList = self.starSelector.selectStars(exposure, sources, matches=matches)
         if psfCandidateList and self.candidateKey is not None:
@@ -78,11 +78,11 @@ class MeasurePsfTask(pipeBase.Task):
                 source = cand.getSource()
                 source.set(self.candidateKey, True)
 
-        self.log.log(self.log.INFO, "PSF star selector found %d candidates" % len(psfCandidateList))
+        self.log.info("PSF star selector found %d candidates" % len(psfCandidateList))
 
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata,
                                                        flagKey=self.usedKey)
-        self.log.log(self.log.INFO, "PSF determination using %d/%d stars." %
+        self.log.info("PSF determination using %d/%d stars." %
                      (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
 
         exposure.setPsf(psf)
