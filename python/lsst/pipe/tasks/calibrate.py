@@ -241,9 +241,27 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPhotoCal:
             assert(matches is not None)
-            photocalRet = self.photocal.run(matches, exposure.getFilter().getName())
-            self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
-            exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
+            try:
+                photocalRet = self.photocal.run(exposure, matches)
+            except Exception, e:
+                self.log.log(self.log.WARN, "Failed to determine photometric zero-point: %s" % e)
+                photocalRet = None
+                
+            if photocalRet:
+                self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
+                exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
+                metadata = exposure.getMetadata()
+                # convert to (mag/sec/adu) for metadata
+                try:
+                    magZero = photocalRet.zp - 2.5 * math.log10(exposure.getCalib().getExptime() )
+                    metadata.set('MAGZERO', magZero)
+                except:
+                    self.log.warn("Could not set normalized MAGZERO in header: no exposure time")
+                metadata.set('MAGZERO_RMS', photocalRet.sigma)
+                metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
+                metadata.set('COLORTERM1', 0.0)
+                metadata.set('COLORTERM2', 0.0)
+                metadata.set('COLORTERM3', 0.0)    
         else:
             photocalRet = None
 
