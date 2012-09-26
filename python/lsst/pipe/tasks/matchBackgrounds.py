@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.pipe.base.argumentParser import IdValueAction
 
 class MatchBackgroundsConfig(pexConfig.Config):
 
@@ -145,10 +146,21 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
     @pipeBase.timeMethod
     def run(self, refExposure, sciExposure):
         # Do your matching here
+        matchBackgroundModel = None
+        matchedExposure      = None
         return matchBackgroundModel, matchedExposure
 
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType=cls.config.datasetType)
+        return MatchBackgroundsParser(name=cls._DefaultName, datasetType=cls.ConfigClass.datasetType)
+
+class MatchBackgroundsParser(pipeBase.ArgumentParser):
+    """A version of lsst.pipe.base.ArgumentParser specialized for background matching
+    """
+    def __init__(self, *args, **kwargs):
+        pipeBase.ArgumentParser.__init__(self, *args, **kwargs)
+        self.add_argument("--refid", nargs="*", action=IdValueAction,
+                          help="unique, full reference background data ID, e.g. --refid visit=865833781 raft=2,2 sensor=1,0 filter=3 patch=3 tract=77,69", metavar="KEY=VALUE") 
+        
