@@ -163,4 +163,23 @@ class MatchBackgroundsParser(pipeBase.ArgumentParser):
         pipeBase.ArgumentParser.__init__(self, *args, **kwargs)
         self.add_argument("--refid", nargs="*", action=IdValueAction,
                           help="unique, full reference background data ID, e.g. --refid visit=865833781 raft=2,2 sensor=1,0 filter=3 patch=3 tract=77,69", metavar="KEY=VALUE") 
+
+#    def _makeDataRefList(self, namespace):
+#        """Make namespace.dataRefList from namespace.dataIdList
+#        """
+#        import pdb; pdb.set_trace()
+#        datasetType = namespace.config.datasetType
+#        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
+#
+#        namespace.dataRefList = []
+#        for dataId in namespace.dataIdList:
+#            # tract and patch are required
+#            for key in validKeys:
+#                if key not in dataId:
+#                    self.error("--id must include " + key)
+#            dataRef = namespace.butler.dataRef(
+#                datasetType = datasetType,
+#                dataId = dataId,
+#            )
+#            namespace.dataRefList.append(dataRef)
         
