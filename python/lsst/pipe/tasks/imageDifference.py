@@ -187,14 +187,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 fwhmPixels = None
 
             if self.config.doSelectSources:
+                # Detect on exposure since that ensures maximal astrometric coverage
                 table = afwTable.SourceTable.make(self.schema, idFactory)
                 table.setMetadata(self.algMetadata) 
-                detRet = self.selectDetection.makeSourceCatalog(table, templateExposure)
+                detRet = self.selectDetection.makeSourceCatalog(table, exposure)
                 sources = detRet.sources
-                self.selectMeasurement.measure(templateExposure, sources)
-                kernelCandidateList = self.starSelector.selectStars(templateExposure, sources)
-                import pdb; pdb.set_trace()
-                
+                self.selectMeasurement.measure(exposure, sources)
+                kernelCandidateList = self.starSelector.selectStars(exposure, sources)
+            else:
+                kernelCandidateList = None
+
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
             # then return the difference
@@ -202,6 +204,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 exposureToConvolve = templateExposure,
                 exposureToNotConvolve = exposure,
                 psfFwhmPixTc = fwhmPixels,
+                candidateList = kernelCandidateList,
                 swapImageToConvolve = self.config.swapImageToConvolve
             )
             subtractedExposure = subtractRes.subtractedExposure
