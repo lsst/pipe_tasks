@@ -235,7 +235,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.doWriteHeavyFootprintsInSources:
                     sources.setWriteHeavyFootprints(True)
                 sensorRef.put(sources, self.config.coaddName + "Diff_src")
-            
+ 
         return pipeBase.Struct(
             subtractedExposure = subtractedExposure,
             subtractRes = subtractRes,
