@@ -18,12 +18,19 @@
 # You should have received a copy of the LSST License Statement and 
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
+
+import numpy as num
+import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
+import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.base.argumentParser import IdValueAction
 
+
 class MatchBackgroundsConfig(pexConfig.Config):
-    
+
+    #Not sure if we want this one
     useDetectionBackground = pexConfig.Field(
         dtype = bool,
         doc = """True -  True uses lsst.meas.detection.getBackground()
@@ -31,7 +38,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
         default = False
     )
     
-    #Cheb options
+    #Chebyshev polynomial fitting options
     backgroundOrder = pexConfig.Field(
         dtype = int,
         doc = """Order of background Chebyshev""",
@@ -164,7 +171,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         im  = sciExposure.getMaskedImage()
         #matches sciExposure in place in memory
         im += matchBackgroundModel
-       
+               
         #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
 
         #returns the background Model, and the matched science exposure
@@ -196,6 +203,16 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         poly.setParameters(Soln)
         return poly
 
+    @pipeBase.timeMethod
+    def matchBackgroundsDetection(self, refExposure, sciExposure):
+        """
+        Placeholder for optional background matching method. To be called when
+        self.config.useDetectionBackground
+        Match backgrounds using meas.algorithms.detection.getBackground()
+        """
+        matchBackgroundModel = None
+        matchedExposure = None
+        return matchBackgroundModel, matchedExposure
 
     @classmethod
     def _makeArgumentParser(cls):
