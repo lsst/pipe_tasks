@@ -40,8 +40,8 @@ class ProcessImageConfig(pexConfig.Config):
     doWriteCalibrateMatches = pexConfig.Field(dtype=bool, default=True,
                                               doc = "Write icSrc to reference matches?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
-    doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False,
-                                           doc = "Compute and write src to reference matches?")
+    doSourceMatches = pexConfig.Field(dtype=bool, default=False, doc="Compute src to reference matches?")
+    doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False, doc="Write src to reference matches?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
                                                       doc = "Include HeavyFootprint data in source table?")
     calibrate = pexConfig.ConfigurableField(
@@ -192,14 +192,14 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             if self.config.doWriteHeavyFootprintsInSources:
                 sources.setWriteHeavyFootprints(True)
             dataRef.put(sources, self.dataPrefix + 'src')
-            
-        if self.config.doWriteSourceMatches:
-            self.log.log(self.log.INFO, "Matching src to reference catalogue" % (dataRef.dataId))
-            srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
 
-            normalizedSrcMatches = afwTable.packMatches(srcMatches)
-            normalizedSrcMatches.table.setMetadata(srcMatchMeta)
-            dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
+        if self.config.doSourceMatches:
+            self.log.info("Matching src to reference catalog")
+            srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
+            if self.config.doWriteSourceMatches:
+                normalizedSrcMatches = afwTable.packMatches(srcMatches)
+                normalizedSrcMatches.table.setMetadata(srcMatchMeta)
+                dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
         else:
             srcMatches = None; srcMatchMeta = None
 
@@ -209,8 +209,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             calib = calib,
             apCorr = apCorr,
             sources = sources,
-            matches = srcMatches,
-            matchMeta = srcMatchMeta,
+            matches = srcMatches if srcMatches is not None else calib.matches if calib is not None else None,
+            matchMeta = (srcMatchMeta if srcMatchMeta is not None else
+                         calib.matchMeta if calib is not None else None),
         )
 
     def matchSources(self, exposure, sources):
