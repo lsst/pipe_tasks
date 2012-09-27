@@ -23,101 +23,45 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.base.argumentParser import IdValueAction
 
 class MatchBackgroundsConfig(pexConfig.Config):
-
-    warpingKernelName = pexConfig.Field(
-        dtype = str,
-        doc = """Type of kernel for remapping""",
-        default = "lanczos3"
+    
+    useDetectionBackground = pexConfig.Field(
+        dtype = bool,
+        doc = """True -  True uses lsst.meas.detection.getBackground()
+                 False - masks, grids and fits Chebyshev polynomials to the backgrounds """,
+        default = False
     )
+    
+    #Cheb options
     backgroundOrder = pexConfig.Field(
         dtype = int,
         doc = """Order of background Chebyshev""",
         default = 4
     )
+    
     backgroundBinsize = pexConfig.Field(
         dtype = int,
         doc = """Bin size for background matching""",
-        default = 128 #256
+        default = 128 
     )
-    writeFits = pexConfig.Field(
-        dtype = bool,
-        doc = """Write output fits files""",
-        default = False
-    )
-    outputPath = pexConfig.Field(
+      
+    gridStat = pexConfig.ChoiceField(
         dtype = str,
-        doc = """Location of output files""",
-        default = "/astro/net/pogo3/yusra/fits/testTimesBkgd50/"
+        doc = """Type of statistic to use for the grid points""",     
+        default = "MEAN",
+        allowed = {
+            "MEAN": "mean",
+            "MEDIAN": "median"
+            }
     )
     
-    psfMatch = pexConfig.Field(
-        dtype = bool,
-        doc = """Psf match all images to the model Psf""",
-        default = True
-    )
-    refPsfSize = pexConfig.Field(
-        dtype = int,
-        doc = """Size of reference Psf matrix; must be same size as SDSS Psfs""",
-        default = 31
-    )
-    refPsfSigma = pexConfig.Field(
-        dtype = float,
-        doc = """Gaussian sigma for Psf FWHM (pixels)""",
-        default = 3.0
-    )
-    useNN2 = pexConfig.Field(
-        dtype = bool,
-        doc = """Use NN2 to estimate difference image backgrounds.""",
-        default = False
-    )
-    
-    commonMask = pexConfig.Field(
-        dtype = bool,
-        doc = """True -  uses sum(all masks) for a common mask for all images in background estimate
-                 False - uses only sum(2 mask) appropriate for each pair of images being matched""",
-        default = False
-    )
-    
-    useMean = pexConfig.Field(
-        dtype = bool,
-        doc = """True -  estimates difference image background as MEAN of unmasked pixels per bin
-                 False - uses MEDIAN""",
-        default = False
-    )    
-    useDetectionBackground = pexConfig.Field(
-        dtype = bool,
-        doc = """True -  True uses lsst.meas.detection.getBackground()
-                False - masks, grids and fits Chebyshev polynomials to the backgrounds """,
-        default = False
-    )
-    detectionBinSize = pexConfig.Field(
-        dtype = int,
-        doc = """sets the binsize for detection.getbackground, if useDetectionBackground = True """,
-        default = 512
-    )    
-   
-    # With linear background model, this should fail
-    # /astro/net/pogo1/stripe82/imaging/6447/40/corr/1/fpC-006447-r1-0718.fit.gz
-    maxBgRms = pexConfig.Field(
-        dtype = float,
-        doc = """Maximum RMS of matched background differences, in counts""",
-        default = 5.0
-    )
-
-    # Clouds
-    # /astro/net/pogo1/stripe82/imaging/7071/40/corr/1/fpC-007071-r1-0190.fit.gz
-    minFluxMag0 = pexConfig.Field(
-        dtype = float,
-        doc = """Minimum flux for star of mag 0""",
-        default = 1.0e+10
-    )
-
+    #Misc options 
     datasetType = pexConfig.Field(
         dtype = str,
         doc = """Name of data product to fetch (calexp, etc)""",
         default = "coaddTempExp"
-    )
-
+    )        
+      
+ 
 class MatchBackgroundsTask(pipeBase.CmdLineTask):
     ConfigClass = MatchBackgroundsConfig
     _DefaultName = "matchBackgrounds"
@@ -144,11 +88,114 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         )
 
     @pipeBase.timeMethod
-    def run(self, refExposure, sciExposure):
-        # Do your matching here
-        matchBackgroundModel = None
-        matchedExposure      = None
-        return matchBackgroundModel, matchedExposure
+    def matchBackgrounds(self, refExposure, sciExposure):
+        """
+        Matches a science exposure's background level to that of a reference image.
+        sciExposure's image is overwritten in memory, mask preserved
+
+        Potential TO DOs:
+            check to make sure they aren't the same image?
+        """
+        
+        #Check that exps are the same shape. Return if they aren't
+        if (sciExposure.getDimensions() != refExposure.getDimensions()):
+            wSci, hSci = sciExposure.getDimensions()
+            wRef, hRef = refExposure.getDimensions()
+            self.log.log(self.log.WARN,
+                         "Cannot Match. Exposures different shapes. sci:(%i, %i) vs. ref:(%i, %i)" %
+                         (wSci,hSci,wRef,hRef))
+            self.log.log(self.log.WARN, "Returning None")
+            #Could return None, sciExposure
+            #but it would have to be caught by the coadder
+            return None, None
+        
+        mask  = refExposure.getMaskedImage().getMask().getArray()
+        mask += sciExposure.getMaskedImage().getMask().getArray()
+        #get indicies of masked pixels
+        #  Currently gets all non-zero pixels,
+        #  but this can be tweaked to get whatver types you want. 
+        ix,iy = num.where((mask) > 0)
+        
+        #make difference image array
+        diffArr  = refExposure.getMaskedImage().getImage().getArray()
+        diffArr -= sciExposure.getMaskedImage().getImage().getArray()
+
+        #set image array pixels to nan if masked
+        diffArr[ix, iy] = num.nan
+
+        #bin
+        width, height  = refExposure.getDimensions()
+        xedges = num.arange(0, width, self.config.backgroundBinsize)
+        yedges = num.arange(0, height, self.config.backgroundBinsize)
+        xedges = num.hstack(( xedges, width ))  #add final edge
+        yedges = num.hstack(( yedges, height )) #add final edge
+        #Initialize lists to hold grid.
+        #Use lists/append to protect against the case where
+        #a bin has no valid pixels and should not be included in the fit
+        bgX = []
+        bgY = []
+        bgZ = []
+        bgdZ = []
+
+        for ymin, ymax in zip(yedges[0:-1],yedges[1:]):
+            for xmin, xmax in zip(xedges[0:-1],xedges[1:]):
+                print ymin, ymax, xmin,xmax
+                area = diffArr[ymin:ymax][:,xmin:xmax]
+                # if there are less than 2 pixels with non-nan,non-masked values:
+                #TODO: num.where is expensive and perhaps
+                #      we can do it once above the loop and just compare indices here
+                idxNotNan = num.where(~num.isnan(area))
+                if len(idxNotNan[0]) >= 2:
+                    bgX.append(0.5 * (xmin + xmax))
+                    bgY.append(0.5 * (ymin + ymax))
+                    bgdZ.append( num.std(area[idxNotNan])
+                                                /num.sqrt(num.size(area[idxNotNan])))
+                    if self.config.gridStat == "MEDIAN":
+                       bgZ.append(num.median(area[idxNotNan])) 
+                    elif self.config.gridStat == 'MEAN':
+                       bgZ.append(num.mean(area[idxNotNan]))
+                    else:
+                        print "Unspecified grid statistic. Using mean"
+                        bgZ.append(num.mean(area[idxNotNan]))
+
+        #Fit grid with polynomial           
+        bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox())
+        matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder, bgX,bgY,bgZ,bgdZ)  
+        im  = sciExposure.getMaskedImage()
+        #matches sciExposure in place in memory
+        im += matchBackgroundModel
+       
+        #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
+
+        #returns the background Model, and the matched science exposure
+        return matchBackgroundModel, sciExposure    
+
+    def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ):
+        poly  = afwMath.Chebyshev1Function2D(int(degree), bbox)          
+        terms = list(poly.getParameters())
+        Ncell = num.sum(num.isfinite(Z)) #number of bins to fit: usually nbinx*nbiny
+        Nterm = len(terms)               
+        m  = num.zeros((Ncell, Nterm))
+        b  = num.zeros((Ncell))
+        iv = num.zeros((Ncell))
+        nc = 0
+        #Would be nice if the afwMath.ChebyshevFunction2D could make the matrix for fitting:
+        #so that looping here wasn't necessary
+        for na in range(Ncell):
+            for nt in range(Nterm):
+                terms[nt] = 1.0
+                poly.setParameters(terms)
+                m[nc, nt] = poly(X[na], Y[na])
+                terms[nt] = 0.0
+            b[nc]  = Z[na]
+            iv[nc] = 1/(dZ[na]*dZ[na])
+            nc += 1
+        M    = num.dot(num.dot(m.T, num.diag(iv)), m)       
+        B    = num.dot(num.dot(m.T, num.diag(iv)), b)
+        Soln = num.linalg.solve(M,B)
+        poly.setParameters(Soln)
+        return poly
+
 
     @classmethod
     def _makeArgumentParser(cls):
