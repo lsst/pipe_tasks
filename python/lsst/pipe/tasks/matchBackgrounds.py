@@ -87,9 +87,9 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             raise pipeBase.TaskError("Data id %s does not exist" % (refDataRef.dataId))
         refExposure = refDataRef.get(self.config.datasetType)
 
-        if not toMatchDataRef.datasetExists(self.config.datasetType):
+        if not toMatchDataRef.datasetExists("coaddTempExp"):
             raise pipeBase.TaskError("Data id %s does not exist" % (toMatchDataRef.dataId))
-        sciExposure = toMatchDataRef.get(self.config.datasetType)
+        sciExposure = toMatchDataRef.get("coaddTempExp")
 
         matchBackgroundModel, matchedExposure = self.matchBackgrounds(refExposure, sciExposure)
 
