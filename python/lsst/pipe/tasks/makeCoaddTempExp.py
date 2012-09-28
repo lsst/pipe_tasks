@@ -76,7 +76,8 @@ class MakeCoaddTempExpConfig(pexConfig.Config):
         dtype = str,
         doc = "data ID keys to consolidate on a single temporary exposure. " \
             "This is intended for mosaic cameras where there is sure to be no overlap; " \
-            "for example LSST consolidates raft and sensor data",
+            "for example LSST consolidates raft and sensor data", \
+            "Warning: if you specify the wrong value the coadd temp exposure cannot be persisted",
         optional = True,
     )
     doWrite = pexConfig.Field(
