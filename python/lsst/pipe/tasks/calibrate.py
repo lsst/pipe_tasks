@@ -159,6 +159,7 @@ class CalibrateTask(pipeBase.Task):
         @param[in]      defects    List of defects on exposure
         @param[in]      idFactory  afw.table.IdFactory to use for source catalog.
         @return a pipeBase.Struct with fields:
+        - backgrounds: A list of background models applied in the calibration phase
         - psf: Point spread function
         - apCorr: Aperture correction
         - sources: Sources used in calibration
@@ -171,21 +172,22 @@ class CalibrateTask(pipeBase.Task):
         self.installInitialPsf(exposure)
         if idFactory is None:
             idFactory = afwTable.IdFactory.makeSimple()
-
+        backgrounds = []
         keepCRs = True                  # At least until we know the PSF
         self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
         self.display('repair', exposure=exposure)
-
         if self.config.doBackground:
             with self.timer("background"):
                 bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
-                del bg
+                backgrounds.append(bg)
 
             self.display('background', exposure=exposure)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         table.setMetadata(self.algMetadata)
         detRet = self.detection.makeSourceCatalog(table, exposure)
         sources = detRet.sources
+        if detRet.fpSets.background:
+            backgrounds.append(detRet.fpSets.background)
 
         if self.config.doPsf:
             self.initialMeasurement.measure(exposure, sources)
@@ -212,10 +214,11 @@ class CalibrateTask(pipeBase.Task):
         if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
             with self.timer("background"):
                 # Subtract background
-                background, exposure = measAlg.estimateBackground(
+                bg, exposure = measAlg.estimateBackground(
                     exposure, self.config.background, subtract=True,
                     statsKeys=('BGMEAN2', 'BGVAR2'))
                 self.log.info("Fit and subtracted background")
+                backgrounds.append(bg)
 
             self.display('background', exposure=exposure)
 
@@ -264,11 +267,12 @@ class CalibrateTask(pipeBase.Task):
                 metadata.set('COLORTERM3', 0.0)    
         else:
             photocalRet = None
-
+        
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
 
         return pipeBase.Struct(
             exposure = exposure,
+            backgrounds = backgrounds,
             psf = psf,
             apCorr = apCorr,
             sources = sources,
