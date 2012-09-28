@@ -67,6 +67,18 @@ class MakeCoaddTempExpConfig(pexConfig.Config):
         dtype = afwMath.Warper.ConfigClass,
         doc = "warper configuration",
     )
+    badMaskPlanes = pexConfig.ListField(
+        dtype = str,
+        doc = "mask planes that, if set, the associated pixel should not be included in the coaddTempExp",
+        default = ("EDGE", "SAT"),
+    )
+    consolidateKeys = pexConfig.ListField(
+        dtype = str,
+        doc = "data ID keys to consolidate on a single temporary exposure. " \
+            "This is intended for mosaic cameras where there is sure to be no overlap; " \
+            "for example LSST consolidates raft and sensor data",
+        optional = True,
+    )
     doWrite = pexConfig.Field(
         doc = "persist <coaddName>Coadd_tempExp and (if desiredFwhm not None) <coaddName>Coadd_initPsf?",
         dtype = bool,
@@ -86,6 +98,7 @@ class MakeCoaddTempExpTask(pipeBase.CmdLineTask):
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
+        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -127,31 +140,68 @@ class MakeCoaddTempExpTask(pipeBase.CmdLineTask):
         if not doPsfMatch:
             self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm is None)")
 
-        tempExpName = self.config.coaddName + "Coadd_tempExp"    
-        for ind, calExpRef in enumerate(imageRefList):
+        tempExpName = self.config.coaddName + "Coadd_tempExp"
+        # a dict of tempExp ID: full calexp ID
+        # where partial tempExp ID excludes tract and patch
+        # (it is just the components that can be gleaned from calexp)
+        tempExpIdDict = dict()
+        if self.config.consolidateKeys:
+            consolidateKeySet = set(self.config.consolidateKeys)
+        else:
+            consolidateKeySet = set()
+
+        numCalExp = 0
+        firstCalExpId = imageRefList[0].dataId
+        consolidateKeySet = set(self.config.consolidateKeys)
+        calExpKeySet = set(firstCalExpId.keys())
+        if consolidateKeySet - calExpKeySet:
+            raise RuntimeError("The following key(s) in self.config.consolidateKeys were not found: %s" % \
+                (sorted(tuple(consolidateKeySet - calExpKeySet)),))
+        
+        tempExpIdKeys = tuple(calExpKeySet - calExpKeySet)
+        for calExpRef in enumerate(imageRefList):
+            calExpId = calExpRef.dataId
             if not calExpRef.datasetExists("calexp"):
-                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (calExpRef.dataId,))
+                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (calExpId,))
                 continue
+            
+            numCalExp += 1
+            tempExpKey = (calExpId[key] for key in tempExpIdKeys)
+            keyList = tempExpIdDict.get(tempExpKey)
+            if keyList:
+                keyList.append(calExpId)
+            else:
+                tempExpIdDict[tempExpKey] = [calExpId]
 
-            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
-                (ind+1, numExp, calExpRef.dataId))
-            exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch)
-            try:
-                exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
-            except Exception, e:
-                self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
-                    (calExpRef.dataId, e))
-                continue
-
-            tempExpId = calExpRef.dataId.copy()
+        numTempExp = len(tempExpIdDict)
+        for tempExpInd, partialTempExpId in enumerate(tempExpIdDict.iterkeys()):
+            tempExpId = partialTempExpId.copy()
             tempExpId.update(patchRef.dataId)
             tempExpRef = calExpRef.butlerSubset.butler.dataRef(
                 datasetType = tempExpName,
                 dataId = tempExpId,
             )
-            
+            self.log.log(self.log.INFO, "Processing tempExp %d of %d: id=%s" % \
+                (tempExpInd+1, numTempExp, tempExpId))
+
+            calExpIdList = tempExpIdDict[tempExpInd]
+            for calExpInd, calExpId in enumerate(calExpIdList):
+                self.log.log(self.log.INFO, "Processing calexp %d of %d for this tempExp: id=%s" % \
+                    (calExpInd+1, len(calExpIdList), calExpRef.dataId))
+                calexp = self.getCalExp(calExpRef, getPsf=doPsfMatch)
+                try:
+                    exposure = self.preprocessExposure(calexp, wcs=wcs, destBBox=bbox)
+                except Exception, e:
+                    self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
+                        (calExpRef.dataId, e))
+                    continue
+                if calExpInd == 0:
+                    coaddTempExp = exposure
+                else:
+                    coaddUtils.copyGoodPixels(coaddTempExp, exposure, self._badPixelMask)
+                
             if self.config.doWrite:
-                tempExpRef.put(exposure, tempExpName)
+                tempExpRef.put(coaddTempExp, tempExpName)
                 if self.config.desiredFwhm is not None:
                     psfName = self.config.coaddName + "Coadd_initPsf"
                     self.log.info("Persisting %s" % (psfName,))
