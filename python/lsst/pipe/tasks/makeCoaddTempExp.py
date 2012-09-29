@@ -25,6 +25,7 @@ import math
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
+import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg
 import lsst.coadd.utils as coaddUtils
@@ -76,7 +77,7 @@ class MakeCoaddTempExpConfig(pexConfig.Config):
         dtype = str,
         doc = "data ID keys to consolidate on a single temporary exposure. " \
             "This is intended for mosaic cameras where there is sure to be no overlap; " \
-            "for example LSST consolidates raft and sensor data", \
+            "for example LSST consolidates raft and sensor data" \
             "Warning: if you specify the wrong value the coadd temp exposure cannot be persisted",
         optional = True,
     )
@@ -124,15 +125,16 @@ class MakeCoaddTempExpTask(pipeBase.CmdLineTask):
         """
         skyInfo = self.getSkyInfo(patchRef)
         
-        wcs = skyInfo.wcs
-        bbox = skyInfo.bbox
+        tractWcs = skyInfo.wcs
+        patchBBox = skyInfo.bbox
+        print "patchBBox=", patchBBox
         
-        imageRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
+        calExpRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
         
         # initialize outputs
         dataRefList = []
         
-        numExp = len(imageRefList)
+        numExp = len(calExpRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
         self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
@@ -152,54 +154,70 @@ class MakeCoaddTempExpTask(pipeBase.CmdLineTask):
             consolidateKeySet = set()
 
         numCalExp = 0
-        firstCalExpId = imageRefList[0].dataId
+        firstCalExpId = calExpRefList[0].dataId
         consolidateKeySet = set(self.config.consolidateKeys)
         calExpKeySet = set(firstCalExpId.keys())
         if consolidateKeySet - calExpKeySet:
             raise RuntimeError("The following key(s) in self.config.consolidateKeys were not found: %s" % \
                 (sorted(tuple(consolidateKeySet - calExpKeySet)),))
         
-        tempExpIdKeys = tuple(calExpKeySet - calExpKeySet)
-        for calExpRef in enumerate(imageRefList):
+        # tempKeyList is a tuple of ID key names in a calExpId that identify a coaddTempExp;
+        # this is all calExpId key names except those in consolidatedKeys;
+        # note that you must also specify tract and patch to make a compete coaddTempExp ID
+        tempExpKeyList = tuple(sorted(calExpKeySet - consolidateKeySet))
+
+        # compute tempExpIdDict, a dict whose:
+        # - keys are tuples of coaddTempExp ID values in tempKeyList order
+        # - values are a list of calExp data references for calExp that belong in this coaddTempExp
+        for calExpRef in calExpRefList:
             calExpId = calExpRef.dataId
             if not calExpRef.datasetExists("calexp"):
-                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (calExpId,))
+                self.log.warn("Could not find calexp %s; skipping it" % (calExpId,))
                 continue
             
             numCalExp += 1
-            tempExpKey = (calExpId[key] for key in tempExpIdKeys)
-            keyList = tempExpIdDict.get(tempExpKey)
-            if keyList:
-                keyList.append(calExpId)
+            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
+            calExpSubsetRefList = tempExpIdDict.get(tempExpIdTuple)
+            if calExpSubsetRefList:
+                calExpSubsetRefList.append(calExpRef)
             else:
-                tempExpIdDict[tempExpKey] = [calExpId]
+                tempExpIdDict[tempExpIdTuple] = [calExpRef]
 
         numTempExp = len(tempExpIdDict)
-        for tempExpInd, partialTempExpId in enumerate(tempExpIdDict.iterkeys()):
-            tempExpId = partialTempExpId.copy()
+        for tempExpInd, calExpSubsetRefList in enumerate(tempExpIdDict.itervalues()):
+            # derive tempExpId from the first calExpId
+            tempExpId = dict((key, calExpSubsetRefList[0].dataId[key]) for key in tempExpKeyList)
             tempExpId.update(patchRef.dataId)
             tempExpRef = calExpRef.butlerSubset.butler.dataRef(
                 datasetType = tempExpName,
                 dataId = tempExpId,
             )
-            self.log.log(self.log.INFO, "Processing tempExp %d of %d: id=%s" % \
+            self.log.log(self.log.INFO, "Computing coaddTempExp %d of %d: id=%s" % \
                 (tempExpInd+1, numTempExp, tempExpId))
 
-            calExpIdList = tempExpIdDict[tempExpInd]
-            for calExpInd, calExpId in enumerate(calExpIdList):
+            for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
                 self.log.log(self.log.INFO, "Processing calexp %d of %d for this tempExp: id=%s" % \
-                    (calExpInd+1, len(calExpIdList), calExpRef.dataId))
+                    (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
                 calexp = self.getCalExp(calExpRef, getPsf=doPsfMatch)
                 try:
-                    exposure = self.preprocessExposure(calexp, wcs=wcs, destBBox=bbox)
+                    if calExpInd == 0:
+                        # make a full-sized exposure and use it as the coaddTempExp
+                        coaddTempExp = self.processCalexp(calexp, wcs=tractWcs, destBBox=patchBBox)
+                    else:
+                        # make as small an exposure within coaddTempExp as possible
+                        exposure = self.processCalexp(calexp, wcs=tractWcs, maxBBox=patchBBox)
                 except Exception, e:
-                    self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
+                    self.log.warn("Error processing calexp %s; skipping it: %s" % \
                         (calExpRef.dataId, e))
                     continue
-                if calExpInd == 0:
-                    coaddTempExp = exposure
-                else:
-                    coaddUtils.copyGoodPixels(coaddTempExp, exposure, self._badPixelMask)
+                if calExpInd > 0:
+                    numGoodPix = coaddUtils.copyGoodPixels(
+                        coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
+                    if numGoodPix == 0:
+                        self.log.warn("Calexp %s has no good pixels in this patch" % \
+                            (calExpRef.dataId))
+                    else:
+                        self.log.info("Calexp %s has %s good pixels in this patch" % (numGoodPix,))
                 
             if self.config.doWrite:
                 tempExpRef.put(coaddTempExp, tempExpName)
@@ -290,7 +308,7 @@ class MakeCoaddTempExpTask(pipeBase.CmdLineTask):
         return afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
             coreSigma, coreSigma * 2.5, 0.1)
     
-    def preprocessExposure(self, exposure, wcs, maxBBox=None, destBBox=None):
+    def processCalexp(self, exposure, wcs, maxBBox=None, destBBox=None):
         """PSF-match exposure (if self.config.desiredFwhm is not None), warp and scale
         
         @param[in,out] exposure: exposure to preprocess; FWHM fitting is done in place
