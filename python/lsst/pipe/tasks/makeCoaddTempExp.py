@@ -33,14 +33,6 @@ __all__ = ["MakeCoaddTempExpTask"]
 class MakeCoaddTempExpConfig(CoaddCalexpBaseTask.ConfigClass):
     """Config for MakeCoaddTempExpTask
     """
-    consolidateKeys = pexConfig.ListField(
-        dtype = str,
-        doc = "data ID keys to consolidate on a single temporary exposure. " \
-            "This is intended for mosaic cameras where there is sure to be no overlap; " \
-            "for example LSST consolidates raft and sensor data" \
-            "Warning: if you specify the wrong value the coadd temp exposure cannot be persisted",
-        optional = True,
-    )
     coaddKernelSizeFactor = pexConfig.Field(
         dtype = float,
         doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
@@ -58,9 +50,6 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
-    
-    def __init__(self, *args, **kwargs):
-        CoaddCalexpBaseTask.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -104,38 +93,23 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
             self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm is None)")
 
         tempExpName = self.config.coaddName + "Coadd_tempExp"
-        # a dict of tempExp ID: full calexp ID
-        # where partial tempExp ID excludes tract and patch
-        # (it is just the components that can be gleaned from calexp)
-        tempExpIdDict = dict()
-        if self.config.consolidateKeys:
-            consolidateKeySet = set(self.config.consolidateKeys)
-        else:
-            consolidateKeySet = set()
 
-        numCalExp = 0
-        firstCalExpId = calExpRefList[0].dataId
-        consolidateKeySet = set(self.config.consolidateKeys)
-        calExpKeySet = set(firstCalExpId.keys())
-        if consolidateKeySet - calExpKeySet:
-            raise RuntimeError("The following key(s) in self.config.consolidateKeys were not found: %s" % \
-                (sorted(tuple(consolidateKeySet - calExpKeySet)),))
-        
-        # tempKeyList is a tuple of ID key names in a calExpId that identify a coaddTempExp;
-        # this is all calExpId key names except those in consolidatedKeys;
-        # note that you must also specify tract and patch to make a compete coaddTempExp ID
-        tempExpKeyList = tuple(sorted(calExpKeySet - consolidateKeySet))
+        # compute tempKeyList: a tuple of ID key names in a calExpId that identify a coaddTempExp.
+        # You must also specify tract and patch to make a complete coaddTempExp ID.
+        butler = patchRef.butlerSubset.butler
+        tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
+        tempExpKeyList = tuple(sorted(tempExpKeySet))
 
         # compute tempExpIdDict, a dict whose:
         # - keys are tuples of coaddTempExp ID values in tempKeyList order
         # - values are a list of calExp data references for calExp that belong in this coaddTempExp
+        tempExpIdDict = dict()
         for calExpRef in calExpRefList:
             calExpId = calExpRef.dataId
             if not calExpRef.datasetExists("calexp"):
                 self.log.warn("Could not find calexp %s; skipping it" % (calExpId,))
                 continue
             
-            numCalExp += 1
             tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
             calExpSubsetRefList = tempExpIdDict.get(tempExpIdTuple)
             if calExpSubsetRefList:

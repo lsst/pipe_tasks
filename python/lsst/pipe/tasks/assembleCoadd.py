@@ -31,6 +31,14 @@ from .coaddBase import CoaddBaseTask
 __all__ = ["AssembleCoaddTask"]
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
+    consolidateKeys = pexConfig.ListField(
+        dtype = str,
+        doc = "data ID keys to consolidate on a single temporary exposure. " \
+            "This is intended for mosaic cameras where there is sure to be no overlap; " \
+            "for example LSST consolidates raft and sensor data" \
+            "Warning: if you specify the wrong value the coadd temp exposure cannot be persisted",
+        optional = True,
+    )
     subregionSize = pexConfig.ListField(
         dtype = int,
         doc = """width, height of stack subregion size;
@@ -62,17 +70,12 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
+    
+    @todo: compute weight of each coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
-    _DefaultName = "outlierRejectedCoadd"
+    _DefaultName = "assembleCoadd"
 
-    def __init__(self, *args, **kwargs):
-        CoaddBaseTask.__init__(self, *args, **kwargs)
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
-
-    def getBadPixelMask(self):
-        return self._badPixelMask
-    
     @pipeBase.timeMethod
     def run(self, patchRef):
         """Assemble coaddTempExp
@@ -89,32 +92,52 @@ class AssembleCoaddTask(CoaddBaseTask):
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
         
-        imageRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
+        calExpRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
         
-        numExp = len(imageRefList)
+        numExp = len(calExpRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
-        self.log.info("Coadd %s calexp" % (numExp,))
-    
-        tempExpRefList = []
-        tempExpName = self.config.coaddName + "CoaddTempExp"
-        for ind, calExpRef in enumerate(imageRefList):
-            tempExpId = calExpRef.dataId.copy()
-            tempExpId.update(patchRef.dataId)
-            tempExpRef = calExpRef.butlerSubset.butler.dataRef(
-                datasetType = tempExpName,
-                dataId = tempExpId,
-            )
+        self.log.info("Selected %s calexp" % (numExp,))
 
+        tempExpName = self.config.coaddName + "Coadd_tempExp"
+        tempExpSubName = tempExpName + "_sub"
+
+        # compute tempKeyList: a tuple of ID key names in a calExpId that identify a coaddTempExp.
+        # You must also specify tract and patch to make a complete coaddTempExp ID.
+        butler = patchRef.butlerSubset.butler
+        tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
+        tempExpKeyList = tuple(sorted(tempExpKeySet))
+
+        # compute tempExpIdDict, a dict whose:
+        # - keys are tuples of coaddTempExp ID values in tempKeyList order
+        # - values are tempExpRef
+        # Do not check for existence yet (to avoid checking one coaddTempExp multiple times);
+        # wait until all desired coaddTempExp have been identified
+        tempExpIdDict = dict()
+        for calExpRef in calExpRefList:
+            calExpId = calExpRef.dataId
+            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
+            if tempExpIdTuple not in tempExpIdDict:
+                tempExpId = dict((key, calExpId[key]) for key in tempExpKeyList)
+                tempExpId.update(patchRef.dataId)
+                tempExpRef = calExpRef.butlerSubset.butler.dataRef(
+                    datasetType = tempExpName,
+                    dataId = tempExpId,
+                )
+                tempExpIdDict[tempExpIdTuple] = tempExpRef
+        
+        # compute tempExpRefList: a list of tempExpRef that actually exist
+        tempExpRefList = []
+        for tempExpRef in tempExpIdDict.itervalues():
             if not tempExpRef.datasetExists(tempExpName):
-                self.log.log(self.log.WARN, "Could not find %s %s; skipping it" % \
-                    (tempExpName, calExpRef.dataId,))
+                self.log.warn("Could not find %s %s; skipping it" % (tempExpName, calExpId))
                 continue
-            
             tempExpRefList.append(tempExpRef)
+        del tempExpIdDict
 
         if not tempExpRefList:
-            raise pipeBase.TaskError("No images to coadd")
+            raise pipeBase.TaskError("No coadd temporary exposures found")
+        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
 
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
@@ -141,19 +164,20 @@ class AssembleCoaddTask(CoaddBaseTask):
             maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
             weightList = []
             for tempExpRef in tempExpRefList:
-                exposure = expMeta.dataRef.get("coaddTempExp_sub", bbox=subBBox, imageOrigin="PARENT")
+                exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
                 maskedImage = exposure.getMaskedImage()
                 if not didSetMetadata:
-                    coadd.setFilter(exposure.getFilter())
-                    coadd.setCalib(exposure.getCalib())
+                    coaddExposure.setFilter(exposure.getFilter())
+                    coaddExposure.setCalib(exposure.getCalib())
                     didSetMetadata = True
 
                 maskedImageList.append(maskedImage)
-                weightList.append(expMeta.weight)
+                weightList.append(1.0)
 
             try:
-                coaddSubregion = afwMath.statisticsStack(
-                    maskedImageList, statsFlags, statsCtrl, weightList)
+                with self.timer("stack"):
+                    coaddSubregion = afwMath.statisticsStack(
+                        maskedImageList, statsFlags, statsCtrl, weightList)
     
                 coaddView <<= coaddSubregion
             except Exception, e:
