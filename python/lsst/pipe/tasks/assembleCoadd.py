@@ -26,18 +26,11 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coadd import CoaddTask
+from .coaddBase import CoaddBaseTask
 
-class AssembleCoaddConfig(CoaddTask.ConfigClass):
-    coaddName = pexConfig.Field(
-        doc = "coadd name: typically one of deep or goodSeeing",
-        dtype = str,
-        default = "deep",
-    )
-    select = pexConfig.ConfigurableField(
-        doc = "image selection subtask",
-        target = BadSelectImagesTask,
-    )
+__all__ = ["AssembleCoaddTask"]
+
+class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     subregionSize = pexConfig.ListField(
         dtype = int,
         doc = """width, height of stack subregion size;
@@ -60,32 +53,6 @@ class AssembleCoaddConfig(CoaddTask.ConfigClass):
         doc = "number of iterations of outlier rejection; ignored if doSigmaClip false",
         default = 2,
     )
-    badMaskPlanes = pexConfig.ListField(
-        dtype = str,
-        doc = "mask planes that, if set, the associated pixel should not be included in the coadd",
-        default = ("EDGE", "SAT"),
-    )
-    coaddKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
-        default = 3.0,
-    )
-    doInterp = pexConfig.Field(
-        doc = "interpolate over EDGE pixels?",
-        dtype = bool,
-        default = True,
-    )
-    interpKernelFallbackFwhm = pexConfig.Field(
-        dtype = float,
-        doc = """normally desiredFwhm is used as the FWHM of PSF kernel for interpolating NaNs,
-            but if desiredFwhm is None then interpKernelFallbackFwhm is used (arc seconds)""",
-        default = 1.5,
-    )
-    interpKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "interpolation kernel size = interpFwhm converted to pixels * interpKernelSizeFactor",
-        default = 3.0,
-    )
     doWrite = pexConfig.Field(
         doc = "persist coadd?",
         dtype = bool,
@@ -93,14 +60,14 @@ class AssembleCoaddConfig(CoaddTask.ConfigClass):
     )
     
 
-class AssembleCoaddTask(CoaddTask):
+class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
     _DefaultName = "outlierRejectedCoadd"
 
     def __init__(self, *args, **kwargs):
-        CoaddTask.__init__(self, *args, **kwargs)
+        CoaddBaseTask.__init__(self, *args, **kwargs)
         self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
     def getBadPixelMask(self):
@@ -204,93 +171,6 @@ class AssembleCoaddTask(CoaddTask):
             coaddExposure = coaddExposure,
         )
 
-    def selectExposures(self, patchRef, wcs, bbox):
-        """Select exposures to coadd
-        
-        @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
-            plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] wcs: WCS of coadd patch
-        @param[in] bbox: bbox of coadd patch
-        @return a list of science exposures to coadd, as butler data references
-        """
-        cornerPosList = afwGeom.Box2D(bbox).getCorners()
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
-        return self.select.runDataRef(patchRef, coordList).dataRefList
-    
-    def getSkyInfo(self, patchRef):
-        """Return SkyMap, tract and patch
-
-        @param patchRef: data reference for sky map. Must include keys "tract" and "patch"
-        
-        @return pipe_base Struct containing:
-        - skyMap: sky map
-        - tractInfo: information for chosen tract of sky map
-        - patchInfo: information about chosen patch of tract
-        - wcs: WCS of tract
-        - bbox: outer bbox of patch, as an afwGeom Box2I
-        """
-        skyMap = patchRef.get(self.config.coaddName + "Coadd_skyMap")
-        tractId = patchRef.dataId["tract"]
-        tractInfo = skyMap[tractId]
-
-        # patch format is "xIndex,yIndex"
-        patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
-        patchInfo = tractInfo.getPatchInfo(patchIndex)
-        
-        return pipeBase.Struct(
-            skyMap = skyMap,
-            tractInfo = tractInfo,
-            patchInfo = patchInfo,
-            wcs = tractInfo.getWcs(),
-            bbox = patchInfo.getOuterBBox(),
-        )
-
-    @pipeBase.timeMethod
-    def interpolateEdgePixels(self, exposure):
-        """Interpolate over edge pixels
-        
-        This interpolates over things like saturated pixels and replaces edge pixels with 0.
-        
-        @param[in,out] exposure: exposure over which to interpolate over edge pixels
-        @param[in] PSF to use to detect NaNs
-        """
-        self.log.info("Interpolate over EDGE pixels")
-        wcs = exposure.getWcs()
-        fwhm = self.config.desiredFwhm if self.config.desiredFwhm is not None \
-            else self.config.interpKernelFallbackFwhm
-        fwhmPixels = fwhm / wcs.pixelScale().asArcseconds()
-        kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
-        kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-        psfModel = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-
-        maskedImage = exposure.getMaskedImage()
-        nanDefectList = ipIsr.getDefectListFromMask(maskedImage, "EDGE", growFootprints=0)
-        measAlg.interpolateOverDefects(exposure.getMaskedImage(), psfModel, nanDefectList, 0.0)
-    
-    def postprocessCoadd(self, coaddExposure):
-        """Postprocess the exposure coadd, e.g. interpolate over edge pixels
-        """
-        if self.config.doInterp:
-            self.interpolateEdgePixels(exposure=coaddExposure)
-        else:
-            self.log.info("config.doInterp is None; do not interpolate over EDGE pixels")
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        """Create an argument parser
-        """
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
-
-    def _getConfigName(self):
-        """Return the name of the config dataset
-        """
-        return "%s_coadd_config" % (self.config.coaddName,)
-    
-    def _getMetadataName(self):
-        """Return the name of the metadata dataset
-        """
-        return "%s_coadd_metadata" % (self.config.coaddName,)
-
 
 def _subBBoxIter(bbox, subregionSize):
     """Iterate over subregions of a bbox
@@ -315,27 +195,3 @@ def _subBBoxIter(bbox, subregionSize):
                 raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, colShift=%s, rowShift=%s" % \
                     (bbox, subregionSize, colShift, rowShift))
             yield subBBox
-
-
-class CoaddArgumentParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
-    
-    Required because butler.subset does not support patch and tract
-    """
-    def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
-        """
-        datasetType = namespace.config.coaddName + "Coadd"
-        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
-
-        namespace.dataRefList = []
-        for dataId in namespace.dataIdList:
-            # tract and patch are required
-            for key in validKeys:
-                if key not in dataId:
-                    self.error("--id must include " + key)
-            dataRef = namespace.butler.dataRef(
-                datasetType = datasetType,
-                dataId = dataId,
-            )
-            namespace.dataRefList.append(dataRef)
