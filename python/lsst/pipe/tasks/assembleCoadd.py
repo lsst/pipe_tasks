@@ -127,7 +127,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(3.0)
         statsCtrl.setNumIter(2)
-        statsCtrl.setAndMask(badPixelMask)
+        statsCtrl.setAndMask(self._badPixelMask)
         statsCtrl.setNanSafe(True)
         
         # compute tempExpRefList: a list of tempExpRef that actually exist
@@ -145,7 +145,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                 afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
-            self.log.info("Weight of %s %s = 0.3f" % (tempExpName, tempExpRef.dataId, weight))
+            self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
             del maskedImage
             del tempExp
             
