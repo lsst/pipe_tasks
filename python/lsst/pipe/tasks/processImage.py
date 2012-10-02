@@ -131,7 +131,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
             if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
-        - backgrounds: list of background models applied to the input exposure
         """
         idFactory = self.makeIdFactory(dataRef)
 
@@ -200,8 +199,11 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 self.log.warn("calibrated exposure is None; cannot save it")
             else:
                 if self.config.persistBackgroundModel:
-                    self.log.error("Persisting background models is not implemented")
-                    raise NotImplementedError("Background model persistence is not implemented")
+                    self.log.warn("Persisting background models as an image")
+                    bg = backgrounds[0].getImageF()
+                    for b in backgrounds[1:]:
+                        bg += b.getImageF()
+                    dataRef.put(bg, self.dataPrefix+"calexpBackground")
                 else:
                     mi = calExposure.getMaskedImage()
                     for bg in backgrounds:
@@ -234,7 +236,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             sources = sources,
             matches = srcMatches,
             matchMeta = srcMatchMeta,
-            backgrounds= backgrounds,
+            backgrounds = backgrounds,
         )
 
     def matchSources(self, exposure, sources):
