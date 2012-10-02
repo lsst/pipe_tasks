@@ -70,8 +70,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
-    
-    @todo: compute weight of each coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
     _DefaultName = "coadd"
@@ -125,14 +123,34 @@ class AssembleCoaddTask(CoaddBaseTask):
                     dataId = tempExpId,
                 )
                 tempExpIdDict[tempExpIdTuple] = tempExpRef
+
+        statsCtrl = afwMath.StatisticsControl()
+        statsCtrl.setNumSigmaClip(3.0)
+        statsCtrl.setNumIter(2)
+        statsCtrl.setAndMask(badPixelMask)
+        statsCtrl.setNanSafe(True)
         
         # compute tempExpRefList: a list of tempExpRef that actually exist
+        # and weightList: a list of the weight of the associated tempExp
         tempExpRefList = []
+        weightList = []
         for tempExpRef in tempExpIdDict.itervalues():
             if not tempExpRef.datasetExists(tempExpName):
-                self.log.warn("Could not find %s %s; skipping it" % (tempExpName, calExpId))
+                self.log.warn("Could not find %s %s; skipping it" % (tempExpName, tempExpRef.dataId))
                 continue
+
+            tempExp = tempExpRef.get(tempExpName)
+            maskedImage = tempExp.getMaskedImage()
+            statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
+                afwMath.MEANCLIP, statsCtrl)
+            meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
+            weight = 1.0 / float(meanVar)
+            self.log.info("Weight of %s %s = 0.3f" % (tempExpName, tempExpRef.dataId, weight))
+            del maskedImage
+            del tempExp
+            
             tempExpRefList.append(tempExpRef)
+            weightList.append(weight)
         del tempExpIdDict
 
         if not tempExpRefList:
@@ -162,7 +180,6 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.log.info("Computing coadd %s" % (subBBox,))
             coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
             maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-            weightList = []
             for tempExpRef in tempExpRefList:
                 exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
                 maskedImage = exposure.getMaskedImage()
@@ -172,7 +189,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                     didSetMetadata = True
 
                 maskedImageList.append(maskedImage)
-                weightList.append(1.0)
 
             try:
                 with self.timer("stack"):

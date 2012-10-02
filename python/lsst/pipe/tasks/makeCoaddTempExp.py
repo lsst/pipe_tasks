@@ -76,7 +76,6 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
         
         tractWcs = skyInfo.wcs
         patchBBox = skyInfo.bbox
-        print "patchBBox=", patchBBox
         
         calExpRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
         
