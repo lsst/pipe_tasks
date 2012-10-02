@@ -74,7 +74,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     @todo: compute weight of each coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
-    _DefaultName = "assembleCoadd"
+    _DefaultName = "coadd"
 
     @pipeBase.timeMethod
     def run(self, patchRef):
