@@ -222,42 +222,42 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         """Create an argument parser
         """
         return MatchBackgroundsParser(name=cls._DefaultName, datasetType=cls.ConfigClass().datasetType)
+    
+    @classmethod
+    def getRunInfo(cls, parsedCmd):
+        log = parsedCmd.log if not pipeBase.cmdLineTask.useMultiProcessing(parsedCmd) else None# XXX pexLogging is not yet picklable
+        refDataRef = parsedCmd.refDataRefList[0]
+        inputs = [pipeBase.Struct(cls=cls, config=parsedCmd.config, log=log, doraise=parsedCmd.doraise, dataRef=dataRef, refDataRef=refDataRef)
+                  for dataRef in parsedCmd.dataRefList]
+        return pipeBase.Struct(func=runTask, inputs=inputs)
 
-    def runParsedCmd(self, parsedCmd):
-        """Run the task, given the results of parsing a command line."""
-        self.runDataRefList(parsedCmd.refDataRefList[0], parsedCmd.dataRefList, doRaise=parsedCmd.doraise)
-
-    def runDataRefList(self, refDataRef, dataRefList, doRaise=False):
+    def runDataRef(self, refDataRef, dataRef, doraise=False):
         """Execute the parsed command on a sequence of dataRefs,
         including writing the config and metadata.
         """
-        name = self._DefaultName
-        result = []
-        for dataRef in dataRefList:
+        try:
+            configName = self._getConfigName()
+            if configName is not None:
+                dataRef.put(self.config, configName)
+        except Exception, e:
+            self.log.log(self.log.WARN, "Could not persist config for dataId=%s: %s" % \
+                (dataRef.dataId, e,))
+        if doraise:
+            self.run(refDataRef, dataRef)
+        else:
             try:
-                configName = self._getConfigName()
-                if configName is not None:
-                    dataRef.put(self.config, configName)
+                self.run(refDataRef, dataRef)
             except Exception, e:
-                self.log.log(self.log.WARN, "Could not persist config for dataId=%s: %s" % \
-                    (dataRef.dataId, e,))
-            if doRaise:
-                result.append(self.run(refDataRef, dataRef))
-            else:
-                try:
-                    result.append(self.run(refDataRef, dataRef))
-                except Exception, e:
-                    self.log.log(self.log.FATAL, "Failed on dataId=%s: %s" % (dataRef.dataId, e))
-                    if not isinstance(e, pipeBase.TaskError):
-                        traceback.print_exc(file=sys.stderr)
-            try:
-                metadataName = self._getMetadataName()
-                if metadataName is not None:
-                    dataRef.put(self.getFullMetadata(), metadataName)
-            except Exception, e:
-                self.log.log(self.log.WARN, "Could not persist metadata for dataId=%s: %s" % \
-                    (dataRef.dataId, e,))
-        return result
+                self.log.log(self.log.FATAL, "Failed on dataId=%s: %s" % (dataRef.dataId, e))
+                if not isinstance(e, TaskError):
+                    traceback.print_exc(file=sys.stderr)
+        try:
+            metadataName = self._getMetadataName()
+            if metadataName is not None:
+                dataRef.put(self.getFullMetadata(), metadataName)
+        except Exception, e:
+            self.log.log(self.log.WARN, "Could not persist metadata for dataId=%s: %s" % \
+                (dataRef.dataId, e,))
 
 class MatchBackgroundsParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for background matching
@@ -344,3 +344,7 @@ class RefIdValueAction(argparse.Action):
         idDictList = [dict(zip(keyList, valList)) for valList in itertools.product(*iterList)]
 
         namespace.refDataIdList = idDictList
+
+def runTask(args):
+    task = args.cls(name = args.cls._DefaultName, config=args.config, log=args.log)
+    task.runDataRef(args.refDataRef, args.dataRef, doraise=args.doraise)
