@@ -120,8 +120,8 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #Could return None, sciExposure
             #but it would have to be caught by the coadder
             return None, None
-        
-        mask  = refExposure.getMaskedImage().getMask().getArray()
+
+        mask  = num.copy(refExposure.getMaskedImage().getMask().getArray())
         mask += sciExposure.getMaskedImage().getMask().getArray()
         #get indicies of masked pixels
         #  Currently gets all non-zero pixels,
@@ -129,12 +129,12 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         ix,iy = num.where((mask) > 0)
         
         #make difference image array
-        diffArr  = refExposure.getMaskedImage().getImage().getArray()
+        diffArr  = num.copy(refExposure.getMaskedImage().getImage().getArray())
         diffArr -= sciExposure.getMaskedImage().getImage().getArray()
 
         #set image array pixels to nan if masked
         diffArr[ix, iy] = num.nan
-
+        
         #bin
         width, height  = refExposure.getDimensions()
         xedges = num.arange(0, width, self.config.backgroundBinsize)
@@ -151,7 +151,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
         for ymin, ymax in zip(yedges[0:-1],yedges[1:]):
             for xmin, xmax in zip(xedges[0:-1],xedges[1:]):
-                print ymin, ymax, xmin,xmax
+                #print ymin, ymax, xmin,xmax
                 area = diffArr[ymin:ymax][:,xmin:xmax]
                 # if there are less than 2 pixels with non-nan,non-masked values:
                 #TODO: num.where is expensive and perhaps
@@ -172,11 +172,17 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
         #Fit grid with polynomial           
         bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox())
-        matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder, bgX,bgY,bgZ,bgdZ)  
-        im  = sciExposure.getMaskedImage()
+        matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder, bgX,bgY,bgZ,bgdZ)
+
+        #Temporary intermediate step until I figure out why
+        #im += matchBackgroundModel doesn't work (gives values ~1e8)
+        Zeroim = afwImage.MaskedImageF(afwGeom.Box2I(bbox))
+        Zeroim += matchBackgroundModel
+
+        im  = sciExposure.getMaskedImage().getImage()
         #matches sciExposure in place in memory
-        im += matchBackgroundModel
-               
+        im += Zeroim.getImage() #want this to be im+=matchBackgroundModel
+        
         #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
 
         #returns the background Model, and the matched science exposure
