@@ -8,6 +8,7 @@ from lsst.pipe.base import Task, Struct, ArgumentParser
 import lsst.afw.image as afwImage
 
 class IngestArgumentParser(ArgumentParser):
+    """Argument parser to support ingesting images into the image repository"""
     def __init__(self, *args, **kwargs):
         super(IngestArgumentParser, self).__init__(*args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true", default=False,
@@ -18,6 +19,7 @@ class IngestArgumentParser(ArgumentParser):
         self.add_argument("files", nargs="+", help="Names of file")
 
 class ParseConfig(Config):
+    """Configuration for ParseTask"""
     translation = DictField(keytype=str, itemtype=str, default={},
                             doc="Translation table for property --> header")
     translators = DictField(keytype=str, itemtype=str, default={},
@@ -26,7 +28,8 @@ class ParseConfig(Config):
     extnames = ListField(dtype=str, default=[], doc="Extension names to search for")
 
 class ParseTask(Task):
-    """Task that will parse the filename and its contents"""
+    """Task that will parse the filename and/or its contents to get the required information
+    for putting the file in the correct location and populating the registry."""
     ConfigClass = ParseConfig
 
     def getInfo(self, filename):
@@ -34,12 +37,16 @@ class ParseTask(Task):
 
         Here, we open the image and parse the header, but one could also look at the filename itself
         and derive information from that, or set values from the configuration.
+
+        @param filename    Name of file to inspect
+        @return File properties; list of file properties for each extension
         """
         md = afwImage.readMetadata(filename, self.config.hdu)
         phuInfo = self.getInfoFromMetadata(md)
         if len(self.config.extnames) == 0:
             # No extensions to worry about
             return phuInfo, [phuInfo]
+        # Look in the provided extensions
         extnames = set(self.config.extnames)
         extnum = 1
         infoList = []
@@ -48,7 +55,7 @@ class ParseTask(Task):
             try:
                 md = afwImage.readMetadata(filename, extnum)
             except:
-                print "Error reading %s extensions %s" % (filename, extnames)
+                self.log.warn("Error reading %s extensions %s" % (filename, extnames))
                 break
             ext = md.get("EXTNAME").strip()
             if ext in extnames:
@@ -57,6 +64,19 @@ class ParseTask(Task):
         return phuInfo, infoList
 
     def getInfoFromMetadata(self, md, info={}):
+        """Attempt to pull the desired information out of the header
+
+        This is done through two mechanisms:
+        * translation: a property is set directly from the relevant header keyword
+        * translator: a property is set with the result of calling a method
+
+        The translator methods receive the header metadata and should return the
+        appropriate value, or None if the value cannot be determined.
+
+        @param md      FITS header
+        @param info    File properties, to be supplemented
+        @return info
+        """
         for p, h in self.config.translation.iteritems():
             if md.exists(h):
                 value = md.get(h)
@@ -99,7 +119,13 @@ class ParseTask(Task):
         return filterName
 
     def getDestination(self, butler, info, filename):
-        """Get destination for the file"""
+        """Get destination for the file
+
+        @param butler      Data butler
+        @param info        File properties, used as dataId for the butler
+        @param filename    Input filename
+        @return Destination filename
+        """
         raw = butler.get("raw_filename", info)[0]
         # Ensure filename is devoid of cfitsio directions about HDUs
         c = raw.find("[")
@@ -108,6 +134,7 @@ class ParseTask(Task):
         return raw
 
 class RegisterConfig(Config):
+    """Configuration for the RegisterTask"""
     table = Field(dtype=str, default="raw", doc="Name of table")
     columns = DictField(keytype=str, itemtype=str, doc="List of columns for raw table, with their types",
                         itemCheck=lambda x: x in ("text", "int", "double"),
@@ -131,6 +158,12 @@ class RegisterTask(Task):
     ConfigClass = RegisterConfig
 
     def openRegistry(self, butler, create=False):
+        """Open the registry and return the connection handle.
+
+        @param butler  Data butler, from which the registry file is determined
+        @param create  Clobber any existing registry and create a new one?
+        @return Database connection
+        """
         mapper = butler.mapper
         registryName = os.path.join(mapper.root, "registry.sqlite3")
         if create and os.path.exists(registryName):
@@ -145,6 +178,13 @@ class RegisterTask(Task):
         return conn
 
     def createTable(self, conn):
+        """Create the registry tables
+
+        One table (typically 'raw') contains information on all files, and the
+        other (typically 'raw_visit') contains information on all visits.
+
+        @param conn    Database connection
+        """
         cmd = "create table %s (id integer primary key autoincrement, " % self.config.table
         cmd += ",".join([("%s %s" % (col, colType)) for col,colType in self.config.columns.items()])
         if len(self.config.unique) > 0:
@@ -181,6 +221,11 @@ class RegisterTask(Task):
         return False
 
     def addRow(self, conn, info, create=False):
+        """Add a row to the file table (typically 'raw').
+
+        @param conn    Database connection
+        @param info    File properties to add to database
+        """
         sql = "INSERT"
         if self.config.ignore:
             sql += " OR IGNORE"
@@ -191,6 +236,11 @@ class RegisterTask(Task):
         conn.execute(sql, values)
 
     def addVisits(self, conn):
+        """Generate the visits table (typically 'raw_visits') from the
+        file table (typically 'raw').
+
+        @param conn    Database connection
+        """
         sql = "INSERT OR IGNORE INTO %s_visit SELECT DISTINCT " % self.config.table
         sql += ",".join(self.config.visit)
         sql += " FROM %s" % self.config.table
@@ -198,6 +248,7 @@ class RegisterTask(Task):
 
 
 class IngestConfig(Config):
+    """Configuration for IngestTask"""
     parse = ConfigurableField(target=ParseTask, doc="File parsing")
     register = ConfigurableField(target=RegisterTask, doc="Registry entry")
 
@@ -214,6 +265,7 @@ class IngestTask(Task):
 
     @classmethod
     def parseAndRun(cls):
+        """Parse the command-line arguments and run the Task"""
         config = cls.ConfigClass()
         parser = cls.ArgumentParser("ingest")
         args = parser.parse_args(config)
@@ -221,6 +273,13 @@ class IngestTask(Task):
         task.run(args)
 
     def ingest(self, infile, outfile, mode="move", dryrun=False):
+        """Ingest a file into the image repository.
+
+        @param infile  Name of input file
+        @param outfile Name of output file (file in repository)
+        @param mode    Mode of ingest (copy/link/move)
+        @param dryrun  Only report what would occur?
+        """
         if dryrun:
             self.log.info("Would %s from %s to %s" % (args.mode, infile, outfile))
         try:
@@ -240,6 +299,7 @@ class IngestTask(Task):
             self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
 
     def run(self, args):
+        """Ingest all specified files and add them to the registry"""
         registry = self.register.openRegistry(args.butler, create=args.create)
         for infile in args.files:
             fileInfo, hduInfoList = self.parse.getInfo(infile)
