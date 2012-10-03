@@ -224,7 +224,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
 
         astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
         # N.b. yes, this is what useKnownWcs calls the returned values
-        return astromRet.matches, astromRet.matchMetadata
+        return (astromRet.matches if astromRet.matches is not None else [],
+                astromRet.matchMetadata if astromRet.matchMetadata is not None else dafBase.PropertyList(),
+                )
 
     def propagateIcFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
