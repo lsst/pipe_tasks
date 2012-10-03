@@ -294,7 +294,7 @@ class IngestTask(Task):
             if not os.path.isdir(outdir):
                 os.makedirs(outdir)
             if mode == "copy":
-                assertCanCopy(infile, outfile):
+                assertCanCopy(infile, outfile)
                 shutil.copyfile(infile, outfile)
             elif mode == "link":
                 os.symlink(os.path.abspath(infile), outfile)
@@ -331,7 +331,7 @@ def assertCanCopy(fromPath, toPath):
     @param toPath      Path to which the file is being copied
     """
     req = os.stat(fromPath).st_size
-    st = os.statvfs(toPath)
+    st = os.statvfs(os.path.dirname(toPath))
     avail = st.f_bavail * st.f_frsize
     if avail < req:
         raise RuntimeError("Insufficient space: %d vs %d" % (req, avail))
