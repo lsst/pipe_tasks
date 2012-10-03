@@ -131,7 +131,7 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
             for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
                 self.log.log(self.log.INFO, "Processing calexp %d of %d for this tempExp: id=%s" % \
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
-                calexp = self.getCalExp(calExpRef, getPsf=doPsfMatch)
+                calexp = self.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=self.config.bgSubtracted)
                 try:
                     if calExpInd == 0:
                         # make a full-sized exposure and use it as the coaddTempExp
@@ -157,7 +157,7 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
                 if self.config.desiredFwhm is not None:
                     psfName = self.config.coaddName + "Coadd_initPsf"
                     self.log.info("Persisting %s" % (psfName,))
-                    wcs = coaddExposure.getWcs()
+                    wcs = coaddTempExp.getWcs()
                     fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
                     kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
                     kernelDim = afwGeom.Point2I(kernelSize, kernelSize)

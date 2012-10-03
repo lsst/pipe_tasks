@@ -53,7 +53,7 @@ class CoaddBaseConfig(pexConfig.Config):
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
         doc = "mask planes that, if set, the associated pixel should not be included in the coaddTempExp",
-        default = ("EDGE", "SAT"),
+        default = ("EDGE",),
     )
     doInterp = pexConfig.Field(
         doc = "interpolate over EDGE pixels?",
@@ -88,6 +88,11 @@ class CoaddCalexpBaseConfig(CoaddBaseConfig):
     psfMatch = pexConfig.ConfigurableField(
         target = ModelPsfMatchTask,
         doc = "PSF matching model to model task",
+    )
+    bgSubtracted = pexConfig.Field(
+        doc = "Work with a background subtracted calexp?",
+        dtype = bool,
+        default = False,
     )
     warp = pexConfig.ConfigField(
         dtype = afwMath.Warper.ConfigClass,
@@ -224,14 +229,23 @@ class CoaddCalexpBaseTask(CoaddBaseTask):
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
 
-    def getCalExp(self, dataRef, getPsf=True):
+    def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
         """Return one "calexp" calibrated exposure, perhaps with psf
         
         @param dataRef: a sensor-level data reference
         @param getPsf: include the PSF?
+        @param bgSubtracted: return background subtracted calexp?
         @return calibrated exposure with psf
         """
-        exposure = dataRef.get("calexp")
+        exposure = dataRef.get("calexp") #We assume calexps are background subtracted
+        if not bgSubtracted:
+            background = dataRef.get("calexpBackground")
+            try:
+                mi = exposure.getMaskedImage()
+                mi += background
+                del mi
+            except Exception, e:
+                self.log.warn("There was a problem adding the background: %s.  Continuing without adding a background."%(e))
         if getPsf:
             psf = dataRef.get("psf")
             exposure.setPsf(psf)
