@@ -209,10 +209,8 @@ class RegisterTask(Task):
             return False # Our entry could already be there, but we don't care
         cursor = conn.cursor()
         sql = "SELECT COUNT(*) FROM %s WHERE " % self.config.table
-        values = []
-        for col in self.config.unique:
-            sql += col + "=? "
-            values.append(info[col])
+        sql += " AND ".join(["%s=?" % col for col in self.config.unique])
+        values = [info[col] for col in self.config.unique]
 
         cursor.execute(sql, values)
         if cursor.fetchone()[0] > 0:
