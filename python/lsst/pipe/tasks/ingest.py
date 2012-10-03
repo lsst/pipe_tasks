@@ -13,7 +13,7 @@ class IngestArgumentParser(ArgumentParser):
         super(IngestArgumentParser, self).__init__(*args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true", default=False,
                           help="Don't perform any action?")
-        self.add_argument("--mode", choices=["move", "copy", "link"], default="move",
+        self.add_argument("--mode", choices=["move", "copy", "link", "skip"], default="move",
                           help="Mode of delivering the files to their destination")
         self.add_argument("--create", action="store_true", help="Create new registry (clobber old)?")
         self.add_argument("files", nargs="+", help="Names of file")
@@ -218,7 +218,7 @@ class RegisterTask(Task):
             return True
         return False
 
-    def addRow(self, conn, info, create=False):
+    def addRow(self, conn, info, dryrun=False, create=False):
         """Add a row to the file table (typically 'raw').
 
         @param conn    Database connection
@@ -231,9 +231,12 @@ class RegisterTask(Task):
         sql += ", ?" * len(self.config.columns)
         sql += ")"
         values = [info[col] for col in self.config.columns]
-        conn.execute(sql, values)
+        if dryrun:
+            print "Would execute: '%s' with %s" % sql, values
+        else:
+            conn.execute(sql, values)
 
-    def addVisits(self, conn):
+    def addVisits(self, conn, dryrun=False):
         """Generate the visits table (typically 'raw_visits') from the
         file table (typically 'raw').
 
@@ -242,7 +245,10 @@ class RegisterTask(Task):
         sql = "INSERT OR IGNORE INTO %s_visit SELECT DISTINCT " % self.config.table
         sql += ",".join(self.config.visit)
         sql += " FROM %s" % self.config.table
-        conn.execute(sql)
+        if dryrun:
+            print "Would execute: %s" % sql
+        else:
+            conn.execute(sql)
 
 
 class IngestConfig(Config):
@@ -275,9 +281,12 @@ class IngestTask(Task):
 
         @param infile  Name of input file
         @param outfile Name of output file (file in repository)
-        @param mode    Mode of ingest (copy/link/move)
+        @param mode    Mode of ingest (copy/link/move/skip)
         @param dryrun  Only report what would occur?
+        @param Success boolean
         """
+        if mode == "skip":
+            return True
         if dryrun:
             self.log.info("Would %s from %s to %s" % (args.mode, infile, outfile))
         try:
@@ -285,25 +294,44 @@ class IngestTask(Task):
             if not os.path.isdir(outdir):
                 os.makedirs(outdir)
             if mode == "copy":
+                assertCanCopy(infile, outfile):
                 shutil.copyfile(infile, outfile)
             elif mode == "link":
                 os.symlink(os.path.abspath(infile), outfile)
             elif mode == "move":
+                assertCanCopy(infile, outfile)
                 os.rename(infile, outfile)
             else:
                 raise AssertionError("Unknown mode: %s" % mode)
             print "%s --<%s>--> %s" % (infile, mode, outfile)
         except Exception, e:
             self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
+            return False
+        return True
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
-        registry = self.register.openRegistry(args.butler, create=args.create)
+        registry = self.register.openRegistry(args.butler, create=args.create) if not args.dryrun else None
         for infile in args.files:
             fileInfo, hduInfoList = self.parse.getInfo(infile)
             outfile = os.path.join(args.butler, self.parse.getDestination(args.butler, fileInfo, infile))
-            self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
+            ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
+            if not ingested:
+                continue
             for info in hduInfoList:
-                self.register.addRow(registry, info, create=args.create)
-        self.register.addVisits(registry)
-        registry.commit()
+                self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+        self.register.addVisits(registry, dryrun=args.dryrun)
+        if not args.dryrun:
+            registry.commit()
+
+def assertCanCopy(fromPath, toPath):
+    """Can I copy a file?  Raise an exception is space constraints not met.
+
+    @param fromPath    Path from which the file is being copied
+    @param toPath      Path to which the file is being copied
+    """
+    req = os.stat(fromPath).st_size
+    st = os.statvfs(toPath)
+    avail = st.f_bavail * st.f_frsize
+    if avail < req:
+        raise RuntimeError("Insufficient space: %d vs %d" % (req, avail))
