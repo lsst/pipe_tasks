@@ -20,7 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import numpy
+import numpy as num
 
 import lsst.pex.config as pexConfig
 import lsst.pex.logging as pexLogging
@@ -94,8 +94,11 @@ class ImageDifferenceConfig(pexConfig.Config):
     )
     
     def setDefaults(self):
+        #import pdb; pdb.set_trace()
+        #self.selectMeasurement.algorithms.discard("my.algorithm")
+        #3self.selectMeasurement.algorithms.slots.modelFlux = None
+
         self.selectDetection.reEstimateBackground = False
-        #self.selectMeasurement.algorithms.names = ("flags.pixel", "centroid.naive", "shape.sdss", "flux.psf")
         self.selectMeasurement.prefix = "select."
         self.selectMeasurement.doApplyApCorr = False
         self.starSelector["secondMoment"].clumpNSigma  = 2.0
@@ -194,8 +197,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 sources = detRet.sources
                 self.selectMeasurement.measure(exposure, sources)
                 kernelCandidateList = self.starSelector.selectStars(exposure, sources)
+                kernelSources = [x.getSource() for x in kernelCandidateList]
             else:
-                kernelCandidateList = None
+                sources = None
+                kernelSources = None
 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
@@ -204,10 +209,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 exposureToConvolve = templateExposure,
                 exposureToNotConvolve = exposure,
                 psfFwhmPixTc = fwhmPixels,
-                candidateList = kernelCandidateList,
+                candidateList = kernelSources,
                 swapImageToConvolve = self.config.swapImageToConvolve
             )
             subtractedExposure = subtractRes.subtractedExposure
+
+            self.runDebug(exposure, subtractRes, sources, kernelSources)
             
             if self.config.doWriteSubtractedExp:
                 sensorRef.put(subtractedExposure, subtractedExposureName)
@@ -241,7 +248,40 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             subtractRes = subtractRes,
             sources = sources,
         )
-    
+
+    def runDebug(self, exposure, subtractRes, allSources, kernelSources):
+        import lsstDebug
+        display = lsstDebug.Info(__name__).display 
+        showPixelResiduals = lsstDebug.Info(__name__).showPixelResiduals
+
+        if showPixelResiduals:
+            import lsst.ip.diffim.utils as diUtils
+            nonKernelSources = []
+            for source in allSources:
+                if not source in kernelSources:
+                    nonKernelSources.append(source)
+
+            diUtils.plotPixelResiduals(exposure,
+                                       subtractRes.warpedExposure,
+                                       subtractRes.subtractedExposure,
+                                       subtractRes.kernelCellSet,
+                                       subtractRes.psfMatchingKernel,
+                                       subtractRes.backgroundModel,
+                                       nonKernelSources,
+                                       self.subtract.config.kernel.active.detectionConfig,
+                                       origVariance = False)
+            diUtils.plotPixelResiduals(exposure,
+                                       subtractRes.warpedExposure,
+                                       subtractRes.subtractedExposure,
+                                       subtractRes.kernelCellSet,
+                                       subtractRes.psfMatchingKernel,
+                                       subtractRes.backgroundModel,
+                                       nonKernelSources,
+                                       self.subtract.config.kernel.active.detectionConfig, 
+                                       origVariance = True)
+
+            
+        
     def getTemplate(self, exposure, sensorRef):
         """Return a template coadd exposure that overlaps the exposure
         
@@ -274,7 +314,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
+        coaddExposure.getMaskedImage().set(num.nan, edgeMask, num.nan)
         nPatchesFound = 0
         for patchInfo in patchList:
             patchArgDict = dict(
