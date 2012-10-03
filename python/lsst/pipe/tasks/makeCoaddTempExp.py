@@ -26,11 +26,11 @@ import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddCalexpBaseTask
+from .coaddBase import CoaddBaseTask, CalexpMixinConfig, CalexpMixinTask
 
 __all__ = ["MakeCoaddTempExpTask"]
 
-class MakeCoaddTempExpConfig(CoaddCalexpBaseTask.ConfigClass):
+class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass, CalexpMixinConfig):
     """Config for MakeCoaddTempExpTask
     """
     coaddKernelSizeFactor = pexConfig.Field(
@@ -45,11 +45,15 @@ class MakeCoaddTempExpConfig(CoaddCalexpBaseTask.ConfigClass):
     )
 
 
-class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
+class MakeCoaddTempExpTask(CoaddBaseTask, CalexpMixinTask):
     """Coadd temporary images by PSF-matching (optional), warping and computing a weighted sum
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
+    
+    def __init__(self, *args, **kwargs):
+        CoaddBaseTask.__init__(self, *args, **kwargs)
+        CalexpMixinTask.__init__(self)
 
     @pipeBase.timeMethod
     def run(self, patchRef):

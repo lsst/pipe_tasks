@@ -34,7 +34,8 @@ import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
 from .selectImages import BadSelectImagesTask
 
-__all__ = ["CoaddBaseTask", "CoaddCalexpBaseTask", "CoaddArgumentParser"]
+__all__ = ["CoaddBaseTask", "InterpMixinConfig", "CalexpMixinConfig", "InterpMixinTask", "CalexpMixinTask",
+    "CoaddArgumentParser"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
@@ -53,7 +54,7 @@ class CoaddBaseConfig(pexConfig.Config):
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("EDGE"),
+        default = ("EDGE",),
     )
 
 class InterpMixinConfig(object):
@@ -76,7 +77,7 @@ class InterpMixinConfig(object):
     )
 
 
-class CalexpMixinConfig(CoaddBaseConfig):
+class CalexpMixinConfig(object):
     """Additional config for CalexpMixinTask
     """
     desiredFwhm = pexConfig.Field(
@@ -246,65 +247,13 @@ class InterpMixinTask(object):
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, "EDGE", growFootprints=0)
         measAlg.interpolateOverDefects(exposure.getMaskedImage(), psfModel, nanDefectList, 0.0)
 
+
 class CalexpMixinTask(object):
-    """A mixin class that adds calexp processing to CoaddBaseTask
+    """A mixin class that adds calexp processing (warping and PSF matching) to CoaddBaseTask
     
     Your task's config must also inherit from CalexpMixinConfig
     """
-    def __init__(self, *args, **kwargs):
-        CoaddBaseTask.__init__(self, *args, **kwargs)
-        self.makeSubtask("psfMatch")
-        self.warper = afwMath.Warper.fromConfig(self.config.warp)
-        self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
-
-    def getCalExp(self, dataRef, getPsf=True):
-        """Return one "calexp" calibrated exposure, perhaps with psf
-        
-        @param dataRef: a sensor-level data reference
-        @param getPsf: include the PSF?
-        @return calibrated exposure with psf
-        """
-        exposure = dataRef.get("calexp")
-        if getPsf:
-            psf = dataRef.get("psf")
-            exposure.setPsf(psf)
-        return exposure
-    
-    def processCalexp(self, exposure, wcs, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if self.config.desiredFwhm is not None), warp and scale
-        
-        @param[in,out] exposure: exposure to preprocess; FWHM fitting is done in place
-        @param[in] wcs: desired WCS of temporary images
-        @param maxBBox: maximum allowed parent bbox of warped exposure (an afwGeom.Box2I or None);
-            if None then the warped exposure will be just big enough to contain all warped pixels;
-            if provided then the warped exposure may be smaller, and so missing some warped pixels;
-            ignored if destBBox is not None
-        @param destBBox: exact parent bbox of warped exposure (an afwGeom.Box2I or None);
-            if None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored
-        
-        @return preprocessed exposure
-        """
-        if self.config.desiredFwhm is not None:
-            self.log.info("PSF-match exposure")
-            fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
-            kernelDim = exposure.getPsf().getKernel().getDimensions()
-            modelPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-            exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-        self.log.info("Warp exposure")
-        with self.timer("warp"):
-            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
-        
-        self.zeroPointScaler.scaleExposure(exposure)
-
-        return exposure
-
-class CoaddCalexpBaseTask(CoaddBaseTask):
-    """Base class for coaddition that adds the ability to preprocess calexp
-    """
-    ConfigClass = CoaddCalexpBaseConfig
-
-    def __init__(self, *args, **kwargs):
-        CoaddBaseTask.__init__(self, *args, **kwargs)
+    def __init__(self):
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)

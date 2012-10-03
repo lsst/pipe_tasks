@@ -26,11 +26,11 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddBaseTask, CalexpMixinTask
+from .coaddBase import CoaddBaseTask, InterpMixinConfig, InterpMixinTask
 
 __all__ = ["AssembleCoaddTask"]
 
-class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, CalexpMixinTask.ConfigClass):
+class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, InterpMixinConfig):
     subregionSize = pexConfig.ListField(
         dtype = int,
         doc = "Width, height of stack subregion size; " \
@@ -60,11 +60,15 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, CalexpMixinTask.ConfigClass
     )
     
 
-class AssembleCoaddTask(CoaddBaseTask, CalexpMixinTask):
+class AssembleCoaddTask(CoaddBaseTask, InterpMixinTask):
     """Assemble a coadd from a set of coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
     _DefaultName = "coadd"
+    
+    def __init__(self, *args, **kwargs):
+        CoaddBaseTask.__init__(self, *args, **kwargs)
+        InterpMixinTask.__init__(self)
 
     @pipeBase.timeMethod
     def run(self, patchRef):

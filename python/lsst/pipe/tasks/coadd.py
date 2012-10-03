@@ -31,7 +31,8 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
-from .coaddBase import CoaddCalexpBaseTask, CoaddArgumentParser
+from .coaddBase import CoaddBaseTask, CoaddArgumentParser, CalexpMixinConfig, CalexpMixinTask, \
+    InterpMixinConfig, InterpMixinTask
 
 # export CoaddArgumentParser for backward compatibility; new code should get it from coaddBase
 
@@ -39,7 +40,7 @@ __all__ = ["CoaddTask", "CoaddArgumentParser"]
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
-class CoaddConfig(CoaddCalexpBaseTask.ConfigClass):
+class CoaddConfig(CoaddBaseTask.ConfigClass, CalexpMixinConfig, InterpMixinConfig):
     """Config for CoaddTask
     """
     coaddKernelSizeFactor = pexConfig.Field(
@@ -54,11 +55,16 @@ class CoaddConfig(CoaddCalexpBaseTask.ConfigClass):
     )
 
 
-class CoaddTask(pipeBase.CmdLineTask):
+class CoaddTask(CoaddBaseTask, CalexpMixinTask, InterpMixinTask):
     """Coadd images by PSF-matching (optional), warping and computing a weighted sum
     """
     ConfigClass = CoaddConfig
     _DefaultName = "coadd"
+
+    def __init__(self, *args, **kwargs):
+        CoaddBaseTask.__init__(self, *args, **kwargs)
+        CalexpMixinTask.__init__(self)
+        InterpMixinTask.__init__(self)
     
     @pipeBase.timeMethod
     def run(self, patchRef):
