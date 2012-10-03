@@ -137,6 +137,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         
         #bin
         width, height  = refExposure.getDimensions()
+        x0, y0 = refExposure.getXY0()
         xedges = num.arange(0, width, self.config.backgroundBinsize)
         yedges = num.arange(0, height, self.config.backgroundBinsize)
         xedges = num.hstack(( xedges, width ))  #add final edge
@@ -158,8 +159,8 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
                 #      we can do it once above the loop and just compare indices here
                 idxNotNan = num.where(~num.isnan(area))
                 if len(idxNotNan[0]) >= 2:
-                    bgX.append(0.5 * (xmin + xmax))
-                    bgY.append(0.5 * (ymin + ymax))
+                    bgX.append(0.5 * (x0 + xmin + x0 + xmax))
+                    bgY.append(0.5 * (y0 + ymin + y0 + ymax))
                     bgdZ.append( num.std(area[idxNotNan])
                                                 /num.sqrt(num.size(area[idxNotNan])))
                     if self.config.gridStat == "MEDIAN":
@@ -170,22 +171,27 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
                         print "Unspecified grid statistic. Using mean"
                         bgZ.append(num.mean(area[idxNotNan]))
 
-        #Fit grid with polynomial           
-        bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox())
-        matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder, bgX,bgY,bgZ,bgdZ)
-
-        #Temporary intermediate step until I figure out why
-        #im += matchBackgroundModel doesn't work (gives values ~1e8)
-        Zeroim = afwImage.MaskedImageF(afwGeom.Box2I(bbox))
-        Zeroim += matchBackgroundModel
-
-        im  = sciExposure.getMaskedImage().getImage()
-        #matches sciExposure in place in memory
-        im += Zeroim.getImage() #want this to be im+=matchBackgroundModel
-        
-        #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
-
-        #returns the background Model, and the matched science exposure
+        #Check that there are enough points to fit                
+        if len(bgZ) == 0:
+            self.log.log(self.log.WARN, "No overlap with reference. Cannot match")
+            return None, None
+        elif len(bgZ) == 1:
+            #
+            #TODO:make the offset constant = bgZ
+            #
+            self.log.log(self.log.WARN, "Only one  point. Const offset to be applied. Not yet implemented")
+            return None, None    
+        else:   
+            #Fit grid with polynomial
+            bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
+            matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder, bgX,bgY,bgZ,bgdZ)
+            im  = sciExposure.getMaskedImage().getImage()
+            #matches sciExposure in place in memory
+            im +=  matchBackgroundModel
+            #
+            #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
+            #
+            #returns the background Model, and the matched science exposure
         return matchBackgroundModel, sciExposure    
 
     def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ):
@@ -210,7 +216,11 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             nc += 1
         M    = num.dot(num.dot(m.T, num.diag(iv)), m)       
         B    = num.dot(num.dot(m.T, num.diag(iv)), b)
-        Soln = num.linalg.solve(M,B)
+        try:
+            Soln = num.linalg.solve(M,B)
+        except:
+            self.log.log(self.log.WARN, "Polynomial fit FAILED. Returning all parameters = 0")
+            return afwMath.Chebyshev1Function2D(int(degree), bbox) 
         poly.setParameters(Soln)
         return poly
 
@@ -255,7 +265,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
                 self.run(refDataRef, dataRef)
             except Exception, e:
                 self.log.log(self.log.FATAL, "Failed on dataId=%s: %s" % (dataRef.dataId, e))
-                if not isinstance(e, TaskError):
+                if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
         try:
             metadataName = self._getMetadataName()
