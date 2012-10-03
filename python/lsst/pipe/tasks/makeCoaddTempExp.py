@@ -117,6 +117,7 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
                 tempExpIdDict[tempExpIdTuple] = [calExpRef]
 
         numTempExp = len(tempExpIdDict)
+        coaddTempExp = None
         for tempExpInd, calExpSubsetRefList in enumerate(tempExpIdDict.itervalues()):
             # derive tempExpId from the first calExpId
             tempExpId = dict((key, calExpSubsetRefList[0].dataId[key]) for key in tempExpKeyList)
@@ -152,7 +153,7 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
                         self.log.info("Calexp %s has %s good pixels in this patch" % \
                             (calExpRef.dataId, numGoodPix,))
                 
-            if self.config.doWrite:
+            if self.config.doWrite and coaddTempExp is not None:
                 tempExpRef.put(coaddTempExp, tempExpName)
                 if self.config.desiredFwhm is not None:
                     psfName = self.config.coaddName + "Coadd_initPsf"
@@ -163,8 +164,10 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
                     kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
                     coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
                     patchRef.put(coaddPsf, psfName)
-
-            dataRefList.append(tempExpRef)
+            if coaddTempExp:
+                dataRefList.append(tempExpRef)
+            else:
+                self.log.warn("This %s temp coadd exposure could not be created"%(tempExpRef.dataId,))
         
         return pipeBase.Struct(
             dataRefList = dataRefList,
