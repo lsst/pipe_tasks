@@ -69,7 +69,8 @@ class MatchBackgroundsConfig(pexConfig.Config):
     datasetType = pexConfig.Field(
         dtype = str,
         doc = """Name of data product to fetch (calexp, etc)""",
-        default = "coaddTempExp"
+        default = "goodSeeingCoadd_tempExp" #needs tickets/2343
+        #default = "coaddTempExp" #needs tickets/2317
     )        
       
  
@@ -87,9 +88,9 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             raise pipeBase.TaskError("Data id %s does not exist" % (refDataRef.dataId))
         refExposure = refDataRef.get(self.config.datasetType)
 
-        if not toMatchDataRef.datasetExists("coaddTempExp"):
+        if not toMatchDataRef.datasetExists(self.config.datasetType):
             raise pipeBase.TaskError("Data id %s does not exist" % (toMatchDataRef.dataId))
-        sciExposure = toMatchDataRef.get("coaddTempExp")
+        sciExposure = toMatchDataRef.get(self.config.datasetType)
 
         matchBackgroundModel, matchedExposure = self.matchBackgrounds(refExposure, sciExposure)
 
@@ -170,7 +171,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
                     else:
                         print "Unspecified grid statistic. Using mean"
                         bgZ.append(num.mean(area[idxNotNan]))
-
+                        
         #Check that there are enough points to fit                
         if len(bgZ) == 0:
             self.log.log(self.log.WARN, "No overlap with reference. Cannot match")
@@ -185,9 +186,12 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #Fit grid with polynomial
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
             matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder, bgX,bgY,bgZ,bgdZ)
+            #refExposure.writeFits('refExposure.fits')
+            #sciExposure.writeFits('sciExposure.fits')
             im  = sciExposure.getMaskedImage().getImage()
             #matches sciExposure in place in memory
             im +=  matchBackgroundModel
+            #sciExposure.writeFits('sciExposureMatched.fits')
             #
             #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
             #
