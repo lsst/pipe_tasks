@@ -31,6 +31,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, starSelectorRegistry
 from lsst.ip.diffim import ImagePsfMatchTask
+import lsst.afw.display.ds9 as ds9                                                                                                                                                                          
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
@@ -94,10 +95,8 @@ class ImageDifferenceConfig(pexConfig.Config):
     )
     
     def setDefaults(self):
-        #import pdb; pdb.set_trace()
-        #self.selectMeasurement.algorithms.discard("my.algorithm")
-        #3self.selectMeasurement.algorithms.slots.modelFlux = None
-
+        # TODO HERE: 
+        # Make the minimal set of algorithsm to select stars, for speed optimization
         self.selectDetection.reEstimateBackground = False
         self.selectMeasurement.prefix = "select."
         self.selectMeasurement.doApplyApCorr = False
@@ -105,6 +104,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.starSelector['secondMoment'].badFlags = [self.selectMeasurement.prefix+x for x in self.starSelector['secondMoment'].badFlags]
 
         self.detection.thresholdPolarity = "both"
+        self.detection.reEstimateBackground = False
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -134,14 +134,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("subtract")
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
-        self.algMetadata = dafBase.PropertyList()
 
         if self.config.doSelectSources:
+            self.selectSchema = afwTable.SourceTable.makeMinimalSchema()
+            self.selectAlgMetadata = dafBase.PropertyList()
             self.starSelector = self.config.starSelector.apply()
-            self.makeSubtask("selectDetection", schema=self.schema)
-            self.makeSubtask("selectMeasurement", schema=self.schema, algMetadata=self.algMetadata)
+            self.makeSubtask("selectDetection", schema=self.selectSchema)
+            self.makeSubtask("selectMeasurement", schema=self.selectSchema, algMetadata=self.selectAlgMetadata)
 
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doDeblend:
@@ -191,15 +193,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if self.config.doSelectSources:
                 # Detect on exposure since that ensures maximal astrometric coverage
-                table = afwTable.SourceTable.make(self.schema, idFactory)
-                table.setMetadata(self.algMetadata) 
+                table = afwTable.SourceTable.make(self.selectSchema, idFactory)
+                table.setMetadata(self.selectAlgMetadata) 
                 detRet = self.selectDetection.makeSourceCatalog(table, exposure)
-                sources = detRet.sources
-                self.selectMeasurement.measure(exposure, sources)
-                kernelCandidateList = self.starSelector.selectStars(exposure, sources)
+                selectSources = detRet.sources
+                self.selectMeasurement.measure(exposure, selectSources)
+                kernelCandidateList = self.starSelector.selectStars(exposure, selectSources)
                 kernelSources = [x.getSource() for x in kernelCandidateList]
             else:
-                sources = None
+                selectSources = None
                 kernelSources = None
 
             # warp template exposure to match exposure,
@@ -214,18 +216,23 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             )
             subtractedExposure = subtractRes.subtractedExposure
 
-            self.runDebug(exposure, subtractRes, sources, kernelSources)
-            
             if self.config.doWriteSubtractedExp:
                 sensorRef.put(subtractedExposure, subtractedExposureName)
             if self.config.doWriteMatchedExp:
                 sensorRef.put(subtractRes.matchedExposure, self.config.coaddName + "Diff_matchedExp")
-        
+
         if self.config.doDetection:
             if subtractedExposure is None:
                 subtractedExposure = sensorRef.get(subtractedExposureName)
-                psf = sensorRef.get("psf") # get from calexp
+            
+            # Get from the calexp!
+            if not subtractedExposure.hasPsf():
+                psf = sensorRef.get("psf")
                 subtractedExposure.setPsf(psf)
+
+            # Erase existing detection mask planes
+            mask  = subtractedExposure.getMaskedImage().getMask()
+            mask &= ~(mask.getPlaneBitMask("DETECTED") | mask.getPlaneBitMask("DETECTED_NEGATIVE"))
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
@@ -243,21 +250,27 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     sources.setWriteHeavyFootprints(True)
                 sensorRef.put(sources, self.config.coaddName + "Diff_src")
  
+        self.runDebug(exposure, subtractRes, selectSources, kernelSources, sources)
         return pipeBase.Struct(
             subtractedExposure = subtractedExposure,
             subtractRes = subtractRes,
             sources = sources,
         )
 
-    def runDebug(self, exposure, subtractRes, allSources, kernelSources):
+    def runDebug(self, exposure, subtractRes, selectSources, kernelSources, sources):
         import lsstDebug
         display = lsstDebug.Info(__name__).display 
         showPixelResiduals = lsstDebug.Info(__name__).showPixelResiduals
+        showDiaSources = lsstDebug.Info(__name__).showDiaSources
+        maskTransparency = lsstDebug.Info(__name__).maskTransparency   
+        if not maskTransparency:
+            maskTransparency = 0
+        ds9.setMaskTransparency(maskTransparency)
 
-        if showPixelResiduals:
+        if display and showPixelResiduals:
             import lsst.ip.diffim.utils as diUtils
             nonKernelSources = []
-            for source in allSources:
+            for source in selectSources:
                 if not source in kernelSources:
                     nonKernelSources.append(source)
 
@@ -279,8 +292,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        nonKernelSources,
                                        self.subtract.config.kernel.active.detectionConfig, 
                                        origVariance = True)
-
-            
+        if display and showDiaSources:
+            import lsst.ip.diffim.diffimTools as diffimTools
+            flagChecker   = diffimTools.SourceFlagChecker(sources)
+            dipoleChecker = diffimTools.DipoleChecker(sources)
+            isFlagged     = [flagChecker(x) for x in sources]
+            isDipole      = [dipoleChecker(x) for x in sources]
+            diUtils.showDiaSources(sources, subtractRes.subtractedExposure, isFlagged, isDipole, frame=lsstDebug.frame)
+            lsstDebug.frame += 1
         
     def getTemplate(self, exposure, sensorRef):
         """Return a template coadd exposure that overlaps the exposure
