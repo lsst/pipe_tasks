@@ -26,49 +26,41 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddBaseTask
+from .coaddBase import CoaddBaseTask, CalexpMixinTask
 
 __all__ = ["AssembleCoaddTask"]
 
-class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
-    consolidateKeys = pexConfig.ListField(
-        dtype = str,
-        doc = "data ID keys to consolidate on a single temporary exposure. " \
-            "This is intended for mosaic cameras where there is sure to be no overlap; " \
-            "for example LSST consolidates raft and sensor data" \
-            "Warning: if you specify the wrong value the coadd temp exposure cannot be persisted",
-        optional = True,
-    )
+class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, CalexpMixinTask.ConfigClass):
     subregionSize = pexConfig.ListField(
         dtype = int,
-        doc = """width, height of stack subregion size;
-                make small enough that a full stack of images will fit into memory at once""",
+        doc = "Width, height of stack subregion size; " \
+              "make small enough that a full stack of images will fit into memory at once.",
         length = 2,
         default = (2000, 2000),
     )
     doSigmaClip = pexConfig.Field(
         dtype = bool,
-        doc = "perform sigma clipping (if False then compute simple mean)",
+        doc = "Perform sigma clipping (if False then compute simple mean).",
         default = True,
     )
     sigmaClip = pexConfig.Field(
         dtype = float,
-        doc = "sigma for outlier rejection; ignored if doSigmaClip false",
+        doc = "Sigma for outlier rejection; ignored if doSigmaClip false.",
         default = 3.0,
     )
     clipIter = pexConfig.Field(
         dtype = int,
-        doc = "number of iterations of outlier rejection; ignored if doSigmaClip false",
+        doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
         default = 2,
     )
     doWrite = pexConfig.Field(
-        doc = "persist coadd?",
+        doc = "Persist coadd?",
         dtype = bool,
         default = True,
     )
     
 
-class AssembleCoaddTask(CoaddBaseTask):
+class AssembleCoaddTask(CoaddBaseTask, CalexpMixinTask):
     """Assemble a coadd from a set of coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
@@ -197,7 +189,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     
                 coaddView <<= coaddSubregion
             except Exception, e:
-                self.log.log(self.log.ERR, "Cannot compute this subregion: %s" % (e,))
+                self.log.fatal("Cannot compute this subregion: %s" % (e,))
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
         self.postprocessCoadd(coaddExposure)

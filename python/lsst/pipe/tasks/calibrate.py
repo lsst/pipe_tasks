@@ -244,7 +244,7 @@ class CalibrateTask(pipeBase.Task):
             try:
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
-                self.log.log(self.log.WARN, "Failed to determine photometric zero-point: %s" % e)
+                self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 
             if photocalRet:

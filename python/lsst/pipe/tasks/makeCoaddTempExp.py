@@ -85,11 +85,11 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
         numExp = len(calExpRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
-        self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
+        self.log.info("Coadd %s calexp" % (numExp,))
     
         doPsfMatch = self.config.desiredFwhm is not None
         if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm is None)")
+            self.log.info("No PSF matching will be done (desiredFwhm is None)")
 
         tempExpName = self.config.coaddName + "Coadd_tempExp"
 
@@ -125,11 +125,11 @@ class MakeCoaddTempExpTask(CoaddCalexpBaseTask):
                 datasetType = tempExpName,
                 dataId = tempExpId,
             )
-            self.log.log(self.log.INFO, "Computing coaddTempExp %d of %d: id=%s" % \
+            self.log.info("Computing coaddTempExp %d of %d: id=%s" % \
                 (tempExpInd+1, numTempExp, tempExpId))
 
             for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
-                self.log.log(self.log.INFO, "Processing calexp %d of %d for this tempExp: id=%s" % \
+                self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
                 calexp = self.getCalExp(calExpRef, getPsf=doPsfMatch)
                 try:
