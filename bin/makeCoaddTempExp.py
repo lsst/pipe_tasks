@@ -21,6 +21,8 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.logging as pexLog
-from lsst.pipe.tasks.outlierRejectedCoadd import OutlierRejectedCoaddTask
+from lsst.pipe.tasks.makeCoaddTempExp import MakeCoaddTempExpTask
 
-OutlierRejectedCoaddTask.parseAndRun()
+pexLog.Trace.setVerbosity('lsst.coadd', 3)
+pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
+MakeCoaddTempExpTask.parseAndRun()
