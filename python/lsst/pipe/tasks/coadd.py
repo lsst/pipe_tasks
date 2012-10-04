@@ -32,7 +32,7 @@ import lsst.pipe.base as pipeBase
 import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
 from .coaddBase import CoaddBaseTask, CoaddArgumentParser
-from .warpAndPsfMatch import InterpTask
+from .interpImage import InterpImageTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 
 # export CoaddArgumentParser for backward compatibility; new code should get it from coaddBase
@@ -58,8 +58,8 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
-    interp = pexConfig.ConfigurableField(
-        target = InterpTask,
+    interpImage = pexConfig.ConfigurableField(
+        target = InterpImageTask,
         doc = "Task to interpolate over EDGE pixels",
     )
     doWrite = pexConfig.Field(
@@ -77,6 +77,8 @@ class CoaddTask(CoaddBaseTask):
 
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
+        self.makeSubtask("interpImage")
+        self.makeSubtask("warpAndPsfMatch")
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -136,7 +138,14 @@ class CoaddTask(CoaddBaseTask):
                 self.log.warn("Could not add exposure to coadd: %s" % (e,))
         
         coaddExposure = coadd.getCoadd()
-        self.postprocessCoadd(coaddExposure)
+        if self.config.doInterp:
+            fwhmArcSec = self.config.warpAndPsfMatch.desiredFwhm or 1.5
+            fwhmPixels = fwhmArcSec / wcs.pixelScale().asArcseconds()
+            self.interpImage.interpolateOnePlane(
+                maskedImage = coaddExposure.getMaskedImage(),
+                planeName = "EDGE",
+                fwhmPixels = fwhmPixels,
+            )
 
         self.persistCoadd(patchRef, coaddExposure)
         

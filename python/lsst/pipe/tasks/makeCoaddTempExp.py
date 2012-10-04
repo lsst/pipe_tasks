@@ -67,7 +67,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
         If PSF-matching is used then <coaddName>Coadd_initPsf is also computed.
         
-        PSF matching is to a double gaussian model with core FWHM = self.config.desiredFwhm
+        PSF matching is to a double gaussian model with core FWHM = self.config.warpAndPsfMatch.desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         The size of the PSF matching kernel is the same as the size of the kernel
         found in the first calibrated science exposure, since there is no benefit
@@ -96,7 +96,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             raise pipeBase.TaskError("No exposures to coadd")
         self.log.info("Coadd %s calexp" % (numExp,))
     
-        doPsfMatch = self.config.desiredFwhm is not None
+        doPsfMatch = self.config.warpAndPsfMatch.desiredFwhm is not None
         if not doPsfMatch:
             self.log.info("No PSF matching will be done (desiredFwhm is None)")
 
@@ -164,11 +164,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 
             if self.config.doWrite:
                 tempExpRef.put(coaddTempExp, tempExpName)
-                if self.config.desiredFwhm is not None:
+                if self.config.warpAndPsfMatch.desiredFwhm is not None:
                     psfName = self.config.coaddName + "Coadd_initPsf"
                     self.log.info("Persisting %s" % (psfName,))
                     wcs = coaddExposure.getWcs()
-                    fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
+                    fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
                     kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
                     kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
                     coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)

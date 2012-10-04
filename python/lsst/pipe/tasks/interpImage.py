@@ -33,7 +33,7 @@ __all__ = ["InterpImageConfig", "InterpMixinTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
-class InterpImageConfig(object):
+class InterpImageConfig(pexConfig.Config):
     """Config for InterpImageTask
     """
     interpKernelSizeFactor = pexConfig.Field(
@@ -63,6 +63,5 @@ class InterpImageTask(pipeBase.Task):
         psfModel = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
             coreSigma, coreSigma * 2.5, 0.1)
 
-        maskedImage = exposure.getMaskedImage()
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
-        measAlg.interpolateOverDefects(exposure.getMaskedImage(), psfModel, nanDefectList, 0.0)
+        measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, 0.0)

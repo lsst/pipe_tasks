@@ -34,7 +34,7 @@ __all__ = ["WarpAndPsfMatchTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
-class WarpAndPsfMatchConfig(object):
+class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
     desiredFwhm = pexConfig.Field(
@@ -62,7 +62,8 @@ class WarpAndPsfMatchTask(pipeBase.Task):
     """
     ConfigClass = WarpAndPsfMatchConfig
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
@@ -92,7 +93,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         @param destBBox: exact parent bbox of warped exposure (an afwGeom.Box2I or None);
             if None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored
         
-        @return a Struct containing:
+        @return a pipe_base Struct containing:
         - exposure: processed exposure
         """
         if self.config.desiredFwhm is not None:
@@ -109,6 +110,6 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         
         self.zeroPointScaler.scaleExposure(exposure)
 
-        return Struct(
+        return pipeBase.Struct(
             exposure = exposure,
         )

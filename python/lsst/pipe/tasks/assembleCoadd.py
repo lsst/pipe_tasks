@@ -27,7 +27,7 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from .coaddBase import CoaddBaseTask
-from .warpAndPsfMatch import InterpTask
+from .interpImage import InterpImageTask
 
 __all__ = ["AssembleCoaddTask"]
 
@@ -59,8 +59,13 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
-    interp = pexConfig.ConfigurableField(
-        target = InterpTask,
+    interpFwhm = pexConfig.Field(
+        doc = "FWHM of PSF used for interplation (arcsec)",
+        dtype = float,
+        default = 1.5,
+    )
+    interpImage = pexConfig.ConfigurableField(
+        target = InterpImageTask,
         doc = "Task to interpolate over EDGE pixels",
     )
     doWrite = pexConfig.Field(
@@ -78,7 +83,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
-        self.makeSubtask("interp")
+        self.makeSubtask("interpImage")
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -209,7 +214,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if self.config.doInterp:
             fwhmPixels = self.config.interpFwhm / wcs.pixelScale().asArcseconds()
-            self.interp.interpolateOnePlane(
+            self.interpImage.interpolateOnePlane(
                 maskedImage = coaddExposure.getMaskedImage(),
                 planeName = "EDGE",
                 fwhmPixels = fwhmPixels,
