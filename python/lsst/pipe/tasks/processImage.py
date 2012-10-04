@@ -37,7 +37,7 @@ class ProcessImageConfig(pexConfig.Config):
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
-    persistBackgroundModel = pexConfig.Field(dtype=bool, default=False, doc = "If True persist background model with background subtracted calexp.  \
+    persistBackgroundModel = pexConfig.Field(dtype=bool, default=True, doc = "If True persist background model with background subtracted calexp.  \
         If False persist calexp with the background included.")
     doWriteCalibrateMatches = pexConfig.Field(dtype=bool, default=True,
                                               doc = "Write icSrc to reference matches?")
@@ -204,6 +204,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     for b in backgrounds[1:]:
                         bg += b.getImageF()
                     dataRef.put(bg, self.dataPrefix+"calexpBackground")
+                    del bg
                 else:
                     mi = calExposure.getMaskedImage()
                     for bg in backgrounds:
@@ -289,4 +290,3 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             s.assign(ics, self.schemaMapper)
 
         return
-    
