@@ -26,17 +26,22 @@ import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddBaseTask, CalexpMixinConfig, CalexpMixinTask
+from .coaddBase import CoaddBaseTask
+from .warpAndPsfMatch import WarpAndPsfMatchTask
 
 __all__ = ["MakeCoaddTempExpTask"]
 
-class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass, CalexpMixinConfig):
+class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     """Config for MakeCoaddTempExpTask
     """
     coaddKernelSizeFactor = pexConfig.Field(
         dtype = float,
         doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
         default = 3.0,
+    )
+    warpAndPsfMatch = pexConfig.ConfigurableField(
+        target = WarpAndPsfMatchTask,
+        doc = "Task to warp, PSF-match and zero-point-match calexp",
     )
     doWrite = pexConfig.Field(
         doc = "persist <coaddName>Coadd_tempExp and (if desiredFwhm not None) <coaddName>Coadd_initPsf?",
@@ -45,7 +50,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass, CalexpMixinConfig):
     )
 
 
-class MakeCoaddTempExpTask(CoaddBaseTask, CalexpMixinTask):
+class MakeCoaddTempExpTask(CoaddBaseTask):
     """Coadd temporary images by PSF-matching (optional), warping and computing a weighted sum
     """
     ConfigClass = MakeCoaddTempExpConfig
@@ -53,7 +58,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask, CalexpMixinTask):
     
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
-        CalexpMixinTask.__init__(self)
+        self.makeSubtask("warpAndPsfMatch")
 
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -135,14 +140,15 @@ class MakeCoaddTempExpTask(CoaddBaseTask, CalexpMixinTask):
             for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
                 self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
-                calexp = self.getCalExp(calExpRef, getPsf=doPsfMatch)
+                calexp = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch)
                 try:
                     if calExpInd == 0:
                         # make a full-sized exposure and use it as the coaddTempExp
-                        coaddTempExp = self.processCalexp(calexp, wcs=tractWcs, destBBox=patchBBox)
+                        coaddTempExp = self.warpAndPsfMatch.run(calexp, wcs=tractWcs,
+                            destBBox=patchBBox).exposure
                     else:
                         # make as small an exposure within coaddTempExp as possible
-                        exposure = self.processCalexp(calexp, wcs=tractWcs, maxBBox=patchBBox)
+                        exposure = self.warpAndPsfMatch.run(calexp, wcs=tractWcs, maxBBox=patchBBox).exposure
                 except Exception, e:
                     self.log.warn("Error processing calexp %s; skipping it: %s" % \
                         (calExpRef.dataId, e))

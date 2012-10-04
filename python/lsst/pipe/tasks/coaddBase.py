@@ -26,16 +26,10 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.afw.math as afwMath
-import lsst.meas.algorithms as measAlg
-import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-import lsst.ip.isr as ipIsr
-from lsst.ip.diffim import ModelPsfMatchTask
 from .selectImages import BadSelectImagesTask
 
-__all__ = ["CoaddBaseTask", "InterpMixinConfig", "CalexpMixinConfig", "InterpMixinTask", "CalexpMixinTask",
-    "CoaddArgumentParser"]
+__all__ = ["CoaddBaseTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
@@ -55,71 +49,6 @@ class CoaddBaseConfig(pexConfig.Config):
         dtype = str,
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
-    )
-
-class InterpMixinConfig(object):
-    """Additional config for InterpMixinClass
-    """
-    doInterp = pexConfig.Field(
-        doc = "Interpolate over EDGE pixels?",
-        dtype = bool,
-        default = True,
-    )
-    interpFwhm = pexConfig.Field(
-        dtype = float,
-        doc = "FWHM of PSF kernel for interpolating NaNs.",
-        default = 1.5,
-    )
-    interpKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "Interpolation kernel size = interpFwhm converted to pixels * interpKernelSizeFactor.",
-        default = 3.0,
-    )
-
-
-class CalexpMixinConfig(object):
-    """Additional config for CalexpMixinTask
-    """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-    )
-    coaddZeroPoint = pexConfig.Field(
-        dtype = float,
-        doc = "photometric zero point of coadd (mag)",
-        default = 27.0,
-    )
-    psfMatch = pexConfig.ConfigurableField(
-        target = ModelPsfMatchTask,
-        doc = "PSF matching model to model task",
-    )
-    warp = pexConfig.ConfigField(
-        dtype = afwMath.Warper.ConfigClass,
-        doc = "warper configuration",
-    )
-
-
-class CoaddCalexpBaseConfig(CoaddBaseConfig):
-    """Config for CoaddCalexpBaseTask
-    """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-    )
-    coaddZeroPoint = pexConfig.Field(
-        dtype = float,
-        doc = "photometric zero point of coadd (mag)",
-        default = 27.0,
-    )
-    psfMatch = pexConfig.ConfigurableField(
-        target = ModelPsfMatchTask,
-        doc = "PSF matching model to model task",
-    )
-    warp = pexConfig.ConfigField(
-        dtype = afwMath.Warper.ConfigClass,
-        doc = "warper configuration",
     )
 
 
@@ -197,14 +126,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         return afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
             coreSigma, coreSigma * 2.5, 0.1)
 
-    def postprocessCoadd(self, coaddExposure):
-        """Postprocess the exposure coadd, e.g. interpolate over edge pixels
-        """
-        if self.config.doInterp:
-            self.interpolateEdgePixels(exposure=coaddExposure)
-        else:
-            self.log.info("config.doInterp is None; do not interpolate over EDGE pixels")
-
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
@@ -220,84 +141,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """Return the name of the metadata dataset
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
-
-
-class InterpMixinTask(object):
-    """A mixin class that adds interpolation of edge pixels to CoaddBaseTask
-    
-    Your task's config must also inherit from InterpMixinConfig
-    """
-    @pipeBase.timeMethod
-    def interpolateEdgePixels(self, exposure):
-        """Interpolate over edge pixels
-        
-        This interpolates over things like saturated pixels and replaces edge pixels with 0.
-        
-        @param[in,out] exposure: exposure over which to interpolate over edge pixels
-        @param[in] PSF to use to detect NaNs
-        """
-        self.log.info("Interpolate over EDGE pixels")
-        wcs = exposure.getWcs()
-        fwhmPixels = self.config.interpFwhm / wcs.pixelScale().asArcseconds()
-        kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
-        kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-        psfModel = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-
-        maskedImage = exposure.getMaskedImage()
-        nanDefectList = ipIsr.getDefectListFromMask(maskedImage, "EDGE", growFootprints=0)
-        measAlg.interpolateOverDefects(exposure.getMaskedImage(), psfModel, nanDefectList, 0.0)
-
-
-class CalexpMixinTask(object):
-    """A mixin class that adds calexp processing (warping and PSF matching) to CoaddBaseTask
-    
-    Your task's config must also inherit from CalexpMixinConfig
-    """
-    def __init__(self):
-        self.makeSubtask("psfMatch")
-        self.warper = afwMath.Warper.fromConfig(self.config.warp)
-        self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
-
-    def getCalExp(self, dataRef, getPsf=True):
-        """Return one "calexp" calibrated exposure, perhaps with psf
-        
-        @param dataRef: a sensor-level data reference
-        @param getPsf: include the PSF?
-        @return calibrated exposure with psf
-        """
-        exposure = dataRef.get("calexp")
-        if getPsf:
-            psf = dataRef.get("psf")
-            exposure.setPsf(psf)
-        return exposure
-    
-    def processCalexp(self, exposure, wcs, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if self.config.desiredFwhm is not None), warp and scale
-        
-        @param[in,out] exposure: exposure to preprocess; FWHM fitting is done in place
-        @param[in] wcs: desired WCS of temporary images
-        @param maxBBox: maximum allowed parent bbox of warped exposure (an afwGeom.Box2I or None);
-            if None then the warped exposure will be just big enough to contain all warped pixels;
-            if provided then the warped exposure may be smaller, and so missing some warped pixels;
-            ignored if destBBox is not None
-        @param destBBox: exact parent bbox of warped exposure (an afwGeom.Box2I or None);
-            if None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored
-        
-        @return preprocessed exposure
-        """
-        if self.config.desiredFwhm is not None:
-            self.log.info("PSF-match exposure")
-            fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
-            kernelDim = exposure.getPsf().getKernel().getDimensions()
-            modelPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-            exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-        self.log.info("Warp exposure")
-        with self.timer("warp"):
-            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
-        
-        self.zeroPointScaler.scaleExposure(exposure)
-
-        return exposure
 
 
 class CoaddArgumentParser(pipeBase.ArgumentParser):

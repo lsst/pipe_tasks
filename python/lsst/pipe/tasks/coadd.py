@@ -31,8 +31,9 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
-from .coaddBase import CoaddBaseTask, CoaddArgumentParser, CalexpMixinConfig, CalexpMixinTask, \
-    InterpMixinConfig, InterpMixinTask
+from .coaddBase import CoaddBaseTask, CoaddArgumentParser
+from .warpAndPsfMatch import InterpTask
+from .warpAndPsfMatch import WarpAndPsfMatchTask
 
 # export CoaddArgumentParser for backward compatibility; new code should get it from coaddBase
 
@@ -40,13 +41,26 @@ __all__ = ["CoaddTask", "CoaddArgumentParser"]
 
 FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
 
-class CoaddConfig(CoaddBaseTask.ConfigClass, CalexpMixinConfig, InterpMixinConfig):
+class CoaddConfig(CoaddBaseTask.ConfigClass):
     """Config for CoaddTask
     """
+    warpAndPsfMatch = pexConfig.ConfigurableField(
+        target = WarpAndPsfMatchTask,
+        doc = "Task to warp, PSF-match and zero-point-match calexp",
+    )
     coaddKernelSizeFactor = pexConfig.Field(
         dtype = float,
         doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
         default = 3.0,
+    )
+    doInterp = pexConfig.Field(
+        doc = "Interpolate over EDGE pixels?",
+        dtype = bool,
+        default = True,
+    )
+    interp = pexConfig.ConfigurableField(
+        target = InterpTask,
+        doc = "Task to interpolate over EDGE pixels",
     )
     doWrite = pexConfig.Field(
         doc = "persist coadd?",
@@ -55,7 +69,7 @@ class CoaddConfig(CoaddBaseTask.ConfigClass, CalexpMixinConfig, InterpMixinConfi
     )
 
 
-class CoaddTask(CoaddBaseTask, CalexpMixinTask, InterpMixinTask):
+class CoaddTask(CoaddBaseTask):
     """Coadd images by PSF-matching (optional), warping and computing a weighted sum
     """
     ConfigClass = CoaddConfig
@@ -63,8 +77,6 @@ class CoaddTask(CoaddBaseTask, CalexpMixinTask, InterpMixinTask):
 
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
-        CalexpMixinTask.__init__(self)
-        InterpMixinTask.__init__(self)
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -111,9 +123,9 @@ class CoaddTask(CoaddBaseTask, CalexpMixinTask, InterpMixinTask):
 
             self.log.info("Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
-            exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
+            exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch)
             try:
-                exposure = self.processCalexp(exposure, wcs=wcs, destBBox=bbox)
+                exposure = self.warpAndPsfMatch.run(calexp, wcs=tractWcs, maxBBox=patchBBox).exposure            
             except Exception, e:
                 self.log.warn("Error preprocessing exposure %s; skipping it: %s" % \
                     (dataRef.dataId, e))

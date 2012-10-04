@@ -26,11 +26,12 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddBaseTask, InterpMixinConfig, InterpMixinTask
+from .coaddBase import CoaddBaseTask
+from .warpAndPsfMatch import InterpTask
 
 __all__ = ["AssembleCoaddTask"]
 
-class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, InterpMixinConfig):
+class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     subregionSize = pexConfig.ListField(
         dtype = int,
         doc = "Width, height of stack subregion size; " \
@@ -53,6 +54,15 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, InterpMixinConfig):
         doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
         default = 2,
     )
+    doInterp = pexConfig.Field(
+        doc = "Interpolate over EDGE pixels?",
+        dtype = bool,
+        default = True,
+    )
+    interp = pexConfig.ConfigurableField(
+        target = InterpTask,
+        doc = "Task to interpolate over EDGE pixels",
+    )
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
         dtype = bool,
@@ -60,16 +70,16 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, InterpMixinConfig):
     )
     
 
-class AssembleCoaddTask(CoaddBaseTask, InterpMixinTask):
+class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
     _DefaultName = "coadd"
-    
+
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
-        InterpMixinTask.__init__(self)
-
+        self.makeSubtask("interp")
+    
     @pipeBase.timeMethod
     def run(self, patchRef):
         """Assemble coaddTempExp
@@ -196,7 +206,14 @@ class AssembleCoaddTask(CoaddBaseTask, InterpMixinTask):
                 self.log.fatal("Cannot compute this subregion: %s" % (e,))
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
-        self.postprocessCoadd(coaddExposure)
+
+        if self.config.doInterp:
+            fwhmPixels = self.config.interpFwhm / wcs.pixelScale().asArcseconds()
+            self.interp.interpolateOnePlane(
+                maskedImage = coaddExposure.getMaskedImage(),
+                planeName = "EDGE",
+                fwhmPixels = fwhmPixels,
+            )
 
         if self.config.doWrite:
             coaddName = self.config.coaddName + "Coadd"
