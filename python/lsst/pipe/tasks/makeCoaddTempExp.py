@@ -22,8 +22,11 @@
 #
 import math
 
+import numpy
+
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
+import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from .coaddBase import CoaddBaseTask
@@ -134,39 +137,41 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 datasetType = tempExpName,
                 dataId = tempExpId,
             )
-            self.log.info("Computing coaddTempExp %d of %d: id=%s" % \
-                (tempExpInd+1, numTempExp, tempExpId))
+            self.log.info("Computing coaddTempExp %d of %d: id=%s" % (tempExpInd+1, numTempExp, tempExpId))
 
+            totGoodPix = 0
+            coaddTempExp = afwImage.ExposureF(patchBBox, tractWcs)
+            edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
+            coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf)
             for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
                 self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
-                calexp = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch)
                 try:
-                    if calExpInd == 0:
-                        # make a full-sized exposure and use it as the coaddTempExp
-                        coaddTempExp = self.warpAndPsfMatch.run(calexp, wcs=tractWcs,
-                            destBBox=patchBBox).exposure
-                    else:
-                        # make as small an exposure within coaddTempExp as possible
-                        exposure = self.warpAndPsfMatch.run(calexp, wcs=tractWcs, maxBBox=patchBBox).exposure
-                except Exception, e:
-                    self.log.warn("Error processing calexp %s; skipping it: %s" % \
-                        (calExpRef.dataId, e))
-                    continue
-                if calExpInd > 0:
+                    exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch) 
+                    exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
                     numGoodPix = coaddUtils.copyGoodPixels(
                         coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
+                    totGoodPix += numGoodPix
                     if numGoodPix == 0:
                         self.log.warn("Calexp %s has no good pixels in this patch" % (calExpRef.dataId,))
                     else:
                         self.log.info("Calexp %s has %s good pixels in this patch" % \
-                            (calExpRef.dataId, numGoodPix,))
+                            (calExpRef.dataId, numGoodPix))
+                except Exception, e:
+                    self.log.warn("Error processing calexp %s; skipping it: %s" % \
+                        (calExpRef.dataId, e))
+                    continue
+
+            if totGoodPix == 0:
+                raise RuntimeError("Could not compute coaddTempExp: no usable input data")
+            self.log.info("coaddTempExp %s has %s good pixels" % (tempExpRef.dataId, totGoodPix))
                 
             if self.config.doWrite:
+                self.log.info("Persisting %s %s" % (tempExpName, tempExpRef.dataId))
                 tempExpRef.put(coaddTempExp, tempExpName)
                 if self.config.warpAndPsfMatch.desiredFwhm is not None:
                     psfName = self.config.coaddName + "Coadd_initPsf"
-                    self.log.info("Persisting %s" % (psfName,))
+                    self.log.info("Persisting %s %s" % (psfName, tempExpRef.dataId))
                     wcs = coaddExposure.getWcs()
                     fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
                     kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))

@@ -84,7 +84,12 @@ class CoaddTask(CoaddBaseTask):
     def run(self, patchRef):
         """Coadd images by PSF-matching (optional), warping and computing a weighted sum
         
-        PSF matching is to a double gaussian model with core FWHM = self.config.desiredFwhm
+        This task is deprecated: the preferred technique is to use makeCoaddTempExp followed by assembleCoadd,
+        configuring the latter to disable outlier rejection.
+        However, this task computes a weight map and assembleCoadd cannot.
+        Once the afw statistics stacker can compute a weight map this task will go away.
+        
+        PSF matching is to a double gaussian model with core FWHM = self.config.warpAndPsfMatch.desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         The size of the PSF matching kernel is the same as the size of the kernel
         found in the first calibrated science exposure, since there is no benefit
@@ -103,79 +108,69 @@ class CoaddTask(CoaddBaseTask):
         """
         skyInfo = self.getSkyInfo(patchRef)
         
-        wcs = skyInfo.wcs
-        bbox = skyInfo.bbox
+        tractWcs = skyInfo.wcs
+        patchBBox = skyInfo.bbox
         
-        imageRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
+        imageRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
         
         numExp = len(imageRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
         self.log.info("Coadd %s calexp" % (numExp,))
     
-        doPsfMatch = self.config.desiredFwhm is not None
+        doPsfMatch = self.config.warpAndPsfMatch.desiredFwhm is not None
         if not doPsfMatch:
             self.log.info("No PSF matching will be done (desiredFwhm is None)")
     
-        coadd = self.makeCoadd(bbox, wcs)
-        for ind, dataRef in enumerate(imageRefList):
-            if not dataRef.datasetExists("calexp"):
-                self.log.warn("Could not find calexp %s; skipping it" % (dataRef.dataId,))
+        coadd = self.makeCoadd(patchBBox, tractWcs)
+        for ind, calExpRef in enumerate(imageRefList):
+            if not calExpRef.datasetExists("calexp"):
+                self.log.warn("Could not find calexp %s; skipping it" % (calExpRef.dataId,))
                 continue
 
-            self.log.info("Processing exposure %d of %d: id=%s" % \
-                (ind+1, numExp, dataRef.dataId))
+            self.log.info("Processing exposure %d of %d: id=%s" % (ind+1, numExp, calExpRef.dataId))
             exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch)
             try:
-                exposure = self.warpAndPsfMatch.run(calexp, wcs=tractWcs, maxBBox=patchBBox).exposure            
-            except Exception, e:
-                self.log.warn("Error preprocessing exposure %s; skipping it: %s" % \
-                    (dataRef.dataId, e))
-                continue
-            try:
+                exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure            
                 coadd.addExposure(exposure)
-            except RuntimeError, e:
-                self.log.warn("Could not add exposure to coadd: %s" % (e,))
+            except Exception, e:
+                self.log.warn("Error processing exposure %s; skipping it: %s" % (calExpRef.dataId, e))
+                continue
         
         coaddExposure = coadd.getCoadd()
         if self.config.doInterp:
             fwhmArcSec = self.config.warpAndPsfMatch.desiredFwhm or 1.5
-            fwhmPixels = fwhmArcSec / wcs.pixelScale().asArcseconds()
+            fwhmPixels = fwhmArcSec / tractWcs.pixelScale().asArcseconds()
             self.interpImage.interpolateOnePlane(
                 maskedImage = coaddExposure.getMaskedImage(),
                 planeName = "EDGE",
                 fwhmPixels = fwhmPixels,
             )
 
-        self.persistCoadd(patchRef, coaddExposure)
+        if self.config.doWrite:
+            coaddName = self.config.coaddName + "Coadd"
+            self.log.info("Persisting %s" % (coaddName,))
+            patchRef.put(coaddExposure, coaddName)
+
+            weightMap = coadd.getWeightMap()                
+            weightMapName = self.config.coaddName + "Coadd_depth"
+            self.log.info("Persisting %s" % (weightMapName,))
+            patchRef.put(weightMap, weightMapName)
+
+            if self.config.warpAndPsfMatch.desiredFwhm is not None:
+                psfName = self.config.coaddName + "Coadd_initPsf"
+                self.log.info("Persisting %s" % (psfName,))
+                wcs = coaddExposure.getWcs()
+                fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
+                kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
+                kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
+                coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
+                patchRef.put(coaddPsf, psfName)
         
         return pipeBase.Struct(
             coaddExposure = coaddExposure,
             coadd = coadd,
         )
-    
-    def persistCoadd(self, patchRef, coaddExposure):
-        """Persist coadd and PSF, as appropriate
-        
-        If self.config.doWrite is False then do nothing.
-        If self.config.desiredFwhm is not None, then compute the model PSF and persist it.
-        
-        @param[in] patchRef: data reference to coadd patch
-        @param[in] coaddExposure: coadd exposure
-        """
-        if self.config.doWrite:
-            coaddName = self.config.coaddName + "Coadd"
-            self.log.info("Persisting %s" % (coaddName,))
-            patchRef.put(coaddExposure, coaddName)
-            if self.config.desiredFwhm is not None:
-                psfName = self.config.coaddName + "Coadd_initPsf"
-                self.log.info("Persisting %s" % (psfName,))
-                wcs = coaddExposure.getWcs()
-                fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
-                kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
-                kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-                coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-                patchRef.put(coaddPsf, psfName)
     
     def makeCoadd(self, bbox, wcs):
         """Make a coadd object, e.g. lsst.coadd.utils.Coadd

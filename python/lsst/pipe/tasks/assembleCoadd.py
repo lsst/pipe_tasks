@@ -79,7 +79,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
     """
     ConfigClass = AssembleCoaddConfig
-    _DefaultName = "coadd"
+    _DefaultName = "assembleCoadd"
 
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
