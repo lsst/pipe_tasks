@@ -142,7 +142,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
-
 class CoaddArgumentParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
     

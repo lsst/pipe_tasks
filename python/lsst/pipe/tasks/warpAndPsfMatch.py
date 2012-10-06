@@ -68,14 +68,23 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
         self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
 
-    def getCalExp(self, dataRef, getPsf=True):
+    def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
         """Return one "calexp" calibrated exposure, optionally with psf
         
         @param dataRef: a sensor-level data reference
         @param getPsf: include the PSF?
+        @param bgSubtracted: return background subtracted calexp?
         @return calibrated exposure with psf
         """
-        exposure = dataRef.get("calexp")
+        exposure = dataRef.get("calexp") #We assume calexps are background subtracted
+        if not bgSubtracted:
+            background = dataRef.get("calexpBackground")
+            try:
+                mi = exposure.getMaskedImage()
+                mi += background
+                del mi
+            except Exception, e:
+                self.log.warn("There was a problem adding the background: %s.  Continuing without adding a background."%(e))
         if getPsf:
             psf = dataRef.get("psf")
             exposure.setPsf(psf)

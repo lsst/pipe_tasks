@@ -51,6 +51,12 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
+    bgSubtracted = pexConfig.Field(
+        doc = "Work with a background subtracted calexp?",
+        dtype = bool,
+        default = False,
+    )
+
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
@@ -129,6 +135,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 tempExpIdDict[tempExpIdTuple] = [calExpRef]
 
         numTempExp = len(tempExpIdDict)
+        coaddTempExp = None
         for tempExpInd, calExpSubsetRefList in enumerate(tempExpIdDict.itervalues()):
             # derive tempExpId from the first calExpId
             tempExpId = dict((key, calExpSubsetRefList[0].dataId[key]) for key in tempExpKeyList)
@@ -147,7 +154,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
                 try:
-                    exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch) 
+                    exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=self.config.bgSubtracted) 
                     exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
                     numGoodPix = coaddUtils.copyGoodPixels(
                         coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
@@ -166,20 +173,23 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 raise RuntimeError("Could not compute coaddTempExp: no usable input data")
             self.log.info("coaddTempExp %s has %s good pixels" % (tempExpRef.dataId, totGoodPix))
                 
-            if self.config.doWrite:
+            if self.config.doWrite and coaddTempExp is not None:
                 self.log.info("Persisting %s %s" % (tempExpName, tempExpRef.dataId))
                 tempExpRef.put(coaddTempExp, tempExpName)
                 if self.config.warpAndPsfMatch.desiredFwhm is not None:
                     psfName = self.config.coaddName + "Coadd_initPsf"
                     self.log.info("Persisting %s %s" % (psfName, tempExpRef.dataId))
-                    wcs = coaddExposure.getWcs()
+                    wcs = coaddTempExp.getWcs()
                     fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
                     kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
                     kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
                     coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
                     patchRef.put(coaddPsf, psfName)
 
-            dataRefList.append(tempExpRef)
+            if coaddTempExp:
+                dataRefList.append(tempExpRef)
+            else:
+                self.log.warn("This %s temp coadd exposure could not be created"%(tempExpRef.dataId,))
         
         return pipeBase.Struct(
             dataRefList = dataRefList,
