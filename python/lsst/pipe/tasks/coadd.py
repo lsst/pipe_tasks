@@ -144,31 +144,31 @@ class CoaddTask(pipeBase.CmdLineTask):
         numExp = len(imageRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
-        self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
+        self.log.info("Coadd %s calexp" % (numExp,))
     
         doPsfMatch = self.config.desiredFwhm is not None
         if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm is None)")
+            self.log.info("No PSF matching will be done (desiredFwhm is None)")
     
         coadd = self.makeCoadd(bbox, wcs)
         for ind, dataRef in enumerate(imageRefList):
             if not dataRef.datasetExists("calexp"):
-                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (dataRef.dataId,))
+                self.log.warn("Could not find calexp %s; skipping it" % (dataRef.dataId,))
                 continue
 
-            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
+            self.log.info("Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
             try:
                 exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
             except Exception, e:
-                self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
+                self.log.warn("Error preprocessing exposure %s; skipping it: %s" % \
                     (dataRef.dataId, e))
                 continue
             try:
                 coadd.addExposure(exposure)
             except RuntimeError, e:
-                self.log.log(self.log.WARN, "Could not add exposure to coadd: %s" % (e,))
+                self.log.warn("Could not add exposure to coadd: %s" % (e,))
         
         coaddExposure = coadd.getCoadd()
         self.postprocessCoadd(coaddExposure)
@@ -191,11 +191,11 @@ class CoaddTask(pipeBase.CmdLineTask):
         """
         if self.config.doWrite:
             coaddName = self.config.coaddName + "Coadd"
-            self.log.log(self.log.INFO, "Persisting %s" % (coaddName,))
+            self.log.info("Persisting %s" % (coaddName,))
             patchRef.put(coaddExposure, coaddName)
             if self.config.desiredFwhm is not None:
                 psfName = self.config.coaddName + "Coadd_initPsf"
-                self.log.log(self.log.INFO, "Persisting %s" % (psfName,))
+                self.log.info("Persisting %s" % (psfName,))
                 wcs = coaddExposure.getWcs()
                 fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
                 kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
@@ -321,12 +321,12 @@ class CoaddTask(pipeBase.CmdLineTask):
         @return preprocessed exposure
         """
         if self.config.desiredFwhm is not None:
-            self.log.log(self.log.INFO, "PSF-match exposure")
+            self.log.info("PSF-match exposure")
             fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
             kernelDim = exposure.getPsf().getKernel().getDimensions()
             modelPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-        self.log.log(self.log.INFO, "Warp exposure")
+        self.log.info("Warp exposure")
         with self.timer("warp"):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
         
@@ -340,7 +340,7 @@ class CoaddTask(pipeBase.CmdLineTask):
         if self.config.doInterp:
             self.interpolateEdgePixels(exposure=coaddExposure)
         else:
-            self.log.log(self.log.INFO, "config.doInterp is None; do not interpolate over EDGE pixels")
+            self.log.info("config.doInterp is None; do not interpolate over EDGE pixels")
 
     @classmethod
     def _makeArgumentParser(cls):

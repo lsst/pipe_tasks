@@ -144,6 +144,13 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("astrometry", schema=self.schema)
         self.makeSubtask("photocal", schema=self.schema)
 
+    def getCalibKeys(self):
+        """
+        Return a sequence of schema keys that represent fields that should be propagated from
+        icSrc to src by ProcessCcdTask.
+        """
+        return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, idFactory=None):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
@@ -208,7 +215,7 @@ class CalibrateTask(pipeBase.Task):
                 background, exposure = measAlg.estimateBackground(
                     exposure, self.config.background, subtract=True,
                     statsKeys=('BGMEAN2', 'BGVAR2'))
-                self.log.log(self.log.INFO, "Fit and subtracted background")
+                self.log.info("Fit and subtracted background")
 
             self.display('background', exposure=exposure)
 
@@ -234,10 +241,27 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPhotoCal:
             assert(matches is not None)
-            photocalRet = self.photocal.run(matches, exposure.getFilter().getName())
-            zp = photocalRet.photocal
-            self.log.log(self.log.INFO, "Photometric zero-point: %f" % zp.getMag(1.0))
-            exposure.getCalib().setFluxMag0(zp.getFlux(0))
+            try:
+                photocalRet = self.photocal.run(exposure, matches)
+            except Exception, e:
+                self.log.log(self.log.WARN, "Failed to determine photometric zero-point: %s" % e)
+                photocalRet = None
+                
+            if photocalRet:
+                self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
+                exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
+                metadata = exposure.getMetadata()
+                # convert to (mag/sec/adu) for metadata
+                try:
+                    magZero = photocalRet.zp - 2.5 * math.log10(exposure.getCalib().getExptime() )
+                    metadata.set('MAGZERO', magZero)
+                except:
+                    self.log.warn("Could not set normalized MAGZERO in header: no exposure time")
+                metadata.set('MAGZERO_RMS', photocalRet.sigma)
+                metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
+                metadata.set('COLORTERM1', 0.0)
+                metadata.set('COLORTERM2', 0.0)
+                metadata.set('COLORTERM3', 0.0)    
         else:
             photocalRet = None
 
@@ -266,7 +290,7 @@ class CalibrateTask(pipeBase.Task):
         model = self.config.initialPsf.model
         fwhm = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
         size = self.config.initialPsf.size
-        self.log.log(self.log.INFO, "installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
+        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
         psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)
 
@@ -284,7 +308,7 @@ class CalibrateTask(pipeBase.Task):
         x0, y0 = exposure.getXY0()
         x, y = exposure.getWidth() / 2.0 + x0, exposure.getHeight() / 2.0 + y0
         value, error = apCorr.computeAt(x, y)
-        self.log.log(self.log.INFO, "Central aperture correction using %d/%d stars: %f +/- %f" %
+        self.log.info("Central aperture correction using %d/%d stars: %f +/- %f" %
                      (metadata.get("numGoodStars"), metadata.get("numAvailStars"), value, error))
         for key in metadata.names():
             self.metadata.add("apCorr.%s" % key, metadata.get(key))

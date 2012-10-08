@@ -96,25 +96,25 @@ class OutlierRejectedCoaddTask(CoaddTask):
         numExp = len(imageRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
-        self.log.log(self.log.INFO, "Coadd %s calexp" % (numExp,))
+        self.log.info("Coadd %s calexp" % (numExp,))
     
         doPsfMatch = self.config.desiredFwhm > 0
         if not doPsfMatch:
-            self.log.log(self.log.INFO, "No PSF matching will be done (desiredFwhm <= 0)")
+            self.log.info("No PSF matching will be done (desiredFwhm <= 0)")
 
         exposureMetadataList = []
         for ind, dataRef in enumerate(imageRefList):
             if not dataRef.datasetExists("calexp"):
-                self.log.log(self.log.WARN, "Could not find calexp %s; skipping it" % (dataRef.dataId,))
+                self.log.warn("Could not find calexp %s; skipping it" % (dataRef.dataId,))
                 continue
 
-            self.log.log(self.log.INFO, "Processing exposure %d of %d: id=%s" % \
+            self.log.info("Processing exposure %d of %d: id=%s" % \
                 (ind+1, numExp, dataRef.dataId))
             exposure = self.getCalExp(dataRef, getPsf=doPsfMatch)
             try:
                 exposure = self.preprocessExposure(exposure, wcs=wcs, destBBox=bbox)
             except Exception, e:
-                self.log.log(self.log.WARN, "Error preprocessing exposure %s; skipping it: %s" % \
+                self.log.warn("Error preprocessing exposure %s; skipping it: %s" % \
                     (dataRef.dataId, e))
                 continue
             tempDataId = dataRef.dataId.copy()
@@ -156,20 +156,20 @@ class OutlierRejectedCoaddTask(CoaddTask):
             filterDict.setdefault(expMeta.filter.getName(), expMeta.filter)
         if len(filterDict) == 1:
             coaddExposure.setFilter(filterDict.values()[0])
-        self.log.log(self.log.INFO, "Filter=%s" % (coaddExposure.getFilter().getName(),))
+        self.log.info("Filter=%s" % (coaddExposure.getFilter().getName(),))
     
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         for subBBox in _subBBoxIter(bbox, subregionSize):
-            self.log.log(self.log.INFO, "Computing coadd %s" % (subBBox,))
+            self.log.info("Computing coadd %s" % (subBBox,))
             coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
             maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
             weightList = []
             for expMeta in exposureMetadataList:
                 if not subBBox.overlaps(expMeta.bbox):
                     # there is no overlap between this temporary exposure and this coadd subregion
-                    self.log.log(self.log.INFO, "Skipping %s; no overlap" % (expMeta.path,))
+                    self.log.info("Skipping %s; no overlap" % (expMeta.path,))
                     continue
                 
                 if expMeta.bbox.contains(subBBox):
@@ -203,7 +203,7 @@ class OutlierRejectedCoaddTask(CoaddTask):
                 except Exception, e:
                     self.log.log(self.log.ERR, "Cannot compute this subregion: %s" % (e,))
             else:
-                self.log.log(self.log.WARN, "No images to coadd in this subregion")
+                self.log.warn("No images to coadd in this subregion")
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
         self.postprocessCoadd(coaddExposure)
