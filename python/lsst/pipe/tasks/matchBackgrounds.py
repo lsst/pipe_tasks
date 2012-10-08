@@ -23,7 +23,7 @@ import re
 import sys
 import itertools
 import traceback
-import numpy as num
+import numpy as np
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
@@ -131,27 +131,27 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #but it would have to be caught by the coadder
             return None, None
 
-        mask  = num.copy(refExposure.getMaskedImage().getMask().getArray())
+        mask  = np.copy(refExposure.getMaskedImage().getMask().getArray())
         mask += sciExposure.getMaskedImage().getMask().getArray()
         #get indicies of masked pixels
         #  Currently gets all non-zero-mask pixels,
         #  but this can be tweaked to get whatver types you want.
-        ix,iy = num.where((mask) > 0)
+        ix,iy = np.where((mask) > 0)
 
         #make difference image array
-        diffArr  = num.copy(refExposure.getMaskedImage().getImage().getArray())
+        diffArr  = np.copy(refExposure.getMaskedImage().getImage().getArray())
         diffArr -= sciExposure.getMaskedImage().getImage().getArray()
 
         #set image array pixels to nan if masked
-        diffArr[ix, iy] = num.nan
+        diffArr[ix, iy] = np.nan
 
         #bin
         width, height  = refExposure.getDimensions()
         x0, y0 = refExposure.getXY0()
-        xedges = num.arange(0, width, self.config.backgroundBinsize)
-        yedges = num.arange(0, height, self.config.backgroundBinsize)
-        xedges = num.hstack(( xedges, width ))  #add final edge
-        yedges = num.hstack(( yedges, height )) #add final edge
+        xedges = np.arange(0, width, self.config.backgroundBinsize)
+        yedges = np.arange(0, height, self.config.backgroundBinsize)
+        xedges = np.hstack(( xedges, width ))  #add final edge
+        yedges = np.hstack(( yedges, height )) #add final edge
         #Initialize lists to hold grid.
         #Use lists/append to protect against the case where
         #a bin has no valid pixels and should not be included in the fit
@@ -165,21 +165,21 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
                 #print ymin, ymax, xmin,xmax
                 area = diffArr[ymin:ymax][:,xmin:xmax]
                 # if there are less than 2 pixels with non-nan,non-masked values:
-                #TODO: num.where is expensive and perhaps
+                #TODO: np.where is expensive and perhaps
                 #      we can do it once above the loop and just compare indices here
-                idxNotNan = num.where(~num.isnan(area))
+                idxNotNan = np.where(~np.isnan(area))
                 if len(idxNotNan[0]) >= 2:
                     bgX.append(0.5 * (x0 + xmin + x0 + xmax))
                     bgY.append(0.5 * (y0 + ymin + y0 + ymax))
-                    bgdZ.append( num.std(area[idxNotNan])
-                                                /num.sqrt(num.size(area[idxNotNan])))
+                    bgdZ.append( np.std(area[idxNotNan])
+                                                /np.sqrt(np.size(area[idxNotNan])))
                     if self.config.gridStat == "MEDIAN":
-                       bgZ.append(num.median(area[idxNotNan]))
+                       bgZ.append(np.median(area[idxNotNan]))
                     elif self.config.gridStat == 'MEAN':
-                       bgZ.append(num.mean(area[idxNotNan]))
+                       bgZ.append(np.mean(area[idxNotNan]))
                     else:
                         print "Unspecified grid statistic. Using mean"
-                        bgZ.append(num.mean(area[idxNotNan]))
+                        bgZ.append(np.mean(area[idxNotNan]))
 
         #Check that there are enough points to fit
         if len(bgZ) == 0:
@@ -213,11 +213,11 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
             #
 
-            print "Diff Image mean Var: ", (num.mean(var.getArray()[num.where(num.isfinite(var.getArray()))]))
-            diffArr  = num.copy(refExposure.getMaskedImage().getImage().getArray())
+            print "Diff Image mean Var: ", (np.mean(var.getArray()[np.where(np.isfinite(var.getArray()))]))
+            diffArr  = np.copy(refExposure.getMaskedImage().getImage().getArray())
             diffArr -= sciExposure.getMaskedImage().getImage().getArray()
-            diffArr[ix, iy] = num.nan
-            print "ref - matched Var : ", num.std(diffArr[num.where(~num.isnan(diffArr))])**2
+            diffArr[ix, iy] = np.nan
+            print "ref - matched Var : ", np.std(diffArr[np.where(~np.isnan(diffArr))])**2
             #returns the background Model, and the matched science exposure
         return matchBackgroundModel, sciExposure
 
@@ -235,11 +235,11 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         """
         poly  = afwMath.Chebyshev1Function2D(int(degree), bbox)
         terms = list(poly.getParameters())
-        Ncell = num.sum(num.isfinite(Z)) #number of bins to fit: usually nbinx*nbiny
+        Ncell = np.sum(np.isfinite(Z)) #number of bins to fit: usually nbinx*nbiny
         Nterm = len(terms)
-        m  = num.zeros((Ncell, Nterm))
-        b  = num.zeros((Ncell))
-        iv = num.zeros((Ncell))
+        m  = np.zeros((Ncell, Nterm))
+        b  = np.zeros((Ncell))
+        iv = np.zeros((Ncell))
         nc = 0
         #Would be nice if the afwMath.ChebyshevFunction2D could make the matrix for fitting:
         #so that looping here wasn't necessary
@@ -252,10 +252,10 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             b[nc]  = Z[na]
             iv[nc] = 1/(dZ[na]*dZ[na])
             nc += 1
-        M    = num.dot(num.dot(m.T, num.diag(iv)), m)
-        B    = num.dot(num.dot(m.T, num.diag(iv)), b)
+        M    = np.dot(np.dot(m.T, np.diag(iv)), m)
+        B    = np.dot(np.dot(m.T, np.diag(iv)), b)
         try:
-            Soln = num.linalg.solve(M,B)
+            Soln = np.linalg.solve(M,B)
         except:
             self.log.warn("Polynomial fit FAILED. Returning all parameters = 0")
             return afwMath.Chebyshev1Function2D(int(degree), bbox)
