@@ -213,6 +213,17 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         return matchBackgroundModel, sciExposure
 
     def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ):
+    """ Temporary function to be eventually replaced in afwMath and meas_alg
+    	Fits a grid of points and returns a afw.math.Chebyshev1Function2D
+    	
+    	Parameters:
+    		bbox   an lsst.afw.geom.Box2D (provides the allowed x,y range) 
+    		degree order of polynomial (0 for constant) 
+    		X      list or array of x positions of grid points
+    		Y      list or array of y positions of grid points
+    		Z      list or array of the values to be fit
+    		dZ     list or array of the error on values to be fit. 
+    """
         poly  = afwMath.Chebyshev1Function2D(int(degree), bbox)
         terms = list(poly.getParameters())
         Ncell = num.sum(num.isfinite(Z)) #number of bins to fit: usually nbinx*nbiny
