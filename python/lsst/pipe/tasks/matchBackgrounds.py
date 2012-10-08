@@ -179,19 +179,17 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
         #Check that there are enough points to fit
         if len(bgZ) == 0:
-            self.log.warn("No overlap with reference. Cannot match")
-            return None, None
+            raise ValueError("No overlap with reference. Cannot match")
         elif len(bgZ) == 1:
             #
             #TODO:make the offset constant = bgZ
             #
-            self.log.warn("Only one  point. Const offset to be applied. Not yet implemented")
-            return None, None
+            raise NotImplementedError("Only one point. Const offset to be applied. Not yet implemented")
         else:
             #Fit grid with polynomial
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
             matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder,
-            										   bgX,bgY,bgZ,bgdZ)
+                                                       bgX,bgY,bgZ,bgdZ)
             #refExposure.writeFits('refExposure.fits')
             #sciExposure.writeFits('sciExposure.fits')
             im  = sciExposure.getMaskedImage().getImage()
@@ -218,8 +216,8 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
     def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ):
         """ Temporary function to be eventually replaced in afwMath and meas_alg
-    	Fits a grid of points and returns a afw.math.Chebyshev1Function2D
-    
+        Fits a grid of points and returns a afw.math.Chebyshev1Function2D
+
         @param bbox lsst.afw.geom.Box2D (provides the allowed x,y range)
         @param degree order of polynomial (0 for constant)
         @param X list or array of x positions of grid points
@@ -251,8 +249,8 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         B    = np.dot(np.dot(m.T, np.diag(iv)), b)
         try:
             Soln = np.linalg.solve(M,B)
-        except Exception, e:    
-            raise RuntimeError("Failed to fit background, cannot match: %s") % e
+        except Exception, e:
+            raise RuntimeError("Failed to fit background: %s" % e)
         poly.setParameters(Soln)
         return poly
 
