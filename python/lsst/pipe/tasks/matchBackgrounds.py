@@ -82,6 +82,15 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def run(self, refDataRef, toMatchDataRef):
+        """
+        Match the background of the science exposure to a reference exposure
+
+        @param refDataRef: data reference for the reference exposure
+        @param toMatchDataRef: data reference for the science exposure
+        @return: a pipBase.Struct with fields:
+        - matchBackgroundModel: an afw.Math.Function object
+        - matchedExopsure: an exposure with the background level equalized to the reference exp level
+        """
         self.log.info("Matching background of %s to %s" % (toMatchDataRef.dataId, refDataRef.dataId))
 
         if not refDataRef.datasetExists(self.config.datasetType):
@@ -215,13 +224,14 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
     def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ):
         """ Temporary function to be eventually replaced in afwMath and meas_alg
     	Fits a grid of points and returns a afw.math.Chebyshev1Function2D
-    	Parameters:
-    		bbox   an lsst.afw.geom.Box2D (provides the allowed x,y range)
-    		degree order of polynomial (0 for constant)
-    		X      list or array of x positions of grid points
-    		Y      list or array of y positions of grid points
-    		Z      list or array of the values to be fit
-    		dZ     list or array of the error on values to be fit.
+    
+        @param bbox lsst.afw.geom.Box2D (provides the allowed x,y range)
+        @param degree order of polynomial (0 for constant)
+        @param X list or array of x positions of grid points
+        @param Y list or array of y positions of grid points
+        @param Z list or array of the values to be fit
+        @param dZ list or array of the error on values to be fit.
+        @return an afw.math.Chebyshev1Function2D that fits the grid supplied
         """
         poly  = afwMath.Chebyshev1Function2D(int(degree), bbox)
         terms = list(poly.getParameters())
