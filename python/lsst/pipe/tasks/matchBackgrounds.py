@@ -82,7 +82,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def run(self, refDataRef, toMatchDataRef):
-        self.log.log(self.log.INFO, "Matching background of %s to %s" % (toMatchDataRef.dataId, refDataRef.dataId))
+        self.log.info("Matching background of %s to %s" % (toMatchDataRef.dataId, refDataRef.dataId))
 
         if not refDataRef.datasetExists(self.config.datasetType):
             raise pipeBase.TaskError("Data id %s does not exist" % (refDataRef.dataId))
@@ -174,13 +174,13 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
         #Check that there are enough points to fit
         if len(bgZ) == 0:
-            self.log.log(self.log.WARN, "No overlap with reference. Cannot match")
+            self.log.warn("No overlap with reference. Cannot match")
             return None, None
         elif len(bgZ) == 1:
             #
             #TODO:make the offset constant = bgZ
             #
-            self.log.log(self.log.WARN, "Only one  point. Const offset to be applied. Not yet implemented")
+            self.log.warn("Only one  point. Const offset to be applied. Not yet implemented")
             return None, None
         else:
             #Fit grid with polynomial
@@ -237,7 +237,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         try:
             Soln = num.linalg.solve(M,B)
         except:
-            self.log.log(self.log.WARN, "Polynomial fit FAILED. Returning all parameters = 0")
+            self.log.warn("Polynomial fit FAILED. Returning all parameters = 0")
             return afwMath.Chebyshev1Function2D(int(degree), bbox)
         poly.setParameters(Soln)
         return poly
@@ -277,7 +277,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             if configName is not None:
                 dataRef.put(self.config, configName)
         except Exception, e:
-            self.log.log(self.log.WARN, "Could not persist config for dataId=%s: %s" % \
+            self.log.warn("Could not persist config for dataId=%s: %s" % \
                 (dataRef.dataId, e,))
         if doraise:
             self.run(refDataRef, dataRef)
@@ -285,7 +285,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             try:
                 self.run(refDataRef, dataRef)
             except Exception, e:
-                self.log.log(self.log.FATAL, "Failed on dataId=%s: %s" % (dataRef.dataId, e))
+                self.log.fatal("Failed on dataId=%s: %s" % (dataRef.dataId, e))
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
         try:
@@ -293,7 +293,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             if metadataName is not None:
                 dataRef.put(self.getFullMetadata(), metadataName)
         except Exception, e:
-            self.log.log(self.log.WARN, "Could not persist metadata for dataId=%s: %s" % \
+            self.log.warn("Could not persist metadata for dataId=%s: %s" % \
                 (dataRef.dataId, e,))
 
 class MatchBackgroundsParser(pipeBase.ArgumentParser):
