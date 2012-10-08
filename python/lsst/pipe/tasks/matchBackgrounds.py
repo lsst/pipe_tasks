@@ -123,13 +123,9 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         if (sciExposure.getDimensions() != refExposure.getDimensions()):
             wSci, hSci = sciExposure.getDimensions()
             wRef, hRef = refExposure.getDimensions()
-            self.log.log(self.log.WARN,
-                         "Cannot Match. Exposures different shapes. sci:(%i, %i) vs. ref:(%i, %i)" %
-                         (wSci,hSci,wRef,hRef))
-            self.log.log(self.log.WARN, "Returning None")
-            #Could return None, sciExposure
-            #but it would have to be caught by the coadder
-            return None, None
+            raise pipeBase.TaskError(
+                "Exposures different dimensions. sci:(%i, %i) vs. ref:(%i, %i)" %
+                (wSci,hSci,wRef,hRef))
 
         mask  = np.copy(refExposure.getMaskedImage().getMask().getArray())
         mask += sciExposure.getMaskedImage().getMask().getArray()
@@ -211,8 +207,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #
             #import pdb; pdb.set_trace()
             #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
-            #
-
+            #Print for now
             print "Diff Image mean Var: ", (np.mean(var.getArray()[np.where(np.isfinite(var.getArray()))]))
             diffArr  = np.copy(refExposure.getMaskedImage().getImage().getArray())
             diffArr -= sciExposure.getMaskedImage().getImage().getArray()
@@ -256,9 +251,8 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         B    = np.dot(np.dot(m.T, np.diag(iv)), b)
         try:
             Soln = np.linalg.solve(M,B)
-        except:
-            self.log.warn("Polynomial fit FAILED. Returning all parameters = 0")
-            return afwMath.Chebyshev1Function2D(int(degree), bbox)
+        except Exception, e:    
+            raise RuntimeError("Failed to fit background, cannot match: %s") % e
         poly.setParameters(Soln)
         return poly
 
