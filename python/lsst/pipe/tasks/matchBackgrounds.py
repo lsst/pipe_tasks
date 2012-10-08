@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILIY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 import argparse
 import re
@@ -41,39 +41,39 @@ class MatchBackgroundsConfig(pexConfig.Config):
                  False - masks, grids and fits Chebyshev polynomials to the backgrounds """,
         default = False
     )
-    
+
     #Chebyshev polynomial fitting options
     backgroundOrder = pexConfig.Field(
         dtype = int,
         doc = """Order of background Chebyshev""",
         default = 4
     )
-    
+
     backgroundBinsize = pexConfig.Field(
         dtype = int,
         doc = """Bin size for background matching""",
-        default = 128 
+        default = 128
     )
-      
+
     gridStat = pexConfig.ChoiceField(
         dtype = str,
-        doc = """Type of statistic to use for the grid points""",     
+        doc = """Type of statistic to use for the grid points""",
         default = "MEAN",
         allowed = {
             "MEAN": "mean",
             "MEDIAN": "median"
             }
     )
-    
-    #Misc options 
+
+    #Misc options
     datasetType = pexConfig.Field(
         dtype = str,
         doc = """Name of data product to fetch (calexp, etc)""",
         default = "goodSeeingCoadd_tempExp" #needs tickets/2343
         #default = "coaddTempExp" #needs tickets/2317
-    )        
-      
- 
+    )
+
+
 class MatchBackgroundsTask(pipeBase.CmdLineTask):
     ConfigClass = MatchBackgroundsConfig
     _DefaultName = "matchBackgrounds"
@@ -83,7 +83,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
     @pipeBase.timeMethod
     def run(self, refDataRef, toMatchDataRef):
         self.log.log(self.log.INFO, "Matching background of %s to %s" % (toMatchDataRef.dataId, refDataRef.dataId))
-        
+
         if not refDataRef.datasetExists(self.config.datasetType):
             raise pipeBase.TaskError("Data id %s does not exist" % (refDataRef.dataId))
         refExposure = refDataRef.get(self.config.datasetType)
@@ -109,7 +109,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         Potential TO DOs:
             check to make sure they aren't the same image?
         """
-        
+
         #Check that exps are the same shape. Return if they aren't
         if (sciExposure.getDimensions() != refExposure.getDimensions()):
             wSci, hSci = sciExposure.getDimensions()
@@ -125,17 +125,17 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         mask  = num.copy(refExposure.getMaskedImage().getMask().getArray())
         mask += sciExposure.getMaskedImage().getMask().getArray()
         #get indicies of masked pixels
-        #  Currently gets all non-zero pixels,
-        #  but this can be tweaked to get whatver types you want. 
+        #  Currently gets all non-zero-mask pixels,
+        #  but this can be tweaked to get whatver types you want.
         ix,iy = num.where((mask) > 0)
-        
+
         #make difference image array
         diffArr  = num.copy(refExposure.getMaskedImage().getImage().getArray())
         diffArr -= sciExposure.getMaskedImage().getImage().getArray()
 
         #set image array pixels to nan if masked
         diffArr[ix, iy] = num.nan
-        
+
         #bin
         width, height  = refExposure.getDimensions()
         x0, y0 = refExposure.getXY0()
@@ -165,14 +165,14 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
                     bgdZ.append( num.std(area[idxNotNan])
                                                 /num.sqrt(num.size(area[idxNotNan])))
                     if self.config.gridStat == "MEDIAN":
-                       bgZ.append(num.median(area[idxNotNan])) 
+                       bgZ.append(num.median(area[idxNotNan]))
                     elif self.config.gridStat == 'MEAN':
                        bgZ.append(num.mean(area[idxNotNan]))
                     else:
                         print "Unspecified grid statistic. Using mean"
                         bgZ.append(num.mean(area[idxNotNan]))
-                        
-        #Check that there are enough points to fit                
+
+        #Check that there are enough points to fit
         if len(bgZ) == 0:
             self.log.log(self.log.WARN, "No overlap with reference. Cannot match")
             return None, None
@@ -181,28 +181,42 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #TODO:make the offset constant = bgZ
             #
             self.log.log(self.log.WARN, "Only one  point. Const offset to be applied. Not yet implemented")
-            return None, None    
-        else:   
+            return None, None
+        else:
             #Fit grid with polynomial
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
-            matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder, bgX,bgY,bgZ,bgdZ)
+            matchBackgroundModel = self.getChebFitPoly(bbox, self.config.backgroundOrder,
+            										   bgX,bgY,bgZ,bgdZ)
             #refExposure.writeFits('refExposure.fits')
             #sciExposure.writeFits('sciExposure.fits')
             im  = sciExposure.getMaskedImage().getImage()
             #matches sciExposure in place in memory
             im +=  matchBackgroundModel
+            #Variance of difference Image: var(A - B) = var(A) +var(B)
+            # Should add some variance to sciExp after the background matching
+            # Could use result of the polynomial fitting,
+            # or just the diffImage variance: prob too high but for now until testing
+            var  = sciExposure.getMaskedImage().getVariance()
+            var += refExposure.getMaskedImage().getVariance()
             #sciExposure.writeFits('sciExposureMatched.fits')
             #
+            #import pdb; pdb.set_trace()
             #To Do: Perform RMS check here to make sure new sciExposure is matched well enough?
             #
+
+            print "Diff Image mean Var: ", (num.mean(var.getArray()[num.where(num.isfinite(var.getArray()))]))
+            diffArr  = num.copy(refExposure.getMaskedImage().getImage().getArray())
+            diffArr -= sciExposure.getMaskedImage().getImage().getArray()
+            diffArr[ix, iy] = num.nan
+            print "ref - matched Var : ", num.std(diffArr[num.where(~num.isnan(diffArr))])**2
             #returns the background Model, and the matched science exposure
-        return matchBackgroundModel, sciExposure    
+        return matchBackgroundModel, sciExposure
 
     def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ):
-        poly  = afwMath.Chebyshev1Function2D(int(degree), bbox)          
+        poly  = afwMath.Chebyshev1Function2D(int(degree), bbox)
         terms = list(poly.getParameters())
         Ncell = num.sum(num.isfinite(Z)) #number of bins to fit: usually nbinx*nbiny
-        Nterm = len(terms)               
+        Nterm = len(terms)
         m  = num.zeros((Ncell, Nterm))
         b  = num.zeros((Ncell))
         iv = num.zeros((Ncell))
@@ -218,13 +232,13 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             b[nc]  = Z[na]
             iv[nc] = 1/(dZ[na]*dZ[na])
             nc += 1
-        M    = num.dot(num.dot(m.T, num.diag(iv)), m)       
+        M    = num.dot(num.dot(m.T, num.diag(iv)), m)
         B    = num.dot(num.dot(m.T, num.diag(iv)), b)
         try:
             Soln = num.linalg.solve(M,B)
         except:
             self.log.log(self.log.WARN, "Polynomial fit FAILED. Returning all parameters = 0")
-            return afwMath.Chebyshev1Function2D(int(degree), bbox) 
+            return afwMath.Chebyshev1Function2D(int(degree), bbox)
         poly.setParameters(Soln)
         return poly
 
@@ -241,13 +255,16 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return MatchBackgroundsParser(name=cls._DefaultName, datasetType=cls.ConfigClass().datasetType)
-    
+        return MatchBackgroundsParser(name=cls._DefaultName,
+                                      datasetType=cls.ConfigClass().datasetType)
+
     @classmethod
     def getRunInfo(cls, parsedCmd):
         log = parsedCmd.log if not pipeBase.cmdLineTask.useMultiProcessing(parsedCmd) else None# XXX pexLogging is not yet picklable
         refDataRef = parsedCmd.refDataRefList[0]
-        inputs = [pipeBase.Struct(cls=cls, config=parsedCmd.config, log=log, doraise=parsedCmd.doraise, dataRef=dataRef, refDataRef=refDataRef)
+        inputs = [pipeBase.Struct(cls=cls, config=parsedCmd.config, log=log,
+                                  doraise=parsedCmd.doraise, dataRef=dataRef,
+                                  refDataRef=refDataRef)
                   for dataRef in parsedCmd.dataRefList]
         return pipeBase.Struct(func=runTask, inputs=inputs)
 
@@ -285,10 +302,11 @@ class MatchBackgroundsParser(pipeBase.ArgumentParser):
     def __init__(self, *args, **kwargs):
         pipeBase.ArgumentParser.__init__(self, *args, **kwargs)
         self.add_argument("--refid", nargs="*", action=RefIdValueAction,
-                          help="unique, full reference background data ID, e.g. --refid visit=865833781 raft=2,2 sensor=1,0 filter=3 patch=3 tract=77,69", metavar="KEY=VALUE") 
+                          help="unique, full reference background data ID, e.g. --refid visit=865833781 filter=3 patch=3 tract=77,69", metavar="KEY=VALUE")
 
     def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList *AND* namespace.refDataRefList from namespace.refDataIdList
+        """Make namespace.dataRefList from namespace.dataIdList *AND*
+           namespace.refDataRefList from namespace.refDataIdList
         """
         datasetType = namespace.config.datasetType
         validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
@@ -311,7 +329,7 @@ class MatchBackgroundsParser(pipeBase.ArgumentParser):
 
         for refPair in (("dataRefList", "dataIdList"), ("refDataRefList", "refDataIdList")):
             refList, idList = refPair
-            
+
             exec("namespace.%s = []" % (refList))
             for dataId in eval("namespace.%s" % (idList)):
                 # tract and patch are required
@@ -334,14 +352,14 @@ class RefIdValueAction(argparse.Action):
     """
     def __call__(self, parser, namespace, values, option_string):
         """Parse --refid data and store results in namespace.refDataIdList
-        
+
         The data format is:
         key1=value1_1[^value1_2[^value1_3...] key2=value2_1[^value2_2[^value2_3...]...
 
         The values (e.g. value1_1) may either be a string, or of the form "int...int" (e.g. "1..3")
         which is interpreted as "1^2^3" (inclusive, unlike a python range). So "0^2..4^7..9" is
         equivalent to "0^2^3^4^7^8^9"
-        
+
         """
         if namespace.config is None:
             return
