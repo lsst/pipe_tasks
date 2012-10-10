@@ -50,7 +50,9 @@ class ImageDifferenceConfig(pexConfig.Config):
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
         doc = "Include HeavyFootprint data in source table?")
-                                                      
+    doMatchDiaSources = pexConfig.Field(dtype=bool, default=True, doc = "Match DiaSources to Sources in image") 
+    doWriteDiaSources = pexConfig.Field(dtype=bool, default=True, doc = "Persist DiaSource to Source matches") 
+
     coaddName = pexConfig.Field(
         doc = "coadd name: typically one of deep or goodSeeing",
         dtype = str,
@@ -65,6 +67,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Swap the order of which image gets convolved (default = template)",
         dtype = bool,
         default = False
+    )
+    diaSourceMatchRadius = pexConfig.Field( 
+        doc = "Match radius (in pixels) to associate DiaSources with Sources",
+        dtype = float,
+        default = 3.0
     )
 
     starSelector = starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
@@ -114,6 +121,8 @@ class ImageDifferenceConfig(pexConfig.Config):
             raise ValueError("Cannot run source deblending without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
             raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
+        if self.doWriteDiaSources and not self.doMatchDiaSources:
+            raise ValueError("Cannot write DisSources (doWriteDiaSources) without doMatchDiaSources")
 
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
@@ -236,28 +245,41 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, subtractedExposure).sources
+            diaSources = self.detection.makeSourceCatalog(table, subtractedExposure).sources
 
             if self.config.doDeblend:
-               self.deblend.run(subtractedExposure, sources, psf)
+               self.deblend.run(subtractedExposure, diaSources, psf)
     
             if self.config.doMeasurement:
                 apCorr = sensorRef.get("apCorr")
-                self.measurement.run(subtractedExposure, sources, apCorr)
+                self.measurement.run(subtractedExposure, diaSources, apCorr)
     
-            if sources is not None and self.config.doWriteSources:
+            if diaSources is not None and self.config.doWriteSources:
                 if self.config.doWriteHeavyFootprintsInSources:
-                    sources.setWriteHeavyFootprints(True)
-                sensorRef.put(sources, self.config.coaddName + "Diff_src")
+                    diaSources.setWriteHeavyFootprints(True)
+                sensorRef.put(diaSources, self.config.coaddName + "Diff_src")
+            
+            import pdb; pdb.set_trace()
+            sourceMatches = None
+            if self.config.doMatchDiaSources:
+                sources = sensorRef.get("src")
+                if sources is not None:
+                    sourceMatches = afwTable.matchXy(diaSources, sources, self.config.diaSourceMatchRadius) 
+                else:
+                    self.log.warn("Cannot locate src for %s" % (sensorRef.dataId))
+                if self.config.doWriteDiaSources:
+                    normalizedMatches = afwTable.packMatches(sourceMatches)
+                    sensorRef.put(normalizedMatches, self.config.coaddName + "Diff_diaMatch")
  
-        self.runDebug(exposure, subtractRes, selectSources, kernelSources, sources)
+        self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
         return pipeBase.Struct(
             subtractedExposure = subtractedExposure,
             subtractRes = subtractRes,
-            sources = sources,
+            diaSources = diaSources,
+            sourceMatches = sourceMatches,
         )
 
-    def runDebug(self, exposure, subtractRes, selectSources, kernelSources, sources):
+    def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
         import lsstDebug
         display = lsstDebug.Info(__name__).display 
         showPixelResiduals = lsstDebug.Info(__name__).showPixelResiduals
@@ -294,11 +316,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        origVariance = True)
         if display and showDiaSources:
             import lsst.ip.diffim.diffimTools as diffimTools
-            flagChecker   = diffimTools.SourceFlagChecker(sources)
-            dipoleChecker = diffimTools.DipoleChecker(sources)
-            isFlagged     = [flagChecker(x) for x in sources]
-            isDipole      = [dipoleChecker(x) for x in sources]
-            diUtils.showDiaSources(sources, subtractRes.subtractedExposure, isFlagged, isDipole, frame=lsstDebug.frame)
+            flagChecker   = diffimTools.SourceFlagChecker(diaSources)
+            dipoleChecker = diffimTools.DipoleChecker(diaSources)
+            isFlagged     = [flagChecker(x) for x in diaSources]
+            isDipole      = [dipoleChecker(x) for x in diaSources]
+            diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole, frame=lsstDebug.frame)
             lsstDebug.frame += 1
         
     def getTemplate(self, exposure, sensorRef):
