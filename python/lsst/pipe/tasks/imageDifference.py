@@ -259,7 +259,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     diaSources.setWriteHeavyFootprints(True)
                 sensorRef.put(diaSources, self.config.coaddName + "Diff_src")
             
-            import pdb; pdb.set_trace()
             sourceMatches = None
             if self.config.doMatchDiaSources:
                 sources = sensorRef.get("src")
