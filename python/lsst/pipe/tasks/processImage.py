@@ -37,6 +37,8 @@ class ProcessImageConfig(pexConfig.Config):
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
+    persistBackgroundModel = pexConfig.Field(dtype=bool, default=True, doc = "If True persist background model with background subtracted calexp.  \
+        If False persist calexp with the background included.")
     doWriteCalibrateMatches = pexConfig.Field(dtype=bool, default=True,
                                               doc = "Write icSrc to reference matches?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
@@ -138,7 +140,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         apCorr = None
         sources = None
         psf = None
-        
+        backgrounds = []        
         if self.config.doCalibrate:
             calib = self.calibrate.run(inputExposure, idFactory=idFactory)
             psf = calib.psf
@@ -154,6 +156,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     dataRef.put(normalizedMatches, self.dataPrefix + "icMatch")
+            for bg in calib.backgrounds:
+                backgrounds.append(bg)
         else:
             calib = None
 
@@ -167,15 +171,11 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 calExposure.setPsf(psf)
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, calExposure).sources
-
-        if self.config.doWriteCalibrate:
-            # wait until after detection, since that sets detected mask bits and may tweak the background;
-            # note that this overwrites an existing calexp if doCalibrate false
-            if calExposure is None:
-                self.log.warn("calibrated exposure is None; cannot save it")
-            else:
-                dataRef.put(calExposure, self.dataPrefix + "calexp")
+            detections = self.detection.makeSourceCatalog(table, calExposure)
+            sources = detections.sources
+            fpSets = detections.fpSets
+            if fpSets.background:           
+                backgrounds.append(fpSets.background)
 
         if self.config.doDeblend:
             if calExposure is None:
@@ -189,6 +189,27 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             if apCorr is None:
                 apCorr = dataRef.get(self.dataPrefix + "apCorr")
             self.measurement.run(calExposure, sources, apCorr)
+
+        if self.config.doWriteCalibrate:
+            # wait until after detection and measurement, since detection sets detected mask bits and both require 
+            # a background subtracted exposure;
+            # note that this overwrites an existing calexp if doCalibrate false
+               
+            if calExposure is None:
+                self.log.warn("calibrated exposure is None; cannot save it")
+            else:
+                if self.config.persistBackgroundModel:
+                    self.log.warn("Persisting background models as an image")
+                    bg = backgrounds[0].getImageF()
+                    for b in backgrounds[1:]:
+                        bg += b.getImageF()
+                    dataRef.put(bg, self.dataPrefix+"calexpBackground")
+                    del bg
+                else:
+                    mi = calExposure.getMaskedImage()
+                    for bg in backgrounds:
+                        mi += bg.getImageF()
+                dataRef.put(calExposure, self.dataPrefix + "calexp")
 
         if calib is not None:
             self.propagateCalibFlags(calib.sources, sources)
@@ -216,6 +237,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             sources = sources,
             matches = srcMatches,
             matchMeta = srcMatchMeta,
+            backgrounds = backgrounds,
         )
 
     def matchSources(self, exposure, sources):
@@ -268,4 +290,3 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             s.assign(ics, self.schemaMapper)
 
         return
-    
