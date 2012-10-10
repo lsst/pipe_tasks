@@ -39,14 +39,14 @@ class MatchBackgroundsConfig(pexConfig.Config):
         doc = """Name of data product to fetch (goodSeeingCoadd_tempExp, deepCoadd_tempExp etc)""",
         default = "goodSeeingCoadd_tempExp"
         #default = "coaddTempExp" #needs tickets/2317
-    )
+        )
     
     useDetectionBackground = pexConfig.Field(
         dtype = bool,
         doc = """True -  True uses lsst.meas.algorithms.detection.getBackground()
                  False - masks, grids and fits Chebyshev polynomials to the backgrounds """,
-        default = True
-    )
+        default = False
+        )
 
     #Common Options
     ignoredPixelMask = pexConfig.ListField(
@@ -64,7 +64,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
             "MEDIAN": "median",
             "CLIPMEAN": "clipped mean"
             }
-    )
+        )
 
     #Spline Options
     undersampleStyle = pexConfig.ChoiceField(
@@ -76,6 +76,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
             "INCREASE_NXNYSAMPLE": "Increase the number of samples used to make the interpolation grid.",
             }
         )
+    
     splineBinSize = pexConfig.RangeField(
         doc="how large a region of the sky should be used for each background point when matching",
         dtype=int, default=256,
@@ -94,18 +95,19 @@ class MatchBackgroundsConfig(pexConfig.Config):
              "NONE": "No background estimation is to be attempted",
              }
         )
+    
     #Polynomial fitting options
     backgroundOrder = pexConfig.Field(
         dtype = int,
         doc = """Order of background Chebyshev""",
-        default = 2
-    )
+        default = 8
+        )
 
     chebBinSize = pexConfig.Field(
         dtype = int,
         doc = """Bin size for background matching. Can be arbitrarily small becase backgroundOrder sets the order""",
         default = 128
-    )
+        )
 
     
 
@@ -123,8 +125,13 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         @param refDataRef: data reference for the reference exposure
         @param toMatchDataRef: data reference for the science exposure
         @return: a pipBase.Struct with fields:
-        - matchBackgroundModel: an afw.Math.Function object
+        - matchBackgroundModel: an afw.Math.Function or a afw.Math.background
         - matchedExopsure: an exposure with the background level equalized to the reference exp level
+
+        TO DO:
+        This should be a subtask called by assembleCoadd.py
+        It will take in a reference dataRef and a list of science dataRefs
+        and return a list of background objects. 
         """
         self.log.info("Matching background of %s to %s" % (toMatchDataRef.dataId, refDataRef.dataId))
 
@@ -135,14 +142,20 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         if not toMatchDataRef.datasetExists(self.config.datasetType):
             raise pipeBase.TaskError("Data id %s does not exist" % (toMatchDataRef.dataId))
         sciExposure = toMatchDataRef.get(self.config.datasetType)
-        
+
+        if lsstDebug.Info(__name__).savefig:
+            refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'refExposure.fits')
+            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposure.fits')
+            
         if self.config.useDetectionBackground:
             matchBackgroundModel, matchedExposure = self.matchBackgroundsDetection(refExposure, sciExposure)
         else:
             matchBackgroundModel, matchedExposure = self.matchBackgrounds(refExposure, sciExposure)
-       
 
-        print "SUCCESS!!!", type(refExposure), type(refExposure)
+        if lsstDebug.Info(__name__).savefig:
+            refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
+    
+        sciExposure = toMatchDataRef.get(self.config.datasetType)
         return pipeBase.Struct(
             matchBackgroundModel = matchBackgroundModel,
             matchedExposure = matchedExposure
@@ -179,9 +192,12 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
 
         if self.config.gridStatistic == "MEDIAN":
             statsFlag = afwMath.MEDIAN
-        else:
+        elif self.config.gridStatistic == "CLIPMEAN":
+            statsFlag = afwMath.CLIPMEAN
+        elif self.config.gridStatistic == "MEAN":
             statsFlag = afwMath.MEAN
-            
+
+        #bgZ is a list of the diffImage background estimates per bin, bgdZ contains stdev/sqrt(N)    
         bgX, bgY, bgZ, bgdZ = self.gridImage(diffIm, self.config.chebBinSize, sctrl, statsFlag)
         
         #Check that there are enough points to fit
@@ -197,9 +213,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
         matchBackgroundModel, resids, rms = self.getChebFitPoly(bbox, self.config.backgroundOrder,
                                                    bgX,bgY,bgZ,bgdZ)
-        if lsstDebug.Info(__name__).savefig:
-            refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'refExposure.fits')
-            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposure.fits')
+
         im  = sciExposure.getMaskedImage().getImage()
         #matches sciExposure in place in memory
         im +=  matchBackgroundModel
@@ -303,6 +317,11 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         return poly, resids, RMS
 
     def debugPlot(self,X,Y,Z,dZ,poly, bbox, model,resids):
+        """ Will generate a plot showing the background fit and residuals.
+        It is called when lsstDebug.Info(__name__).display = True
+        Saves the fig to lsstDebug.Info(__name__).figpath if
+        lsstDebug.Info(__name__).savefig = True
+        """
         import matplotlib.pyplot as plt
         import matplotlib.colors
         from mpl_toolkits.axes_grid1 import ImageGrid
@@ -317,10 +336,16 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         from mpl_toolkits.axes_grid1 import ImageGrid
         fig = plt.figure(1, (8, 6))
         dz = np.array(dZ)
-        grid = ImageGrid(fig, 111, nrows_ncols = (1, 2), axes_pad=0.1,share_all=True, label_mode = "L", cbar_mode = "each", cbar_size = "7%", cbar_pad="2%", cbar_location = "top")
-        im = grid[0].imshow(Zeroim.getImage().getArray(), extent=(x0, x0+dx, y0+dy, y0), norm = norm,cmap='Spectral')
-        im = grid[0].scatter(X, Y, c=Z, s = 1/dz/10, edgecolor='none', norm=norm, marker='o',cmap='Spectral')
-        im2 = grid[1].scatter(X,Y,  c=resids, edgecolor='none', marker='s', cmap='seismic', norm=diffnorm)
+        grid = ImageGrid(fig, 111, nrows_ncols = (1, 2), axes_pad=0.1,
+                         share_all=True, label_mode = "L", cbar_mode = "each",
+                         cbar_size = "7%", cbar_pad="2%", cbar_location = "top")
+        im = grid[0].imshow(Zeroim.getImage().getArray(),
+                            extent=(x0, x0+dx, y0+dy, y0), norm = norm,
+                            cmap='Spectral')
+        im = grid[0].scatter(X, Y, c=Z, s = 1/dz/10, edgecolor='none', norm=norm,
+                             marker='o',cmap='Spectral')
+        im2 = grid[1].scatter(X,Y,  c=resids, edgecolor='none', norm=diffnorm,
+                              marker='s', cmap='seismic')
         grid.cbar_axes[0].colorbar(im)
         grid.cbar_axes[1].colorbar(im2)
         grid[0].axis([x0,x0+dx,y0+dy,y0])
@@ -330,6 +355,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         if lsstDebug.Info(__name__).savefig:
             fig.savefig(lsstDebug.Info(__name__).figpath + 'debug.png')
         plt.show()
+        #plt.clf()
        
     @pipeBase.timeMethod
     def matchBackgroundsDetection(self, refExposure, sciExposure):
@@ -356,6 +382,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         except Exception, e:
             raise RuntimeError("Failed to fit background: %s" % (e))
 
+
         #Add offset to sciExposure
         sci  = sciExposure.getMaskedImage()
         sci += bkgd.getImageF()
@@ -366,6 +393,11 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             statsFlag = afwMath.MEAN
         elif self.config.gridStatistic == "CLIPMEAN":    
             statsFlag = afwMath.CLIPMEAN
+            
+        #Check fit! Compare MSE with mean variance of the difference Image
+        sctrl = afwMath.StatisticsControl()
+        sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.ignoredPixelMask))
+        sctrl.setNanSafe(True)
             
         if lsstDebug.Info(__name__).display:
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
@@ -381,11 +413,6 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #model = vGetModel(X,Y) # TypeError: in method 'Background_getPixel', argument 2 of type 'int'
             self.debugPlot(X,Y,Z,dZ, bkgd.getImageF(), bbox, model, resids)
             
-        #Check fit! Compare MSE with mean variance of the difference Image
-        sctrl = afwMath.StatisticsControl()
-        sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.ignoredPixelMask))
-        sctrl.setNanSafe(True)
-
         stats = afwMath.makeStatistics(diff.getVariance(),diff.getMask(),afwMath.MEAN, sctrl) 
         meanVar, _ = stats.getResult(afwMath.MEAN)
         print "Diff Image mean Var: ", meanVar
