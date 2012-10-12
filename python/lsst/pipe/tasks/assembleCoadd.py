@@ -41,7 +41,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     )
     doSigmaClip = pexConfig.Field(
         dtype = bool,
-        doc = "Perform sigma clipping (if False then compute simple mean).",
+        doc = "Perform sigma clipped outlier rejection? If False then compute a simple mean.",
         default = True,
     )
     sigmaClip = pexConfig.Field(
@@ -55,7 +55,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = 2,
     )
     doInterp = pexConfig.Field(
-        doc = "Interpolate over EDGE pixels?",
+        doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
         dtype = bool,
         default = True,
     )
@@ -66,7 +66,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     )
     interpImage = pexConfig.ConfigurableField(
         target = InterpImageTask,
-        doc = "Task to interpolate over EDGE pixels",
+        doc = "Task to interpolate (and extrapolate) over NaN pixels",
     )
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
@@ -87,7 +87,9 @@ class AssembleCoaddTask(CoaddBaseTask):
     
     @pipeBase.timeMethod
     def run(self, patchRef):
-        """Assemble coaddTempExp
+        """Assemble a coadd from a set of coaddTempExp
+        
+        The coadd is computed as a mean with optional (on by default) outlier rejection.
         
         @param patchRef: data reference for sky map. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")

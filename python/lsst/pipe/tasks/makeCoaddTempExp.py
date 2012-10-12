@@ -60,7 +60,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
-    """Coadd temporary images by PSF-matching (optional), warping and computing a weighted sum
+    """Task to produce <coaddName>Coadd_tempExp images and (optional) <coaddName>Coadd_initPsf
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
@@ -84,11 +84,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         
         PSF-matching is performed before warping so the code can use the PSF models
         associated with the calibrated science exposures (without having to warp those models).
-    
+        
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
         @return: a pipeBase.Struct with fields:
         - dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
+
+        @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
         """
         skyInfo = self.getSkyInfo(patchRef)
         
@@ -150,6 +152,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             coaddTempExp = afwImage.ExposureF(patchBBox, tractWcs)
             edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
             coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf)
+            didSetMetadata = False
             for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
                 self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
@@ -164,6 +167,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     else:
                         self.log.info("Calexp %s has %s good pixels in this patch" % \
                             (calExpRef.dataId, numGoodPix))
+                    
+                    if not didSetMetadata:
+                        coaddTempExp.setCalib(exposure.getCalib())
+                        coaddTempExp.setFilter(exposure.getFilter())
+                        didSetMetadata = True
                 except Exception, e:
                     self.log.warn("Error processing calexp %s; skipping it: %s" % \
                         (calExpRef.dataId, e))
