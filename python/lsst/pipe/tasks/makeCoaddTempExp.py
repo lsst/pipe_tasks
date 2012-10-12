@@ -178,7 +178,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     continue
 
             if totGoodPix == 0:
-                raise RuntimeError("Could not compute coaddTempExp: no usable input data")
+                self.log.warn("Could not compute coaddTempExp %s: no good pixels" % (tempExpRef.dataId,))
+                continue
             self.log.info("coaddTempExp %s has %s good pixels" % (tempExpRef.dataId, totGoodPix))
                 
             if self.config.doWrite and coaddTempExp is not None:
