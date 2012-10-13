@@ -105,7 +105,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         numExp = len(calExpRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
-        self.log.info("Coadd %s calexp" % (numExp,))
+        self.log.info("Process %s calexp" % (numExp,))
     
         doPsfMatch = self.config.warpAndPsfMatch.desiredFwhm is not None
         if not doPsfMatch:
