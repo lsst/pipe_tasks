@@ -264,8 +264,8 @@ class IngestTask(Task):
 
     def __init__(self, *args, **kwargs):
         super(IngestTask, self).__init__(*args, **kwargs)
-        parse = self.makeSubtask("parse")
-        parse = self.makeSubtask("register")
+        self.makeSubtask("parse")
+        self.makeSubtask("register")
 
     @classmethod
     def parseAndRun(cls):
