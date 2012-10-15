@@ -260,12 +260,32 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, sources):
         import lsstDebug
         display = lsstDebug.Info(__name__).display 
+        showSubtracted = lsstDebug.Info(__name__).showSubtracted
         showPixelResiduals = lsstDebug.Info(__name__).showPixelResiduals
         showDiaSources = lsstDebug.Info(__name__).showDiaSources
         maskTransparency = lsstDebug.Info(__name__).maskTransparency   
         if not maskTransparency:
             maskTransparency = 0
         ds9.setMaskTransparency(maskTransparency)
+
+        if display and showSubtracted:
+            ds9.mtv(subtractRes.subtractedExposure, frame=lsstDebug.frame, title="Subtracted image")
+            mi = subtractRes.subtractedExposure.getMaskedImage()
+            x0, y0 = mi.getX0(), mi.getY0()
+            with ds9.Buffering():
+                for s in sources:
+                    x, y = s.getX() - x0, s.getY() - y0
+                    ctype = "red" if s.get("flags.negative") else "yellow"
+                    if (s.get("flags.pixel.interpolated.center") or s.get("flags.pixel.saturated.center") or
+                        s.get("flags.pixel.cr.center")):
+                        ptype = "x"
+                    elif (s.get("flags.pixel.interpolated.any") or s.get("flags.pixel.saturated.any") or
+                          s.get("flags.pixel.cr.any")):
+                        ptype = "+"
+                    else:
+                        ptype = "o"
+                    ds9.dot(ptype, x, y, size=4, frame=lsstDebug.frame, ctype=ctype)
+            lsstDebug.frame += 1
 
         if display and showPixelResiduals:
             import lsst.ip.diffim.utils as diUtils
