@@ -333,6 +333,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         norm = matplotlib.colors.normalize(vmax=max, vmin= min)
         maxdiff = np.max(np.abs(resids))
         diffnorm = matplotlib.colors.normalize(vmax=maxdiff, vmin= -maxdiff)
+        rms = np.sqrt(np.mean(resids**2))
         from mpl_toolkits.axes_grid1 import ImageGrid
         fig = plt.figure(1, (8, 6))
         dz = np.array(dZ)
@@ -351,7 +352,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         grid[0].axis([x0,x0+dx,y0+dy,y0])
         grid[1].axis([x0,x0+dx,y0+dy,y0])
         grid[0].set_xlabel("model and grid")
-        grid[1].set_xlabel("residuals")
+        grid[1].set_xlabel("residuals. rms = %0.3f"%(rms))
         if lsstDebug.Info(__name__).savefig:
             fig.savefig(lsstDebug.Info(__name__).figpath + 'debug.png')
         plt.show()
