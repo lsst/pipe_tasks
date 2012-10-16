@@ -23,7 +23,6 @@
 import numpy as num
 
 import lsst.pex.config as pexConfig
-import lsst.pex.logging as pexLogging
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
@@ -35,8 +34,6 @@ import lsst.afw.display.ds9 as ds9
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
-    
-    @todo: make default for doWriteMatchedExp false
     """
     doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
@@ -45,7 +42,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Deblend sources? Off by default because it may not be useful")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc = "Write difference exposure?")
-    doWriteMatchedExp = pexConfig.Field(dtype=bool, default=True,
+    doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
         doc = "Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
@@ -118,15 +115,6 @@ class ImageDifferenceConfig(pexConfig.Config):
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
     """Subtract an image from a template coadd and measure the result
-    
-    Steps include:
-    - warp template coadd to match WCS of image
-    - PSF match image to warped template
-    - subtract image from PSF-matched, warped template
-    - persist difference image
-    - detect sources
-    - deblend sources (disabled by default)
-    - measure sources
     """
     ConfigClass = ImageDifferenceConfig
     _DefaultName = "imageDifference"
@@ -153,9 +141,30 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def run(self, sensorRef, sources=None):
-        """Process one CCD
+        """Subtract an image from a template coadd and measure the result
+    
+        Steps include:
+        - warp template coadd to match WCS of image
+        - PSF match image to warped template
+        - subtract image from PSF-matched, warped template
+        - persist difference image
+        - detect sources
+        - deblend sources (disabled by default)
+        - measure sources
         
-        @param sensorRef: sensor-level butler data reference to calexp
+        @param sensorRef: sensor-level butler data reference, used for the following data products:
+        Input only:
+        - calexp
+        - psf
+        - ccdExposureId
+        - ccdExposureId_bits
+        - apCorr
+        Input or output, depending on config:
+        - self.config.coaddName + "Diff_subtractedExp"
+        Output, depending on config:
+        - self.config.coaddName + "Diff_matchedExp"
+        - self.config.coaddName + "Diff_src"
+            
         @return pipe_base Struct containing these fields:
         - subtractedExposure: exposure after subtracting template;
             the unpersisted version if subtraction not run but detection run
