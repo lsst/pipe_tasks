@@ -89,10 +89,14 @@ class AssembleCoaddTask(CoaddBaseTask):
     def run(self, patchRef):
         """Assemble a coadd from a set of coaddTempExp
         
-        The coadd is computed as a mean with optional (on by default) outlier rejection.
+        The coadd is computed as a mean with optional outlier rejection.
         
         @param patchRef: data reference for sky map. Must include keys "tract", "patch",
-            plus the camera-specific filter key (e.g. "filter" or "band")
+            plus the camera-specific filter key (e.g. "filter")
+        Used to access the following data products (depending on the config):
+        - [in] self.config.coaddName + "Coadd_skyMap"
+        - [in] self.config.coaddName + "Coadd_tempExp"
+        - [out] self.config.coaddName + "Coadd"
 
         @return: a pipeBase.Struct with fields:
         - coaddExposure: coadd exposure
@@ -190,27 +194,27 @@ class AssembleCoaddTask(CoaddBaseTask):
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         didSetMetadata = False
         for subBBox in _subBBoxIter(bbox, subregionSize):
-            self.log.info("Computing coadd %s" % (subBBox,))
-            coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
-            maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-            for tempExpRef in tempExpRefList:
-                exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
-                maskedImage = exposure.getMaskedImage()
-                if not didSetMetadata:
-                    coaddExposure.setFilter(exposure.getFilter())
-                    coaddExposure.setCalib(exposure.getCalib())
-                    didSetMetadata = True
-
-                maskedImageList.append(maskedImage)
-
             try:
+                self.log.info("Computing coadd %s" % (subBBox,))
+                coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
+                maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
+                for tempExpRef in tempExpRefList:
+                    exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
+                    maskedImage = exposure.getMaskedImage()
+                    if not didSetMetadata:
+                        coaddExposure.setFilter(exposure.getFilter())
+                        coaddExposure.setCalib(exposure.getCalib())
+                        didSetMetadata = True
+    
+                    maskedImageList.append(maskedImage)
+
                 with self.timer("stack"):
                     coaddSubregion = afwMath.statisticsStack(
                         maskedImageList, statsFlags, statsCtrl, weightList)
     
                 coaddView <<= coaddSubregion
             except Exception, e:
-                self.log.fatal("Cannot compute this subregion: %s" % (e,))
+                self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
     
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
