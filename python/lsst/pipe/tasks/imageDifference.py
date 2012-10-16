@@ -159,6 +159,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - ccdExposureId
         - ccdExposureId_bits
         - apCorr
+        - self.config.coaddName + "Coadd_skyMap"
+        - self.config.coaddName + "Coadd"
         Input or output, depending on config:
         - self.config.coaddName + "Diff_subtractedExp"
         Output, depending on config:
@@ -296,7 +298,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     ds9.dot(ptype, x, y, size=4, frame=lsstDebug.frame, ctype=ctype)
             lsstDebug.frame += 1
 
-        if display and showPixelResiduals:
+        if display and showPixelResiduals and selectSources:
             import lsst.ip.diffim.utils as diUtils
             nonKernelSources = []
             for source in selectSources:
