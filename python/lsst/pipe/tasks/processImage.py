@@ -159,7 +159,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             try:
                 for bg in calib.backgrounds:
                     backgrounds.append(bg)
-            except:
+            except TypeError:     
+                backgrounds.append(calib.backgrounds)
+            except AttributeError:
                 self.log.warn("The calibration task did not return any backgrounds.  Any background subtracted in the calibration process cannot be persisted.")
         else:
             calib = None
