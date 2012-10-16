@@ -69,7 +69,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     #Spline Options
     undersampleStyle = pexConfig.ChoiceField(
         doc="behaviour if there are too few points in grid for requested interpolation style when matching",
-        dtype=str, default="REDUCE_INTERP_ORDER",
+        dtype=str, default="INCREASE_NXNYSAMPLE",
         allowed={
             "THROW_EXCEPTION": "throw an exception if there are too few points",
             "REDUCE_INTERP_ORDER": "use an interpolation style with a lower order.",
@@ -111,14 +111,14 @@ class MatchBackgroundsConfig(pexConfig.Config):
 
     
 
-class MatchBackgroundsTask(pipeBase.CmdLineTask):
+class MatchBackgroundsTask(pipeBase.Task):
     ConfigClass = MatchBackgroundsConfig
     _DefaultName = "matchBackgrounds"
     def __init__(self, *args, **kwargs):
-        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
+        pipeBase.Task.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
-    def run(self, refDataRef, toMatchDataRef):
+    def run(self, refDataRef, toMatchDataRefList):
         """
         Match the background of the science exposure to a reference exposure
 
@@ -138,6 +138,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         if not refDataRef.datasetExists(self.config.datasetType):
             raise pipeBase.TaskError("Data id %s does not exist" % (refDataRef.dataId))
         refExposure = refDataRef.get(self.config.datasetType)
+
 
         if not toMatchDataRef.datasetExists(self.config.datasetType):
             raise pipeBase.TaskError("Data id %s does not exist" % (toMatchDataRef.dataId))
@@ -174,11 +175,22 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             check to make sure they aren't the same image?
         """
 
+        #Check Configs
+        x,y = sciExposure.getDimensions()
+        shortSide = min(x,y)
+        #Check that short side > binsize
+        if shortSide < self.config.chebBinSize:
+            raise ValueError("%d = config.chebBinSize > shorter dimension = %d"%(self.config.chebBinSize, shortSide))
+        #Check that Order > npoints
+        npoints = shortSide//self.config.chebBinSize +1
+        if self.config.backgroundOrder > npoints +1:
+            raise ValueError("%d = config.backgroundOrder > npoints + 1 = %d"%(self.config.backgroundOrder, npoints +1))
+
         #Check that exps are the same shape. Throw Exception if they aren't
         if (sciExposure.getDimensions() != refExposure.getDimensions()):
             wSci, hSci = sciExposure.getDimensions()
             wRef, hRef = refExposure.getDimensions()
-            raise pipeBase.TaskError(
+            raise RuntimeError(
                 "Exposures different dimensions. sci:(%i, %i) vs. ref:(%i, %i)" %
                 (wSci,hSci,wRef,hRef))
 
@@ -197,8 +209,12 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         elif self.config.gridStatistic == "MEAN":
             statsFlag = afwMath.MEAN
 
+        #local copy of order incase it changes below:
+        order = self.config.backgroundOrder     
+        bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))    
         #bgZ is a list of the diffImage background estimates per bin, bgdZ contains stdev/sqrt(N)    
         bgX, bgY, bgZ, bgdZ = self.gridImage(diffIm, self.config.chebBinSize, sctrl, statsFlag)
+        minNumberGridPoints = min(len(set(bgX)),len(set(bgY)))
         
         #Check that there are enough points to fit
         if len(bgZ) == 0:
@@ -209,9 +225,21 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
             #
             raise NotImplementedError("Only one point. Const offset to be applied. Not yet implemented")
         
+        elif minNumberGridPoints <= self.config.backgroundOrder:
+            #must either lower order or raise number of bins or throw exception
+            if self.config.undersampleStyle == "THROW_EXCEPTION":
+                raise ValueError("Image does not cover enough of ref image for order and binsize")
+            elif self.config.undersampleStyle == "REDUCE_INTERP_ORDER":
+                self.log.warn("Reducing order to %d"%(minNumberGridPoints - 1))
+                order = minNumberGridPoints - 1
+            elif self.config.undersampleStyle == "INCREASE_NXNYSAMPLE":
+                newBinSize = (minNumberGridPoints*self.config.chebBinSize)// (self.config.backgroundOrder +1)
+                bgX, bgY, bgZ, bgdZ = self.gridImage(diffIm, newBinSize, sctrl, statsFlag)
+                self.log.warn("Decreasing binsize to %d"%(newBinSize))
+                
+    
         #Fit grid with polynomial
-        bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
-        matchBackgroundModel, resids, rms = self.getChebFitPoly(bbox, self.config.backgroundOrder,
+        matchBackgroundModel, resids, rms = self.getChebFitPoly(bbox, order,
                                                    bgX,bgY,bgZ,bgdZ)
 
         im  = sciExposure.getMaskedImage().getImage()
@@ -243,6 +271,7 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
         yedges = np.arange(0, height, binsize)
         xedges = np.hstack(( xedges, width ))  #add final edge
         yedges = np.hstack(( yedges, height )) #add final edge
+       
         #Initialize lists to hold grid.
         #Use lists/append to protect against the case where
         #a bin has no valid pixels and should not be included in the fit
@@ -260,9 +289,13 @@ class MatchBackgroundsTask(pipeBase.CmdLineTask):
                 # if there are less than 2 pixels with non-nan,non-masked values:
                 npoints, _ = stats.getResult(afwMath.NPOINT)
                 if npoints >= 2:
+                    stdev, _ = stats.getResult(afwMath.STDEV)
+                    if stdev < 1e-8:
+                        #Zero variance. Unrealistic. #Set to some low but reasonable value
+                        self.log.warn("changing stdev of bin from %.03e to non-zero 1e-8" % (stdev))
+                        stdev = 1e-8
                     bgX.append(0.5 * (x0 + xmin + x0 + xmax))
                     bgY.append(0.5 * (y0 + ymin + y0 + ymax))
-                    stdev, _ = stats.getResult(afwMath.STDEV)
                     bgdZ.append(stdev/np.sqrt(npoints))
                     est, _ = stats.getResult(statsFlag)
                     bgZ.append(est)
