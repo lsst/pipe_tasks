@@ -66,7 +66,6 @@ class MatchBackgroundsConfig(pexConfig.Config):
             }
         )
 
-    #Spline Options
     undersampleStyle = pexConfig.ChoiceField(
         doc="behaviour if there are too few points in grid for requested interpolation style when matching",
         dtype=str, default="INCREASE_NXNYSAMPLE",
@@ -76,7 +75,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
             "INCREASE_NXNYSAMPLE": "Increase the number of samples used to make the interpolation grid.",
             }
         )
-    
+     #Spline Options   
     splineBinSize = pexConfig.RangeField(
         doc="how large a region of the sky should be used for each background point when matching",
         dtype=int, default=256,
@@ -100,7 +99,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     backgroundOrder = pexConfig.Field(
         dtype = int,
         doc = """Order of background Chebyshev""",
-        default = 8
+        default = 4
         )
 
     chebBinSize = pexConfig.Field(
@@ -149,9 +148,9 @@ class MatchBackgroundsTask(pipeBase.Task):
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposure.fits')
             
         if self.config.useDetectionBackground:
-            matchBackgroundModel, matchedExposure = self.matchBackgroundsDetection(refExposure, sciExposure)
+            matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgroundsDetection(refExposure, sciExposure)
         else:
-            matchBackgroundModel, matchedExposure = self.matchBackgrounds(refExposure, sciExposure)
+            matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgrounds(refExposure, sciExposure)
 
         if lsstDebug.Info(__name__).savefig:
             refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
@@ -178,13 +177,15 @@ class MatchBackgroundsTask(pipeBase.Task):
         #Check Configs
         x,y = sciExposure.getDimensions()
         shortSide = min(x,y)
-        #Check that short side > binsize
+        #Check that short side >= binsize
         if shortSide < self.config.chebBinSize:
             raise ValueError("%d = config.chebBinSize > shorter dimension = %d"%(self.config.chebBinSize, shortSide))
-        #Check that Order > npoints
-        npoints = shortSide//self.config.chebBinSize +1
-        if self.config.backgroundOrder > npoints +1:
-            raise ValueError("%d = config.backgroundOrder > npoints + 1 = %d"%(self.config.backgroundOrder, npoints +1))
+        #Check that Order + 1 <= npoints
+        npoints = shortSide//self.config.chebBinSize
+        if shortSide % self.config.chebBinSize != 0:
+            npoints += 1
+        if self.config.backgroundOrder > npoints -1:
+            raise ValueError("%d = config.backgroundOrder > npoints - 1 = %d"%(self.config.backgroundOrder, npoints - 1))
 
         #Check that exps are the same shape. Throw Exception if they aren't
         if (sciExposure.getDimensions() != refExposure.getDimensions()):
@@ -219,12 +220,6 @@ class MatchBackgroundsTask(pipeBase.Task):
         #Check that there are enough points to fit
         if len(bgZ) == 0:
             raise ValueError("No overlap with reference. Cannot match")
-        elif len(bgZ) == 1:
-            #
-            #TODO:make the offset constant = bgZ
-            #
-            raise NotImplementedError("Only one point. Const offset to be applied. Not yet implemented")
-        
         elif minNumberGridPoints <= self.config.backgroundOrder:
             #must either lower order or raise number of bins or throw exception
             if self.config.undersampleStyle == "THROW_EXCEPTION":
@@ -255,13 +250,13 @@ class MatchBackgroundsTask(pipeBase.Task):
         #Check fit! Compare MSE with mean variance of the difference Image
         stats = afwMath.makeStatistics(diffIm.getVariance(),diffIm.getMask(),afwMath.MEAN, sctrl)
         meanVar, _ = stats.getResult(afwMath.MEAN)
-        print "Diff Image mean Var: ", meanVar
+        #print "Diff Image mean Var: ", meanVar
         dim = diffIm.getImage()
         dim -= matchBackgroundModel
-        stats = afwMath.makeStatistics(diffIm, afwMath.MEANSQUARE |afwMath.VARIANCE, sctrl)
+        stats = afwMath.makeStatistics(diffIm, afwMath.MEANSQUARE | afwMath.VARIANCE, sctrl)
         MSE, _ =  stats.getResult(afwMath.MEANSQUARE)
-        print "ref - matched Var : ", MSE
-        return matchBackgroundModel, sciExposure
+        #print "ref - matched Var : ", MSE
+        return matchBackgroundModel, sciExposure, MSE, meanVar
 
     def gridImage(self, maskedImage, binsize, sctrl, statsFlag):
         #bin
@@ -407,6 +402,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         config.binSize = self.config.splineBinSize
         config.ignoredPixelMask = self.config.ignoredPixelMask
         config.algorithm = self.config.algorithm
+        config.undersampleStyle = self.config.undersampleStyle
 
         im  = refExposure.getMaskedImage()
         diff = im.Factory(im,True) 
@@ -415,7 +411,6 @@ class MatchBackgroundsTask(pipeBase.Task):
             bkgd = detection.getBackground(diff, config)
         except Exception, e:
             raise RuntimeError("Failed to fit background: %s" % (e))
-
 
         #Add offset to sciExposure
         sci  = sciExposure.getMaskedImage()
@@ -449,14 +444,13 @@ class MatchBackgroundsTask(pipeBase.Task):
             
         stats = afwMath.makeStatistics(diff.getVariance(),diff.getMask(),afwMath.MEAN, sctrl) 
         meanVar, _ = stats.getResult(afwMath.MEAN)
-        print "Diff Image mean Var: ", meanVar
+        #print "Diff Image mean Var: ", meanVar
         dim = diff.getImage()
         dim -= bkgd.getImageF()
         stats = afwMath.makeStatistics(diff, afwMath.MEANSQUARE |afwMath.VARIANCE, sctrl)
         MSE, _ =  stats.getResult(afwMath.MEANSQUARE)
-        print "ref - matched Var : ", MSE
-
-        return bkgd, sciExposure
+        #print "ref - matched Var : ", MSE
+        return bkgd, sciExposure, MSE, meanVar
 
 
     @classmethod
