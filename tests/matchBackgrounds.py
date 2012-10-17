@@ -36,29 +36,31 @@ class MatchBackgroundsTestCase(unittest.TestCase):
 
     def setUp(self):
         #Make a few test images here
-        #1) with chip gap
+        #1) full coverage (plain vanilla image) w/ mean = 50counts
+        self.vanilla = afwImage.ExposureF(600,600)
+        im = self.vanilla.getMaskedImage().getImage()
+        afwMath.randomGaussianImage(im,afwMath.Random(1))
+        im += 50
+        self.vanilla.getMaskedImage().getVariance().set(1.0)
+        
+        #2) has chip gap and mean = 10 counts
         self.chipGap = afwImage.ExposureF(600,600)
         im = self.chipGap.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random(1))
+        afwMath.randomGaussianImage(im,afwMath.Random(2))
         im += 10
-        im.getArray()[:,200:250] = numpy.nan
+        im.getArray()[:,200:300] = numpy.nan #simulate 100pix chip gap
         self.chipGap.getMaskedImage().getVariance().set(1.0)
         
-        #2) with low coverage
+        #3) has low coverage and mean = 20 counts
         self.lowCover = afwImage.ExposureF(600,600)
         im = self.lowCover.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random(2))
+        afwMath.randomGaussianImage(im,afwMath.Random(3))
         im += 20
-        self.lowCover.getMaskedImage().getImage().getArray()[:,200:] = numpy.nan
+        self.lowCover.getMaskedImage().getImage().getArray()[:,200:] = numpy.nan #simulate low image coverage:
         self.lowCover.getMaskedImage().getVariance().set(1.0)
 
-        #3 with wrong size
-        self.wrongSize = afwImage.ExposureF(500,500)
-        self.wrongSize.getMaskedImage().getImage().set(1.0)
-        self.wrongSize.getMaskedImage().getVariance().set(1.0)
-
-        #make two matchBackgrounds Objects
-        self.matcher =  pipeTasks.matchBackgrounds.MatchBackgroundsTask()
+        #make a matchBackgrounds object
+        self.matcher = pipeTasks.matchBackgrounds.MatchBackgroundsTask()
         self.matcher.config.useDetectionBackground = False      
 
         self.sctrl = afwMath.StatisticsControl()
@@ -66,89 +68,105 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(["EDGE", "DETECTED", "DETECTED_NEGATIVE","SAT","BAD","INTRP","CR"]))
         
     def tearDown(self):
-        self.wrongSize = None
+        self.vanilla = None
         self.lowCover = None
         self.chipGap = None
         self.matcher = None
         self.sctrl = None
         
+    def checkAccuracyPolynomial(self, refExp, sciExp):
+        """Checks for accurate background matching in the matchBackgrounds Method
+           to be called by tests expecting successful matching
+        """
+        resultModel, resultExp, MSE, diffImVar = self.matcher.matchBackgrounds(refExp, sciExp)
+        resultStats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
+        resultMean, _ = resultStats.getResult(afwMath.MEAN)
+        resultVar, _ = resultStats.getResult(afwMath.VARIANCE)
+        refStats = afwMath.makeStatistics(refExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
+        refMean, _ = refStats.getResult(afwMath.MEAN)
+        print "refMean %.03f, resultMean %.03f, resultVar %.03f"%(refMean, resultMean, resultVar)
+        self.assertAlmostEqual(refMean, resultMean, delta = resultVar)
+        print "MSE %.03f, diffImVar %.03f"%(MSE, diffImVar)
+        #MSE within 2% of the variance of the difference image 
+        self.assertLess(MSE, diffImVar * 1.02)
+    
 
-    #TEST WORK AROUND
-    #1) Should throw ValueError if Order > # of grid points
-    #2) Should throw ValueError if binsize is > size of image
+    def checkAccuracyDetection(self, refExp, sciExp):
+        """Checks for accurate background matching matchBackgroundsDetection Method
+           to be called by tests expecting successful matching
+        """
+        resultModel, resultExp, MSE, diffImVar = self.matcher.matchBackgroundsDetection(refExp, sciExp)
+        resultStats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
+        resultMean, _ = resultStats.getResult(afwMath.MEAN)
+        resultVar, _ = resultStats.getResult(afwMath.VARIANCE)
+        refStats = afwMath.makeStatistics(refExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
+        refMean, _ = refStats.getResult(afwMath.MEAN)
+        print "refMean %.03f, resultMean %.03f, resultVar %.03f"%(refMean, resultMean, resultVar)
+        self.assertAlmostEqual(refMean, resultMean, delta = resultVar)
+        print "MSE %.03f, diffImVar %.03f"%(MSE, diffImVar)
+        #MSE within 2% of the variance of the difference images 
+        self.assertLess(MSE, diffImVar * 1.02)
+                      
+    #-=-=-=-=-=-=Test Polynomial Fit-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     def testConfig(self):
-        print "testing Config"
-        #binsize must be <= dimensions
-        self.matcher.config.chebBinSize = 1000
-        self.assertRaises(ValueError,self.matcher.matchBackgrounds,self.chipGap, self.lowCover)
-        #Order must be > npoints
+        """ 
+            1) Should throw ValueError if binsize is > size of image
+            2) Need Order + 1 points to fit. Should throw ValueError if Order > # of grid points
+        """
+        for size in range(601,1000,100):
+            self.matcher.config.chebBinSize = size
+            self.assertRaises(ValueError,self.matcher.matchBackgrounds,self.chipGap, self.vanilla)
+            
+        #for image 600x600 and binsize 256 = 3x3 grid for fitting.  order 3,4,5...should fail
         self.matcher.config.chebBinSize = 256
-        self.matcher.config.backgroundOrder = 8
-        self.assertRaises(ValueError,self.matcher.matchBackgrounds,self.chipGap, self.lowCover)
-
-    #3)  Should throw RuntimeError if dimensions don't match
+        for order in range(3,8):
+            self.matcher.config.backgroundOrder = order
+            self.assertRaises(ValueError,self.matcher.matchBackgrounds,self.chipGap, self.vanilla)
+    
+        for size, order in [(600,0), (300,1), (200,2), (100,5)]:
+            self.matcher.config.chebBinSize = size
+            self.matcher.config.backgroundOrder = order
+            self.checkAccuracyPolynomial(self.chipGap, self.vanilla)
+        
     def testInputParams(self):
-        print "testing input dimensions"
+        """Tests input dimensions. Throws RuntimeError if dimensions don't match"""
         self.matcher.config.chebBinSize = 128
-        self.matcher.config.backgroundOrder = 4
-        self.assertRaises(RuntimeError,self.matcher.matchBackgrounds,self.chipGap, self.wrongSize)
-        
-    def testAccuracy(self):
-        print "testing basic accuracy"
-        testExp = afwImage.ExposureF(self.chipGap, True)
-        im = testExp.getMaskedImage().getImage()
-        #afwMath.randomGaussianImage(im,afwMath.Random(3))
-        
-        im += 20
-        self.matcher.config.chebBinSize = 128
-        self.matcher.config.backgroundOrder = 4
-        resultModel, resultExp = self.matcher.matchBackgrounds(self.chipGap, testExp)     
-        stats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN |afwMath.VARIANCE,self.sctrl)
-        mean, _ = stats.getResult(afwMath.MEAN)
-        var, _ = stats.getResult(afwMath.VARIANCE)
-        self.assertAlmostEqual(mean, 10.,delta = var)
-        self.assertLess(var,2)
+        self.matcher.config.backgroundOrder = 2
+        #make image with wronge size
+        wrongSize = afwImage.ExposureF(500,500)
+        wrongSize.getMaskedImage().getImage().set(1.0)
+        wrongSize.getMaskedImage().getVariance().set(1.0)
+        self.assertRaises(RuntimeError,self.matcher.matchBackgrounds,self.chipGap, wrongSize)
 
+    def testVanilla(self):
+        """Tests basic matching"""
+        self.matcher.config.chebBinSize = 128
+        self.matcher.config.backgroundOrder = 4
+        self.checkAccuracyPolynomial(self.chipGap, self.vanilla)     
         
-        #5) Should be able to handle nans
-        #     a) in chip gaps
-        #     b) in most of the image (image covers small % of patch)        
-    def testNansThrowExpection(self):
-        print "testing low coverage  THROW_EXCEPTION"
-        #Test 3 options if too much of the image is missing
-        self.matcher.config.chebBinSize = 256
+    def testLowCoverThrowExpection(self):
+        """low coverage with .config.undersampleStyle = THROW_EXCEPTION should throw ValueError"""
+        self.matcher.config.chebBinSize = 128
         self.matcher.config.backgroundOrder = 4
         self.matcher.config.undersampleStyle =  "THROW_EXCEPTION"
         self.assertRaises(ValueError,self.matcher.matchBackgrounds,self.chipGap, self.lowCover)
 
-    def testNansIncreaseSample(self):
-        print "testing low coverage INCREASE_NXNYSAMPLE"
-        self.matcher.config.chebBinSize = 256
+    def testLowCoverIncreaseSample(self):
+        """low coverage with .config.undersampleStyle = INCREASE_NXNYSAMPLE should succeed"""
+        self.matcher.config.chebBinSize = 128
         self.matcher.config.backgroundOrder = 4        
         self.matcher.config.undersampleStyle = "INCREASE_NXNYSAMPLE"
-        resultModel, resultExp = self.matcher.matchBackgrounds(self.chipGap, self.lowCover)
-        stats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN |afwMath.VARIANCE,self.sctrl)
-        mean, _ = stats.getResult(afwMath.MEAN)
-        var, _ = stats.getResult(afwMath.VARIANCE)
-        self.assertAlmostEqual(mean, 10.,delta = var)
-        self.assertLess(var,2)
+        self.checkAccuracyPolynomial(self.chipGap, self.lowCover)
 
-    def testNansReduceInterpOrder(self):
-        print "testing low coverage REDUCE_INTERP_ORDER"
-        self.matcher.config.chebBinSize = 256
+    def testLowCoverReduceInterpOrder(self):
+        """low coverage with .config.undersampleStyle = REDUCE_INTERP_ORDER should succeed"""
+        self.matcher.config.chebBinSize = 128
         self.matcher.config.backgroundOrder = 4        
         self.matcher.config.undersampleStyle =  "REDUCE_INTERP_ORDER"
-        resultModel, resultExp = self.matcher.matchBackgrounds(self.chipGap, self.lowCover)
-        stats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN |afwMath.VARIANCE,self.sctrl)
-        mean, _ = stats.getResult(afwMath.MEAN)
-        var, _ = stats.getResult(afwMath.VARIANCE)
-        self.assertAlmostEqual(mean, 10.,delta = var)
-        self.assertLess(var,2)
-        
+        self.checkAccuracyPolynomial(self.chipGap, self.lowCover)
 
     def testMasks(self):
-        print "testing mask stats"
-        testExpRef = afwImage.ExposureF(self.chipGap, True)
+        """Masks should be ignored in matching backgrounds"""
         testExp = afwImage.ExposureF(self.chipGap, True)
         im   = testExp.getMaskedImage().getImage()
         im += 10
@@ -158,21 +176,74 @@ class MatchBackgroundsTestCase(unittest.TestCase):
             mask.set(5,i,satbit)
             im.set(5,i, 65000)
         self.matcher.config.chebBinSize = 128
-        self.matcher.config.backgroundOrder = 4    
-        resultModel, resultExp = self.matcher.matchBackgrounds(testExpRef, testExp)
-        stats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN |afwMath.VARIANCE,self.sctrl)
-        mean, _ = stats.getResult(afwMath.MEAN)
-        var, _ = stats.getResult(afwMath.VARIANCE)
-        self.assertAlmostEqual(mean, 10.,delta = var)
-        self.assertLess(var,2)
- 
-    #More tests:
-        #4) MSE (mean((refExp - matchedExp)**2)) < Variance of diffIm * 1.05
-        #6) Should be able to handle situation when most of image is masked 
-        #7) What should it do if the two images are the same?
+        self.matcher.config.backgroundOrder = 4
+        self.checkAccuracyPolynomial(self.chipGap, testExp)
 
+    def testSameImage(self):
+        """What should it do if the two images are the same? Succeeds"""
+        self.matcher.config.chebBinSize = 128
+        self.matcher.config.backgroundOrder = 4                
+        self.checkAccuracyPolynomial(self.vanilla, self.vanilla)
 
-        #TEST BACKGROUND CLASS (FUTURE)
+    #-=-=-=-=-=-=-=-=-=-=-=-Test detection -=-=-=-=-=-=-=-=-
+    ##Detection only works if ALL BINS have non-nan values 
+    def testVanillaDetection(self): #Known Failure
+        self.matcher.config.useDetectionBackground = True
+        self.matcher.config.splineBinSize = 128
+        self.checkAccuracyDetection(self.chipGap, self.vanilla)
+
+    def testUndersampleDetectionPasses(self): 
+        self.matcher.config.useDetectionBackground = True
+        self.matcher.config.splineBinSize = 256
+        self.matcher.config.undersampleStyle = "REDUCE_INTERP_ORDER"
+        self.checkAccuracyDetection(self.chipGap, self.vanilla)
+     
+        self.matcher.config.undersampleStyle = "INCREASE_NXNYSAMPLE"
+        self.checkAccuracyDetection(self.chipGap, self.vanilla)
+        
+    def testSameImageDetection(self):
+        """What should it do if the two images are the same? Succeeds"""
+        self.checkAccuracyDetection(self.vanilla, self.vanilla)
+
+    def testMasksDetection(self):
+        """Masks should be ignored in matching backgrounds"""
+        testExp = afwImage.ExposureF(self.chipGap, True)
+        im   = testExp.getMaskedImage().getImage()
+        im += 10
+        mask = testExp.getMaskedImage().getMask()
+        satbit = mask.getPlaneBitMask('SAT')
+        for i in range(0,200,20):
+            mask.set(5,i,satbit)
+            im.set(5,i, 65000)
+        self.checkAccuracyDetection(self.chipGap, testExp)
+
+    #Demonstrate Failures
+    def testLowCoverDetection(self): #Known Failure
+        """ Background class throws RuntimeError for images that do not cover the whole patch"""
+        self.matcher.config.useDetectionBackground = True
+        self.matcher.config.splineBinSize = 64
+        self.assertRaises(RuntimeError, self.matcher.matchBackgroundsDetection, self.vanilla, self.lowCover)
+        
+    def testChipGapDetection(self): #Known Failure
+        """ Background class throws RuntimeError for chip gaps wider than bin size"""
+        self.matcher.config.useDetectionBackground = True
+        self.matcher.config.splineBinSize = 64
+        self.assertRaises(RuntimeError, self.matcher.matchBackgroundsDetection,self.chipGap, self.vanilla)
+          
+    def testUndersampleDetectionFails(self):  #Known Failure
+        """ Background class throws RuntimeError for chip gaps wider than bin size"""
+        self.matcher.config.useDetectionBackground = True
+        self.matcher.config.splineBinSize = 256
+        self.matcher.config.undersampleStyle = "INCREASE_NXNYSAMPLE"
+        #widen chip gap
+        testExp = afwImage.ExposureF(self.chipGap, True)
+        testExp.getMaskedImage().getImage().getArray()[:,200:400] = numpy.nan 
+        self.assertRaises(RuntimeError, self.matcher.matchBackgroundsDetection,testExp, self.vanilla)
+        self.matcher.config.undersampleStyle = "REDUCE_INTERP_ORDER"
+        self.assertRaises(RuntimeError, self.matcher.matchBackgroundsDetection,testExp, self.vanilla)
+        #Message: Failed to initialise spline for type cspline, length 0
+
+        
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 def suite():
