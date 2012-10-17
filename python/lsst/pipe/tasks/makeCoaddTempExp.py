@@ -177,7 +177,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                         (calExpRef.dataId, e))
                     continue
 
-            if totGoodPix == 0:
+            if (totGoodPix == 0) or not didSetMetadata: # testing didSetMetadata is not needed but safer
                 self.log.warn("Could not compute coaddTempExp %s: no good pixels" % (tempExpRef.dataId,))
                 continue
             self.log.info("coaddTempExp %s has %s good pixels" % (tempExpRef.dataId, totGoodPix))
