@@ -38,7 +38,7 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
     )
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise")
 
-class ProcessCoaddTask(ProcessImageTask.ConfigClass):
+class ProcessCoaddTask(ProcessImageTask):
     """Process a Coadd image
     
     """
