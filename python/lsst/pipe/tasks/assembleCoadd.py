@@ -28,6 +28,7 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from .coaddBase import CoaddBaseTask
 from .interpImage import InterpImageTask
+from .matchBackgrounds import MatchBackgroundsTask
 
 __all__ = ["AssembleCoaddTask"]
 
@@ -74,7 +75,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = True,
     )
     
-
+    matchBackgrounds = pexConfig.Field(
+        doc = "MatchBackgrounds?",
+        dtype = bool,
+        default = True,
+    )
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
     """
@@ -84,6 +89,8 @@ class AssembleCoaddTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
+        self.matchBackgrounds = MatchBackgroundsTask()
+        print "Done initializing"
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -117,6 +124,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
         tempExpKeyList = tuple(sorted(tempExpKeySet))
 
+
         # compute tempExpIdDict, a dict whose:
         # - keys are tuples of coaddTempExp ID values in tempKeyList order
         # - values are tempExpRef
@@ -135,6 +143,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                 )
                 tempExpIdDict[tempExpIdTuple] = tempExpRef
 
+    
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(3.0)
         statsCtrl.setNumIter(2)
@@ -162,11 +171,15 @@ class AssembleCoaddTask(CoaddBaseTask):
             
             tempExpRefList.append(tempExpRef)
             weightList.append(weight)
+               
         del tempExpIdDict
 
         if not tempExpRefList:
             raise pipeBase.TaskError("No coadd temporary exposures found")
         self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
+
+        if self.config.matchBackgrounds:
+            backgroundModelsList = self.matchBackgrounds.run(tempExpRefList,tempExpName=tempExpName)
 
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
@@ -199,6 +212,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                     coaddExposure.setCalib(exposure.getCalib())
                     didSetMetadata = True
 
+                if self.config.matchBackgrounds:
+                    maskedImage += backgroundModelsList[tempExpRefList.index(tempExpRef)]
                 maskedImageList.append(maskedImage)
 
             try:

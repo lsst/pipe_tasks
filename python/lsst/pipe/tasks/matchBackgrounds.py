@@ -36,20 +36,20 @@ class MatchBackgroundsConfig(pexConfig.Config):
 
     datasetType = pexConfig.Field(
         dtype = str,
-        doc = """Name of data product to fetch (goodSeeingCoadd_tempExp, deepCoadd_tempExp etc)""",
+        doc = "Name of data product to fetch (goodSeeingCoadd_tempExp, deepCoadd_tempExp etc)",
         default = "goodSeeingCoadd_tempExp"
         #default = "coaddTempExp" #needs tickets/2317
         )
     
     useDetectionBackground = pexConfig.Field(
         dtype = bool,
-        doc = """True -  True uses lsst.meas.algorithms.detection.getBackground()
-                 False - masks, grids and fits Chebyshev polynomials to the backgrounds """,
+        doc = "True -  True uses lsst.meas.algorithms.detection.getBackground() \n" \
+              "False - masks, grids and fits Chebyshev polynomials to the backgrounds.",
         default = False
         )
 
     #Common Options
-    ignoredPixelMask = pexConfig.ListField(
+    badMaskPlanes = pexConfig.ListField(
         doc="Names of mask planes to ignore while estimating the background",
         dtype=str, default = ["EDGE", "DETECTED", "DETECTED_NEGATIVE","SAT","BAD","INTRP","CR"],
         itemCheck = lambda x: x in afwImage.MaskU().getMaskPlaneDict().keys(),
@@ -57,7 +57,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
         
     gridStatistic = pexConfig.ChoiceField(
         dtype = str,
-        doc = """Type of statistic to use for the grid points""",
+        doc = "Type of statistic to use for the grid points",
         default = "MEAN",
         allowed = {
             "MEAN": "mean",
@@ -98,13 +98,14 @@ class MatchBackgroundsConfig(pexConfig.Config):
     #Polynomial fitting options
     backgroundOrder = pexConfig.Field(
         dtype = int,
-        doc = """Order of background Chebyshev""",
+        doc = "Order of background Chebyshev",
         default = 4
         )
 
     chebBinSize = pexConfig.Field(
         dtype = int,
-        doc = """Bin size for background matching. Can be arbitrarily small becase backgroundOrder sets the order""",
+        doc = "Bin size for background matching. "\
+              " Can be arbitrarily small becase backgroundOrder sets the order",
         default = 128
         )
 
@@ -116,8 +117,12 @@ class MatchBackgroundsTask(pipeBase.Task):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
 
+        self.sctrl = afwMath.StatisticsControl()
+        self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes))
+        self.sctrl.setNanSafe(True)
+
     @pipeBase.timeMethod
-    def run(self, refDataRef, toMatchDataRefList):
+    def run(self, toMatchRefList, refVisitRef=None, tempExpName = None):
         """
         Match the background of the science exposure to a reference exposure
 
@@ -127,40 +132,81 @@ class MatchBackgroundsTask(pipeBase.Task):
         - matchBackgroundModel: an afw.Math.Function or a afw.Math.background
         - matchedExopsure: an exposure with the background level equalized to the reference exp level
 
-        TO DO:
-        This should be a subtask called by assembleCoadd.py
-        It will take in a reference dataRef and a list of science dataRefs
-        and return a list of background objects. 
         """
-        self.log.info("Matching background of %s to %s" % (toMatchDataRef.dataId, refDataRef.dataId))
-
-        if not refDataRef.datasetExists(self.config.datasetType):
-            raise pipeBase.TaskError("Data id %s does not exist" % (refDataRef.dataId))
-        refExposure = refDataRef.get(self.config.datasetType)
-
-
-        if not toMatchDataRef.datasetExists(self.config.datasetType):
-            raise pipeBase.TaskError("Data id %s does not exist" % (toMatchDataRef.dataId))
-        sciExposure = toMatchDataRef.get(self.config.datasetType)
-
-        if lsstDebug.Info(__name__).savefig:
-            refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'refExposure.fits')
-            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposure.fits')
-            
-        if self.config.useDetectionBackground:
-            matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgroundsDetection(refExposure, sciExposure)
+        if tempExpName is None:
+            self.tempExpName = self.config.datasetType
         else:
-            matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgrounds(refExposure, sciExposure)
+            self.tempExpName = tempExpName
 
-        if lsstDebug.Info(__name__).savefig:
-            refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
+        #Steps (1) If no Reference visit supplied, calculate the best reference visit
+        #      (2) match each one and return a list of the models
+
+        numExp = len(toMatchRefList)
+        if numExp < 1:
+            raise pipeBase.TaskError("No exposures to match")
+        
+        self.log.info("Matching %d Exposures" % (numExp))
+
+        if refVisitRef is None:
+            self.log.info("Calculating best reference visit")
+            refVisitRef = self.getBestRefExposure(toMatchRefList)
+
+        backgroundModelList = []
+        matchedMSEList = []
+        diffImVarList = []
+        
+        if not refVisitRef.datasetExists(self.tempExpName):
+            raise pipeBase.TaskError("Data id %s does not exist" % (refVisitRef.dataId))
+        refExposure = refVisitRef.get(self.tempExpName)
+        
+        for toMatchRef in toMatchRefList:
+            self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refVisitRef.dataId))
+            #Note: If refVisit is in toMatchRefList, the model should generate an all zero image
+            if not toMatchRef.datasetExists(self.tempExpName):
+                raise pipeBase.TaskError("Data id %s does not exist" % (toMatchRef.dataId))
+            toMatchExposure = toMatchRef.get(self.tempExpName)
+            
+            if self.config.useDetectionBackground:
+                matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgroundsDetection(refExposure, toMatchExposure)
+            else:
+                matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgrounds(refExposure, toMatchExposure)
+                
+            backgroundModelList.append(matchBackgroundModel)
+            matchedMSEList.append(matchedMSE)
+            diffImVarList.append(diffImVar)
+            
+        return backgroundModelList
     
-        sciExposure = toMatchDataRef.get(self.config.datasetType)
-        return pipeBase.Struct(
-            matchBackgroundModel = matchBackgroundModel,
-            matchedExposure = matchedExposure
-        )
+    @pipeBase.timeMethod
+    def getBestRefExposure(self, refList, varWeight = 0.2, bkgdLevelWeight = 0.4, coverageWeight = 0.4):
+        varList =  []
+        meanBkgdLevelList = []
+        coverageList = []
+        
+        for ref in refList:
+            tempExp = ref.get(self.tempExpName)
+            maskedImage = tempExp.getMaskedImage()
+            statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
+                afwMath.MEANCLIP | afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)            
+            meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
+            meanBkgdLevel, meanBkgdLevelErr = statObjIm.getResult(afwMath.MEANCLIP)
+            npoints, npointsErr = statObjIm.getResult(afwMath.NPOINT)
+            varList.append(meanVar)
+            meanBkgdLevelList.append(meanBkgdLevel)
+            coverageList.append(npoints)
 
+        #small variance, Bkgd Level good
+        #large coverage good
+        #Normalize metrics from 0 - 1.
+        varArr = np.array(varList)/np.max(varList)
+        meanBkgdLevelArr = np.array(meanBkgdLevelList)/np.max(meanBkgdLevelList)
+        coverageArr = np.array(coverageList)/np.max(coverageList)
+        #define cost function to minimize 
+        costFunctionArr = varWeight * varArr
+        costFunctionArr += bkgdLevelWeight * meanBkgdLevelArr
+        costFunctionArr += coverageWeight * coverageArr
+        return refList[np.argmin(costFunctionArr)]
+        
     @pipeBase.timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
         """
@@ -173,7 +219,11 @@ class MatchBackgroundsTask(pipeBase.Task):
         Potential TO DOs:
             check to make sure they aren't the same image?
         """
-
+        
+        if lsstDebug.Info(__name__).savefig:
+            refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'refExposure.fits')
+            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposure.fits')
+            
         #Check Configs
         x,y = sciExposure.getDimensions()
         shortSide = min(x,y)
@@ -199,10 +249,6 @@ class MatchBackgroundsTask(pipeBase.Task):
         diffIm = afwImage.MaskedImageF(refExposure.getMaskedImage(),True)
         diffIm -= sciExposure.getMaskedImage()
 
-        sctrl = afwMath.StatisticsControl()
-        sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.ignoredPixelMask))
-        sctrl.setNanSafe(True)
-
         if self.config.gridStatistic == "MEDIAN":
             statsFlag = afwMath.MEDIAN
         elif self.config.gridStatistic == "CLIPMEAN":
@@ -214,7 +260,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         order = self.config.backgroundOrder     
         bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))    
         #bgZ is a list of the diffImage background estimates per bin, bgdZ contains stdev/sqrt(N)    
-        bgX, bgY, bgZ, bgdZ = self.gridImage(diffIm, self.config.chebBinSize, sctrl, statsFlag)
+        bgX, bgY, bgZ, bgdZ = self.gridImage(diffIm, self.config.chebBinSize, statsFlag)
         minNumberGridPoints = min(len(set(bgX)),len(set(bgY)))
         
         #Check that there are enough points to fit
@@ -229,7 +275,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 order = minNumberGridPoints - 1
             elif self.config.undersampleStyle == "INCREASE_NXNYSAMPLE":
                 newBinSize = (minNumberGridPoints*self.config.chebBinSize)// (self.config.backgroundOrder +1)
-                bgX, bgY, bgZ, bgdZ = self.gridImage(diffIm, newBinSize, sctrl, statsFlag)
+                bgX, bgY, bgZ, bgdZ = self.gridImage(diffIm, newBinSize, statsFlag)
                 self.log.warn("Decreasing binsize to %d"%(newBinSize))
                 
     
@@ -246,19 +292,19 @@ class MatchBackgroundsTask(pipeBase.Task):
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposureMatched.fits')
         var = sciExposure.getMaskedImage().getVariance()
         var += rms**2
-
+           
         #Check fit! Compare MSE with mean variance of the difference Image
-        stats = afwMath.makeStatistics(diffIm.getVariance(),diffIm.getMask(),afwMath.MEAN, sctrl)
+        stats = afwMath.makeStatistics(diffIm.getVariance(),diffIm.getMask(),afwMath.MEAN, self.sctrl)
         meanVar, _ = stats.getResult(afwMath.MEAN)
         #print "Diff Image mean Var: ", meanVar
         dim = diffIm.getImage()
         dim -= matchBackgroundModel
-        stats = afwMath.makeStatistics(diffIm, afwMath.MEANSQUARE | afwMath.VARIANCE, sctrl)
+        stats = afwMath.makeStatistics(diffIm, afwMath.MEANSQUARE | afwMath.VARIANCE, self.sctrl)
         MSE, _ =  stats.getResult(afwMath.MEANSQUARE)
         #print "ref - matched Var : ", MSE
         return matchBackgroundModel, sciExposure, MSE, meanVar
 
-    def gridImage(self, maskedImage, binsize, sctrl, statsFlag):
+    def gridImage(self, maskedImage, binsize, statsFlag):
         #bin
         width, height  = maskedImage.getDimensions()
         x0, y0 = maskedImage.getXY0()
@@ -280,7 +326,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 #print ymin, ymax, xmin,xmax
                 subBBox = afwGeom.Box2I(afwGeom.PointI(int(x0 + xmin),int(y0 + ymin)),afwGeom.PointI(int(x0 + xmax-1),int(y0 + ymax-1)))
                 subIm = afwImage.MaskedImageF(maskedImage, subBBox, afwImage.PARENT, False)
-                stats = afwMath.makeStatistics(subIm,afwMath.MEAN|afwMath.NPOINT|afwMath.STDEV|afwMath.MEDIAN,sctrl)
+                stats = afwMath.makeStatistics(subIm,afwMath.MEAN|afwMath.NPOINT|afwMath.STDEV|afwMath.MEDIAN,self.sctrl)
                 # if there are less than 2 pixels with non-nan,non-masked values:
                 npoints, _ = stats.getResult(afwMath.NPOINT)
                 if npoints >= 2:
@@ -400,7 +446,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         config = detection.BackgroundConfig()
         config.isNanSafe = True
         config.binSize = self.config.splineBinSize
-        config.ignoredPixelMask = self.config.ignoredPixelMask
+        config.ignoredPixelMask = self.config.badMaskPlanes
         config.algorithm = self.config.algorithm
         config.undersampleStyle = self.config.undersampleStyle
 
@@ -423,14 +469,10 @@ class MatchBackgroundsTask(pipeBase.Task):
         elif self.config.gridStatistic == "CLIPMEAN":    
             statsFlag = afwMath.CLIPMEAN
             
-        #Check fit! Compare MSE with mean variance of the difference Image
-        sctrl = afwMath.StatisticsControl()
-        sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.ignoredPixelMask))
-        sctrl.setNanSafe(True)
-            
+        #Check fit! Compare MSE with mean variance of the difference Image           
         if lsstDebug.Info(__name__).display:
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
-            X, Y, Z, dZ = self.gridImage(diff, self.config.splineBinSize, sctrl, statsFlag)
+            X, Y, Z, dZ = self.gridImage(diff, self.config.splineBinSize, statsFlag)
             x0, y0 = diff.getXY0()
             Xshift = [int(x - x0) for x in X]
             Yshift = [int(y - y0) for y in Y]
@@ -442,12 +484,12 @@ class MatchBackgroundsTask(pipeBase.Task):
             #model = vGetModel(X,Y) # TypeError: in method 'Background_getPixel', argument 2 of type 'int'
             self.debugPlot(X,Y,Z,dZ, bkgd.getImageF(), bbox, model, resids)
             
-        stats = afwMath.makeStatistics(diff.getVariance(),diff.getMask(),afwMath.MEAN, sctrl) 
+        stats = afwMath.makeStatistics(diff.getVariance(),diff.getMask(),afwMath.MEAN, self.sctrl) 
         meanVar, _ = stats.getResult(afwMath.MEAN)
         #print "Diff Image mean Var: ", meanVar
         dim = diff.getImage()
         dim -= bkgd.getImageF()
-        stats = afwMath.makeStatistics(diff, afwMath.MEANSQUARE |afwMath.VARIANCE, sctrl)
+        stats = afwMath.makeStatistics(diff, afwMath.MEANSQUARE |afwMath.VARIANCE, self.sctrl)
         MSE, _ =  stats.getResult(afwMath.MEANSQUARE)
         #print "ref - matched Var : ", MSE
         return bkgd, sciExposure, MSE, meanVar
