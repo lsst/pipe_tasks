@@ -211,7 +211,10 @@ class CalibrateTask(pipeBase.Task):
             self.repair.run(exposure, defects=defects, keepCRs=None)
             self.display('repair', exposure=exposure)
 
-        if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
+        if self.config.doBackground:
+            # Background estimation ignores (by default) pixels with the
+            # DETECTED bit set, so now we re-estimate the background,
+            # ignoring sources.  (see BackgroundConfig.ignoredPixelMask)
             with self.timer("background"):
                 # Subtract background
                 bg, exposure = measAlg.estimateBackground(
