@@ -78,7 +78,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         """Checks for accurate background matching in the matchBackgrounds Method
            to be called by tests expecting successful matching
         """
-        resultModel, resultExp, MSE, diffImVar = self.matcher.matchBackgrounds(refExp, sciExp)
+        resultModel, resultExp, RMS, MSE, diffImVar = self.matcher.matchBackgrounds(refExp, sciExp)
         resultStats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
         resultMean, _ = resultStats.getResult(afwMath.MEAN)
         resultVar, _ = resultStats.getResult(afwMath.VARIANCE)
@@ -95,7 +95,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         """Checks for accurate background matching matchBackgroundsDetection Method
            to be called by tests expecting successful matching
         """
-        resultModel, resultExp, MSE, diffImVar = self.matcher.matchBackgroundsDetection(refExp, sciExp)
+        resultModel, resultExp, RMS, MSE, diffImVar = self.matcher.matchBackgroundsDetection(refExp, sciExp)
         resultStats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
         resultMean, _ = resultStats.getResult(afwMath.MEAN)
         resultVar, _ = resultStats.getResult(afwMath.VARIANCE)

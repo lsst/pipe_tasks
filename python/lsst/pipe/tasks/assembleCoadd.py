@@ -30,6 +30,7 @@ from .coaddBase import CoaddBaseTask
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
 
+
 __all__ = ["AssembleCoaddTask"]
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
@@ -69,17 +70,29 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         target = InterpImageTask,
         doc = "Task to interpolate (and extrapolate) over NaN pixels",
     )
+    matchBackgrounds = pexConfig.ConfigurableField(
+        target = MatchBackgroundsTask,
+        doc = "Task to match backgrounds",
+    )
+    
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
         dtype = bool,
         default = True,
     )
     
-    matchBackgrounds = pexConfig.Field(
+    doMatchBackgrounds = pexConfig.Field(
         doc = "MatchBackgrounds?",
         dtype = bool,
         default = True,
     )
+    autoReference = pexConfig.Field(
+        doc = "If doMatchBackgrounds ==True, tell match Backgrounds to calculate best reference image?",
+        dtype = bool,
+        default = True,
+    )
+
+    
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
     """
@@ -89,7 +102,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
-        self.matchBackgrounds = MatchBackgroundsTask()
+        self.makeSubtask("matchBackgrounds")
         print "Done initializing"
     
     @pipeBase.timeMethod
@@ -128,9 +141,20 @@ class AssembleCoaddTask(CoaddBaseTask):
         # You must also specify tract and patch to make a complete coaddTempExp ID.
         butler = patchRef.butlerSubset.butler
         tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
+        coaddKeySet = set(butler.getKeys(datasetType=datasetType, level="Ccd")) - set(("patch", "tract"))
+        
         tempExpKeyList = tuple(sorted(tempExpKeySet))
 
 
+        if self.config.autoReference:
+            refVisitRef = None
+        else:    
+            # define refVisitRef and take out visit or run from the patchRef to make it a true patchRef
+            refVistRef = butler.dataRef(datasetType = tempExpName, dataId=patchRef.dataId)
+            for key in tempExpKeySet:
+                if key not in coaddKeySet:
+                    del patchRef.dataId[key]
+                
         # compute tempExpIdDict, a dict whose:
         # - keys are tuples of coaddTempExp ID values in tempKeyList order
         # - values are tempExpRef
@@ -139,7 +163,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         tempExpIdDict = dict()
         for calExpRef in calExpRefList:
             calExpId = calExpRef.dataId
-            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
+            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)    
             if tempExpIdTuple not in tempExpIdDict:
                 tempExpId = dict((key, calExpId[key]) for key in tempExpKeyList)
                 tempExpId.update(patchRef.dataId)
@@ -149,7 +173,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                 )
                 tempExpIdDict[tempExpIdTuple] = tempExpRef
 
-    
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(3.0)
         statsCtrl.setNumIter(2)
@@ -182,11 +205,31 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if not tempExpRefList:
             raise pipeBase.TaskError("No coadd temporary exposures found")
-        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
+        self.log.info("Found %s %s" % (len(tempExpRefList), tempExpName))
 
-        if self.config.matchBackgrounds:
-            backgroundModelsList = self.matchBackgrounds.run(tempExpRefList,tempExpName=tempExpName)
-
+        if self.config.doMatchBackgrounds:
+            #This is messier than neccessary. 
+            matchBackgroundsStruct = self.matchBackgrounds.run(tempExpRefList, refVisitRef = refVistRef,tempExpName=tempExpName)
+            backgroundModelsList = matchBackgroundsStruct.backgroundModelList
+            fitRMSList = matchBackgroundsStruct.fitRMSList
+            weightMatchBackgroundsList = []
+            shorterTempExpRefList = []
+            backgroundList =[]
+            # the number of good backgrounds may be < than len(tempExpList)
+            # sync these up and correct weights
+            for tempExpRef in tempExpRefList:
+                if backgroundModelsList[tempExpRefList.index(tempExpRef)] is None:
+                    self.log.info("No background offset model available for %s: skipping"%(tempExpRef.dataId))
+                    continue
+                weightMatchBackgroundsList.append(1/(1/weightList[tempExpRefList.index(tempExpRef)] + fitRMSList[tempExpRefList.index(tempExpRef)]**2))
+                shorterTempExpRefList.append(tempExpRef)
+                backgroundList.append(backgroundModelsList[tempExpRefList.index(tempExpRef)])
+            weightList = weightMatchBackgroundsList
+            tempExpRefList = shorterTempExpRefList
+            backgroundModelsList = backgroundList
+            
+        print len(weightList), len(tempExpRefList)
+        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))                                          
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         
         statsCtrl = afwMath.StatisticsControl()
@@ -217,8 +260,17 @@ class AssembleCoaddTask(CoaddBaseTask):
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
                         coaddExposure.setCalib(exposure.getCalib())
-                        didSetMetadata = True
-    
+                        didSetMetadata = True   
+                    if self.config.doMatchBackgrounds:
+                        idx = tempExpRefList.index(tempExpRef)
+                        if self.matchBackgrounds.config.useDetectionBackground:
+                            bboxInImageCoords = afwGeom.Box2I(subBBox)
+                            bboxInImageCoords.shift(-afwGeom.Extent2I(bbox.getBegin()))
+                            maskedImage += afwImage.ImageF(backgroundModelsList[idx].getImageF(),bboxInImageCoords, afwImage.LOCAL, False)
+                        else:
+                            maskedImage += backgroundModelsList[idx]                       
+                        #var = maskedImage.getVariance()
+                        #var += fitRMSList[tempExpRefList.index(tempExpRef)]**2
                     maskedImageList.append(maskedImage)
 
                 with self.timer("stack"):
@@ -249,6 +301,26 @@ class AssembleCoaddTask(CoaddBaseTask):
         )
 
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        """Create an argument parser
+        """
+        #not sure about parameters but it doesn't seem to matter:
+        return AssembleCoaddArgumentParser(
+            name=cls._DefaultName,
+            datasetType=cls.ConfigClass().coaddName + "Coadd_tempExp"
+            )
+                                      
+    def _getConfigName(self):
+        """Return the name of the config dataset
+        """
+        return "%s_%s_config" % (self.config.coaddName, self._DefaultName)
+    
+    def _getMetadataName(self):
+        """Return the name of the metadata dataset
+        """
+        return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
+    
 def _subBBoxIter(bbox, subregionSize):
     """Iterate over subregions of a bbox
     
@@ -272,3 +344,66 @@ def _subBBoxIter(bbox, subregionSize):
                 raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, colShift=%s, rowShift=%s" % \
                     (bbox, subregionSize, colShift, rowShift))
             yield subBBox
+
+
+
+
+class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
+    """A version of lsst.pipe.base.ArgumentParser specialized for assembleCoadd.
+    """
+    def _makeDataRefList(self, namespace):
+        """Make namespace.dataRefList from namespace.dataIdList
+        """    
+        if namespace.config.doMatchBackgrounds:  
+            if namespace.config.autoReference: #matcher will pick it's own reference image
+                namespace.datasetType = namespace.config.coaddName + "Coadd"
+            else:
+                namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
+        else: #bkg subtracted coadd         
+            namespace.datasetType = namespace.config.coaddName + "Coadd"           
+        validKeys = namespace.butler.getKeys(datasetType=namespace.datasetType, level=self._dataRefLevel)
+
+        namespace.dataRefList = []
+        for dataId in namespace.dataIdList:
+            # tract and patch are required
+            for key in validKeys:
+                if key not in dataId:
+                    self.error("--id must include " + key)
+            dataRef = namespace.butler.dataRef(
+                datasetType = namespace.datasetType,
+                dataId = dataId,
+            )
+            namespace.dataRefList.append(dataRef)
+
+
+# Another Idea is to do away with config.autoReference
+# Look for id's in coadd_tempExp and if you don't find visit/run it's ok! Automatically switch to autoReference.
+# Still in Dev
+class LessFlexibleButStillIntuitiveAssembleCoaddArgumentParser(pipeBase.ArgumentParser):
+    def _makeDataRefList(self, namespace):
+        if namespace.config.doMatchBackgrounds:
+            namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
+        else:
+            namespace.datasetType = namespace.config.coaddName + "Coadd"
+            
+        import pdb; pdb.set_trace()
+        validKeysCoadd = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd", level=self._dataRefLevel)
+        validKeys = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd_tempExp", level=self._dataRefLevel)
+
+         #need to make a list of keys in coaddTempExp that are not in Coadd
+         #e.g. "visit" for imsim or "run" for sdss
+         
+        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
+        namespace.dataRefList = []
+        
+        for dataId in namespace.dataIdList:
+            # tract and patch are required
+            for key in validKeys:
+                if key not in dataId:
+                    self.error("--id must include " + key)
+                    
+            dataRef = namespace.butler.dataRef(
+                datasetType = datasetType,
+                dataId = dataId,
+            )
+            namespace.dataRefList.append(dataRef)

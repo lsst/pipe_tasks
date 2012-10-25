@@ -99,7 +99,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     backgroundOrder = pexConfig.Field(
         dtype = int,
         doc = "Order of background Chebyshev",
-        default = 4
+        default = 8
         )
 
     chebBinSize = pexConfig.Field(
@@ -151,9 +151,11 @@ class MatchBackgroundsTask(pipeBase.Task):
             self.log.info("Calculating best reference visit")
             refVisitRef = self.getBestRefExposure(toMatchRefList)
 
-        backgroundModelList = []
-        matchedMSEList = []
-        diffImVarList = []
+        backgroundModelList = [] 
+        fitRMSList = [] #list containing RMS of the residuals of the fit
+        matchedMSEList = [] #list containing the MSE: mean((refIm - sciIm)**2)
+        diffImVarList = []  #list containing the mean of the variance plane of the diff image (ref - sci)
+        
         
         if not refVisitRef.datasetExists(self.tempExpName):
             raise pipeBase.TaskError("Data id %s does not exist" % (refVisitRef.dataId))
@@ -165,17 +167,23 @@ class MatchBackgroundsTask(pipeBase.Task):
             if not toMatchRef.datasetExists(self.tempExpName):
                 raise pipeBase.TaskError("Data id %s does not exist" % (toMatchRef.dataId))
             toMatchExposure = toMatchRef.get(self.tempExpName)
-            
-            if self.config.useDetectionBackground:
-                matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgroundsDetection(refExposure, toMatchExposure)
-            else:
-                matchBackgroundModel, matchedExposure, matchedMSE, diffImVar = self.matchBackgrounds(refExposure, toMatchExposure)
-                
+
+            try:
+                if self.config.useDetectionBackground:
+                    matchBackgroundModel, matchedExposure, fitRMS, matchedMSE, diffImVar = self.matchBackgroundsDetection(refExposure, toMatchExposure, visitString=str(toMatchRef.dataId['visit']))
+                else:
+                    matchBackgroundModel, matchedExposure, fitRMS, matchedMSE, diffImVar = self.matchBackgrounds(refExposure, toMatchExposure, visitString=str(toMatchRef.dataId['visit']))
+            except Exception, e:
+                self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
+                matchBackgroundModel, matchedExposure, fitRMS, matchedMSE, diffImVar = None, None, None, None, None 
+                     
             backgroundModelList.append(matchBackgroundModel)
+            fitRMSList.append(fitRMS)
             matchedMSEList.append(matchedMSE)
             diffImVarList.append(diffImVar)
-            
-        return backgroundModelList
+        return pipeBase.Struct(    
+            backgroundModelList = backgroundModelList,
+            fitRMSList = fitRMSList)
     
     @pipeBase.timeMethod
     def getBestRefExposure(self, refList, varWeight = 0.2, bkgdLevelWeight = 0.4, coverageWeight = 0.4):
@@ -200,7 +208,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         #Normalize metrics from 0 - 1.
         varArr = np.array(varList)/np.max(varList)
         meanBkgdLevelArr = np.array(meanBkgdLevelList)/np.max(meanBkgdLevelList)
-        coverageArr = np.array(coverageList)/np.max(coverageList)
+        coverageArr = np.min(coverageList)/np.array(coverageList)
         #define cost function to minimize 
         costFunctionArr = varWeight * varArr
         costFunctionArr += bkgdLevelWeight * meanBkgdLevelArr
@@ -208,7 +216,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         return refList[np.argmin(costFunctionArr)]
         
     @pipeBase.timeMethod
-    def matchBackgrounds(self, refExposure, sciExposure):
+    def matchBackgrounds(self, refExposure, sciExposure, visitString = None):
         """
         Matches a science exposure's background level to that of a reference image.
         sciExposure's image is overwritten in memory, mask preserved
@@ -281,7 +289,7 @@ class MatchBackgroundsTask(pipeBase.Task):
     
         #Fit grid with polynomial
         matchBackgroundModel, resids, rms = self.getChebFitPoly(bbox, order,
-                                                   bgX,bgY,bgZ,bgdZ)
+                                                   bgX,bgY,bgZ,bgdZ,visitString=visitString)
 
         im  = sciExposure.getMaskedImage().getImage()
         #matches sciExposure in place in memory
@@ -302,7 +310,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         stats = afwMath.makeStatistics(diffIm, afwMath.MEANSQUARE | afwMath.VARIANCE, self.sctrl)
         MSE, _ =  stats.getResult(afwMath.MEANSQUARE)
         #print "ref - matched Var : ", MSE
-        return matchBackgroundModel, sciExposure, MSE, meanVar
+        return matchBackgroundModel, sciExposure, rms, MSE, meanVar
 
     def gridImage(self, maskedImage, binsize, statsFlag):
         #bin
@@ -344,7 +352,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         return bgX, bgY, bgZ, bgdZ
         
 
-    def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ):
+    def getChebFitPoly(self, bbox, degree, X, Y, Z, dZ, visitString=None):
         """ Temporary function to be eventually replaced in afwMath and meas_alg
         Fits a grid of points and returns a afw.math.Chebyshev1Function2D
 
@@ -387,10 +395,10 @@ class MatchBackgroundsTask(pipeBase.Task):
         resids = Z - model
         RMS = np.sqrt(np.mean(resids**2))
         if lsstDebug.Info(__name__).display:
-            self.debugPlot(X,Y,Z,dZ,poly, bbox, model, resids)
+            self.debugPlot(X,Y,Z,dZ,poly, bbox, model, resids, visitString)
         return poly, resids, RMS
 
-    def debugPlot(self,X,Y,Z,dZ,poly, bbox, model,resids):
+    def debugPlot(self,X,Y,Z,dZ,poly, bbox, model,resids, visitString):
         """ Will generate a plot showing the background fit and residuals.
         It is called when lsstDebug.Info(__name__).display = True
         Saves the fig to lsstDebug.Info(__name__).figpath if
@@ -428,12 +436,12 @@ class MatchBackgroundsTask(pipeBase.Task):
         grid[0].set_xlabel("model and grid")
         grid[1].set_xlabel("residuals. rms = %0.3f"%(rms))
         if lsstDebug.Info(__name__).savefig:
-            fig.savefig(lsstDebug.Info(__name__).figpath + 'debug.png')
-        plt.show()
-        #plt.clf()
+            fig.savefig(lsstDebug.Info(__name__).figpath + visitString + '.png')
+        #plt.show()
+        plt.clf()
        
     @pipeBase.timeMethod
-    def matchBackgroundsDetection(self, refExposure, sciExposure):
+    def matchBackgroundsDetection(self, refExposure, sciExposure, visitString = None):
         """
         Match sciExposure's background level to that of refExposure
              using meas.algorithms.detection.getBackground()
@@ -456,7 +464,8 @@ class MatchBackgroundsTask(pipeBase.Task):
         try:
             bkgd = detection.getBackground(diff, config)
         except Exception, e:
-            raise RuntimeError("Failed to fit background: %s" % (e))
+            raise RuntimeError("Failed to fit background %s: %s" % (visitString, e))
+
 
         #Add offset to sciExposure
         sci  = sciExposure.getMaskedImage()
@@ -482,7 +491,8 @@ class MatchBackgroundsTask(pipeBase.Task):
             resids = Z - model             
             #vGetModel = np.vectorize(bkgd.getPixel)
             #model = vGetModel(X,Y) # TypeError: in method 'Background_getPixel', argument 2 of type 'int'
-            self.debugPlot(X,Y,Z,dZ, bkgd.getImageF(), bbox, model, resids)
+            self.debugPlot(X,Y,Z,dZ, bkgd.getImageF(), bbox, model, resids, visitString)
+
             
         stats = afwMath.makeStatistics(diff.getVariance(),diff.getMask(),afwMath.MEAN, self.sctrl) 
         meanVar, _ = stats.getResult(afwMath.MEAN)
@@ -492,7 +502,9 @@ class MatchBackgroundsTask(pipeBase.Task):
         stats = afwMath.makeStatistics(diff, afwMath.MEANSQUARE |afwMath.VARIANCE, self.sctrl)
         MSE, _ =  stats.getResult(afwMath.MEANSQUARE)
         #print "ref - matched Var : ", MSE
-        return bkgd, sciExposure, MSE, meanVar
+
+        #The None is super temporary! Won't be an issue once bkgd fits give you errors. 
+        return bkgd, sciExposure, MSE, 0.0, meanVar
 
 
     @classmethod
