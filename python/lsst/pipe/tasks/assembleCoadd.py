@@ -74,13 +74,13 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         target = MatchBackgroundsTask,
         doc = "Task to match backgrounds",
     )
-    
+
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
         dtype = bool,
         default = True,
     )
-    
+
     doMatchBackgrounds = pexConfig.Field(
         doc = "MatchBackgrounds?",
         dtype = bool,
@@ -92,7 +92,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = True,
     )
 
-    
+
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
     """
@@ -104,13 +104,13 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.makeSubtask("interpImage")
         self.makeSubtask("matchBackgrounds")
         print "Done initializing"
-    
+
     @pipeBase.timeMethod
     def run(self, patchRef):
         """Assemble a coadd from a set of coaddTempExp
-        
+
         The coadd is computed as a mean with optional outlier rejection.
-        
+
         @param patchRef: data reference for sky map. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter")
         Used to access the following data products (depending on the config):
@@ -123,12 +123,12 @@ class AssembleCoaddTask(CoaddBaseTask):
         """
         skyInfo = self.getSkyInfo(patchRef)
         datasetType = self.config.coaddName + "Coadd"
-        
+
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
-        
+
         calExpRefList = self.selectExposures(patchRef=patchRef, wcs=wcs, bbox=bbox)
-        
+
         numExp = len(calExpRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to coadd")
@@ -142,19 +142,19 @@ class AssembleCoaddTask(CoaddBaseTask):
         butler = patchRef.butlerSubset.butler
         tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
         coaddKeySet = set(butler.getKeys(datasetType=datasetType, level="Ccd")) - set(("patch", "tract"))
-        
+
         tempExpKeyList = tuple(sorted(tempExpKeySet))
 
 
         if self.config.autoReference:
             refVisitRef = None
-        else:    
+        else:
             # define refVisitRef and take out visit or run from the patchRef to make it a true patchRef
             refVistRef = butler.dataRef(datasetType = tempExpName, dataId=patchRef.dataId)
             for key in tempExpKeySet:
                 if key not in coaddKeySet:
                     del patchRef.dataId[key]
-                
+
         # compute tempExpIdDict, a dict whose:
         # - keys are tuples of coaddTempExp ID values in tempKeyList order
         # - values are tempExpRef
@@ -163,7 +163,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         tempExpIdDict = dict()
         for calExpRef in calExpRefList:
             calExpId = calExpRef.dataId
-            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)    
+            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
             if tempExpIdTuple not in tempExpIdDict:
                 tempExpId = dict((key, calExpId[key]) for key in tempExpKeyList)
                 tempExpId.update(patchRef.dataId)
@@ -178,7 +178,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl.setNumIter(2)
         statsCtrl.setAndMask(self._badPixelMask)
         statsCtrl.setNanSafe(True)
-        
+
         # compute tempExpRefList: a list of tempExpRef that actually exist
         # and weightList: a list of the weight of the associated tempExp
         tempExpRefList = []
@@ -197,10 +197,10 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
             del maskedImage
             del tempExp
-            
+
             tempExpRefList.append(tempExpRef)
             weightList.append(weight)
-               
+
         del tempExpIdDict
 
         if not tempExpRefList:
@@ -215,10 +215,10 @@ class AssembleCoaddTask(CoaddBaseTask):
                 matchBackgroundsStruct = self.matchBackgrounds.run(tempExpRefList, refVisitRef = None, tempExpName=tempExpName)
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
-                
+
             backgroundModelsList = matchBackgroundsStruct.backgroundModelList
             fitRMSList = matchBackgroundsStruct.fitRMSList
-            
+
             newWeightList = []
             newTempExpRefList = []
             backgroundList =[]
@@ -234,10 +234,10 @@ class AssembleCoaddTask(CoaddBaseTask):
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
             backgroundModelsList = backgroundList
-            
-        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))                                          
+
+        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        
+
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
         statsCtrl.setNumIter(self.config.clipIter)
@@ -249,7 +249,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             statsFlags = afwMath.MEANCLIP
         else:
             statsFlags = afwMath.MEAN
-    
+
         coaddExposure = afwImage.ExposureF(bbox, wcs)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
@@ -266,14 +266,14 @@ class AssembleCoaddTask(CoaddBaseTask):
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
                         coaddExposure.setCalib(exposure.getCalib())
-                        didSetMetadata = True   
+                        didSetMetadata = True
                     if self.config.doMatchBackgrounds:
-                        if self.matchBackgrounds.config.useDetectionBackground:
-                            bboxInImageCoords = afwGeom.Box2I(subBBox)
-                            bboxInImageCoords.shift(-afwGeom.Extent2I(bbox.getBegin()))
-                            maskedImage += afwImage.ImageF(backgroundModelsList[idx].getImageF(),bboxInImageCoords, afwImage.LOCAL, False)
+                        bboxInImageCoords = afwGeom.Box2I(subBBox)
+                        bboxInImageCoords.shift(-afwGeom.Extent2I(bbox.getBegin()))
+                        if self.matchBackgrounds.config.usePolynomial:
+                            maskedImage += afwImage.ImageF(backgroundModelsList[idx].getImage(),bboxInImageCoords, afwImage.LOCAL, False)
                         else:
-                            maskedImage += backgroundModelsList[idx]                       
+                            maskedImage += afwImage.ImageF(backgroundModelsList[idx].getImageF(),bboxInImageCoords, afwImage.LOCAL, False)
                         #var = maskedImage.getVariance()
                         #var += fitRMSList[tempExpRefList.index(tempExpRef)]**2
                     maskedImageList.append(maskedImage)
@@ -281,11 +281,11 @@ class AssembleCoaddTask(CoaddBaseTask):
                 with self.timer("stack"):
                     coaddSubregion = afwMath.statisticsStack(
                         maskedImageList, statsFlags, statsCtrl, weightList)
-    
+
                 coaddView <<= coaddSubregion
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
-    
+
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
         if self.config.doInterp:
@@ -315,20 +315,20 @@ class AssembleCoaddTask(CoaddBaseTask):
             name=cls._DefaultName,
             datasetType=cls.ConfigClass().coaddName + "Coadd_tempExp"
             )
-                                      
+
     def _getConfigName(self):
         """Return the name of the config dataset
         """
         return "%s_%s_config" % (self.config.coaddName, self._DefaultName)
-    
+
     def _getMetadataName(self):
         """Return the name of the metadata dataset
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
-    
+
 def _subBBoxIter(bbox, subregionSize):
     """Iterate over subregions of a bbox
-    
+
     @param[in] bbox: bounding box over which to iterate: afwGeom.Box2I
     @param[in] subregionSize: size of sub-bboxes
 
@@ -360,22 +360,22 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
            and interprets the config.doMatchBackgrounds, config.autoReference and whether a visit/run was supplied.
            If a visit/run is supplied, config.autoReference is automatically set to False.
            if config.doMatchBackgrounds == false, then a visit/run will be ignored if accidentally supplied...
-           
+
         """
         keysCoadd = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd", level=self._dataRefLevel)
         keysCoaddTempExp = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd_tempExp", level=self._dataRefLevel)
-        
-        if namespace.config.doMatchBackgrounds:  
+
+        if namespace.config.doMatchBackgrounds:
             if namespace.config.autoReference: #matcher will pick it's own reference image
                 namespace.datasetType = namespace.config.coaddName + "Coadd"
                 validKeys = keysCoadd
             else:
                 namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
                 validKeys = keysCoaddTempExp
-        else: #bkg subtracted coadd         
+        else: #bkg subtracted coadd
             namespace.datasetType = namespace.config.coaddName + "Coadd"
-            validKeys = keysCoadd            
-       
+            validKeys = keysCoadd
+
         namespace.dataRefList = []
         for dataId in namespace.dataIdList:
             # tract and patch are required
@@ -383,7 +383,7 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
                 if key not in dataId:
                     self.error("--id must include " + key)
             #check if users supplied visit/run
-            for key in dataId: 
+            for key in dataId:
                 if (key not in keysCoadd) and (key in keysCoaddTempExp):  #user supplied a visit/run
                     namespace.config.autoReference = False                #they probably meant: autoReference = False
                     namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
