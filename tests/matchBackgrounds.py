@@ -89,7 +89,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         RMS = struct.fitRMS
         
         resultStats = afwMath.makeStatistics(resultExp.getMaskedImage(),
-                                             afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
+                                             afwMath.MEAN | afwMath.VARIANCE,
+                                             self.sctrl)
         resultMean, _ = resultStats.getResult(afwMath.MEAN)
         resultVar, _ = resultStats.getResult(afwMath.VARIANCE)
         refStats = afwMath.makeStatistics(refExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)

@@ -59,7 +59,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     doInterp = pexConfig.Field(
         doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
         dtype = bool,
-        default = False,
+        default = True,
     )
     interpFwhm = pexConfig.Field(
         doc = "FWHM of PSF used for interplation (arcsec)",
@@ -149,15 +149,15 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         tempExpKeyList = tuple(sorted(tempExpKeySet))
 
-        patchId = dataRef.dataId
+        patchIdDict = dataRef.dataId.copy()
         if self.config.autoReference:
             refVisitRef = None
         else:
             # define refVisitRef and take out visit or run from the dataRef to make it a true  patchRef
-            refVistRef = butler.dataRef(datasetType = tempExpName, dataId=dataRef.dataId)
+            refVisitRef = butler.dataRef(datasetType = tempExpName, dataId=dataRef.dataId)
             for key in tempExpKeySet:
                 if key not in coaddKeySet:
-                    del patchId[key]
+                    del patchIdDict[key]
 
         # compute tempExpIdDict, a dict whose:
         # - keys are tuples of coaddTempExp ID values in tempKeyList order
@@ -170,7 +170,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
             if tempExpIdTuple not in tempExpIdDict:
                 tempExpId = dict((key, calExpId[key]) for key in tempExpKeyList)
-                tempExpId.update(patchId)
+                tempExpId.update(patchIdDict)
                 tempExpRef = calExpRef.butlerSubset.butler.dataRef(
                     datasetType = tempExpName,
                     dataId = tempExpId,
@@ -178,8 +178,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                 tempExpIdDict[tempExpIdTuple] = tempExpRef
 
         statsCtrl = afwMath.StatisticsControl()
-        statsCtrl.setNumSigmaClip(3.0)
-        statsCtrl.setNumIter(2)
+        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
+        statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self._badPixelMask)
         statsCtrl.setNanSafe(True)
 
@@ -214,37 +214,38 @@ class AssembleCoaddTask(CoaddBaseTask):
         if self.config.doMatchBackgrounds:
             try:
                 matchBackgroundsStruct = self.matchBackgrounds.run(tempExpRefList,
-                                                                   refVisitRef = refVistRef,
-                                                                   tempExpName=tempExpName)
-            except NameError:
-                matchBackgroundsStruct = self.matchBackgrounds.run(tempExpRefList,
-                                                                   refVisitRef = None,
+                                                                   refVisitRef = refVisitRef,
                                                                    tempExpName=tempExpName)
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
+                raise pipeBase.TaskError("Background matching failed.")
 
             backgroundModelsList = matchBackgroundsStruct.backgroundModelList
             fitRMSList = matchBackgroundsStruct.fitRMSList
+            isReferenceList = matchBackgroundsStruct.isReferenceList
 
             newWeightList = []
             newTempExpRefList = []
             backgroundList =[]
             newfitRMSList = []
+            newIsReferenceList = []
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct weights
             for i, tempExpRef in enumerate(tempExpRefList):
-                if backgroundModelsList[i] is None:
+                if (backgroundModelsList[i] is None) and not isReferenceList[i]:
                     self.log.info("No background offset model available for %s: skipping"%(tempExpRef.dataId))
                     continue
                 newWeightList.append(1 / (1 / weightList[i] + fitRMSList[i]**2))
                 newTempExpRefList.append(tempExpRef)
                 backgroundList.append(backgroundModelsList[i])
                 newfitRMSList.append(fitRMSList[i])
+                newIsReferenceList.append(isReferenceList[i])
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
             backgroundModelsList = backgroundList
             fitRMSList = newfitRMSList
-
+            isReferenceList = newIsReferenceList
+            
             if not tempExpRefList:
                 raise pipeBase.TaskError("No valid background models")
 
@@ -278,7 +279,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                         coaddExposure.setFilter(exposure.getFilter())
                         coaddExposure.setCalib(exposure.getCalib())
                         didSetMetadata = True
-                    if self.config.doMatchBackgrounds:
+                    if self.config.doMatchBackgrounds and not isReferenceList[idx]:
                         localSubBBox = afwGeom.Box2I(afwGeom.Point2I(0,0),
                                                      subBBox.getDimensions())
                         if self.matchBackgrounds.config.usePolynomial:
@@ -289,6 +290,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                                                            localSubBBox, afwImage.LOCAL, False)
                         var = maskedImage.getVariance()
                         var += (fitRMSList[idx])**2
+
                     maskedImageList.append(maskedImage)
 
                 with self.timer("stack"):
