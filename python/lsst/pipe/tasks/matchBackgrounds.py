@@ -65,7 +65,8 @@ class MatchBackgroundsConfig(pexConfig.Config):
         )
 
     undersampleStyle = pexConfig.ChoiceField(
-        doc = "Behaviour if there are too few points in grid for requested interpolation style when matching",
+        doc = "Behaviour if there are too few points in grid for requested " \
+        "interpolation style when matching",
         dtype = str,
         default = "REDUCE_INTERP_ORDER",
         allowed = {
@@ -235,17 +236,21 @@ class MatchBackgroundsTask(pipeBase.Task):
     def matchBackgrounds(self, refExposure, sciExposure):
         """
         Match science exposure's background level to that of refExposure. Process creates a difference image
-        of the reference - e
-        Science exposure is changed in
-        memory. Fit diagnostics are also calculated:
-        1) rms of the fit. This is the sqrt(mean(residuals**2)).
-        2) the mean variance of the difference image.
-        3) the MSE: differen
+        of the reference exposure - the science exposure. It then generates an afw.math.Background object, and
+        assumes that the mask plane already has detections set. The fit to 'background' of the difference
+        image is added to the science exposure in  memory.
+        Fit diagnostics are also calculated and returned.
         
-        
-        @param refExposure
+        @param refExposure: 
         @param sciExposure
         @returns a pipBase.Struct with fields:
+            -matchBackgroundModel: an afw.math.Approximate or an afw.math.Background
+            -matchedExposure: New pointer to exposure of matched science image. Because matchin occurs in place,
+            the input pointer will also return the matched image as well
+            -fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
+            -matchedMSE: the MSE: mean((refImage - matchedSciImage)**2)
+            should be comparable to diffImage mean Variance,
+            -diffImVar: the mean variance of the difference image.)
             
         @returns an lsst::afw::math::Background object containing
         the model of the background of the difference image (refExposure - sciExposures)
@@ -267,7 +272,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 npoints += 1
                 
             if self.config.order > npoints - 1:
-                raise ValueError("%d = config.order > npoints - 1 = %d" % (self.config.order, npoints - 1))
+                raise ValueError("%d = config.order > npoints - 1 = %d" % (self.config.order, npoints - 1))  
             
             
         # Check that exposures are same shape
@@ -295,9 +300,11 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         bkgd = afwMath.makeBackground(diffMI, bctrl)
 
-        # Check that order/bin size make sense:
-        # change binsize or order if underconstrained. 
-        # This should be handled within Approximate
+        # This should be handled within Approximate:
+        # Will remove this block once Approximate checks these 3 things:
+        # 1) Check that order/bin size make sense:
+        # 2) Change binsize or order if underconstrained.
+        # 3) Add some tiny variation if the image is completely uniform
         if self.config.usePolynomial:
             bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
             minNumberGridPoints = min(len(set(bgX)),len(set(bgY)))
@@ -316,7 +323,13 @@ class MatchBackgroundsTask(pipeBase.Task):
                     bctrl.setNySample(newBinSize)
                     bkgd = afwMath.makeBackground(diffMI, bctrl) #do over
                     self.log.warn("Decreasing binsize to %d"%(newBinSize))
-
+      
+            if not any(dZ > 1e-8 for dZ in bgdZ) and not any(bgZ): #uniform image
+                gaussianNoiseIm = afwImage.ImageF(diffMI.getImage(), True)
+                afwMath.randomGaussianImage(gaussianNoiseIm, afwMath.Random(1))
+                gaussianNoiseIm *= 1e-8
+                diffMI += gaussianNoiseIm
+                bkgd = afwMath.makeBackground(diffMI, bctrl)
 
         #Add offset to sciExposure
         try:    

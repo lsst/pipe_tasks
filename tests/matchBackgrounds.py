@@ -36,7 +36,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
 
     def setUp(self):
         #Make a few test images here
-        #1) full coverage (plain vanilla image) w/ mean = 50counts
+        #1) full coverage (plain vanilla image) has mean = 50counts
         self.vanilla = afwImage.ExposureF(600,600)
         im = self.vanilla.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im,afwMath.Random(1))
@@ -56,7 +56,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         im = self.lowCover.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im,afwMath.Random(3))
         im += 20
-        self.lowCover.getMaskedImage().getImage().getArray()[:,200:] = numpy.nan #simulate low image coverage:
+        self.lowCover.getMaskedImage().getImage().getArray()[:,200:] = numpy.nan 
         self.lowCover.getMaskedImage().getVariance().set(1.0)
 
         #make a matchBackgrounds object
@@ -67,7 +67,9 @@ class MatchBackgroundsTestCase(unittest.TestCase):
 
         self.sctrl = afwMath.StatisticsControl()
         self.sctrl.setNanSafe(True)
-        self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(["EDGE", "DETECTED", "DETECTED_NEGATIVE","SAT","BAD","INTRP","CR"]))
+        self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(["EDGE", "DETECTED",
+                                                              "DETECTED_NEGATIVE","SAT",
+                                                              "BAD","INTRP","CR"]))
         
     def tearDown(self):
         self.vanilla = None
@@ -86,13 +88,14 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         diffImVar = struct.diffImVar
         RMS = struct.fitRMS
         
-        resultStats = afwMath.makeStatistics(resultExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
+        resultStats = afwMath.makeStatistics(resultExp.getMaskedImage(),
+                                             afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
         resultMean, _ = resultStats.getResult(afwMath.MEAN)
         resultVar, _ = resultStats.getResult(afwMath.VARIANCE)
         refStats = afwMath.makeStatistics(refExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE,self.sctrl)
         refMean, _ = refStats.getResult(afwMath.MEAN)
         #print "refMean %.03f, resultMean %.03f, resultVar %.03f"%(refMean, resultMean, resultVar)
-        self.assertAlmostEqual(refMean, resultMean, delta = resultVar) #very loose test. 
+        self.assertAlmostEqual(refMean, resultMean, delta = resultVar) #very loose test.
         #print "MSE %.05f, diffImVar %.05f"%(MSE, diffImVar)
         
         #MSE within 2% of the variance of the difference image = SUCCESS
@@ -131,12 +134,13 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.assertRaises(RuntimeError,self.matcher.matchBackgrounds,self.chipGap, wrongSize)
 
     def testVanillaApproximate(self):
-        """Tests basic matching"""
+        """Tests basic matching scenario with .Approximate"""
         self.matcher.config.binSize = 128
         self.matcher.config.order = 4
         self.checkAccuracy(self.chipGap, self.vanilla)
 
     def testRampApproximate(self):
+        """Tests basic matching of a linear gradient with Approximate"""
         self.matcher.config.binSize = 64
         testExp = afwImage.ExposureF(self.vanilla, True)
         testIm = testExp.getMaskedImage().getImage()
@@ -150,7 +154,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.checkAccuracy(testExp, self.vanilla)
         
     def testLowCoverThrowExpectionApproximate(self):
-        """low coverage with .config.undersampleStyle = THROW_EXCEPTION should throw ValueError"""
+        """low coverage with .config.undersampleStyle = THROW_EXCEPTION should throw ValueError.
+        with Approximate"""
         self.matcher.config.binSize = 64
         self.matcher.config.order = 8
         self.matcher.config.undersampleStyle =  "THROW_EXCEPTION"
@@ -158,21 +163,23 @@ class MatchBackgroundsTestCase(unittest.TestCase):
 
 
     def testLowCoverIncreaseSampleApproximate(self):
-        """low coverage with .config.undersampleStyle = INCREASE_NXNYSAMPLE should succeed"""
+        """low coverage with .config.undersampleStyle = INCREASE_NXNYSAMPLE should succeed.
+        with Approximate"""
         self.matcher.config.binSize = 128
         self.matcher.config.order = 4        
         self.matcher.config.undersampleStyle = "INCREASE_NXNYSAMPLE"
         self.checkAccuracy(self.chipGap, self.lowCover)
 
     def testLowCoverReduceInterpOrderApproximate(self):
-        """low coverage with .config.undersampleStyle = REDUCE_INTERP_ORDER should succeed"""
+        """low coverage with .config.undersampleStyle = REDUCE_INTERP_ORDER should succeed.
+        with Approximate"""
         self.matcher.config.binSize = 64
         self.matcher.config.order = 8        
         self.matcher.config.undersampleStyle =  "REDUCE_INTERP_ORDER"
         self.checkAccuracy(self.chipGap, self.lowCover)
 
     def testMasksApproximate(self):
-        """Masks should be ignored in matching backgrounds"""
+        """Masks should be ignored in matching backgrounds. Testing: .Approximate"""
         testExp = afwImage.ExposureF(self.chipGap, True)
         im   = testExp.getMaskedImage().getImage()
         im += 10
@@ -186,7 +193,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.checkAccuracy(self.chipGap, testExp)
 
     def testSameImageApproximate(self):
-        """What should it do if the two images are the same? Succeeds"""
+        """Should be able to match identical images. Testing: .Approximate"""
         vanillaTwin = afwImage.ExposureF(self.vanilla, True)
         self.matcher.config.binSize = 128
         self.matcher.config.order = 4                
@@ -194,12 +201,14 @@ class MatchBackgroundsTestCase(unittest.TestCase):
 
 
     #-=-=-=-=-=-=-=-=-=Background Interp (Splines) -=-=-=-=-=-=-=-=-
-    def testVanillaBackground(self): 
+    def testVanillaBackground(self):
+        """Tests basic matching scenario with .Background"""
         self.matcher.config.usePolynomial = False
         self.matcher.config.binSize = 128
         self.checkAccuracy(self.chipGap, self.vanilla)
 
     def testRampBackground(self):
+        """Tests basic matching of a linear gradient with .Background"""
         self.matcher.config.usePolynomial = False
         self.matcher.config.binSize = 64
         testExp = afwImage.ExposureF(self.vanilla, True)
@@ -213,23 +222,27 @@ class MatchBackgroundsTestCase(unittest.TestCase):
                 testIm.set(x, y, z + dzdx * x + dzdy * y + z0)
         self.checkAccuracy(testExp, self.vanilla)
         
-    def testUndersampleBackgroundPasses(self): 
+    def testUndersampleBackgroundPasses(self):
+        """ Testing undersample style (REDUCE_INTERP_ORDER): .Background
+        INCREASE_NXNYSAMPLE no longer supported by .Background because .Backgrounds's are
+        defined by their nx and ny grid. 
+        """
         self.matcher.config.usePolynomial = False
         self.matcher.config.binSize = 256
         self.matcher.config.undersampleStyle = "REDUCE_INTERP_ORDER"
         self.checkAccuracy(self.chipGap, self.vanilla)
-     # "INCREASE_NXNYSAMPLE" DEPRECIATED
-     #   self.matcher.config.undersampleStyle = "INCREASE_NXNYSAMPLE"
-     #   self.checkAccuracy(self.chipGap, self.vanilla)
+        #"INCREASE_NXNYSAMPLE" DEPRECIATED:
+        self.matcher.config.undersampleStyle = "INCREASE_NXNYSAMPLE"
+        self.assertRaises(RuntimeError, self.matcher.matchBackgrounds,self.chipGap, self.vanilla)
         
     def testSameImageBackground(self):
-        """What should it do if the two images are the same? Succeeds"""
+        """Should be able to match identical images. Testing: .Background"""
         self.matcher.config.usePolynomial = False
         self.matcher.config.binSize = 256
         self.checkAccuracy(self.vanilla, self.vanilla)
 
     def testMasksBackground(self):
-        """Masks should be ignored in matching backgrounds"""
+        """Masks should be ignored in matching backgrounds. Testing .Background"""
         self.matcher.config.usePolynomial = False
         self.matcher.config.binSize = 256
         testExp = afwImage.ExposureF(self.chipGap, True)
@@ -255,24 +268,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.binSize = 64
         self.assertRaises(RuntimeError, self.matcher.matchBackgrounds,self.chipGap, self.vanilla)
 
-        
-
-   # "INCREASE_NXNYSAMPLE" DEPRECIATETED
-   #       
-   # def testUndersampleBackgroundFails(self):  #Known Failure
-   #     """ Background class throws RuntimeError for chip gaps wider than bin size"""
-   #     self.matcher.config.usePolynomial = False
-   #     self.matcher.config.binSize = 256
-   #     self.matcher.config.undersampleStyle = "INCREASE_NXNYSAMPLE"
-   #     #widen chip gap
-   #     testExp = afwImage.ExposureF(self.chipGap, True)
-   #     testExp.getMaskedImage().getImage().getArray()[:,200:400] = numpy.nan 
-   #     self.assertRaises(RuntimeError, self.matcher.matchBackgrounds,testExp, self.vanilla)
-   #     self.matcher.config.undersampleStyle = "REDUCE_INTERP_ORDER"
-   #     self.assertRaises(RuntimeError, self.matcher.matchBackgrounds,testExp, self.vanilla)
-   #     #Message: Failed to initialise spline for type cspline, length 0
-
-        
+    
+       
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 def suite():
