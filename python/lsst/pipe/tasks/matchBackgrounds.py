@@ -101,7 +101,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
         "Ignored when reference visit is supplied",
         default = 0.4,
         min = 0., max = 1.
-    )   
+    )
     bestRefWeightVariance = pexConfig.RangeField(
         dtype = float,
         doc = "Weight given to image variance when calculating best reference exposure. " \
@@ -117,7 +117,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
         default = 0.2,
         min = 0., max = 1.
     )
-    
+
 
 class MatchBackgroundsTask(pipeBase.Task):
     ConfigClass = MatchBackgroundsConfig
@@ -131,28 +131,30 @@ class MatchBackgroundsTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, toMatchRefList, refVisitRef=None, tempExpName = None):
-        """Match the backgrounds of a list of dataRefs to a reference dataRef.
-        
+        """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
+
         Choose a refVisitRef automatically if none supplied.
-        
+
         @param toMatchRefList: List containing data references to science exposures to be matched
-        @param refVisitRef: data reference for the reference exposure. Default = None.
+        @param refVisitRef: Data reference for the reference exposure. Default = None.
         @param tempExpName: Name of the coadd temp exposures.  For example: 'goodSeeingCoadd_tempExp'
-        or 'deepCoadd_tempExp'. Default = None. 
+        or 'deepCoadd_tempExp'. Default = None.
         @return: a pipBase.Struct with fields:
-        - backgroundModelList:  List of afw.Math.Background or afw.Math.Approximate objects
-        - fitRMSList: List of RMS values on the fit. Describes how well the model fit the difference image.
+        - backgroundModelList:  List of afw.Math.Background or afw.Math.Approximate objects containing the
+                                model offset to be added to the original science exposures.
+        - fitRMSList: List of RMS values of the fit. Describes how well the model fit the difference image.
                       It can be used to properly increase the variance plane of the image.
+                      Currently, all values = 0.
         - isReference: List of bools -- all elements are False except for the one corresponding to the
-                       reference visit. 
+                       reference visit.
         """
-        
+
         numExp = len(toMatchRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to match")
 
         if tempExpName is None:
-            tempExpName = self.config.datasetType    
+            tempExpName = self.config.datasetType
 
         if refVisitRef is None:
             refVisitRef = self.getBestRefExposure(toMatchRefList, tempExpName)
@@ -162,7 +164,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         matchedMSEList = [] #list containing the MSE: mean((refIm - sciIm)**2)
         diffImVarList = []  #list containing the mean of the variance plane of the diff image (ref - sci)
         isReferenceList = [] #list containing bools. True if it is the reference visit, else False.
- 
+
         if not refVisitRef.datasetExists(tempExpName):
             raise pipeBase.TaskError("Reference data id %s does not exist" % (refVisitRef.dataId))
         refExposure = refVisitRef.get(tempExpName)
@@ -171,10 +173,10 @@ class MatchBackgroundsTask(pipeBase.Task):
         visitKeySet = set(toMatchRefList[0].dataId) - set(['tract','patch'])
 
         self.log.info("Matching %d Exposures" % (numExp))
-        
+
         for toMatchRef in toMatchRefList:
             self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refVisitRef.dataId))
-            
+
             if not toMatchRef.datasetExists(tempExpName):
                 raise pipeBase.TaskError("Data id %s does not exist" % (toMatchRef.dataId))
             toMatchExposure = toMatchRef.get(tempExpName)
@@ -192,18 +194,18 @@ class MatchBackgroundsTask(pipeBase.Task):
                     fitRMS = None,
                     matchedMSE = None,
                     diffImVar = None)
-                
+
             if tuple(toMatchRef.dataId[k] for k in keySet) == tuple(refVisitRef.dataId[k] for k in keySet):
                 isReference = True
             else:
                 isReference = False
-            
+
             backgroundModelList.append(backgroundInfoStruct.matchBackgroundModel)
             fitRMSList.append(backgroundInfoStruct.fitRMS)
             matchedMSEList.append(backgroundInfoStruct.matchedMSE)
             diffImVarList.append(backgroundInfoStruct.diffImVar)
             isReferenceList.append(isReference)
-            
+
         return pipeBase.Struct(
             backgroundModelList = backgroundModelList,
             fitRMSList = fitRMSList,
@@ -218,10 +220,10 @@ class MatchBackgroundsTask(pipeBase.Task):
         bestRefWeightCoverage: Float between 0 and 1. Weighting of coverage in the cost function.
         bestRefWeightVariance: Float between 0 and 1. Weight of the variance in the cost function.
         bestRefWeightLevel: Float between 0 and 1. Weight of background level in the cost function
-    
+
         @param refList: List containing data references to exposures
         @param tempExpName: Name of the dataType of the coadd temp exposures: e.g. 'goodSeeingCoadd_tempExp'
-        
+
         @return: a data reference pointing to the best reference exposure
         """
         self.log.info("Calculating best reference visit")
@@ -244,10 +246,10 @@ class MatchBackgroundsTask(pipeBase.Task):
             meanBkgdLevelList.append(meanBkgdLevel)
             coverageList.append(npoints)
 
-        if not coverageList: 
+        if not coverageList:
              raise pipeBase.TaskError('No temp exposures of type %s found calculate best reference exposure'%
                                (tempExpName))
-         
+
         # Normalize metrics to range from  0 to 1
         varArr = numpy.array(varList)/numpy.max(varList)
         meanBkgdLevelArr = numpy.array(meanBkgdLevelList)/numpy.max(meanBkgdLevelList)
@@ -270,7 +272,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         class. This fit of difference image is added to the science exposure in memory.
         Fit diagnostics are also calculated and returned.
 
-        @param refExposure: reference exposure (unaltered) 
+        @param refExposure: reference exposure (unaltered)
         @param sciExposure: science exposure (background level matched to that of reference exposure)
         @returns a pipBase.Struct with fields:
             -matchBackgroundModel: an afw.math.Approximate or an afw.math.Background
@@ -386,7 +388,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
             X, Y, Z, dZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
             x0, y0 = diffMI.getXY0()
-            Xshift = [int(x - x0) for x in X] # get positions in IMAGE coords
+            Xshift = [int(x - x0) for x in X] # get positions in local image coords
             Yshift = [int(y - y0) for y in Y]
             modelValueArr = numpy.empty(len(Z))
             for i in range(len(X)):
@@ -396,7 +398,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             	self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
             except Exception, e:
                 self.log.warn('Debug plot not generated: %s'%(e))
-   
+
         stats = afwMath.makeStatistics(diffMI.getVariance(),diffMI.getMask(),afwMath.MEAN, self.sctrl)
         meanVar, _ = stats.getResult(afwMath.MEAN)
 
@@ -456,7 +458,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             im = grid[0].imshow(zeroIm.getImage().getArray(),
                                 extent=(x0, x0+dx, y0+dy, y0), norm = norm,
                                 cmap='Spectral')
-            im = grid[0].scatter(X, Y, c=Z, s = meanDz/dz, edgecolor='none', norm=norm,
+            im = grid[0].scatter(X, Y, c=Z, s = 15.*meanDz/dz, edgecolor='none', norm=norm,
                                  marker='o',cmap='Spectral')
             im2 = grid[1].scatter(X,Y,  c=resids, edgecolor='none', norm=diffnorm,
                                   marker='s', cmap='seismic')
