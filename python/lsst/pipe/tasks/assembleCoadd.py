@@ -30,7 +30,6 @@ from .coaddBase import CoaddBaseTask
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
 
-
 __all__ = ["AssembleCoaddTask"]
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
@@ -83,14 +82,15 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
     doMatchBackgrounds = pexConfig.Field(
         doc = "Match backgrounds of coadd temp exposures before coadding them. " \
-        "If False, the coadd temp expsosures must already have been background subtracted or matched backgrounds",
+        "If False, the coadd temp expsosures must already have been background subtracted or " \
+        "matched backgrounds",
         dtype = bool,
         default = True,
     )
     autoReference = pexConfig.Field(
         doc = "Automatically select the coadd temp exposure to use as a reference for background matching? " \
               "Ignored if doMatchBackgrounds false. " \
-              "If False you must specify the reference temp exposure as the data ID",
+              "If False you must specify the reference temp exposure as the data Id",
         dtype = bool,
         default = True,
     )
@@ -113,8 +113,9 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         The coadd is computed as a mean with optional outlier rejection.
 
-        @param dataRef: data reference for coadd patch or reference coadd temp exposure for background matching
-        (the latter if config.doMatchBackgrounds true and config.autoReference false)
+        @param dataRef: data reference for a coadd patch (of dataType 'Coadd') OR a data reference
+        for a coadd temp exposure (of dataType 'Coadd_tempExp') which serves as the reference visit
+        if config.doMatchBackgrounds true and config.autoReference false)
         If supplying a coadd patch: Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter")
         Used to access the following data products (depending on the config):
@@ -153,7 +154,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         if self.config.autoReference:
             refVisitRef = None
         else:
-            # define refVisitRef and take out visit or run from the dataRef to make it a true  patchRef
+            # define refVisitRef and take out visit/run from the dataRef to make it a true patchRef
             refVisitRef = butler.dataRef(datasetType = tempExpName, dataId=dataRef.dataId)
             for key in tempExpKeySet:
                 if key not in coaddKeySet:
@@ -224,13 +225,16 @@ class AssembleCoaddTask(CoaddBaseTask):
             fitRMSList = matchBackgroundsStruct.fitRMSList
             isReferenceList = matchBackgroundsStruct.isReferenceList
 
+            if not any(backgroundModelsList):
+                raise pipeBase.TaskError("No valid background models")
+
             newWeightList = []
             newTempExpRefList = []
             backgroundList =[]
             newfitRMSList = []
             newIsReferenceList = []
             # the number of good backgrounds may be < than len(tempExpList)
-            # sync these up and correct weights
+            # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
                 if (backgroundModelsList[i] is None) and not isReferenceList[i]:
                     self.log.info("No background offset model available for %s: skipping"%(tempExpRef.dataId))
@@ -325,7 +329,6 @@ class AssembleCoaddTask(CoaddBaseTask):
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        #not sure about parameters but it doesn't seem to matter:
         return AssembleCoaddArgumentParser(
             name=cls._DefaultName,
             datasetType=cls.ConfigClass().coaddName + "Coadd_tempExp"
@@ -371,9 +374,10 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
     """A version of lsst.pipe.base.ArgumentParser specialized for assembleCoadd.
     """
     def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
-           and interprets the config.doMatchBackgrounds, config.autoReference,
-           and whether a visit/run was supplied.
+        """Make namespace.dataRefList from namespace.dataIdList.
+        
+           Interpret the config.doMatchBackgrounds, config.autoReference,
+           and whether a visit/run supplied.
            If a visit/run is supplied, config.autoReference is automatically set to False.
            if config.doMatchBackgrounds == false, then a visit/run will be ignored if accidentally supplied.
 
