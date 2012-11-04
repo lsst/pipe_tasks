@@ -179,10 +179,10 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                         self.log.info("Calexp %s has %s good pixels in this patch" % \
                             (calExpRef.dataId, numGoodPix))
                     
-                    if not didSetMetadata:
-                        coaddTempExp.setCalib(exposure.getCalib())
-                        coaddTempExp.setFilter(exposure.getFilter())
-                        didSetMetadata = True
+                        if not didSetMetadata:
+                            coaddTempExp.setCalib(exposure.getCalib())
+                            coaddTempExp.setFilter(exposure.getFilter())
+                            didSetMetadata = True
                 except Exception, e:
                     self.log.warn("Error processing calexp %s; skipping it: %s" % \
                         (calExpRef.dataId, e))
