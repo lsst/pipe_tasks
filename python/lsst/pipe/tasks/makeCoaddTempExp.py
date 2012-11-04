@@ -56,7 +56,11 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = False,
     )
-
+    scalePerPatch = pexConfig.Field(
+        doc = "Use one calib per patch for constant zeropoint scaling.",
+        dtype = bool,
+        default = False,
+    )
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
@@ -158,6 +162,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
                 try:
                     exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=self.config.bgSubtracted) 
+                    #if metadataSet use a shared Calib
+                    if self.config.scalePerPatch:
+                        if didSetMetadata:
+                            exposure.setCalib(sharedInitialCalib)
+                        else:
+                            sharedInitialCalib = exposure.getCalib()
+                            
                     exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
                     numGoodPix = coaddUtils.copyGoodPixels(
                         coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
