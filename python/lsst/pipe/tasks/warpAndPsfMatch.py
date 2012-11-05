@@ -36,10 +36,10 @@ FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
-    coaddZeroPoint = pexConfig.Field(
+    desiredFwhm = pexConfig.Field(
+        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
         dtype = float,
-        doc = "photometric zero point of coadd (mag)",
-        default = 27.0,
+        optional = True,
     )
     psfMatch = pexConfig.ConfigurableField(
         target = ModelPsfMatchTask,
