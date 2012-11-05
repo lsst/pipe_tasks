@@ -156,6 +156,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             coaddTempExp = afwImage.ExposureF(patchBBox, tractWcs)
             edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
             coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf)
+            coaddTempExp.setCalib(self.warpAndPsfMatch.zeroPointScaler.getCalib())
             didSetMetadata = False
             for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
                 self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
@@ -180,7 +181,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                             (calExpRef.dataId, numGoodPix))
                     
                         if not didSetMetadata:
-                            coaddTempExp.setCalib(exposure.getCalib())
                             coaddTempExp.setFilter(exposure.getFilter())
                             didSetMetadata = True
                 except Exception, e:
