@@ -26,7 +26,6 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
-import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
 
@@ -37,11 +36,6 @@ FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-    )
     coaddZeroPoint = pexConfig.Field(
         dtype = float,
         doc = "photometric zero point of coadd (mag)",
@@ -66,7 +60,6 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
-        self.zeroPointScaler = coaddUtils.ZeroPointScaler(self.config.coaddZeroPoint)
 
     def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
         """Return one "calexp" calibrated exposure, optionally with psf
@@ -91,7 +84,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         return exposure
     
     def run(self, exposure, wcs, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if self.config.desiredFwhm is not None), warp and scale
+        """PSF-match exposure (if self.config.desiredFwhm is not None) and warp
         
         @param[in,out] exposure: exposure to preprocess; PSF matching is done in place
         @param[in] wcs: desired WCS of temporary images
@@ -117,8 +110,6 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         with self.timer("warp"):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
         
-        self.zeroPointScaler.scaleExposure(exposure)
-
         return pipeBase.Struct(
             exposure = exposure,
         )

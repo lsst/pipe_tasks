@@ -58,7 +58,6 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     )
 
 
-
 class MakeCoaddTempExpTask(CoaddBaseTask):
     """Task to produce <coaddName>Coadd_tempExp images and (optional) <coaddName>Coadd_initPsf
     """
@@ -78,9 +77,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         
         PSF matching is to a double gaussian model with core FWHM = self.config.warpAndPsfMatch.desiredFwhm
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
-        The size of the PSF matching kernel is the same as the size of the kernel
-        found in the first calibrated science exposure, since there is no benefit
-        to making it any other size.
         
         PSF-matching is performed before warping so the code can use the PSF models
         associated with the calibrated science exposures (without having to warp those models).
@@ -91,6 +87,10 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         - dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
 
         @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
+        
+        @warning: this task sets the Calib of the coaddTempExp to the Calib of the first calexp
+        with any good pixels in the patch. For a mosaic camera the resulting Calib should be ignored
+        (assembleCoadd should determine zeropoint scaling without referring to it).
         """
         skyInfo = self.getSkyInfo(patchRef)
         
@@ -168,10 +168,10 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                         self.log.info("Calexp %s has %s good pixels in this patch" % \
                             (calExpRef.dataId, numGoodPix))
                     
-                    if not didSetMetadata:
-                        coaddTempExp.setCalib(exposure.getCalib())
-                        coaddTempExp.setFilter(exposure.getFilter())
-                        didSetMetadata = True
+                        if not didSetMetadata:
+                            coaddTempExp.setCalib(exposure.getCalib())
+                            coaddTempExp.setFilter(exposure.getFilter())
+                            didSetMetadata = True
                 except Exception, e:
                     self.log.warn("Error processing calexp %s; skipping it: %s" % \
                         (calExpRef.dataId, e))
