@@ -20,6 +20,8 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import itertools
+
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
@@ -54,6 +56,10 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
         default = 2,
     )
+    zeroPointScale = pexConfig.ConfigurableField(
+        target = coaddUtils.ZeroPointScaleTask,
+        doc = "Task to compute zero point scale",
+    )
     doInterp = pexConfig.Field(
         doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
         dtype = bool,
@@ -84,6 +90,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
+        self.makeSubtask("zeroPointScale")
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -148,26 +155,32 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl.setNanSafe(True)
         
         # compute tempExpRefList: a list of tempExpRef that actually exist
-        # and weightList: a list of the weight of the associated tempExp
+        # and weightList: a list of the weight of the associated coadd tempExp
+        # and scaleList: a list of scale factors for the associated coadd tempExp
         tempExpRefList = []
         weightList = []
+        scaleList = []
         for tempExpRef in tempExpIdDict.itervalues():
             if not tempExpRef.datasetExists(tempExpName):
                 self.log.warn("Could not find %s %s; skipping it" % (tempExpName, tempExpRef.dataId))
                 continue
 
-            tempExp = tempExpRef.get(tempExpName)
+            tempExp = tempExpRef.get(tempExpName, immediate=True)
             maskedImage = tempExp.getMaskedImage()
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                 afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
+            scale = self.zeroPointScale.computeScale(tempExp.getCalib())
+            # don't try to print the scale since it may be a complex object
+
             del maskedImage
             del tempExp
             
             tempExpRefList.append(tempExpRef)
             weightList.append(weight)
+            scaleList.append(scale)
         del tempExpIdDict
 
         if not tempExpRefList:
@@ -189,6 +202,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             statsFlags = afwMath.MEAN
     
         coaddExposure = afwImage.ExposureF(bbox, wcs)
+        coaddExposure.setCalib(self.zeroPointScale.getCalib())
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
@@ -198,12 +212,12 @@ class AssembleCoaddTask(CoaddBaseTask):
                 self.log.info("Computing coadd %s" % (subBBox,))
                 coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
                 maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-                for tempExpRef in tempExpRefList:
+                for tempExpRef, scale in itertools.izip(tempExpRefList, scaleList):
                     exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
                     maskedImage = exposure.getMaskedImage()
+                    maskedImage *= scale
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
-                        coaddExposure.setCalib(exposure.getCalib())
                         didSetMetadata = True
     
                     maskedImageList.append(maskedImage)

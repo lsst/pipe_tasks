@@ -70,14 +70,14 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             get the calexp's background background model and add it to the calexp.
         @return calibrated exposure with psf
         """
-        exposure = dataRef.get("calexp")
+        exposure = dataRef.get("calexp", immediate=True)
         if not bgSubtracted:
-            background = dataRef.get("calexpBackground")
+            background = dataRef.get("calexpBackground", immediate=True)
             mi = exposure.getMaskedImage()
             mi += background
             del mi
         if getPsf:
-            psf = dataRef.get("psf")
+            psf = dataRef.get("psf", immediate=True)
             exposure.setPsf(psf)
         return exposure
     

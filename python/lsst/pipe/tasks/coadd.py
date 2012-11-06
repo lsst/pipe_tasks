@@ -53,6 +53,10 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
         default = 3.0,
     )
+    zeroPointScale = pexConfig.ConfigurableField(
+        target = coaddUtils.ZeroPointScaleTask,
+        doc = "Task to compute zero point scale",
+    )
     doInterp = pexConfig.Field(
         doc = "Interpolate over EDGE pixels?",
         dtype = bool,
@@ -79,6 +83,7 @@ class CoaddTask(CoaddBaseTask):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
         self.makeSubtask("warpAndPsfMatch")
+        self.makeSubtask("zeroPointScale")
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -131,13 +136,17 @@ class CoaddTask(CoaddBaseTask):
             self.log.info("Processing exposure %d of %d: id=%s" % (ind+1, numExp, calExpRef.dataId))
             exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch)
             try:
-                exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure            
+                exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
+                scale = self.zeroPointScale.computeScale(exposure.getCalib())
+                maskedImage = exposure.getMaskedImage()
+                maskedImage *= scale
                 coadd.addExposure(exposure)
             except Exception, e:
                 self.log.warn("Error processing exposure %s; skipping it: %s" % (calExpRef.dataId, e))
                 continue
         
         coaddExposure = coadd.getCoadd()
+        coaddExposure.setConfig(self.zeroPointScale.getCalib())
         if self.config.doInterp:
             fwhmArcSec = self.config.warpAndPsfMatch.desiredFwhm or 1.5
             fwhmPixels = fwhmArcSec / tractWcs.pixelScale().asArcseconds()
