@@ -20,8 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import math
-
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
@@ -39,8 +37,6 @@ from .warpAndPsfMatch import WarpAndPsfMatchTask
 
 __all__ = ["CoaddTask", "CoaddArgumentParser"]
 
-FWHMPerSigma = 2 * math.sqrt(2 * math.log(2))
-
 class CoaddConfig(CoaddBaseTask.ConfigClass):
     """Config for CoaddTask
     """
@@ -53,8 +49,8 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
         default = 3.0,
     )
-    zeroPointScale = pexConfig.ConfigurableField(
-        target = coaddUtils.ZeroPointScaleTask,
+    scaleZeroPoint = pexConfig.ConfigurableField(
+        target = coaddUtils.ScaleZeroPointTask,
         doc = "Task to compute zero point scale",
     )
     doInterp = pexConfig.Field(
@@ -83,7 +79,7 @@ class CoaddTask(CoaddBaseTask):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
         self.makeSubtask("warpAndPsfMatch")
-        self.makeSubtask("zeroPointScale")
+        self.makeSubtask("scaleZeroPoint")
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -137,7 +133,7 @@ class CoaddTask(CoaddBaseTask):
             exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch)
             try:
                 exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
-                scale = self.zeroPointScale.computeScale(exposure.getCalib())
+                scale = self.scaleZeroPoint.computeScale(exposure.getCalib())
                 maskedImage = exposure.getMaskedImage()
                 maskedImage *= scale
                 coadd.addExposure(exposure)
@@ -146,7 +142,7 @@ class CoaddTask(CoaddBaseTask):
                 continue
         
         coaddExposure = coadd.getCoadd()
-        coaddExposure.setConfig(self.zeroPointScale.getCalib())
+        coaddExposure.setConfig(self.scaleZeroPoint.getCalib())
         if self.config.doInterp:
             fwhmArcSec = self.config.warpAndPsfMatch.desiredFwhm or 1.5
             fwhmPixels = fwhmArcSec / tractWcs.pixelScale().asArcseconds()

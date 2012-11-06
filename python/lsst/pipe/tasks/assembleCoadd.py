@@ -56,8 +56,8 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
         default = 2,
     )
-    zeroPointScale = pexConfig.ConfigurableField(
-        target = coaddUtils.ZeroPointScaleTask,
+    scaleZeroPoint = pexConfig.ConfigurableField(
+        target = coaddUtils.ScaleZeroPointTask,
         doc = "Task to compute zero point scale",
     )
     doInterp = pexConfig.Field(
@@ -90,7 +90,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
-        self.makeSubtask("zeroPointScale")
+        self.makeSubtask("scaleZeroPoint")
     
     @pipeBase.timeMethod
     def run(self, patchRef):
@@ -172,7 +172,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
-            scale = self.zeroPointScale.computeScale(tempExp.getCalib())
+            scale = self.scaleZeroPoint.computeScale(tempExp.getCalib()).scale
             # don't try to print the scale since it may be a complex object
 
             del maskedImage
@@ -202,7 +202,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             statsFlags = afwMath.MEAN
     
         coaddExposure = afwImage.ExposureF(bbox, wcs)
-        coaddExposure.setCalib(self.zeroPointScale.getCalib())
+        coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
