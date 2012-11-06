@@ -66,18 +66,16 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         
         @param dataRef: a sensor-level data reference
         @param getPsf: include the PSF?
-        @param bgSubtracted: return background subtracted calexp?
+        @param bgSubtracted: return calexp with background subtracted? If False then
+            get the calexp's background background model and add it to the calexp.
         @return calibrated exposure with psf
         """
-        exposure = dataRef.get("calexp") #We assume calexps are background subtracted
+        exposure = dataRef.get("calexp")
         if not bgSubtracted:
             background = dataRef.get("calexpBackground")
-            try:
-                mi = exposure.getMaskedImage()
-                mi += background
-                del mi
-            except Exception, e:
-                self.log.warn("There was a problem adding the background: %s.  Continuing without adding a background."%(e))
+            mi = exposure.getMaskedImage()
+            mi += background
+            del mi
         if getPsf:
             psf = dataRef.get("psf")
             exposure.setPsf(psf)
