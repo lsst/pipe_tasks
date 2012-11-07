@@ -172,13 +172,9 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         for toMatchRef in toMatchRefList:
             self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refVisitRef.dataId))
-
-            if not toMatchRef.datasetExists(tempExpName):
-                raise pipeBase.TaskError("Data id %s does not exist" % (toMatchRef.dataId))
-            toMatchExposure = toMatchRef.get(tempExpName)
-
             try:
                 #store a string specifying the visit to label debug plot
+                toMatchExposure = toMatchRef.get(tempExpName)
                 self.debugVisitString = ''.join([str(toMatchRef.dataId[vk]) for vk in visitKeySet])
     	        backgroundInfoStruct = self.matchBackgrounds(refExposure, toMatchExposure)
             except Exception, e:
