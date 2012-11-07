@@ -141,9 +141,11 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         calExpRefList = self.selectExposures(patchRef=dataRef, wcs=wcs, bbox=bbox)
 
+        
         numExp = len(calExpRefList)
         if numExp < 1:
-            raise pipeBase.TaskError("No exposures to coadd")
+            raise pipeBase.TaskError("No overlapping exposures found by database %s to coadd" %
+                                 (self.config.select.database))
         self.log.info("Selected %s calexp" % (numExp,))
 
         tempExpName = self.config.coaddName + "Coadd_tempExp"
