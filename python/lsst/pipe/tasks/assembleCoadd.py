@@ -78,7 +78,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
-
     doMatchBackgrounds = pexConfig.Field(
         doc = "Match backgrounds of coadd temp exposures before coadding them. " \
         "If False, the coadd temp expsosures must already have been background subtracted or " \
@@ -110,7 +109,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     def run(self, dataRef):
         """Assemble a coadd from a set of coaddTempExp
 
-        The coadd is computed as a mean with optional outlier rejection. 
+        The coadd is computed as a mean with optional outlier rejection.
 
         assembleCoaddTask only works on the dataset type 'coaddTempExp', which are 'coadd temp exposures.
         Each coaddTempExp is the size of a patch and contains data for one run, visit or
@@ -119,8 +118,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         coaddTempExps, by default, will have backgrounds in them and will require
         config.doMatchBackgrounds = True. However, makeCoaddTempExp.py can optionally create background-
         subtracted coaddTempExps which can be coadded here by setting
-        config.doMatchBackgrounds = False. 
-        
+        config.doMatchBackgrounds = False.
+
         @param dataRef: data reference for a coadd patch (of dataType 'Coadd') OR a data reference
         for a coadd temp exposure (of dataType 'Coadd_tempExp') which serves as the reference visit
         if config.doMatchBackgrounds true and config.autoReference false)
@@ -141,7 +140,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         calExpRefList = self.selectExposures(patchRef=dataRef, wcs=wcs, bbox=bbox)
 
-        
+
         numExp = len(calExpRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No overlapping exposures found by database %s to coadd" %
@@ -258,7 +257,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             backgroundModelsList = backgroundList
             fitRMSList = newfitRMSList
             isReferenceList = newIsReferenceList
-            
+
             if not tempExpRefList:
                 raise pipeBase.TaskError("No valid background models")
 
@@ -298,10 +297,9 @@ class AssembleCoaddTask(CoaddBaseTask):
                         backgroundModel = backgroundModelsList[idx]
                         backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.usePolynomial \
                                           else backgroundModel.getImageF()
-
                         maskedImage += backgroundImage.Factory(backgroundImage, localSubBBox,
                                                                afwImage.LOCAL, False)
-  
+
                         var = maskedImage.getVariance()
                         var += (fitRMSList[idx])**2
 
@@ -385,7 +383,7 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
     """
     def _makeDataRefList(self, namespace):
         """Make namespace.dataRefList from namespace.dataIdList.
-        
+
            Interpret the config.doMatchBackgrounds, config.autoReference,
            and whether a visit/run supplied.
            If a visit/run is supplied, config.autoReference is automatically set to False.
@@ -418,11 +416,11 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
             for key in dataId: # check if users supplied visit/run
                 if (key not in keysCoadd) and (key in keysCoaddTempExp):  #user supplied a visit/run
                     # user probably meant: autoReference = False
-                    namespace.config.autoReference = False                
+                    namespace.config.autoReference = False
                     namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
                     print "Switching config.autoReference to False. " \
                                   "Applies only to background Matching. "
-                    
+
             dataRef = namespace.butler.dataRef(
                 datasetType = namespace.datasetType,
                 dataId = dataId,
