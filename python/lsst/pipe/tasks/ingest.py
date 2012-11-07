@@ -26,6 +26,7 @@ class ParseConfig(Config):
                             doc="Properties and name of translator method")
     hdu = Field(dtype=int, default=0, doc="HDU to read for metadata")
     extnames = ListField(dtype=str, default=[], doc="Extension names to search for")
+    extnameKey = Field(dtype=str, default="EXTNAME", doc="Header keyword for extension name")
 
 class ParseTask(Task):
     """Task that will parse the filename and/or its contents to get the required information
@@ -57,11 +58,25 @@ class ParseTask(Task):
             except:
                 self.log.warn("Error reading %s extensions %s" % (filename, extnames))
                 break
-            ext = md.get("EXTNAME").strip()
+            ext = self.getExtension(md)
             if ext in extnames:
                 infoList.append(self.getInfoFromMetadata(md, info=phuInfo.copy()))
                 extnames.discard(ext)
         return phuInfo, infoList
+
+    def getExtension(self, md):
+        """Determine the extension name
+
+        @param md      FITS header
+        @return Extension name
+        """
+        extname = md.get(self.config.extnameKey)
+        if isinstance(extname, basestring):
+            return extname.strip()
+        if isinstance(extname, tuple) and len(extname) == 2 and extname[0] == "COMPRESSED_IMAGE":
+            return extname[1].strip()
+        raise RuntimeError("Unable to determine extension name from %s: %s" %
+                           (self.config.extnameKey, extname))
 
     def getInfoFromMetadata(self, md, info={}):
         """Attempt to pull the desired information out of the header
