@@ -387,14 +387,14 @@ class MatchBackgroundsTask(pipeBase.Task):
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
             X, Y, Z, dZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
             x0, y0 = diffMI.getXY0()
-            Xshift = [int(x - x0) for x in X] # get positions in local image coords
-            Yshift = [int(y - y0) for y in Y]
+            Xshift = X - x0 # get positions in local image coords
+            Yshift = Y - y0
             modelValueArr = numpy.empty(len(Z))
             for i in range(len(X)):
                 modelValueArr[i] = bkgdImage.get(int(Xshift[i]),int(Yshift[i]))
             resids = Z - modelValueArr
             try:
-            	self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
+                self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
             except Exception, e:
                 self.log.warn('Debug plot not generated: %s'%(e))
 
@@ -423,12 +423,12 @@ class MatchBackgroundsTask(pipeBase.Task):
         Saves the fig to lsstDebug.Info(__name__).figpath
         Displays on screen if lsstDebug.Info(__name__).display = True
 
-        @param X: list or array of x positions
-        @param Y: list or array of y positions
-        @param Z: list or array of the grid values that were interpolated
-        @param dZ: list or array of the error on the grid values
+        @param X: array of x positions
+        @param Y: array of y positions
+        @param Z: array of the grid values that were interpolated
+        @param dZ: array of the error on the grid values
         @param modelImage: image ofthe model of the fit
-        @param model: list of len(Z) containing the grid values predicted by the model
+        @param model: array of len(Z) containing the grid values predicted by the model
         @param resids: Z - model
         """
         import matplotlib.pyplot as plt
@@ -441,14 +441,13 @@ class MatchBackgroundsTask(pipeBase.Task):
         if len(Z) == 0:
             self.log.warn("No grid. Skipping plot generation.")
         else:
-            max, min  = numpy.max(numpy.array(Z)), numpy.min(numpy.array(Z))
+            max, min  = numpy.max(Z), numpy.min(Z)
             norm = matplotlib.colors.normalize(vmax=max, vmin= min)
             maxdiff = numpy.max(numpy.abs(resids))
             diffnorm = matplotlib.colors.normalize(vmax=maxdiff, vmin= -maxdiff)
             rms = numpy.sqrt(numpy.mean(resids**2))
             from mpl_toolkits.axes_grid1 import ImageGrid
             fig = plt.figure(1, (8, 6))
-            dz = numpy.array(dZ)
             meanDz = numpy.mean(dZ)
             grid = ImageGrid(fig, 111, nrows_ncols = (1, 2), axes_pad=0.1,
                              share_all=True, label_mode = "L", cbar_mode = "each",
@@ -456,9 +455,9 @@ class MatchBackgroundsTask(pipeBase.Task):
             im = grid[0].imshow(zeroIm.getImage().getArray(),
                                 extent=(x0, x0+dx, y0+dy, y0), norm = norm,
                                 cmap='Spectral')
-            im = grid[0].scatter(X, Y, c=Z, s = 15.*meanDz/dz, edgecolor='none', norm=norm,
+            im = grid[0].scatter(X, Y, c=Z, s = 15.*meanDz/dZ, edgecolor='none', norm=norm,
                                  marker='o',cmap='Spectral')
-            im2 = grid[1].scatter(X,Y,  c=resids, edgecolor='none', norm=diffnorm,
+            im2 = grid[1].scatter(X, Y,  c=resids, edgecolor='none', norm=diffnorm,
                                   marker='s', cmap='seismic')
             grid.cbar_axes[0].colorbar(im)
             grid.cbar_axes[1].colorbar(im2)
@@ -509,4 +508,4 @@ class MatchBackgroundsTask(pipeBase.Task):
                     est, _ = stats.getResult(statsFlag)
                     bgZ.append(est)
 
-        return bgX, bgY, bgZ, bgdZ
+        return numpy.array(bgX), numpy.array(bgY), numpy.array(bgZ), numpy.array(bgdZ)
