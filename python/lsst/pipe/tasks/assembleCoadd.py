@@ -293,12 +293,13 @@ class AssembleCoaddTask(CoaddBaseTask):
                     if self.config.doMatchBackgrounds and not isReferenceList[idx]:
                         localSubBBox = afwGeom.Box2I(afwGeom.Point2I(0,0),
                                                      subBBox.getDimensions())
-                        if self.matchBackgrounds.config.usePolynomial:
-                            maskedImage += afwImage.ImageF(backgroundModelsList[idx].getImage(),
-                                                          localSubBBox, afwImage.LOCAL, False)
-                        else:
-                            maskedImage += afwImage.ImageF(backgroundModelsList[idx].getImageF(),
-                                                           localSubBBox, afwImage.LOCAL, False)
+                        backgroundModel = backgroundModelsList[idx]
+                        backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.usePolynomial \
+                                          else backgroundModel.getImageF()
+
+                        maskedImage += backgroundImage.Factory(backgroundImage, localSubBBox,
+                                                               afwImage.LOCAL, False)
+  
                         var = maskedImage.getVariance()
                         var += (fitRMSList[idx])**2
 
