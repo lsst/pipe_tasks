@@ -295,7 +295,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                         localSubBBox = afwGeom.Box2I(afwGeom.Point2I(0,0),
                                                      subBBox.getDimensions())
                         backgroundModel = backgroundModelsList[idx]
-                        backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.usePolynomial \
+                        backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.config.usePolynomial \
                                           else backgroundModel.getImageF()
                         maskedImage += backgroundImage.Factory(backgroundImage, localSubBBox,
                                                                afwImage.LOCAL, False)
