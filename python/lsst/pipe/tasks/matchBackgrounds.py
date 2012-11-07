@@ -329,16 +329,17 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         bkgd = afwMath.makeBackground(diffMI, bctrl)
 
-        # Will remove this block if Approximate can check these 3 things:
+        # Some config and input checks if config.usePolynomial:
         # 1) Check that order/bin size make sense:
         # 2) Change binsize or order if underconstrained.
         # 3) Add some tiny Gaussian noise if the image is completely uniform
+        #        (change after ticket 2411)
         if self.config.usePolynomial:
             order = self.config.order
             bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
             minNumberGridPoints = min(len(set(bgX)),len(set(bgY)))
             if len(bgZ) == 0:
-                raise ValueError("No overlap with reference. Cannot match")
+                raise ValueError("No overlap with reference. Nothing to match")
             elif minNumberGridPoints <= self.config.order:
                 #must either lower order or raise number of bins or throw exception
                 if self.config.undersampleStyle == "THROW_EXCEPTION":
