@@ -260,10 +260,13 @@ class MatchBackgroundsTask(pipeBase.Task):
         """
         Match science exposure's background level to that of reference exposure.
 
-        Process creates a difference image of the reference exposure minus the science exposure. It then
-        generates an afw.math.Background object, and assumes that the mask plane already has detections set.
-        The 'background' of is fit by spline interpolation or by polynomial interpolation by the Approximate
-        class. This fit of difference image is added to the science exposure in memory.
+        Process creates a difference image of the reference exposure minus the science exposure, and then
+        generates an afw.math.Background object. It assumes (but does not require/check) that the mask plane
+        already has detections set -- if detections have NOT been masked, gridStatistic = MEDIAN and
+        config.usePolynomial will perform best.
+        The 'background' of the difference image is smoothed by spline interpolation (by the Background class)
+        or by polynomial interpolation by the Approximate class. This model of difference image is added to the
+        science exposure in memory.
         Fit diagnostics are also calculated and returned.
 
         @param refExposure: reference exposure (unaltered)
