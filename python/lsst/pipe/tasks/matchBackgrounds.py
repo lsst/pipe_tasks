@@ -376,8 +376,9 @@ class MatchBackgroundsTask(pipeBase.Task):
             raise RuntimeError("Background/Approximation failed to interp image %s: %s" % (
                 self.debugVisitString, e))
 
-       	sciMIPointer  = sciExposure.getMaskedImage()
-        sciMIPointer += bkgdImage
+       	sciMI  = sciExposure.getMaskedImage()
+        sciMI += bkgdImage
+        del sciMI
 
         if lsstDebug.Info(__name__).savefits:
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
@@ -397,14 +398,13 @@ class MatchBackgroundsTask(pipeBase.Task):
             except Exception, e:
                 self.log.warn('Debug plot not generated: %s'%(e))
 
-        stats = afwMath.makeStatistics(diffMI.getVariance(),diffMI.getMask(),afwMath.MEAN, self.sctrl)
-        meanVar, _ = stats.getResult(afwMath.MEAN)
+        meanVar = afwMath.makeStatistics(diffMI.getVariance(),diffMI.getMask(),
+                                         afwMath.MEAN, self.sctrl).getValue()
 
-        diffImPointer  = diffMI.getImage()
-        diffImPointer -= bkgdImage #This changes the image inside diffMI: should now have a mean ~ 0
-
-        stats = afwMath.makeStatistics(diffMI, afwMath.MEANSQUARE | afwMath.VARIANCE, self.sctrl)
-        mse, _ =  stats.getResult(afwMath.MEANSQUARE)
+        diffIm  = diffMI.getImage()
+        diffIm -= bkgdImage #diffMI should now have a mean ~ 0
+        del diffIm
+        mse = afwMath.makeStatistics(diffMI, afwMath.MEANSQUARE, self.sctrl).getValue()
 
         outBkgd =  approx if self.config.usePolynomial else bkgd
 
