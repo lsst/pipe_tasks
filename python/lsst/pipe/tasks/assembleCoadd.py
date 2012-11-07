@@ -73,7 +73,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         target = MatchBackgroundsTask,
         doc = "Task to match backgrounds",
     )
-
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
         dtype = bool,
@@ -111,15 +110,23 @@ class AssembleCoaddTask(CoaddBaseTask):
     def run(self, dataRef):
         """Assemble a coadd from a set of coaddTempExp
 
-        The coadd is computed as a mean with optional outlier rejection.
+        The coadd is computed as a mean with optional outlier rejection. 
 
+        assembleCoaddTask only works on the dataset type 'coaddTempExp', which are 'coadd temp exposures.
+        Each coaddTempExp is the size of a patch and contains data for one run, visit or
+        (for a non-mosaic camera it will contain data for a single exposure).
+
+        coaddTempExps, by default, will have backgrounds in them and will require
+        config.doMatchBackgrounds = True. However, makeCoaddTempExp.py can optionally create background-
+        subtracted coaddTempExps which can be coadded here by setting
+        config.doMatchBackgrounds = False. 
+        
         @param dataRef: data reference for a coadd patch (of dataType 'Coadd') OR a data reference
         for a coadd temp exposure (of dataType 'Coadd_tempExp') which serves as the reference visit
         if config.doMatchBackgrounds true and config.autoReference false)
         If supplying a coadd patch: Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter")
         Used to access the following data products (depending on the config):
-        - [in] self.config.coaddName + "Coadd_skyMap"
         - [in] self.config.coaddName + "Coadd_tempExp"
         - [out] self.config.coaddName + "Coadd"
 
