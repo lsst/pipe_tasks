@@ -176,7 +176,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 #store a string specifying the visit to label debug plot
                 toMatchExposure = toMatchRef.get(tempExpName)
                 self.debugVisitString = ''.join([str(toMatchRef.dataId[vk]) for vk in visitKeySet])
-    	        backgroundInfoStruct = self.matchBackgrounds(refExposure, toMatchExposure)
+                backgroundInfoStruct = self.matchBackgrounds(refExposure, toMatchExposure)
             except Exception, e:
                 #if match fails (e.g. low coverage), insert Nones as placeholders in output lists
                 self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
@@ -376,7 +376,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             raise RuntimeError("Background/Approximation failed to interp image %s: %s" % (
                 self.debugVisitString, e))
 
-       	sciMI  = sciExposure.getMaskedImage()
+        sciMI  = sciExposure.getMaskedImage()
         sciMI += bkgdImage
         del sciMI
 
