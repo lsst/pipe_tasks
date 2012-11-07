@@ -222,41 +222,32 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if self.config.doMatchBackgrounds:
             try:
-                matchBackgroundsStruct = self.matchBackgrounds.run(tempExpRefList,
+                backgroundStructList = self.matchBackgrounds.run(tempExpRefList,
                                                                    refVisitRef = refVisitRef,
-                                                                   tempExpName=tempExpName)
+                                                                   tempExpName=tempExpName).backgroundModelStructList
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
                 raise pipeBase.TaskError("Background matching failed.")
 
-            backgroundModelsList = matchBackgroundsStruct.backgroundModelList
-            fitRMSList = matchBackgroundsStruct.fitRMSList
-            isReferenceList = matchBackgroundsStruct.isReferenceList
-
-            if not any(backgroundModelsList):
+            if not any([m.backgroundModel for m in backgroundStructList]):
                 raise pipeBase.TaskError("No valid background models")
 
             newWeightList = []
             newTempExpRefList = []
-            backgroundList =[]
-            newfitRMSList = []
-            newIsReferenceList = []
+            newBackgroundStructList = []
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
-                if (backgroundModelsList[i] is None) and not isReferenceList[i]:
+                if (backgroundStructList[i].backgroundModel is None) and not backgroundStructList[i].isReference:
                     self.log.info("No background offset model available for %s: skipping"%(tempExpRef.dataId))
                     continue
-                newWeightList.append(1 / (1 / weightList[i] + fitRMSList[i]**2))
+                newWeightList.append(1 / (1 / weightList[i] + backgroundStructList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
-                backgroundList.append(backgroundModelsList[i])
-                newfitRMSList.append(fitRMSList[i])
-                newIsReferenceList.append(isReferenceList[i])
+                newBackgroundStructList.append(backgroundStructList[i])
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
-            backgroundModelsList = backgroundList
-            fitRMSList = newfitRMSList
-            isReferenceList = newIsReferenceList
+            backgroundStructList = newBackgroundStructList 
+
 
             if not tempExpRefList:
                 raise pipeBase.TaskError("No valid background models")
@@ -291,17 +282,17 @@ class AssembleCoaddTask(CoaddBaseTask):
                         coaddExposure.setFilter(exposure.getFilter())
                         coaddExposure.setCalib(exposure.getCalib())
                         didSetMetadata = True
-                    if self.config.doMatchBackgrounds and not isReferenceList[idx]:
+                    if self.config.doMatchBackgrounds and not backgroundStructList[idx].isReference:
                         localSubBBox = afwGeom.Box2I(afwGeom.Point2I(0,0),
                                                      subBBox.getDimensions())
-                        backgroundModel = backgroundModelsList[idx]
+                        backgroundModel = backgroundStructList[idx].backgroundModel
                         backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.config.usePolynomial \
                                           else backgroundModel.getImageF()
                         maskedImage += backgroundImage.Factory(backgroundImage, localSubBBox,
                                                                afwImage.LOCAL, False)
 
                         var = maskedImage.getVariance()
-                        var += (fitRMSList[idx])**2
+                        var += (backgroundStructList[idx].fitRMS)**2
 
                     maskedImageList.append(maskedImage)
 

@@ -159,11 +159,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         if refVisitRef is None:
             refVisitRef = self.getBestRefExposure(toMatchRefList, tempExpName)
 
-        backgroundModelList = []
-        fitRMSList = [] #list containing RMS of the residuals of the fit
-        matchedMSEList = [] #list containing the MSE: mean((refIm - sciIm)**2)
-        diffImVarList = []  #list containing the mean of the variance plane of the diff image (ref - sci)
-        isReferenceList = [] #list containing bools. True if it is the reference visit, else False.
+        backgroundMatchResultList = []
 
         if not refVisitRef.datasetExists(tempExpName):
             raise pipeBase.TaskError("Reference data id %s does not exist" % (refVisitRef.dataId))
@@ -200,16 +196,18 @@ class MatchBackgroundsTask(pipeBase.Task):
             else:
                 isReference = False
 
-            backgroundModelList.append(backgroundInfoStruct.matchBackgroundModel)
-            fitRMSList.append(backgroundInfoStruct.fitRMS)
-            matchedMSEList.append(backgroundInfoStruct.matchedMSE)
-            diffImVarList.append(backgroundInfoStruct.diffImVar)
-            isReferenceList.append(isReference)
+            #make new struct to return without the exposure
+            toReturnBackgroundStruct = pipeBase.Struct(
+                    backgroundModel = backgroundInfoStruct.matchBackgroundModel,
+                    fitRMS = backgroundInfoStruct.fitRMS,
+                    matchedMSE = backgroundInfoStruct.matchedMSE,
+                    diffImVar = backgroundInfoStruct.diffImVar,
+                    isReference = isReference)
 
+            backgroundMatchResultList.append(toReturnBackgroundStruct)
+            
         return pipeBase.Struct(
-            backgroundModelList = backgroundModelList,
-            fitRMSList = fitRMSList,
-            isReferenceList = isReferenceList)
+            backgroundModelStructList = backgroundMatchResultList)
 
     @pipeBase.timeMethod
     def getBestRefExposure(self, refList, tempExpName):
