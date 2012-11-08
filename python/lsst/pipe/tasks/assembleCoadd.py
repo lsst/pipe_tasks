@@ -217,7 +217,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
             scale = self.scaleZeroPoint.computeScale(tempExp.getCalib()).scale
             # don't try to print the scale since it may be a complex object
-
+            
             del maskedImage
             del tempExp
 
@@ -234,8 +234,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         if self.config.doMatchBackgrounds:
             try:
                 backgroundStructList = self.matchBackgrounds.run(tempExpRefList,
-                                                                   refVisitRef = refVisitRef,
-                                                                   tempExpName=tempExpName).backgroundModelStructList
+                                                                 scaleList=scaleList,
+                                                                 refVisitRef = refVisitRef,
+                                                                 tempExpName=tempExpName).backgroundModelStructList
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
                 raise pipeBase.TaskError("Background matching failed.")

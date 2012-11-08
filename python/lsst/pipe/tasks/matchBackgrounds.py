@@ -25,6 +25,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.coadd.utils as coaddUtils
 import lsstDebug
 
 class MatchBackgroundsConfig(pexConfig.Config):
@@ -130,7 +131,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         self.sctrl.setNanSafe(True)
 
     @pipeBase.timeMethod
-    def run(self, toMatchRefList, refVisitRef=None, tempExpName = None):
+    def run(self, toMatchRefList, scaleList=None, refVisitRef=None, tempExpName = None):
         """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
 
         Choose a refVisitRef automatically if none supplied.
@@ -156,25 +157,37 @@ class MatchBackgroundsTask(pipeBase.Task):
         if tempExpName is None:
             tempExpName = self.config.datasetType
 
+        if scaleList is None:
+            self.log.info("No list of zero point scalings provided. Proceeding assuming your coadd temp exposures " \
+                          "have already been scaled")
+            scaleList = [1] * numExp #initialize list of 1's so that scaling does nothing.
+
         if refVisitRef is None:
-            refVisitRef = self.getBestRefExposure(toMatchRefList, tempExpName)
+            refVisitRef = self.getBestRefExposure(toMatchRefList, tempExpName, scaleList)
 
         backgroundMatchResultList = []
 
         if not refVisitRef.datasetExists(tempExpName):
             raise pipeBase.TaskError("Reference data id %s does not exist" % (refVisitRef.dataId))
         refExposure = refVisitRef.get(tempExpName)
+        #import pdb; pdb.set_trace();
+        zeroPointScaler = coaddUtils.ScaleZeroPointTask()
+        refScale = zeroPointScaler.computeScale(refExposure.getCalib()).scale
+        refMI = refExposure.getMaskedImage()
+        refMI *= refScale
 
         keySet = set(toMatchRefList[0].dataId)
         visitKeySet = set(toMatchRefList[0].dataId) - set(['tract','patch'])
 
         self.log.info("Matching %d Exposures" % (numExp))
 
-        for toMatchRef in toMatchRefList:
+        for toMatchRef, scale in zip(toMatchRefList, scaleList):
             self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refVisitRef.dataId))
             try:
-                #store a string specifying the visit to label debug plot
                 toMatchExposure = toMatchRef.get(tempExpName)
+                toMatchMI = toMatchExposure.getMaskedImage()
+                toMatchMI *= scale
+                #store a string specifying the visit to label debug plot
                 self.debugVisitString = ''.join([str(toMatchRef.dataId[vk]) for vk in visitKeySet])
                 backgroundInfoStruct = self.matchBackgrounds(refExposure, toMatchExposure)
             except Exception, e:
@@ -206,7 +219,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             backgroundModelStructList = backgroundMatchResultList)
 
     @pipeBase.timeMethod
-    def getBestRefExposure(self, refList, tempExpName):
+    def getBestRefExposure(self, refList, tempExpName, scaleList):
         """Return the dataRef of the best exposure to use as the reference exposure
 
         Calculate an appropriate reference exposure by minimizing a cost function that penalizes
@@ -225,12 +238,13 @@ class MatchBackgroundsTask(pipeBase.Task):
         meanBkgdLevelList = []
         coverageList = []
 
-        for ref in refList:
+        for ref, scale  in zip(refList, scaleList):
             if not ref.datasetExists(tempExpName):
                 self.log.warn("Data id %s does not exist. Skipping for ref visit calculation" % (ref.dataId))
                 continue
             tempExp = ref.get(tempExpName)
             maskedImage = tempExp.getMaskedImage()
+            maskedImage *= scale
             statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
                 afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
             meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
