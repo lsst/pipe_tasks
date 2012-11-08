@@ -298,13 +298,12 @@ class AssembleCoaddTask(CoaddBaseTask):
                         coaddExposure.setFilter(exposure.getFilter())
                         didSetMetadata = True
                     if self.config.doMatchBackgrounds and not backgroundStructList[idx].isReference:
-                        localSubBBox = afwGeom.Box2I(afwGeom.Point2I(0,0),
-                                                     subBBox.getDimensions())
                         backgroundModel = backgroundStructList[idx].backgroundModel
                         backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.config.usePolynomial \
                                           else backgroundModel.getImageF()
-                        maskedImage += backgroundImage.Factory(backgroundImage, localSubBBox,
-                                                               afwImage.LOCAL, False)
+                        backgroundImage.setXY0(coaddMaskedImage.getXY0())
+                        maskedImage += backgroundImage.Factory(backgroundImage, subBBox,
+                                                               afwImage.PARENT, False)
 
                         var = maskedImage.getVariance()
                         var += (backgroundStructList[idx].fitRMS)**2
