@@ -130,135 +130,170 @@ class MatchBackgroundsTask(pipeBase.Task):
         self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes))
         self.sctrl.setNanSafe(True)
 
-    def flexScale(self, maskedImage, scale):
-        if isinstance(scale,float):
-            maskedImage *= scale
-        else:
-            maskedImage *= scale.getInterpImage(maskedImage.getBBox())
-
     @pipeBase.timeMethod
-    def run(self, toMatchRefList,  scaleList=None, refVisitRef=None, tempExpName = None, skyInfo=None):
+    def run(self, expRefList, imageScalerList=None, refExpDataRef=None, expDatasetType = None, skyInfo=None):
         """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
 
-        Choose a refVisitRef automatically if none supplied.
+        Choose a refExpDataRef automatically if none supplied.
+        
+        @warning: all exposures must exist on disk
 
-        @param toMatchRefList: List containing data references to science exposures to be matched
-        @param refVisitRef: Data reference for the reference exposure. Default = None.
-        @param tempExpName: Name of the coadd temp exposures.  For example: 'goodSeeingCoadd_tempExp'
+        @param expRefList: list of data references to exposures to be background-matched;
+            all exposures must exist.
+        @param imageScalerList: list of image scalers (coaddUtils.ImageScaler);
+            if None then the images are not scaled
+        @param refExpDataRef: data reference for the reference exposure.
+            If None, then this task selects the best exposures from expRefList.
+            if not None then must be one of the exposures in expRefList.
+        @param expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
         or 'deepCoadd_tempExp'. Default = None.
-        @return: a pipBase.Struct with fields:
-        - backgroundModelList:  List of afw.Math.Background or afw.Math.Approximate objects containing the
-                                model offset to be added to the original science exposures.
-        - fitRMSList: List of RMS values of the fit. Describes how well the model fit the difference image.
-                      It can be used to properly increase the variance plane of the image.
-                      Currently, all values = 0.
-        - isReference: List of bools -- all elements are False except for the one corresponding to the
-                       reference visit.
+        @return: a pipBase.Struct containing these fields:
+        - backgroundModelStructList: a list of pipeBase.Struct, one per exposure in expRefList,
+            each of which contains these fields:
+            - isReference: this is the reference exposure (only one returned Struct will
+                contain True for this value, unless the ref exposure is listed multiple times)
+            - backgroundModel: differential background model (afw.Math.Background or afw.Math.Approximate).
+                Add this to the science exposure to match the reference exposure.
+            - fitRMS: list of RMS values of the fit. Describes how well the model fit the difference image.
+                It can be used to properly increase the variance plane of the image. Currently always 0.
+            - matchedMSE: ???
+            - diffImVar: ???
+            All fields except isReference will be None if isReference True or the fit failed.
         """
-
-        numExp = len(toMatchRefList)
+        numExp = len(expRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to match")
 
-        if tempExpName is None:
-            tempExpName = self.config.datasetType
+        if expDatasetType is None:
+            expDatasetType = self.config.datasetType
 
-        if scaleList is None:
-            self.log.info("No list of zero point scalings provided. Proceeding assuming your coadd temp " \
-                          "exposures have already been scaled")
-            scaleList = [1.0] * numExp #initialize list of 1's so that scaling does nothing.
+        if imageScalerList is None:
+            self.log.info("imageScalerList is None; no photometric zero point scaling will be performed")
+            imageScalerList = [coaddUtils.ImageScaler(1.0)] * numExp
+        
+        if len(expRefList) != len(imageScalerList):
+            raise RuntimeError("len(expRefList) = %s != %s = len(imageScalerList)" % \
+                (len(expRefList), len(imageScalerList)))
 
-        if refVisitRef is None:
-            refVisitRef, refVisitScale = self.getBestRefExposure(toMatchRefList, tempExpName, scaleList)
-        elif (not isinstance(scaleList[0],float)) and (skyInfo is None):
-            raise pipeBase.TaskError("Need a skyInfo parameter to query the database for the scale of " \
-                                     "supplied ref Visit %s "%(refVisitRef.dataId))
-        
-        backgroundMatchResultList = []
-        
-        if not refVisitRef.datasetExists(tempExpName):
-            raise pipeBase.TaskError("Reference data id %s does not exist" % (refVisitRef.dataId))
-        refExposure = refVisitRef.get(tempExpName)
-        refMI = refExposure.getMaskedImage()
-        #import pdb; pdb.set_trace();
-        zeroPointScaler = coaddUtils.ScaleZeroPointTask()
-        
-        if isinstance(scaleList[0],float):
-            refScale = zeroPointScaler.computeScale(refExposure.getCalib()).scale
+        # compute:
+        # - refInd: index of reference image in expDataList
+        # - refIndList: index of all exposures in expDataList that match the reference
+        # The latter is used to avoid matching an exposure to itself in the unlikely case
+        # that some exposures are duplicated in expDataList.
+        expKeyList = refDataRef.butlerSubset.butler.getKeys(expDatasetType)
+        idMatcher = IdMatcher(refDataRef.butlerSubset.butler.getKeys(expDatasetType))
+        if refExpDataRef is None:
+            # select the best reference exposure from expRefList
+            refInd = self.selectRefExposure(
+                expRefList = expRefList,
+                imageScalerList = imageScalerList,
+                expDatasetType = expDatasetType,
+            )
+            refIndList = idMatcher.matchList(id0 = expIdList[refInd].dataId, idList = expIdList)
+            if refInd not in refIndList:
+                raise RuntimeError("Internal error: selected reference %s not found in expRefList")
         else:
-            refScale = zeroPointScaler.getScaleFromDb(refVisitRef, wcs=skyInfo.wcs, bbox=skyInfo.bbox)
+            # user specified the reference exposure; make sure it exists in expRefList
+            expIdList = [expRef.dataId for expRef in expRefList]
+            refIndList = idMatcher.matchList(id0 = refDataRef.dataId, idList = expIdList)
+            if not refIndList:
+                raise pipeBase.TaskError("Reference exposure %s is not one of the exposures in expRefList" % \
+                    (refExpDataRef.dataId,))
+            refInd = refIndList[0]
 
-        self.flexScale(refMI,refScale)
+        refExpDataRef = expRefList[refInd]
+        refExposure = refExpDataRef.get(expDatasetType, immediate=True)
+        refMI = refExposure.getMaskedImage()
+        refImageScaler = imageScalerList[refInd]
+        refImageScaler.scaleMaskedImage(refMI)
 
-        keySet = set(toMatchRefList[0].dataId)
-        visitKeySet = set(toMatchRefList[0].dataId) - set(['tract','patch'])
+        debugIdKeyList = tuple(set(expKeyList) - set(['tract','patch']))
 
         self.log.info("Matching %d Exposures" % (numExp))
 
-        for toMatchRef, scale in zip(toMatchRefList, scaleList):
-            self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refVisitRef.dataId))
-            try:
-                toMatchExposure = toMatchRef.get(tempExpName)
-                toMatchMI = toMatchExposure.getMaskedImage()
-                self.flexScale(toMatchMI, scale)
-                #store a string specifying the visit to label debug plot
-                self.debugVisitString = ''.join([str(toMatchRef.dataId[vk]) for vk in visitKeySet])
-                backgroundInfoStruct = self.matchBackgrounds(refExposure, toMatchExposure)
-            except Exception, e:
-                #if match fails (e.g. low coverage), insert Nones as placeholders in output lists
-                self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
-                backgroundInfoStruct = pipeBase.Struct(
-                    matchBackgroundModel = None,
-                    matchedExposure = None,
+        backgroundMatchResultList = []
+        for ind, toMatchRef in enumerate(expRefList):
+            if ind in refIndList:
+                toReturnBackgroundStruct = pipeBase.Struct(
+                    backgroundModel = None,
                     fitRMS = None,
                     matchedMSE = None,
-                    diffImVar = None)
-
-            if tuple(toMatchRef.dataId[k] for k in keySet) == tuple(refVisitRef.dataId[k] for k in keySet):
-                isReference = True
+                    diffImVar = None,
+                    isReference = True,
+                )
             else:
-                isReference = False
+                imageScaler = imageScalerList[ind]
+                self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refExpDataRef.dataId))
+                try:
+                    toMatchExposure = toMatchRef.get(expDatasetType, immediate=True)
+                    toMatchMI = toMatchExposure.getMaskedImage()
+                    imageScaler.scaleMaskedImage(toMatchMI)
+                    #store a string specifying the visit to label debug plot
+                    self.debugDataIdString = ''.join([str(toMatchRef.dataId[vk]) for vk in debugIdKeyList])
+                    backgroundInfoStruct = self.matchBackgrounds(
+                        refExposure = refExposure,
+                        sciExposure = toMatchExposure,
+                    )
+                except Exception, e:
+                    #if match fails (e.g. low coverage), insert Nones as placeholders in output lists
+                    self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
+                    backgroundInfoStruct = pipeBase.Struct(
+                        matchBackgroundModel = None,
+                        matchedExposure = None,
+                        fitRMS = None,
+                        matchedMSE = None,
+                        diffImVar = None,
+                        isReference = False,
+                    )
 
-            #make new struct to return without the exposure
-            toReturnBackgroundStruct = pipeBase.Struct(
+                #make new struct to return without the exposure
+                toReturnBackgroundStruct = pipeBase.Struct(
+                    isReference = False,
                     backgroundModel = backgroundInfoStruct.matchBackgroundModel,
                     fitRMS = backgroundInfoStruct.fitRMS,
                     matchedMSE = backgroundInfoStruct.matchedMSE,
                     diffImVar = backgroundInfoStruct.diffImVar,
-                    isReference = isReference)
-
-            backgroundMatchResultList.append(toReturnBackgroundStruct)
+                )
+    
+                backgroundMatchResultList.append(toReturnBackgroundStruct)
             
         return pipeBase.Struct(
             backgroundModelStructList = backgroundMatchResultList)
-
+        
     @pipeBase.timeMethod
-    def getBestRefExposure(self, refList, tempExpName, scaleList):
-        """Return the dataRef of the best exposure to use as the reference exposure
+    def selectRefExposure(self, expRefList, imageScalerList, expDatasetType):
+        """Find best exposure to use as the reference exposure
 
         Calculate an appropriate reference exposure by minimizing a cost function that penalizes
         high variance,  high background level, and low coverage. Use the following config parameters:
-        bestRefWeightCoverage: Float between 0 and 1. Weighting of coverage in the cost function.
-        bestRefWeightVariance: Float between 0 and 1. Weight of the variance in the cost function.
-        bestRefWeightLevel: Float between 0 and 1. Weight of background level in the cost function
+        - bestRefWeightCoverage
+        - bestRefWeightVariance
+        - bestRefWeightLevel
 
-        @param refList: List containing data references to exposures
-        @param tempExpName: Name of the dataType of the coadd temp exposures: e.g. 'goodSeeingCoadd_tempExp'
+        @param[in] expRefList: list of data references to exposures.
+            Retrieves dataset type specified by expDatasetType.
+            If an exposure is not found, it is skipped with a warning.
+        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
+            must be the same length as expRefList
+        @param[in] expDatasetType: dataset type of exposure: e.g. 'goodSeeingCoadd_tempExp'
 
-        @return: a data reference pointing to the best reference exposure
+        @return: index of best exposure
+        
+        @raise pipeBase.TaskError if none of the exposures in expRefList are found.
         """
         self.log.info("Calculating best reference visit")
         varList =  []
         meanBkgdLevelList = []
         coverageList = []
+        
+        if len(expRefList) != len(imageScalerList):
+            raise RuntimeError("len(expRefList) = %s != %s = len(imageScalerList)" % \
+                (len(expRefList), len(imageScalerList)))
 
-        for ref, scale  in zip(refList, scaleList):
-            if not ref.datasetExists(tempExpName):
-                self.log.warn("Data id %s does not exist. Skipping for ref visit calculation" % (ref.dataId))
-                continue
-            tempExp = ref.get(tempExpName)
-            maskedImage = tempExp.getMaskedImage()
-            self.flexScale(maskedImage,scale)
+        for expRef, imageScaler  in zip(expRefList, imageScalerList):
+            exposure = expRef.get(expDatasetType, immediate=True)
+            maskedImage = exposure.getMaskedImage()
+            imageScaler.scaleMaskedImage(maskedImage)
             statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
                 afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
             meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
@@ -269,8 +304,8 @@ class MatchBackgroundsTask(pipeBase.Task):
             coverageList.append(npoints)
 
         if not coverageList:
-             raise pipeBase.TaskError('No temp exposures of type %s found calculate best reference exposure'%
-                               (tempExpName))
+             raise pipeBase.TaskError(
+                "None of the candidate %s exist; cannot select best reference exposure" % (expDatasetType,))
 
         # Normalize metrics to range from  0 to 1
         varArr = numpy.array(varList)/numpy.max(varList)
@@ -280,8 +315,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         costFunctionArr = self.config.bestRefWeightVariance  * varArr
         costFunctionArr += self.config.bestRefWeightLevel * meanBkgdLevelArr
         costFunctionArr += self.config.bestRefWeightCoverage * coverageArr
-        return refList[numpy.argmin(costFunctionArr)], scaleList[numpy.argmin(costFunctionArr)]
-
+        return numpy.argmin(costFunctionArr)
 
     @pipeBase.timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
@@ -402,7 +436,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 bkgdImage = bkgd.getImageF()
         except Exception, e:
             raise RuntimeError("Background/Approximation failed to interp image %s: %s" % (
-                self.debugVisitString, e))
+                self.debugDataIdString, e))
 
         sciMI  = sciExposure.getMaskedImage()
         sciMI += bkgdImage
@@ -494,7 +528,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             grid[0].set_xlabel("model and grid")
             grid[1].set_xlabel("residuals. rms = %0.3f"%(rms))
             if lsstDebug.Info(__name__).savefig:
-                fig.savefig(lsstDebug.Info(__name__).figpath + self.debugVisitString + '.png')
+                fig.savefig(lsstDebug.Info(__name__).figpath + self.debugDataIdString + '.png')
             if lsstDebug.Info(__name__).display:
                 plt.show()
             plt.clf()
@@ -537,3 +571,40 @@ class MatchBackgroundsTask(pipeBase.Task):
                     bgZ.append(est)
 
         return numpy.array(bgX), numpy.array(bgY), numpy.array(bgZ), numpy.array(bgdZ)
+
+class IdMatcher(object):
+    def __init__(self, keyNames):
+        """Construct an IdMatcher
+        
+        @param[in] keyNames: list of key names
+        """
+        self._keyNames = tuple(keyNames)
+    
+    def _makeKey(self, id):
+        """Return a tuple of values for the specified keyNames
+        
+        @param[in] id: ID dict
+
+        @raise KeyError if id is missing a key in keyNames
+        """
+        return tuple(dataId[key] for key in self._keyNames)
+
+    def isMatch(self, id0, id1):
+        """Return True if id0 == id1 for the keys in keyNames
+        
+        @param[in] id0: ID dict 0
+        @param[in] id1: ID dict 1
+        
+        @raise KeyError if either ID is missing a key in keyNames
+        """
+        return self._makeKey(id0) == self._makeKey(id1)
+    
+    def matchList(self, id0, idList):
+        """Return a list of indices of matches
+        
+        @return tuple of indices of matches
+        
+        @raise KeyError if any ID is missing a key in keyNames
+        """
+        key0 = self._makeKey(id0)
+        return tuple(ind for ind, id in idList if self_makeKey(id) == key0)

@@ -59,12 +59,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         target = coaddUtils.ScaleZeroPointTask,
         doc = "Task to compute zero point scale",
     )
-    doScaleFromDatabase = pexConfig.Field(
-        doc = "Retrieve and interpolate zeropoints from the database. If false, use Calib " \
-        "coadd temp exposure.",
-        dtype = bool,
-        default = True,
-    )
     doInterp = pexConfig.Field(
         doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
         dtype = bool,
@@ -205,10 +199,10 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         # compute tempExpRefList: a list of tempExpRef that actually exist
         # and weightList: a list of the weight of the associated coadd tempExp
-        # and scaleList: a list of scale factors for the associated coadd tempExp
+        # and imageScalerList: a list of scale factors for the associated coadd tempExp
         tempExpRefList = []
         weightList = []
-        scaleList = []
+        imageScalerList = []
         for tempExpRef in tempExpIdDict.itervalues():
             if not tempExpRef.datasetExists(tempExpName):
                 self.log.warn("Could not find %s %s; skipping it" % (tempExpName, tempExpRef.dataId))
@@ -221,18 +215,17 @@ class AssembleCoaddTask(CoaddBaseTask):
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
-            if self.config.doScaleFromDatabase:
-                scale = self.scaleZeroPoint.getScaleFromDb(tempExpRef, wcs=wcs, bbox=bbox)
-            else:
-                scale = self.scaleZeroPoint.computeScale(tempExp.getCalib()).scale
-
+            imageScaler = self.scaleZeroPoint.computeImageScaler(
+                exposure = tempExp,
+                exposureId = tempExpRef.dataId,
+            )
             
             del maskedImage
             del tempExp
 
             tempExpRefList.append(tempExpRef)
             weightList.append(weight)
-            scaleList.append(scale)
+            imageScalerList.append(imageScaler)
 
         del tempExpIdDict
 
@@ -242,11 +235,13 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if self.config.doMatchBackgrounds:
             try:
-                backgroundStructList = self.matchBackgrounds.run(tempExpRefList,
-                                                                 scaleList=scaleList,
-                                                                 refVisitRef = refVisitRef,
-                                                                 tempExpName=tempExpName,
-                                                                 skyInfo=skyInfo).backgroundModelStructList
+                backgroundStructList = self.matchBackgrounds.run(
+                    toMatchRefList = tempExpRefList,
+                    imageScalerList = imageScalerList,
+                    refVisitRef = refVisitRef,
+                    tempExpName = tempExpName,
+                    skyInfo = skyInfo,
+                ).backgroundModelStructList
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
                 raise pipeBase.TaskError("Background matching failed.")
@@ -267,11 +262,11 @@ class AssembleCoaddTask(CoaddBaseTask):
                 newWeightList.append(1 / (1 / weightList[i] + backgroundStructList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
                 newBackgroundStructList.append(backgroundStructList[i])
-                newScaleList.append(scaleList[i])
+                newScaleList.append(imageScalerList[i])
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
             backgroundStructList = newBackgroundStructList 
-            scaleList = newScaleList
+            imageScalerList = newScaleList
 
             if not tempExpRefList:
                 raise pipeBase.TaskError("No valid background models")
@@ -301,14 +296,11 @@ class AssembleCoaddTask(CoaddBaseTask):
                 coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
                 maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
                 
-                for idx, (tempExpRef, scale) in enumerate(zip(tempExpRefList,scaleList)):
+                for idx, (tempExpRef, imageScaler) in enumerate(zip(tempExpRefList,imageScalerList)):
 
                     exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
                     maskedImage = exposure.getMaskedImage()
-                    if self.config.doScaleFromDatabase:
-                        maskedImage *= scale.getInterpImage(subBBox)
-                    else:
-                        maskedImage *= scale
+                    imageScaler.scaleMaskedImage(maskedImage)
                         
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
