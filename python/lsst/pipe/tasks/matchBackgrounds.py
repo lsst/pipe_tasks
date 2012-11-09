@@ -130,8 +130,14 @@ class MatchBackgroundsTask(pipeBase.Task):
         self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes))
         self.sctrl.setNanSafe(True)
 
+    def flexScale(self, maskedImage, scale):
+        if isinstance(scale,float):
+            maskedImage *= scale
+        else:
+            maskedImage *= scale.getInterpImage(maskedImage.getBBox())
+
     @pipeBase.timeMethod
-    def run(self, toMatchRefList, scaleList=None, refVisitRef=None, tempExpName = None):
+    def run(self, toMatchRefList,  scaleList=None, refVisitRef=None, tempExpName = None, skyInfo=None):
         """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
 
         Choose a refVisitRef automatically if none supplied.
@@ -158,23 +164,31 @@ class MatchBackgroundsTask(pipeBase.Task):
             tempExpName = self.config.datasetType
 
         if scaleList is None:
-            self.log.info("No list of zero point scalings provided. Proceeding assuming your coadd temp exposures " \
-                          "have already been scaled")
-            scaleList = [1] * numExp #initialize list of 1's so that scaling does nothing.
+            self.log.info("No list of zero point scalings provided. Proceeding assuming your coadd temp " \
+                          "exposures have already been scaled")
+            scaleList = [1.0] * numExp #initialize list of 1's so that scaling does nothing.
 
         if refVisitRef is None:
-            refVisitRef = self.getBestRefExposure(toMatchRefList, tempExpName, scaleList)
-
+            refVisitRef, refVisitScale = self.getBestRefExposure(toMatchRefList, tempExpName, scaleList)
+        elif (not isinstance(scaleList[0],float)) and (skyInfo is None):
+            raise pipeBase.TaskError("Need a skyInfo parameter to query the database for the scale of " \
+                                     "supplied ref Visit %s "%(refVisitRef.dataId))
+        
         backgroundMatchResultList = []
-
+        
         if not refVisitRef.datasetExists(tempExpName):
             raise pipeBase.TaskError("Reference data id %s does not exist" % (refVisitRef.dataId))
         refExposure = refVisitRef.get(tempExpName)
+        refMI = refExposure.getMaskedImage()
         #import pdb; pdb.set_trace();
         zeroPointScaler = coaddUtils.ScaleZeroPointTask()
-        refScale = zeroPointScaler.computeScale(refExposure.getCalib()).scale
-        refMI = refExposure.getMaskedImage()
-        refMI *= refScale
+        
+        if isinstance(scaleList[0],float):
+            refScale = zeroPointScaler.computeScale(refExposure.getCalib()).scale
+        else:
+            refScale = zeroPointScaler.getScaleFromDb(refVisitRef, wcs=skyInfo.wcs, bbox=skyInfo.bbox)
+
+        self.flexScale(refMI,refScale)
 
         keySet = set(toMatchRefList[0].dataId)
         visitKeySet = set(toMatchRefList[0].dataId) - set(['tract','patch'])
@@ -186,7 +200,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             try:
                 toMatchExposure = toMatchRef.get(tempExpName)
                 toMatchMI = toMatchExposure.getMaskedImage()
-                toMatchMI *= scale
+                self.flexScale(toMatchMI, scale)
                 #store a string specifying the visit to label debug plot
                 self.debugVisitString = ''.join([str(toMatchRef.dataId[vk]) for vk in visitKeySet])
                 backgroundInfoStruct = self.matchBackgrounds(refExposure, toMatchExposure)
@@ -244,7 +258,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 continue
             tempExp = ref.get(tempExpName)
             maskedImage = tempExp.getMaskedImage()
-            maskedImage *= scale
+            self.flexScale(maskedImage,scale)
             statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
                 afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
             meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
@@ -266,7 +280,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         costFunctionArr = self.config.bestRefWeightVariance  * varArr
         costFunctionArr += self.config.bestRefWeightLevel * meanBkgdLevelArr
         costFunctionArr += self.config.bestRefWeightCoverage * coverageArr
-        return refList[numpy.argmin(costFunctionArr)]
+        return refList[numpy.argmin(costFunctionArr)], scaleList[numpy.argmin(costFunctionArr)]
 
 
     @pipeBase.timeMethod

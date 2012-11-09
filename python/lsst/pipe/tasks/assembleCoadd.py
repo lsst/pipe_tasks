@@ -59,6 +59,12 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         target = coaddUtils.ScaleZeroPointTask,
         doc = "Task to compute zero point scale",
     )
+    doScaleFromDatabase = pexConfig.Field(
+        doc = "Retrieve and interpolate zeropoints from the database. If false, use Calib " \
+        "coadd temp exposure.",
+        dtype = bool,
+        default = True,
+    )
     doInterp = pexConfig.Field(
         doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
         dtype = bool,
@@ -215,8 +221,11 @@ class AssembleCoaddTask(CoaddBaseTask):
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
-            scale = self.scaleZeroPoint.computeScale(tempExp.getCalib()).scale
-            # don't try to print the scale since it may be a complex object
+            if self.config.doScaleFromDatabase:
+                scale = self.scaleZeroPoint.getScaleFromDb(tempExpRef, wcs=wcs, bbox=bbox)
+            else:
+                scale = self.scaleZeroPoint.computeScale(tempExp.getCalib()).scale
+
             
             del maskedImage
             del tempExp
@@ -236,7 +245,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                 backgroundStructList = self.matchBackgrounds.run(tempExpRefList,
                                                                  scaleList=scaleList,
                                                                  refVisitRef = refVisitRef,
-                                                                 tempExpName=tempExpName).backgroundModelStructList
+                                                                 tempExpName=tempExpName,
+                                                                 skyInfo=skyInfo).backgroundModelStructList
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
                 raise pipeBase.TaskError("Background matching failed.")
@@ -247,6 +257,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             newWeightList = []
             newTempExpRefList = []
             newBackgroundStructList = []
+            newScaleList = []
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
@@ -256,10 +267,11 @@ class AssembleCoaddTask(CoaddBaseTask):
                 newWeightList.append(1 / (1 / weightList[i] + backgroundStructList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
                 newBackgroundStructList.append(backgroundStructList[i])
+                newScaleList.append(scaleList[i])
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
             backgroundStructList = newBackgroundStructList 
-
+            scaleList = newScaleList
 
             if not tempExpRefList:
                 raise pipeBase.TaskError("No valid background models")
@@ -293,7 +305,11 @@ class AssembleCoaddTask(CoaddBaseTask):
 
                     exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
                     maskedImage = exposure.getMaskedImage()
-                    maskedImage *= scale
+                    if self.config.doScaleFromDatabase:
+                        maskedImage *= scale.getInterpImage(subBBox)
+                    else:
+                        maskedImage *= scale
+                        
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
                         didSetMetadata = True
