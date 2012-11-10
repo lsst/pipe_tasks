@@ -25,7 +25,6 @@ import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.coadd.utils as coaddUtils
 import lsstDebug
 
 class MatchBackgroundsConfig(pexConfig.Config):
@@ -131,45 +130,48 @@ class MatchBackgroundsTask(pipeBase.Task):
         self.sctrl.setNanSafe(True)
 
     @pipeBase.timeMethod
-    def run(self, expRefList, imageScalerList=None, refExpDataRef=None, expDatasetType = None, skyInfo=None):
+    def run(self, expRefList, expDatasetType, imageScalerList=None, refExpDataRef=None, refImageScaler=None):
         """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
 
         Choose a refExpDataRef automatically if none supplied.
-        
-        @warning: all exposures must exist on disk
 
-        @param expRefList: list of data references to exposures to be background-matched;
+        @param[in] expRefList: list of data references to science exposures to be background-matched;
             all exposures must exist.
-        @param imageScalerList: list of image scalers (coaddUtils.ImageScaler);
+        @param[in] expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
+        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
             if None then the images are not scaled
-        @param refExpDataRef: data reference for the reference exposure.
+        @param[in] refExpDataRef: data reference for the reference exposure.
             If None, then this task selects the best exposures from expRefList.
             if not None then must be one of the exposures in expRefList.
-        @param expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
-        or 'deepCoadd_tempExp'. Default = None.
+        @param[in] refImageScaler: image scaler for reference image;
+            ignored if refExpDataRef is None, else scaling is not performed if None
+
         @return: a pipBase.Struct containing these fields:
-        - backgroundModelStructList: a list of pipeBase.Struct, one per exposure in expRefList,
+        - backgroundInfoList: a list of pipeBase.Struct, one per exposure in expRefList,
             each of which contains these fields:
             - isReference: this is the reference exposure (only one returned Struct will
                 contain True for this value, unless the ref exposure is listed multiple times)
             - backgroundModel: differential background model (afw.Math.Background or afw.Math.Approximate).
                 Add this to the science exposure to match the reference exposure.
-            - fitRMS: list of RMS values of the fit. Describes how well the model fit the difference image.
-                It can be used to properly increase the variance plane of the image. Currently always 0.
-            - matchedMSE: ???
-            - diffImVar: ???
+            - fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
+            - matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
+              should be comparable to difference image's mean variance.
+            - diffImVar: the mean variance of the difference image.
             All fields except isReference will be None if isReference True or the fit failed.
+        
+        @warning: all exposures must exist on disk
         """
+        
         numExp = len(expRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to match")
 
         if expDatasetType is None:
-            expDatasetType = self.config.datasetType
+            raise pipeBase.TaskError("Must specify expDatasetType")
 
         if imageScalerList is None:
-            self.log.info("imageScalerList is None; no photometric zero point scaling will be performed")
-            imageScalerList = [coaddUtils.ImageScaler(1.0)] * numExp
+            self.log.info("imageScalerList is None; no scaling will be performed")
+            imageScalerList = [None] * numExp
         
         if len(expRefList) != len(imageScalerList):
             raise RuntimeError("len(expRefList) = %s != %s = len(imageScalerList)" % \
@@ -177,11 +179,10 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         # compute:
         # - refInd: index of reference image in expDataList
-        # - refIndList: index of all exposures in expDataList that match the reference
+        # - refIndSet: index of all exposures in expDataList that match the reference
         # The latter is used to avoid matching an exposure to itself in the unlikely case
         # that some exposures are duplicated in expDataList.
-        expKeyList = refDataRef.butlerSubset.butler.getKeys(expDatasetType)
-        idMatcher = IdMatcher(refDataRef.butlerSubset.butler.getKeys(expDatasetType))
+
         if refExpDataRef is None:
             # select the best reference exposure from expRefList
             refInd = self.selectRefExposure(
@@ -189,76 +190,64 @@ class MatchBackgroundsTask(pipeBase.Task):
                 imageScalerList = imageScalerList,
                 expDatasetType = expDatasetType,
             )
-            refIndList = idMatcher.matchList(id0 = expIdList[refInd].dataId, idList = expIdList)
-            if refInd not in refIndList:
-                raise RuntimeError("Internal error: selected reference %s not found in expRefList")
-        else:
-            # user specified the reference exposure; make sure it exists in expRefList
-            expIdList = [expRef.dataId for expRef in expRefList]
-            refIndList = idMatcher.matchList(id0 = refDataRef.dataId, idList = expIdList)
-            if not refIndList:
-                raise pipeBase.TaskError("Reference exposure %s is not one of the exposures in expRefList" % \
-                    (refExpDataRef.dataId,))
-            refInd = refIndList[0]
+            refExpDataRef = expRefList[refInd]
+            refImageScaler = imageScalerList[refInd]
+            
+        expKeyList = refExpDataRef.butlerSubset.butler.getKeys(expDatasetType)
+        refMatcher = DataRefMatcher(refExpDataRef.butlerSubset.butler, expDatasetType)            
+        refIndSet = set(refMatcher.matchList(ref0 = refExpDataRef, refList = expRefList))
 
-        refExpDataRef = expRefList[refInd]
+        if refExpDataRef is None:
+            if refInd not in refIndSet:
+                raise RuntimeError("Internal error: selected reference %s not found in expRefList")
+        
         refExposure = refExpDataRef.get(expDatasetType, immediate=True)
-        refMI = refExposure.getMaskedImage()
-        refImageScaler = imageScalerList[refInd]
-        refImageScaler.scaleMaskedImage(refMI)
+        if refImageScaler is not None:
+            refMI = refExposure.getMaskedImage()
+            refImageScaler.scaleMaskedImage(refMI)
 
         debugIdKeyList = tuple(set(expKeyList) - set(['tract','patch']))
 
         self.log.info("Matching %d Exposures" % (numExp))
 
-        backgroundMatchResultList = []
-        for ind, toMatchRef in enumerate(expRefList):
-            if ind in refIndList:
-                toReturnBackgroundStruct = pipeBase.Struct(
+        backgroundInfoList = []
+        for ind, (toMatchRef, imageScaler) in enumerate(zip(expRefList, imageScalerList)):
+            if ind in refIndSet:
+                backgroundInfoStruct = pipeBase.Struct(
+                    isReference = True,
                     backgroundModel = None,
-                    fitRMS = None,
+                    fitRMS = 0.0,
                     matchedMSE = None,
                     diffImVar = None,
-                    isReference = True,
                 )
             else:
-                imageScaler = imageScalerList[ind]
                 self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refExpDataRef.dataId))
                 try:
                     toMatchExposure = toMatchRef.get(expDatasetType, immediate=True)
-                    toMatchMI = toMatchExposure.getMaskedImage()
-                    imageScaler.scaleMaskedImage(toMatchMI)
+                    if imageScaler is not None:
+                        toMatchMI = toMatchExposure.getMaskedImage()
+                        imageScaler.scaleMaskedImage(toMatchMI)
                     #store a string specifying the visit to label debug plot
                     self.debugDataIdString = ''.join([str(toMatchRef.dataId[vk]) for vk in debugIdKeyList])
                     backgroundInfoStruct = self.matchBackgrounds(
                         refExposure = refExposure,
                         sciExposure = toMatchExposure,
                     )
+                    backgroundInfoStruct.isReference = False
                 except Exception, e:
-                    #if match fails (e.g. low coverage), insert Nones as placeholders in output lists
                     self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
                     backgroundInfoStruct = pipeBase.Struct(
-                        matchBackgroundModel = None,
-                        matchedExposure = None,
+                        isReference = False,
+                        backgroundModel = None,
                         fitRMS = None,
                         matchedMSE = None,
                         diffImVar = None,
-                        isReference = False,
                     )
-
-                #make new struct to return without the exposure
-                toReturnBackgroundStruct = pipeBase.Struct(
-                    isReference = False,
-                    backgroundModel = backgroundInfoStruct.matchBackgroundModel,
-                    fitRMS = backgroundInfoStruct.fitRMS,
-                    matchedMSE = backgroundInfoStruct.matchedMSE,
-                    diffImVar = backgroundInfoStruct.diffImVar,
-                )
     
-                backgroundMatchResultList.append(toReturnBackgroundStruct)
+            backgroundInfoList.append(backgroundInfoStruct)
             
         return pipeBase.Struct(
-            backgroundModelStructList = backgroundMatchResultList)
+            backgroundInfoList = backgroundInfoList)
         
     @pipeBase.timeMethod
     def selectRefExposure(self, expRefList, imageScalerList, expDatasetType):
@@ -293,7 +282,8 @@ class MatchBackgroundsTask(pipeBase.Task):
         for expRef, imageScaler  in zip(expRefList, imageScalerList):
             exposure = expRef.get(expDatasetType, immediate=True)
             maskedImage = exposure.getMaskedImage()
-            imageScaler.scaleMaskedImage(maskedImage)
+            if imageScaler is not None:
+                imageScaler.scaleMaskedImage(maskedImage)
             statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
                 afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
             meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
@@ -331,15 +321,15 @@ class MatchBackgroundsTask(pipeBase.Task):
         science exposure in memory.
         Fit diagnostics are also calculated and returned.
 
-        @param refExposure: reference exposure (unaltered)
-        @param sciExposure: science exposure (background level matched to that of reference exposure)
+        @param[in] refExposure: reference exposure
+        @param[in,out] sciExposure: science exposure; modified by changing the background level
+            to match that of the reference exposure
         @returns a pipBase.Struct with fields:
-            -matchBackgroundModel: an afw.math.Approximate or an afw.math.Background
-            -matchedExposure: new pointer to matched science exposure.
-            -fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
-            -matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2)
-             should be comparable to difference image's mean variance,
-            -diffImVar: the mean variance of the difference image.
+            - backgroundModel: an afw.math.Approximate or an afw.math.Background.
+            - fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
+            - matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
+              should be comparable to difference image's mean variance.
+            - diffImVar: the mean variance of the difference image.
         """
 
         if lsstDebug.Info(__name__).savefits:
@@ -472,8 +462,7 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         rms = 0.0  #place holder for an error on the fit to add to the matchedImage
         return pipeBase.Struct(
-             matchBackgroundModel = outBkgd,
-             matchedExposure = sciExposure,
+             backgroundModel = outBkgd,
              fitRMS = rms,
              matchedMSE = mse,
              diffImVar = meanVar)
@@ -572,39 +561,47 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         return numpy.array(bgX), numpy.array(bgY), numpy.array(bgZ), numpy.array(bgdZ)
 
-class IdMatcher(object):
-    def __init__(self, keyNames):
-        """Construct an IdMatcher
+
+class DataRefMatcher(object):
+    """Match data references for a specified dataset type
         
-        @param[in] keyNames: list of key names
+    Note that this is not exact, but should suffice for this task
+    until there is better support for this kind of thing in the butler.
+    """
+    def __init__(self, butler, datasetType):
+        """Construct a DataRefMatcher
+        
+        @param[in] butler
+        @param[in] datasetType: dataset type to match
         """
-        self._keyNames = tuple(keyNames)
+        self._datasetType = datasetType # for diagnostics
+        self._keyNames = butler.getKeys(datasetType)
     
-    def _makeKey(self, id):
+    def _makeKey(self, ref):
         """Return a tuple of values for the specified keyNames
         
-        @param[in] id: ID dict
+        @param[in] ref: data reference
 
-        @raise KeyError if id is missing a key in keyNames
+        @raise KeyError if ref.dataId is missing a key in keyNames
         """
-        return tuple(dataId[key] for key in self._keyNames)
+        return tuple(ref.dataId[key] for key in self._keyNames)
 
-    def isMatch(self, id0, id1):
-        """Return True if id0 == id1 for the keys in keyNames
+    def isMatch(self, ref0, ref1):
+        """Return True if ref0 == ref1
         
-        @param[in] id0: ID dict 0
-        @param[in] id1: ID dict 1
+        @param[in] ref0: data ref 0
+        @param[in] ref1: data ref 1
         
         @raise KeyError if either ID is missing a key in keyNames
         """
-        return self._makeKey(id0) == self._makeKey(id1)
+        return self._makeKey(ref0) == self._makeKey(ref1)
     
-    def matchList(self, id0, idList):
+    def matchList(self, ref0, refList):
         """Return a list of indices of matches
         
         @return tuple of indices of matches
         
         @raise KeyError if any ID is missing a key in keyNames
         """
-        key0 = self._makeKey(id0)
-        return tuple(ind for ind, id in idList if self_makeKey(id) == key0)
+        key0 = self._makeKey(ref0)
+        return tuple(ind for ind, ref in enumerate(refList) if self._makeKey(ref) == key0)
