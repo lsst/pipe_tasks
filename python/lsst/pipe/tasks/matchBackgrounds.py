@@ -177,12 +177,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             raise RuntimeError("len(expRefList) = %s != %s = len(imageScalerList)" % \
                 (len(expRefList), len(imageScalerList)))
 
-        # compute:
-        # - refInd: index of reference image in expDataList
-        # - refIndSet: index of all exposures in expDataList that match the reference
-        # The latter is used to avoid matching an exposure to itself in the unlikely case
-        # that some exposures are duplicated in expDataList.
-        refExpDataRefWasNone = refExpDataRef is None
+        refInd = None
         if refExpDataRef is None:
             # select the best reference exposure from expRefList
             refInd = self.selectRefExposure(
@@ -193,11 +188,14 @@ class MatchBackgroundsTask(pipeBase.Task):
             refExpDataRef = expRefList[refInd]
             refImageScaler = imageScalerList[refInd]
             
+        # refIndSet is the index of all exposures in expDataList that match the reference.
+        # It is used to avoid background-matching an exposure to itself. It is a list
+        # because it is possible (though unlikely) that expDataList will contain duplicates.
         expKeyList = refExpDataRef.butlerSubset.butler.getKeys(expDatasetType)
         refMatcher = DataRefMatcher(refExpDataRef.butlerSubset.butler, expDatasetType)            
         refIndSet = set(refMatcher.matchList(ref0 = refExpDataRef, refList = expRefList))
 
-        if refExpDataRefWasNone and refInd not in refIndSet:
+        if refInd is not None and refInd not in refIndSet:
             raise RuntimeError("Internal error: selected reference %s not found in expRefList")
         
         refExposure = refExpDataRef.get(expDatasetType, immediate=True)
