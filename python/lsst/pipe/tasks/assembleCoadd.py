@@ -55,9 +55,14 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
         default = 2,
     )
+    doScaleZeroPoint = pexConfig.Field(
+        doc = "Adjust the photometric zero point of the coadd temp exposures?",
+        dtype = bool,
+        default = True,
+    )
     scaleZeroPoint = pexConfig.ConfigurableField(
         target = coaddUtils.ScaleZeroPointTask,
-        doc = "Task to compute zero point scale",
+        doc = "Task to adjust the photometric zero point of the coadd temp exposures",
     )
     doInterp = pexConfig.Field(
         doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
@@ -215,10 +220,13 @@ class AssembleCoaddTask(CoaddBaseTask):
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
-            imageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure = tempExp,
-                exposureId = tempExpRef.dataId,
-            )
+            if self.config.doScaleZeroPoint:
+                imageScaler = self.scaleZeroPoint.computeImageScaler(
+                    exposure = tempExp,
+                    exposureId = tempExpRef.dataId,
+                )
+            else:
+                imageScaler = coaddUtils.ImageScaler() # null scaler
             
             del maskedImage
             del tempExp
@@ -240,7 +248,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                     imageScalerList = imageScalerList,
                     refVisitRef = refVisitRef,
                     tempExpName = tempExpName,
-                    skyInfo = skyInfo,
                 ).backgroundModelStructList
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))

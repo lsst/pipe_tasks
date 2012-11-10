@@ -131,33 +131,32 @@ class MatchBackgroundsTask(pipeBase.Task):
         self.sctrl.setNanSafe(True)
 
     @pipeBase.timeMethod
-    def run(self, expRefList, imageScalerList=None, refExpDataRef=None, expDatasetType = None, skyInfo=None):
+    def run(self, expRefList, expDatasetType, imageScalerList=None, refExpDataRef=None):
         """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
 
         Choose a refExpDataRef automatically if none supplied.
         
         @warning: all exposures must exist on disk
 
-        @param expRefList: list of data references to exposures to be background-matched;
+        @param expRefList: list of data references to science exposures to be background-matched;
             all exposures must exist.
+        @param expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
         @param imageScalerList: list of image scalers (coaddUtils.ImageScaler);
             if None then the images are not scaled
         @param refExpDataRef: data reference for the reference exposure.
             If None, then this task selects the best exposures from expRefList.
             if not None then must be one of the exposures in expRefList.
-        @param expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
-        or 'deepCoadd_tempExp'. Default = None.
         @return: a pipBase.Struct containing these fields:
-        - backgroundModelStructList: a list of pipeBase.Struct, one per exposure in expRefList,
+        - backgroundInfoList: a list of pipeBase.Struct, one per exposure in expRefList,
             each of which contains these fields:
             - isReference: this is the reference exposure (only one returned Struct will
                 contain True for this value, unless the ref exposure is listed multiple times)
             - backgroundModel: differential background model (afw.Math.Background or afw.Math.Approximate).
                 Add this to the science exposure to match the reference exposure.
-            - fitRMS: list of RMS values of the fit. Describes how well the model fit the difference image.
-                It can be used to properly increase the variance plane of the image. Currently always 0.
-            - matchedMSE: ???
-            - diffImVar: ???
+            - fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
+            - matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
+              should be comparable to difference image's mean variance.
+            - diffImVar: the mean variance of the difference image.
             All fields except isReference will be None if isReference True or the fit failed.
         """
         numExp = len(expRefList)
@@ -165,11 +164,11 @@ class MatchBackgroundsTask(pipeBase.Task):
             raise pipeBase.TaskError("No exposures to match")
 
         if expDatasetType is None:
-            expDatasetType = self.config.datasetType
+            raise pipeBase.TaskError("Must specify expDatasetType")
 
         if imageScalerList is None:
-            self.log.info("imageScalerList is None; no photometric zero point scaling will be performed")
-            imageScalerList = [coaddUtils.ImageScaler(1.0)] * numExp
+            self.log.info("imageScalerList is None; no scaling will be performed")
+            imageScalerList = [coaddUtils.ImageScaler()] * numExp
         
         if len(expRefList) != len(imageScalerList):
             raise RuntimeError("len(expRefList) = %s != %s = len(imageScalerList)" % \
@@ -211,15 +210,15 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         self.log.info("Matching %d Exposures" % (numExp))
 
-        backgroundMatchResultList = []
+        backgroundInfoList = []
         for ind, toMatchRef in enumerate(expRefList):
             if ind in refIndList:
-                toReturnBackgroundStruct = pipeBase.Struct(
+                backgroundInfoStruct = pipeBase.Struct(
+                    isReference = True,
                     backgroundModel = None,
                     fitRMS = None,
                     matchedMSE = None,
                     diffImVar = None,
-                    isReference = True,
                 )
             else:
                 imageScaler = imageScalerList[ind]
@@ -234,31 +233,21 @@ class MatchBackgroundsTask(pipeBase.Task):
                         refExposure = refExposure,
                         sciExposure = toMatchExposure,
                     )
+                    backgroundInfoStruct.isReference = False
                 except Exception, e:
-                    #if match fails (e.g. low coverage), insert Nones as placeholders in output lists
                     self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
                     backgroundInfoStruct = pipeBase.Struct(
+                        isReference = False,
                         matchBackgroundModel = None,
-                        matchedExposure = None,
                         fitRMS = None,
                         matchedMSE = None,
                         diffImVar = None,
-                        isReference = False,
                     )
-
-                #make new struct to return without the exposure
-                toReturnBackgroundStruct = pipeBase.Struct(
-                    isReference = False,
-                    backgroundModel = backgroundInfoStruct.matchBackgroundModel,
-                    fitRMS = backgroundInfoStruct.fitRMS,
-                    matchedMSE = backgroundInfoStruct.matchedMSE,
-                    diffImVar = backgroundInfoStruct.diffImVar,
-                )
     
-                backgroundMatchResultList.append(toReturnBackgroundStruct)
+                backgroundInfoList.append(backgroundInfoStruct)
             
         return pipeBase.Struct(
-            backgroundModelStructList = backgroundMatchResultList)
+            backgroundInfoList = backgroundInfoList)
         
     @pipeBase.timeMethod
     def selectRefExposure(self, expRefList, imageScalerList, expDatasetType):
@@ -331,15 +320,15 @@ class MatchBackgroundsTask(pipeBase.Task):
         science exposure in memory.
         Fit diagnostics are also calculated and returned.
 
-        @param refExposure: reference exposure (unaltered)
-        @param sciExposure: science exposure (background level matched to that of reference exposure)
+        @param[in] refExposure: reference exposure
+        @param[in,out] sciExposure: science exposure; modified by changing the background level
+            to match that of the reference exposure
         @returns a pipBase.Struct with fields:
-            -matchBackgroundModel: an afw.math.Approximate or an afw.math.Background
-            -matchedExposure: new pointer to matched science exposure.
-            -fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
-            -matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2)
-             should be comparable to difference image's mean variance,
-            -diffImVar: the mean variance of the difference image.
+            - matchBackgroundModel: an afw.math.Approximate or an afw.math.Background.
+            - fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
+            - matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
+              should be comparable to difference image's mean variance.
+            - diffImVar: the mean variance of the difference image.
         """
 
         if lsstDebug.Info(__name__).savefits:
@@ -473,7 +462,6 @@ class MatchBackgroundsTask(pipeBase.Task):
         rms = 0.0  #place holder for an error on the fit to add to the matchedImage
         return pipeBase.Struct(
              matchBackgroundModel = outBkgd,
-             matchedExposure = sciExposure,
              fitRMS = rms,
              matchedMSE = mse,
              diffImVar = meanVar)
@@ -571,6 +559,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                     bgZ.append(est)
 
         return numpy.array(bgX), numpy.array(bgY), numpy.array(bgZ), numpy.array(bgdZ)
+
 
 class IdMatcher(object):
     def __init__(self, keyNames):
