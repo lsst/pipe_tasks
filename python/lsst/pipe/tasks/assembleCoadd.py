@@ -216,8 +216,9 @@ class AssembleCoaddTask(CoaddBaseTask):
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
             imageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure = tempExp,
                 exposureId = tempExpRef.dataId,
+                wcs = wcs,
+                bbox = bbox
             )
             
             del maskedImage
