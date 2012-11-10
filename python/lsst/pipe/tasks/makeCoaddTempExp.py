@@ -51,6 +51,11 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
+    doOverwrite = pexConfig.Field(
+        doc = "overwrite <coaddName>Coadd_tempExp and (if desiredFwhm not None) <coaddName>Coadd_initPsf?  If False, continue if the file exists on disk",
+        dtype = bool,
+        default = True,
+    )
     bgSubtracted = pexConfig.Field(
         doc = "Work with a background subtracted calexp?",
         dtype = bool,
@@ -119,6 +124,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
         tempExpKeyList = tuple(sorted(tempExpKeySet))
 
+
         # compute tempExpIdDict, a dict whose:
         # - keys are tuples of coaddTempExp ID values in tempKeyList order
         # - values are a list of calExp data references for calExp that belong in this coaddTempExp
@@ -146,6 +152,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 datasetType = tempExpName,
                 dataId = tempExpId,
             )
+            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=tempExpName):
+                self.log.info("tempCoaddExp exists %s; skipping it"%(tempExpId))
+                continue
             self.log.info("Computing coaddTempExp %d of %d: id=%s" % (tempExpInd+1, numTempExp, tempExpId))
 
             totGoodPix = 0
