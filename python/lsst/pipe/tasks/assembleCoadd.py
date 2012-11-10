@@ -171,7 +171,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         patchIdDict = dataRef.dataId.copy()
 
         refExpDataRef = None
-        refImageScaler = coaddUtils.ImageScaler()
+        refImageScaler = None
         if not self.config.autoReference:
             # define refExpDataRef and take out visit/run from the dataRef to make it a true patchRef
             refExpDataRef = butler.dataRef(datasetType = tempExpName, dataId=dataRef.dataId)
@@ -239,7 +239,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                     exposureId = tempExpRef.dataId,
                 )
             else:
-                imageScaler = coaddUtils.ImageScaler() # null scaler
+                imageScaler = None
             
             del maskedImage
             del tempExp
