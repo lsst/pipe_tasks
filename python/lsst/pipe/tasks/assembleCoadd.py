@@ -55,7 +55,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
         default = 2,
     )
-    doScaleZeroPoint = pexConfig.Field(
+    doInterpScaleZeroPoint = pexConfig.Field(
         doc = "Adjust the photometric zero point of the coadd temp exposures?",
         dtype = bool,
         default = True,
@@ -112,7 +112,10 @@ class AssembleCoaddTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
-        self.makeSubtask("scaleZeroPoint")
+        if self.config.doInterpScaleZeroPoint:
+            self.makeSubtask("scaleZeroPoint")
+        else:
+            self.scaleZeroPoint = coaddUtils.ScaleZeroPointTask()
         self.makeSubtask("matchBackgrounds")
 
     @pipeBase.timeMethod
@@ -182,13 +185,13 @@ class AssembleCoaddTask(CoaddBaseTask):
                 raise pipeBase.TaskError("Could not reference expsure %s %s; skipping it" % \
                     (tempExpName, refExpDataRef.dataId))
 
-            if self.config.doScaleZeroPoint:
-                refExposure = refExpDataRef.get(tempExpName, immediate=True)
-                refImageScaler = self.scaleZeroPoint.computeImageScaler(
-                    exposure = refExposure,
-                    exposureId = refExpDataRef.dataId,
+            refExposure = refExpDataRef.get(tempExpName, immediate=True)
+            refImageScaler = self.scaleZeroPoint.computeImageScaler(
+                exposure = refExposure,
+                exposureId = refExpDataRef.dataId,
+                wcs = wcs
                 )
-                del refExposure
+            del refExposure
 
 
         # compute tempExpIdDict, a dict whose:
@@ -233,14 +236,12 @@ class AssembleCoaddTask(CoaddBaseTask):
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
-            if self.config.doScaleZeroPoint:
-                imageScaler = self.scaleZeroPoint.computeImageScaler(
-                    exposure = tempExp,
-                    exposureId = tempExpRef.dataId,
+            imageScaler = self.scaleZeroPoint.computeImageScaler(
+                exposure = tempExp, 
+                exposureId = tempExpRef.dataId,
+                wcs = wcs 
                 )
-            else:
-                imageScaler = None
-            
+
             del maskedImage
             del tempExp
 
@@ -257,11 +258,11 @@ class AssembleCoaddTask(CoaddBaseTask):
         if self.config.doMatchBackgrounds:
             try:
                 backgroundInfoList = self.matchBackgrounds.run(
-                    toMatchRefList = tempExpRefList,
+                    expRefList = tempExpRefList,
                     imageScalerList = imageScalerList,
                     refExpDataRef = refExpDataRef,
                     refImageScaler = refImageScaler,
-                    tempExpName = tempExpName,
+                    expDatasetType = tempExpName,
                 ).backgroundInfoList
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
@@ -460,5 +461,3 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
                 dataId = dataId,
             )
             namespace.dataRefList.append(dataRef)
-
-
