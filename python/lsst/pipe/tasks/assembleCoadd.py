@@ -169,14 +169,27 @@ class AssembleCoaddTask(CoaddBaseTask):
         tempExpKeyList = tuple(sorted(tempExpKeySet))
 
         patchIdDict = dataRef.dataId.copy()
-        if self.config.autoReference:
-            refVisitRef = None
-        else:
-            # define refVisitRef and take out visit/run from the dataRef to make it a true patchRef
-            refVisitRef = butler.dataRef(datasetType = tempExpName, dataId=dataRef.dataId)
+
+        refExpDataRef = None
+        refImageScaler = coaddUtils.ImageScaler()
+        if not self.config.autoReference:
+            # define refExpDataRef and take out visit/run from the dataRef to make it a true patchRef
+            refExpDataRef = butler.dataRef(datasetType = tempExpName, dataId=dataRef.dataId)
             for key in tempExpKeySet:
                 if key not in coaddKeySet:
                     del patchIdDict[key]
+            if not refExpDataRef.datasetExists(tempExpName):
+                raise pipeBase.TaskError("Could not reference expsure %s %s; skipping it" % \
+                    (tempExpName, refExpDataRef.dataId))
+
+            if self.config.doScaleZeroPoint:
+                refExposure = refExpDataRef.get(tempExpName, immediate=True)
+                refImageScaler = self.scaleZeroPoint.computeImageScaler(
+                    exposure = refExposure,
+                    exposureId = refExpDataRef.dataId,
+                )
+                del refExposure
+
 
         # compute tempExpIdDict, a dict whose:
         # - keys are tuples of coaddTempExp ID values in tempKeyList order
@@ -243,17 +256,18 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if self.config.doMatchBackgrounds:
             try:
-                backgroundStructList = self.matchBackgrounds.run(
+                backgroundInfoList = self.matchBackgrounds.run(
                     toMatchRefList = tempExpRefList,
                     imageScalerList = imageScalerList,
-                    refVisitRef = refVisitRef,
+                    refExpDataRef = refExpDataRef,
+                    refImageScaler = refImageScaler,
                     tempExpName = tempExpName,
-                ).backgroundModelStructList
+                ).backgroundInfoList
             except Exception, e:
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
                 raise pipeBase.TaskError("Background matching failed.")
 
-            if not any([m.backgroundModel for m in backgroundStructList]):
+            if not any([m.backgroundModel for m in backgroundInfoList]):
                 raise pipeBase.TaskError("No valid background models")
 
             newWeightList = []
@@ -263,16 +277,16 @@ class AssembleCoaddTask(CoaddBaseTask):
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
-                if (backgroundStructList[i].backgroundModel is None) and not backgroundStructList[i].isReference:
+                if (backgroundInfoList[i].backgroundModel is None) and not backgroundInfoList[i].isReference:
                     self.log.info("No background offset model available for %s: skipping"%(tempExpRef.dataId))
                     continue
-                newWeightList.append(1 / (1 / weightList[i] + backgroundStructList[i].fitRMS**2))
+                newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
-                newBackgroundStructList.append(backgroundStructList[i])
+                newBackgroundStructList.append(backgroundInfoList[i])
                 newScaleList.append(imageScalerList[i])
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
-            backgroundStructList = newBackgroundStructList 
+            backgroundInfoList = newBackgroundStructList 
             imageScalerList = newScaleList
 
             if not tempExpRefList:
@@ -312,8 +326,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
                         didSetMetadata = True
-                    if self.config.doMatchBackgrounds and not backgroundStructList[idx].isReference:
-                        backgroundModel = backgroundStructList[idx].backgroundModel
+                    if self.config.doMatchBackgrounds and not backgroundInfoList[idx].isReference:
+                        backgroundModel = backgroundInfoList[idx].backgroundModel
                         backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.config.usePolynomial \
                                           else backgroundModel.getImageF()
                         backgroundImage.setXY0(coaddMaskedImage.getXY0())
@@ -321,7 +335,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                                                                afwImage.PARENT, False)
 
                         var = maskedImage.getVariance()
-                        var += (backgroundStructList[idx].fitRMS)**2
+                        var += (backgroundInfoList[idx].fitRMS)**2
 
                     maskedImageList.append(maskedImage)
 
