@@ -55,11 +55,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
         default = 2,
     )
-    doInterpScaleZeroPoint = pexConfig.Field(
-        doc = "Adjust the photometric zero point of the coadd temp exposures?",
-        dtype = bool,
-        default = True,
-    )
     scaleZeroPoint = pexConfig.ConfigurableField(
         target = coaddUtils.ScaleZeroPointTask,
         doc = "Task to adjust the photometric zero point of the coadd temp exposures",
@@ -112,12 +107,9 @@ class AssembleCoaddTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
-        if self.config.doInterpScaleZeroPoint:
-            self.makeSubtask("scaleZeroPoint")
-        else:
-            self.scaleZeroPoint = coaddUtils.ScaleZeroPointTask()
         self.makeSubtask("matchBackgrounds")
-
+        self.makeSubtask("scaleZeroPoint")
+        
     @pipeBase.timeMethod
     def run(self, dataRef):
         """Assemble a coadd from a set of coaddTempExp
