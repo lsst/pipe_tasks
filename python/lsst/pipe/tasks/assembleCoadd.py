@@ -181,8 +181,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             refImageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure = refExposure,
                 exposureId = refExpDataRef.dataId,
-                wcs = wcs
-                )
+            )
             del refExposure
 
 
@@ -231,8 +230,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             imageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure = tempExp, 
                 exposureId = tempExpRef.dataId,
-                wcs = wcs 
-                )
+            )
 
             del maskedImage
             del tempExp
