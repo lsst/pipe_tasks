@@ -226,7 +226,11 @@ class AssembleCoaddTask(CoaddBaseTask):
                 exposure = tempExp, 
                 exposureId = tempExpRef.dataId,
             )
-            imageScaler.scaleMaskedImage(maskedImage)
+            try:
+                imageScaler.scaleMaskedImage(maskedImage)
+            except Exception, e:
+                self.log.warn("Scaling failed for %s (skipping it): %s" % (tempExpRef.dataId, e))
+                continue
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                 afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
