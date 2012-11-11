@@ -180,8 +180,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             refExposure = refExpDataRef.get(tempExpName, immediate=True)
             refImageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure = refExposure,
-                exposureId = refExpDataRef.dataId,
-                wcs = wcs
+                exposureId = refExpDataRef.dataId
                 )
             del refExposure
 
@@ -223,16 +222,16 @@ class AssembleCoaddTask(CoaddBaseTask):
 
             tempExp = tempExpRef.get(tempExpName, immediate=True)
             maskedImage = tempExp.getMaskedImage()
+            imageScaler = self.scaleZeroPoint.computeImageScaler(
+                exposure = tempExp, 
+                exposureId = tempExpRef.dataId 
+                )
+            imageScaler.scaleMaskedImage(maskedImage)
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                 afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
-            imageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure = tempExp, 
-                exposureId = tempExpRef.dataId,
-                wcs = wcs 
-                )
 
             del maskedImage
             del tempExp
