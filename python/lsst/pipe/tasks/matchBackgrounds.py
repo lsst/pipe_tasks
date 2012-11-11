@@ -280,7 +280,14 @@ class MatchBackgroundsTask(pipeBase.Task):
             exposure = expRef.get(expDatasetType, immediate=True)
             maskedImage = exposure.getMaskedImage()
             if imageScaler is not None:
-                imageScaler.scaleMaskedImage(maskedImage)
+                try:
+                    imageScaler.scaleMaskedImage(maskedImage)
+                except:
+                    #need to put a place holder in Arr
+                    varList.append(numpy.nan)
+                    meanBkgdLevelList.append(numpy.nan)
+                    coverageList.append(numpy.nan)
+                    continue  
             statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
                 afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
             meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
@@ -289,21 +296,21 @@ class MatchBackgroundsTask(pipeBase.Task):
             varList.append(meanVar)
             meanBkgdLevelList.append(meanBkgdLevel)
             coverageList.append(npoints)
-
         if not coverageList:
              raise pipeBase.TaskError(
                 "None of the candidate %s exist; cannot select best reference exposure" % (expDatasetType,))
-
+       
         # Normalize metrics to range from  0 to 1
-        varArr = numpy.array(varList)/numpy.max(varList)
-        meanBkgdLevelArr = numpy.array(meanBkgdLevelList)/numpy.max(meanBkgdLevelList)
-        coverageArr = numpy.min(coverageList)/numpy.array(coverageList)
+        varArr = numpy.array(varList)/numpy.nanmax(varList)
+        meanBkgdLevelArr = numpy.array(meanBkgdLevelList)/numpy.nanmax(meanBkgdLevelList)
+        coverageArr = numpy.nanmin(coverageList)/numpy.array(coverageList)
 
         costFunctionArr = self.config.bestRefWeightVariance  * varArr
-        costFunctionArr += self.config.bestRefWeightLevel * meanBkgdLevelArr
+        costFunctionArr += self.config.bestRefWeightLevel * meanBkgdLevelArr     
         costFunctionArr += self.config.bestRefWeightCoverage * coverageArr
-        return numpy.argmin(costFunctionArr)
+        return numpy.nanargmin(costFunctionArr)
 
+    
     @pipeBase.timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
         """
