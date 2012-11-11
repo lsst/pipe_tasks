@@ -63,7 +63,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher = pipeTasks.matchBackgrounds.MatchBackgroundsTask()
         self.matcher.config.usePolynomial = True
         self.matcher.binSize = 64
-        self.matcher.debugVisitString = 'Test Visit'
+        self.matcher.debugDataIdString = 'Test Visit'
 
         self.sctrl = afwMath.StatisticsControl()
         self.sctrl.setNanSafe(True)
@@ -84,7 +84,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
            To be called by tests expecting successful matching.
         """
         struct = self.matcher.matchBackgrounds(refExp, sciExp)
-        resultExp = struct.matchedExposure
+        resultExp = sciExp
         MSE = struct.matchedMSE
         diffImVar = struct.diffImVar
         RMS = struct.fitRMS
@@ -210,7 +210,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
                     testIm.set(x, y, numpy.random.rand(1)[0]*1000)
                     
         struct = self.matcher.matchBackgrounds(self.vanilla, testExp)
-        resultExp = struct.matchedExposure
+        resultExp = testExp
         resultArr = resultExp.getMaskedImage().getImage().getArray()[60:,60:]
         resultMean = numpy.mean(resultArr[numpy.where(~numpy.isnan(resultArr))])
         resultVar = numpy.std(resultArr[numpy.where(~numpy.isnan(resultArr))])**2
