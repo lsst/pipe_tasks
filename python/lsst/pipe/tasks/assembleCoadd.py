@@ -174,7 +174,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                 if key not in coaddKeySet:
                     del patchIdDict[key]
             if not refExpDataRef.datasetExists(tempExpName):
-                raise pipeBase.TaskError("Could not reference expsure %s %s; skipping it" % \
+                raise pipeBase.TaskError("Could not find reference exposure %s %s." % \
                     (tempExpName, refExpDataRef.dataId))
 
             refExposure = refExpDataRef.get(tempExpName, immediate=True)
