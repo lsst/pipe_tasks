@@ -29,13 +29,37 @@ class ReferencesTask(Task):
     ConfigClass = ReferencesConfig
 
     def run(self, dataRef, exposure):
-        references = self.getReferences(dataRef, exposure)
-        self.log.log(self.log.INFO, "Retrieved %d reference sources" % len(references))
-        references = self.subsetReferences(references, exposure)
-        self.log.log(self.log.INFO, "Subset to %d reference sources" % len(references))
-        return references
+        """Return a Struct containing:
+        - sources -- an afw.table.SourceCatalog containing reference sources
+        - wcs ------ an afw.image.Wcs that is the coordinate system of the reference sources
+        """
+        sources = self.getReferenceSources(dataRef, exposure)
+        self.log.log(self.log.INFO, "Retrieved %d reference sources" % len(sources))
+        sources = self.subsetReferenceSources(sources, exposure)
+        self.log.log(self.log.INFO, "Subset to %d reference sources" % len(sources))
+        wcs = self.getReferenceWcs(dataRef, exposure)
+        return Struct(sources=sources, wcs=wcs)
 
-    def getReferences(self, dataRef, exposure):
+    def getReferenceWcs(self, dataRef, exposure):
+        """Return the Wcs for the reference sources.
+
+        This method must be overridden by subclasses to return
+        a lsst.afw.table.SourceCatalog.
+
+        @param dataRef     Data reference from butler
+        @param exposure    Exposure that has been read
+        @return Wcs corresponding to reference sources.
+        """
+        self.log.log(self.log.FATAL,
+                     """Calling base class implementation of ReferencesTask.getReferenceWcs()!
+            You need to configure a subclass of ReferencesTask.  Put in your configuration
+            override file something like:
+                from some.namespace import SubclassReferencesTask
+                root.references.retarget(SubclassReferencesTask)
+            """)
+        raise NotImplementedError("Don't know how to get reference Wcs in the generic case")
+
+    def getReferenceSources(self, dataRef, exposure):
         """Get reference sources on (or close to) exposure.
 
         This method must be overridden by subclasses to return
@@ -45,9 +69,8 @@ class ReferencesTask(Task):
         @param exposure    Exposure that has been read
         @return Catalog (lsst.afw.table.SourceCatalog) of reference sources
         """
-        # XXX put something in the Mapper???
         self.log.log(self.log.FATAL,
-                     """Calling base class implementation of ReferencesTask.getReferences()!
+                     """Calling base class implementation of ReferencesTask.getReferenceSources()!
             You need to configure a subclass of ReferencesTask.  Put in your configuration
             override file something like:
                 from some.namespace import SubclassReferencesTask
@@ -55,7 +78,7 @@ class ReferencesTask(Task):
             """)
         raise NotImplementedError("Don't know how to get reference sources in the generic case")
 
-    def subsetReferences(self, references, exposure):
+    def subsetReferenceSources(self, references, exposure):
         """Generate a subset of reference sources to ensure all are in the exposure
 
         @param references  Reference source catalog
@@ -116,9 +139,10 @@ class ForcedPhotTask(CmdLineTask):
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
         references = self.references.run(dataRef, exposure)
-        self.log.log(self.log.INFO, "Performing forced measurement on %d sources" % len(references))
-        sources = self.generateSources(references, idFactory)
-        self.measurement.run(exposure, sources, apCorr=inputs.apCorr, references=references)
+        self.log.log(self.log.INFO, "Performing forced measurement on %d sources" % len(references.sources))
+        sources = self.generateSources(references.sources, idFactory)
+        self.measurement.run(exposure, sources, apCorr=inputs.apCorr,
+                             references=references.sources, refWcs=references.wcs)
         self.writeOutput(dataRef, sources)
 
     def readInputs(self, dataRef, exposureName="calexp", psfName="psf", apCorrName="apCorr"):
