@@ -78,7 +78,8 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Task to match backgrounds",
     )
     maxMatchResidualRatio = pexConfig.Field(
-        doc = "Maximum ratio of the mean squared error of the background matching model to the variance of the difference in backgrounds",
+        doc = "Maximum ratio of the mean squared error of the background matching model to the variance " \
+        "of the difference in backgrounds",
         dtype = float,
         default = 1.5
     )
@@ -278,9 +279,18 @@ class AssembleCoaddTask(CoaddBaseTask):
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
-                if (backgroundInfoList[i].backgroundModel is None) and not backgroundInfoList[i].isReference:
-                    self.log.info("No background offset model available for %s: skipping"%(tempExpRef.dataId))
-                    continue
+                if not backgroundInfoList[i].isReference:
+                    if (backgroundInfoList[i].backgroundModel is None):
+                        self.log.info("No background offset model available for %s: skipping"%(
+                            tempExpRef.dataId))
+                        continue
+                    elif (backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar > \
+                      self.config.maxMatchResidualRatio):
+                        self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
+                        backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar,
+                        self.config.maxMatchResidualRatio,
+                        tempExpRef.dataId,))
+                        continue
                 newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
                 newBackgroundStructList.append(backgroundInfoList[i])
@@ -317,8 +327,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                 self.log.info("Computing coadd %s" % (subBBox,))
                 coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
                 maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-                weightListGood = []
-                
                 for idx, (tempExpRef, imageScaler) in enumerate(zip(tempExpRefList,imageScalerList)):
 
                     exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
@@ -330,36 +338,22 @@ class AssembleCoaddTask(CoaddBaseTask):
                         didSetMetadata = True
                     if self.config.doMatchBackgrounds and not backgroundInfoList[idx].isReference:
                         backgroundModel = backgroundInfoList[idx].backgroundModel
-                        backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.config.usePolynomial \
-                                          else backgroundModel.getImageF()
+                        backgroundImage = backgroundModel.getImage() \
+                                          if self.matchBackgrounds.config.usePolynomial else \
+                                          backgroundModel.getImageF()
                         backgroundImage.setXY0(coaddMaskedImage.getXY0())
                         maskedImage += backgroundImage.Factory(backgroundImage, subBBox,
                                                                afwImage.PARENT, False)
 
                         var = maskedImage.getVariance()
                         var += (backgroundInfoList[idx].fitRMS)**2
-
-                    if backgroundInfoList[idx].isReference:
-                        maskedImageList.append(maskedImage)
-                        weightListGood.append(weightList[idx])
-                    elif (backgroundInfoList[idx].matchedMSE is not None) and (backgroundInfoList[idx].diffImVar is not None):
-                        self.log.info("Background matching run %d, MSE vs. Variance: %.2f vs %.2f (ratio = %.2f)" % 
-                                      (tempExpRef.dataId["run"], backgroundInfoList[idx].matchedMSE, backgroundInfoList[idx].diffImVar, 
-                                       backgroundInfoList[idx].matchedMSE/backgroundInfoList[idx].diffImVar))
-                        if (backgroundInfoList[idx].matchedMSE/backgroundInfoList[idx].diffImVar) > self.config.maxMatchResidualRatio:
-                            self.log.warn("Run %d rejected from coadd, %.2f > %.2f" % (tempExpRef.dataId["run"],
-                                                                                       backgroundInfoList[idx].matchedMSE/backgroundInfoList[idx].diffImVar, 
-                                                                                       self.config.maxMatchResidualRatio))
-                        else:
-                            maskedImageList.append(maskedImage)
-                            weightListGood.append(weightList[idx])
-                    else:
-                        self.log.warn("Run %d rejected from coadd, unable to calculate matchedMSE or diffImVar" % (tempExpRef.dataId["run"]))
-                            
+                        
+                    maskedImageList.append(maskedImage)
+                        
 
                 with self.timer("stack"):
                     coaddSubregion = afwMath.statisticsStack(
-                        maskedImageList, statsFlags, statsCtrl, weightListGood)
+                        maskedImageList, statsFlags, statsCtrl, weightList)
 
                 coaddView <<= coaddSubregion
             except Exception, e:
