@@ -277,30 +277,40 @@ class AssembleCoaddTask(CoaddBaseTask):
             newTempExpRefList = []
             newBackgroundStructList = []
             newScaleList = []
+            dataIdList = []
+            metricList = []
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
                 if not backgroundInfoList[i].isReference:
+                    metric = backgroundInfoList[i].matchedMSE / backgroundInfoList[i].diffImVar
                     if (backgroundInfoList[i].backgroundModel is None):
                         self.log.info("No background offset model available for %s: skipping"%(
                             tempExpRef.dataId))
                         continue
-                    elif not numpy.isfinite(backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar):
+                    elif not numpy.isfinite(metric):
                         self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" % (
                                 backgroundInfoList[i].matchedMSE, backgroundInfoList[i].diffImVar,
                                 tempExpRef.dataId,))
                         continue
-                    elif (backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar > \
-                      self.config.maxMatchResidualRatio):
+                    elif (metric > self.config.maxMatchResidualRatio):
                         self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
-                                backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar,
+                                metric,
                                 self.config.maxMatchResidualRatio,
                                 tempExpRef.dataId,))
                         continue
+                    dataIdList.append(tempExpRef)
+                    metricList.append(metric)
+                else:
+                    dataIdList.append(tempExpRef)
+                    metricList.append(0.0)
+
+                    
                 newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
                 newBackgroundStructList.append(backgroundInfoList[i])
                 newScaleList.append(imageScalerList[i])
+                
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
             backgroundInfoList = newBackgroundStructList 
@@ -365,6 +375,13 @@ class AssembleCoaddTask(CoaddBaseTask):
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
 
+        metadata = coaddExposure.getMetadata()
+        metadata.addString("CTExp_SDQA1_DESCRIPTION", "Ratio of matchedMSE / diffImVar")
+        for idx, (tempExpRef, metric) in enumerate(zip(dataIdList, metricList)):
+            tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
+            metadata.addString("CTExp_ID_%03d" % (idx), tempExpStr)
+            metadata.addDouble("CTExp_SDQA1_%03d" % (idx), metric)
+            
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
         if self.config.doInterp:
