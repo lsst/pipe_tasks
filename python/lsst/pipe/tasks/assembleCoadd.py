@@ -20,6 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import numpy
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
@@ -81,7 +82,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Maximum ratio of the mean squared error of the background matching model to the variance " \
         "of the difference in backgrounds",
         dtype = float,
-        default = 1.5
+        default = 1.25
     )
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
@@ -284,12 +285,17 @@ class AssembleCoaddTask(CoaddBaseTask):
                         self.log.info("No background offset model available for %s: skipping"%(
                             tempExpRef.dataId))
                         continue
+                    elif not numpy.isfinite(backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar):
+                        self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" % (
+                                backgroundInfoList[i].matchedMSE, backgroundInfoList[i].diffImVar,
+                                tempExpRef.dataId,))
+                        continue
                     elif (backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar > \
                       self.config.maxMatchResidualRatio):
                         self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
-                        backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar,
-                        self.config.maxMatchResidualRatio,
-                        tempExpRef.dataId,))
+                                backgroundInfoList[i].matchedMSE/backgroundInfoList[i].diffImVar,
+                                self.config.maxMatchResidualRatio,
+                                tempExpRef.dataId,))
                         continue
                 newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
