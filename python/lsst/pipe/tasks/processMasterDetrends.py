@@ -23,15 +23,34 @@
 import sys
 import traceback
 import numpy
+import argparse
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .detrends import DetrendTask
 from lsst.pipe.base.argumentParser import ArgumentParser
 
+class MakeRefListDictTask(pipeBase.Task):
+    ConfigClass = pexConfig.Config
+    
+    def run(self, dataRefList, masterName, calibType):
+        retDict = {}
+        mybutler = dataRefList[0].butlerSubset.butler
+        calibKeys = mybutler.getKeys(datasetType=masterName)
+        for ref in dataRefList:
+            groupbykey = self.getDictKey(calibKeys, ref.dataId)
+            if retDict.has_key(groupbykey):
+                retDict[groupbykey].append(ref)
+            else:
+                retDict[groupbykey] = [ref,]
+        return retDict
+
+    def getDictKey(self, keys, dataId):
+        return tuple([el for el in [dataId[key] for key in keys]])
 
 class ProcessMasterDetrendsConfig(pexConfig.Config):
     """Config for ProcessMasterDetrendsTask"""
     detrend = pexConfig.ConfigurableField(target=DetrendTask, doc="Task containing detrending tasks",)
+    getRefDict = pexConfig.ConfigurableField(target=MakeRefListDictTask, doc="Task for grouping data ids to be combined for master calibration production",)
     doNormalize = pexConfig.Field(dtype=bool, default=False, doc="Normalize master calibration frames over the entire mosaic",)
 
 class ProcessMasterDetrendsTask(pipeBase.CmdLineTask):
@@ -43,6 +62,7 @@ class ProcessMasterDetrendsTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("detrend")
+        self.makeSubtask("getRefDict")
 
     @pipeBase.timeMethod
     def run(self, dataRefList, calibType):
@@ -57,24 +77,17 @@ class ProcessMasterDetrendsTask(pipeBase.CmdLineTask):
         # initialize outputs
         isrKey = "%sIsr"%(calibType)
         masterName = "%sOut"%(calibType)
-        groupDict = {}
-        mybutler = dataRefList[0].butlerSubset.butler
-        calibKeys = mybutler.getKeys(datasetType=masterName)
-        for ref in dataRefList:
-            print ref.dataId
-            if ref.dataId['snap'] == 1:
-                continue
-            result = self.detrend.process.run(calibType, isrKey, ref)
-            groupbykey = self.getDictKey(calibKeys, ref.dataId)
-            if groupDict.has_key(groupbykey):
-                groupDict[groupbykey].append((ref, result.background))
-            else:
-                groupDict[groupbykey] = [(ref, result.background),]
-            ref.put(result.exposure, "postISR")
-        
-        if not self.config.doNormalize:
-            for k in groupDict.keys():
-                refList = [el[0] for el in groupDict[k]]
+        groupDict = self.getRefDict.run(dataRefList, masterName, calibType)
+        resultDict = {}
+        for key in groupDict.keys(): 
+            resultDict[key] = []
+            for ref in groupDict[key]:
+                result = self.detrend.process.run(calibType, isrKey, ref)
+                resultDict[key].append((ref, result.background))
+                ref.put(result.exposure, "postISR")
+            if not self.config.doNormalize:
+                #Safe to combine this group right now
+                refList = [el[0] for el in resultDict[key]]
                 combined = self.detrend.combine.run(refList)
         else:
             backgrounds = []
@@ -82,9 +95,9 @@ class ProcessMasterDetrendsTask(pipeBase.CmdLineTask):
             #I don't understand Paul's scaling task well enough to use it...
             #This seems like it should be about as good.
             refBackground = []
-            for k in groupDict.keys():
-                refList.append([el[0] for el in groupDict[k]])
-                backgrounds.append([el[1] for el in groupDict[k]])
+            for k in resultDict.keys():
+                refList.append([el[0] for el in resultDict[k]])
+                backgrounds.append([el[1] for el in resultDict[k]])
                 refBackground.append(backgrounds[-1][0])
             refScale = numpy.max(refBackground)
             #scaleRes = self.detrend.scale.run(numpy.array(backgrounds, dtype=float))
@@ -97,14 +110,36 @@ class ProcessMasterDetrendsTask(pipeBase.CmdLineTask):
         return pipeBase.Struct(
         )
 
-    def getDictKey(self, keys, dataId):
-        return tuple([el for el in [dataId[key] for key in keys]])
 
     def getDataId(self, keys, dataId):
         ret = dict()
         for k in keys:
             ret[k] = dataId[k]
         return ret
+
+    @classmethod
+    def parseAndRun(cls, args=None, config=None, log=None):
+        """Parse an argument list and run the command
+
+        @param args: list of command-line arguments; if None use sys.argv
+        @param config: config for task (instance of pex_config Config); if None use cls.ConfigClass()
+        @param log: log (instance of pex_logging Log); if None use the default log
+
+        @return a Struct containing:
+        - argumentParser: the argument parser
+        - parsedCmd: the parsed command returned by argumentParser.parse_args
+        - task: the instantiated task
+        The return values are primarily for testing and debugging
+        """
+        argumentParser = cls._makeArgumentParser()
+        if config is None:
+            config = cls.ConfigClass()
+        parsedCmd = argumentParser.parse_args(config=config, args=args, log=log, override=cls.applyOverrides)
+        cls.runParsedCmd(parsedCmd)
+        return Struct(
+            argumentParser = argumentParser,
+            parsedCmd = parsedCmd,
+            )
 
     def runDataRef(self, dataRef, calibType, doraise=False):
         """Execute the task on the data reference
@@ -136,9 +171,8 @@ class ProcessMasterDetrendsTask(pipeBase.CmdLineTask):
 
         Subclasses may wish to override, e.g. to change the dataset type or data ref level
         """
-        #I don't want to ask here what level of iteration to do, needs to be in ArgumentParser
-        argParser = ArgumentParser(name=cls._DefaultName, usage="%(prog)s input calibType [options]", dataRefLevel="amp")
-        argParser.add_argument("calibType", type=str, help="Name of the type of master calibration to create (i.e. flat, bias, fringe, ...)")
+        argParser = ArgumentParser(name=cls._DefaultName, usage="%(prog)s input calibType [options]")
+        argParser.add_argument("calibType", type=str, action=CalibTypeValueAction, help="Name of the type of master calibration to create (i.e. flat, bias, fringe, ...)")
         return argParser
 
     @classmethod
@@ -180,3 +214,15 @@ def runTask(args):
     task.runDataRef(args.dataRef, args.calibType, doraise=args.doraise)
     ###HOWTO write metadata of data ref list
     #task.writeMetadata(args.dataRef)
+
+class CalibTypeValueAction(argparse.Action):
+    """argparse action to set the active calib type in the registry based on the command line parameter
+    """
+    def __call__(self, parser, namespace, values, option_string=None):
+        """Load one or more files of config overrides
+        """
+        try:
+            namespace.config.detrend.process.isr.name = "%sIsr" % (values)
+            namespace.calibType = values
+        except Exception, e:
+            parser.error("Cannot apply calibration type to the config: %s"%(e))

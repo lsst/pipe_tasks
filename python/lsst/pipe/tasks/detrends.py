@@ -4,7 +4,6 @@ import numpy
 
 from lsst.pex.config import Config, ConfigField, ConfigurableField, Field, makeRegistry
 from lsst.pipe.base import Task, Struct
-import lsst.ip.isr as ipIsr
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
 import lsst.afw.detection as afwDet
@@ -36,10 +35,10 @@ class DetrendStatsTask(Task):
 
 
 class DetrendProcessConfig(Config):
-    #isr = makeRegistry('''
-    #  Registry of isr tasks for reducing different kinds of detrend products''').makeField('''
-    #  ISR task registry''')
-    isr = ConfigurableField(target=ipIsr.IsrTask, doc="Task for doing ISR")
+    isr = makeRegistry('''
+      Registry of isr tasks for reducing different kinds of detrend products''').makeField('''
+      ISR task registry''')
+    #isr = ConfigurableField(target=ipIsr.IsrTask, doc="Task for doing ISR")
     detection = ConfigurableField(target=measAlg.SourceDetectionTask, doc="Detection configuration")
     background = ConfigField(dtype=measAlg.BackgroundConfig, doc="Background configuration")
     stats = ConfigurableField(target=DetrendStatsTask, doc="Background statistics configuration")
