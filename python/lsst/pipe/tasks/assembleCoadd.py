@@ -339,7 +339,10 @@ class AssembleCoaddTask(CoaddBaseTask):
                         var = maskedImage.getVariance()
                         var += (backgroundInfoList[idx].fitRMS)**2
 
-                    if (backgroundInfoList[idx].matchedMSE is not None) and (backgroundInfoList[idx].diffImVar is not None):
+                    if backgroundInfoList[idx].isReference:
+                        maskedImageList.append(maskedImage)
+                        weightListGood.append(weightList[idx])
+                    elif (backgroundInfoList[idx].matchedMSE is not None) and (backgroundInfoList[idx].diffImVar is not None):
                         self.log.info("Background matching run %d, MSE vs. Variance: %.2f vs %.2f (ratio = %.2f)" % 
                                       (tempExpRef.dataId["run"], backgroundInfoList[idx].matchedMSE, backgroundInfoList[idx].diffImVar, 
                                        backgroundInfoList[idx].matchedMSE/backgroundInfoList[idx].diffImVar))
