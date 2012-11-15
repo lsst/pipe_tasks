@@ -277,35 +277,31 @@ class AssembleCoaddTask(CoaddBaseTask):
             newTempExpRefList = []
             newBackgroundStructList = []
             newScaleList = []
-            dataIdList = []
-            metricList = []
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
                 if not backgroundInfoList[i].isReference:
-                    metric = backgroundInfoList[i].matchedMSE / backgroundInfoList[i].diffImVar
+                    # skip exposure if it has no backgroundModel
+                    # or if fit was bad
                     if (backgroundInfoList[i].backgroundModel is None):
                         self.log.info("No background offset model available for %s: skipping"%(
                             tempExpRef.dataId))
                         continue
-                    elif not numpy.isfinite(metric):
+                    try:
+                        varianceRatio =  backgroundInfoList[i].matchedMSE / backgroundInfoList[i].diffImVar
+                    except Exception, e:
+                        self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping" % (e, tempExpRef.dataId,))
+                        continue
+                    if not numpy.isfinite(varianceRatio):
                         self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" % (
                                 backgroundInfoList[i].matchedMSE, backgroundInfoList[i].diffImVar,
                                 tempExpRef.dataId,))
                         continue
-                    elif (metric > self.config.maxMatchResidualRatio):
+                    elif (varianceRatio > self.config.maxMatchResidualRatio):
                         self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
-                                metric,
-                                self.config.maxMatchResidualRatio,
-                                tempExpRef.dataId,))
+                                varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
                         continue
-                    dataIdList.append(tempExpRef)
-                    metricList.append(metric)
-                else:
-                    dataIdList.append(tempExpRef)
-                    metricList.append(0.0)
 
-                    
                 newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
                 newBackgroundStructList.append(backgroundInfoList[i])
@@ -375,12 +371,20 @@ class AssembleCoaddTask(CoaddBaseTask):
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
 
-        metadata = coaddExposure.getMetadata()
-        metadata.addString("CTExp_SDQA1_DESCRIPTION", "Ratio of matchedMSE / diffImVar")
-        for idx, (tempExpRef, metric) in enumerate(zip(dataIdList, metricList)):
-            tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
-            metadata.addString("CTExp_ID_%03d" % (idx), tempExpStr)
-            metadata.addDouble("CTExp_SDQA1_%03d" % (idx), metric)
+        #import pdb; pdb.set_trace()
+        if self.config.doMatchBackgrounds:
+            self.log.info("Adding exposure information to metadata")
+            metadata = coaddExposure.getMetadata()
+            metadata.addString("CTExp_SDQA1_DESCRIPTION", "Ratio of matchedMSE / diffImVar")
+            for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
+                if backgroundInfo.isReference:
+                    metadata.addString("ReferenceExp_ID",
+                                       '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items()))
+                else:
+                    tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
+                    metadata.addString("CTExp_ID_%03d" % (ind), tempExpStr)
+                    metadata.addDouble("CTExp_SDQA1_%03d" % (ind),
+                                       backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
             
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
