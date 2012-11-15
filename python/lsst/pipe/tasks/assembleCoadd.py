@@ -371,11 +371,11 @@ class AssembleCoaddTask(CoaddBaseTask):
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
 
-        #import pdb; pdb.set_trace()
         if self.config.doMatchBackgrounds:
             self.log.info("Adding exposure information to metadata")
             metadata = coaddExposure.getMetadata()
-            metadata.addString("CTExp_SDQA1_DESCRIPTION", "Ratio of matchedMSE / diffImVar")
+            metadata.addString("CTExp_SDQA1_DESCRIPTION",
+                               "Background matching: Ratio of matchedMSE / diffImVar")
             for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
                 if backgroundInfo.isReference:
                     metadata.addString("ReferenceExp_ID",
