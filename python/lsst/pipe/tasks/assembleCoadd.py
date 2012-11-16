@@ -82,7 +82,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Maximum ratio of the mean squared error of the background matching model to the variance " \
         "of the difference in backgrounds",
         dtype = float,
-        default = 1.25
+        default = 1.1
     )
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
@@ -361,7 +361,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                         var += (backgroundInfoList[idx].fitRMS)**2
                         
                     maskedImageList.append(maskedImage)
-                        
 
                 with self.timer("stack"):
                     coaddSubregion = afwMath.statisticsStack(
