@@ -187,6 +187,27 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 calExposure = dataRef.get(self.dataPrefix + 'calexp')
             if psf is None:
                 psf = dataRef.get(self.dataPrefix + 'psf')
+            if sources is None:
+                sources = dataRef.get(self.dataPrefix + 'src')
+                # Remove children from the Catalog (don't re-deblend them!)
+                n0 = len(sources)
+                i=0
+                while i < len(sources):
+                    if sources[i].getParent():
+                        del sources[i]
+                    else:
+                        i += 1
+                n1 = len(sources)
+                if n1 != n0:
+                    self.log.info('Dropped %i of %i child sources (%i remaining)' % ((n0-n1), n0, n1))
+                # Make sure the IdFactory exists and doesn't duplicate IDs
+                # (until JimB finishes #2083)
+                f = sources.getTable().getIdFactory()
+                if f is None:
+                    f = afwTable.IdFactory.makeSimple()
+                    sources.getTable().setIdFactory(f)
+                maxid = max([src.getId() for src in sources])
+                f.notify(maxid)
 
             self.deblend.run(calExposure, sources, psf)
 
