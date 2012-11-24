@@ -350,9 +350,9 @@ class AssembleCoaddTask(CoaddBaseTask):
                         didSetMetadata = True
                     if self.config.doMatchBackgrounds and not backgroundInfoList[idx].isReference:
                         backgroundModel = backgroundInfoList[idx].backgroundModel
-                        backgroundImage = backgroundModel.getImage() \
-                                          if self.matchBackgrounds.config.usePolynomial else \
-                                          backgroundModel.getImageF()
+                        backgroundImage = backgroundModel.getImage() if \
+                            self.matchBackgrounds.config.usePolynomial else \
+                            backgroundModel.getImageF()
                         backgroundImage.setXY0(coaddMaskedImage.getXY0())
                         maskedImage += backgroundImage.Factory(backgroundImage, subBBox,
                                                                afwImage.PARENT, False)
@@ -376,13 +376,12 @@ class AssembleCoaddTask(CoaddBaseTask):
             metadata.addString("CTExp_SDQA1_DESCRIPTION",
                                "Background matching: Ratio of matchedMSE / diffImVar")
             for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
+                tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
                 if backgroundInfo.isReference:
-                    metadata.addString("ReferenceExp_ID",
-                                       '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items()))
+                    metadata.addString("ReferenceExp_ID", tempExpStr)
                 else:
-                    tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
-                    metadata.addString("CTExp_ID_%03d" % (ind), tempExpStr)
-                    metadata.addDouble("CTExp_SDQA1_%03d" % (ind),
+                    metadata.addString("CTExp_ID_%d" % (ind), tempExpStr)
+                    metadata.addDouble("CTExp_SDQA1_%d" % (ind),
                                        backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
             
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
