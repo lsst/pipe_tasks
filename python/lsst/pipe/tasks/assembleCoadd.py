@@ -20,6 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import numpy
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
@@ -76,6 +77,12 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     matchBackgrounds = pexConfig.ConfigurableField(
         target = MatchBackgroundsTask,
         doc = "Task to match backgrounds",
+    )
+    maxMatchResidualRatio = pexConfig.Field(
+        doc = "Maximum ratio of the mean squared error of the background matching model to the variance " \
+        "of the difference in backgrounds",
+        dtype = float,
+        default = 1.1
     )
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
@@ -273,13 +280,33 @@ class AssembleCoaddTask(CoaddBaseTask):
             # the number of good backgrounds may be < than len(tempExpList)
             # sync these up and correct the weights
             for i, tempExpRef in enumerate(tempExpRefList):
-                if (backgroundInfoList[i].backgroundModel is None) and not backgroundInfoList[i].isReference:
-                    self.log.info("No background offset model available for %s: skipping"%(tempExpRef.dataId))
-                    continue
+                if not backgroundInfoList[i].isReference:
+                    # skip exposure if it has no backgroundModel
+                    # or if fit was bad
+                    if (backgroundInfoList[i].backgroundModel is None):
+                        self.log.info("No background offset model available for %s: skipping"%(
+                            tempExpRef.dataId))
+                        continue
+                    try:
+                        varianceRatio =  backgroundInfoList[i].matchedMSE / backgroundInfoList[i].diffImVar
+                    except Exception, e:
+                        self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping" % (e, tempExpRef.dataId,))
+                        continue
+                    if not numpy.isfinite(varianceRatio):
+                        self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" % (
+                                backgroundInfoList[i].matchedMSE, backgroundInfoList[i].diffImVar,
+                                tempExpRef.dataId,))
+                        continue
+                    elif (varianceRatio > self.config.maxMatchResidualRatio):
+                        self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
+                                varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
+                        continue
+
                 newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
                 newTempExpRefList.append(tempExpRef)
                 newBackgroundStructList.append(backgroundInfoList[i])
                 newScaleList.append(imageScalerList[i])
+                
             weightList = newWeightList
             tempExpRefList = newTempExpRefList
             backgroundInfoList = newBackgroundStructList 
@@ -312,7 +339,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                 self.log.info("Computing coadd %s" % (subBBox,))
                 coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
                 maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-                
                 for idx, (tempExpRef, imageScaler) in enumerate(zip(tempExpRefList,imageScalerList)):
 
                     exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
@@ -324,15 +350,16 @@ class AssembleCoaddTask(CoaddBaseTask):
                         didSetMetadata = True
                     if self.config.doMatchBackgrounds and not backgroundInfoList[idx].isReference:
                         backgroundModel = backgroundInfoList[idx].backgroundModel
-                        backgroundImage = backgroundModel.getImage() if self.matchBackgrounds.config.usePolynomial \
-                                          else backgroundModel.getImageF()
+                        backgroundImage = backgroundModel.getImage() if \
+                            self.matchBackgrounds.config.usePolynomial else \
+                            backgroundModel.getImageF()
                         backgroundImage.setXY0(coaddMaskedImage.getXY0())
                         maskedImage += backgroundImage.Factory(backgroundImage, subBBox,
                                                                afwImage.PARENT, False)
 
                         var = maskedImage.getVariance()
                         var += (backgroundInfoList[idx].fitRMS)**2
-
+                        
                     maskedImageList.append(maskedImage)
 
                 with self.timer("stack"):
@@ -343,6 +370,20 @@ class AssembleCoaddTask(CoaddBaseTask):
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
 
+        if self.config.doMatchBackgrounds:
+            self.log.info("Adding exposure information to metadata")
+            metadata = coaddExposure.getMetadata()
+            metadata.addString("CTExp_SDQA1_DESCRIPTION",
+                               "Background matching: Ratio of matchedMSE / diffImVar")
+            for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
+                tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
+                if backgroundInfo.isReference:
+                    metadata.addString("ReferenceExp_ID", tempExpStr)
+                else:
+                    metadata.addString("CTExp_ID_%d" % (ind), tempExpStr)
+                    metadata.addDouble("CTExp_SDQA1_%d" % (ind),
+                                       backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
+            
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
         if self.config.doInterp:
@@ -456,3 +497,4 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
                 dataId = dataId,
             )
             namespace.dataRefList.append(dataRef)
+
