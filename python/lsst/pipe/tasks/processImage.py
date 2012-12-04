@@ -218,11 +218,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         """Match the sources to the reference object loaded by the calibrate task"""
         try:
             astrometer = self.calibrate.astrometry.astrometer
+            useKnownWcs = astrometer.useKnownWcs
         except AttributeError:
             self.log.log(self.log.WARN, "Failed to find an astrometer in calibrate's astronomy task")
             return None, None
 
-        astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
+        astromRet = useKnownWcs(sources, exposure=exposure)
         # N.b. yes, this is what useKnownWcs calls the returned values
         return (astromRet.matches if astromRet.matches is not None else [],
                 astromRet.matchMetadata if astromRet.matchMetadata is not None else dafBase.PropertyList(),
