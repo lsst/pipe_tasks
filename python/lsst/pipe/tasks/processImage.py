@@ -193,7 +193,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 sources.setWriteHeavyFootprints(True)
             dataRef.put(sources, self.dataPrefix + 'src')
 
-        if self.config.doSourceMatches:
+        if self.config.doSourceMatches and self.config.doDetection:
             self.log.info("Matching src to reference catalog")
             srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
             if self.config.doWriteSourceMatches:
