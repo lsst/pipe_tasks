@@ -48,7 +48,7 @@ class ResourceInfo(object):
         self._validNames = set()
         for baseName in self._BaseNameList:
             for name in self._getNameList(baseName):
-                setattr(self, name, None)
+                setattr(self, name, [])
             self._validNames.add("Start" + baseName)
             self._validNames.add("End" + baseName)
     
@@ -72,9 +72,8 @@ class ResourceInfo(object):
         fieldName = name[0].lower() + name[1:]
         if not hasattr(self, fieldName):
             raise RuntimeError("%s error: unknown field %s" % (self, fieldName))
-        if getattr(self, fieldName) is not None:
-            raise RuntimeError("%s error: already set field %s" % (self, fieldName))
-        setattr(self, fieldName, data)
+        valList = getattr(self, fieldName)
+        valList += data
     
     def reportUsage(self):
         """Compute and report resource usage; silently skip the item if no data is available.
@@ -83,12 +82,12 @@ class ResourceInfo(object):
             startName, endName, deltaName = self._getNameList(baseName)
             startList = getattr(self, startName)
             endList = getattr(self, endName)
-            if startList is None:
-                if endList is None:
+            if not startList:
+                if not endList:
                     continue
                 self.log.warn("%s: %s not set; skipping" % (self, startName))
                 continue
-            if endList is None:
+            if not endList:
                 self.log.warn("%s: %s not set; skipping" % (self, endName))
                 continue
             if len(startList) != len(endList):
