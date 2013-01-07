@@ -30,7 +30,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, starSelectorRegistry
 from lsst.ip.diffim import ImagePsfMatchTask
-import lsst.afw.display.ds9 as ds9                                                                                                                                                                          
+                                        
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
@@ -270,6 +270,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, sources):
         import lsstDebug
+        import lsst.afw.display.ds9 as ds9
         display = lsstDebug.Info(__name__).display 
         showSubtracted = lsstDebug.Info(__name__).showSubtracted
         showPixelResiduals = lsstDebug.Info(__name__).showPixelResiduals
