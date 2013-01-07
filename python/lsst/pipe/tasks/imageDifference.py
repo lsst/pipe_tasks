@@ -53,10 +53,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype = str,
         default = "deep",
     )
-    swapImageToConvolve = pexConfig.Field(
-        doc = "Swap the order of which image gets convolved (default = template)",
+    convolveTemplate = pexConfig.Field(
+        doc = "Which image gets convolved (default = template)",
         dtype = bool,
-        default = False
+        default = True
     )
 
     starSelector = starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
@@ -212,7 +212,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 exposureToConvolve = templateExposure,
                 exposureToNotConvolve = exposure,
                 candidateList = kernelSources,
-                swapImageToConvolve = self.config.swapImageToConvolve
+                convolveTemplate = self.config.convolveTemplate
             )
             subtractedExposure = subtractRes.subtractedExposure
 
