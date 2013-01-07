@@ -140,7 +140,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @pipeBase.timeMethod
-    def run(self, sensorRef, sources=None):
+    def run(self, sensorRef):
         """Subtract an image from a template coadd and measure the result
     
         Steps include:
