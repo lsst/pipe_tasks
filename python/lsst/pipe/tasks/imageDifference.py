@@ -53,11 +53,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype = str,
         default = "deep",
     )
-    templateFwhm = pexConfig.Field(
-        doc = "FWHM (arcsec) of Psf in template",
-        dtype = float,
-        default = 1.0
-    )
     swapImageToConvolve = pexConfig.Field(
         doc = "Swap the order of which image gets convolved (default = template)",
         dtype = bool,
@@ -196,11 +191,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         if self.config.doSubtract:
             templateExposure = self.getTemplate(exposure, sensorRef)
-            if self.config.templateFwhm:
-                wcs = templateExposure.getWcs()
-                fwhmPixels = self.config.templateFwhm / wcs.pixelScale().asArcseconds()
-            else:
-                fwhmPixels = None
 
             if self.config.doSelectSources:
                 # Detect on exposure since that ensures maximal astrometric coverage
@@ -221,7 +211,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             subtractRes = self.subtract.subtractExposures(
                 exposureToConvolve = templateExposure,
                 exposureToNotConvolve = exposure,
-                psfFwhmPixTc = fwhmPixels,
                 candidateList = kernelSources,
                 swapImageToConvolve = self.config.swapImageToConvolve
             )
@@ -367,6 +356,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         coaddExposure.getMaskedImage().set(num.nan, edgeMask, num.nan)
         nPatchesFound = 0
+        coaddPsf = None
         for patchInfo in patchList:
             patchArgDict = dict(
                 datasetType = self.config.coaddName + "Coadd",
@@ -383,10 +373,25 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
                 patchInfo.getOuterBBox(), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
+
+            if coaddPsf is None:
+                patchPsfDict = dict(
+                    datasetType = self.config.coaddName + "Psf",
+                    tract = tractInfo.getId(),
+                    patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
+                    )
+                if not sensorRef.datasetExists(**patchPsfDict):
+                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchArgDict)
+                    continue
+                coaddPsf = sensorRef.get(**patchArgDict)
         
         if nPatchesFound == 0:
             raise RuntimeError("No patches found!")
 
+        if coaddPsf is None:
+            raise RuntimeError("No coadd Psf found!")
+
+        coaddExposure.setPsf(coaddPsf)
         return coaddExposure
 
     def _getConfigName(self):
