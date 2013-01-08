@@ -190,7 +190,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
         need filter information for this particular task).
         """
         return pipeBase.ArgumentParser(name=cls._DefaultName,
-            datasetType=pipeBase.DatasetArgument(help="dataset type fortask metadata"))
+            datasetType=pipeBase.DatasetArgument(help="dataset type for task metadata"))
     
     def _getConfigName(self):
         """Don't persist config, so return None
