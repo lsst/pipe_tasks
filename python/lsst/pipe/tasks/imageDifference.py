@@ -215,8 +215,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # PSF match template exposure to exposure,
             # then return the difference
             subtractRes = self.subtract.subtractExposures(
-                exposureToConvolve = templateExposure,
-                exposureToNotConvolve = exposure,
+                templateExposure = templateExposure,
+                scienceExposure = exposure,
                 candidateList = kernelSources,
                 convolveTemplate = self.config.convolveTemplate
             )
