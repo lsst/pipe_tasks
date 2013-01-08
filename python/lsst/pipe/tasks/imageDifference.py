@@ -183,15 +183,20 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         expId = long(sensorRef.get("ccdExposureId"))
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
         
+        # Retrieve the science image we wish to analyze
         exposure = sensorRef.get("calexp")
         psf = sensorRef.get("psf")
         exposure.setPsf(psf)
 
         subtractedExposureName = self.config.coaddName + "Diff_subtractedExp"
-        
+        templateExposure = None
         if self.config.doSubtract:
             templateExposure = self.getTemplate(exposure, sensorRef)
 
+            # If requested, find sources in the image
+            #   selectSources are *all* sources found
+            #   kernelSources are only those returned by the star selector
+            # This will have to be generalized for different types of star selectors
             if self.config.doSelectSources:
                 # Detect on exposure since that ensures maximal astrometric coverage
                 table = afwTable.SourceTable.make(self.selectSchema, idFactory)
@@ -225,10 +230,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if subtractedExposure is None:
                 subtractedExposure = sensorRef.get(subtractedExposureName)
             
-            # Get from the calexp!
+            # Get Psf from the appropriate input image if it doesn't exist
             if not subtractedExposure.hasPsf():
-                psf = sensorRef.get("psf")
-                subtractedExposure.setPsf(psf)
+                if self.config.convolveTemplate:
+                    subtractedExposure.setPsf(exposure.getPsf())
+                else:
+                    if templateExposure is None:
+                        templateExposure = self.getTemplate(exposure, sensorRef)
+                    subtractedExposure.setPsf(templateExposure.getPsf())
 
             # Erase existing detection mask planes
             mask  = subtractedExposure.getMaskedImage().getMask()
