@@ -189,9 +189,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         exposure.setPsf(psf)
 
         subtractedExposureName = self.config.coaddName + "Diff_subtractedExp"
-        templateExposure = None
+        templateExposure = None  # Stitched coadd exposure
+        templateApCorr = None  # Aperture correction appropriate for the coadd
         if self.config.doSubtract:
-            templateExposure = self.getTemplate(exposure, sensorRef)
+            templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
 
             # If requested, find sources in the image
             #   selectSources are *all* sources found
@@ -236,7 +237,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     subtractedExposure.setPsf(exposure.getPsf())
                 else:
                     if templateExposure is None:
-                        templateExposure = self.getTemplate(exposure, sensorRef)
+                        templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
                     subtractedExposure.setPsf(templateExposure.getPsf())
 
             # Erase existing detection mask planes
@@ -251,7 +252,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                self.deblend.run(subtractedExposure, sources, psf)
     
             if self.config.doMeasurement:
-                apCorr = sensorRef.get("apCorr")
+                if self.config.convolveTemplate:
+                    apCorr = sensorRef.get("apCorr")
+                else:
+                    if templateApCorr is None:
+                        templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
+                    apCorr = templateApCorr
                 self.measurement.run(subtractedExposure, sources, apCorr)
     
             if sources is not None and self.config.doWriteSources:
@@ -366,6 +372,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         coaddExposure.getMaskedImage().set(num.nan, edgeMask, num.nan)
         nPatchesFound = 0
         coaddPsf = None
+        coaddApCorr = None
         for patchInfo in patchList:
             patchArgDict = dict(
                 datasetType = self.config.coaddName + "Coadd",
@@ -393,6 +400,17 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchArgDict)
                     continue
                 coaddPsf = sensorRef.get(**patchArgDict)
+
+            if coaddApCorr is None:
+                patchPsfDict = dict(
+                    datasetType = self.config.coaddName + "apCorr",
+                    tract = tractInfo.getId(),
+                    patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
+                    )
+                if not sensorRef.datasetExists(**patchPsfDict):
+                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchArgDict)
+                    continue
+                coaddApCorr = sensorRef.get(**patchArgDict)
         
         if nPatchesFound == 0:
             raise RuntimeError("No patches found!")
@@ -401,7 +419,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             raise RuntimeError("No coadd Psf found!")
 
         coaddExposure.setPsf(coaddPsf)
-        return coaddExposure
+        return coaddExposure, coaddApCorr
 
     def _getConfigName(self):
         """Return the name of the config dataset
