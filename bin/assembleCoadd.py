@@ -20,6 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.processKeithCoadd import ProcessKeithCoaddTask
+import lsst.pex.logging as pexLog
+from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
 
-ProcessKeithCoaddTask.parseAndRun()
+AssembleCoaddTask.parseAndRun()

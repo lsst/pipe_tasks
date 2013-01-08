@@ -99,7 +99,7 @@ class SnapCombineTask(pipeBase.Task):
         - sources: detected sources, or None if detection not performed
         """
         if self.config.doSimpleAverage:
-            self.log.log(self.log.INFO, "snapCombine by straight average")
+            self.log.info("snapCombine by straight average")
             coaddExp  = afwImage.ExposureF(snap0, True)
             coaddMi   = coaddExp.getMaskedImage()
             coaddMi  += snap1.getMaskedImage()
@@ -110,7 +110,7 @@ class SnapCombineTask(pipeBase.Task):
             )
 
         if self.config.doRepair:
-            self.log.log(self.log.INFO, "snapCombine repair")
+            self.log.info("snapCombine repair")
             psf = self.makeInitialPsf(snap0, fwhmPix=self.config.repairPsfFwhm)
             snap0.setPsf(psf)
             snap1.setPsf(psf)
@@ -120,7 +120,7 @@ class SnapCombineTask(pipeBase.Task):
             self.display('repair1', exposure=snap1)
 
         if self.config.doPsfMatch:
-            self.log.log(self.log.INFO, "snapCombine psfMatch")
+            self.log.info("snapCombine psfMatch")
             diffRet  = self.diffim.run(snap0, snap1, "subtractExposures")
             diffExp  = diffRet.subtractedImage
 
@@ -164,7 +164,7 @@ class SnapCombineTask(pipeBase.Task):
             badMaskPlanes.append(bmp)
         badMaskPlanes.append("DETECTED")
         badPixelMask   = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
-        self.log.log(self.log.INFO, "snapCombine coaddition")
+        self.log.info("snapCombine coaddition")
         addToCoadd(coaddMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
         addToCoadd(coaddMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
         coaddMi /= weightMap
@@ -195,6 +195,6 @@ class SnapCombineTask(pipeBase.Task):
             
         size = self.config.initialPsf.size
         model = self.config.initialPsf.model
-        self.log.log(self.log.INFO, "installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
+        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
         psf = afwDet.createPsf(model, size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
         return psf

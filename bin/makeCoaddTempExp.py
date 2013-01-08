@@ -20,6 +20,9 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.processCcdSdss import ProcessCcdSdssTask
+import lsst.pex.logging as pexLog
+from lsst.pipe.tasks.makeCoaddTempExp import MakeCoaddTempExpTask
 
-ProcessCcdSdssTask.parseAndRun()
+pexLog.Trace.setVerbosity('lsst.coadd', 3)
+pexLog.Trace.setVerbosity('lsst.ip.diffim', 1)
+MakeCoaddTempExpTask.parseAndRun()
