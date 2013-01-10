@@ -81,7 +81,8 @@ class AstrometryTask(pipeBase.Task):
         matches, matchMeta = self.astrometry(exposure, sources, llc=llc, size=size)
         sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
                                      sources.table.getCentroidFlagKey())
-        self.refitWcs(exposure, sources, matches)
+        if matches:
+            self.refitWcs(exposure, sources, matches)
 
         return pipeBase.Struct(
             matches = matches,
