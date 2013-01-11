@@ -392,25 +392,25 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if coaddPsf is None:
                 patchPsfDict = dict(
-                    datasetType = self.config.coaddName + "Psf",
+                    datasetType = self.config.coaddName + "Coadd_psf",
                     tract = tractInfo.getId(),
                     patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
                     )
                 if not sensorRef.datasetExists(**patchPsfDict):
-                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchArgDict)
+                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchPsfDict)
                     continue
-                coaddPsf = sensorRef.get(**patchArgDict)
+                coaddPsf = sensorRef.get(**patchPsfDict)
 
             if coaddApCorr is None:
-                patchPsfDict = dict(
-                    datasetType = self.config.coaddName + "apCorr",
+                patchApCorrDict = dict(
+                    datasetType = self.config.coaddName + "Coadd_apCorr",
                     tract = tractInfo.getId(),
                     patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
                     )
-                if not sensorRef.datasetExists(**patchPsfDict):
-                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchArgDict)
+                if not sensorRef.datasetExists(**patchApCorrDict):
+                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchApCorrDict)
                     continue
-                coaddApCorr = sensorRef.get(**patchArgDict)
+                coaddApCorr = sensorRef.get(**patchApCorrDict)
         
         if nPatchesFound == 0:
             raise RuntimeError("No patches found!")
