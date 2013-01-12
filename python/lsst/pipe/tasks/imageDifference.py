@@ -188,7 +188,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         psf = sensorRef.get("psf")
         exposure.setPsf(psf)
 
-        subtractedExposureName = self.config.coaddName + "Diff_subtractedExp"
+        subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
         templateExposure = None  # Stitched coadd exposure
         templateApCorr = None  # Aperture correction appropriate for the coadd
         if self.config.doSubtract:
@@ -263,7 +263,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if sources is not None and self.config.doWriteSources:
                 if self.config.doWriteHeavyFootprintsInSources:
                     sources.setWriteHeavyFootprints(True)
-                sensorRef.put(sources, self.config.coaddName + "Diff_src")
+                sensorRef.put(sources, self.config.coaddName + "Diff_diaSrc")
  
         self.runDebug(exposure, subtractRes, selectSources, kernelSources, sources)
         return pipeBase.Struct(
