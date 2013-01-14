@@ -42,7 +42,7 @@ class SnapCombineConfig(pexConfig.Config):
     repairPsfFwhm = pexConfig.Field(
         dtype = float,
         doc = "Psf FWHM (pixels) used to detect CRs", 
-        default = 2.5 # pixels
+        default = 2.5,
     )
     doDiffIm = pexConfig.Field(
         dtype = bool,
@@ -57,12 +57,13 @@ class SnapCombineConfig(pexConfig.Config):
     doMeasurement = pexConfig.Field(
         dtype = bool,
         doc = "Measure difference sources (ignored if doDiffIm false)",
-        default = True
+        default = True,
     )
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
-        doc = "mask planes that, if set, the associated pixel should not be included in the combined exposure",
-        default = ("EDGE", "SAT"),
+        doc = "Mask planes that, if set, the associated pixels are not included in the combined exposure; "
+            "DETECTED excludes cosmic rays",
+        default = ("DETECTED",),
     )
     averageKeys = pexConfig.ListField(
         dtype = str,
@@ -74,7 +75,7 @@ class SnapCombineConfig(pexConfig.Config):
     sumKeys = pexConfig.ListField(
         dtype = str,
         doc = "List of float or int metadata keys to sum when combining snaps, e.g. exposure time; "
-            "other data types must be handled by overriding the fixMetadata method",
+            "non-float, non-int data must be handled by overriding the fixMetadata method",
         optional = True,
     )
 
@@ -188,9 +189,7 @@ class SnapCombineTask(pipeBase.Task):
         
         weightMap = combinedMi.getImage().Factory(combinedMi.getBBox(afwImage.PARENT))
         weight = 1.0
-        badMaskPlanes = list(self.config.badMaskPlanes)
-        badMaskPlanes.append("DETECTED")
-        badPixelMask = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
+        badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
         addToCoadd(combinedMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
         addToCoadd(combinedMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
 
@@ -213,9 +212,9 @@ class SnapCombineTask(pipeBase.Task):
     def fixMetadata(self, combinedMetadata, metadata0, metadata1):
         """Fix the metadata of the combined exposure (in place)
         
-        This implementation can take care of many items using config.averageKeys and config.sumKeys,
-        but you must supplement with your own code to handle metadata that is not a scalar float,
-        such as sexagesimal positions and ISO dates.
+        This implementation handles items specified by config.averageKeys and config.sumKeys,
+        which have data type restrictions. To handle other data types (such as sexagesimal
+        positions and ISO dates) you must supplement this method with your own code.
         
         @param[in,out] combinedMetadata metadata of combined exposure;
             on input this is a deep copy of metadata0 (a PropertySet)
