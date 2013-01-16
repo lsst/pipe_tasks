@@ -28,6 +28,7 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
+import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, starSelectorRegistry
 from lsst.ip.diffim import ImagePsfMatchTask
                                         
@@ -59,7 +60,17 @@ class ImageDifferenceConfig(pexConfig.Config):
         default = True
     )
 
-    starSelector = starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
+    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm")
+    sourceSelectorType = pexConfig.ChoiceField(
+        dtype = str,
+        doc = "Type of source selection algorithm",
+        default = "secondMoment",
+        allowed = {
+           "secondMoment" : "secondMoment",
+           "catalog" : "catalog"
+        }
+    )
+
     selectDetection = pexConfig.ConfigurableField(
         target = SourceDetectionTask,
         doc = "Initial detections used to feed stars to kernel fitting",
@@ -67,6 +78,14 @@ class ImageDifferenceConfig(pexConfig.Config):
     selectMeasurement = pexConfig.ConfigurableField(
         target = SourceMeasurementTask,
         doc = "Initial measurements used to feed stars to kernel fitting",
+    )
+    selectMeasurementAlgorithms = pexConfig.ListField(
+        dtype   = str,
+        doc     = "Minimial measurements needed to use object selector",
+        default = ('flux.psf', 'flags.pixel', 'shape.sdss', 'flux.sinc', 'flux.gaussian', 'skycoord'),
+        itemCheck = lambda x: x in ['flux.psf', 'flags.pixel', 'shape.sdss', 'flux.naive', 
+                                    'flux.gaussian', 'centroid.naive', 'flux.sinc', 'centroid.gaussian', 
+                                    'skycoord', 'classification.extendedness']
     )
 
     subtract = pexConfig.ConfigurableField(
@@ -87,13 +106,17 @@ class ImageDifferenceConfig(pexConfig.Config):
     )
     
     def setDefaults(self):
-        # TODO HERE: 
-        # Make the minimal set of algorithsm to select stars, for speed optimization
+        self.sourceSelector.name = self.sourceSelectorType
+
         self.selectDetection.reEstimateBackground = False
         self.selectMeasurement.prefix = "select."
         self.selectMeasurement.doApplyApCorr = False
-        self.starSelector["secondMoment"].clumpNSigma  = 2.0
-        self.starSelector['secondMoment'].badFlags = [self.selectMeasurement.prefix+x for x in self.starSelector['secondMoment'].badFlags]
+        # Minimal set of measurments for star seletion
+        self.selectMeasurement.algorithms.names.clear()
+        [self.selectMeasurement.algorithms.names.add(x) for x in self.selectMeasurementAlgorithms]
+        
+        self.sourceSelector["secondMoment"].clumpNSigma  = 2.0
+        self.sourceSelector['secondMoment'].badFlags = [self.selectMeasurement.prefix+x for x in self.sourceSelector['secondMoment'].badFlags]
 
         self.detection.thresholdPolarity = "both"
         self.detection.reEstimateBackground = False
@@ -121,7 +144,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doSelectSources:
             self.selectSchema = afwTable.SourceTable.makeMinimalSchema()
             self.selectAlgMetadata = dafBase.PropertyList()
-            self.starSelector = self.config.starSelector.apply()
+            self.sourceSelector = self.config.sourceSelector.apply()
             self.makeSubtask("selectDetection", schema=self.selectSchema)
             self.makeSubtask("selectMeasurement", schema=self.selectSchema, algMetadata=self.selectAlgMetadata)
 
@@ -205,7 +228,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 detRet = self.selectDetection.makeSourceCatalog(table, exposure)
                 selectSources = detRet.sources
                 self.selectMeasurement.measure(exposure, selectSources)
-                kernelCandidateList = self.starSelector.selectStars(exposure, selectSources)
+                kernelCandidateList = self.sourceSelector.selectStars(exposure, selectSources)
                 kernelSources = [x.getSource() for x in kernelCandidateList]
             else:
                 selectSources = None
