@@ -190,7 +190,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - subtractRes: results of subtraction task; None if subtraction not run
         - sources: detected and possibly measured and deblended sources; None if detection not run
         """
-        self.log.log(self.log.INFO, "Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s" % (sensorRef.dataId))
 
         # initialize outputs
         subtractedExposure = None
@@ -216,22 +216,28 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
 
             # If requested, find sources in the image
-            #   selectSources are *all* sources found
-            #   kernelSources are only those returned by the star selector
-            # This will have to be generalized for different types of star selectors
             if self.config.doSelectSources:
-                # Detect on exposure since that ensures maximal astrometric coverage
-                table = afwTable.SourceTable.make(self.selectSchema, idFactory)
-                table.setMetadata(self.selectAlgMetadata) 
-                detRet = self.selectDetection.makeSourceCatalog(table, exposure)
-                selectSources = detRet.sources
-                self.selectMeasurement.measure(exposure, selectSources)
+                if not sensorRef.datasetExists("src"):
+                    self.log.warn("Src product does not exist; running detection, measurement, selection")
+                    # Run own detection and measurement; necessary in nightly processing
+                    table = afwTable.SourceTable.make(self.selectSchema, idFactory)
+                    table.setMetadata(self.selectAlgMetadata) 
+                    detRet = self.selectDetection.makeSourceCatalog(table, exposure)
+                    selectSources = detRet.sources
+                    self.selectMeasurement.measure(exposure, selectSources)
+                    flagPrefixes = None
+                else:
+                    self.log.info("Star selection via src product")
+                    # Sources may already exist for data release processing
+                    selectSources = sensorRef.get("src")
+                    # In this case flags do not have the "select" prefix
+                    flagPrefixes = ["",]
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
                 astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
                 matches = astromRet.matches
 
-                kernelCandidateList = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
+                kernelCandidateList = self.sourceSelector.selectStars(exposure, selectSources, matches=matches, flagPrefixes=flagPrefixes)
                 kernelSources = [x.getSource() for x in kernelCandidateList]
                 self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
             else:
