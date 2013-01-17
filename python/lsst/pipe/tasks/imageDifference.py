@@ -113,7 +113,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         # Config different types of source seletors
         self.sourceSelector["secondMoment"].clumpNSigma  = 2.0
         self.sourceSelector["secondMoment"].badFlags = [self.selectMeasurement.prefix+x for x in self.sourceSelector['secondMoment'].badFlags]
-        self.sourceSelector["catalog"].badStarFlagPrefixes = [self.selectMeasurement.prefix,]
 
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
@@ -225,7 +224,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     detRet = self.selectDetection.makeSourceCatalog(table, exposure)
                     selectSources = detRet.sources
                     self.selectMeasurement.measure(exposure, selectSources)
-                    flagPrefixes = None
+                    flagPrefixes = [self.config.selectMeasurement.prefix,]
                 else:
                     self.log.info("Star selection via src product")
                     # Sources may already exist for data release processing
