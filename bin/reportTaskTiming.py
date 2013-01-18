@@ -52,6 +52,12 @@ class ResourceInfo(object):
             self._validNames.add("Start" + baseName)
             self._validNames.add("End" + baseName)
     
+    @staticmethod
+    def canMultiproccess():
+        """Multiprocessing makes no sense for this task because it processes all data at once
+        """
+        return False
+    
     def isValidName(self, name):
         """Return True if name is a valid name for an item to add
         """
@@ -124,12 +130,49 @@ class ResourceInfo(object):
     
     def __str__(self):
         return "ResourceUsage(%s)" % (self.taskName,)
+        
+
+class RunDataRefListRunner(pipeBase.TaskRunner):
+    @staticmethod
+    def getTargetList(parsedCmd):
+        """Return a list of targets (arguments for __call__); one entry per invocation
+        """
+        return [dict(dataRefList=parsedCmd.dataRefList)]
+
+    @staticmethod
+    def getTargetList(parsedCmd):
+        """Return a list of targets (arguments for __call__); one entry per invocation
+        """
+        return [parsedCmd.dataRefList] # one argument consisting of a list of dataRefs
+
+    def __call__(self, dataRefList):
+        """Run ReportTaskTimingTask.run on a single target
+        
+        @param dataRefList: argument dict for run; contains one key: dataRefList
+
+        @return:
+        - None if doReturnResults false
+        - A pipe_base Struct containing these fields if doReturnResults true:
+            - dataRefList: the argument dict sent to runDataRef
+            - metadata: task metadata after execution of runDataRef
+            - result: result returned by task runDataRef
+        """
+        task = self.TaskClass(config=self.config, log=self.log)
+        result = task.run(dataRefList)
+        
+        if self.doReturnResults:
+            return Struct(
+                dataRefList = dataRefList,
+                metadata = task.metadata,
+                result = result,
+            )
 
 
 class ReportTaskTimingTask(pipeBase.CmdLineTask):
     """Report which tracts and patches are needed for coaddition
     """
     ConfigClass = ReportTaskTimingConfig
+    RunnerClass = RunDataRefListRunner
     _DefaultName = "reportTaskTiming"
     
     def __init__(self, *args, **kwargs):
@@ -170,19 +213,6 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
         )
 
     @classmethod
-    def getRunInfo(cls, parsedCmd):
-        """Construct information necessary to run the task from the command-line arguments
-
-        @param parsedCmd   Results of the argument parser
-        @return Struct(func: Function to receive 'inputs';
-                       inputs: List of Structs to be passed to the 'func')
-        """
-        log = parsedCmd.log if not cls.useMultiProcessing(parsedCmd) else None # logs are not yet picklable
-        inputs = [pipeBase.Struct(cls=cls, config=parsedCmd.config, log=log,
-            dataRefList=parsedCmd.dataRefList)]
-        return pipeBase.Struct(func=runTask, inputs=inputs)
-
-    @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         
@@ -191,28 +221,6 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
         """
         return pipeBase.ArgumentParser(name=cls._DefaultName,
             datasetType=pipeBase.DatasetArgument(help="dataset type for task metadata"))
-    
-    def _getConfigName(self):
-        """Don't persist config, so return None
-        """
-        return None
-    
-    def _getMetadataName(self):
-        """Don't persist metadata, so return None
-        """
-        return None
-
-
-def runTask(parsedCmd):
-    """Run task
-
-    This forwarding is necessary because multiprocessing requires
-    that the function used is picklable, which means it must be a
-    named function, rather than an anonymous function (lambda) or
-    method.
-    """
-    task = parsedCmd.cls(name = parsedCmd.cls._DefaultName, config=parsedCmd.config, log=parsedCmd.log)
-    task.run(dataRefList = parsedCmd.dataRefList)
 
 
 if __name__ == "__main__":
