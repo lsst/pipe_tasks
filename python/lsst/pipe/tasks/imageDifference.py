@@ -102,17 +102,17 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.selectDetection.reEstimateBackground = False
         self.selectDetection.thresholdValue = 10.0
 
-        # Minimal set of measurments for star seletion
+        # Minimal set of measurments for star selection
         self.selectMeasurement.algorithms.names.clear()
         [self.selectMeasurement.algorithms.names.add(x) for x in self.selectMeasurementAlgorithms]
         self.selectMeasurement.slots.modelFlux = None
         self.selectMeasurement.slots.apFlux = None 
-        self.selectMeasurement.prefix = "select."
         self.selectMeasurement.doApplyApCorr = False
 
-        # Config different types of source seletors
+        # Config different types of source selectors.
+        # Second moment:
         self.sourceSelector["secondMoment"].clumpNSigma  = 2.0
-        self.sourceSelector["secondMoment"].badFlags = [self.selectMeasurement.prefix+x for x in self.sourceSelector['secondMoment'].badFlags]
+        # Catalog (defaults are OK)
 
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
@@ -224,19 +224,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     detRet = self.selectDetection.makeSourceCatalog(table, exposure)
                     selectSources = detRet.sources
                     self.selectMeasurement.measure(exposure, selectSources)
-                    flagPrefixes = [self.config.selectMeasurement.prefix,]
                 else:
                     self.log.info("Star selection via src product")
                     # Sources may already exist for data release processing
                     selectSources = sensorRef.get("src")
-                    # In this case flags do not have the "select" prefix
-                    flagPrefixes = ["",]
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
                 astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
                 matches = astromRet.matches
 
-                kernelCandidateList = self.sourceSelector.selectStars(exposure, selectSources, matches=matches, flagPrefixes=flagPrefixes)
+                kernelCandidateList = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
                 kernelSources = [x.getSource() for x in kernelCandidateList]
                 self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
             else:
@@ -406,7 +403,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         coaddPsf = None
         coaddApCorr = None
         for patchInfo in patchList:
-            # Coadd itself
+            # Retrieve the coadd patch
             patchArgDict = dict(
                 datasetType = self.config.coaddName + "Coadd",
                 tract = tractInfo.getId(),
@@ -423,7 +420,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 patchInfo.getOuterBBox(), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
 
-            # Coadd Psf
+            # Retrieve the PSF for this coadd tract, if not already retrieved
             if coaddPsf is None:
                 patchPsfDict = dict(
                     datasetType = self.config.coaddName + "Coadd_psf",
@@ -435,7 +432,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     continue
                 coaddPsf = sensorRef.get(**patchPsfDict)
 
-            # Coadd Aperture Correction
+            # Retrieve the aperture correction for this coadd tract, if not already retrieved
             if coaddApCorr is None:
                 patchApCorrDict = dict(
                     datasetType = self.config.coaddName + "Coadd_apCorr",
