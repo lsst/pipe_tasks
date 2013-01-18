@@ -158,7 +158,7 @@ class RunDataRefListRunner(pipeBase.TaskRunner):
             - result: result returned by task runDataRef
         """
         task = self.TaskClass(config=self.config, log=self.log)
-        result = task.run(**dataRefList)
+        result = task.run(dataRefList)
         
         if self.doReturnResults:
             return Struct(
