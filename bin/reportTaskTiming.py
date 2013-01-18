@@ -135,28 +135,34 @@ class ResourceInfo(object):
 class RunDataRefListRunner(pipeBase.TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd):
-        """Return a list of targets (argument dicts for __call__); one entry per invocation
+        """Return a list of targets (arguments for __call__); one entry per invocation
         """
         return [dict(dataRefList=parsedCmd.dataRefList)]
 
-    def __call__(self, argDict):
+    @staticmethod
+    def getTargetList(parsedCmd):
+        """Return a list of targets (arguments for __call__); one entry per invocation
+        """
+        return [parsedCmd.dataRefList] # one argument consisting of a list of dataRefs
+
+    def __call__(self, dataRefList):
         """Run ReportTaskTimingTask.run on a single target
         
-        @param argDict: argument dict for run; contains one key: dataRefList
+        @param dataRefList: argument dict for run; contains one key: dataRefList
 
         @return:
         - None if doReturnResults false
         - A pipe_base Struct containing these fields if doReturnResults true:
-            - argDict: the argument dict sent to runDataRef
+            - dataRefList: the argument dict sent to runDataRef
             - metadata: task metadata after execution of runDataRef
             - result: result returned by task runDataRef
         """
         task = self.TaskClass(config=self.config, log=self.log)
-        result = task.run(**argDict)
+        result = task.run(**dataRefList)
         
         if self.doReturnResults:
             return Struct(
-                argDict = argDict,
+                dataRefList = dataRefList,
                 metadata = task.metadata,
                 result = result,
             )
