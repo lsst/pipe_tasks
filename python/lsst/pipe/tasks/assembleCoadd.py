@@ -270,9 +270,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                 self.log.fatal("Cannot match backgrounds: %s" % (e))
                 raise pipeBase.TaskError("Background matching failed.")
 
-            if not any([m.backgroundModel for m in backgroundInfoList]):
-                raise pipeBase.TaskError("No valid background models")
-
             newWeightList = []
             newTempExpRefList = []
             newBackgroundStructList = []
