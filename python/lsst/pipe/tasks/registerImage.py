@@ -48,42 +48,33 @@ class RegisterConfig(Config):
 
 
 class RegisterTask(Task):
+    """
+    Task to register (align) multiple images.
+
+    The 'run' method provides a revised Wcs from matches and fitting sources.
+    Additional methods are provided as a convenience to warp an exposure
+    ('warpExposure') and sources ('warpSources') with the new Wcs.
+    """
     ConfigClass = RegisterConfig
 
-    def run(self, inputExp, inputSources, templateSources, templateWcs=None, templateBBox=None,
-            warpExposure=True, warpSources=True):
+    def run(self, inputSources, inputWcs, inputBBox, templateSources):
         """Register (align) an input exposure to the template
 
         The sources must have RA,Dec set, and accurate to within the
         'matchRadius' of the configuration in order to facilitate source
         matching.  We fit a new Wcs, but do NOT set it in the input exposure.
 
-        @param inputExp: Input exposure, to be aligned
         @param inputSources: Sources from input exposure
+        @param inputWcs: Wcs of input exposure
+        @param inputBBox: Bounding box of input exposure
         @param templateSources: Sources from template exposure
-        @param templateWcs: Wcs of template exposure (or None)
-        @param templateBBox: Bounding box of template exposure (or None)
-        @param warpExposure: Warp inputExp to frame of template?
-        @param warpSources: Warp inputSources to frame of template?
-        @return Struct(exp: aligned input exposure,
-                       sources: aligned input sources,
+        @return Struct(matches: Matches between sources,
                        wcs: Wcs for input in frame of template,
                        )
         """
-        if (warpExposure or warpSources) and (templateWcs is None or templateBBox is None):
-            raise RuntimeError("Template Wcs (%s) and BBox (%s) not provided, but warping is desired" %
-                               (templateWcs, templateBBox))
         matches = self.matchSources(inputSources, templateSources)
-        newWcs = self.fitWcs(matches, inputExp.getWcs(), inputExp.getBBox())
-        if warpExposure:
-            alignedExp = self.warpExposure(inputExp, newWcs, templateWcs, templateBBox)
-        else:
-            alignedExp = None
-        if warpSources:
-            alignedSources = self.warpSources(inputSources, newWcs, templateWcs, templateBBox)
-        else:
-            alignedSources = None
-        return Struct(exp=alignedExp, sources=alignedSources, wcs=newWcs)
+        wcs = self.fitWcs(matches, inputWcs, inputBBox)
+        return Struct(matches=matches, wcs=wcs)
 
     def matchSources(self, inputSources, templateSources):
         """Match sources between the input and template

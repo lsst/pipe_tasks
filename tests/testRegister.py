@@ -128,16 +128,22 @@ class RegisterTestCase(unittest.TestCase):
         """Run the task on the data"""
         config.sipOrder = 2
         task = RegisterTask(name="register", config=config)
-        aligned = task.run(inData.inputExp, inData.inputSources, inData.templateSources,
-                           inData.templateExp.getWcs(), inData.templateExp.getBBox())
-        self.showImage(aligned.exp, aligned.sources, "Aligned", 3)
-        return Struct(aligned=aligned, task=task)
+        results = task.run(inData.inputSources, inData.inputExp.getWcs(), inData.inputExp.getBBox(),
+                           inData.templateSources)
+        warpedExp = task.warpExposure(inData.inputExp, results.wcs, inData.templateExp.getWcs(),
+                                      inData.templateExp.getBBox())
+        warpedSources = task.warpSources(inData.inputSources, results.wcs, inData.templateExp.getWcs(),
+                                         inData.templateExp.getBBox())
+
+        self.showImage(warpedExp, warpedSources, "Aligned", 3)
+        return Struct(warpedExp=warpedExp, warpedSources=warpedSources, matches=results.matches,
+                      wcs=results.wcs, task=task)
 
     def assertRegistered(self, inData, outData, bad=set()):
         """Assert that the registration task is registering images"""
         xTemplate = numpy.array([x for i,x in enumerate(inData.xTemplate) if i not in bad])
         yTemplate = numpy.array([y for i,y in enumerate(inData.yTemplate) if i not in bad])
-        alignedArray = outData.aligned.exp.getMaskedImage().getImage().getArray()
+        alignedArray = outData.warpedExp.getMaskedImage().getImage().getArray()
         self.assertTrue((alignedArray[yTemplate,xTemplate] == 1.0).all())
         for dx in (-1, 0, +1):
             for dy in range(-1, 0, +1):
@@ -145,8 +151,8 @@ class RegisterTestCase(unittest.TestCase):
                 # The values are not quite zero because the "image" is undersampled, so we get ringing.
                 self.assertTrue((alignedArray[yTemplate+dy,xTemplate+dx] < 0.1).all())
 
-        xAligned = numpy.array([x for i,x in enumerate(outData.aligned.sources["center.x"]) if i not in bad])
-        yAligned = numpy.array([y for i,y in enumerate(outData.aligned.sources["center.y"]) if i not in bad])
+        xAligned = numpy.array([x for i,x in enumerate(outData.warpedSources["center.x"]) if i not in bad])
+        yAligned = numpy.array([y for i,y in enumerate(outData.warpedSources["center.y"]) if i not in bad])
         self.assertAlmostEqual((xAligned - xTemplate).mean(), 0, 9)
         self.assertAlmostEqual((xAligned - xTemplate).std(), 0, 8)
         self.assertAlmostEqual((yAligned - yTemplate).mean(), 0, 9)
