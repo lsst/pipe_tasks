@@ -70,14 +70,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = SourceMeasurementTask,
         doc = "Initial measurements used to feed stars to kernel fitting",
     )
-    selectMeasurementAlgorithms = pexConfig.ListField(
-        dtype   = str,
-        doc     = "Minimial measurements needed to use object selector",
-        default = ('flux.psf', 'flags.pixel', 'shape.sdss',  'flux.gaussian', 'skycoord'),
-        itemCheck = lambda x: x in ['flux.psf', 'flags.pixel', 'shape.sdss', 'flux.naive', 
-                                    'flux.gaussian', 'centroid.naive', 'flux.sinc', 'centroid.gaussian', 
-                                    'skycoord', 'classification.extendedness']
-    )
 
     subtract = pexConfig.ConfigurableField(
         target = ImagePsfMatchTask,
@@ -104,7 +96,7 @@ class ImageDifferenceConfig(pexConfig.Config):
 
         # Minimal set of measurments for star selection
         self.selectMeasurement.algorithms.names.clear()
-        [self.selectMeasurement.algorithms.names.add(x) for x in self.selectMeasurementAlgorithms]
+        self.selectMeasurement.algorithms.names = ('flux.psf', 'flags.pixel', 'shape.sdss',  'flux.gaussian', 'skycoord')
         self.selectMeasurement.slots.modelFlux = None
         self.selectMeasurement.slots.apFlux = None 
         self.selectMeasurement.doApplyApCorr = False
