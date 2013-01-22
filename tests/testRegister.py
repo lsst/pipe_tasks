@@ -128,7 +128,8 @@ class RegisterTestCase(unittest.TestCase):
         """Run the task on the data"""
         config.sipOrder = 2
         task = RegisterTask(name="register", config=config)
-        aligned = task.run(inData.inputExp, inData.templateExp, inData.inputSources, inData.templateSources)
+        aligned = task.run(inData.inputExp, inData.inputSources, inData.templateSources,
+                           inData.templateExp.getWcs(), inData.templateExp.getBBox())
         self.showImage(aligned.exp, aligned.sources, "Aligned", 3)
         return Struct(aligned=aligned, task=task)
 

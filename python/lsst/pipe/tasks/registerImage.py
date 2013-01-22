@@ -24,7 +24,7 @@
 This module contains a Task to register (align) multiple images.
 """
 
-__all__ = ["RegisterTask",]
+__all__ = ["RegisterTask", "RegisterConfig"]
 
 import math
 import numpy
@@ -39,7 +39,8 @@ import lsst.afw.table as afwTable
 
 
 class RegisterConfig(Config):
-    matchRadius = Field(dtype=float, default=1.0, doc="Matching radius (arcsec)")
+    """Configuration for RegisterTask"""
+    matchRadius = Field(dtype=float, default=1.0, doc="Matching radius (arcsec)", check=lambda x: x > 0)
     sipOrder = Field(dtype=int, default=4, doc="Order for SIP WCS", check=lambda x: x > 1)
     sipIter = Field(dtype=int, default=3, doc="Rejection iterations for SIP WCS", check=lambda x: x > 0)
     sipRej = Field(dtype=float, default=3.0, doc="Rejection threshold for SIP WCS", check=lambda x: x > 0)
@@ -49,35 +50,51 @@ class RegisterConfig(Config):
 class RegisterTask(Task):
     ConfigClass = RegisterConfig
 
-    def run(self, inputExp, templateExp, inputSources, templateSources):
+    def run(self, inputExp, inputSources, templateSources, templateWcs=None, templateBBox=None,
+            warpExposure=True, warpSources=True):
         """Register (align) an input exposure to the template
 
-        The exposures must have a relatively accurate Wcs to facilitate source
-        matching within the 'matchRadius' in the configuration.
-
-        The sources must have RA,Dec set.
+        The sources must have RA,Dec set, and accurate to within the
+        'matchRadius' of the configuration in order to facilitate source
+        matching.  We fit a new Wcs, but do NOT set it in the input exposure.
 
         @param inputExp: Input exposure, to be aligned
-        @param templateExp: Template exposure, serves as the target reference frame
         @param inputSources: Sources from input exposure
         @param templateSources: Sources from template exposure
-        @return Struct(alignedExp: aligned input exposure,
-                       alignedSources: aligned input sources,
-                       wcs: Wcs that matches input to template,
+        @param templateWcs: Wcs of template exposure (or None)
+        @param templateBBox: Bounding box of template exposure (or None)
+        @param warpExposure: Warp inputExp to frame of template?
+        @param warpSources: Warp inputSources to frame of template?
+        @return Struct(exp: aligned input exposure,
+                       sources: aligned input sources,
+                       wcs: Wcs for input in frame of template,
                        )
         """
-
-        inputWcs = inputExp.getWcs()
-        templateWcs = templateExp.getWcs()
-
+        if (warpExposure or warpSources) and (templateWcs is None or templateBBox is None):
+            raise RuntimeError("Template Wcs (%s) and BBox (%s) not provided, but warping is desired" %
+                               (templateWcs, templateBBox))
         matches = self.matchSources(inputSources, templateSources)
-        newWcs = self.fitWcs(matches, inputExp)
-        alignedExp = self.warpExposure(inputExp, newWcs, templateWcs, templateExp.getBBox())
-        alignedSources = self.warpSources(inputSources, newWcs, templateWcs, templateExp.getBBox())
+        newWcs = self.fitWcs(matches, inputExp.getWcs(), inputExp.getBBox())
+        if warpExposure:
+            alignedExp = self.warpExposure(inputExp, newWcs, templateWcs, templateBBox)
+        else:
+            alignedExp = None
+        if warpSources:
+            alignedSources = self.warpSources(inputSources, newWcs, templateWcs, templateBBox)
+        else:
+            alignedSources = None
         return Struct(exp=alignedExp, sources=alignedSources, wcs=newWcs)
 
     def matchSources(self, inputSources, templateSources):
-        # XXX Allow option to match by x,y (e.g., images are almost aligned but not quite)?
+        """Match sources between the input and template
+
+        The order of the input arguments matters (because the later Wcs
+        fitting assumes a particular order).
+
+        @param inputSources: Source catalog of the input frame
+        @param templateSources: Source of the target frame
+        @return Match list
+        """
         matches = afwTable.matchRaDec(templateSources, inputSources,
                                       self.config.matchRadius*afwGeom.arcseconds)
         self.log.info("Matching within %.1f arcsec: %d matches" % (self.config.matchRadius, len(matches)))
@@ -86,13 +103,21 @@ class RegisterTask(Task):
             raise RuntimeError("Unable to match source catalogs")
         return matches
 
-    def fitWcs(self, matches, inputExp):
+    def fitWcs(self, matches, inputWcs, inputBBox):
+        """Fit Wcs to matches
+
+        The fitting includes iterative sigma-clipping.
+
+        @param matches: List of matches (first is target, second is input)
+        @param inputWcs: Original input Wcs
+        @param inputBBox: Bounding box of input image
+        @return Wcs
+        """
         copyMatches = type(matches)(matches)
         refCoordKey = copyMatches[0].first.getTable().getCoordKey()
         inCentroidKey = copyMatches[0].second.getTable().getCentroidKey()
         for i in range(self.config.sipIter):
-            sipFit = makeCreateWcsWithSip(copyMatches, inputExp.getWcs(), self.config.sipOrder,
-                                          inputExp.getBBox())
+            sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
             self.log.logdebug("Registration WCS RMS iteration %d: %f pixels" %
                               (i, sipFit.getScatterInPixels()))
             wcs = sipFit.getNewWcs()
@@ -110,7 +135,7 @@ class RegisterTask(Task):
                 break
             copyMatches = type(matches)(copyMatches[i] for i in good)
 
-        sipFit = makeCreateWcsWithSip(copyMatches, inputExp.getWcs(), self.config.sipOrder, inputExp.getBBox())
+        sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
         self.log.info("Registration WCS: final WCS RMS=%f pixels from %d matches" % 
                       (sipFit.getScatterInPixels(), len(copyMatches)))
         self.metadata.set("SIP_RMS", sipFit.getScatterInPixels())
@@ -120,13 +145,21 @@ class RegisterTask(Task):
         return wcs
 
     def warpExposure(self, inputExp, newWcs, templateWcs, templateBBox):
-        warper = Warper.fromConfig(self.config.warper)
+        """Warp input exposure to template frame
 
+        There are a variety of data attached to the exposure (e.g., PSF, Calib
+        and other metadata), but we do not attempt to warp these to the template
+        frame.
+
+        @param inputExp: Input exposure, to be warped
+        @param newWcs: Revised Wcs for input exposure
+        @param templateWcs: Target Wcs
+        @param templateBBox: Target bounding box
+        @return Warped exposure
+        """
+        warper = Warper.fromConfig(self.config.warper)
         copyExp = inputExp.Factory(inputExp.getMaskedImage(), newWcs)
         alignedExp = warper.warpExposure(templateWcs, copyExp, destBBox=templateBBox)
-        # XXX warp PSF?
-        # XXX anything else to transfer?
-
         return alignedExp
 
     def warpSources(self, inputSources, newWcs, templateWcs, templateBBox):
@@ -135,6 +168,12 @@ class RegisterTask(Task):
         It would be difficult to transform all possible quantities of potential
         interest between the two frames.  We therefore update only the sky and
         pixel coordinates.
+
+        @param inputSources: Sources on input exposure, to be warped
+        @param newWcs: Revised Wcs for input exposure
+        @param templateWcs: Target Wcs
+        @param templateBBox: Target bounding box
+        @return Warped sources
         """
         alignedSources = inputSources.copy(True)
         if not isinstance(templateBBox, afwGeom.Box2D):
