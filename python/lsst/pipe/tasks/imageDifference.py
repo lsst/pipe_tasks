@@ -243,8 +243,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             )
             subtractedExposure = subtractRes.subtractedExposure
 
-            if self.config.doWriteSubtractedExp:
-                sensorRef.put(subtractedExposure, subtractedExposureName)
             if self.config.doWriteMatchedExp:
                 sensorRef.put(subtractRes.matchedExposure, self.config.coaddName + "Diff_matchedExp")
 
@@ -285,6 +283,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.doWriteHeavyFootprintsInSources:
                     sources.setWriteHeavyFootprints(True)
                 sensorRef.put(sources, self.config.coaddName + "Diff_diaSrc")
+
+        if self.config.doWriteSubtractedExp:
+            sensorRef.put(subtractedExposure, subtractedExposureName)
  
         self.runDebug(exposure, subtractRes, selectSources, kernelSources, sources)
         return pipeBase.Struct(
