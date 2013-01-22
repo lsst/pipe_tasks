@@ -218,7 +218,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.selectMeasurement.measure(exposure, selectSources)
                 else:
                     self.log.info("Star selection via src product")
-                    # Sources may already exist for data release processing
+                    # Sources already exist; for data release processing
                     selectSources = sensorRef.get("src")
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
