@@ -27,7 +27,7 @@ import lsst.afw.cameraGeom as afwCG
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.meas.astrom.astrom import Astrometry
-from lsst.meas.astrom.sip import CreateWcsWithSip
+from lsst.meas.astrom.sip import makeCreateWcsWithSip
 from .detectorUtil import getCcd
 
 class AstrometryConfig(pexConfig.Config):
@@ -213,7 +213,7 @@ class AstrometryTask(pipeBase.Task):
         # Re-fit the WCS using the current matches
         if self.config.solver.calculateSip:
             try:
-                sip = CreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+                sip = makeCreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
             except Exception, e:
                 self.log.warn("Fitting SIP failed: %s" % e)
                 sip = None
