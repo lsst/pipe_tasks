@@ -43,9 +43,7 @@ class ImageDifferenceConfig(pexConfig.Config):
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
         doc = "Convolve science image by its PSF before PSF-matching?")
     useGaussianForPreConvolution = pexConfig.Field(dtype=bool, default=True,
-        doc = "Use a simpple gaussian PSF model for pre-convolution (else use fit PSF)? "
-            "This simplified model is a double Gaussian whose central component has the same sigma "
-            "as the science images's PSF, and whose outer component is 2.5 times wider and 1/10 as high."
+        doc = "Use a simple gaussian PSF model for pre-convolution (else use fit PSF)? "
             "Ignored if doPreConvolve false.",
     )
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
@@ -210,12 +208,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # Retrieve the science image we wish to analyze
         exposure = sensorRef.get("calexp")
         sciencePsf = sensorRef.get("psf")
-        if not self.config.doPreConvolve:
-            # the detection task smooths the image if the exposure has a PSF
-            # and we only want detection to smooth if not pre-convolving
-            # (plus the PSF would be wrong after pre-convolving)
-            exposure.setPsf(sciencePsf)
-
+        exposure.setPsf(sciencePsf)
+        psfAttr = PsfAttributes(sciencePsf, kWidth//2, kHeight//2)
+        scienceSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+        
         subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
         templateExposure = None  # Stitched coadd exposure
         templateApCorr = None  # Aperture correction appropriate for the coadd
@@ -233,10 +229,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.useGaussianForPreConvolution:
                     # convolve with a simplified PSF model: a double Gaussian
                     kWidth, kHeight = sciencePsf.getKernel().getDimensions()
-                    psfAttr = PsfAttributes(sciencePsf, kWidth//2, kHeight//2)
-                    srcSigPix = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
-                    preConvPsf = afwDetect.createPsf("DoubleGaussian", kWidth, kHeight,
-                                       srcSigPix, srcSigPix*2.5, 0.1)
+                    preConvPsf = afwDetect.createPsf("SingleGaussian", kWidth, kHeight, scienceSigma)
                 else:
                     # convolve with science exposure's PSF model
                     preConvPsf = psf
@@ -250,7 +243,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     # Run own detection and measurement; necessary in nightly processing
                     table = afwTable.SourceTable.make(self.selectSchema, idFactory)
                     table.setMetadata(self.selectAlgMetadata) 
-                    detRet = self.selectDetection.makeSourceCatalog(table, exposure)
+                    detRet = self.selectDetection.makeSourceCatalog(
+                        table = table,
+                        exposure = exposure,
+                        sigma = scienceSigma,
+                        doSmooth = not self.doPreConvolve,
+                    )
                     selectSources = detRet.sources
                     self.selectMeasurement.measure(exposure, selectSources)
                 else:
@@ -300,7 +298,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, subtractedExposure).sources
+            sources = self.detection.makeSourceCatalog(
+                table = table,
+                exposure = subtractedExposure,
+                doSmooth = not self.config.doPreConvolve,
+                sigma = scienceSigma,
+            ).sources
 
             if self.config.doDeblend:
                self.deblend.run(subtractedExposure, sources, psf)
