@@ -60,7 +60,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         default = True
     )
 
-    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="catalog")
+    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
 
     selectDetection = pexConfig.ConfigurableField(
         target = SourceDetectionTask,
@@ -225,8 +225,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
                 matches = astromRet.matches
 
-                kernelCandidateList = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
-                kernelSources = [x.getSource() for x in kernelCandidateList]
+                kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
                 self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
             else:
                 selectSources = None
