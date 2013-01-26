@@ -20,7 +20,9 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import numpy as num
+import math
+
+import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -34,6 +36,7 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, Sou
     starSelectorRegistry, PsfAttributes
 from lsst.ip.diffim import ImagePsfMatchTask
                                         
+FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
@@ -208,9 +211,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # Retrieve the science image we wish to analyze
         exposure = sensorRef.get("calexp")
         sciencePsf = sensorRef.get("psf")
+        if not sciencePsf:
+            raise pipeBase.TaskError("No psf found")
         exposure.setPsf(sciencePsf)
+
+        # comput scienceSigmaOrig: sigma of PSF of science image before pre-convolution
+        kWidth, kHeight = sciencePsf.getKernel().getDimensions()
         psfAttr = PsfAttributes(sciencePsf, kWidth//2, kHeight//2)
-        scienceSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+        scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
         
         subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
         templateExposure = None  # Stitched coadd exposure
@@ -220,6 +228,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             # if requested, convolve the science exposure with its PSF
             # (properly, this should be a cross-correlation, but our code does not yet support that)
+            # compute scienceSigmaPost: sigma of science exposure with pre-convolution, if done,
+            # else sigma of original science exposure
             if self.config.doPreConvolve:
                 convControl = afwMath.ConvolutionControl()
                 # cannot convolve in place, so make a new MI to receive convolved image
@@ -229,12 +239,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.useGaussianForPreConvolution:
                     # convolve with a simplified PSF model: a double Gaussian
                     kWidth, kHeight = sciencePsf.getKernel().getDimensions()
-                    preConvPsf = afwDetect.createPsf("SingleGaussian", kWidth, kHeight, scienceSigma)
+                    preConvPsf = afwDetect.createPsf("SingleGaussian", kWidth, kHeight, scienceSigmaOrig)
                 else:
                     # convolve with science exposure's PSF model
                     preConvPsf = psf
                 afwMath.convolve(destMI, srcMI, preConvPsf.getKernel(), convControl)
                 exposure.setMaskedImage(destMI)
+                scienceSigmaPost = scienceSigmaOrig * 2
+            else:
+                scienceSigmaPost = scienceSigmaOrig
 
             # If requested, find sources in the image
             if self.config.doSelectSources:
@@ -246,7 +259,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     detRet = self.selectDetection.makeSourceCatalog(
                         table = table,
                         exposure = exposure,
-                        sigma = scienceSigma,
+                        sigma = scienceSigmaOrig,
                         doSmooth = not self.doPreConvolve,
                     )
                     selectSources = detRet.sources
@@ -270,6 +283,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             subtractRes = self.subtract.subtractExposures(
                 templateExposure = templateExposure,
                 scienceExposure = exposure,
+                scienceFwhmPix = scienceSigmaPost * FwhmPerSigma,
                 candidateList = kernelSources,
                 convolveTemplate = self.config.convolveTemplate
             )
@@ -427,7 +441,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.getMaskedImage().set(num.nan, edgeMask, num.nan)
+        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
         nPatchesFound = 0
         coaddPsf = None
         coaddApCorr = None
