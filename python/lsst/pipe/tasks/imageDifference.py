@@ -245,7 +245,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     preConvPsf = psf
                 afwMath.convolve(destMI, srcMI, preConvPsf.getKernel(), convControl)
                 exposure.setMaskedImage(destMI)
-                scienceSigmaPost = scienceSigmaOrig * 2
+                scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
             else:
                 scienceSigmaPost = scienceSigmaOrig
 
