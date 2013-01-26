@@ -68,7 +68,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         default = True
     )
 
-    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="catalog")
+    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
 
     selectDetection = pexConfig.ConfigurableField(
         target = SourceDetectionTask,
@@ -282,9 +282,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if subtractedExposure is None:
                 subtractedExposure = sensorRef.get(subtractedExposureName)
             
-            # If not pre-convolving then we need a PSF to smooth the image in detection;
-            # if a PSF does not already exist then retrieve the science image PSF
-            if not self.config.doPreConvolve and not subtractedExposure.hasPsf():
+            # Get Psf from the appropriate input image if it doesn't exist
+            if not subtractedExposure.hasPsf():
                 if self.config.convolveTemplate:
                     subtractedExposure.setPsf(exposure.getPsf())
                 else:
@@ -302,7 +301,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 table = table,
                 exposure = subtractedExposure,
                 doSmooth = not self.config.doPreConvolve,
-                sigma = scienceSigma,
             ).sources
 
             if self.config.doDeblend:
