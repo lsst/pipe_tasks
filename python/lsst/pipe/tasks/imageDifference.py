@@ -30,6 +30,7 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
@@ -273,8 +274,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
                 matches = astromRet.matches
 
-                kernelCandidateList = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
-                kernelSources = [x.getSource() for x in kernelCandidateList]
+                kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
                 self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
 
             # warp template exposure to match exposure,
