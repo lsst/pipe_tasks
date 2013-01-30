@@ -153,9 +153,9 @@ class RegisterTestCase(unittest.TestCase):
 
         xAligned = numpy.array([x for i,x in enumerate(outData.warpedSources["center.x"]) if i not in bad])
         yAligned = numpy.array([y for i,y in enumerate(outData.warpedSources["center.y"]) if i not in bad])
-        self.assertAlmostEqual((xAligned - xTemplate).mean(), 0, 9)
+        self.assertAlmostEqual((xAligned - xTemplate).mean(), 0, 8)
         self.assertAlmostEqual((xAligned - xTemplate).std(), 0, 8)
-        self.assertAlmostEqual((yAligned - yTemplate).mean(), 0, 9)
+        self.assertAlmostEqual((yAligned - yTemplate).mean(), 0, 8)
         self.assertAlmostEqual((yAligned - yTemplate).std(), 0, 8)
 
     def assertMetadata(self, outData, numRejected=0):
