@@ -20,24 +20,36 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import numpy as num
+import math
+
+import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
+import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, starSelectorRegistry
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
+    starSelectorRegistry, PsfAttributes
 from lsst.ip.diffim import ImagePsfMatchTask
                                         
+FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
     """
     doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
+    doPreConvolve = pexConfig.Field(dtype=bool, default=True,
+        doc = "Convolve science image by its PSF before PSF-matching?")
+    useGaussianForPreConvolution = pexConfig.Field(dtype=bool, default=True,
+        doc = "Use a simple gaussian PSF model for pre-convolution (else use fit PSF)? "
+            "Ignored if doPreConvolve false.",
+    )
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doDeblend = pexConfig.Field(dtype=bool, default=False,
         doc = "Deblend sources? Off by default because it may not be useful")
@@ -183,9 +195,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
-        # initialize outputs
+        # initialize outputs and some intermediate products
         subtractedExposure = None
         subtractRes = None
+        selectSources = None
+        kernelSources = None
         sources = None
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
@@ -197,14 +211,44 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         # Retrieve the science image we wish to analyze
         exposure = sensorRef.get("calexp")
-        psf = sensorRef.get("psf")
-        exposure.setPsf(psf)
+        sciencePsf = sensorRef.get("psf")
+        if not sciencePsf:
+            raise pipeBase.TaskError("No psf found")
+        exposure.setPsf(sciencePsf)
 
+        # comput scienceSigmaOrig: sigma of PSF of science image before pre-convolution
+        kWidth, kHeight = sciencePsf.getKernel().getDimensions()
+        psfAttr = PsfAttributes(sciencePsf, kWidth//2, kHeight//2)
+        scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+        
         subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
         templateExposure = None  # Stitched coadd exposure
         templateApCorr = None  # Aperture correction appropriate for the coadd
         if self.config.doSubtract:
             templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
+
+            # if requested, convolve the science exposure with its PSF
+            # (properly, this should be a cross-correlation, but our code does not yet support that)
+            # compute scienceSigmaPost: sigma of science exposure with pre-convolution, if done,
+            # else sigma of original science exposure
+            if self.config.doPreConvolve:
+                convControl = afwMath.ConvolutionControl()
+                # cannot convolve in place, so make a new MI to receive convolved image
+                srcMI = exposure.getMaskedImage()
+                destMI = srcMI.Factory(srcMI.getDimensions())
+                srcPsf = sciencePsf
+                if self.config.useGaussianForPreConvolution:
+                    # convolve with a simplified PSF model: a double Gaussian
+                    kWidth, kHeight = sciencePsf.getKernel().getDimensions()
+                    preConvPsf = afwDetect.createPsf("SingleGaussian", kWidth, kHeight, scienceSigmaOrig)
+                else:
+                    # convolve with science exposure's PSF model
+                    preConvPsf = psf
+                afwMath.convolve(destMI, srcMI, preConvPsf.getKernel(), convControl)
+                exposure.setMaskedImage(destMI)
+                scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
+            else:
+                scienceSigmaPost = scienceSigmaOrig
 
             # If requested, find sources in the image
             if self.config.doSelectSources:
@@ -213,11 +257,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     # Run own detection and measurement; necessary in nightly processing
                     table = afwTable.SourceTable.make(self.selectSchema, idFactory)
                     table.setMetadata(self.selectAlgMetadata) 
-                    detRet = self.selectDetection.makeSourceCatalog(table, exposure)
+                    detRet = self.selectDetection.makeSourceCatalog(
+                        table = table,
+                        exposure = exposure,
+                        sigma = scienceSigmaOrig,
+                        doSmooth = not self.doPreConvolve,
+                    )
                     selectSources = detRet.sources
                     self.selectMeasurement.measure(exposure, selectSources)
                 else:
-                    self.log.info("Star selection via src product")
+                    self.log.info("Source selection via src product")
                     # Sources already exist; for data release processing
                     selectSources = sensorRef.get("src")
 
@@ -227,9 +276,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
                 self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
-            else:
-                selectSources = None
-                kernelSources = None
 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
@@ -237,6 +283,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             subtractRes = self.subtract.subtractExposures(
                 templateExposure = templateExposure,
                 scienceExposure = exposure,
+                scienceFwhmPix = scienceSigmaPost * FwhmPerSigma,
                 candidateList = kernelSources,
                 convolveTemplate = self.config.convolveTemplate
             )
@@ -264,7 +311,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, subtractedExposure).sources
+            sources = self.detection.makeSourceCatalog(
+                table = table,
+                exposure = subtractedExposure,
+                doSmooth = not self.config.doPreConvolve,
+            ).sources
 
             if self.config.doDeblend:
                self.deblend.run(subtractedExposure, sources, psf)
@@ -390,7 +441,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.getMaskedImage().set(num.nan, edgeMask, num.nan)
+        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
         nPatchesFound = 0
         coaddPsf = None
         coaddApCorr = None
