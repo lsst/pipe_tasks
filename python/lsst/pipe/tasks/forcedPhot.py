@@ -101,8 +101,19 @@ class ForcedPhotConfig(Config):
     """
     references = ConfigurableField(target=ReferencesTask, doc="Retrieve reference source catalog")
     measurement = ConfigurableField(target=measAlg.SourceMeasurementTask, doc="Forced measurement")
-    copyColumns = DictField(keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
-                            default={"id": "objectId"})
+    copyColumns = DictField(
+        keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
+        default={"id": "objectId", "deblend.nchild": "deblend.nchild", "parent":"parentObjectId"}
+        )
+
+    def setDefaults(self):
+        # Set centroid from the reference source; run centroid.sdss, but don't
+        # use it to feed other algorithms
+        self.measurement.algorithms.names |= ["centroid.record", "centroid.sdss"]
+        self.measurement.slots.centroid = "centroid.record"
+        self.measurement.centroider.name = None
+        # Don't update celestial coordinates from centroid.
+        self.measurement.algorithms.names -= ["skycoord"]
 
 
 class ForcedPhotTask(CmdLineTask):
@@ -121,7 +132,7 @@ class ForcedPhotTask(CmdLineTask):
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("references")
-        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata, isForced=True)
 
     @classmethod
     def _makeArgumentParser(cls):
