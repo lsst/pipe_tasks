@@ -34,9 +34,15 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
-    starSelectorRegistry, PsfAttributes
-from lsst.ip.diffim import ImagePsfMatchTask
-                                        
+    starSelectorRegistry, AlgorithmRegistry, PsfAttributes
+from lsst.ip.diffim import ImagePsfMatchTask, NaiveDipoleCentroidControl, NaiveDipoleFluxControl, \
+    PsfDipoleFluxControl
+
+# Register the new algorithms that I want to use
+AlgorithmRegistry.register("centroid.dipole.naive", NaiveDipoleCentroidControl) 
+AlgorithmRegistry.register("flux.dipole.naive", NaiveDipoleFluxControl) 
+AlgorithmRegistry.register("flux.dipole.psf", PsfDipoleFluxControl) 
+             
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 class ImageDifferenceConfig(pexConfig.Config):
@@ -108,10 +114,15 @@ class ImageDifferenceConfig(pexConfig.Config):
 
         # Minimal set of measurments for star selection
         self.selectMeasurement.algorithms.names.clear()
-        self.selectMeasurement.algorithms.names = ('flux.psf', 'flags.pixel', 'shape.sdss',  'flux.gaussian', 'skycoord')
+        self.selectMeasurement.algorithms.names = ("flux.psf", "flags.pixel", "shape.sdss",  "flux.gaussian", "skycoord")
         self.selectMeasurement.slots.modelFlux = None
         self.selectMeasurement.slots.apFlux = None 
         self.selectMeasurement.doApplyApCorr = False
+
+        # Enable dipole measurements on diffim
+        self.measurement.algorithms.names.add("centroid.dipole.naive")
+        self.measurement.algorithms.names.add("flux.dipole.naive")
+        self.measurement.algorithms.names.add("flux.dipole.psf")
 
         # Config different types of source selectors.
         # Second moment:
