@@ -57,8 +57,8 @@ class ImageDifferenceConfig(pexConfig.Config):
             "Ignored if doPreConvolve false.",
     )
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
-    doDeblend = pexConfig.Field(dtype=bool, default=False,
-        doc = "Deblend sources? Off by default because it may not be useful")
+    doMerge = pexConfig.Field(dtype=bool, default=True,
+        doc = "Merge positive and negative diaSources with grow radius set by growFootprint")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc = "Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
@@ -97,14 +97,13 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
     )
-    deblend = pexConfig.ConfigurableField(
-        target = SourceDeblendTask,
-        doc = "Split blended sources into their components",
-    )
     measurement = pexConfig.ConfigurableField(
         target = SourceMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
     )
+
+    growFootprint = pexConfig.Field(dtype=int, default=2,
+        doc = "Grow positive and negative footprints by this amount before merging")
     
     def setDefaults(self):
         
@@ -137,8 +136,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
-        if self.doDeblend and not self.doDetection:
-            raise ValueError("Cannot run source deblending without source detection.")
+        if self.doMerge and not self.doDetection:
+            raise ValueError("Cannot run source merging without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
             raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
 
@@ -164,8 +163,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
-        if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
@@ -179,7 +176,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - subtract image from PSF-matched, warped template
         - persist difference image
         - detect sources
-        - deblend sources (disabled by default)
         - measure sources
         
         @param sensorRef: sensor-level butler data reference, used for the following data products:
@@ -202,7 +198,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             the unpersisted version if subtraction not run but detection run
             None if neither subtraction nor detection run (i.e. nothing useful done)
         - subtractRes: results of subtraction task; None if subtraction not run
-        - sources: detected and possibly measured and deblended sources; None if detection not run
+        - sources: detected and possibly measured sources; None if detection not run
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
@@ -322,15 +318,21 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(
+            results = self.detection.makeSourceCatalog(
                 table = table,
                 exposure = subtractedExposure,
-                doSmooth = not self.config.doPreConvolve,
-            ).sources
+                doSmooth = not self.config.doPreConvolve
+                )
 
-            if self.config.doDeblend:
-               self.deblend.run(subtractedExposure, sources, psf)
-    
+            if self.config.doMerge:
+                fpSet = results.fpSets.positive
+                fpSet.merge(results.fpSets.negative, self.config.growFootprint, self.config.growFootprint, False)
+                sources = afwTable.SourceCatalog(table)
+                fpSet.makeSources(sources)
+                self.log.info("Merging detections into %d sources" % (len(sources)))
+            else:
+                sources = results.sources
+
             if self.config.doMeasurement:
                 if self.config.convolveTemplate:
                     apCorr = sensorRef.get("apCorr")
