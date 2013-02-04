@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
+import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
@@ -28,6 +29,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 from .selectImages import BadSelectImagesTask
+from .coaddProvenance import CoaddProvenanceTask
 
 __all__ = ["CoaddBaseTask"]
 
@@ -50,7 +52,10 @@ class CoaddBaseConfig(pexConfig.Config):
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
     )
-
+    provenance = pexConfig.ConfigurableField(
+        doc = "Subtask that handles provenance catalogs added to the final Exposure",
+        target = CoaddProvenanceTask
+    )
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.
@@ -62,6 +67,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
+        self.makeSubtask("provenance")
         self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
     def getBadPixelMask(self):
