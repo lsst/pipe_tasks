@@ -58,7 +58,7 @@ class TestForceWcs(unittest.TestCase):
         instr = inwcs.getFitsMetadata().toString()
         print 'inwcs:', instr
         table = afwTable.SourceTable.make(schema, idFactory)
-        sources = det.makeSourceCatalog(table, exposure).sources
+        sources = det.makeSourceCatalog(table, exposure, doSmooth=False).sources
         meas.measure(exposure, sources)
 
         for dosip in [False, True]:
