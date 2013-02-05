@@ -53,6 +53,8 @@ class ImageDifferenceConfig(pexConfig.Config):
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doMerge = pexConfig.Field(dtype=bool, default=True,
         doc = "Merge positive and negative diaSources with grow radius set by growFootprint")
+    doMatchSources = pexConfig.Field(dtype=bool, default=True,
+        doc = "Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc = "Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
@@ -98,7 +100,10 @@ class ImageDifferenceConfig(pexConfig.Config):
 
     growFootprint = pexConfig.Field(dtype=int, default=2,
         doc = "Grow positive and negative footprints by this amount before merging")
-    
+
+    diaSourceMatchRadius = pexConfig.Field(dtype=float, default=0.5,
+        doc = "Match radius (in arcseconds) for DiaSource to Source association")
+
     def setDefaults(self):
         
         # High sigma detections only
@@ -112,7 +117,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.selectMeasurement.slots.apFlux = None 
         self.selectMeasurement.doApplyApCorr = False
 
-        # Enable dipole measurements on diffim.  They are registered in __init__.py
+        # Enable dipole measurements on diffim.  They are registered in ip_diffim's __init__.py
         self.measurement.algorithms.names.add("centroid.dipole.naive")
         self.measurement.algorithms.names.add("flux.dipole.naive")
         self.measurement.algorithms.names.add("flux.dipole.psf")
@@ -160,6 +165,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
+        if self.config.doMatchSources:
+            self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
+            self.schema.addField("srcMatchId", "L", "unique id of source match")
+            
+
     @pipeBase.timeMethod
     def run(self, sensorRef):
         """Subtract an image from a template coadd and measure the result
@@ -201,7 +211,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         subtractRes = None
         selectSources = None
         kernelSources = None
-        sources = None
+        diaSources = None
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
         # I don't know if this is the way we ultimately want to do things, but at least
@@ -321,11 +331,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if self.config.doMerge:
                 fpSet = results.fpSets.positive
                 fpSet.merge(results.fpSets.negative, self.config.growFootprint, self.config.growFootprint, False)
-                sources = afwTable.SourceCatalog(table)
-                fpSet.makeSources(sources)
-                self.log.info("Merging detections into %d sources" % (len(sources)))
+                diaSources = afwTable.SourceCatalog(table)
+                fpSet.makeSources(diaSources)
+                self.log.info("Merging detections into %d sources" % (len(diaSources)))
             else:
-                sources = results.sources
+                diaSources = results.sources
 
             if self.config.doMeasurement:
                 if self.config.convolveTemplate:
@@ -334,24 +344,49 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     if templateApCorr is None:
                         templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
                     apCorr = templateApCorr
-                self.measurement.run(subtractedExposure, sources, apCorr)
-    
-            if sources is not None and self.config.doWriteSources:
+                self.measurement.run(subtractedExposure, diaSources, apCorr)
+
+            # Match with the calexp sources if possible
+            if self.config.doMatchSources:
+                if sensorRef.datasetExists("src"):
+                    # Create key,val pair where key=diaSourceId and val=sourceId
+                    matchRadAsec = self.config.diaSourceMatchRadius
+                    matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
+                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) # just the closest match
+                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for srcMatch in srcMatches])
+                else:
+                    srcMatchDict = {}
+
+                # Create key,val pair where key=diaSourceId and val=refId
+                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(catalogMatchDist=matchRadAsec))
+                astromRet = astrometer.useKnownWcs(diaSources, exposure=exposure)
+                refMatches = astromRet.matches
+                refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for refMatch in refMatches])
+
+                # Assign source Ids
+                for source in diaSources:                    
+                    sid = source.getId()
+                    if srcMatchDict.has_key(sid):
+                        source.set("srcMatchId", srcMatchDict[sid])
+                    if refMatchDict.has_key(sid):
+                        source.set("refMatchId", refMatchDict[sid])
+
+            if diaSources is not None and self.config.doWriteSources:
                 if self.config.doWriteHeavyFootprintsInSources:
                     sources.setWriteHeavyFootprints(True)
-                sensorRef.put(sources, self.config.coaddName + "Diff_diaSrc")
+                sensorRef.put(diaSources, self.config.coaddName + "Diff_diaSrc")
 
         if self.config.doWriteSubtractedExp:
             sensorRef.put(subtractedExposure, subtractedExposureName)
  
-        self.runDebug(exposure, subtractRes, selectSources, kernelSources, sources)
+        self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
         return pipeBase.Struct(
             subtractedExposure = subtractedExposure,
             subtractRes = subtractRes,
-            sources = sources,
+            sources = diaSources,
         )
 
-    def runDebug(self, exposure, subtractRes, selectSources, kernelSources, sources):
+    def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
         import lsstDebug
         import lsst.afw.display.ds9 as ds9
         display = lsstDebug.Info(__name__).display 
@@ -368,7 +403,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             mi = subtractRes.subtractedExposure.getMaskedImage()
             x0, y0 = mi.getX0(), mi.getY0()
             with ds9.Buffering():
-                for s in sources:
+                for s in diaSources:
                     x, y = s.getX() - x0, s.getY() - y0
                     ctype = "red" if s.get("flags.negative") else "yellow"
                     if (s.get("flags.pixel.interpolated.center") or s.get("flags.pixel.saturated.center") or
@@ -409,11 +444,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        origVariance = True)
         if display and showDiaSources:
             import lsst.ip.diffim.diffimTools as diffimTools
-            flagChecker   = diffimTools.SourceFlagChecker(sources)
-            dipoleChecker = diffimTools.DipoleChecker(sources)
-            isFlagged     = [flagChecker(x) for x in sources]
-            isDipole      = [dipoleChecker(x) for x in sources]
-            diUtils.showDiaSources(sources, subtractRes.subtractedExposure, isFlagged, isDipole, frame=lsstDebug.frame)
+            flagChecker   = diffimTools.SourceFlagChecker(diaSources)
+            dipoleChecker = diffimTools.DipoleChecker(diaSources)
+            isFlagged     = [flagChecker(x) for x in diaSources]
+            isDipole      = [dipoleChecker(x) for x in diaSources]
+            diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole, frame=lsstDebug.frame)
             lsstDebug.frame += 1
         
     def getTemplate(self, exposure, sensorRef):
