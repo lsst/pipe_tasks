@@ -35,13 +35,7 @@ import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
     starSelectorRegistry, AlgorithmRegistry, PsfAttributes
-from lsst.ip.diffim import ImagePsfMatchTask, NaiveDipoleCentroidControl, NaiveDipoleFluxControl, \
-    PsfDipoleFluxControl
-
-# Register the new algorithms that I want to use
-AlgorithmRegistry.register("centroid.dipole.naive", NaiveDipoleCentroidControl) 
-AlgorithmRegistry.register("flux.dipole.naive", NaiveDipoleFluxControl) 
-AlgorithmRegistry.register("flux.dipole.psf", PsfDipoleFluxControl) 
+from lsst.ip.diffim import ImagePsfMatchTask
              
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
@@ -118,7 +112,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.selectMeasurement.slots.apFlux = None 
         self.selectMeasurement.doApplyApCorr = False
 
-        # Enable dipole measurements on diffim
+        # Enable dipole measurements on diffim.  They are registered in __init__.py
         self.measurement.algorithms.names.add("centroid.dipole.naive")
         self.measurement.algorithms.names.add("flux.dipole.naive")
         self.measurement.algorithms.names.add("flux.dipole.psf")
