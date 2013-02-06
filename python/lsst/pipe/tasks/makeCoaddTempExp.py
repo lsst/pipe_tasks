@@ -29,6 +29,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
+import lsst.afw.table as afwTable
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 
@@ -159,6 +160,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
             totGoodPix = 0
             coaddTempExp = afwImage.ExposureF(patchBBox, tractWcs)
+
+            coaddInputs = self.inputRecorder.makeCoaddInputs()
+
             edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
             coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf)
             didSetMetadata = False
@@ -166,8 +170,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
                     (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
                 try:
-                    exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=self.config.bgSubtracted) 
-                    exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
+                    origExp = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch,
+                                                             bgSubtracted=self.config.bgSubtracted)
+                    if origExp:
+                        ccdProvenance = self.inputRecorder.makeCcdRecord(coaddInputs, visit=tempExpInd,
+                                                                      calexp=origExp, dataRef=calExpRef)
+
+                    exposure = self.warpAndPsfMatch.run(origExp, wcs=tractWcs, maxBBox=patchBBox).exposure
                     numGoodPix = coaddUtils.copyGoodPixels(
                         coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
                     totGoodPix += numGoodPix
@@ -176,33 +185,44 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     else:
                         self.log.info("Calexp %s has %s good pixels in this patch" % \
                             (calExpRef.dataId, numGoodPix))
-                    
+                        
                         if not didSetMetadata:
                             coaddTempExp.setCalib(exposure.getCalib())
                             coaddTempExp.setFilter(exposure.getFilter())
                             didSetMetadata = True
+                    self.inputRecorder.saveCcdRecord(coaddInputs, ccdProvenance, nGoodPix=numGoodPix)
+
                 except Exception, e:
                     self.log.warn("Error processing calexp %s; skipping it: %s" % \
                         (calExpRef.dataId, e))
+                    if self.config.inputRecorder.saveErrorCcds:
+                        self.inputRecorder.saveCcdRecord(coaddInputs, ccdProvenance, numGoodPix=numGoodPix)
                     continue
 
             if (totGoodPix == 0) or not didSetMetadata: # testing didSetMetadata is not needed but safer
                 self.log.warn("Could not compute coaddTempExp %s: no good pixels" % (tempExpRef.dataId,))
                 continue
             self.log.info("coaddTempExp %s has %s good pixels" % (tempExpRef.dataId, totGoodPix))
-                
+
+            # Moved PSF creation earlier, so we can save it with the coaddTempExp.
+            # Eventually, we could stop persisting it separately, I think.
+            if self.config.warpAndPsfMatch.desiredFwhm is not None and coaddTempExp is not None:
+                psfName = self.config.coaddName + "Coadd_initPsf"
+                wcs = coaddTempExp.getWcs()
+                fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
+                kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
+                kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
+                coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
+                if self.config.doWrite:
+                    self.log.info("Persisting %s %s" % (psfName, tempExpRef.dataId))
+                    patchRef.put(coaddPsf, psfName)
+                coaddTempExp.setPsf(coaddPsf)
+
+            self.inputRecorder.makeCoaddTempExp(coaddInputs, tempExpInd, totGoodPix, coaddTempExp)
+
             if self.config.doWrite and coaddTempExp is not None:
                 self.log.info("Persisting %s %s" % (tempExpName, tempExpRef.dataId))
                 tempExpRef.put(coaddTempExp, tempExpName)
-                if self.config.warpAndPsfMatch.desiredFwhm is not None:
-                    psfName = self.config.coaddName + "Coadd_initPsf"
-                    self.log.info("Persisting %s %s" % (psfName, tempExpRef.dataId))
-                    wcs = coaddTempExp.getWcs()
-                    fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
-                    kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
-                    kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-                    coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-                    patchRef.put(coaddPsf, psfName)
 
             if coaddTempExp:
                 dataRefList.append(tempExpRef)

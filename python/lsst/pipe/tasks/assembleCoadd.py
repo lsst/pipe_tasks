@@ -312,6 +312,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             if not tempExpRefList:
                 raise pipeBase.TaskError("No valid background models")
 
+        coaddInputs = self.inputRecorder.makeCoaddInputs()
+
         self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
@@ -327,10 +329,12 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         coaddExposure = afwImage.ExposureF(bbox, wcs)
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
+        coaddExposure.getInfo().setCoaddInputs(coaddInputs)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         didSetMetadata = False
+        didRecordInputs = set()
         for subBBox in _subBBoxIter(bbox, subregionSize):
             try:
                 self.log.info("Computing coadd %s" % (subBBox,))
@@ -341,7 +345,9 @@ class AssembleCoaddTask(CoaddBaseTask):
                     exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
                     maskedImage = exposure.getMaskedImage()
                     imageScaler.scaleMaskedImage(maskedImage)
-                        
+                    if idx not in didRecordInputs:
+                        self.inputRecorder.addVisitToCoadd(coaddInputs, exposure, weightList[idx])
+                        didRecordInputs.add(idx)
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
                         didSetMetadata = True
