@@ -35,7 +35,7 @@ import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
     starSelectorRegistry, AlgorithmRegistry, PsfAttributes
-from lsst.ip.diffim import ImagePsfMatchTask
+from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, SourceFlagChecker
              
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
@@ -94,7 +94,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Low-threshold detection for final measurement",
     )
     measurement = pexConfig.ConfigurableField(
-        target = SourceMeasurementTask,
+        target = DipoleMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
     )
 
@@ -130,6 +130,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
         self.detection.reEstimateBackground = False
+        self.detection.thresholdType = "pixel_stdev"
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -168,7 +169,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
-            
+
+        self.schema.addField(self.measurement._ClassificationFlag, "F", "probability of being a dipole")
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
@@ -355,13 +357,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) # just the closest match
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for srcMatch in srcMatches])
                 else:
+                    self.log.warn("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
 
                 # Create key,val pair where key=diaSourceId and val=refId
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(catalogMatchDist=matchRadAsec))
                 astromRet = astrometer.useKnownWcs(diaSources, exposure=exposure)
                 refMatches = astromRet.matches
-                refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for refMatch in refMatches])
+                if refMatches is None:
+                    self.log.warn("No diaSource matches with reference catalog")
+                    refMatchDict = {}
+                else:
+                    refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for refMatch in refMatches])
 
                 # Assign source Ids
                 for source in diaSources:                    
@@ -393,6 +400,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         showSubtracted = lsstDebug.Info(__name__).showSubtracted
         showPixelResiduals = lsstDebug.Info(__name__).showPixelResiduals
         showDiaSources = lsstDebug.Info(__name__).showDiaSources
+        showDipoles = lsstDebug.Info(__name__).showDipoles
         maskTransparency = lsstDebug.Info(__name__).maskTransparency   
         if not maskTransparency:
             maskTransparency = 0
@@ -444,13 +452,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        origVariance = True)
         if display and showDiaSources:
             import lsst.ip.diffim.diffimTools as diffimTools
-            flagChecker   = diffimTools.SourceFlagChecker(diaSources)
-            dipoleChecker = diffimTools.DipoleChecker(diaSources)
+            import lsst.ip.diffim.utils as diUtils
+            flagChecker   = SourceFlagChecker(diaSources)
             isFlagged     = [flagChecker(x) for x in diaSources]
-            isDipole      = [dipoleChecker(x) for x in diaSources]
+            isDipole      = [x.get("classification.dipole") for x in diaSources]
             diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole, frame=lsstDebug.frame)
             lsstDebug.frame += 1
         
+        if display and showDipoles:
+            DipoleAnalysis().displayDipoles(subtractRes.subtractedExposure, diaSources, frame=lsstDebug.frame)
+            lsstDebug.frame += 1
+            
+           
     def getTemplate(self, exposure, sensorRef):
         """Return a template coadd exposure that overlaps the exposure
         
