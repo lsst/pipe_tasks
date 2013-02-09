@@ -30,6 +30,7 @@ import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
+import lsst.meas.algorithms as measAlg
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 
@@ -206,16 +207,15 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
             # Moved PSF creation earlier, so we can save it with the coaddTempExp.
             # Eventually, we could stop persisting it separately, I think.
-            if self.config.warpAndPsfMatch.desiredFwhm is not None and coaddTempExp is not None:
-                psfName = self.config.coaddName + "Coadd_initPsf"
+            if coaddTempExp is not None:
                 wcs = coaddTempExp.getWcs()
-                fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
-                kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
-                kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-                coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-                if self.config.doWrite:
-                    self.log.info("Persisting %s %s" % (psfName, tempExpRef.dataId))
-                    patchRef.put(coaddPsf, psfName)
+                if self.config.warpAndPsfMatch.desiredFwhm is None:
+                    coaddPsf = measAlg.CoaddPsf(coaddInputs.ccds, wcs)
+                else:
+                    fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
+                    kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
+                    kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
+                    coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
                 coaddTempExp.setPsf(coaddPsf)
 
             self.inputRecorder.makeCoaddTempExp(coaddInputs, tempExpInd, totGoodPix, coaddTempExp)

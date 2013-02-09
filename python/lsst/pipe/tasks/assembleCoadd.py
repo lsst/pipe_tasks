@@ -25,6 +25,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+import lsst.meas.algorithms as measAlg
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from .coaddBase import CoaddBaseTask
@@ -104,7 +105,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = True,
     )
 
-
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
     """
@@ -116,7 +116,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.makeSubtask("interpImage")
         self.makeSubtask("matchBackgrounds")
         self.makeSubtask("scaleZeroPoint")
-        
+
     @pipeBase.timeMethod
     def run(self, dataRef):
         """Assemble a coadd from a set of coaddTempExp
@@ -335,6 +335,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         didSetMetadata = False
         didRecordInputs = set()
+        tempExpPsf = None
         for subBBox in _subBBoxIter(bbox, subregionSize):
             try:
                 self.log.info("Computing coadd %s" % (subBBox,))
@@ -350,6 +351,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                         didRecordInputs.add(idx)
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
+                        tempExpPsf = exposure.getPsf()
                         didSetMetadata = True
                     if self.config.doMatchBackgrounds and not backgroundInfoList[idx].isReference:
                         backgroundModel = backgroundInfoList[idx].backgroundModel
@@ -389,6 +391,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
+        self.installPsf(coaddExposure, tempExpPsf)
+
         if self.config.doInterp:
             fwhmPixels = self.config.interpFwhm / wcs.pixelScale().asArcseconds()
             self.interpImage.interpolateOnePlane(
@@ -406,6 +410,26 @@ class AssembleCoaddTask(CoaddBaseTask):
             coaddExposure = coaddExposure,
         )
 
+
+    def installPsf(self, coaddExposure, tempExpPsf):
+        """Install the correct Psf for a coadd.
+
+        PSF-matched coadds should have the matched-to Psf installed, while non-PSF-matched
+        coadds should have a CoaddPsf created for them.
+
+        With the current implementation, the Psf from one of the input coaddTempExps is passed,
+        and if this is a CoaddPsf, a new CoaddPsf will be created from the exposure's CoaddInputs.
+        Otherwise, the exposure's Psf will be set to tempExpPsf.
+
+        Ideally, AssemblePsfTask would be able to tell from its config parameters whether this
+        is a PSF-matched coadd.
+        """
+        if measAlg.CoaddPsf.swigConvert(tempExpPsf):
+            coaddExposure.setPsf(
+                measAlg.CoaddPsf(coaddExposure.getInfo().getCoaddInputs().ccds, coaddExposure.getWcs())
+                )
+        else:
+            coaddExposure.setPsf(tempExpPsf)
 
     @classmethod
     def _makeArgumentParser(cls):
