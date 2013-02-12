@@ -47,6 +47,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Add background to calexp before processing it? This may improve calexp quality.")
     doUseRegister = pexConfig.Field(dtype=bool, default=True, 
         doc = "Use image-to-image registration to align template with science image")
+    doDebugRegister = pexConfig.Field(dtype=bool, default=True, 
+        doc = "Writing debugging data for doUseRegister")
     doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
@@ -129,10 +131,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
         self.detection.reEstimateBackground = False
-
-
-        # debugging
-        self.register.sipOrder = 2
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -344,6 +342,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 results = self.register.run(coaddSources, newWcs, templateExposure.getBBox(afwImage.PARENT), selectSources)
                 warpedExp = self.register.warpExposure(templateExposure, results.wcs, exposure.getWcs(), exposure.getBBox(afwImage.PARENT))
                 templateExposure = warpedExp
+
+                if self.config.doDebugRegister:
+                    refCoordKey = results.matches[0].first.getTable().getCoordKey()
+                    inCentroidKey = results.matches[0].second.getTable().getCentroidKey()
+                    sids      = [m.first.getId() for m in results.matches]
+                    positions = [m.first.get(refCoordKey) for m in results.matches]
+                    residuals = [m.first.get(refCoordKey).getOffsetFrom(
+                                   newWcs.pixelToSky(m.second.get(inCentroidKey))) for
+                                 m in results.matches]
+                    allresids = dict(zip(sids, zip(positions, residuals)))
 
 
             # warp template exposure to match exposure,
