@@ -47,7 +47,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Add background to calexp before processing it? This may improve calexp quality.")
     doUseRegister = pexConfig.Field(dtype=bool, default=True, 
         doc = "Use image-to-image registration to align template with science image")
-    doDebugRegister = pexConfig.Field(dtype=bool, default=True, 
+    doDebugRegister = pexConfig.Field(dtype=bool, default=False, 
         doc = "Writing debugging data for doUseRegister")
     doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
@@ -343,6 +343,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 warpedExp = self.register.warpExposure(templateExposure, results.wcs, exposure.getWcs(), exposure.getBBox(afwImage.PARENT))
                 templateExposure = warpedExp
 
+                # Create debugging outputs on the astrometric
+                # residuals as a function of position.  Persistence
+                # not yet implemented; expected on (I believe) #2636.
                 if self.config.doDebugRegister:
                     refCoordKey = results.matches[0].first.getTable().getCoordKey()
                     inCentroidKey = results.matches[0].second.getTable().getCentroidKey()
