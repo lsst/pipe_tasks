@@ -42,7 +42,8 @@ FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
     """
-    doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
+    doSelectSources = pexConfig.Field(dtype=bool, default=True, 
+        doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
         doc = "Convolve science image by its PSF before PSF-matching?")
@@ -112,15 +113,11 @@ class ImageDifferenceConfig(pexConfig.Config):
 
         # Minimal set of measurments for star selection
         self.selectMeasurement.algorithms.names.clear()
-        self.selectMeasurement.algorithms.names = ("flux.psf", "flags.pixel", "shape.sdss",  "flux.gaussian", "skycoord")
+        self.selectMeasurement.algorithms.names = ("flux.psf", "flags.pixel", 
+                                                   "shape.sdss",  "flux.gaussian", "skycoord")
         self.selectMeasurement.slots.modelFlux = None
         self.selectMeasurement.slots.apFlux = None 
         self.selectMeasurement.doApplyApCorr = False
-
-        # Enable dipole measurements on diffim.  They are registered in ip_diffim's __init__.py
-        self.measurement.algorithms.names.add("centroid.dipole.naive")
-        self.measurement.algorithms.names.add("flux.dipole.naive")
-        self.measurement.algorithms.names.add("flux.dipole.psf")
 
         # Config different types of source selectors.
         # Second moment:
@@ -139,7 +136,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         if self.doMerge and not self.doDetection:
             raise ValueError("Cannot run source merging without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
-            raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
+            raise ValueError(
+                "Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
 
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
@@ -157,7 +155,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.selectAlgMetadata = dafBase.PropertyList()
             self.sourceSelector = self.config.sourceSelector.apply()
             self.makeSubtask("selectDetection", schema=self.selectSchema)
-            self.makeSubtask("selectMeasurement", schema=self.selectSchema, algMetadata=self.selectAlgMetadata)
+            self.makeSubtask("selectMeasurement", schema=self.selectSchema, 
+                             algMetadata=self.selectAlgMetadata)
 
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
@@ -288,7 +287,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 matches = astromRet.matches
 
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
-                self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
+                self.log.info("Selected %d / %d sources for Psf matching" % (
+                        len(kernelSources), len(selectSources)))
 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
@@ -332,7 +332,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if self.config.doMerge:
                 fpSet = results.fpSets.positive
-                fpSet.merge(results.fpSets.negative, self.config.growFootprint, self.config.growFootprint, False)
+                fpSet.merge(results.fpSets.negative, self.config.growFootprint, 
+                            self.config.growFootprint, False)
                 diaSources = afwTable.SourceCatalog(table)
                 fpSet.makeSources(diaSources)
                 self.log.info("Merging detections into %d sources" % (len(diaSources)))
@@ -354,8 +355,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     # Create key,val pair where key=diaSourceId and val=sourceId
                     matchRadAsec = self.config.diaSourceMatchRadius
                     matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
-                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) # just the closest match
-                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for srcMatch in srcMatches])
+                    # Just the closest match
+                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
+                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
+                                             srcMatch in srcMatches])
                 else:
                     self.log.warn("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
@@ -368,7 +371,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.log.warn("No diaSource matches with reference catalog")
                     refMatchDict = {}
                 else:
-                    refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for refMatch in refMatches])
+                    refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for \
+                                             refMatch in refMatches])
 
                 # Assign source Ids
                 for source in diaSources:                    
@@ -456,11 +460,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             flagChecker   = SourceFlagChecker(diaSources)
             isFlagged     = [flagChecker(x) for x in diaSources]
             isDipole      = [x.get("classification.dipole") for x in diaSources]
-            diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole, frame=lsstDebug.frame)
+            diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole, 
+                                   frame=lsstDebug.frame)
             lsstDebug.frame += 1
         
         if display and showDipoles:
-            DipoleAnalysis().displayDipoles(subtractRes.subtractedExposure, diaSources, frame=lsstDebug.frame)
+            DipoleAnalysis().displayDipoles(subtractRes.subtractedExposure, diaSources, 
+                                            frame=lsstDebug.frame)
             lsstDebug.frame += 1
             
            
@@ -508,7 +514,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
             )
             if not sensorRef.datasetExists(**patchArgDict):
-                self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchArgDict)
+                self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" \
+                                  % patchArgDict)
                 continue
 
             nPatchesFound += 1
@@ -526,7 +533,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
                     )
                 if not sensorRef.datasetExists(**patchPsfDict):
-                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchPsfDict)
+                    self.log.warn(
+                        "%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" \
+                            % patchPsfDict)
                     continue
                 coaddPsf = sensorRef.get(**patchPsfDict)
 
@@ -538,7 +547,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
                     )
                 if not sensorRef.datasetExists(**patchApCorrDict):
-                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" % patchApCorrDict)
+                    self.log.warn(
+                        "%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" \
+                            % patchApCorrDict)
                     continue
                 coaddApCorr = sensorRef.get(**patchApCorrDict)
         
