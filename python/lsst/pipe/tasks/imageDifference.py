@@ -36,7 +36,10 @@ import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
     starSelectorRegistry, PsfAttributes
 from lsst.ip.diffim import ImagePsfMatchTask
-                                        
+import lsst.ip.diffim.utils as diUtils
+import lsst.ip.diffim.diffimTools as diffimTools
+
+import pdb
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 class ImageDifferenceConfig(pexConfig.Config):
@@ -62,6 +65,8 @@ class ImageDifferenceConfig(pexConfig.Config):
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
         doc = "Include HeavyFootprint data in source table?")
+    doAddMetrics = pexConfig.Field(dtype=bool, default=True,
+        doc = "Add columns to the source table to hold analysis metrics.")
                                                       
     coaddName = pexConfig.Field(
         doc = "coadd name: typically one of deep or goodSeeing",
@@ -274,17 +279,25 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.log.info("Source selection via src product")
                     # Sources already exist; for data release processing
                     selectSources = sensorRef.get("src")
+		#This assumes alard basis set.
+		nparam = 0
+		for i, j in enumerate(self.config.subtract.kernel.active.alardDegGauss):
+		    nparam += ((j+1)*(j+2))/2.
+	        selectSources = diUtils.addMetricsColumns(selectSources, int(nparam))
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
                 astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
                 matches = astromRet.matches
 
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
+
                 self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
             # then return the difference
+
+            #Return warped template...  Construct sourceKernelCand list after subtract
             subtractRes = self.subtract.subtractExposures(
                 templateExposure = templateExposure,
                 scienceExposure = exposure,
@@ -292,6 +305,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 candidateList = kernelSources,
                 convolveTemplate = self.config.convolveTemplate
             )
+            if self.config.doAddMetrics and self.config.doSelectSources:
+                selectCandList = diffimTools.sourceTableToCandList(selectSources, subtractRes.warpedExposure, exposure, 
+                        self.config.subtract.kernel.active, 
+                        self.config.subtract.kernel.active.detectionConfig, 
+                        self.log)
+                diUtils.calcKernelCtrlStats(selectCandList, "CTRL", subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
+                #Should be a butler put
+                sensorRef.put(selectSources, self.config.coaddName + "Diff_kernelSrc")
             subtractedExposure = subtractRes.subtractedExposure
 
             if self.config.doWriteMatchedExp:
