@@ -22,7 +22,7 @@
 #
 import math
 
-import numpy
+import numpy as np
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -33,8 +33,9 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
+from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
-    starSelectorRegistry, AlgorithmRegistry, PsfAttributes
+    starSelectorRegistry, PsfAttributes, getBackground, BackgroundConfig
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, SourceFlagChecker
              
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -44,6 +45,10 @@ class ImageDifferenceConfig(pexConfig.Config):
     """
     doAddCalexpBackground = pexConfig.Field(dtype=bool, default=True,
         doc = "Add background to calexp before processing it.  Useful as ipDiffim does background matching.")
+    doUseRegister = pexConfig.Field(dtype=bool, default=True, 
+        doc = "Use image-to-image registration to align template with science image")
+    doDebugRegister = pexConfig.Field(dtype=bool, default=False, 
+        doc = "Writing debugging data for doUseRegister")
     doSelectSources = pexConfig.Field(dtype=bool, default=True, 
         doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
@@ -51,8 +56,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Convolve science image by its PSF before PSF-matching?")
     useGaussianForPreConvolution = pexConfig.Field(dtype=bool, default=True,
         doc = "Use a simple gaussian PSF model for pre-convolution (else use fit PSF)? "
-            "Ignored if doPreConvolve false.",
-    )
+            "Ignored if doPreConvolve false.")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
     doMerge = pexConfig.Field(dtype=bool, default=True,
         doc = "Merge positive and negative diaSources with grow radius set by growFootprint")
@@ -100,7 +104,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = DipoleMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
     )
-
+    register = pexConfig.ConfigurableField(
+        target = RegisterTask,
+        doc = "Task to enable image-to-image image registration (warping)",
+    )
+    
     growFootprint = pexConfig.Field(dtype=int, default=2,
         doc = "Grow positive and negative footprints by this amount before merging")
 
@@ -108,8 +116,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Match radius (in arcseconds) for DiaSource to Source association")
 
     def setDefaults(self):
-        # High sigma detections only
         self.selectDetection.reEstimateBackground = False
+        # High sigma detections only
         self.selectDetection.thresholdValue = 10.0
 
         # Minimal set of measurments for star selection
@@ -137,8 +145,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         if self.doMerge and not self.doDetection:
             raise ValueError("Cannot run source merging without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
-            raise ValueError(
-                "Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
+            raise ValueError("Cannot write HeavyFootprints without doWriteSources")
 
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
@@ -150,6 +157,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("subtract")
+        
+        if self.config.doUseRegister:
+            self.makeSubtask("register")
 
         if self.config.doSelectSources:
             self.selectSchema = afwTable.SourceTable.makeMinimalSchema()
@@ -292,8 +302,73 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 matches = astromRet.matches
 
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
-                self.log.info("Selected %d / %d sources for Psf matching" % (
-                        len(kernelSources), len(selectSources)))
+                self.log.info("Selected %d / %d sources for Psf matching" % \
+                                  (len(kernelSources), len(selectSources)))
+
+            if self.config.doUseRegister:
+                self.log.info("Registering images")
+                
+                # First step: we need to subtract the background out
+                # for detection and measurement.  Use large binsize
+                # for the background estimation.
+                background = getBackground(templateExposure.getMaskedImage(), 
+                                           BackgroundConfig(binSize=2048)).getImageF()
+
+
+                # Second step: we need to run detection on the
+                # background-subtracted template
+                #
+                # Estimate FWHM for detection
+                templatePsf = templateExposure.getPsf()
+                kWidth, kHeight = templatePsf.getKernel().getDimensions()
+                psfAttr = PsfAttributes(templatePsf, kWidth//2, kHeight//2)
+                templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+                #
+                # Subtract out the background for detection, temporarily
+                tmi = templateExposure.getMaskedImage()
+                tmi -= background
+                table = afwTable.SourceTable.make(self.selectSchema, idFactory)
+                table.setMetadata(self.selectAlgMetadata) 
+                detRet = self.selectDetection.makeSourceCatalog(
+                    table = table,
+                    exposure = templateExposure,
+                    sigma = templateSigma,
+                    doSmooth = False
+                )
+                coaddSources = detRet.sources
+                self.selectMeasurement.measure(templateExposure, coaddSources)
+                tmi += background
+                del background 
+
+
+                # Third step: we need to fit the relative astrometry.
+                #
+                # One problem is that the SIP fits are w.r.t. CRPIX,
+                # and these coadd patches have the CRPIX of the entire
+                # tract, i.e. off the image.  This causes
+                # register.fitWcs to fail.  A workaround for now is to
+                # re-fit the Wcs which returns with a CRPIX that is on
+                # the image, and *then* to fit for the relative Wcs.
+                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
+                newWcs = astrometer.determineWcs(coaddSources, templateExposure).getWcs()
+                results = self.register.run(coaddSources, newWcs, 
+                                            templateExposure.getBBox(afwImage.PARENT), selectSources)
+                warpedExp = self.register.warpExposure(templateExposure, results.wcs, 
+                                                       exposure.getWcs(), exposure.getBBox(afwImage.PARENT))
+                templateExposure = warpedExp
+
+                # Create debugging outputs on the astrometric
+                # residuals as a function of position.  Persistence
+                # not yet implemented; expected on (I believe) #2636.
+                if self.config.doDebugRegister:
+                    refCoordKey = results.matches[0].first.getTable().getCoordKey()
+                    inCentroidKey = results.matches[0].second.getTable().getCentroidKey()
+                    sids      = [m.first.getId() for m in results.matches]
+                    positions = [m.first.get(refCoordKey) for m in results.matches]
+                    residuals = [m.first.get(refCoordKey).getOffsetFrom(
+                                   newWcs.pixelToSky(m.second.get(inCentroidKey))) for
+                                 m in results.matches]
+                    allresids = dict(zip(sids, zip(positions, residuals)))
 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
@@ -303,7 +378,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 scienceExposure = exposure,
                 scienceFwhmPix = scienceSigmaPost * FwhmPerSigma,
                 candidateList = kernelSources,
-                convolveTemplate = self.config.convolveTemplate
+                convolveTemplate = self.config.convolveTemplate,
+                doWarping = not self.config.doUseRegister
             )
             subtractedExposure = subtractRes.subtractedExposure
 
@@ -460,7 +536,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        self.subtract.config.kernel.active.detectionConfig, 
                                        origVariance = True)
         if display and showDiaSources:
-            import lsst.ip.diffim.diffimTools as diffimTools
             import lsst.ip.diffim.utils as diUtils
             flagChecker   = SourceFlagChecker(diaSources)
             isFlagged     = [flagChecker(x) for x in diaSources]
@@ -507,8 +582,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
+        coaddExposure.getMaskedImage().set(np.nan, edgeMask, np.nan)
         nPatchesFound = 0
+        coaddFilter = None
         coaddPsf = None
         coaddApCorr = None
         for patchInfo in patchList:
@@ -519,7 +595,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
             )
             if not sensorRef.datasetExists(**patchArgDict):
-                self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" \
+                self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist" \
                                   % patchArgDict)
                 continue
 
@@ -529,6 +605,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
                 patchInfo.getOuterBBox(), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
+            if coaddFilter is None:
+                coaddFilter = coaddPatch.getFilter()
 
             # Retrieve the PSF for this coadd tract, if not already retrieved
             if coaddPsf is None:
@@ -538,9 +616,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
                     )
                 if not sensorRef.datasetExists(**patchPsfDict):
-                    self.log.warn(
-                        "%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" \
-                            % patchPsfDict)
+                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist" \
+                                      % patchPsfDict)
                     continue
                 coaddPsf = sensorRef.get(**patchPsfDict)
 
@@ -552,12 +629,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
                     )
                 if not sensorRef.datasetExists(**patchApCorrDict):
-                    self.log.warn(
-                        "%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist; skipping" \
-                            % patchApCorrDict)
+                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist" \
+                                      % patchApCorrDict)
                     continue
                 coaddApCorr = sensorRef.get(**patchApCorrDict)
-        
+
         if nPatchesFound == 0:
             raise RuntimeError("No patches found!")
 
@@ -565,6 +641,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             raise RuntimeError("No coadd Psf found!")
 
         coaddExposure.setPsf(coaddPsf)
+        coaddExposure.setFilter(coaddFilter)
         return coaddExposure, coaddApCorr
 
     def _getConfigName(self):
