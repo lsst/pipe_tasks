@@ -21,7 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
-
+import random
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -35,7 +35,7 @@ import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
     starSelectorRegistry, PsfAttributes
-from lsst.ip.diffim import ImagePsfMatchTask
+from lsst.ip.diffim import ImagePsfMatchTask, cast_KernelCandidateF
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
@@ -47,7 +47,8 @@ class ImageDifferenceConfig(pexConfig.Config):
     """
     doAddCalexpBackground = pexConfig.Field(dtype=bool, default=True,
         doc = "Add background to calexp before processing it? This may improve calexp quality.")
-    doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
+    doSelectSources = pexConfig.Field(dtype=bool, default=True, 
+        doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
         doc = "Convolve science image by its PSF before PSF-matching?")
@@ -106,6 +107,17 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = SourceMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
     )
+
+    controlStepSize = pexConfig.Field(
+        doc = "What step size (every Nth one) to select a control sample from the kernelSources",
+        dtype = int,
+        default = 5
+    )
+    controlRandomSeed = pexConfig.Field(
+        doc = "Random seed for shuffing the control sample",
+        dtype = int,
+        default = 10
+    )
     
     def setDefaults(self):
         # High sigma detections only
@@ -127,6 +139,9 @@ class ImageDifferenceConfig(pexConfig.Config):
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
         self.detection.reEstimateBackground = False
+
+        # For shuffling the control sample
+        random.seed(self.controlRandomSeed)
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -206,6 +221,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         subtractRes = None
         selectSources = None
         kernelSources = None
+        controlSources = None
         sources = None
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
@@ -279,19 +295,27 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.log.info("Source selection via src product")
                     # Sources already exist; for data release processing
                     selectSources = sensorRef.get("src")
+
 		#This assumes alard basis set.
 		nparam = 0
 		for i, j in enumerate(self.config.subtract.kernel.active.alardDegGauss):
-		    nparam += ((j+1)*(j+2))/2.
-	        selectSources = diUtils.addMetricsColumns(selectSources, int(nparam))
+		    nparam += ((j+1)*(j+2))//2
+
+                if self.config.doAddMetrics:
+                    # Modify the schema of all Sources
+                    self.kcQa = diUtils.KernelCandidateQa(nparam)
+                    selectSources = self.kcQa.addToSchema(selectSources)
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
                 astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
                 matches = astromRet.matches
-
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
+                random.shuffle(kernelSources, random.random)
+                controlSources = kernelSources[::self.config.controlStepSize]
+                [kernelSources.remove(x) for x in controlSources]
 
-                self.log.info("Selected %d / %d sources for Psf matching" % (len(kernelSources), len(selectSources)))
+                self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" \
+                                  % (len(kernelSources), len(selectSources), len(controlSources)))
 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
@@ -306,13 +330,23 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 convolveTemplate = self.config.convolveTemplate
             )
             if self.config.doAddMetrics and self.config.doSelectSources:
-                selectCandList = diffimTools.sourceTableToCandList(selectSources, subtractRes.warpedExposure, exposure, 
-                        self.config.subtract.kernel.active, 
-                        self.config.subtract.kernel.active.detectionConfig, 
-                        self.log)
-                diUtils.calcKernelCtrlStats(selectCandList, "CTRL", subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
-                #Should be a butler put
+                kernelCandList = []
+                for cell in subtractRes.kernelCellSet.getCellList():
+                    for cand in cell.begin(False): # include bad candidates
+                        kernelCandList.append(cast_KernelCandidateF(cand))
+
+                controlCandList = \
+                    diffimTools.sourceTableToCandList(controlSources, subtractRes.warpedExposure, exposure, 
+                                                      self.config.subtract.kernel.active, 
+                                                      self.config.subtract.kernel.active.detectionConfig, 
+                                                      self.log)
+
+                self.kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
+                self.kcQa.apply(controlCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
+
+                #Persist using butler
                 sensorRef.put(selectSources, self.config.coaddName + "Diff_kernelSrc")
+
             subtractedExposure = subtractRes.subtractedExposure
 
             if self.config.doWriteMatchedExp:
