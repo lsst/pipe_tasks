@@ -61,7 +61,10 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = False,
     )
-
+    scaleZeroPoint = pexConfig.ConfigurableField(
+        target = coaddUtils.ScaleZeroPointTask,
+        doc = "Task to adjust the photometric zero point of the coadd temp exposures",
+    )
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
     """Task to produce <coaddName>Coadd_tempExp images and (optional) <coaddName>Coadd_initPsf
@@ -72,7 +75,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("warpAndPsfMatch")
-
+        self.makeSubtask("scaleZeroPoint")
+        
     @pipeBase.timeMethod
     def run(self, patchRef):
         """Produce <coaddName>Coadd_tempExp images and (optional) <coaddName>Coadd_initPsf
@@ -190,6 +194,19 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.warn("Could not compute coaddTempExp %s: no good pixels" % (tempExpRef.dataId,))
                 continue
             self.log.info("coaddTempExp %s has %s good pixels" % (tempExpRef.dataId, totGoodPix))
+
+            self.log.info("Flux Scaling to specified zero-point")
+            imageScaler = self.scaleZeroPoint.computeImageScaler(
+                exposure = coaddTempExp, 
+                exposureId = tempExpRef.dataId,
+            )
+            try:
+                mi = coaddTempExp.getMaskedImage()
+                imageScaler.scaleMaskedImage(mi)
+                del mi
+            except Exception, e:
+                self.log.warn("Flux scaling failed for %s (not appending or persisting CTE): %s" % (tempExpRef.dataId, e))
+                continue #don't persist or append to the dataRefList
                 
             if self.config.doWrite and coaddTempExp is not None:
                 self.log.info("Persisting %s %s" % (tempExpName, tempExpRef.dataId))

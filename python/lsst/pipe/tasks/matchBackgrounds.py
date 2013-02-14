@@ -130,7 +130,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         self.sctrl.setNanSafe(True)
 
     @pipeBase.timeMethod
-    def run(self, expRefList, expDatasetType, imageScalerList=None, refExpDataRef=None, refImageScaler=None):
+    def run(self, expRefList, expDatasetType, refExpDataRef=None):
         """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
 
         Choose a refExpDataRef automatically if none supplied.
@@ -138,13 +138,9 @@ class MatchBackgroundsTask(pipeBase.Task):
         @param[in] expRefList: list of data references to science exposures to be background-matched;
             all exposures must exist.
         @param[in] expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
-        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
-            if None then the images are not scaled
         @param[in] refExpDataRef: data reference for the reference exposure.
             If None, then this task selects the best exposures from expRefList.
             if not None then must be one of the exposures in expRefList.
-        @param[in] refImageScaler: image scaler for reference image;
-            ignored if refExpDataRef is None, else scaling is not performed if None
 
         @return: a pipBase.Struct containing these fields:
         - backgroundInfoList: a list of pipeBase.Struct, one per exposure in expRefList,
@@ -169,24 +165,14 @@ class MatchBackgroundsTask(pipeBase.Task):
         if expDatasetType is None:
             raise pipeBase.TaskError("Must specify expDatasetType")
 
-        if imageScalerList is None:
-            self.log.info("imageScalerList is None; no scaling will be performed")
-            imageScalerList = [None] * numExp
-        
-        if len(expRefList) != len(imageScalerList):
-            raise RuntimeError("len(expRefList) = %s != %s = len(imageScalerList)" % \
-                (len(expRefList), len(imageScalerList)))
-
         refInd = None
         if refExpDataRef is None:
             # select the best reference exposure from expRefList
             refInd = self.selectRefExposure(
                 expRefList = expRefList,
-                imageScalerList = imageScalerList,
                 expDatasetType = expDatasetType,
             )
             refExpDataRef = expRefList[refInd]
-            refImageScaler = imageScalerList[refInd]
             
         # refIndSet is the index of all exposures in expDataList that match the reference.
         # It is used to avoid background-matching an exposure to itself. It is a list
@@ -199,21 +185,16 @@ class MatchBackgroundsTask(pipeBase.Task):
             raise RuntimeError("Internal error: selected reference %s not found in expRefList")
         
         refExposure = refExpDataRef.get(expDatasetType, immediate=True)
-        if refImageScaler is not None:
-            refMI = refExposure.getMaskedImage()
-            refImageScaler.scaleMaskedImage(refMI)
-
         debugIdKeyList = tuple(set(expKeyList) - set(['tract','patch']))
-
         self.log.info("Matching %d Exposures" % (numExp))
 
         backgroundInfoList = []
-        for ind, (toMatchRef, imageScaler) in enumerate(zip(expRefList, imageScalerList)):
+        for ind, toMatchRef in enumerate(expRefList):
             if ind in refIndSet:
                 backgroundInfoStruct = pipeBase.Struct(
                     isReference = True,
-                    backgroundModel = None,
-                    fitRMS = 0.0,
+                    backgroundModel = None, 
+                    fitRMS = 0.0, 
                     matchedMSE = None,
                     diffImVar = None,
                 )
@@ -221,9 +202,6 @@ class MatchBackgroundsTask(pipeBase.Task):
                 self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refExpDataRef.dataId))
                 try:
                     toMatchExposure = toMatchRef.get(expDatasetType, immediate=True)
-                    if imageScaler is not None:
-                        toMatchMI = toMatchExposure.getMaskedImage()
-                        imageScaler.scaleMaskedImage(toMatchMI)
                     #store a string specifying the visit to label debug plot
                     self.debugDataIdString = ''.join([str(toMatchRef.dataId[vk]) for vk in debugIdKeyList])
                     backgroundInfoStruct = self.matchBackgrounds(
@@ -247,7 +225,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             backgroundInfoList = backgroundInfoList)
         
     @pipeBase.timeMethod
-    def selectRefExposure(self, expRefList, imageScalerList, expDatasetType):
+    def selectRefExposure(self, expRefList, expDatasetType):
         """Find best exposure to use as the reference exposure
 
         Calculate an appropriate reference exposure by minimizing a cost function that penalizes
@@ -259,8 +237,6 @@ class MatchBackgroundsTask(pipeBase.Task):
         @param[in] expRefList: list of data references to exposures.
             Retrieves dataset type specified by expDatasetType.
             If an exposure is not found, it is skipped with a warning.
-        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
-            must be the same length as expRefList
         @param[in] expDatasetType: dataset type of exposure: e.g. 'goodSeeingCoadd_tempExp'
 
         @return: index of best exposure
@@ -271,23 +247,10 @@ class MatchBackgroundsTask(pipeBase.Task):
         varList =  []
         meanBkgdLevelList = []
         coverageList = []
-        
-        if len(expRefList) != len(imageScalerList):
-            raise RuntimeError("len(expRefList) = %s != %s = len(imageScalerList)" % \
-                (len(expRefList), len(imageScalerList)))
-
-        for expRef, imageScaler  in zip(expRefList, imageScalerList):
+     
+        for expRef in expRefList:
             exposure = expRef.get(expDatasetType, immediate=True)
             maskedImage = exposure.getMaskedImage()
-            if imageScaler is not None:
-                try:
-                    imageScaler.scaleMaskedImage(maskedImage)
-                except:
-                    #need to put a place holder in Arr
-                    varList.append(numpy.nan)
-                    meanBkgdLevelList.append(numpy.nan)
-                    coverageList.append(numpy.nan)
-                    continue  
             statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
                 afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
             meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
