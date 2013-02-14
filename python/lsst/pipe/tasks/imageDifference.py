@@ -343,6 +343,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 self.kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
                 self.kcQa.apply(controlCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
+                self.kcQa.aggregate(selectSources, self.metadata)
 
                 #Persist using butler
                 sensorRef.put(selectSources, self.config.coaddName + "Diff_kernelSrc")
