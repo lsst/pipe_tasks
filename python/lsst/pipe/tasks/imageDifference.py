@@ -330,6 +330,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 convolveTemplate = self.config.convolveTemplate
             )
             if self.config.doAddMetrics and self.config.doSelectSources:
+                self.log.info("Evaluating metrics and control sample")
+
                 kernelCandList = []
                 for cell in subtractRes.kernelCellSet.getCellList():
                     for cand in cell.begin(False): # include bad candidates
