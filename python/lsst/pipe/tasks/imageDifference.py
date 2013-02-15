@@ -39,7 +39,7 @@ from lsst.ip.diffim import ImagePsfMatchTask, cast_KernelCandidateF
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
-import pdb
+
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 class ImageDifferenceConfig(pexConfig.Config):
@@ -79,18 +79,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype = bool,
         default = True
     )
-
     sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
-
-    selectDetection = pexConfig.ConfigurableField(
-        target = SourceDetectionTask,
-        doc = "Initial detections used to feed stars to kernel fitting",
-    )
-    selectMeasurement = pexConfig.ConfigurableField(
-        target = SourceMeasurementTask,
-        doc = "Initial measurements used to feed stars to kernel fitting",
-    )
-
     subtract = pexConfig.ConfigurableField(
         target = ImagePsfMatchTask,
         doc = "Warp and PSF match template to exposure, then subtract",
@@ -120,17 +109,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     )
     
     def setDefaults(self):
-        # High sigma detections only
-        self.selectDetection.reEstimateBackground = False
-        self.selectDetection.thresholdValue = 10.0
-
-        # Minimal set of measurments for star selection
-        self.selectMeasurement.algorithms.names.clear()
-        self.selectMeasurement.algorithms.names = ('flux.psf', 'flags.pixel', 'shape.sdss',  'flux.gaussian', 'skycoord')
-        self.selectMeasurement.slots.modelFlux = None
-        self.selectMeasurement.slots.apFlux = None 
-        self.selectMeasurement.doApplyApCorr = False
-
         # Set default source selector and configure defaults for that one and some common alternatives
         self.sourceSelector.name = "diacatalog"
         self.sourceSelector["secondMoment"].clumpNSigma = 2.0
@@ -164,12 +142,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.makeSubtask("subtract")
 
         if self.config.doSelectSources:
-            self.selectSchema = afwTable.SourceTable.makeMinimalSchema()
-            self.selectAlgMetadata = dafBase.PropertyList()
             self.sourceSelector = self.config.sourceSelector.apply()
-            self.makeSubtask("selectDetection", schema=self.selectSchema)
-            self.makeSubtask("selectMeasurement", schema=self.selectSchema, algMetadata=self.selectAlgMetadata)
-
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
@@ -281,16 +254,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if not sensorRef.datasetExists("src"):
                     self.log.warn("Src product does not exist; running detection, measurement, selection")
                     # Run own detection and measurement; necessary in nightly processing
-                    table = afwTable.SourceTable.make(self.selectSchema, idFactory)
-                    table.setMetadata(self.selectAlgMetadata) 
-                    detRet = self.selectDetection.makeSourceCatalog(
-                        table = table,
-                        exposure = exposure,
-                        sigma = scienceSigmaOrig,
-                        doSmooth = not self.doPreConvolve,
-                    )
-                    selectSources = detRet.sources
-                    self.selectMeasurement.measure(exposure, selectSources)
+		    selectSources = self.subtract.getSelectSources(
+	                exposure, 
+	                sigma = scienceSigmaOrig, 
+			doSmooth = not self.doPreConvolve,
+			idFactory = idFactory,
+		    )
                 else:
                     self.log.info("Source selection via src product")
                     # Sources already exist; for data release processing
@@ -303,7 +272,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 if self.config.doAddMetrics:
                     # Modify the schema of all Sources
-                    self.kcQa = diUtils.KernelCandidateQa(nparam)
+                    self.kcQa = diUtils.KernelCandidateQa(nparam, self.log)
                     selectSources = self.kcQa.addToSchema(selectSources)
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
