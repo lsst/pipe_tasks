@@ -39,6 +39,7 @@ from lsst.ip.diffim import ImagePsfMatchTask, cast_KernelCandidateF
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
+
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 class ImageDifferenceConfig(pexConfig.Config):
@@ -271,7 +272,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 if self.config.doAddMetrics:
                     # Modify the schema of all Sources
-                    self.kcQa = diUtils.KernelCandidateQa(nparam)
+                    self.kcQa = diUtils.KernelCandidateQa(nparam, self.log)
                     selectSources = self.kcQa.addToSchema(selectSources)
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
