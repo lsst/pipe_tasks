@@ -405,10 +405,11 @@ class AssembleCoaddTask(CoaddBaseTask):
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return AssembleCoaddArgumentParser(
-            name=cls._DefaultName,
-            datasetType=cls.ConfigClass().coaddName + "Coadd_tempExp"
-            )
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_tempExp",
+                               help="data ID, e.g. --id tract=12345 patch=1,2",
+                               ContainerClass=AssembleCoaddDataIdContainer)
+        return parser
 
     def _getConfigName(self):
         """Return the name of the config dataset
@@ -446,11 +447,11 @@ def _subBBoxIter(bbox, subregionSize):
 
 
 
-class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for assembleCoadd.
+class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
+    """A version of lsst.pipe.base.DataIdContainer specialized for assembleCoadd.
     """
-    def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList.
+    def makeDataRefList(self, namespace):
+        """Make self.refList from self.idList.
 
            Interpret the config.doMatchBackgrounds, config.autoReference,
            and whether a visit/run supplied.
@@ -459,23 +460,22 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
 
         """
         keysCoadd = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd",
-                                             level=self._dataRefLevel)
+                                             level=self.level)
         keysCoaddTempExp = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd_tempExp",
-                                                    level=self._dataRefLevel)
+                                                    level=self.level)
 
         if namespace.config.doMatchBackgrounds:
             if namespace.config.autoReference: #matcher will pick it's own reference image
-                namespace.datasetType = namespace.config.coaddName + "Coadd"
+                datasetType = namespace.config.coaddName + "Coadd"
                 validKeys = keysCoadd
             else:
-                namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
+                datasetType = namespace.config.coaddName + "Coadd_tempExp"
                 validKeys = keysCoaddTempExp
         else: #bkg subtracted coadd
-            namespace.datasetType = namespace.config.coaddName + "Coadd"
+            datasetType = namespace.config.coaddName + "Coadd"
             validKeys = keysCoadd
 
-        namespace.dataRefList = []
-        for dataId in namespace.dataIdList:
+        for dataId in self.idList:
             # tract and patch are required
             for key in validKeys:
                 if key not in dataId:
@@ -485,13 +485,13 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
                 if (key not in keysCoadd) and (key in keysCoaddTempExp):  #user supplied a visit/run
                     # user probably meant: autoReference = False
                     namespace.config.autoReference = False
-                    namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
+                    datasetType = namespace.config.coaddName + "Coadd_tempExp"
                     print "Switching config.autoReference to False. " \
                                   "Applies only to background Matching. "
 
             dataRef = namespace.butler.dataRef(
-                datasetType = namespace.datasetType,
+                datasetType = datasetType,
                 dataId = dataId,
             )
-            namespace.dataRefList.append(dataRef)
+            refList.append(dataRef)
 

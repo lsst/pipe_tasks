@@ -130,7 +130,10 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
+                               ContainerClass=CoaddDataIdContainer)
+        return parser
 
     def _getConfigName(self):
         """Return the name of the config dataset
@@ -142,19 +145,18 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
-class CoaddArgumentParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
+class CoaddDataIdContainer(pipeBase.DataIdContainer):
+    """A version of lsst.pipe.base.DataIdContainer specialized for coaddition.
     
     Required because butler.subset does not support patch and tract
     """
     def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
+        """Make self.refList from self.idList
         """
         datasetType = namespace.config.coaddName + "Coadd"
-        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
+        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self.level)
 
-        namespace.dataRefList = []
-        for dataId in namespace.dataIdList:
+        for dataId in self.idList:
             # tract and patch are required
             for key in validKeys:
                 if key not in dataId:
@@ -163,4 +165,4 @@ class CoaddArgumentParser(pipeBase.ArgumentParser):
                 datasetType = datasetType,
                 dataId = dataId,
             )
-            namespace.dataRefList.append(dataRef)
+            self.refList.append(dataRef)
