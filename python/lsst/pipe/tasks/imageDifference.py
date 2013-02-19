@@ -234,7 +234,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             raise pipeBase.TaskError("No psf found")
         exposure.setPsf(sciencePsf)
 
-        # comput scienceSigmaOrig: sigma of PSF of science image before pre-convolution
+        # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
         kWidth, kHeight = sciencePsf.getKernel().getDimensions()
         psfAttr = PsfAttributes(sciencePsf, kWidth//2, kHeight//2)
         scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
@@ -244,6 +244,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         templateApCorr = None  # Aperture correction appropriate for the coadd
         if self.config.doSubtract:
             templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
+
+            # sigma of PSF of template image before warping
+            kWidth, kHeight = templateExposure.getPsf().getKernel().getDimensions()
+            psfAttr = PsfAttributes(templateExposure.getPsf(), kWidth//2, kHeight//2)
+            templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
 
             # if requested, convolve the science exposure with its PSF
             # (properly, this should be a cross-correlation, but our code does not yet support that)
@@ -275,7 +280,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     # Run own detection and measurement; necessary in nightly processing
 		    selectSources = self.subtract.getSelectSources(
 	                exposure, 
-	                sigma = scienceSigmaOrig, 
+	                sigma = scienceSigmaPost, 
 			doSmooth = not self.doPreConvolve,
 			idFactory = idFactory,
 		    )
@@ -311,19 +316,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # First step: we need to subtract the background out
                 # for detection and measurement.  Use large binsize
                 # for the background estimation.
-
                 binsize = 2048
 
                 # Second step: we need to run detection on the
                 # background-subtracted template
                 #
                 # Estimate FWHM for detection
-                templatePsf = templateExposure.getPsf()
-                kWidth, kHeight = templatePsf.getKernel().getDimensions()
-                psfAttr = PsfAttributes(templatePsf, kWidth//2, kHeight//2)
-                templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
-                # TODO: Need to make sure doSmooth=True is what we want. Also need to check
-                # if the image plane is smoothed in place.
                 coaddSources = self.subtract.getSelectSources(
                     templateExposure,
                     sigma = templateSigma,
@@ -371,11 +369,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 templateExposure = templateExposure,
                 scienceExposure = exposure,
                 scienceFwhmPix = scienceSigmaPost * FwhmPerSigma,
+                templateFwhmPix = templateSigma * FwhmPerSigma,
                 candidateList = kernelSources,
                 convolveTemplate = self.config.convolveTemplate,
                 doWarping = not self.config.doUseRegister
             )
-
             subtractedExposure = subtractRes.subtractedExposure
 
             if self.config.doWriteMatchedExp:
@@ -477,7 +475,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                                       self.config.subtract.kernel.active.detectionConfig, 
                                                       self.log)
 
-                self.kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel, dof=nparam)
+                self.kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel, 
+                                dof=nparam)
                 self.kcQa.apply(controlCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
                 if self.config.doDetection:
                     self.kcQa.aggregate(selectSources, self.metadata, allresids, diaSources)
