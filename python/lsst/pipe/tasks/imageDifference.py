@@ -95,10 +95,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Low-threshold detection for final measurement",
     )
     measurement = pexConfig.ConfigurableField(
-        target = SourceMeasurementTask,
-        doc = "Final source measurement on low-threshold detections",
-    )
-    dipolemeasurement = pexConfig.ConfigurableField(
         target = DipoleMeasurementTask,
         doc = "Final source measurement on low-threshold detections; dipole fitting enabled",
     )
@@ -124,7 +120,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Match radius (in arcseconds) for DiaSource to Source association")
 
     maxDipolesToMeasure =  pexConfig.Field(dtype=int, default=200,
-        doc = "Maximum number of diaSources to apply DipoleMeasurement; otherwise use SourceMeasurement")
+        doc = "Maximum number of diaSources to apply DipoleMeasurement; turn of dipole fitting if more")
 
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
@@ -170,7 +166,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            self.makeSubtask("dipolemeasurement", schema=self.schema, algMetadata=self.algMetadata)
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
         if self.config.doMatchSources:
@@ -178,7 +173,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.schema.addField("srcMatchId", "L", "unique id of source match")
 
         if self.config.doMeasurement:
-            self.schema.addField(self.dipolemeasurement._ClassificationFlag, "F", 
+            self.schema.addField(self.measurement._ClassificationFlag, "F", 
                                  "probability of being a dipole")
 
     @pipeBase.timeMethod
@@ -432,8 +427,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
                     apCorr = templateApCorr
                 if len(diaSources) < self.config.maxDipolesToMeasure:
-                    self.dipolemeasurement.run(subtractedExposure, diaSources, apCorr)
+                    self.measurement.run(subtractedExposure, diaSources, apCorr)
                 else:
+                    # DO SOMETHING
                     self.measurement.run(subtractedExposure, diaSources, apCorr)
 
             # Match with the calexp sources if possible
