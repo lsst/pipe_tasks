@@ -303,7 +303,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" \
                                   % (len(kernelSources), len(selectSources), len(controlSources)))
-
+            allresids = {}
             if self.config.doUseRegister:
                 self.log.info("Registering images")
                 
@@ -321,12 +321,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 kWidth, kHeight = templatePsf.getKernel().getDimensions()
                 psfAttr = PsfAttributes(templatePsf, kWidth//2, kHeight//2)
                 templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
-                #
-                # Subtract out the background for detection, temporarily
+                # TODO: Need to make sure doSmooth=True is what we want. Also need to check
+                # if the image plane is smoothed in place.
                 coaddSources = self.subtract.getSelectSources(
                     templateExposure,
                     sigma = templateSigma,
-                    doSmooth = False,
+                    doSmooth = True,
                     idFactory = idFactory,
                     binsize = binsize,
                 )
@@ -374,26 +374,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 convolveTemplate = self.config.convolveTemplate,
                 doWarping = not self.config.doUseRegister
             )
-            if self.config.doAddMetrics and self.config.doSelectSources:
-                self.log.info("Evaluating metrics and control sample")
-
-                kernelCandList = []
-                for cell in subtractRes.kernelCellSet.getCellList():
-                    for cand in cell.begin(False): # include bad candidates
-                        kernelCandList.append(cast_KernelCandidateF(cand))
-
-                controlCandList = \
-                    diffimTools.sourceTableToCandList(controlSources, subtractRes.warpedExposure, exposure, 
-                                                      self.config.subtract.kernel.active, 
-                                                      self.config.subtract.kernel.active.detectionConfig, 
-                                                      self.log)
-
-                self.kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
-                self.kcQa.apply(controlCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
-                self.kcQa.aggregate(selectSources, self.metadata)
-
-                #Persist using butler
-                sensorRef.put(selectSources, self.config.coaddName + "Diff_kernelSrc")
 
             subtractedExposure = subtractRes.subtractedExposure
 
@@ -481,6 +461,30 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.doWriteHeavyFootprintsInSources:
                     sources.setWriteHeavyFootprints(True)
                 sensorRef.put(diaSources, self.config.coaddName + "Diff_diaSrc")
+
+            if self.config.doAddMetrics and self.config.doSelectSources:
+                self.log.info("Evaluating metrics and control sample")
+
+                kernelCandList = []
+                for cell in subtractRes.kernelCellSet.getCellList():
+                    for cand in cell.begin(False): # include bad candidates
+                        kernelCandList.append(cast_KernelCandidateF(cand))
+
+                controlCandList = \
+                    diffimTools.sourceTableToCandList(controlSources, subtractRes.warpedExposure, exposure, 
+                                                      self.config.subtract.kernel.active, 
+                                                      self.config.subtract.kernel.active.detectionConfig, 
+                                                      self.log)
+
+                self.kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel, dof=nparam)
+                self.kcQa.apply(controlCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
+                if self.config.doDetection:
+                    self.kcQa.aggregate(selectSources, self.metadata, allresids, diaSources)
+                else:
+                    self.kcQa.aggregate(selectSources, self.metadata, allresids)
+
+                #Persist using butler
+                sensorRef.put(selectSources, self.config.coaddName + "Diff_kernelSrc")
 
         if self.config.doWriteSubtractedExp:
             sensorRef.put(subtractedExposure, subtractedExposureName)
