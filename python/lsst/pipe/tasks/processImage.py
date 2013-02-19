@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.pex.exceptions as pexExceptions
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
@@ -172,8 +173,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
                 calExposure = dataRef.get(self.dataPrefix + "calexp")
             if calib is None or calib.psf is None:
-                psf = dataRef.get(self.dataPrefix + "psf")
-                calExposure.setPsf(psf)
+                try:
+                    psf = dataRef.get(self.dataPrefix + "psf", immediate=True)
+                    calExposure.setPsf(psf)
+                except pexExceptions.LsstCppException:
+                    self.log.log(self.log.WARN, "Unable to read calibrated PSF from disk; using initial guess")
+                    
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.makeSourceCatalog(table, calExposure)
