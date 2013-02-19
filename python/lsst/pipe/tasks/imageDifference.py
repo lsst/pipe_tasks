@@ -65,7 +65,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Merge positive and negative diaSources with grow radius set by growFootprint")
     doMatchSources = pexConfig.Field(dtype=bool, default=True,
         doc = "Match diaSources with input calexp sources and ref catalog sources")
-    doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
+    doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure diaSources?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc = "Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
         doc = "Write warped and PSF-matched template coadd exposure?")
@@ -169,7 +169,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
 
-        self.schema.addField(self.measurement._ClassificationFlag, "F", "probability of being a dipole")
+        if self.config.doMeasurement:
+            self.schema.addField(self.measurement._ClassificationFlag, "F", "probability of being a dipole")
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
