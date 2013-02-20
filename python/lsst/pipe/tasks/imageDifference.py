@@ -119,9 +119,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     diaSourceMatchRadius = pexConfig.Field(dtype=float, default=0.5,
         doc = "Match radius (in arcseconds) for DiaSource to Source association")
 
-    maxDipolesToMeasure =  pexConfig.Field(dtype=int, default=200,
-        doc = "Maximum number of diaSources to apply DipoleMeasurement; turn of dipole fitting if more")
-
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
         self.sourceSelector.name = "diacatalog"
@@ -370,6 +367,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # then return the difference
 
             #Return warped template...  Construct sourceKernelCand list after subtract
+            self.log.info("Subtracting images")
             subtractRes = self.subtract.subtractExposures(
                 templateExposure = templateExposure,
                 scienceExposure = exposure,
@@ -385,6 +383,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 sensorRef.put(subtractRes.matchedExposure, self.config.coaddName + "Diff_matchedExp")
 
         if self.config.doDetection:
+            self.log.info("Running diaSource detection")
             if subtractedExposure is None:
                 subtractedExposure = sensorRef.get(subtractedExposureName)
             
@@ -420,17 +419,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 diaSources = results.sources
 
             if self.config.doMeasurement:
+                self.log.info("Running diaSource measurement")
                 if self.config.convolveTemplate:
                     apCorr = sensorRef.get("apCorr")
                 else:
                     if templateApCorr is None:
                         templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
                     apCorr = templateApCorr
-                if len(diaSources) < self.config.maxDipolesToMeasure:
-                    self.measurement.run(subtractedExposure, diaSources, apCorr)
-                else:
-                    # DO SOMETHING
-                    self.measurement.run(subtractedExposure, diaSources, apCorr)
+                self.measurement.run(subtractedExposure, diaSources, apCorr)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
