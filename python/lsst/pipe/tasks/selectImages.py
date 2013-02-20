@@ -23,11 +23,10 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask"]
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask", "DatabaseSelectImagesConfig"]
 
-class SelectImagesConfig(pexConfig.Config):
-    """Config for BaseSelectImagesTask
-    """
+class DatabaseSelectImagesConfig(pexConfig.Config):
+    """Configuration for BaseSelectImagesTask, using a database"""
     host = pexConfig.Field(
         doc = "Database server host name",
         dtype = str,
@@ -45,7 +44,6 @@ class SelectImagesConfig(pexConfig.Config):
         dtype = int,
         optional = True,
     )
-
 
 class BaseExposureInfo(object):
     """Data about a selected exposure
@@ -80,7 +78,7 @@ class BaseExposureInfo(object):
 class BaseSelectImagesTask(pipeBase.Task):
     """Base task for selecting images suitable for coaddition
     """
-    ConfigClass = SelectImagesConfig
+    ConfigClass = pexConfig.Config
     _DefaultName = "selectImages"
     
     @pipeBase.timeMethod
@@ -140,3 +138,4 @@ class BadSelectImagesTask(BaseSelectImagesTask):
 
     def _runArgDictFromDataId(self, dataId):        
         raise RuntimeError("No select task specified")
+
