@@ -94,9 +94,13 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
     )
-    measurement = pexConfig.ConfigurableField(
+    dipolemeasurement = pexConfig.ConfigurableField(
         target = DipoleMeasurementTask,
         doc = "Final source measurement on low-threshold detections; dipole fitting enabled",
+    )
+    measurement = pexConfig.ConfigurableField(
+        target = SourceMeasurementTask,
+        doc = "Final source measurement on low-threshold detections; dipole fitting NOT enabled",
     )
     controlStepSize = pexConfig.Field(
         doc = "What step size (every Nth one) to select a control sample from the kernelSources",
@@ -118,6 +122,9 @@ class ImageDifferenceConfig(pexConfig.Config):
 
     diaSourceMatchRadius = pexConfig.Field(dtype=float, default=0.5,
         doc = "Match radius (in arcseconds) for DiaSource to Source association")
+
+    maxDiaSourcesToMeasure = pexConfig.Field(dtype=int, default=200,
+        doc = "Do not measure more than this many sources with dipolemeasurement, use measurement") 
 
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
@@ -163,14 +170,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+            self.makeSubtask("dipolemeasurement", schema=self.schema, algMetadata=self.algMetadata)
+            self.makeSubtask("measurement", schema=afwTable.SourceTable.makeMinimalSchema(), 
+                             algMetadata=self.algMetadata)
 
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
 
         if self.config.doMeasurement:
-            self.schema.addField(self.measurement._ClassificationFlag, "F", 
+            self.schema.addField(self.dipolemeasurement._ClassificationFlag, "F", 
                                  "probability of being a dipole")
 
     @pipeBase.timeMethod
@@ -426,7 +435,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     if templateApCorr is None:
                         templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
                     apCorr = templateApCorr
-                self.measurement.run(subtractedExposure, diaSources, apCorr)
+                if len(diaSources) < self.config.maxDiaSourcesToMeasure:
+                    self.dipolemeasurement.run(subtractedExposure, diaSources, apCorr)
+                else:
+                    self.measurement.run(subtractedExposure, diaSources, apCorr)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
