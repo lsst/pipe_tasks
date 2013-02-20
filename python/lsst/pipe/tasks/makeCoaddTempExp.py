@@ -31,6 +31,7 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
+from .coaddHelpers import groupExposures, getTempExpRef
 
 __all__ = ["MakeCoaddTempExpTask"]
 
@@ -98,117 +99,70 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         (assembleCoadd should determine zeropoint scaling without referring to it).
         """
         skyInfo = self.getSkyInfo(patchRef)
-        
-        tractWcs = skyInfo.wcs
-        patchBBox = skyInfo.bbox
-        
-        calExpRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
-        
-        # initialize outputs
+
+        calExpRefList = self.selectExposures(patchRef, skyInfo)
+        if len(calExpRefList) == 0:
+            self.log.warn("No exposures to coadd for patch %s" % patchRef.dataId)
+            return None
+        self.log.info("Processing %d calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
+
+        groupData = groupExposures(patchRef, calExpRefList)
+        self.log.info("Processing %d tempExps for patch %s" % (len(groupData.groups), patchRef.dataId))
+
         dataRefList = []
-        
-        numExp = len(calExpRefList)
-        if numExp < 1:
-            raise pipeBase.TaskError("No exposures to coadd")
-        self.log.info("Process %s calexp" % (numExp,))
-    
-        doPsfMatch = self.config.warpAndPsfMatch.desiredFwhm is not None
-        if not doPsfMatch:
-            self.log.info("No PSF matching will be done (desiredFwhm is None)")
-
-        tempExpName = self.config.coaddName + "Coadd_tempExp"
-
-        # compute tempKeyList: a tuple of ID key names in a calExpId that identify a coaddTempExp.
-        # You must also specify tract and patch to make a complete coaddTempExp ID.
-        butler = patchRef.butlerSubset.butler
-        tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
-        tempExpKeyList = tuple(sorted(tempExpKeySet))
-
-
-        # compute tempExpIdDict, a dict whose:
-        # - keys are tuples of coaddTempExp ID values in tempKeyList order
-        # - values are a list of calExp data references for calExp that belong in this coaddTempExp
-        tempExpIdDict = dict()
-        for calExpRef in calExpRefList:
-            calExpId = calExpRef.dataId
-            if not calExpRef.datasetExists("calexp"):
-                self.log.warn("Could not find calexp %s; skipping it" % (calExpId,))
-                continue
-            
-            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
-            calExpSubsetRefList = tempExpIdDict.get(tempExpIdTuple)
-            if calExpSubsetRefList:
-                calExpSubsetRefList.append(calExpRef)
-            else:
-                tempExpIdDict[tempExpIdTuple] = [calExpRef]
-
-        numTempExp = len(tempExpIdDict)
-        coaddTempExp = None
-        for tempExpInd, calExpSubsetRefList in enumerate(tempExpIdDict.itervalues()):
-            # derive tempExpId from the first calExpId
-            tempExpId = dict((key, calExpSubsetRefList[0].dataId[key]) for key in tempExpKeyList)
-            tempExpId.update(patchRef.dataId)
-            tempExpRef = calExpRef.butlerSubset.butler.dataRef(
-                datasetType = tempExpName,
-                dataId = tempExpId,
-            )
+        for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.itervalues()):
+            tempExpRef = getTempExpRef(patchRef.getButler(), self.getTempExpName(),
+                                       tempExpTuple, groupData.keys)
             if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=tempExpName):
-                self.log.info("tempCoaddExp exists %s; skipping it"%(tempExpId))
-                continue
-            self.log.info("Computing coaddTempExp %d of %d: id=%s" % (tempExpInd+1, numTempExp, tempExpId))
-
-            totGoodPix = 0
-            coaddTempExp = afwImage.ExposureF(patchBBox, tractWcs)
-            edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-            coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf)
-            didSetMetadata = False
-            for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
-                self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
-                    (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
-                try:
-                    exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=self.config.bgSubtracted) 
-                    exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
-                    numGoodPix = coaddUtils.copyGoodPixels(
-                        coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
-                    totGoodPix += numGoodPix
-                    if numGoodPix == 0:
-                        self.log.warn("Calexp %s has no good pixels in this patch" % (calExpRef.dataId,))
-                    else:
-                        self.log.info("Calexp %s has %s good pixels in this patch" % \
-                            (calExpRef.dataId, numGoodPix))
-                    
-                        if not didSetMetadata:
-                            coaddTempExp.setCalib(exposure.getCalib())
-                            coaddTempExp.setFilter(exposure.getFilter())
-                            didSetMetadata = True
-                except Exception, e:
-                    self.log.warn("Error processing calexp %s; skipping it: %s" % \
-                        (calExpRef.dataId, e))
-                    continue
-
-            if (totGoodPix == 0) or not didSetMetadata: # testing didSetMetadata is not needed but safer
-                self.log.warn("Could not compute coaddTempExp %s: no good pixels" % (tempExpRef.dataId,))
-                continue
-            self.log.info("coaddTempExp %s has %s good pixels" % (tempExpRef.dataId, totGoodPix))
-                
-            if self.config.doWrite and coaddTempExp is not None:
-                self.log.info("Persisting %s %s" % (tempExpName, tempExpRef.dataId))
-                tempExpRef.put(coaddTempExp, tempExpName)
-                if self.config.warpAndPsfMatch.desiredFwhm is not None:
-                    psfName = self.config.coaddName + "Coadd_initPsf"
-                    self.log.info("Persisting %s %s" % (psfName, tempExpRef.dataId))
-                    wcs = coaddTempExp.getWcs()
-                    fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
-                    kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
-                    kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-                    coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-                    patchRef.put(coaddPsf, psfName)
-
-            if coaddTempExp:
+                self.log.info("tempCoaddExp %s exists; skipping" % (tempExpRef.dataId,))
                 dataRefList.append(tempExpRef)
+                continue
+            self.log.info("Processing tempExp %d/%d: id=%s" % (i, len(tempExpIdDict), tempExpId))
+            exp = self.createTempExp(calexpRefList)
+            if exp is not None:
+                dataRefList.append(tempExpRef)
+                if self.config.doWrite:
+                    self.writeTempExp(tempExpRef, exp)
             else:
-                self.log.warn("This %s temp coadd exposure could not be created"%(tempExpRef.dataId,))
-        
-        return pipeBase.Struct(
-            dataRefList = dataRefList,
-        )
+                self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
+        return dataRefList
+
+    def getTempExpName(self):
+        return self.config.coaddName + "Coadd_tempExp"
+
+    def createTempExp(self, calexpRefList):
+        coaddTempExp = afwImage.ExposureF(patchBBox, tractWcs)
+        edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
+        coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
+        totGoodPix = 0
+        didSetMetadata = False
+        for calExpInd, calExpRef in enumerate(calExpSubsetRefList):
+            self.log.info("Processing calexp %d of %d for this tempExp: id=%s" % \
+                (calExpInd+1, len(calExpSubsetRefList), calExpRef.dataId))
+            try:
+                exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=self.config.bgSubtracted)
+                exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
+                numGoodPix = coaddUtils.copyGoodPixels(
+                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
+                totGoodPix += numGoodPix
+                self.log.logdebug("Calexp %s has %d good pixels in this patch" %
+                                  (calExpRef.dataId, numGoodPix))
+                if numGoodPix > 0 and not didSetMetadata:
+                    coaddTempExp.setCalib(exposure.getCalib())
+                    coaddTempExp.setFilter(exposure.getFilter())
+                    didSetMetadata = True
+            except Exception, e:
+                self.log.warn("Error processing calexp %s; skipping it: %s" % (calExpRef.dataId, e))
+                continue
+
+        self.log.info("coaddTempExp has %d good pixels" % (totGoodPix))
+        return coaddTempExp if totGoodPix > 0 and didSetMetadata else None
+
+    def writeTempExp(self, tempExpRef, coaddTempExp):
+        tempExpName = self.getTempExpName()
+        self.log.info("Persisting %s %s" % (tempExpName, tempExpRef.dataId))
+        tempExpRef.put(coaddTempExp, tempExpName)
+        if self.config.desiredFwhm is not None:
+            psf = self.makeModelPsf(fwhmPixels=self.config.desiredFwhm, wcs=wcs,
+                                    sizeFactor=self.config.coaddKernelSizeFactor)
+            self.writeCoaddOutput(patchRef, psf, "initPsf")

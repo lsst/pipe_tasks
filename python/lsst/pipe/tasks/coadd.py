@@ -40,18 +40,24 @@ __all__ = ["CoaddTask", "CoaddArgumentParser"]
 class CoaddConfig(CoaddBaseTask.ConfigClass):
     """Config for CoaddTask
     """
+    desiredFwhm = pexConfig.Field(
+        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
+        dtype = float,
+        optional = True,
+        check = lambda x: x is None or x > 0.0,
+    )
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
         doc = "Task to warp, PSF-match and zero-point-match calexp",
+    )
+    scaleZeroPoint = pexConfig.ConfigurableField(
+        target = coaddUtils.ScaleZeroPointTask,
+        doc = "Task to compute zero point scale",
     )
     coaddKernelSizeFactor = pexConfig.Field(
         dtype = float,
         doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
         default = 3.0,
-    )
-    scaleZeroPoint = pexConfig.ConfigurableField(
-        target = coaddUtils.ScaleZeroPointTask,
-        doc = "Task to compute zero point scale",
     )
     doInterp = pexConfig.Field(
         doc = "Interpolate over EDGE pixels?",
@@ -62,8 +68,14 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         target = InterpImageTask,
         doc = "Task to interpolate over EDGE pixels",
     )
+    interpFwhm = pexConfig.Field(
+        dtype = float,
+        doc = "Interpolation PSF FWHM (arcsec) if desiredFwhm is not specified",
+        default = 1.5,
+        check = lambda x: x > 0,
+        )
     doWrite = pexConfig.Field(
-        doc = "persist coadd?",
+        doc = "Persist coadd and associated products?",
         dtype = bool,
         default = True,
     )
@@ -80,7 +92,7 @@ class CoaddTask(CoaddBaseTask):
         self.makeSubtask("interpImage")
         self.makeSubtask("warpAndPsfMatch")
         self.makeSubtask("scaleZeroPoint")
-    
+
     @pipeBase.timeMethod
     def run(self, patchRef):
         """Coadd images by PSF-matching (optional), warping and computing a weighted sum
@@ -108,70 +120,26 @@ class CoaddTask(CoaddBaseTask):
         - coaddExposure: coadd exposure, as returned by coadd.getCoadd()
         """
         skyInfo = self.getSkyInfo(patchRef)
-        
         tractWcs = skyInfo.wcs
         patchBBox = skyInfo.bbox
-        
-        imageRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
-        
-        numExp = len(imageRefList)
-        if numExp < 1:
-            raise pipeBase.TaskError("No exposures to coadd")
-        self.log.info("Coadd %s calexp" % (numExp,))
-    
-        doPsfMatch = self.config.warpAndPsfMatch.desiredFwhm is not None
-        if not doPsfMatch:
-            self.log.info("No PSF matching will be done (desiredFwhm is None)")
-    
-        coadd = self.makeCoadd(patchBBox, tractWcs)
-        for ind, calExpRef in enumerate(imageRefList):
-            if not calExpRef.datasetExists("calexp"):
-                self.log.warn("Could not find calexp %s; skipping it" % (calExpRef.dataId,))
-                continue
 
-            self.log.info("Processing exposure %d of %d: id=%s" % (ind+1, numExp, calExpRef.dataId))
-            exposure = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch)
-            try:
-                exposure = self.warpAndPsfMatch.run(exposure, wcs=tractWcs, maxBBox=patchBBox).exposure
-                scale = self.scaleZeroPoint.computeScale(exposure.getCalib())
-                maskedImage = exposure.getMaskedImage()
-                maskedImage *= scale
-                coadd.addExposure(exposure)
-            except Exception, e:
-                self.log.warn("Error processing exposure %s; skipping it: %s" % (calExpRef.dataId, e))
-                continue
-        
-        coaddExposure = coadd.getCoadd()
-        coaddExposure.setConfig(self.scaleZeroPoint.getCalib())
+        imageRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
+        if len(imageRefList) == 0:
+            raise pipeBase.TaskError("No exposures to coadd")
+        self.log.info("Coadding %d exposures" % len(imageRefList))
+
+        coaddExposure = self.warpAndCoadd(imageRefList, patchBBox, tractWcs)
         if self.config.doInterp:
-            fwhmArcSec = self.config.warpAndPsfMatch.desiredFwhm or 1.5
-            fwhmPixels = fwhmArcSec / tractWcs.pixelScale().asArcseconds()
-            self.interpImage.interpolateOnePlane(
-                maskedImage = coaddExposure.getMaskedImage(),
-                planeName = "EDGE",
-                fwhmPixels = fwhmPixels,
-            )
+            self.interpolateExposure(coaddExposure)
 
         if self.config.doWrite:
-            coaddName = self.config.coaddName + "Coadd"
-            self.log.info("Persisting %s" % (coaddName,))
-            patchRef.put(coaddExposure, coaddName)
+            self.writeCoaddOutput(patchRef, coaddExposure)
+            self.writeCoaddOutput(patchRef, weightMap, "depth")
+            if self.config.desiredFwhm is not None:
+                psf = self.makeModelPsf(fwhmPixels=self.config.desiredFwhm, wcs=wcs,
+                                        sizeFactor=self.config.coaddKernelSizeFactor)
+                self.writeCoaddOutput(patchRef, psf, "initPsf")
 
-            weightMap = coadd.getWeightMap()                
-            weightMapName = self.config.coaddName + "Coadd_depth"
-            self.log.info("Persisting %s" % (weightMapName,))
-            patchRef.put(weightMap, weightMapName)
-
-            if self.config.warpAndPsfMatch.desiredFwhm is not None:
-                psfName = self.config.coaddName + "Coadd_initPsf"
-                self.log.info("Persisting %s" % (psfName,))
-                wcs = coaddExposure.getWcs()
-                fwhmPixels = self.config.warpAndPsfMatch.desiredFwhm / wcs.pixelScale().asArcseconds()
-                kernelSize = int(round(fwhmPixels * self.config.coaddKernelSizeFactor))
-                kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-                coaddPsf = self.makeModelPsf(fwhmPixels=fwhmPixels, kernelDim=kernelDim)
-                patchRef.put(coaddPsf, psfName)
-        
         return pipeBase.Struct(
             coaddExposure = coaddExposure,
             coadd = coadd,
@@ -186,3 +154,40 @@ class CoaddTask(CoaddBaseTask):
         This exists to allow subclasses to return a different kind of coadd
         """
         return coaddUtils.Coadd(bbox=bbox, wcs=wcs, badMaskPlanes=self.config.badMaskPlanes)
+
+    def warpAndCoadd(self, imageRefList, bbox, wcs):
+        doPsfMatch = self.config.desiredFwhm is not None
+        coadd = self.makeCoadd(bbox, wcs)
+        for ind, calExpRef in enumerate(imageRefList):
+            if not calExpRef.datasetExists("calexp"):
+                self.log.warn("Could not find calexp %s; skipping it" % (calExpRef.dataId,))
+                continue
+
+            self.log.info("Processing exposure %d of %d: id=%s" % (ind+1, numExp, calExpRef.dataId))
+            exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch)
+            try:
+                exposure = self.warpExposure(exposure, patchBBox, tractWcs)
+                coadd.addExposure(exposure)
+            except Exception, e:
+                self.log.warn("Error processing exposure %s; skipping it: %s" % (calExpRef.dataId, e))
+                continue
+        
+        coaddExposure = coadd.getCoadd()
+        coaddExposure.setConfig(self.scaleZeroPoint.getCalib())
+
+    def warpExposure(self, exposure, bbox, wcs, modelPsf=None):
+        exposure = self.warpAndPsfMatch.run(exposure, wcs=wcs, modelPsf=modelPsf, maxBBox=bbox).exposure
+        scale = self.scaleZeroPoint.computeScale(exposure.getCalib())
+        maskedImage = exposure.getMaskedImage()
+        maskedImage *= scale
+        return exposure
+
+
+    def interpolateExposure(self, exp):
+        fwhmArcSec = self.config.desiredFwhm or self.config.interpolateFwhm
+        fwhmPixels = fwhmArcSec / exp.getWcs().pixelScale().asArcseconds()
+        self.interpImage.interpolateOnePlane(
+            maskedImage = exp.getMaskedImage(),
+            planeName = "EDGE",
+            fwhmPixels = fwhmPixels,
+            )

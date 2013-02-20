@@ -30,6 +30,7 @@ import lsst.pipe.base as pipeBase
 from .coaddBase import CoaddBaseTask
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
+from .coaddHelpers import groupExposures, getTempExpRef
 
 __all__ = ["AssembleCoaddTask"]
 
@@ -145,71 +146,62 @@ class AssembleCoaddTask(CoaddBaseTask):
         - coaddExposure: coadd exposure
         """
         skyInfo = self.getSkyInfo(dataRef)
-        datasetType = self.config.coaddName + "Coadd"
+        calExpRefList = self.selectExposures(dataRef, skyInfo)
+        if len(calExpRefList) == 0:
+            self.log.warn("No exposures to coadd")
+            return
+        self.log.info("Coadding %d exposures" % len(calExpRefList))
 
-        wcs = skyInfo.wcs
-        bbox = skyInfo.bbox
+        butler = dataRef.getButler()
+        groupData = self.groupExposures(dataRef, self.getTempExpDataset(), calExpRefList, checkExist=False)
+        tempExpRefList = [getTempExpRef(butler, self.getTempExpDataset(), t, groupData.keys) for
+                          t in groupData.groups.keys()]
+        inputData = self.prepareInputs(tempExpRefList)
+        tempExpRefList = inputData.tempExpRefList
+        self.log.info("Found %d %s" % (len(inputData.tempExpRefList), tempExpName))
+        if len(inputData.tempExpRefList) == 0:
+            self.log.warn("No coadd temporary exposures found")
+            return
+        if self.config.doMatchBackgrounds:
+            refImageScaler = self.getBackgroundReferenceScaler(dataRef)
+            inputData = self.backgroundMatching(inputData, dataRef, refImageScaler)
+            if len(inputData.tempExpRefList) == 0:
+                self.log.warn("No valid background models")
+                return
 
-        calExpRefList = self.selectExposures(patchRef=dataRef, wcs=wcs, bbox=bbox)
+        coaddExp = self.assemble(inputData.tempExpRefList, inputData.imageScalerList, inputData.weightList,
+                                 inputData.backgroundInfoList if self.config.doMatchBackgrounds else None)
+        if self.config.doMatchBackgrounds:
+            self.addBackgroundMatchingMetadata(coaddExp, inputData.backgroundInfoList)
+
+        if self.config.doInterp:
+            fwhmPixels = self.config.interpFwhm / skyInfo.wcs.pixelScale().asArcseconds(),
+            self.interpImage.interpolateOnePlane(maskedImage=coaddExp.getMaskedImage(), planeName="EDGE",
+                                                 fwhmPixels=self.config.interpFwhm)
+
+        if self.config.doWrite:
+            self.writeCoaddOutput(dataRef, coaddExp)
+
+        return pipeBase.Struct(coaddExposure=coaddExpsure)
 
 
-        numExp = len(calExpRefList)
-        if numExp < 1:
-            raise pipeBase.TaskError("No overlapping exposures found by database %s to coadd" %
-                                 (self.config.select.database))
-        self.log.info("Selected %s calexp" % (numExp,))
+    def getBackgroundReferenceScaler(self, dataRef):
+        if self.config.autoReference:
+            return None
+        # We've been given the data reference
+        dataset = self.getTempExpDataset()
+        if not dataRef.datasetExists(dataset):
+            raise RuntimeError("Could not find reference exposure %s %s." % (dataset, dataRef.dataId))
 
-        tempExpName = self.config.coaddName + "Coadd_tempExp"
-        tempExpSubName = tempExpName + "_sub"
-
-        # compute tempKeyList: a tuple of ID key names in a calExpId that identify a coaddTempExp.
-        # You must also specify tract and patch to make a complete coaddTempExp ID.
-        butler = dataRef.butlerSubset.butler
-        tempExpKeySet = set(butler.getKeys(datasetType=tempExpName, level="Ccd")) - set(("patch", "tract"))
-        coaddKeySet = set(butler.getKeys(datasetType=datasetType, level="Ccd")) - set(("patch", "tract"))
-
-        tempExpKeyList = tuple(sorted(tempExpKeySet))
-
-        patchIdDict = dataRef.dataId.copy()
-
-        refExpDataRef = None
-        refImageScaler = None
-        if not self.config.autoReference:
-            # define refExpDataRef and take out visit/run from the dataRef to make it a true patchRef
-            refExpDataRef = butler.dataRef(datasetType = tempExpName, dataId=dataRef.dataId)
-            for key in tempExpKeySet:
-                if key not in coaddKeySet:
-                    del patchIdDict[key]
-            if not refExpDataRef.datasetExists(tempExpName):
-                raise pipeBase.TaskError("Could not find reference exposure %s %s." % \
-                    (tempExpName, refExpDataRef.dataId))
-
-            refExposure = refExpDataRef.get(tempExpName, immediate=True)
-            refImageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure = refExposure,
-                exposureId = refExpDataRef.dataId,
+        refExposure = refExpDataRef.get(tempExpName, immediate=True)
+        refImageScaler = self.scaleZeroPoint.computeImageScaler(
+            exposure = refExposure,
+            exposureId = refExpDataRef.dataId,
             )
-            del refExposure
+        return refImageScaler
 
 
-        # compute tempExpIdDict, a dict whose:
-        # - keys are tuples of coaddTempExp ID values in tempKeyList order
-        # - values are tempExpRef
-        # Do not check for existence yet (to avoid checking one coaddTempExp multiple times);
-        # wait until all desired coaddTempExp have been identified
-        tempExpIdDict = dict()
-        for calExpRef in calExpRefList:
-            calExpId = calExpRef.dataId
-            tempExpIdTuple = tuple(calExpId[key] for key in tempExpKeyList)
-            if tempExpIdTuple not in tempExpIdDict:
-                tempExpId = dict((key, calExpId[key]) for key in tempExpKeyList)
-                tempExpId.update(patchIdDict)
-                tempExpRef = calExpRef.butlerSubset.butler.dataRef(
-                    datasetType = tempExpName,
-                    dataId = tempExpId,
-                )
-                tempExpIdDict[tempExpIdTuple] = tempExpRef
-
+    def prepareInputs(self, refList):
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
         statsCtrl.setNumIter(self.config.clipIter)
@@ -222,7 +214,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         tempExpRefList = []
         weightList = []
         imageScalerList = []
-        for tempExpRef in tempExpIdDict.itervalues():
+        tempExpName = self.getTempExpDataset()
+        for tempExpRef in refList:
             if not tempExpRef.datasetExists(tempExpName):
                 self.log.warn("Could not find %s %s; skipping it" % (tempExpName, tempExpRef.dataId))
                 continue
@@ -230,7 +223,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             tempExp = tempExpRef.get(tempExpName, immediate=True)
             maskedImage = tempExp.getMaskedImage()
             imageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure = tempExp, 
+                exposure = tempExp,
                 exposureId = tempExpRef.dataId,
             )
             try:
@@ -251,68 +244,64 @@ class AssembleCoaddTask(CoaddBaseTask):
             weightList.append(weight)
             imageScalerList.append(imageScaler)
 
-        del tempExpIdDict
+        return Struct(tempExpRefList=tempExpRefList, weightList=weightList, imageScalerList=imageScalerList)
 
-        if not tempExpRefList:
-            raise pipeBase.TaskError("No coadd temporary exposures found")
-        self.log.info("Found %s %s" % (len(tempExpRefList), tempExpName))
 
-        if self.config.doMatchBackgrounds:
-            try:
-                backgroundInfoList = self.matchBackgrounds.run(
-                    expRefList = tempExpRefList,
-                    imageScalerList = imageScalerList,
-                    refExpDataRef = refExpDataRef,
-                    refImageScaler = refImageScaler,
-                    expDatasetType = tempExpName,
-                ).backgroundInfoList
-            except Exception, e:
-                self.log.fatal("Cannot match backgrounds: %s" % (e))
-                raise pipeBase.TaskError("Background matching failed.")
 
-            newWeightList = []
-            newTempExpRefList = []
-            newBackgroundStructList = []
-            newScaleList = []
-            # the number of good backgrounds may be < than len(tempExpList)
-            # sync these up and correct the weights
-            for i, tempExpRef in enumerate(tempExpRefList):
-                if not backgroundInfoList[i].isReference:
-                    # skip exposure if it has no backgroundModel
-                    # or if fit was bad
-                    if (backgroundInfoList[i].backgroundModel is None):
-                        self.log.info("No background offset model available for %s: skipping"%(
-                            tempExpRef.dataId))
-                        continue
-                    try:
-                        varianceRatio =  backgroundInfoList[i].matchedMSE / backgroundInfoList[i].diffImVar
-                    except Exception, e:
-                        self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping" % (e, tempExpRef.dataId,))
-                        continue
-                    if not numpy.isfinite(varianceRatio):
-                        self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" % (
-                                backgroundInfoList[i].matchedMSE, backgroundInfoList[i].diffImVar,
-                                tempExpRef.dataId,))
-                        continue
-                    elif (varianceRatio > self.config.maxMatchResidualRatio):
-                        self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
-                                varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
-                        continue
+    def backgroundMatching(self, inputData, refExpDataRef, refImageScaler):
+        try:
+            backgroundInfoList = self.matchBackgrounds.run(
+                expRefList = inputData.tempExpRefList,
+                imageScalerList = inputData.imageScalerList,
+                refExpDataRef = refExpDataRef,
+                refImageScaler = refImageScaler,
+                expDatasetType = self.getTempExpDataset(),
+            ).backgroundInfoList
+        except Exception, e:
+            self.log.fatal("Cannot match backgrounds: %s" % (e))
+            raise pipeBase.TaskError("Background matching failed.")
 
-                newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
-                newTempExpRefList.append(tempExpRef)
-                newBackgroundStructList.append(backgroundInfoList[i])
-                newScaleList.append(imageScalerList[i])
-                
-            weightList = newWeightList
-            tempExpRefList = newTempExpRefList
-            backgroundInfoList = newBackgroundStructList 
-            imageScalerList = newScaleList
+        newWeightList = []
+        newTempExpRefList = []
+        newBackgroundStructList = []
+        newScaleList = []
+        # the number of good backgrounds may be < than len(tempExpList)
+        # sync these up and correct the weights
+        for i, tempExpRef in enumerate(tempExpRefList):
+            if not backgroundInfoList[i].isReference:
+                # skip exposure if it has no backgroundModel
+                # or if fit was bad
+                if (backgroundInfoList[i].backgroundModel is None):
+                    self.log.info("No background offset model available for %s: skipping"%(
+                        tempExpRef.dataId))
+                    continue
+                try:
+                    varianceRatio =  backgroundInfoList[i].matchedMSE / backgroundInfoList[i].diffImVar
+                except Exception, e:
+                    self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping" % (e, tempExpRef.dataId,))
+                    continue
+                if not numpy.isfinite(varianceRatio):
+                    self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" % (
+                            backgroundInfoList[i].matchedMSE, backgroundInfoList[i].diffImVar,
+                            tempExpRef.dataId,))
+                    continue
+                elif (varianceRatio > self.config.maxMatchResidualRatio):
+                    self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
+                            varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
+                    continue
 
-            if not tempExpRefList:
-                raise pipeBase.TaskError("No valid background models")
+            newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
+            newTempExpRefList.append(tempExpRef)
+            newBackgroundStructList.append(backgroundInfoList[i])
+            newScaleList.append(imageScalerList[i])
 
-        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
+        return Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList, imageScalerList=newScaleList,
+                      backgroundInfoList=newBackgroundStructList)
+
+    def assemble(self, tempExpRefList, imageScalerList, weightList, bgInfoList=None):
+        tempExpName = self.getTempExpDataset()
+        self.log.info("Assembling %s %s" % (len(inputData.tempExpRefList), tempExpName))
+
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
         statsCtrl.setNumIter(self.config.clipIter)
@@ -325,6 +314,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         else:
             statsFlags = afwMath.MEAN
 
+        if bgInfoList is None:
+            bgInfoList = [None]*len(tempExpRefList)
+
         coaddExposure = afwImage.ExposureF(bbox, wcs)
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
         coaddMaskedImage = coaddExposure.getMaskedImage()
@@ -336,17 +328,17 @@ class AssembleCoaddTask(CoaddBaseTask):
                 self.log.info("Computing coadd %s" % (subBBox,))
                 coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)
                 maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-                for idx, (tempExpRef, imageScaler) in enumerate(zip(tempExpRefList,imageScalerList)):
+                for tempExpRef, imageScaler, bgInfo in zip(tempExpRefList, imageScalerList, bgInfoList):
 
-                    exposure = tempExpRef.get(tempExpSubName, bbox=subBBox, imageOrigin="PARENT")
+                    exposure = tempExpRef.get(tempExpName + "_sub", bbox=subBBox, imageOrigin="PARENT")
                     maskedImage = exposure.getMaskedImage()
                     imageScaler.scaleMaskedImage(maskedImage)
-                        
+
                     if not didSetMetadata:
                         coaddExposure.setFilter(exposure.getFilter())
                         didSetMetadata = True
-                    if self.config.doMatchBackgrounds and not backgroundInfoList[idx].isReference:
-                        backgroundModel = backgroundInfoList[idx].backgroundModel
+                    if self.config.doMatchBackgrounds and not bgInfo.isReference:
+                        backgroundModel = bgInfo.backgroundModel
                         backgroundImage = backgroundModel.getImage() if \
                             self.matchBackgrounds.config.usePolynomial else \
                             backgroundModel.getImageF()
@@ -355,7 +347,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                                                                afwImage.PARENT, False)
 
                         var = maskedImage.getVariance()
-                        var += (backgroundInfoList[idx].fitRMS)**2
+                        var += (bgInfo.fitRMS)**2
                         
                     maskedImageList.append(maskedImage)
 
@@ -367,38 +359,26 @@ class AssembleCoaddTask(CoaddBaseTask):
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
 
-        if self.config.doMatchBackgrounds:
-            self.log.info("Adding exposure information to metadata")
-            metadata = coaddExposure.getMetadata()
-            metadata.addString("CTExp_SDQA1_DESCRIPTION",
-                               "Background matching: Ratio of matchedMSE / diffImVar")
-            for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
-                tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
-                if backgroundInfo.isReference:
-                    metadata.addString("ReferenceExp_ID", tempExpStr)
-                else:
-                    metadata.addString("CTExp_ID_%d" % (ind), tempExpStr)
-                    metadata.addDouble("CTExp_SDQA1_%d" % (ind),
-                                       backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
-            
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
-        if self.config.doInterp:
-            fwhmPixels = self.config.interpFwhm / wcs.pixelScale().asArcseconds()
-            self.interpImage.interpolateOnePlane(
-                maskedImage = coaddExposure.getMaskedImage(),
-                planeName = "EDGE",
-                fwhmPixels = fwhmPixels,
-            )
+        return coaddExposure
 
-        if self.config.doWrite:
-            coaddName = self.config.coaddName + "Coadd"
-            self.log.info("Persisting %s" % (coaddName,))
-            dataRef.put(coaddExposure, coaddName)
+    def addBackgroundMatchingMetadata(self, coaddExposure, backgroundInfoList):
+        self.log.info("Adding exposure information to metadata")
+        metadata = coaddExposure.getMetadata()
+        metadata.addString("CTExp_SDQA1_DESCRIPTION",
+                           "Background matching: Ratio of matchedMSE / diffImVar")
+        for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
+            tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
+            if backgroundInfo.isReference:
+                metadata.addString("ReferenceExp_ID", tempExpStr)
+            else:
+                metadata.addString("CTExp_ID_%d" % (ind), tempExpStr)
+                metadata.addDouble("CTExp_SDQA1_%d" % (ind),
+                                   backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
 
-        return pipeBase.Struct(
-            coaddExposure = coaddExposure,
-        )
+                
+
 
 
     @classmethod
