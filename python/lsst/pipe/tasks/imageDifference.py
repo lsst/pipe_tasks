@@ -37,7 +37,7 @@ from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
     starSelectorRegistry, PsfAttributes
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
-    SourceFlagChecker, cast_KernelCandidateF
+    SourceFlagChecker, cast_KernelCandidateF, makeKernelBasisList
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
@@ -300,11 +300,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     # Sources already exist; for data release processing
                     selectSources = sensorRef.get("src")
 
-		#This assumes alard basis set.
-		nparam = 0
-		for i, j in enumerate(self.config.subtract.kernel.active.alardDegGauss):
-		    nparam += ((j+1)*(j+2))//2
-
+                # Number of basis functions
+		nparam = len(ipDiffim.makeKernelBasisList(self.subtract.config.kernel.active))
                 if self.config.doAddMetrics:
                     # Modify the schema of all Sources
                     self.kcQa = diUtils.KernelCandidateQa(nparam, self.log)
