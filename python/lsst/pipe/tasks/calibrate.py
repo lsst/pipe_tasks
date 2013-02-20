@@ -125,8 +125,13 @@ class CalibrateConfig(pexConfig.Config):
         self.background.binSize = 1024
         self.computeApCorr.alg1.name = "flux.psf"
         self.computeApCorr.alg2.name = "flux.sinc"
+        #
+        # Don't measure the elliptical aperture fluxes when calibrating
+        #
+        aperture_elliptical = "flux.aperture.elliptical"
+        if aperture_elliptical in self.measurement.value.algorithms.names:
+            self.measurement.value.algorithms.names -= (aperture_elliptical,)
         
-
 class CalibrateTask(pipeBase.Task):
     """Calibrate an exposure: measure PSF, subtract background, etc.
     """
