@@ -29,13 +29,11 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
-from .coaddBase import CoaddBaseTask, CoaddArgumentParser
+from .coaddBase import CoaddBaseTask
 from .interpImage import InterpImageTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 
-# export CoaddArgumentParser for backward compatibility; new code should get it from coaddBase
-
-__all__ = ["CoaddTask", "CoaddArgumentParser"]
+__all__ = ["CoaddTask"]
 
 class CoaddConfig(CoaddBaseTask.ConfigClass):
     """Config for CoaddTask

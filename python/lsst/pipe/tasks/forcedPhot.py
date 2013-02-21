@@ -146,7 +146,9 @@ class ForcedPhotTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         """Overriding CmdLineTask._makeArgumentParser to set dataset type"""
-        return ArgumentParser(name=cls._DefaultName, datasetType="calexp")
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
+        return parser
 
     @timeMethod
     def run(self, dataRef):

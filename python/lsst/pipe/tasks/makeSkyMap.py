@@ -48,6 +48,13 @@ class MakeSkyMapConfig(pexConfig.Config):
     )
 
 
+class MakeSkyMapRunner(pipeBase.TaskRunner):
+    """Only need a single butler instance to run on."""
+    @staticmethod
+    def getTargetList(self, parsedCmd):
+        return [parsedCmd.butler]
+
+
 class MakeSkyMapTask(pipeBase.CmdLineTask):
     """Make a SkyMap in a repository, setting it up for coaddition
     """
@@ -58,10 +65,10 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
     
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def run(self, butler):
         """Make a skymap
         
-        @param dataRef: data reference for sky map; purely used to get hold of a butler
+        @param butler: data butler
         @return a pipeBase Struct containing:
         - skyMap: the constructed SkyMap
         """
@@ -82,7 +89,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
                 (tractInfo.getId(), ", ".join(posStrList), \
                 tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
         if self.config.doWrite:
-            dataRef.put(skyMap)
+            butler.put(skyMap)
         return pipeBase.Struct(
             skyMap = skyMap
         )
@@ -90,8 +97,10 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
+
+        No identifiers are added because none are used.
         """
-        return SkyMapParser(name=cls._DefaultName, datasetType="deepCoadd_skyMap")
+        return pipeBase.ArgumentParser(name=cls._DefaultName)
     
     def _getConfigName(self):
         """Return the name of the config dataset
@@ -103,17 +112,3 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         """
         return "%s_makeSkyMap_metadata" % (self.config.coaddName,)
 
-
-class SkyMapParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for making sky maps.
-    """
-    def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
-        """
-        datasetType = namespace.config.coaddName + "Coadd_skyMap"
-        namespace.dataRefList = [
-            namespace.butler.dataRef(
-                datasetType = datasetType,
-                dataId = dict(),
-            )
-        ]

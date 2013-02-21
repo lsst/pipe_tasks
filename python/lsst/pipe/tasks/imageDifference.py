@@ -515,4 +515,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="calexp")
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
+        return parser
