@@ -224,7 +224,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         selectSources = None
         kernelSources = None
         controlSources = None
-        sources = None
         diaSources = None
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
@@ -472,7 +471,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if diaSources is not None and self.config.doWriteSources:
                 if self.config.doWriteHeavyFootprintsInSources:
-                    sources.setWriteHeavyFootprints(True)
+                    diaSources.setWriteHeavyFootprints(True)
                 sensorRef.put(diaSources, self.config.coaddName + "Diff_diaSrc")
 
             if self.config.doAddMetrics and self.config.doSelectSources:
