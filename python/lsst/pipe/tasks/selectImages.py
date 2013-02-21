@@ -23,28 +23,29 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask"]
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask", "ButlerSelectImagesTask"]
 
 class SelectImagesConfig(pexConfig.Config):
     """Config for BaseSelectImagesTask
     """
-    host = pexConfig.Field(
-        doc = "Database server host name",
-        dtype = str,
-    )
-    port = pexConfig.Field(
-        doc = "Database server port",
-        dtype = int,
-    )
-    database = pexConfig.Field(
-        doc = "Name of database",
-        dtype = str,
-    )
-    maxExposures = pexConfig.Field(
-        doc = "maximum exposures to select; intended for debugging; ignored if None",
-        dtype = int,
-        optional = True,
-    )
+    pass
+#    host = pexConfig.Field(
+#        doc = "Database server host name",
+#        dtype = str,
+#    )
+#    port = pexConfig.Field(
+#        doc = "Database server port",
+#        dtype = int,
+#    )
+#    database = pexConfig.Field(
+#        doc = "Name of database",
+#        dtype = str,
+#    )
+#    maxExposures = pexConfig.Field(
+#        doc = "maximum exposures to select; intended for debugging; ignored if None",
+#        dtype = int,
+#        optional = True,
+#    )
 
 
 class BaseExposureInfo(object):
@@ -140,3 +141,11 @@ class BadSelectImagesTask(BaseSelectImagesTask):
 
     def _runArgDictFromDataId(self, dataId):        
         raise RuntimeError("No select task specified")
+
+
+class ButlerSelectImagesTask(BaseSelectImagesTask):
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True):
+        searchId = {'field': "ACTJ0022M0036", 'filter': "W-S-R+"}
+        butler = dataRef.getButler()
+        dataRefList = [r for r in butler.subset("raw", "Ccd", searchId)]
+        return pipeBase.Struct(dataRefList=dataRefList, exposureInfoList=None)

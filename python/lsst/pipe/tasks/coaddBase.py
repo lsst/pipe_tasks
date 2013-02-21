@@ -79,8 +79,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         if skyInfo is None:
             skyInfo = self.getSkyInfo(patchRef)
-        cornerPosList = afwGeom.Box2D(bbox).getCorners()
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
+        cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
         return self.select.runDataRef(patchRef, coordList).dataRefList
     
     def getSkyInfo(self, patchRef):
@@ -131,7 +131,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             exposure.setPsf(psf)
         return exposure
 
-    def makeModelPsf(self, fwhmPixels, kernelDim):
+    def makeModelPsf(self, fwhm, wcs, sizeFactor=3.0):
         """Construct a model PSF, or reuse the prior model, if possible
         
         The model PSF is a double Gaussian with core FWHM = fwhmPixels
@@ -141,13 +141,14 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         @param kernelDim: desired dimensions of PSF kernel, in pixels
         @return model PSF
         """
-        if fwhmPixels is None or fwhmPixels <= 0:
+        if fwhm is None or fwhm <= 0:
             return None
-        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" % \
-            (fwhmPixels, kernelDim[0], kernelDim[1]))
+        fwhmPixels = fwhm / wcs.pixelScale().asArcseconds()
+        kernelDim = int(sizeFactor * fwhmPixels + 0.5)
+        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
+                          (fwhmPixels, kernelDim, kernelDim))
         coreSigma = fwhmPixels / FwhmPerSigma
-        return afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-            coreSigma, coreSigma * 2.5, 0.1)
+        return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma, coreSigma * 2.5, 0.1)
 
     def getCoaddDataset(self):
         return self.config.coaddName + "Coadd"

@@ -36,11 +36,6 @@ FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-    )
     psfMatch = pexConfig.ConfigurableField(
         target = ModelPsfMatchTask,
         doc = "PSF matching model to model task",
@@ -79,7 +74,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         if modelPsf is not None:
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
         with self.timer("warp"):
-            exposure = self.warpExposure(exposure, wcs, maxBBox=maxBBox, destBBox=destBBox)
+            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
         return pipeBase.Struct(
             exposure = exposure,
         )

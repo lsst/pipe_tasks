@@ -123,27 +123,25 @@ class CoaddTask(CoaddBaseTask):
         tractWcs = skyInfo.wcs
         patchBBox = skyInfo.bbox
 
-        imageRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
+        imageRefList = self.selectExposures(patchRef, skyInfo)
         if len(imageRefList) == 0:
             raise pipeBase.TaskError("No exposures to coadd")
         self.log.info("Coadding %d exposures" % len(imageRefList))
 
-        coaddExposure = self.warpAndCoadd(imageRefList, patchBBox, tractWcs)
+        modelPsf = self.makeModelPsf(self.config.desiredFwhm, tractWcs, self.config.coaddKernelSizeFactor)
+        coaddData = self.warpAndCoadd(imageRefList, patchBBox, tractWcs, modelPsf=modelPsf)
         if self.config.doInterp:
-            self.interpolateExposure(coaddExposure)
+            self.interpolateExposure(coaddData.coaddExposure)
 
         if self.config.doWrite:
-            self.writeCoaddOutput(patchRef, coaddExposure)
-            self.writeCoaddOutput(patchRef, weightMap, "depth")
+            self.writeCoaddOutput(patchRef, coaddData.coaddExposure)
+            self.writeCoaddOutput(patchRef, coaddData.weightMap, "depth")
             if self.config.desiredFwhm is not None:
                 psf = self.makeModelPsf(fwhmPixels=self.config.desiredFwhm, wcs=wcs,
                                         sizeFactor=self.config.coaddKernelSizeFactor)
                 self.writeCoaddOutput(patchRef, psf, "initPsf")
 
-        return pipeBase.Struct(
-            coaddExposure = coaddExposure,
-            coadd = coadd,
-        )
+        return coaddData
     
     def makeCoadd(self, bbox, wcs):
         """Make a coadd object, e.g. lsst.coadd.utils.Coadd
@@ -155,7 +153,7 @@ class CoaddTask(CoaddBaseTask):
         """
         return coaddUtils.Coadd(bbox=bbox, wcs=wcs, badMaskPlanes=self.config.badMaskPlanes)
 
-    def warpAndCoadd(self, imageRefList, bbox, wcs):
+    def warpAndCoadd(self, imageRefList, bbox, wcs, modelPsf=None):
         doPsfMatch = self.config.desiredFwhm is not None
         coadd = self.makeCoadd(bbox, wcs)
         for ind, calExpRef in enumerate(imageRefList):
@@ -163,28 +161,29 @@ class CoaddTask(CoaddBaseTask):
                 self.log.warn("Could not find calexp %s; skipping it" % (calExpRef.dataId,))
                 continue
 
-            self.log.info("Processing exposure %d of %d: id=%s" % (ind+1, numExp, calExpRef.dataId))
-            exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch)
+            self.log.info("Processing exposure %d of %d: %s" % (ind+1, len(imageRefList), calExpRef.dataId))
+            exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=True)
             try:
-                exposure = self.warpExposure(exposure, patchBBox, tractWcs)
+                exposure = self.warpExposure(exposure, bbox, wcs, modelPsf=modelPsf)
                 coadd.addExposure(exposure)
             except Exception, e:
                 self.log.warn("Error processing exposure %s; skipping it: %s" % (calExpRef.dataId, e))
                 continue
         
         coaddExposure = coadd.getCoadd()
-        coaddExposure.setConfig(self.scaleZeroPoint.getCalib())
+        coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
+        return pipeBase.Struct(coaddExposure=coaddExposure, weightMap=coadd.getWeightMap(), coadd=coadd)
 
     def warpExposure(self, exposure, bbox, wcs, modelPsf=None):
         exposure = self.warpAndPsfMatch.run(exposure, wcs=wcs, modelPsf=modelPsf, maxBBox=bbox).exposure
-        scale = self.scaleZeroPoint.computeScale(exposure.getCalib())
+        scale = self.scaleZeroPoint.scaleFromCalib(exposure.getCalib()).scale
         maskedImage = exposure.getMaskedImage()
         maskedImage *= scale
         return exposure
 
 
     def interpolateExposure(self, exp):
-        fwhmArcSec = self.config.desiredFwhm or self.config.interpolateFwhm
+        fwhmArcSec = self.config.desiredFwhm or self.config.interpFwhm
         fwhmPixels = fwhmArcSec / exp.getWcs().pixelScale().asArcseconds()
         self.interpImage.interpolateOnePlane(
             maskedImage = exp.getMaskedImage(),

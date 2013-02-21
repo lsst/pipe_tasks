@@ -153,12 +153,12 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.log.info("Coadding %d exposures" % len(calExpRefList))
 
         butler = dataRef.getButler()
-        groupData = self.groupExposures(dataRef, self.getTempExpDataset(), calExpRefList, checkExist=False)
+        groupData = groupExposures(dataRef, self.getTempExpDataset(), calExpRefList, checkExist=False)
         tempExpRefList = [getTempExpRef(butler, self.getTempExpDataset(), t, groupData.keys) for
                           t in groupData.groups.keys()]
         inputData = self.prepareInputs(tempExpRefList)
         tempExpRefList = inputData.tempExpRefList
-        self.log.info("Found %d %s" % (len(inputData.tempExpRefList), tempExpName))
+        self.log.info("Found %d %s" % (len(inputData.tempExpRefList), self.getTempExpDataset()))
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
@@ -169,7 +169,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                 self.log.warn("No valid background models")
                 return
 
-        coaddExp = self.assemble(inputData.tempExpRefList, inputData.imageScalerList, inputData.weightList,
+        coaddExp = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
+                                 inputData.weightList,
                                  inputData.backgroundInfoList if self.config.doMatchBackgrounds else None)
         if self.config.doMatchBackgrounds:
             self.addBackgroundMatchingMetadata(coaddExp, inputData.backgroundInfoList)
@@ -182,7 +183,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
 
-        return pipeBase.Struct(coaddExposure=coaddExpsure)
+        return pipeBase.Struct(coaddExposure=coaddExp)
 
 
     def getBackgroundReferenceScaler(self, dataRef):
@@ -244,7 +245,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             weightList.append(weight)
             imageScalerList.append(imageScaler)
 
-        return Struct(tempExpRefList=tempExpRefList, weightList=weightList, imageScalerList=imageScalerList)
+        return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList,
+                               imageScalerList=imageScalerList)
 
 
 
@@ -298,9 +300,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         return Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList, imageScalerList=newScaleList,
                       backgroundInfoList=newBackgroundStructList)
 
-    def assemble(self, tempExpRefList, imageScalerList, weightList, bgInfoList=None):
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None):
         tempExpName = self.getTempExpDataset()
-        self.log.info("Assembling %s %s" % (len(inputData.tempExpRefList), tempExpName))
+        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
 
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
@@ -317,13 +319,13 @@ class AssembleCoaddTask(CoaddBaseTask):
         if bgInfoList is None:
             bgInfoList = [None]*len(tempExpRefList)
 
-        coaddExposure = afwImage.ExposureF(bbox, wcs)
+        coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         didSetMetadata = False
-        for subBBox in _subBBoxIter(bbox, subregionSize):
+        for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             try:
                 self.log.info("Computing coadd %s" % (subBBox,))
                 coaddView = afwImage.MaskedImageF(coaddMaskedImage, subBBox, afwImage.PARENT, False)

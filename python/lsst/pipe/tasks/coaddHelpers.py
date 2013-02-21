@@ -4,7 +4,7 @@ def groupExposures(patchRef, tempExpName, calExpRefList, checkExist=True):
     # compute tempKeyList: a tuple of ID key names in a calExpId that identify a coaddTempExp.
     # You must also specify tract and patch to make a complete coaddTempExp ID.
     butler = patchRef.getButler()
-    tempExpKeyList = tuple(sorted(butler.getKeys(datasetType=tempExpName, level="Ccd")))
+    tempExpKeyList = sorted(set(butler.getKeys(datasetType=tempExpName, level="Ccd")))
 
     # compute tempExpIdDict, a dict whose:
     # - keys are tuples of coaddTempExp ID values in tempKeyList order
