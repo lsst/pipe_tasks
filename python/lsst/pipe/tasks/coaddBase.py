@@ -45,6 +45,11 @@ class CoaddBaseConfig(pexConfig.Config):
         doc = "Image selection subtask.",
         target = BadSelectImagesTask,
     )
+    badMaskPlanes = pexConfig.ListField(
+        dtype = str,
+        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
+        default = ("EDGE",),
+    )
 
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
@@ -163,6 +168,10 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """Return the name of the metadata dataset
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
+
+    def getBadMaskBits(self):
+        """Convenience method to provide the bitmask from the mask plane names"""
+        return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
     def writeCoaddOutput(self, dataRef, obj, suffix=None):
         """Write a coadd product through the butler
