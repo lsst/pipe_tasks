@@ -23,29 +23,27 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask", "ButlerSelectImagesTask"]
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask", "DatabaseSelectImagesConfig"]
 
-class SelectImagesConfig(pexConfig.Config):
-    """Config for BaseSelectImagesTask"""
-    pass
-#    host = pexConfig.Field(
-#        doc = "Database server host name",
-#        dtype = str,
-#    )
-#    port = pexConfig.Field(
-#        doc = "Database server port",
-#        dtype = int,
-#    )
-#    database = pexConfig.Field(
-#        doc = "Name of database",
-#        dtype = str,
-#    )
-#    maxExposures = pexConfig.Field(
-#        doc = "maximum exposures to select; intended for debugging; ignored if None",
-#        dtype = int,
-#        optional = True,
-#    )
-
+class DatabaseSelectImagesConfig(SelectImagesConfig):
+    """Configuration for BaseSelectImagesTask, using a database"""
+    host = pexConfig.Field(
+        doc = "Database server host name",
+        dtype = str,
+    )
+    port = pexConfig.Field(
+        doc = "Database server port",
+        dtype = int,
+    )
+    database = pexConfig.Field(
+        doc = "Name of database",
+        dtype = str,
+    )
+    maxExposures = pexConfig.Field(
+        doc = "maximum exposures to select; intended for debugging; ignored if None",
+        dtype = int,
+        optional = True,
+    )
 
 class BaseExposureInfo(object):
     """Data about a selected exposure
@@ -80,7 +78,7 @@ class BaseExposureInfo(object):
 class BaseSelectImagesTask(pipeBase.Task):
     """Base task for selecting images suitable for coaddition
     """
-    ConfigClass = SelectImagesConfig
+    ConfigClass = pexConfig.Config
     _DefaultName = "selectImages"
     
     @pipeBase.timeMethod
