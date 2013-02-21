@@ -582,11 +582,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             lsstDebug.frame += 1
             
            
-    def getTemplate(self, exposure, sensorRef):
+    def getTemplate(self, exposure, sensorRef, border=10):
         """Return a template coadd exposure that overlaps the exposure
         
         @param[in] exposure: exposure
         @param[in] sensorRef: a Butler data reference that can be used to obtain coadd data
+        @param[in] border: number of pixels to grow border (e.g. margin for warping)
 
         @return coaddExposure: a template coadd exposure assembled out of patches
         
@@ -595,24 +596,30 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         skyMap = sensorRef.get(datasetType=self.config.coaddName + "Coadd_skyMap")
         expWcs = exposure.getWcs()
         expBoxD = afwGeom.Box2D(exposure.getBBox(afwImage.PARENT))
+        expBoxD.grow(border)
         ctrSkyPos = expWcs.pixelToSky(expBoxD.getCenter())
         tractInfo = skyMap.findTract(ctrSkyPos)
         self.log.info("Using skyMap tract %s" % (tractInfo.getId(),))
         skyCorners = [expWcs.pixelToSky(pixPos) for pixPos in expBoxD.getCorners()]
         patchList = tractInfo.findPatchList(skyCorners)
+            
         if not patchList:
             raise RuntimeError("No suitable tract found")
         self.log.info("Assembling %s coadd patches" % (len(patchList),))
-        # compute inclusive bounding box
-        coaddBBox = afwGeom.Box2I()
-        for patchInfo in patchList:
-            outerBBox = patchInfo.getOuterBBox()
-            for corner in outerBBox.getCorners():
-                coaddBBox.include(corner)
+
+
+        # compute coadd bbox
+        coaddWcs = tractInfo.getWcs()
+        coaddBBoxD = afwGeom.Box2D()
+        for skyPos in skyCorners:
+            coaddBBoxD.include(coaddWcs.skyToPixel(skyPos))
+        coaddBBox = afwGeom.Box2I(coaddBBoxD)
+        del coaddBBoxD # no longer needed and could be confused with coaddBBox
         self.log.info("exposure dimensions=%s; coadd dimensions=%s" % \
             (exposure.getDimensions(), coaddBBox.getDimensions()))
         
-        coaddExposure = afwImage.ExposureF(coaddBBox, tractInfo.getWcs())
+        # assemble coadd exposure from subregions of patches
+        coaddExposure = afwImage.ExposureF(coaddBBox, coaddWcs)
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         coaddExposure.getMaskedImage().set(np.nan, edgeMask, np.nan)
         nPatchesFound = 0
@@ -620,9 +627,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         coaddPsf = None
         coaddApCorr = None
         for patchInfo in patchList:
-            # Retrieve the coadd patch
+            patchSubBBox = patchInfo.getBBox()
+            patchSubBBox.clip(coaddBBox)
+            if patchSubBBox.isEmpty():
+                self.log.info("skip tract=%(tract)s; no overlapping pixels" % patchArgDict)
+                continue
             patchArgDict = dict(
-                datasetType = self.config.coaddName + "Coadd",
+                datasetType = self.config.coaddName + "Coadd_sub",
+                bbox = patchSubBBox,
                 tract = tractInfo.getId(),
                 patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
             )
@@ -635,7 +647,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.log.info("Reading patch %s" % patchArgDict)
             coaddPatch = sensorRef.get(**patchArgDict)
             coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
-                patchInfo.getOuterBBox(), afwImage.PARENT)
+                coaddPatch.getBBox(afwImage.PARENT), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
             if coaddFilter is None:
                 coaddFilter = coaddPatch.getFilter()
