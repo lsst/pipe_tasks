@@ -160,3 +160,33 @@ class BadSelectImagesTask(BaseSelectImagesTask):
 
     def _runArgDictFromDataId(self, dataId):        
         raise RuntimeError("No select task specified")
+
+
+class ButlerSelectImagesTask(BaseSelectImagesTask):
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, inputRefList=[]):
+        dataRefList = []
+        exposureInfoList = []
+        for inputRef in inputRefList:
+            md = inputRef.get("calexp_md")
+            wcs = afwImage.makeWcs(md)
+            try:
+                nx, ny = md.get("NAXIS1"), md.get("NAXIS2")
+                bbox = afwGeom.Box2D(afwGeom.Point2D(0,0), afwGeom.Extent2D(nx, ny))
+                bounds = afwGeom.Box2D()
+                for coord in coordList:
+                    pix = wcs.skyToPixel(coord) # May throw() if wcslib barfs
+                    bounds.include(pix)
+                if bbox.overlaps(bounds):
+                    self.log.info("Selecting calexp %s" % dataRef.dataId)
+                    dataRefList.append(inputRef)
+                    corners = [wcs.pixelToSky(x,y) for x in (0, nx) for y in (0, ny)]
+                    exposureInfoList.append(inputRef.dataId, corners)
+                else:
+                    self.log.info("De-selecting calexp %s" % dataRef.dataId)
+            except:
+                self.log.info("Error in testing calexp %s: deselecting" % dataRef.dataId)
+
+        return pipeBase.Struct(
+            dataRefList = dataRefList if makeDataRefList else None,
+            exposureInfoList = exposureInfoList,
+        )
