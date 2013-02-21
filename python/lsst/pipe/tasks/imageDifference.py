@@ -590,8 +590,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         @param[in] border: number of pixels to grow border (e.g. margin for warping)
 
         @return coaddExposure: a template coadd exposure assembled out of patches
-        
-        @note: the coadd consists of whole patches stitched together, so it may be larger than necessary
         """
         skyMap = sensorRef.get(datasetType=self.config.coaddName + "Coadd_skyMap")
         expWcs = exposure.getWcs()
