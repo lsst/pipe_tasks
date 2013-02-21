@@ -90,12 +90,13 @@ class BaseSelectImagesTask(pipeBase.Task):
         """
         raise NotImplementedError()
     
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True):
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, inputRefList=[]):
         """Run based on a data reference
         
         @param[in] dataRef: data reference; must contain any extra keys needed by the subclass
         @param[in] coordList: list of coordinates defining region of interest; if None, search the whole sky
         @param[in] makeDataRefList: if True, return dataRefList
+        @param[in] inputRefList: List of data references to consider for selection
         @return a pipeBase Struct containing:
         - exposureInfoList: a list of ccdInfo objects
         - dataRefList: a list of data references (None if makeDataRefList False)
@@ -103,12 +104,25 @@ class BaseSelectImagesTask(pipeBase.Task):
         runArgDict = self._runArgDictFromDataId(dataRef.dataId)
         exposureInfoList = self.run(coordList, **runArgDict).exposureInfoList
 
-        if makeDataRefList:        
+        if len(inputRefList) > 0 and len(exposureInfoList) > 0:
+            # Restrict the exposure selection further by the inputs
+            ccdKeys, ccdValues = _extractKeyValue(exposureInfoList)
+            inKeys, inValues = _extractKeyValue(inputRefList, keys=ccdKeys)
+            inValues = set(inValues)
+            newExposureInfoList = []
+            for info, ccdVal in zip(exposureInfoList, ccdValues):
+                if ccdVal in inValues:
+                    newExposureInfoList.append(info)
+                else:
+                    self.log.info("De-selecting exposure %s: not in inputRefList" % info.dataId)
+            exposureInfoList = newExposureInfoList
+
+        if makeDataRefList:
             butler = dataRef.butlerSubset.butler
             dataRefList = [butler.dataRef(
                 datasetType = "calexp",
                 dataId = ccdInfo.dataId,
-            ) for ccdInfo in exposureInfoList]
+                ) for ccdInfo in exposureInfoList]
         else:
             dataRefList = None
 
@@ -116,6 +130,27 @@ class BaseSelectImagesTask(pipeBase.Task):
             dataRefList = dataRefList,
             exposureInfoList = exposureInfoList,
         )
+
+
+def _extractKeyValue(dataList, keys=None):
+    """Extract the keys and values from a list of dataIds
+
+    The input dataList is a list of objects that have 'dataId' members.
+    This allows it to be used for both a list of data references and a
+    list of ExposureInfo
+    """
+    assert len(dataList) > 0
+    if keys is None:
+        keys = sorted(dataList[0].dataId.keys())
+    keySet = set(keys)
+    values = list()
+    for data in dataList:
+        thisKeys = set(data.dataId.keys())
+        if thisKeys != keySet:
+            raise RuntimeError("DataId keys inconsistent: %s vs %s" % (keySet, thisKeys))
+        values.append(tuple(data.dataId[k] for k in keys))
+    return keys, values
+
 
 class BadSelectImagesTask(BaseSelectImagesTask):
     """Non-functional selection task intended as a placeholder subtask
