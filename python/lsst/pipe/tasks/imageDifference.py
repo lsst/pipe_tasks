@@ -289,19 +289,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if not sensorRef.datasetExists("src"):
                     self.log.warn("Src product does not exist; running detection, measurement, selection")
                     # Run own detection and measurement; necessary in nightly processing
-		    selectSources = self.subtract.getSelectSources(
-	                exposure, 
-	                sigma = scienceSigmaPost, 
-			doSmooth = not self.doPreConvolve,
-			idFactory = idFactory,
-		    )
+                    selectSources = self.subtract.getSelectSources(
+                        exposure, 
+                        sigma = scienceSigmaPost, 
+                        doSmooth = not self.doPreConvolve,
+                        idFactory = idFactory,
+                    )
                 else:
                     self.log.info("Source selection via src product")
                     # Sources already exist; for data release processing
                     selectSources = sensorRef.get("src")
 
                 # Number of basis functions
-		nparam = len(makeKernelBasisList(self.subtract.config.kernel.active))
+                nparam = len(makeKernelBasisList(self.subtract.config.kernel.active))
                 if self.config.doAddMetrics:
                     # Modify the schema of all Sources
                     self.kcQa = diUtils.KernelCandidateQa(nparam, self.log)
