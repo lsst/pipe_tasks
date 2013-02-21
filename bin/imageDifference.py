@@ -20,7 +20,10 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import scipy.stats
+try:
+    import scipy.stats
+except ImportError:
+    pass
 from lsst.pipe.tasks.imageDifference import ImageDifferenceTask
 
 ImageDifferenceTask.parseAndRun()
