@@ -50,31 +50,16 @@ class SelectImagesConfig(pexConfig.Config):
 class BaseExposureInfo(object):
     """Data about a selected exposure
     """
-    def __init__(self):
-        """Create exposure information from a query result from a db connection
-        
+    def __init__(self, dataId, coordList):
+        """Create exposure information that can be used to generate data references
+
         The object has the following fields:
         - dataId: data ID of exposure (a dict)
         - coordList: a list of corner coordinates of the exposure (list of afwCoord.IcrsCoord)
         plus any others items that are desired
-        
-        Subclasses must provide __init__ (which calls this one) and override getColumnNames.
         """
-        self._ind = -1
-
-    @property
-    def _nextInd(self):
-        self._ind += 1
-        return self._ind
-
-    @staticmethod
-    def getColumnNames():
-        """Set database query columns to be consistent with constructor
-        
-        For example:
-        return "raftName, visit, ccdName, filterName, ra1, dec1, ra2, dec2, ra3, dec3, ra4, dec4"
-        """
-        raise NotImplementedError()
+        dataId = dataId
+        coordList = coordList
 
 
 class BaseSelectImagesTask(pipeBase.Task):
