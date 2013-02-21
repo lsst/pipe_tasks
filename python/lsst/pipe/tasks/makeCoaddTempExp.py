@@ -152,8 +152,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s" %
                           (calExpInd+1, len(calexpRefList), calExpRef.dataId))
-            if True:
-#            try:
+            try:
                 exposure = self.getCalExp(calExpRef, getPsf=self.config.desiredFwhm is not None,
                                           bgSubtracted=self.config.bgSubtracted)
                 exposure = self.warpAndPsfMatch.run(exposure, modelPsf=modelPsf, wcs=skyInfo.wcs,
@@ -167,9 +166,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     coaddTempExp.setCalib(exposure.getCalib())
                     coaddTempExp.setFilter(exposure.getFilter())
                     didSetMetadata = True
-#            except Exception, e:
-#                self.log.warn("Error processing calexp %s; skipping it: %s" % (calExpRef.dataId, e))
-#                continue
+            except Exception, e:
+                self.log.warn("Error processing calexp %s; skipping it: %s" % (calExpRef.dataId, e))
+                continue
 
         self.log.info("coaddTempExp has %d good pixels" % (totGoodPix))
         return coaddTempExp if totGoodPix > 0 and didSetMetadata else None
