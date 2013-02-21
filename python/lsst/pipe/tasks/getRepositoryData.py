@@ -63,7 +63,7 @@ class DataRefListRunner(pipeBase.TaskRunner):
         result = task.run(dataRefList)
         
         if self.doReturnResults:
-            return Struct(
+            return pipeBase.Struct(
                 dataRefList = dataRefList,
                 metadata = task.metadata,
                 result = result,
