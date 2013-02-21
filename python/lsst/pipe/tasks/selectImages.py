@@ -142,10 +142,3 @@ class BadSelectImagesTask(BaseSelectImagesTask):
     def _runArgDictFromDataId(self, dataId):        
         raise RuntimeError("No select task specified")
 
-
-class ButlerSelectImagesTask(BaseSelectImagesTask):
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True):
-        searchId = {'field': "ACTJ0022M0036", 'filter': "W-S-R+"}
-        butler = dataRef.getButler()
-        dataRefList = [r for r in butler.subset("raw", "Ccd", searchId)]
-        return pipeBase.Struct(dataRefList=dataRefList, exposureInfoList=None)
