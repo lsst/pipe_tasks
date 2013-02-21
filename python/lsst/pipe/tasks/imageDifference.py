@@ -607,7 +607,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             raise RuntimeError("No suitable tract found")
         self.log.info("Assembling %s coadd patches" % (len(patchList),))
 
-
         # compute coadd bbox
         coaddWcs = tractInfo.getWcs()
         coaddBBoxD = afwGeom.Box2D()
