@@ -626,7 +626,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         coaddPsf = None
         coaddApCorr = None
         for patchInfo in patchList:
-            patchSubBBox = patchInfo.getBBox()
+            patchSubBBox = patchInfo.getOuterBBox()
             patchSubBBox.clip(coaddBBox)
             if patchSubBBox.isEmpty():
                 self.log.info("skip tract=%(tract)s; no overlapping pixels" % patchArgDict)
@@ -634,6 +634,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             patchArgDict = dict(
                 datasetType = self.config.coaddName + "Coadd_sub",
                 bbox = patchSubBBox,
+                imageOrigin = "PARENT",
                 tract = tractInfo.getId(),
                 patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
             )
@@ -657,7 +658,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     datasetType = self.config.coaddName + "Coadd_psf",
                     tract = tractInfo.getId(),
                     patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
-                    )
+                )
                 if not sensorRef.datasetExists(**patchPsfDict):
                     self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist" \
                                       % patchPsfDict)
