@@ -158,7 +158,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.log.info("Coadding %d exposures" % len(calExpRefList))
 
         butler = dataRef.getButler()
-        groupData = groupPatchExposures(dataRef, calExpRefList, self.getTempExpDataset(), checkExist=False)
+        groupData = groupPatchExposures(dataRef, calExpRefList, self.getCoaddDataset(),
+                                        self.getTempExpDataset(), checkExist=False)
         tempExpRefList = [getGroupDataRef(butler, self.getTempExpDataset(), g, groupData.keys) for
                           g in groupData.groups.keys()]
         inputData = self.prepareInputs(tempExpRefList)
@@ -231,7 +232,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
         statsCtrl.setNumIter(self.config.clipIter)
-        statsCtrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes))
+        statsCtrl.setAndMask(self.getBadPixelMask())
         statsCtrl.setNanSafe(True)
 
         # compute tempExpRefList: a list of tempExpRef that actually exist
@@ -379,7 +380,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         didSetMetadata = False
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             try:
-                didSetMetadata = self.assembleSubregion(coaddMaskedImage, subBBox, tempExpRefList,
+                didSetMetadata = self.assembleSubregion(coaddExposure, subBBox, tempExpRefList,
                                                         imageScalerList, weightList, bgInfoList, statsFlags,
                                                         statsCtrl, not didSetMetadata)
             except Exception, e:
@@ -389,11 +390,11 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         return coaddExposure
 
-    def assembleSubregion(self, coaddMaskedImage, bbox, tempExpRefList, imageScalerList, weightList,
+    def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
                           bgInfoList, statsFlags, statsCtrl, doSetMetadata=False):
         """Assemble the coadd for a sub-region
 
-        @param coaddMaskedImage: The target image for the coadd
+        @param coaddExposure: The target image for the coadd
         @param bbox: Sub-region to coadd
         @param tempExpRefList: List of data reference to tempExp
         @param imageScalerList: List of image scalers
@@ -406,6 +407,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         """
         self.log.info("Computing coadd over %s" % bbox)
         tempExpName = self.getTempExpDataset()
+        coaddMaskedImage = coaddExposure.getMaskedImage()
         coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)
         maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
         didSetMetadata = False

@@ -169,7 +169,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
-    def getBadMaskBits(self):
+    def getBadPixelMask(self):
         """Convenience method to provide the bitmask from the mask plane names"""
         return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 

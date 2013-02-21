@@ -43,7 +43,7 @@ def groupExposures(keys, dataRefList, checkDataset=None):
     groupDict = dict()
     for dataRef in dataRefList:
         dataId = dataRef.dataId
-        if checkExist and not dataRef.datasetExists(checkDataset):
+        if checkDataset is not None and not dataRef.datasetExists(checkDataset):
             self.log.warn("Could not find %s; skipping it" % (checkDataset, dataId,))
             continue
 
@@ -54,31 +54,31 @@ def groupExposures(keys, dataRefList, checkDataset=None):
         else:
             groupDict[values] = [dataRef]
 
-    return groups
+    return groupDict
 
-def groupPatchExposures(patchRef, calexpRefList, coaddDataset="deepCoadd", calexpDataset="calexp",
-                        checkExist=True):
+def groupPatchExposures(patchRef, calexpRefList, coaddDataset="deepCoadd", tempExpDataset="deepCoadd_tempExp",
+                        calexpDataset="calexp", checkExist=True):
     """Group calexp references into groups of exposures
 
     @param patchRef: Data reference for patch
     @param calexpRefList: List of data references for calexps
-    @param coaddDataset: Dataset name for coadds
+    @param coaddDataset: Dataset name for tempExps
     @param calexpDataset: Dataset name for calexp
     @return Struct with:
     - groups: Dict of <group tuple>: <list of data references for group>
     - keys: List of keys for group tuple
     """
     butler = patchRef.getButler()
-    keys = set(butler.getKeys(datasetType=calexpDataset, level="Ccd")))
+    tempExpKeys = sorted(butler.getKeys(datasetType=tempExpDataset))
+    coaddKeys = sorted(butler.getKeys(datasetType=coaddDataset))
+    keys = sorted(set(tempExpKeys) - set(coaddKeys)) # Keys that will specify an exposure
     patchId = patchRef.dataId
     groups = groupExposures(keys, calexpRefList, checkDataset=calexpDataset if checkExist else None)
 
-    # Supplement the groups with the coadd-specific information (which is constant)
-    coaddKeys = sorted(butler.getKeys(datasetType=coaddDataset))
+    # Supplement the groups with the coadd-specific information (e.g., tract, patch; these are constant)
     coaddValues = tuple(patchId[k] for k in coaddKeys)
-    for g in groups.keys():
-        g += coaddValues
-    keys += coaddKeys
+    groups = dict((k + coaddValues, v) for k,v in groups.iteritems())
+    keys += tuple(coaddKeys)
 
     return Struct(groups=groups, keys=keys)
 
@@ -91,7 +91,7 @@ def getGroupDataId(groupTuple, keys):
     """
     if len(groupTuple) != len(keys):
         raise RuntimeError("Number of values (%d) and keys (%d) do not match" % (len(groupTuple), len(keys)))
-    return dict(zip(keys, groupTuple)
+    return dict(zip(keys, groupTuple))
 
 def getGroupDataRef(butler, datasetType, groupTuple, keys):
     """Construct a data reference from a tuple and corresponding keys
@@ -102,5 +102,5 @@ def getGroupDataRef(butler, datasetType, groupTuple, keys):
     @param keys: List of keys for group tuple
     @return Data reference
     """
-    dataId = getTempExpId(groupTuple, keys)
+    dataId = getGroupDataId(groupTuple, keys)
     return butler.dataRef(datasetType=datasetType, dataId=dataId)

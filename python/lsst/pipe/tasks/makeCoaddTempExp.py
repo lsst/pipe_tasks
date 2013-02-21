@@ -105,12 +105,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             return None
         self.log.info("Processing %d calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
 
-        groupData = groupPatchExposures(patchRef, self.getTempExpName(), calExpRefList)
+        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDataset(),
+                                        self.getTempExpDataset())
         self.log.info("Processing %d tempExps for patch %s" % (len(groupData.groups), patchRef.dataId))
 
         dataRefList = []
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.iteritems()):
-            tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpName(),
+            tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDataset(),
                                          tempExpTuple, groupData.keys)
             if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=tempExpName):
                 self.log.info("tempCoaddExp %s exists; skipping" % (tempExpRef.dataId,))
@@ -163,7 +164,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 exposure = self.warpAndPsfMatch.run(exposure, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                     maxBBox=skyInfo.bbox).exposure
                 numGoodPix = coaddUtils.copyGoodPixels(
-                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self._badPixelMask)
+                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                 totGoodPix += numGoodPix
                 self.log.logdebug("Calexp %s has %d good pixels in this patch" %
                                   (calExpRef.dataId, numGoodPix))

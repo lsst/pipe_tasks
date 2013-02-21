@@ -79,11 +79,6 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
-    badMaskPlanes = pexConfig.ListField(
-        dtype = str,
-        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("EDGE",),
-    )
 
 
 class CoaddTask(CoaddBaseTask):
