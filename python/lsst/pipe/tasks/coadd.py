@@ -46,6 +46,11 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         optional = True,
         check = lambda x: x is None or x > 0.0,
     )
+    coaddKernelSizeFactor = pexConfig.Field(
+        dtype = float,
+        doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
+        default = 3.0,
+    )
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
         doc = "Task to warp, PSF-match and zero-point-match calexp",
@@ -53,11 +58,6 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
     scaleZeroPoint = pexConfig.ConfigurableField(
         target = coaddUtils.ScaleZeroPointTask,
         doc = "Task to compute zero point scale",
-    )
-    coaddKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
-        default = 3.0,
     )
     doInterp = pexConfig.Field(
         doc = "Interpolate over EDGE pixels?",
@@ -78,6 +78,11 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Persist coadd and associated products?",
         dtype = bool,
         default = True,
+    )
+    badMaskPlanes = pexConfig.ListField(
+        dtype = str,
+        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
+        default = ("EDGE",),
     )
 
 
@@ -102,14 +107,9 @@ class CoaddTask(CoaddBaseTask):
         However, this task computes a weight map and assembleCoadd cannot.
         Once the afw statistics stacker can compute a weight map this task will go away.
         
-        PSF matching is to a double gaussian model with core FWHM = self.config.warpAndPsfMatch.desiredFwhm
-        and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
-        The size of the PSF matching kernel is the same as the size of the kernel
-        found in the first calibrated science exposure, since there is no benefit
-        to making it any other size.
-        
         PSF-matching is performed before warping so the code can use the PSF models
         associated with the calibrated science exposures (without having to warp those models).
+        This is clearly incorrect (as the warping will change the PSF as a function of position).
         
         Coaddition is performed as a weighted sum. See lsst.coadd.utils.Coadd for details.
     
@@ -154,6 +154,19 @@ class CoaddTask(CoaddBaseTask):
         return coaddUtils.Coadd(bbox=bbox, wcs=wcs, badMaskPlanes=self.config.badMaskPlanes)
 
     def warpAndCoadd(self, imageRefList, bbox, wcs, modelPsf=None):
+        """Warp and coadd each input image
+
+        Individual CCDs within an exposure are treated separately.
+
+        @param imageRefList: List of input image data references
+        @param bbox: bounding box for coadd
+        @param wcs: Wcs for coadd
+        @param modelPsf: Target model PSF (or None for no PSF matching)
+        @return Struct with:
+        - coaddExposure: the coadded exposure
+        - weightMap: the weight map of the coadded exposure
+        - coadd: coaddUtils.Coadd object with results
+        """
         doPsfMatch = self.config.desiredFwhm is not None
         coadd = self.makeCoadd(bbox, wcs)
         for ind, calExpRef in enumerate(imageRefList):
@@ -164,7 +177,9 @@ class CoaddTask(CoaddBaseTask):
             self.log.info("Processing exposure %d of %d: %s" % (ind+1, len(imageRefList), calExpRef.dataId))
             exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=True)
             try:
-                exposure = self.warpExposure(exposure, bbox, wcs, modelPsf=modelPsf)
+                exposure = self.warpAndPsfMatch.run(exposure, wcs=wcs, modelPsf=modelPsf,
+                                                    maxBBox=bbox).exposure
+                self.scaleExposure(exposure)
                 coadd.addExposure(exposure)
             except Exception, e:
                 self.log.warn("Error processing exposure %s; skipping it: %s" % (calExpRef.dataId, e))
@@ -174,15 +189,21 @@ class CoaddTask(CoaddBaseTask):
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
         return pipeBase.Struct(coaddExposure=coaddExposure, weightMap=coadd.getWeightMap(), coadd=coadd)
 
-    def warpExposure(self, exposure, bbox, wcs, modelPsf=None):
-        exposure = self.warpAndPsfMatch.run(exposure, wcs=wcs, modelPsf=modelPsf, maxBBox=bbox).exposure
+    def scaleExposure(self, exposure):
+        """Apply photometric scaling to an exposure
+
+        The exposure is scaled in-place.
+        """
         scale = self.scaleZeroPoint.scaleFromCalib(exposure.getCalib()).scale
         maskedImage = exposure.getMaskedImage()
         maskedImage *= scale
-        return exposure
-
 
     def interpolateExposure(self, exp):
+        """Interpolate an exposure to remove bad pixels
+
+        In this case, we're interested in interpolating over "EDGE" pixels,
+        which are pixels that have no contributing (good) input pixels.
+        """
         fwhmArcSec = self.config.desiredFwhm or self.config.interpFwhm
         fwhmPixels = fwhmArcSec / exp.getWcs().pixelScale().asArcseconds()
         self.interpImage.interpolateOnePlane(

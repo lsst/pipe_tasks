@@ -31,8 +31,6 @@ from lsst.ip.diffim import ModelPsfMatchTask
 
 __all__ = ["WarpAndPsfMatchTask"]
 
-FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
-
 class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
@@ -47,7 +45,7 @@ class WarpAndPsfMatchConfig(pexConfig.Config):
 
 
 class WarpAndPsfMatchTask(pipeBase.Task):
-    """A task to warp, PSF-match and zeropoint scale an exposure
+    """A task to warp and PSF-match an exposure
     """
     ConfigClass = WarpAndPsfMatchConfig
 
@@ -58,9 +56,16 @@ class WarpAndPsfMatchTask(pipeBase.Task):
 
     def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None):
         """PSF-match exposure (if self.config.desiredFwhm is not None) and warp
-        
+
+        Note that PSF-matching is performed before warping, which is incorrect:
+        a position-dependent warping (as is used in the general case) will
+        re-introduce a position-dependent PSF.  However, this is easier, and
+        sufficient for now (until we are able to warp PSFs to determine the
+        correct target PSF).
+
         @param[in,out] exposure: exposure to preprocess; PSF matching is done in place
         @param[in] wcs: desired WCS of temporary images
+        @param[in] modelPsf: target PSF to which to match (or None)
         @param maxBBox: maximum allowed parent bbox of warped exposure (an afwGeom.Box2I or None);
             if None then the warped exposure will be just big enough to contain all warped pixels;
             if provided then the warped exposure may be smaller, and so missing some warped pixels;

@@ -45,11 +45,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc = "Image selection subtask.",
         target = BadSelectImagesTask,
     )
-    badMaskPlanes = pexConfig.ListField(
-        dtype = str,
-        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("EDGE",),
-    )
 
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
@@ -62,12 +57,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
-
-    def getBadPixelMask(self):
-        """Get the bad pixel mask
-        """
-        return self._badPixelMask
 
     def selectExposures(self, patchRef, skyInfo=None):
         """Select exposures to coadd
@@ -137,8 +126,9 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         The model PSF is a double Gaussian with core FWHM = fwhmPixels
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         
-        @param fwhmPixels: desired FWHM of core Gaussian, in pixels
-        @param kernelDim: desired dimensions of PSF kernel, in pixels
+        @param fwhm: desired FWHM of core Gaussian, in arcseconds
+        @param wcs: Wcs of the image (for pixel scale)
+        @param sizeFactor: multiplier of fwhm for kernel size
         @return model PSF
         """
         if fwhm is None or fwhm <= 0:
@@ -151,9 +141,11 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma, coreSigma * 2.5, 0.1)
 
     def getCoaddDataset(self):
+        """Return the name of the coadd dataset"""
         return self.config.coaddName + "Coadd"
 
     def getTempExpDataset(self):
+        """Return the name of the coadd tempExp (i.e., warp) dataset"""
         return self.config.coaddName + "Coadd_tempExp"
 
     @classmethod
@@ -173,7 +165,13 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
     def writeCoaddOutput(self, dataRef, obj, suffix=None):
-        objName = self.config.coaddName + "Coadd"
+        """Write a coadd product through the butler
+
+        @param dataRef: data reference for coadd
+        @param obj: coadd product to write
+        @param suffix: suffix to apply to coadd dataset name
+        """
+        objName = self.getCoaddDataset()
         if suffix is not None:
             objName += "_" + suffix
         self.log.info("Persisting %s" % objName)

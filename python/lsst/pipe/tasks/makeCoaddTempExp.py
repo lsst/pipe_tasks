@@ -31,7 +31,7 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
-from .coaddHelpers import groupExposures, getTempExpRef
+from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
 __all__ = ["MakeCoaddTempExpTask"]
 
@@ -87,16 +87,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
         If PSF-matching is used then <coaddName>Coadd_initPsf is also computed.
         
-        PSF matching is to a double gaussian model with core FWHM = self.config.warpAndPsfMatch.desiredFwhm
-        and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
-        
-        PSF-matching is performed before warping so the code can use the PSF models
-        associated with the calibrated science exposures (without having to warp those models).
-        
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
-        @return: a pipeBase.Struct with fields:
-        - dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
+        @return: dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
 
         @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
         
@@ -112,13 +105,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             return None
         self.log.info("Processing %d calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
 
-        groupData = groupExposures(patchRef, self.getTempExpName(), calExpRefList)
+        groupData = groupPatchExposures(patchRef, self.getTempExpName(), calExpRefList)
         self.log.info("Processing %d tempExps for patch %s" % (len(groupData.groups), patchRef.dataId))
 
         dataRefList = []
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.iteritems()):
-            tempExpRef = getTempExpRef(patchRef.getButler(), self.getTempExpName(),
-                                       tempExpTuple, groupData.keys)
+            tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpName(),
+                                         tempExpTuple, groupData.keys)
             if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=tempExpName):
                 self.log.info("tempCoaddExp %s exists; skipping" % (tempExpRef.dataId,))
                 dataRefList.append(tempExpRef)
@@ -128,7 +121,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             if exp is not None:
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
-                    self.writeTempExp(tempExpRef, exp)
+                    self.writeCoaddOutput(tempExpRef, exp, "tempExp")
                     if self.config.desiredFwhm is not None:
                         psf = self.makeModelPsf(fwhm=self.config.desiredFwhm, wcs=wcs,
                                                 sizeFactor=self.config.coaddKernelSizeFactor)
@@ -138,10 +131,22 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
         return dataRefList
 
-    def getTempExpName(self):
-        return self.config.coaddName + "Coadd_tempExp"
-
     def createTempExp(self, calexpRefList, skyInfo):
+        """Create a tempExp from inputs
+
+        We iterate over the multiple calexps in a single exposure to construct
+        the warp ("tempExp") of that exposure to the supplied tract/patch.
+
+        Pixels that receive no pixels are set to NAN; this is not correct
+        (violates LSST algorithms group policy), but will be fixed up by
+        interpolating after the coaddition.
+
+        @param calexpRefList: List of data references for calexps that (may)
+            overlap the patch of interest
+        @param skyInfo: Struct from CoaddBaseTask.getSkyInfo() with geometric
+            information about the patch
+        @return warped exposure, or None if no pixels overlap
+        """
         coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
@@ -172,8 +177,3 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         self.log.info("coaddTempExp has %d good pixels" % (totGoodPix))
         return coaddTempExp if totGoodPix > 0 and didSetMetadata else None
-
-    def writeTempExp(self, tempExpRef, coaddTempExp):
-        tempExpName = self.getTempExpName()
-        self.log.info("Persisting %s %s" % (tempExpName, tempExpRef.dataId))
-        tempExpRef.put(coaddTempExp, tempExpName)
