@@ -118,12 +118,12 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.makeSubtask("scaleZeroPoint")
         
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def run(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of coaddTempExp
 
         The coadd is computed as a mean with optional outlier rejection.
 
-        assembleCoaddTask only works on the dataset type 'coaddTempExp', which are 'coadd temp exposures.
+        assembleCoaddTask only works on the dataset type 'coaddTempExp', which are 'coadd temp exposures'.
         Each coaddTempExp is the size of a patch and contains data for one run, visit or
         (for a non-mosaic camera it will contain data for a single exposure).
 
@@ -150,8 +150,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
 
-        calExpRefList = self.selectExposures(patchRef=dataRef, wcs=wcs, bbox=bbox)
-
+        calExpRefList = self.selectExposures(patchRef=dataRef, wcs=wcs, bbox=bbox,
+                                             selectDataList=selectDataList)
 
         numExp = len(calExpRefList)
         if numExp < 1:
