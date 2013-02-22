@@ -117,6 +117,12 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Task to enable image-to-image image registration (warping)",
     )
     
+    templateBgBinSize = pexConfig.Field(dtype=int, default=2048,
+        doc = "Binsize for template background determination")
+
+    templateSipOrder = pexConfig.Field(dtype=int, default=2,
+        doc = "Sip Order for fitting the Template Wcs (default is too high, overfitting)")
+    
     growFootprint = pexConfig.Field(dtype=int, default=2,
         doc = "Grow positive and negative footprints by this amount before merging")
 
@@ -323,7 +329,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # First step: we need to subtract the background out
                 # for detection and measurement.  Use large binsize
                 # for the background estimation.
-                binsize = 2048
+                binsize = self.config.templateBgBinSize
 
                 # Second step: we need to run detection on the
                 # background-subtracted template
@@ -346,7 +352,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # register.fitWcs to fail.  A workaround for now is to
                 # re-fit the Wcs which returns with a CRPIX that is on
                 # the image, and *then* to fit for the relative Wcs.
-                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
+                #
+                # Requires low Sip order to avoid overfitting
+                sipOrder = self.config.templateSipOrder
+                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(sipOrder=sipOrder))
                 newWcs = astrometer.determineWcs(coaddSources, templateExposure).getWcs()
                 results = self.register.run(coaddSources, newWcs, 
                                             templateExposure.getBBox(afwImage.PARENT), selectSources)
