@@ -37,7 +37,7 @@ from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
     starSelectorRegistry, PsfAttributes
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
-    SourceFlagChecker, cast_KernelCandidateF, makeKernelBasisList
+    SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
@@ -491,15 +491,20 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     for cand in cell.begin(False): # include bad candidates
                         kernelCandList.append(cast_KernelCandidateF(cand))
 
+                # Get basis list to build control sample kernels
+                basisList = afwMath.cast_LinearCombinationKernel(
+                    kernelCandList[0].getKernel(KernelCandidateF.ORIG)).getKernelList()
+
                 controlCandList = \
                     diffimTools.sourceTableToCandList(controlSources, subtractRes.warpedExposure, exposure, 
                                                       self.config.subtract.kernel.active, 
                                                       self.config.subtract.kernel.active.detectionConfig, 
-                                                      self.log)
+                                                      self.log, dobuild=True, basisList=basisList)
 
                 self.kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel, 
                                 dof=nparam)
                 self.kcQa.apply(controlCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
+
                 if self.config.doDetection:
                     self.kcQa.aggregate(selectSources, self.metadata, allresids, diaSources)
                 else:
