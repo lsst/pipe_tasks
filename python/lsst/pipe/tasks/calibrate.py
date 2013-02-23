@@ -254,6 +254,7 @@ class CalibrateTask(pipeBase.Task):
             except Exception, e:
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
+                self.metadata.set('MAGZERO', float("NaN"))
                 
             if photocalRet:
                 self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
@@ -272,7 +273,7 @@ class CalibrateTask(pipeBase.Task):
                 metadata.set('COLORTERM3', 0.0)    
         else:
             photocalRet = None
-        
+
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
 
         return pipeBase.Struct(
