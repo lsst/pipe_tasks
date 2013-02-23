@@ -122,6 +122,8 @@ class CalibrateConfig(pexConfig.Config):
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.prefix = "initial."
         self.initialMeasurement.doApplyApCorr = False
+        initflags = [self.initialMeasurement.prefix+x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
+        self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024
         self.computeApCorr.alg1.name = "flux.psf"
         self.computeApCorr.alg2.name = "flux.sinc"
@@ -144,6 +146,13 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("astrometry", schema=self.schema)
         self.makeSubtask("photocal", schema=self.schema)
 
+    def getCalibKeys(self):
+        """
+        Return a sequence of schema keys that represent fields that should be propagated from
+        icSrc to src by ProcessCcdTask.
+        """
+        return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, idFactory=None):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
@@ -152,41 +161,47 @@ class CalibrateTask(pipeBase.Task):
         @param[in]      defects    List of defects on exposure
         @param[in]      idFactory  afw.table.IdFactory to use for source catalog.
         @return a pipeBase.Struct with fields:
+        - backgrounds: A list of background models applied in the calibration phase
         - psf: Point spread function
         - apCorr: Aperture correction
         - sources: Sources used in calibration
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
+        - photocal: Output of photocal subtask
         """
         assert exposure is not None, "No exposure provided"
 
         self.installInitialPsf(exposure)
         if idFactory is None:
             idFactory = afwTable.IdFactory.makeSimple()
-
+        backgrounds = []
         keepCRs = True                  # At least until we know the PSF
         self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
         self.display('repair', exposure=exposure)
-
         if self.config.doBackground:
             with self.timer("background"):
                 bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
-                del bg
+                backgrounds.append(bg)
 
             self.display('background', exposure=exposure)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         table.setMetadata(self.algMetadata)
         detRet = self.detection.makeSourceCatalog(table, exposure)
         sources = detRet.sources
+        if detRet.fpSets.background:
+            backgrounds.append(detRet.fpSets.background)
 
         if self.config.doPsf:
             self.initialMeasurement.measure(exposure, sources)
 
             if self.config.doAstrometry:
-                oldWcs = exposure.getWcs()
-                self.astrometry.run(exposure, sources)
-
-            psfRet = self.measurePsf.run(exposure, sources)
+                astromRet = self.astrometry.run(exposure, sources)
+                matches = astromRet.matches
+            else:
+                # If doAstrometry is False, we force the Star Selector to either make them itself
+                # or hope it doesn't need them.
+                matches = None
+            psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
         else:
@@ -198,13 +213,17 @@ class CalibrateTask(pipeBase.Task):
             self.repair.run(exposure, defects=defects, keepCRs=None)
             self.display('repair', exposure=exposure)
 
-        if self.config.doBackground:   # is repeating this necessary?  (does background depend on PSF model?)
+        if self.config.doBackground:
+            # Background estimation ignores (by default) pixels with the
+            # DETECTED bit set, so now we re-estimate the background,
+            # ignoring sources.  (see BackgroundConfig.ignoredPixelMask)
             with self.timer("background"):
                 # Subtract background
-                background, exposure = measAlg.estimateBackground(
+                bg, exposure = measAlg.estimateBackground(
                     exposure, self.config.background, subtract=True,
                     statsKeys=('BGMEAN2', 'BGVAR2'))
-                self.log.log(self.log.INFO, "Fit and subtracted background")
+                self.log.info("Fit and subtracted background")
+                backgrounds.append(bg)
 
             self.display('background', exposure=exposure)
 
@@ -233,7 +252,7 @@ class CalibrateTask(pipeBase.Task):
             try:
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
-                self.log.log(self.log.WARN, "Failed to determine photometric zero-point: %s" % e)
+                self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
                 
@@ -259,6 +278,7 @@ class CalibrateTask(pipeBase.Task):
 
         return pipeBase.Struct(
             exposure = exposure,
+            backgrounds = backgrounds,
             psf = psf,
             apCorr = apCorr,
             sources = sources,
@@ -280,7 +300,7 @@ class CalibrateTask(pipeBase.Task):
         model = self.config.initialPsf.model
         fwhm = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
         size = self.config.initialPsf.size
-        self.log.log(self.log.INFO, "installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
+        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
         psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)
 
@@ -298,7 +318,7 @@ class CalibrateTask(pipeBase.Task):
         x0, y0 = exposure.getXY0()
         x, y = exposure.getWidth() / 2.0 + x0, exposure.getHeight() / 2.0 + y0
         value, error = apCorr.computeAt(x, y)
-        self.log.log(self.log.INFO, "Central aperture correction using %d/%d stars: %f +/- %f" %
+        self.log.info("Central aperture correction using %d/%d stars: %f +/- %f" %
                      (metadata.get("numGoodStars"), metadata.get("numAvailStars"), value, error))
         for key in metadata.names():
             self.metadata.add("apCorr.%s" % key, metadata.get(key))

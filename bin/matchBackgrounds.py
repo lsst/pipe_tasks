@@ -21,6 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.logging as pexLog
-from lsst.pipe.tasks.outlierRejectedCoadd import OutlierRejectedCoaddTask
+from lsst.pipe.tasks.matchBackgrounds import MatchBackgroundsTask
 
-OutlierRejectedCoaddTask.parseAndRun()
+MatchBackgroundsTask.parseAndRun()
