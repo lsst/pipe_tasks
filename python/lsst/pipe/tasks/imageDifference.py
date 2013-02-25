@@ -306,7 +306,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     selectSources = sensorRef.get("src")
 
                 # Number of basis functions
-                nparam = len(makeKernelBasisList(self.subtract.config.kernel.active))
+                nparam = len(makeKernelBasisList(self.subtract.config.kernel.active,
+                                                 referenceFwhmPix = scienceSigmaPost * FwhmPerSigma,
+                                                 targetFwhmPix = templateSigma * FwhmPerSigma))
+
                 if self.config.doAddMetrics:
                     # Modify the schema of all Sources
                     self.kcQa = diUtils.KernelCandidateQa(nparam, self.log)
