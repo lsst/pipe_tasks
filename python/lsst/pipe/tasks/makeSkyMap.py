@@ -51,8 +51,12 @@ class MakeSkyMapConfig(pexConfig.Config):
 class MakeSkyMapRunner(pipeBase.TaskRunner):
     """Only need a single butler instance to run on."""
     @staticmethod
-    def getTargetList(self, parsedCmd):
+    def getTargetList(parsedCmd):
         return [parsedCmd.butler]
+
+    def __call__(self, butler):
+        task = self.TaskClass(config=self.config, log=self.log)
+        return task.run(butler)
 
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
@@ -60,6 +64,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
     """
     ConfigClass = MakeSkyMapConfig
     _DefaultName = "makeSkyMap"
+    RunnerClass = MakeSkyMapRunner
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -89,7 +94,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
                 (tractInfo.getId(), ", ".join(posStrList), \
                 tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
         if self.config.doWrite:
-            butler.put(skyMap)
+            butler.put(skyMap, self.config.coaddName + "Coadd_skyMap")
         return pipeBase.Struct(
             skyMap = skyMap
         )
