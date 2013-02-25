@@ -179,7 +179,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                                  inputData.weightList,
                                  inputData.backgroundInfoList if self.config.doMatchBackgrounds else None)
         if self.config.doMatchBackgrounds:
-            self.addBackgroundMatchingMetadata(coaddExp, inputData.backgroundInfoList)
+            self.addBackgroundMatchingMetadata(coaddExp, inputData.tempExpRefList,
+                                               inputData.backgroundInfoList)
 
         if self.config.doInterp:
             fwhmPixels = self.config.interpFwhm / skyInfo.wcs.pixelScale().asArcseconds(),
@@ -209,10 +210,10 @@ class AssembleCoaddTask(CoaddBaseTask):
         if not dataRef.datasetExists(dataset):
             raise RuntimeError("Could not find reference exposure %s %s." % (dataset, dataRef.dataId))
 
-        refExposure = refExpDataRef.get(tempExpName, immediate=True)
+        refExposure = refExpDataRef.get(self.getTempExpDataset(), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
             exposure = refExposure,
-            exposureId = refExpDataRef.dataId,
+            exposureId = dataRef.dataId,
             )
         return refImageScaler
 
@@ -295,7 +296,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             backgroundInfoList = self.matchBackgrounds.run(
                 expRefList = inputData.tempExpRefList,
                 imageScalerList = inputData.imageScalerList,
-                refExpDataRef = refExpDataRef,
+                refExpDataRef = refExpDataRef if not self.config.autoReference else None,
                 refImageScaler = refImageScaler,
                 expDatasetType = self.getTempExpDataset(),
             ).backgroundInfoList
@@ -309,23 +310,24 @@ class AssembleCoaddTask(CoaddBaseTask):
         newScaleList = []
         # the number of good backgrounds may be < than len(tempExpList)
         # sync these up and correct the weights
-        for i, tempExpRef in enumerate(tempExpRefList):
-            if not backgroundInfoList[i].isReference:
+        for tempExpRef, bgInfo, scaler, weight in zip(inputData.tempExpRefList, backgroundInfoList,
+                                                      inputData.imageScalerList, inputData.weightList):
+            if not bgInfo.isReference:
                 # skip exposure if it has no backgroundModel
                 # or if fit was bad
-                if (backgroundInfoList[i].backgroundModel is None):
+                if (bgInfo.backgroundModel is None):
                     self.log.info("No background offset model available for %s: skipping"%(
                         tempExpRef.dataId))
                     continue
                 try:
-                    varianceRatio =  backgroundInfoList[i].matchedMSE / backgroundInfoList[i].diffImVar
+                    varianceRatio =  bgInfo.matchedMSE / bgInfo.diffImVar
                 except Exception, e:
                     self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping" %
                                   (e, tempExpRef.dataId,))
                     continue
                 if not numpy.isfinite(varianceRatio):
                     self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" %
-                                  (backgroundInfoList[i].matchedMSE, backgroundInfoList[i].diffImVar,
+                                  (bgInfo.matchedMSE, bgInfo.diffImVar,
                                    tempExpRef.dataId,))
                     continue
                 elif (varianceRatio > self.config.maxMatchResidualRatio):
@@ -333,13 +335,13 @@ class AssembleCoaddTask(CoaddBaseTask):
                             varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
                     continue
 
-            newWeightList.append(1 / (1 / weightList[i] + backgroundInfoList[i].fitRMS**2))
+            newWeightList.append(1 / (1 / weight + bgInfo.fitRMS**2))
             newTempExpRefList.append(tempExpRef)
-            newBackgroundStructList.append(backgroundInfoList[i])
-            newScaleList.append(imageScalerList[i])
+            newBackgroundStructList.append(bgInfo)
+            newScaleList.append(scaler)
 
-        return Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList,
-                      imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
+        return pipebase.Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList,
+                               imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None):
         """Assemble a coadd from input warps
@@ -439,7 +441,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         return didSetMetadata
 
 
-    def addBackgroundMatchingMetadata(self, coaddExposure, backgroundInfoList):
+    def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):
         """Add metadata from the background matching to the coadd
 
         @param coaddExposure: Coadd
@@ -541,11 +543,12 @@ class AssembleCoaddArgumentParser(pipeBase.ArgumentParser):
 
             for key in dataId: # check if users supplied visit/run
                 if (key not in keysCoadd) and (key in keysCoaddTempExp):  #user supplied a visit/run
-                    # user probably meant: autoReference = False
-                    namespace.config.autoReference = False
-                    namespace.datasetType = namespace.config.coaddName + "Coadd_tempExp"
-                    print "Switching config.autoReference to False. " \
-                                  "Applies only to background Matching. "
+                    if namespace.config.autoReference:
+                        # user probably meant: autoReference = False
+                        namespace.config.autoReference = False
+                        datasetType = namespace.config.coaddName + "Coadd_tempExp"
+                        print "Switching config.autoReference to False; applies only to background Matching."
+                        break
 
             dataRef = namespace.butler.dataRef(
                 datasetType = namespace.datasetType,
