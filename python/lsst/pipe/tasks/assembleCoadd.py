@@ -493,5 +493,5 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
                 datasetType = datasetType,
                 dataId = dataId,
             )
-            refList.append(dataRef)
+            self.refList.append(dataRef)
 
