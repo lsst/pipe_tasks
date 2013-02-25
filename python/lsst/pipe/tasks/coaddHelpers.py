@@ -44,7 +44,6 @@ def groupExposures(keys, dataRefList, checkDataset=None):
     for dataRef in dataRefList:
         dataId = dataRef.dataId
         if checkDataset is not None and not dataRef.datasetExists(checkDataset):
-            self.log.warn("Could not find %s; skipping it" % (checkDataset, dataId,))
             continue
 
         values = tuple(dataId[key] for key in keys) # NOT dataId.values() as we must preserve order
