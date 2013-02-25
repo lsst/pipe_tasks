@@ -234,22 +234,33 @@ class RepairTask(pipeBase.Task):
         except Exception:
             pass
 
-        mi = exposure.getMaskedImage()
-        bg = afwMath.makeStatistics(mi, afwMath.MEDIAN).getValue()
+        exposure0 = exposure            # initial value of exposure
+        binSize = self.config.cosmicray.background.binSize
+        nx, ny = exposure.getWidth()/binSize, exposure.getHeight()/binSize
+        # Treat constant background as a special case to avoid the extra complexity in calling
+        # measAlg.estimateBackground().
+        if nx*ny <= 1:
+            bg = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.MEDIAN).getValue()
+        else:
+            exposure = exposure.Factory(exposure, True)
+            bg, exposure = measAlg.estimateBackground(exposure, self.config.cosmicray.background,
+                                                      subtract=True)
+            bg = 0.0
 
         if keepCRs is None:
             keepCRs = self.config.cosmicray.keepCRs
         try:
-            crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+            crs = measAlg.findCosmicRays(exposure.getMaskedImage(),
+                                         psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
         except Exception:
             if display:
                 import lsst.afw.display.ds9 as ds9
-                ds9.mtv(exposure, title="Failed CR")
+                ds9.mtv(exposure0, title="Failed CR")
             raise
 
         num = 0
         if crs is not None:
-            mask = mi.getMask()
+            mask = exposure0.getMaskedImage().getMask()
             crBit = mask.getPlaneBitMask("CR")
             afwDet.setMaskFromFootprintList(mask, crs, crBit)
             num = len(crs)
@@ -259,7 +270,7 @@ class RepairTask(pipeBase.Task):
                 import lsst.afw.display.utils as displayUtils
 
                 ds9.incrDefaultFrame()
-                ds9.mtv(exposure, title="Post-CR")
+                ds9.mtv(exposure0, title="Post-CR")
 
                 with ds9.Buffering():
                     for cr in crs:
