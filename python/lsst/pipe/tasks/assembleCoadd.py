@@ -340,7 +340,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             newBackgroundStructList.append(bgInfo)
             newScaleList.append(scaler)
 
-        return pipebase.Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList,
+        return pipeBase.Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList,
                                imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None):
