@@ -62,24 +62,19 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
-    def getBadPixelMask(self):
-        """Get the bad pixel mask
-        """
-        return self._badPixelMask
-
-    def selectExposures(self, patchRef, wcs, bbox):
+    def selectExposures(self, patchRef, skyInfo=None):
         """Select exposures to coadd
         
         @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] wcs: WCS of coadd patch
-        @param[in] bbox: bbox of coadd patch
+        @param[in] skyInfo: geometry for the patch; output from getSkyInfo
         @return a list of science exposures to coadd, as butler data references
         """
-        cornerPosList = afwGeom.Box2D(bbox).getCorners()
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
+        if skyInfo is None:
+            skyInfo = self.getSkyInfo(patchRef)
+        cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
         return self.select.runDataRef(patchRef, coordList).dataRefList
     
     def getSkyInfo(self, patchRef):
@@ -109,22 +104,54 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             wcs = tractInfo.getWcs(),
             bbox = patchInfo.getOuterBBox(),
         )
-    
-    def makeModelPsf(self, fwhmPixels, kernelDim):
+
+    def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
+        """Return one "calexp" calibrated exposure, optionally with psf
+
+        @param dataRef: a sensor-level data reference
+        @param getPsf: include the PSF?
+        @param bgSubtracted: return calexp with background subtracted? If False
+            get the calexp's background background model and add it to the cale
+        @return calibrated exposure with psf
+        """
+        exposure = dataRef.get("calexp", immediate=True)
+        if not bgSubtracted:
+            background = dataRef.get("calexpBackground", immediate=True)
+            mi = exposure.getMaskedImage()
+            mi += background
+            del mi
+        if getPsf:
+            psf = dataRef.get("psf", immediate=True)
+            exposure.setPsf(psf)
+        return exposure
+
+    def makeModelPsf(self, fwhm, wcs, sizeFactor=3.0):
         """Construct a model PSF, or reuse the prior model, if possible
         
         The model PSF is a double Gaussian with core FWHM = fwhmPixels
         and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
         
-        @param fwhmPixels: desired FWHM of core Gaussian, in pixels
-        @param kernelDim: desired dimensions of PSF kernel, in pixels
+        @param fwhm: desired FWHM of core Gaussian, in arcseconds
+        @param wcs: Wcs of the image (for pixel scale)
+        @param sizeFactor: multiplier of fwhm for kernel size
         @return model PSF
         """
-        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" % \
-            (fwhmPixels, kernelDim[0], kernelDim[1]))
+        if fwhm is None or fwhm <= 0:
+            return None
+        fwhmPixels = fwhm / wcs.pixelScale().asArcseconds()
+        kernelDim = int(sizeFactor * fwhmPixels + 0.5)
+        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
+                          (fwhmPixels, kernelDim, kernelDim))
         coreSigma = fwhmPixels / FwhmPerSigma
-        return afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-            coreSigma, coreSigma * 2.5, 0.1)
+        return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma, coreSigma * 2.5, 0.1)
+
+    def getCoaddDataset(self):
+        """Return the name of the coadd dataset"""
+        return self.config.coaddName + "Coadd"
+
+    def getTempExpDataset(self):
+        """Return the name of the coadd tempExp (i.e., warp) dataset"""
+        return self.config.coaddName + "Coadd_tempExp"
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -150,7 +177,7 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
     
     Required because butler.subset does not support patch and tract
     """
-    def _makeDataRefList(self, namespace):
+    def makeDataRefList(self, namespace):
         """Make self.refList from self.idList
         """
         datasetType = namespace.config.coaddName + "Coadd"
