@@ -172,6 +172,23 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
+    def getBadPixelMask(self):
+        """Convenience method to provide the bitmask from the mask plane names"""
+        return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
+
+    def writeCoaddOutput(self, dataRef, obj, suffix=None):
+        """Write a coadd product through the butler
+
+        @param dataRef: data reference for coadd
+        @param obj: coadd product to write
+        @param suffix: suffix to apply to coadd dataset name
+        """
+        objName = self.getCoaddDataset()
+        if suffix is not None:
+            objName += "_" + suffix
+        self.log.info("Persisting %s" % objName)
+        dataRef.put(obj, objName)
+
 class CoaddDataIdContainer(pipeBase.DataIdContainer):
     """A version of lsst.pipe.base.DataIdContainer specialized for coaddition.
     
