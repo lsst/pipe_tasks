@@ -80,7 +80,7 @@ class CoaddTask(CoaddBaseTask):
         self.makeSubtask("scaleZeroPoint")
     
     @pipeBase.timeMethod
-    def run(self, patchRef):
+    def run(self, patchRef, selectDataList=[]):
         """Coadd images by PSF-matching (optional), warping and computing a weighted sum
         
         This task is deprecated: the preferred technique is to use makeCoaddTempExp followed by assembleCoadd,
@@ -110,7 +110,8 @@ class CoaddTask(CoaddBaseTask):
         tractWcs = skyInfo.wcs
         patchBBox = skyInfo.bbox
         
-        imageRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox)
+        imageRefList = self.selectExposures(patchRef=patchRef, wcs=tractWcs, bbox=patchBBox,
+                                            selectDataList=selectDataList)
         
         numExp = len(imageRefList)
         if numExp < 1:

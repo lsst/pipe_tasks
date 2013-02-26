@@ -23,7 +23,7 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "BadSelectImagesTask"]
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask"]
 
 class SelectImagesConfig(pexConfig.Config):
     """Config for BaseSelectImagesTask
@@ -90,13 +90,18 @@ class BaseSelectImagesTask(pipeBase.Task):
         """
         raise NotImplementedError()
     
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True, inputRefList=[]):
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
         """Run based on a data reference
-        
+
+        This delegates to run() and _runArgDictFromDataId() to do the actual
+        selection. In the event that the selectDataList is non-empty, this will
+        be used to further restrict the selection, providing the user with
+        additional control over the selection.
+
         @param[in] dataRef: data reference; must contain any extra keys needed by the subclass
         @param[in] coordList: list of coordinates defining region of interest; if None, search the whole sky
         @param[in] makeDataRefList: if True, return dataRefList
-        @param[in] inputRefList: List of data references to consider for selection
+        @param[in] selectDataList: List of SelectStruct with dataRefs to consider for selection
         @return a pipeBase Struct containing:
         - exposureInfoList: a list of ccdInfo objects
         - dataRefList: a list of data references (None if makeDataRefList False)
@@ -104,17 +109,17 @@ class BaseSelectImagesTask(pipeBase.Task):
         runArgDict = self._runArgDictFromDataId(dataRef.dataId)
         exposureInfoList = self.run(coordList, **runArgDict).exposureInfoList
 
-        if len(inputRefList) > 0 and len(exposureInfoList) > 0:
-            # Restrict the exposure selection further by the inputs
+        if len(selectDataList) > 0 and len(exposureInfoList) > 0:
+            # Restrict the exposure selection further
             ccdKeys, ccdValues = _extractKeyValue(exposureInfoList)
-            inKeys, inValues = _extractKeyValue(inputRefList, keys=ccdKeys)
+            inKeys, inValues = _extractKeyValue([s.dataRef for s in selectDataList], keys=ccdKeys)
             inValues = set(inValues)
             newExposureInfoList = []
             for info, ccdVal in zip(exposureInfoList, ccdValues):
                 if ccdVal in inValues:
                     newExposureInfoList.append(info)
                 else:
-                    self.log.info("De-selecting exposure %s: not in inputRefList" % info.dataId)
+                    self.log.info("De-selecting exposure %s: not in selectDataList" % info.dataId)
             exposureInfoList = newExposureInfoList
 
         if makeDataRefList:
@@ -152,39 +157,41 @@ def _extractKeyValue(dataList, keys=None):
     return keys, values
 
 
-class BadSelectImagesTask(BaseSelectImagesTask):
-    """Non-functional selection task intended as a placeholder subtask
-    """
-    def run(self, coordList):
-        raise RuntimeError("No select task specified")
-
-    def _runArgDictFromDataId(self, dataId):        
-        raise RuntimeError("No select task specified")
+class SelectStruct(pipeBase.Struct):
+    """A container for data to be passed to the WcsSelectImagesTask"""
+    def __init__(self, dataRef, header, wcs, dims):
+        super(SelectStruct, self).__init__(dataRef=dataRef, header=header, wcs=wcs, dims=dims)
 
 
-class ButlerSelectImagesTask(BaseSelectImagesTask):
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True, inputRefList=[]):
+class WcsSelectImagesTask(BaseSelectImagesTask):
+    """Select images using their Wcs"""
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
+        """We check each input in selectDataList for overlap with the region
+        of interest.
+        """
         dataRefList = []
         exposureInfoList = []
-        for inputRef in inputRefList:
-            md = inputRef.get("calexp_md")
-            wcs = afwImage.makeWcs(md)
+        for data in selectDataList:
+            dataRef = data.dataRef
+            wcs = data.wcs
+            nx,ny = data.dims
             try:
-                nx, ny = md.get("NAXIS1"), md.get("NAXIS2")
                 bbox = afwGeom.Box2D(afwGeom.Point2D(0,0), afwGeom.Extent2D(nx, ny))
                 bounds = afwGeom.Box2D()
                 for coord in coordList:
                     pix = wcs.skyToPixel(coord) # May throw() if wcslib barfs
                     bounds.include(pix)
-                if bbox.overlaps(bounds):
-                    self.log.info("Selecting calexp %s" % dataRef.dataId)
-                    dataRefList.append(inputRef)
-                    corners = [wcs.pixelToSky(x,y) for x in (0, nx) for y in (0, ny)]
-                    exposureInfoList.append(inputRef.dataId, corners)
-                else:
-                    self.log.info("De-selecting calexp %s" % dataRef.dataId)
-            except:
-                self.log.info("Error in testing calexp %s: deselecting" % dataRef.dataId)
+                if not bbox.overlaps(bounds):
+                    self.log.logdebug("De-selecting calexp %s" % dataRef.dataId)
+                    continue
+                self.log.info("Selecting calexp %s" % dataRef.dataId)
+                dataRefList.append(dataRef)
+                corners = [wcs.pixelToSky(x,y) for x in (0, nx) for y in (0, ny)]
+                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, corners))
+            except Exception, e:
+                # Particularly interested in catching problems from wcslib, which may throw() if this exposure
+                # is far from the coordinates under consideration.
+                self.log.logdebug("Error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
 
         return pipeBase.Struct(
             dataRefList = dataRefList if makeDataRefList else None,
