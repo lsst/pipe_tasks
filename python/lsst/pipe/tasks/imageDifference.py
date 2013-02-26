@@ -251,8 +251,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         exposure.setPsf(sciencePsf)
 
         # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
-        kWidth, kHeight = sciencePsf.getKernel().getDimensions()
-        psfAttr = PsfAttributes(sciencePsf, kWidth//2, kHeight//2)
+        ctr = afwGeom.Box2D(exposure.getBBox(afwImage.PARENT)).getCenter()
+        psfAttr = PsfAttributes(sciencePsf, afwGeom.Point2I(ctr))
         scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
         
         subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
@@ -262,8 +262,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
 
             # sigma of PSF of template image before warping
-            kWidth, kHeight = templateExposure.getPsf().getKernel().getDimensions()
-            psfAttr = PsfAttributes(templateExposure.getPsf(), kWidth//2, kHeight//2)
+            ctr = afwGeom.Box2D(templateExposure.getBBox(afwImage.PARENT)).getCenter()
+            psfAttr = PsfAttributes(templateExposure.getPsf(), afwGeom.Point2I(ctr))
             templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
 
             # if requested, convolve the science exposure with its PSF
