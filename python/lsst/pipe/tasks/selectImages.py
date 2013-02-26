@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask"]

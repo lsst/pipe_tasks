@@ -54,7 +54,8 @@ class CoaddBaseConfig(pexConfig.Config):
 class CoaddTaskRunner(pipeBase.TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
-        return pipeBase.TaskRunner(parsedCmd, selectDataList=parsedCmd.selectId.dataList, **kwargs)
+        return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
+                                                 **kwargs)
 
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
@@ -185,7 +186,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
     """
     def makeDataRefList(self, namespace):
         """Add a dataList containing useful information for selecting images"""
-        super(CoaddSelectDataIdContainer, self).makeDataRefList(namespace)
+        super(SelectDataIdContainer, self).makeDataRefList(namespace)
         self.dataList = []
         for ref in self.refList:
             try:
