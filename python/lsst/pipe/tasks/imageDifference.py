@@ -24,6 +24,7 @@ import math
 import random
 import numpy as np
 
+import lsst.afw.display.ds9 as ds9
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
@@ -141,7 +142,6 @@ class ImageDifferenceConfig(pexConfig.Config):
             raise ValueError("Cannot run source merging without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
             raise ValueError("Cannot write HeavyFootprints without doWriteSources")
-
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
     """Subtract an image from a template coadd and measure the result
@@ -332,7 +332,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     binsize = binsize,
                 )
 
-
                 # Third step: we need to fit the relative astrometry.
                 #
                 # One problem is that the SIP fits are w.r.t. CRPIX,
@@ -345,8 +344,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 newWcs = astrometer.determineWcs(coaddSources, templateExposure).getWcs()
                 results = self.register.run(coaddSources, newWcs, 
                                             templateExposure.getBBox(afwImage.PARENT), selectSources)
+
                 warpedExp = self.register.warpExposure(templateExposure, results.wcs, 
-                                                       exposure.getWcs(), exposure.getBBox(afwImage.PARENT))
+                                            exposure.getWcs(), exposure.getBBox(afwImage.PARENT))
                 templateExposure = warpedExp
 
                 # Create debugging outputs on the astrometric
@@ -358,7 +358,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     sids      = [m.first.getId() for m in results.matches]
                     positions = [m.first.get(refCoordKey) for m in results.matches]
                     residuals = [m.first.get(refCoordKey).getOffsetFrom(
-                                   newWcs.pixelToSky(m.second.get(inCentroidKey))) for
+                                   results.wcs.pixelToSky(m.second.get(inCentroidKey))) for
                                  m in results.matches]
                     allresids = dict(zip(sids, zip(positions, residuals)))
 
