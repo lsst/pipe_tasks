@@ -455,9 +455,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matchRadAsec = self.config.diaSourceMatchRadius
                     matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
                     # Just the closest match
-                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
-                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
-                                             srcMatch in srcMatches])
+                    # This does not do what I expect so I cobbled together a brute force method in python 
+                    #srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
+                    #self.log.info("Found %i matches to the source catalog"%(len(srcMatches)))
+                    #srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
+                    #                         srcMatch in srcMatches])
+                    srcMatchDict = diUtils.matchXY(sensorRef.get("src"), diaSources, matchRadPixel)
+                    self.log.info("Found %i matches to the source catalog"%(len(srcMatchDict)))
                 else:
                     self.log.warn("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
