@@ -413,15 +413,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                                ContainerClass=SelectDataIdContainer)
         return parser
 
-    def _getConfigName(self):
-        """Return the name of the config dataset
-        """
-        return "%s_%s_config" % (self.config.coaddName, self._DefaultName)
-
-    def _getMetadataName(self):
-        """Return the name of the metadata dataset
-        """
-        return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
 def _subBBoxIter(bbox, subregionSize):
     """Iterate over subregions of a bbox
