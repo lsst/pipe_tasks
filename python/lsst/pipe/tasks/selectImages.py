@@ -158,8 +158,8 @@ def _extractKeyValue(dataList, keys=None):
 
 class SelectStruct(pipeBase.Struct):
     """A container for data to be passed to the WcsSelectImagesTask"""
-    def __init__(self, dataRef, header, wcs, dims):
-        super(SelectStruct, self).__init__(dataRef=dataRef, header=header, wcs=wcs, dims=dims)
+    def __init__(self, dataRef, wcs, dims):
+        super(SelectStruct, self).__init__(dataRef=dataRef, wcs=wcs, dims=dims)
 
 
 class WcsSelectImagesTask(BaseSelectImagesTask):
