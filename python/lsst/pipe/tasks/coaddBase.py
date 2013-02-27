@@ -35,6 +35,11 @@ from lsst.afw.fits.fitsLib import FitsError
 from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
 
+try:
+    from lsst.meas.mosaic import applyMosaicResults
+except ImportError:
+    applyMosaicResults = None
+
 __all__ = ["CoaddBaseTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -159,7 +164,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         @param dataRef: a sensor-level data reference
         @param getPsf: include the PSF?
         @param bgSubtracted: return calexp with background subtracted? If False
-            get the calexp's background background model and add it to the cale
+            get the calexp's background background model and add it to the calexp.
         @return calibrated exposure with psf
         """
         exposure = dataRef.get("calexp", immediate=True)
@@ -171,6 +176,19 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         if getPsf:
             psf = dataRef.get("psf", immediate=True)
             exposure.setPsf(psf)
+        if applyMosaicResults is None:
+            self.log.warn(
+                "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
+                % dataRef.dataId
+                )
+        else:
+            try:
+                applyMosaicResults(dataRef, calexp=exposure)
+            except Exception as err:
+                self.log.warn(
+                    "Failed to apply meas_mosaic calibrations for %s: %s"
+                    % (dataRef.dataId, err)
+                    )
         return exposure
 
     def getCoaddDatasetName(self):
