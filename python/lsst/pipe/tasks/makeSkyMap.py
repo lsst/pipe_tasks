@@ -56,8 +56,19 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
 
     def __call__(self, butler):
         task = self.TaskClass(config=self.config, log=self.log)
-        return task.run(butler)
-
+        task.writeConfig(butler)
+        if self.doRaise:
+            result = task.run(butler)
+        else:
+            try:
+                result = task.run(butler)
+            except Exception, e:
+                task.log.fatal("Failed: %s" % e)
+                if not isinstance(e, TaskError):
+                    traceback.print_exc(file=sys.stderr)
+        task.writeMetadata(butler)
+        if self.doReturnResults:
+            return results
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
     """Make a SkyMap in a repository, setting it up for coaddition
