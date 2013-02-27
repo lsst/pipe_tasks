@@ -81,7 +81,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         self.makeSubtask("warpAndPsfMatch")
 
     @pipeBase.timeMethod
-    def run(self, patchRef):
+    def run(self, patchRef, selectDataList=[]):
         """Produce <coaddName>Coadd_tempExp images and (optional) <coaddName>Coadd_initPsf
         
         <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
@@ -99,7 +99,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         """
         skyInfo = self.getSkyInfo(patchRef)
 
-        calExpRefList = self.selectExposures(patchRef, skyInfo)
+        calExpRefList = self.selectExposures(patchRef, skyInfo, selectDataList=selectDataList)
         if len(calExpRefList) == 0:
             self.log.warn("No exposures to coadd for patch %s" % patchRef.dataId)
             return None

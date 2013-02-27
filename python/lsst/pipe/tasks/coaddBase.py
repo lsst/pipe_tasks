@@ -27,7 +27,7 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
-from .selectImages import BadSelectImagesTask
+from .selectImages import WcsSelectImagesTask, SelectStruct
 
 __all__ = ["CoaddBaseTask"]
 
@@ -43,13 +43,19 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc = "Image selection subtask.",
-        target = BadSelectImagesTask,
+        target = WcsSelectImagesTask,
     )
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
     )
+
+class CoaddTaskRunner(pipeBase.TaskRunner):
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
+                                                 **kwargs)
 
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
@@ -58,12 +64,13 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     Subclasses must specify _DefaultName
     """
     ConfigClass = CoaddBaseConfig
+    RunnerClass = CoaddTaskRunner
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
 
-    def selectExposures(self, patchRef, skyInfo=None):
+    def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
         """Select exposures to coadd
         
         @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
@@ -73,9 +80,9 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         if skyInfo is None:
             skyInfo = self.getSkyInfo(patchRef)
-        cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
-        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
-        return self.select.runDataRef(patchRef, coordList).dataRefList
+        cornerPosList = afwGeom.Box2D(bbox).getCorners()
+        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
+        return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
     
     def getSkyInfo(self, patchRef):
         """Return SkyMap, tract and patch
@@ -160,6 +167,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=CoaddDataIdContainer)
+        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
+                               ContainerClass=SelectDataIdContainer)
         return parser
 
     def _getConfigName(self):
@@ -210,3 +219,26 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
                 dataId = dataId,
             )
             self.refList.append(dataRef)
+
+class SelectDataIdContainer(pipeBase.DataIdContainer):
+    """A dataId container for inputs to be selected.
+
+    We will read the header (including the size and Wcs) for all specified
+    inputs and pass those along, ultimately for the SelectImagesTask.
+    This is most useful when used with multiprocessing, as input headers are
+    only read once.
+    """
+    def makeDataRefList(self, namespace):
+        """Add a dataList containing useful information for selecting images"""
+        super(SelectDataIdContainer, self).makeDataRefList(namespace)
+        self.dataList = []
+        for ref in self.refList:
+            try:
+                md = ref.get("calexp_md")
+                wcs = afwImage.makeWcs(md)
+                data = SelectStruct(dataRef=ref, header=md, wcs=wcs,
+                                    dims=(md.get("NAXIS1"), md.get("NAXIS2")))
+            except:
+                data = None
+            self.dataList.append(data)
+
