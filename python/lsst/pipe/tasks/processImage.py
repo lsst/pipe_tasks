@@ -233,9 +233,10 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.log.info("Matching src to reference catalogue" % (dataRef.dataId))
             srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
 
-            normalizedSrcMatches = afwTable.packMatches(srcMatches)
-            normalizedSrcMatches.table.setMetadata(srcMatchMeta)
-            dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
+            if srcMatches is not None:
+                normalizedSrcMatches = afwTable.packMatches(srcMatches)
+                normalizedSrcMatches.table.setMetadata(srcMatchMeta)
+                dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
         else:
             srcMatches = None; srcMatchMeta = None
 
