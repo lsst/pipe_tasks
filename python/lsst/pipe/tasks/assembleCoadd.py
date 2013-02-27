@@ -210,7 +210,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         if not dataRef.datasetExists(dataset):
             raise RuntimeError("Could not find reference exposure %s %s." % (dataset, dataRef.dataId))
 
-        refExposure = refExpDataRef.get(self.getTempExpDataset(), immediate=True)
+        refExposure = dataRef.get(self.getTempExpDataset(), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
             exposure = refExposure,
             exposureId = dataRef.dataId,
