@@ -458,6 +458,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
                                              srcMatch in srcMatches])
+                    self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatches), len(diaSources)))
                 else:
                     self.log.warn("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
@@ -470,17 +471,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.log.warn("No diaSource matches with reference catalog")
                     refMatchDict = {}
                 else:
+                    self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches), len(diaSources)))
                     refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for \
                                              refMatch in refMatches])
 
                 # Assign source Ids
-                for source in diaSources:                    
-                    sid = source.getId()
+                for diaSource in diaSources:                    
+                    sid = diaSource.getId()
                     if srcMatchDict.has_key(sid):
-                        source.set("srcMatchId", srcMatchDict[sid])
+                        diaSource.set("srcMatchId", srcMatchDict[sid])
                     if refMatchDict.has_key(sid):
-                        source.set("refMatchId", refMatchDict[sid])
-
+                        diaSource.set("refMatchId", refMatchDict[sid])
+                        
             if diaSources is not None and self.config.doWriteSources:
                 if self.config.doWriteHeavyFootprintsInSources:
                     diaSources.setWriteHeavyFootprints(True)
