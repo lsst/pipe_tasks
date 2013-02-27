@@ -29,6 +29,11 @@ import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 from .selectImages import WcsSelectImagesTask, SelectStruct
 
+try:
+    from meas_mosaic import applyMosaicResults
+except ImportError:
+    applyMosaicResults = None
+
 __all__ = ["CoaddBaseTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -56,7 +61,6 @@ class CoaddTaskRunner(pipeBase.TaskRunner):
     def getTargetList(parsedCmd, **kwargs):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
                                                  **kwargs)
-
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.
@@ -118,10 +122,10 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         @param dataRef: a sensor-level data reference
         @param getPsf: include the PSF?
         @param bgSubtracted: return calexp with background subtracted? If False
-            get the calexp's background background model and add it to the cale
+            get the calexp's background background model and add it to the calexp.
         @return calibrated exposure with psf
         """
-        exposure = dataRef.get("calexp", immediate=True)
+        exposure = dataRef.get("calexp", immediate=True)            
         if not bgSubtracted:
             background = dataRef.get("calexpBackground", immediate=True)
             mi = exposure.getMaskedImage()
@@ -130,6 +134,23 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         if getPsf:
             psf = dataRef.get("psf", immediate=True)
             exposure.setPsf(psf)
+        # FIXME: We should use 'ubercalexp' dataset from the butler to apply meas_mosaic results
+        # (this would help abstract away where the ubercal comes from).
+        # but that doesn't handle the background correctly when we need to add it back in.
+        # So we have to do it manually here, until we can get background models saved in Exposure.
+        if applyMosaicResults is None:
+            self.log.warn(
+                "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
+                % dataRef.dataId
+                )
+        else:
+            try:
+                applyMosaicResults(dataRef, calexp=exposure)
+            except Exception as err:
+                self.log.warn(
+                    "Failed to apply calibrations for %s: %s"
+                    % (dataRef.dataId, err)
+                    )
         return exposure
 
     def makeModelPsf(self, fwhm, wcs, sizeFactor=3.0):
