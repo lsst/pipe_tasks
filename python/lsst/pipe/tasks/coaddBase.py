@@ -195,6 +195,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
                 data = SelectStruct(dataRef=ref, header=md, wcs=wcs,
                                     dims=(md.get("NAXIS1"), md.get("NAXIS2")))
             except:
-                data = None
+                namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
+                continue
             self.dataList.append(data)
 
