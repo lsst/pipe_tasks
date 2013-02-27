@@ -80,8 +80,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         if skyInfo is None:
             skyInfo = self.getSkyInfo(patchRef)
-        cornerPosList = afwGeom.Box2D(bbox).getCorners()
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
+        cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
         return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
     
     def getSkyInfo(self, patchRef):
