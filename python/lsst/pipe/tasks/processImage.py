@@ -209,16 +209,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 self.log.warn("calibrated exposure is None; cannot save it")
             else:
                 if self.config.persistBackgroundModel:
-                    self.log.warn("Persisting background models as an image")
-                    bg = backgrounds[0].getImageF()
-                    for b in backgrounds[1:]:
-                        bg += b.getImageF()
-                    dataRef.put(bg, self.dataPrefix+"calexpBackground")
-                    del bg
+                    self.writeBackgrounds(dataRef, backgrounds)
                 else:
-                    mi = calExposure.getMaskedImage()
-                    for bg in backgrounds:
-                        mi += bg.getImageF()
+                    self.restoreBackgrounds(calExposure, backgrounds)
                 dataRef.put(calExposure, self.dataPrefix + "calexp")
 
         if calib is not None:
@@ -301,3 +294,30 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             s.assign(ics, self.schemaMapper)
 
         return
+
+    def writeBackgrounds(self, dataRef, backgrounds):
+        """Backgrounds are persisted via the butler
+
+        Currently, due to the lack of support for writing the background models
+        directly, we are forced to write them as full-size images instead of the
+        internal representation.  This unfortunately increases the disk usage,
+        but will hopefully change for the better soon.
+
+        @param dataRef: Data reference
+        @param backgrounds: List of background models
+        """
+        self.log.warn("Persisting background models as an image")
+        bg = backgrounds[0].getImageF()
+        for b in backgrounds[1:]:
+            bg += b.getImageF()
+        dataRef.put(bg, self.dataPrefix+"calexpBackground")
+
+    def restoreBackgrounds(self, exp, backgrounds):
+        """Add backgrounds back in to an exposure
+
+        @param exp: Exposure to which to add backgrounds
+        @param backgrounds: List of background models
+        """
+        mi = exp.getMaskedImage()
+        for bg in backgrounds:
+            mi += bg.getImageF()
