@@ -133,6 +133,12 @@ class ImageDifferenceConfig(pexConfig.Config):
     maxDiaSourcesToMeasure = pexConfig.Field(dtype=int, default=200,
         doc = "Do not measure more than this many sources with dipolemeasurement, use measurement") 
 
+    useWinter2013Hacks = pexConfig.Field(dtype=bool, default=True,
+        doc = "Use all manner of nefarious workarounds specific to late Winter 2013 production") 
+
+    winter2013templateId = pexConfig.Field(dtype=int, default=88868666,
+        doc = "88868666 for sparse data; 22222200 (g) and 11111100 (i) for dense data") 
+
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
         self.sourceSelector.name = "diacatalog"
@@ -257,9 +263,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
         templateExposure = None  # Stitched coadd exposure
-        templateApCorr = None  # Aperture correction appropriate for the coadd
+        templateApCorr = None    # Aperture correction appropriate for the coadd
+        templateSources = None   # Sources on the template image
         if self.config.doSubtract:
-            templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
+            templateExposure, templateApCorr, templateSources = self.getTemplate(exposure, sensorRef)
 
             # sigma of PSF of template image before warping
             ctr = afwGeom.Box2D(templateExposure.getBBox(afwImage.PARENT)).getCenter()
@@ -329,22 +336,23 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             if self.config.doUseRegister:
                 self.log.info("Registering images")
                 
-                # First step: we need to subtract the background out
-                # for detection and measurement.  Use large binsize
-                # for the background estimation.
-                binsize = self.config.templateBgBinSize
-
-                # Second step: we need to run detection on the
-                # background-subtracted template
-                #
-                # Estimate FWHM for detection
-                coaddSources = self.subtract.getSelectSources(
-                    templateExposure,
-                    sigma = templateSigma,
-                    doSmooth = True,
-                    idFactory = idFactory,
-                    binsize = binsize,
-                )
+                if templateSources is None:
+                    # First step: we need to subtract the background out
+                    # for detection and measurement.  Use large binsize
+                    # for the background estimation.
+                    binsize = self.config.templateBgBinSize
+    
+                    # Second step: we need to run detection on the
+                    # background-subtracted template
+                    #
+                    # Estimate FWHM for detection
+                    templateSources = self.subtract.getSelectSources(
+                        templateExposure,
+                        sigma = templateSigma,
+                        doSmooth = True,
+                        idFactory = idFactory,
+                        binsize = binsize,
+                    )
 
                 # Third step: we need to fit the relative astrometry.
                 #
@@ -356,11 +364,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # the image, and *then* to fit for the relative Wcs.
                 #
                 # Requires low Sip order to avoid overfitting
-                sipOrder = self.config.templateSipOrder
-                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(sipOrder=sipOrder))
-                newWcs = astrometer.determineWcs(coaddSources, templateExposure).getWcs()
-                results = self.register.run(coaddSources, newWcs, 
-                                            templateExposure.getBBox(afwImage.PARENT), selectSources)
+
+                # useWinter2013Hacks includes us using the deep calexp
+                # as the template.  In this case we don't need to
+                # refit the Wcs.
+                if not useWinter2013Hacks:
+                    sipOrder = self.config.templateSipOrder
+                    astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(sipOrder=sipOrder))
+                    newWcs = astrometer.determineWcs(templateSources, templateExposure).getWcs()
+                    results = self.register.run(templateSources, newWcs, 
+                                                templateExposure.getBBox(afwImage.PARENT), selectSources)
+                else:
+                    results = self.register.run(templateSources, templateExposure.getWcs(),
+                                                templateExposure.getBBox(afwImage.PARENT), selectSources)
 
                 warpedExp = self.register.warpExposure(templateExposure, results.wcs, 
                                             exposure.getWcs(), exposure.getBBox(afwImage.PARENT))
@@ -410,7 +426,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     subtractedExposure.setPsf(exposure.getPsf())
                 else:
                     if templateExposure is None:
-                        templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
+                        templateExposure, templateApCorr, templateSources = \
+                            self.getTemplate(exposure, sensorRef)
                     subtractedExposure.setPsf(templateExposure.getPsf())
 
             # Erase existing detection mask planes
@@ -441,7 +458,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     apCorr = sensorRef.get("apCorr")
                 else:
                     if templateApCorr is None:
-                        templateExposure, templateApCorr = self.getTemplate(exposure, sensorRef)
+                        templateExposure, templateApCorr, templateSources = \
+                            self.getTemplate(exposure, sensorRef)
                     apCorr = templateApCorr
                 if len(diaSources) < self.config.maxDiaSourcesToMeasure:
                     self.dipolemeasurement.run(subtractedExposure, diaSources, apCorr)
@@ -611,6 +629,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         @return coaddExposure: a template coadd exposure assembled out of patches
         """
+        if self.config.useWinter2013Hacks:
+            templateId = type(sensorRef.dataId)(sensorRef.dataId)
+            templateId["visit"] = self.config.winter2013templateId
+            template = sensorRef.getButler().get(datasetType="calexp", dataId = templateId)
+            templateBg = sensorRef.getButler().get(datasetType="calexpBackground", dataId = templateId)
+            mi = template.getMaskedImage()
+            mi += templateBg
+            templatePsf = sensorRef.getButler().get(datasetType="psf", dataId = templateId)
+            template.setPsf(templatePsf)
+            templateApCorr = sensorRef.getButler().get(datasetType="apCorr", dataId = templateId)
+            templateSources = sensorRef.getButler().get(datasetType="src", dataId = templateId)
+            return template, templateApCorr, templateSources
+
         skyMap = sensorRef.get(datasetType=self.config.coaddName + "Coadd_skyMap")
         expWcs = exposure.getWcs()
         expBoxD = afwGeom.Box2D(exposure.getBBox(afwImage.PARENT))
@@ -643,6 +674,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         coaddFilter = None
         coaddPsf = None
         coaddApCorr = None
+        coaddSources = None
         for patchInfo in patchList:
             patchSubBBox = patchInfo.getOuterBBox()
             patchSubBBox.clip(coaddBBox)
@@ -704,7 +736,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         coaddExposure.setPsf(coaddPsf)
         coaddExposure.setFilter(coaddFilter)
-        return coaddExposure, coaddApCorr
+        return coaddExposure, coaddApCorr, coaddSources
 
     def _getConfigName(self):
         """Return the name of the config dataset
