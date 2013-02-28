@@ -133,9 +133,8 @@ class ImageDifferenceConfig(pexConfig.Config):
     maxDiaSourcesToMeasure = pexConfig.Field(dtype=int, default=200,
         doc = "Do not measure more than this many sources with dipolemeasurement, use measurement") 
 
-    useWinter2013Hacks = pexConfig.Field(dtype=bool, default=True,
+    useWinter2013Hacks = pexConfig.Field(dtype=bool, default=False,
         doc = "Use all manner of nefarious workarounds specific to late Winter 2013 production") 
-
     winter2013templateId = pexConfig.Field(dtype=int, default=88868666,
         doc = "88868666 for sparse data; 22222200 (g) and 11111100 (i) for dense data") 
 
@@ -368,7 +367,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # useWinter2013Hacks includes us using the deep calexp
                 # as the template.  In this case we don't need to
                 # refit the Wcs.
-                if not useWinter2013Hacks:
+                if not self.config.useWinter2013Hacks:
                     sipOrder = self.config.templateSipOrder
                     astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(sipOrder=sipOrder))
                     newWcs = astrometer.determineWcs(templateSources, templateExposure).getWcs()
@@ -630,6 +629,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         @return coaddExposure: a template coadd exposure assembled out of patches
         """
         if self.config.useWinter2013Hacks:
+            self.log.warn("USING WINTER2013 HACK: DEEP CALEXP AS TEMPLATE")
             templateId = type(sensorRef.dataId)(sensorRef.dataId)
             templateId["visit"] = self.config.winter2013templateId
             template = sensorRef.getButler().get(datasetType="calexp", dataId = templateId)
