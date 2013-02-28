@@ -20,6 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.processKeithCoadd import ProcessKeithCoaddTask
+from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask
 
-ProcessKeithCoaddTask.parseAndRun()
+MakeDiscreteSkyMapTask.parseAndRun()

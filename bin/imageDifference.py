@@ -20,6 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.processCcdSdss import ProcessCcdSdssTask
+from lsst.pipe.tasks.imageDifference import ImageDifferenceTask
 
-ProcessCcdSdssTask.parseAndRun()
+ImageDifferenceTask.parseAndRun()

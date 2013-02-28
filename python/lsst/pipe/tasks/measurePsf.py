@@ -22,17 +22,11 @@
 import lsst.meas.algorithms as measAlg
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.afw.table as afwTable
 
 class MeasurePsfConfig(pexConfig.Config):
     starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
-
-    def setDefaults(self):
-        self.starSelector["secondMoment"].clumpNSigma = 2.0
-        self.psfDeterminer["pca"].nEigenComponents = 4
-        self.psfDeterminer["pca"].kernelScaling = 7.0
-        self.psfDeterminer["pca"].spatialOrder = 2
-        self.psfDeterminer["pca"].kernelSizeMin = 25
 
 class MeasurePsfTask(pipeBase.Task):
     """Conversion notes:
@@ -49,33 +43,46 @@ class MeasurePsfTask(pipeBase.Task):
 
     def __init__(self, schema=None, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
-        self.starSelector = self.config.starSelector.apply(schema=schema)
-        self.psfDeterminer = self.config.psfDeterminer.apply(schema=schema)
-        self.psfStarCandidateKey = schema.addField("calib.psfStarCandidate", type="Flag",
-                                                   doc="Source was a candidate to determine the PSF")
-
+        if schema is not None:
+            self.candidateKey = schema.addField(
+                "calib.psf.candidate", type="Flag",
+                doc=("Flag set if the source was a candidate for PSF determination, "
+                     "as determined by the '%s' star selector.") % self.config.starSelector.name
+                )
+            self.usedKey = schema.addField(
+                "calib.psf.used", type="Flag",
+                doc=("Flag set if the source was actually used for PSF determination, "
+                     "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
+                )
+        else:
+            self.candidateKey = None
+            self.usedKey = None
+        self.starSelector = self.config.starSelector.apply()
+        self.psfDeterminer = self.config.psfDeterminer.apply()
+        
     @pipeBase.timeMethod
-    def run(self, exposure, sources):
+    def run(self, exposure, sources, matches=None):
         """Measure the PSF
 
         @param[in,out]   exposure      Exposure to process; measured PSF will be installed here as well.
         @param[in,out]   sources       Measured sources on exposure; flag fields will be set marking
                                        stars chosen by the star selector and PSF determiner.
+        @param[in]       matches       ReferenceMatchVector, as returned by the AstrometryTask, used
+                                       by star selectors that refer to an external catalog.
         """
-        assert exposure, "No exposure provided"
-        assert sources, "No sources provided"
-        self.log.log(self.log.INFO, "Measuring PSF")
+        self.log.info("Measuring PSF")
 
-        psfCandidateList = self.starSelector.selectStars(exposure, sources)
-        if psfCandidateList:
+        psfCandidateList = self.starSelector.selectStars(exposure, sources, matches=matches)
+        if psfCandidateList and self.candidateKey is not None:
             for cand in psfCandidateList:
                 source = cand.getSource()
-                source.set(self.psfStarCandidateKey, True)
+                source.set(self.candidateKey, True)
 
-        self.log.log(self.log.INFO, "PSF star selector found %d candidates" % len(psfCandidateList))
+        self.log.info("PSF star selector found %d candidates" % len(psfCandidateList))
 
-        psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata)
-        self.log.log(self.log.INFO, "PSF determination using %d/%d stars." % 
+        psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata,
+                                                       flagKey=self.usedKey)
+        self.log.info("PSF determination using %d/%d stars." %
                      (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
 
         exposure.setPsf(psf)

@@ -22,24 +22,27 @@
 #
 import sys
 import traceback
+import lsst.geom
 
 import lsst.afw.coord as afwCoord
+import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.skymap import skyMapRegistry
+from lsst.skymap import DiscreteSkyMap
 
-class MakeSkyMapConfig(pexConfig.Config):
-    """Config for MakeSkyMapTask
+class MakeDiscreteSkyMapConfig(pexConfig.Config):
+    """Config for MakeDiscreteSkyMapTask
     """
     coaddName = pexConfig.Field(
         doc = "coadd name, e.g. deep, goodSeeing, chiSquared",
         dtype = str,
         default = "deep",
     )
-    skyMap = skyMapRegistry.makeField(
-        doc = "type of skyMap",
-        default = "dodeca",
+    borderSize = pexConfig.Field(
+        doc = "additional border added to the bounding box of the calexps, in degrees",
+        dtype = float,
+        default = 0.0
     )
     doWrite = pexConfig.Field(
         doc = "persist the skyMap?",
@@ -48,20 +51,21 @@ class MakeSkyMapConfig(pexConfig.Config):
     )
 
 
-class MakeSkyMapRunner(pipeBase.TaskRunner):
-    """Only need a single butler instance to run on."""
+class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
+    """Want to run on all the dataRefs at once, not one at a time."""
     @staticmethod
     def getTargetList(parsedCmd):
-        return [parsedCmd.butler]
+        return [(parsedCmd.butler, parsedCmd.id.refList)]
 
-    def __call__(self, butler):
+    def __call__(self, args):
+        butler, dataRefList = args
         task = self.TaskClass(config=self.config, log=self.log)
         task.writeConfig(butler)
         if self.doRaise:
-            result = task.run(butler)
+            result = task.run(butler, dataRefList)
         else:
             try:
-                result = task.run(butler)
+                result = task.run(butler, dataRefList)
             except Exception, e:
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
@@ -70,26 +74,54 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
         if self.doReturnResults:
             return results
 
-class MakeSkyMapTask(pipeBase.CmdLineTask):
-    """Make a SkyMap in a repository, setting it up for coaddition
+class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
+    """Make a DiscreteSkyMap in a repository, using the bounding box of a set calexps.
+
+    The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
+    that we don't inherit from it, but it is a replacement, so we use the same config/metadata names.
     """
-    ConfigClass = MakeSkyMapConfig
-    _DefaultName = "makeSkyMap"
-    RunnerClass = MakeSkyMapRunner
+    ConfigClass = MakeDiscreteSkyMapConfig
+    _DefaultName = "makeDiscreteSkyMap"
+    RunnerClass = MakeDiscreteSkyMapRunner
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
     
     @pipeBase.timeMethod
-    def run(self, butler):
-        """Make a skymap
+    def run(self, butler, dataRefList):
+        """Make a skymap from the bounds of the given set of calexps.
         
-        @param butler: data butler
+        @param butler: data butler used to save the SkyMap
+        @param dataRefList: dataRefs of calexps used to determine the size and pointing of the SkyMap
         @return a pipeBase Struct containing:
         - skyMap: the constructed SkyMap
         """
-        skyMap = self.config.skyMap.apply()
-        self.log.info("sky map has %s tracts" % (len(skyMap),))
+        self.log.info("Extracting bounding boxes of %d images" % len(dataRefList))
+        points = []
+        for dataRef in dataRefList:
+            md = dataRef.get("calexp_md", immediate=True)
+            wcs = afwImage.makeWcs(md)
+            # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
+            boxI = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(md.get("NAXIS1"), md.get("NAXIS2")))
+            boxD = afwGeom.Box2D(boxI)
+            points.extend(tuple(wcs.pixelToSky(corner).getVector()) for corner in boxD.getCorners())
+        
+        self.log.info("Computing spherical convex hull")
+        polygon = lsst.geom.convexHull(points)
+        if polygon is None:
+            raise RuntimeError(
+                "Failed to compute convex hull of the vertices of all calexp bounding boxes; "
+                "they may not be hemispherical."
+                )
+        circle = polygon.getBoundingCircle()
+        
+        skyMapConfig = DiscreteSkyMap.ConfigClass()
+        skyMapConfig.raList = [circle.center[0]]
+        skyMapConfig.decList = [circle.center[1]]
+        skyMapConfig.radiusList = [circle.radius + self.config.borderSize]
+        skyMap = DiscreteSkyMap(skyMapConfig)
+
+        assert len(skyMap) == 1
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
             posBox = afwGeom.Box2D(tractInfo.getBBox())
@@ -110,19 +142,11 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
             skyMap = skyMap
         )
 
-    @classmethod
-    def _makeArgumentParser(cls):
-        """Create an argument parser
-
-        No identifiers are added because none are used.
-        """
-        return pipeBase.ArgumentParser(name=cls._DefaultName)
-    
     def _getConfigName(self):
         """Return the name of the config dataset
         """
         return "%s_makeSkyMap_config" % (self.config.coaddName,)
-    
+
     def _getMetadataName(self):
         """Return the name of the metadata dataset
         """

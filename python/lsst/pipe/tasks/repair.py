@@ -19,11 +19,7 @@
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import math
 import lsst.pex.config as pexConfig
-import lsst.afw.cameraGeom  as cameraGeom
-import lsst.afw.display.ds9 as ds9
-import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
@@ -37,7 +33,6 @@ class RepairConfig(pexConfig.Config):
         doc = "Interpolate over defects? (ignored unless you provide a list of defects)",
         default = True,
     )
-
     doCosmicRay = pexConfig.Field(
         dtype = bool,
         doc = "Find and mask out cosmic rays?",
@@ -67,14 +62,15 @@ class RepairTask(pipeBase.Task):
         psf = exposure.getPsf()
         assert psf, "No PSF provided"
 
+        self.display('repair.before', exposure=exposure)
         if defects is not None and self.config.doInterpolate:
             self.interpolate(exposure, defects)
 
         if self.config.doCosmicRay:
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
-        self.display('after', exposure=exposure)
-        
+        self.display('repair.after', exposure=exposure)
+
     def interpolate(self, exposure, defects):
         """Interpolate over defects
 
@@ -89,7 +85,7 @@ class RepairTask(pipeBase.Task):
         mi = exposure.getMaskedImage()
         fallbackValue = afwMath.makeStatistics(mi, afwMath.MEANCLIP).getValue()
         measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
-        self.log.log(self.log.INFO, "Interpolated over %d defects." % len(defects))
+        self.log.info("Interpolated over %d defects." % len(defects))
 
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
@@ -131,6 +127,7 @@ class RepairTask(pipeBase.Task):
                                          psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
         except Exception, e:
             if display:
+                import lsst.afw.display.ds9 as ds9
                 ds9.mtv(exposure0, title="Failed CR")
             raise
             
@@ -142,6 +139,7 @@ class RepairTask(pipeBase.Task):
             num = len(crs)
 
             if display and displayCR:
+                import lsst.afw.display.ds9 as ds9
                 import lsst.afw.display.utils as displayUtils
 
                 ds9.incrDefaultFrame()
@@ -151,5 +149,5 @@ class RepairTask(pipeBase.Task):
                     for cr in crs:
                         displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
-        self.log.log(self.log.INFO, "Identified %s cosmic rays." % (num,))
+        self.log.info("Identified %s cosmic rays." % (num,))
 

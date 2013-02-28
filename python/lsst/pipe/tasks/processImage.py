@@ -38,11 +38,13 @@ class ProcessImageConfig(pexConfig.Config):
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
     doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
+    persistBackgroundModel = pexConfig.Field(dtype=bool, default=True, doc = "If True persist background model with background subtracted calexp.  \
+        If False persist calexp with the background included.")
     doWriteCalibrateMatches = pexConfig.Field(dtype=bool, default=True,
                                               doc = "Write icSrc to reference matches?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
-    doSourceMatches = pexConfig.Field(dtype=bool, default=False, doc="Compute src to reference matches?")
-    doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False, doc="Write src to reference matches?")
+    doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False,
+                                           doc = "Compute and write src to reference matches?")
     doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
                                                       doc = "Include HeavyFootprint data in source table?")
     calibrate = pexConfig.ConfigurableField(
@@ -92,13 +94,18 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         if self.schema is None:
             self.schema = afwTable.SourceTable.makeMinimalSchema()
         # add fields needed to identify stars used in the calibration step
-        self.calibSourceKey = self.schema.addField("calib.referenceSource",
-                                                   type="Flag", doc="Source was detected as an icSrc")
-        self.psfStarKey = self.schema.addField("calib.psfStar",
-                                               type="Flag", doc="Source was used to determine the PSF")
-        self.psfStarCandidateKey = self.schema.addField("calib.psfStarCandidate", type="Flag",
-                                                        doc="Source was a candidate to determine the PSF")
- 
+        self.makeSubtask("calibrate")
+
+        # Setup our schema by starting with fields we want to propagate from icSrc.
+        calibSchema = self.calibrate.schema
+        self.schemaMapper = afwTable.SchemaMapper(calibSchema)
+        self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
+        self.calibSourceKey = self.schemaMapper.addOutputField(
+            afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
+            )
+        for key in self.calibrate.getCalibKeys():
+            self.schemaMapper.addMapping(key)
+        self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
@@ -134,7 +141,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         apCorr = None
         sources = None
         psf = None
-        
+        backgrounds = []        
         if self.config.doCalibrate:
             calib = self.calibrate.run(inputExposure, idFactory=idFactory)
             psf = calib.psf
@@ -150,6 +157,13 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
                     dataRef.put(normalizedMatches, self.dataPrefix + "icMatch")
+            try:
+                for bg in calib.backgrounds:
+                    backgrounds.append(bg)
+            except TypeError:     
+                backgrounds.append(calib.backgrounds)
+            except AttributeError:
+                self.log.warn("The calibration task did not return any backgrounds.  Any background subtracted in the calibration process cannot be persisted.")
         else:
             calib = None
 
@@ -167,15 +181,11 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            sources = self.detection.makeSourceCatalog(table, calExposure).sources
-
-        if self.config.doWriteCalibrate:
-            # wait until after detection, since that sets detected mask bits and may tweak the background;
-            # note that this overwrites an existing calexp if doCalibrate false
-            if calExposure is None:
-                self.log.log(self.log.WARN, "calibrated exposure is None; cannot save it")
-            else:
-                dataRef.put(calExposure, self.dataPrefix + "calexp")
+            detections = self.detection.makeSourceCatalog(table, calExposure)
+            sources = detections.sources
+            fpSets = detections.fpSets
+            if fpSets.background:           
+                backgrounds.append(fpSets.background)
 
         if self.config.doDeblend:
             if calExposure is None:
@@ -190,18 +200,33 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 apCorr = dataRef.get(self.dataPrefix + "apCorr")
             self.measurement.run(calExposure, sources, apCorr)
 
+        if self.config.doWriteCalibrate:
+            # wait until after detection and measurement, since detection sets detected mask bits and both require 
+            # a background subtracted exposure;
+            # note that this overwrites an existing calexp if doCalibrate false
+               
+            if calExposure is None:
+                self.log.warn("calibrated exposure is None; cannot save it")
+            else:
+                if self.config.persistBackgroundModel:
+                    self.writeBackgrounds(dataRef, backgrounds)
+                else:
+                    self.restoreBackgrounds(calExposure, backgrounds)
+                dataRef.put(calExposure, self.dataPrefix + "calexp")
+
         if calib is not None:
-            self.propagateIcFlags(calib.sources, sources)
+            self.propagateCalibFlags(calib.sources, sources)
 
         if sources is not None and self.config.doWriteSources:
             if self.config.doWriteHeavyFootprintsInSources:
                 sources.setWriteHeavyFootprints(True)
             dataRef.put(sources, self.dataPrefix + 'src')
-
-        if self.config.doSourceMatches and self.config.doDetection:
-            self.log.info("Matching src to reference catalog")
+            
+        if self.config.doWriteSourceMatches:
+            self.log.info("Matching src to reference catalogue" % (dataRef.dataId))
             srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
-            if self.config.doWriteSourceMatches:
+
+            if srcMatches is not None:
                 normalizedSrcMatches = afwTable.packMatches(srcMatches)
                 normalizedSrcMatches.table.setMetadata(srcMatchMeta)
                 dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
@@ -214,36 +239,34 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             calib = calib,
             apCorr = apCorr,
             sources = sources,
-            matches = srcMatches if srcMatches is not None else calib.matches if calib is not None else None,
-            matchMeta = (srcMatchMeta if srcMatchMeta is not None else
-                         calib.matchMeta if calib is not None else None),
+            matches = srcMatches,
+            matchMeta = srcMatchMeta,
+            backgrounds = backgrounds,
         )
 
     def matchSources(self, exposure, sources):
         """Match the sources to the reference object loaded by the calibrate task"""
         try:
             astrometer = self.calibrate.astrometry.astrometer
-            useKnownWcs = astrometer.useKnownWcs
         except AttributeError:
-            self.log.log(self.log.WARN, "Failed to find an astrometer in calibrate's astronomy task")
+            self.log.warn("Failed to find an astrometer in calibrate's astronomy task")
             return None, None
 
-        astromRet = useKnownWcs(sources, exposure=exposure)
+        astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
         # N.b. yes, this is what useKnownWcs calls the returned values
-        return (astromRet.matches if astromRet.matches is not None else [],
-                astromRet.matchMetadata if astromRet.matchMetadata is not None else dafBase.PropertyList(),
-                )
+        return astromRet.matches, astromRet.matchMetadata
 
-    def propagateIcFlags(self, icSources, sources, matchRadius=1):
+    def propagateCalibFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
         """
+        self.log.info("Matching icSource and Source catalogs to propagate flags.")
         if icSources is None or sources is None:
             return
 
         closest = False                 # return all matched objects
         matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
         if self.config.doDeblend:
-            matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # keep children
+            matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
         #
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches
@@ -262,18 +285,39 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         # Check that we got it right
         #
         if len(set(m[0].getId() for m in matched)) != len(matched):
-            self.log.log(self.log.WARN, "At least one icSource is matched to more than one Source")
+            self.log.warn("At least one icSource is matched to more than one Source")
         #
         # Copy over the desired flags
         #
-        psfStarKey_ic = icSources.getSchema().find("classification.psfstar").getKey()
-        psfStarCandidate_ic = icSources.getSchema().find("calib.psfStarCandidate").getKey()
-        #
-        # Actually set flags in sources
-        #
         for ics, s, d in matched:
-            s.set(self.calibSourceKey, True)
-            s.set(self.psfStarKey, ics.get(psfStarKey_ic))
-            s.set(self.psfStarCandidateKey, ics.get(psfStarCandidate_ic))
+            s.setFlag(self.calibSourceKey, True)
+            s.assign(ics, self.schemaMapper)
+
         return
-    
+
+    def writeBackgrounds(self, dataRef, backgrounds):
+        """Backgrounds are persisted via the butler
+
+        Currently, due to the lack of support for writing the background models
+        directly, we are forced to write them as full-size images instead of the
+        internal representation.  This unfortunately increases the disk usage,
+        but will hopefully change for the better soon.
+
+        @param dataRef: Data reference
+        @param backgrounds: List of background models
+        """
+        self.log.warn("Persisting background models as an image")
+        bg = backgrounds[0].getImageF()
+        for b in backgrounds[1:]:
+            bg += b.getImageF()
+        dataRef.put(bg, self.dataPrefix+"calexpBackground")
+
+    def restoreBackgrounds(self, exp, backgrounds):
+        """Add backgrounds back in to an exposure
+
+        @param exp: Exposure to which to add backgrounds
+        @param backgrounds: List of background models
+        """
+        mi = exp.getMaskedImage()
+        for bg in backgrounds:
+            mi += bg.getImageF()

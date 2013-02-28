@@ -26,7 +26,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
-from .coadd import CoaddArgumentParser
+from .coaddBase import CoaddArgumentParser
 from .processImage import ProcessImageTask
 
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
@@ -38,7 +38,7 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
     )
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise")
 
-class ProcessCoaddTask(ProcessImageTask.ConfigClass):
+class ProcessCoaddTask(ProcessImageTask):
     """Process a Coadd image
     
     """
@@ -80,13 +80,10 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
             if config.doMeasure, else None
         - sources: detected source if config.doDetection, else None
         """
-        self.log.log(self.log.INFO, "Processing %s" % (dataRef.dataId))
+        self.log.info("Processing %s" % (dataRef.dataId))
 
         # initialize outputs
-        calExposure = None
-        calib = None
-        apCorr = None
-        psf = None
+        coadd = None
 
         if self.config.doCalibrate:
             coadd = dataRef.get(self.config.coaddName + "Coadd")
@@ -97,8 +94,6 @@ class ProcessCoaddTask(ProcessImageTask.ConfigClass):
                 self.log.warn("Could not load initial PSF; dataset does not exist")
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
-        else:
-            coadd = None
 
         # delegate most of the work to ProcessImageTask
         result = self.process(dataRef, coadd)
