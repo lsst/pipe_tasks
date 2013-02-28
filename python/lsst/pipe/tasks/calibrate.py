@@ -122,6 +122,9 @@ class CalibrateConfig(pexConfig.Config):
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.prefix = "initial."
         self.initialMeasurement.doApplyApCorr = False
+        for alg in ("flux.aperture.elliptical",): # Don't run these algorithms
+            self.initialMeasurement.algorithms.discard(alg)
+            self.measurement.algorithms.discard(alg)
         initflags = [self.initialMeasurement.prefix+x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024
