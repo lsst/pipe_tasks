@@ -42,17 +42,11 @@ def getDType(keyTuple, valTuple):
     """
     typeList = []
     for name, val in itertools.izip(keyTuple, valTuple):
-        if isinstance(val, bool):
-            typeList.append((name, bool))
-        elif isinstance(val, int):
-            typeList.append((name, int))
-        elif isinstance(val, float):
-            typeList.append((name, float))
-        elif isinstance(val, str):
+        if isinstance(val, str):
             predLen = len(val) + StrPadding
-            typeList.append((name, numpy.str_, predLen))
+            typeList.append((name, str, predLen))
         else:
-            raise RuntimeError("I cannot figure out the type of this data ID tuple: %s" % (valTuple,))
+            typeList.append((name, numpy.array([val]).dtype))
     return typeList
 
 class SourceData(object):
@@ -81,19 +75,17 @@ class SourceData(object):
             keys that cannot be found in the source table silently retrieve NaN
         """
         self.datasetType = datasetType
-        self.sourceKeyTuple = sourceKeyTuple
+        self._sourceKeyTuple = sourceKeyTuple
         
-        # the following items are set by the first call to _getSourceMetrics
-        self.idKeyTuple = None # a tuple of data ID keys, in order
-        self.idKeyDType = None # numpy dtype for data ID tuple
-        self.repoKeyTuple = None # a tuple of repository ID keys, in order
-        self.repoDType = None # numpy dtype for repository ID tuple
+        self._idKeyTuple = None # tuple of data ID keys, in order; set by first call to _getSourceMetrics
+        self._idKeyDType = None # numpy dtype for data ID tuple; set by first call to _getSourceMetrics
+        self._repoKeyTuple = None # tuple of repo ID keys, in order; set by first call to addSourceMetrics
+        self._repoDType = None # numpy dtype for repoArr; set by first call to addSourceMetrics
 
         self._tempDataList = [] # list (one entry per repository)
             # of dict of source ID: tuple of data ID data concatenated with source metric data, where:
-            # data ID data is in order self.idKeyTuple
-            # source metric data is in order self.sourceKeyTuple
-        self.dataIdSrcIdDict = {} # data ID key: {data ID value: set of source IDs}
+            # data ID data is in order self._idKeyTuple
+            # source metric data is in order self._sourceKeyTuple
         self.repoInfoList = [] # list of repoInfo
 
     def _getSourceMetrics(self, taskResult):
@@ -105,14 +97,14 @@ class SourceData(object):
         - sourceDict with an entry for datasetType
         @return a dict of source id: data id tuple + source data tuple
             where source data tuple order matches sourceKeyTuple
-            and data id tuple matches self.idKeyTuple (which is set from the first taskResult)
+            and data id tuple matches self._idKeyTuple (which is set from the first taskResult)
         
         Updates instance variables:
-        - self.idKeyTuple if not already set.
+        - self._idKeyTuple if not already set.
         """
-        if self.idKeyTuple is None:
-            self.idKeyTuple = taskResult.idKeyTuple
-            self.idKeyDType = getDType(keyTuple = self.idKeyTuple, valTuple = taskResult.idValList[0])
+        if self._idKeyTuple is None:
+            self._idKeyTuple = taskResult.idKeyTuple
+            self._idKeyDType = getDType(keyTuple = self._idKeyTuple, valTuple = taskResult.idValList[0])
 
         sourceTableList = taskResult.sourceDict[self.datasetType]
         
@@ -124,7 +116,8 @@ class SourceData(object):
             idList = sourceTable.get("id")
             dataList = []
             nullRow = (numpy.nan,)*len(sourceTable)
-            dataArr = numpy.array([sourceTable.get(key) if key in sourceTable.schema else nullRow for key in self.sourceKeyTuple]).transpose()
+            dataArr = numpy.array([sourceTable.get(key) if key in sourceTable.schema else nullRow \
+                for key in self._sourceKeyTuple]).transpose()
             
             isGoodList = numpy.any(numpy.isfinite(dataArr), 1)
             
@@ -143,9 +136,9 @@ class SourceData(object):
         
         @return number of sources
         """
-        if self.repoKeyTuple is None:
-            self.repoKeyTuple = repoInfo.keyTuple
-            self.repoDType = getDType(keyTuple = self.repoKeyTuple, valTuple = repoInfo.valTuple)
+        if self._repoKeyTuple is None:
+            self._repoKeyTuple = repoInfo.keyTuple
+            self._repoDType = repoInfo.dtype
 
         dataDict = self._getSourceMetrics(taskResult)
 
@@ -166,10 +159,10 @@ class SourceData(object):
         
         # source data
         sourceArrDType = [("sourceId", int)] \
-            + self.idKeyDType \
-            + [(name, float) for name in self.sourceKeyTuple]
+            + self._idKeyDType \
+            + [(name, float) for name in self._sourceKeyTuple]
         # data for missing sources (only for the data in the source data dict, so excludes srcId)
-        nullSourceTuple = ("",)*len(self.idKeyTuple) + (numpy.nan,)*len(self.sourceKeyTuple)
+        nullSourceTuple = ("",)*len(self._idKeyTuple) + (numpy.nan,)*len(self._sourceKeyTuple)
         
         sourceData = [[(srcId,) + srcDataDict.get(srcId, nullSourceTuple) for srcId in self.fullSrcIdSet]
             for srcDataDict in self._tempDataList]
@@ -179,7 +172,7 @@ class SourceData(object):
         
         # repository data
         repoData = [repoInfo.valTuple for repoInfo in self.repoInfoList]
-        self.repoArr = numpy.array(repoData, dtype=self.repoDType)
+        self.repoArr = numpy.array(repoData, dtype=self._repoDType)
 
         self._tempDataList = None
 
@@ -189,9 +182,12 @@ class RepositoryInfo(object):
     
     Constructed by RepositoryIterator and used by SourceData.
     """
-    def __init__(self, keyTuple, valTuple, name):
+    def __init__(self, keyTuple, valTuple, dtype, name):
+        if len(keyTuple) != len(valTuple):
+            raise RuntimeError("lengths of keyTuple=%s and valTuple=%s do not match" % (keyTuple, valTuple))
         self.keyTuple = tuple(keyTuple)
         self.valTuple = tuple(valTuple)
+        self.dtype = dtype
         self.name = name
 
 
@@ -204,25 +200,40 @@ class RepositoryIterator(object):
         @param[in] formatStr: format string using dictionary notation, e.g.: "%(foo)s_%(bar)d"
         @param[in] **dataDict: name=valueList pairs
         """
-        self.formatStr = formatStr
-        self.keyTuple = tuple(sorted(dataDict.keys()))
-        self.valListOfLists = [dataDict[key] for key in self.keyTuple]
+        self._formatStr = formatStr
+        self._keyTuple = tuple(sorted(dataDict.keys()))
+        self._valListOfLists = [numpy.array(dataDict[key]) for key in self._keyTuple]
+        self._dtype = [(key, self._valListOfLists[i].dtype) \
+            for i, key in enumerate(self._keyTuple)]
 
     def __iter__(self):
         """Retrieve next RepositoryInfo object
         """
-        for valTuple in itertools.product(*self.valListOfLists):
-            valDict = dict(zip(self.keyTuple, valTuple))
+        for valTuple in itertools.product(*self._valListOfLists):
+            valDict = dict(zip(self._keyTuple, valTuple))
             name=self.format(valDict)
-            yield RepositoryInfo(keyTuple=self.keyTuple, valTuple=valTuple, name=name)
+            yield RepositoryInfo(keyTuple=self._keyTuple, valTuple=valTuple, dtype=self._dtype, name=name)
     
     def __len__(self):
         """Return the number of items in the iterator"""
         n = 1
-        for valTuple in self.valListOfLists:
+        for valTuple in self._valListOfLists:
             n *= len(valTuple)
         return n
 
     def format(self, valDict):
-        """Return formatted string for a specified value dictionary"""
-        return self.formatStr % valDict
+        """Return formatted string for a specified value dictionary
+        
+        @param[in] valDict: a dict of key: value pairs that identify a repository
+        """
+        return self._formatStr % valDict
+    
+    def getKeyTuple(self):
+        """Return the a tuple of keys in the same order as items in value tuples
+        """
+        return self._keyTuple
+    
+    def getDType(self):
+        """Get a dtype for a structured array of repository keys
+        """
+        return self._dtype
