@@ -49,7 +49,7 @@ class SelectImagesConfig(pexConfig.Config):
     )
 
 
-class BaseExposureInfo(object):
+class BaseExposureInfo(pipeBase.Struct):
     """Data about a selected exposure
     """
     def __init__(self, dataId, coordList):
@@ -60,8 +60,7 @@ class BaseExposureInfo(object):
         - coordList: a list of corner coordinates of the exposure (list of afwCoord.IcrsCoord)
         plus any others items that are desired
         """
-        dataId = dataId
-        coordList = coordList
+        super(BaseExposureInfo, self).__init__(dataId=dataId, coordList=coordList)
 
 
 class BaseSelectImagesTask(pipeBase.Task):
