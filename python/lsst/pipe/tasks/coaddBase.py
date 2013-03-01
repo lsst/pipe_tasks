@@ -22,11 +22,14 @@
 #
 import math
 
+import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
+
+from lsst.afw.fits.fitsLib import FitsError
 from .selectImages import WcsSelectImagesTask, SelectStruct
 
 __all__ = ["CoaddBaseTask"]
@@ -190,10 +193,12 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
         self.dataList = []
         for ref in self.refList:
             try:
-                md = ref.get("calexp_md")
+                md = ref.get("calexp_md", immediate=True)
                 wcs = afwImage.makeWcs(md)
                 data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
-            except:
+            except pexExceptions.LsstCppException, e:
+                if not isinstance(e, FitsError): # Unable to open file
+                    raise
                 namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
                 continue
             self.dataList.append(data)

@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 
@@ -189,10 +190,12 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 dataRefList.append(dataRef)
                 corners = [wcs.pixelToSky(x,y) for x in (0, nx) for y in (0, ny)]
                 exposureInfoList.append(BaseExposureInfo(dataRef.dataId, corners))
-            except Exception, e:
+            except pexExceptions.LsstCppException, e:
+                if not isinstance(e.message, pexExceptions.DomainErrorException):
+                    raise
                 # Particularly interested in catching problems from wcslib, which may throw() if this exposure
                 # is far from the coordinates under consideration.
-                self.log.logdebug("Error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
 
         return pipeBase.Struct(
             dataRefList = dataRefList if makeDataRefList else None,
