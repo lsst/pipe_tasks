@@ -167,8 +167,17 @@ class SelectStruct(pipeBase.Struct):
 class WcsSelectImagesTask(BaseSelectImagesTask):
     """Select images using their Wcs"""
     def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """We check each input in selectDataList for overlap with the region
-        of interest.
+        """Images in the selectDataList that overlap the region specified by the
+        coordList are selected.
+
+        This comparison is conservative and non-exact: images that do not
+        actually overlap the coordList (but are close to it) may also be
+        selected.
+
+        @param dataRef: Data reference for coadd/tempExp (with tract, patch)
+        @param coordList: List of Coord specifying boundary of patch
+        @param makeDataRefList: Construct a list of data references?
+        @param selectDataList: List of SelectStruct, to consider for selection
         """
         dataRefList = []
         exposureInfoList = []
