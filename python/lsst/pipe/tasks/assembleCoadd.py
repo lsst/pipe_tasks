@@ -27,7 +27,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddBaseTask
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
 
@@ -118,12 +118,12 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.makeSubtask("scaleZeroPoint")
         
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def run(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of coaddTempExp
 
         The coadd is computed as a mean with optional outlier rejection.
 
-        assembleCoaddTask only works on the dataset type 'coaddTempExp', which are 'coadd temp exposures.
+        assembleCoaddTask only works on the dataset type 'coaddTempExp', which are 'coadd temp exposures'.
         Each coaddTempExp is the size of a patch and contains data for one run, visit or
         (for a non-mosaic camera it will contain data for a single exposure).
 
@@ -150,8 +150,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         wcs = skyInfo.wcs
         bbox = skyInfo.bbox
 
-        calExpRefList = self.selectExposures(patchRef=dataRef, wcs=wcs, bbox=bbox)
-
+        calExpRefList = self.selectExposures(patchRef=dataRef, wcs=wcs, bbox=bbox,
+                                             selectDataList=selectDataList)
 
         numExp = len(calExpRefList)
         if numExp < 1:
@@ -409,17 +409,10 @@ class AssembleCoaddTask(CoaddBaseTask):
         parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_tempExp",
                                help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=AssembleCoaddDataIdContainer)
+        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
+                               ContainerClass=SelectDataIdContainer)
         return parser
 
-    def _getConfigName(self):
-        """Return the name of the config dataset
-        """
-        return "%s_%s_config" % (self.config.coaddName, self._DefaultName)
-
-    def _getMetadataName(self):
-        """Return the name of the metadata dataset
-        """
-        return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
 def _subBBoxIter(bbox, subregionSize):
     """Iterate over subregions of a bbox

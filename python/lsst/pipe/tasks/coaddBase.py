@@ -22,12 +22,15 @@
 #
 import math
 
+import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
-from .selectImages import BadSelectImagesTask
+
+from lsst.afw.fits.fitsLib import FitsError
+from .selectImages import WcsSelectImagesTask, SelectStruct
 
 __all__ = ["CoaddBaseTask"]
 
@@ -43,13 +46,19 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc = "Image selection subtask.",
-        target = BadSelectImagesTask,
+        target = WcsSelectImagesTask,
     )
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
     )
+
+class CoaddTaskRunner(pipeBase.TaskRunner):
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
+                                                 **kwargs)
 
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
@@ -58,6 +67,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     Subclasses must specify _DefaultName
     """
     ConfigClass = CoaddBaseConfig
+    RunnerClass = CoaddTaskRunner
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
@@ -69,7 +79,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return self._badPixelMask
 
-    def selectExposures(self, patchRef, wcs, bbox):
+    def selectExposures(self, patchRef, wcs, bbox, selectDataList=[]):
         """Select exposures to coadd
         
         @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
@@ -80,7 +90,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         cornerPosList = afwGeom.Box2D(bbox).getCorners()
         coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
-        return self.select.runDataRef(patchRef, coordList).dataRefList
+        return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
     
     def getSkyInfo(self, patchRef):
         """Return SkyMap, tract and patch
@@ -133,6 +143,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=CoaddDataIdContainer)
+        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
+                               ContainerClass=SelectDataIdContainer)
         return parser
 
     def _getConfigName(self):
@@ -150,7 +162,7 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
     
     Required because butler.subset does not support patch and tract
     """
-    def _makeDataRefList(self, namespace):
+    def makeDataRefList(self, namespace):
         """Make self.refList from self.idList
         """
         datasetType = namespace.config.coaddName + "Coadd"
@@ -166,3 +178,28 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
                 dataId = dataId,
             )
             self.refList.append(dataRef)
+
+class SelectDataIdContainer(pipeBase.DataIdContainer):
+    """A dataId container for inputs to be selected.
+
+    We will read the header (including the size and Wcs) for all specified
+    inputs and pass those along, ultimately for the SelectImagesTask.
+    This is most useful when used with multiprocessing, as input headers are
+    only read once.
+    """
+    def makeDataRefList(self, namespace):
+        """Add a dataList containing useful information for selecting images"""
+        super(SelectDataIdContainer, self).makeDataRefList(namespace)
+        self.dataList = []
+        for ref in self.refList:
+            try:
+                md = ref.get("calexp_md", immediate=True)
+                wcs = afwImage.makeWcs(md)
+                data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
+            except pexExceptions.LsstCppException, e:
+                if not isinstance(e, FitsError): # Unable to open file
+                    raise
+                namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
+                continue
+            self.dataList.append(data)
+
