@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 
@@ -46,7 +47,7 @@ class DatabaseSelectImagesConfig(pexConfig.Config):
         optional = True,
     )
 
-class BaseExposureInfo(object):
+class BaseExposureInfo(pipeBase.Struct):
     """Data about a selected exposure
     """
     def __init__(self, dataId, coordList):
@@ -57,8 +58,7 @@ class BaseExposureInfo(object):
         - coordList: a list of corner coordinates of the exposure (list of afwCoord.IcrsCoord)
         plus any others items that are desired
         """
-        dataId = dataId
-        coordList = coordList
+        super(BaseExposureInfo, self).__init__(dataId=dataId, coordList=coordList)
 
 
 class BaseSelectImagesTask(pipeBase.Task):
@@ -165,8 +165,17 @@ class SelectStruct(pipeBase.Struct):
 class WcsSelectImagesTask(BaseSelectImagesTask):
     """Select images using their Wcs"""
     def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """We check each input in selectDataList for overlap with the region
-        of interest.
+        """Images in the selectDataList that overlap the region specified by the
+        coordList are selected.
+
+        This comparison is conservative and non-exact: images that do not
+        actually overlap the coordList (but are close to it) may also be
+        selected.
+
+        @param dataRef: Data reference for coadd/tempExp (with tract, patch)
+        @param coordList: List of Coord specifying boundary of patch
+        @param makeDataRefList: Construct a list of data references?
+        @param selectDataList: List of SelectStruct, to consider for selection
         """
         dataRefList = []
         exposureInfoList = []
@@ -187,10 +196,12 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 dataRefList.append(dataRef)
                 corners = [wcs.pixelToSky(x,y) for x in (0, nx) for y in (0, ny)]
                 exposureInfoList.append(BaseExposureInfo(dataRef.dataId, corners))
-            except Exception, e:
+            except pexExceptions.LsstCppException, e:
+                if not isinstance(e.message, pexExceptions.DomainErrorException):
+                    raise
                 # Particularly interested in catching problems from wcslib, which may throw() if this exposure
                 # is far from the coordinates under consideration.
-                self.log.logdebug("Error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
 
         return pipeBase.Struct(
             dataRefList = dataRefList if makeDataRefList else None,

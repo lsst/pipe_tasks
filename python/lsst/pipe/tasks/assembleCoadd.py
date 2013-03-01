@@ -473,7 +473,6 @@ class AssembleCoaddTask(CoaddBaseTask):
         return parser
 
 
-
 def _subBBoxIter(bbox, subregionSize):
     """Iterate over subregions of a bbox
 
