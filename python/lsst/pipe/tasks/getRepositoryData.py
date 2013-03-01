@@ -88,7 +88,7 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
         """
         raise NotImplementedError("subclass must specify a run method")
     
-    def getIdList(self, dataRefList, datasetType):
+    def getIdList(self, dataRefList):
         """Get a list of data IDs in a form that can be used as dictionary keys
         
         @param dataRefList: a list of data references
