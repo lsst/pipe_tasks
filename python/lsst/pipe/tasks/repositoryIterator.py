@@ -73,9 +73,13 @@ class SourceData(object):
         @param[in] datasetType: dataset type for source
         @param[in] sourceKeyTuple: list of keys of data items to extract from the source data tables;
             keys that cannot be found in the source table silently retrieve NaN
+        
+        @raise RuntimeError if sourceKeyTuple is empty
         """
+        if len(sourceKeyTuple) < 1:
+            raise RuntimeError("Must specify at least one key in sourceKeyTuple")
         self.datasetType = datasetType
-        self._sourceKeyTuple = sourceKeyTuple
+        self._sourceKeyTuple = tuple(sourceKeyTuple)
         
         self._idKeyTuple = None # tuple of data ID keys, in order; set by first call to _getSourceMetrics
         self._idKeyDType = None # numpy dtype for data ID tuple; set by first call to _getSourceMetrics
