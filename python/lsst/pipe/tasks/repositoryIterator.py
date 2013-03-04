@@ -28,9 +28,9 @@ import itertools
 
 import numpy
 
-StrPadding = 5 # used by getDType; the number of characters to add to the first string value seen
+StrPadding = 5 # used by _getDTypeList; the number of characters to add to the first string value seen
     # when estimating the number of characters needed to store values for a key
-def getDType(keyTuple, valTuple):
+def _getDTypeList(keyTuple, valTuple):
     """Construct a numpy dtype for a data ID or repository ID
     
     @param[in] keyTuple: ID key names, in order
@@ -71,8 +71,7 @@ class SourceData(object):
     def __init__(self, datasetType, sourceKeyTuple):
         """
         @param[in] datasetType: dataset type for source
-        @param[in] sourceKeyTuple: list of keys of data items to extract from the source data tables;
-            keys that cannot be found in the source table silently retrieve NaN
+        @param[in] sourceKeyTuple: list of keys of data items to extract from the source data tables
         
         @raise RuntimeError if sourceKeyTuple is empty
         """
@@ -82,9 +81,13 @@ class SourceData(object):
         self._sourceKeyTuple = tuple(sourceKeyTuple)
         
         self._idKeyTuple = None # tuple of data ID keys, in order; set by first call to _getSourceMetrics
-        self._idKeyDType = None # numpy dtype for data ID tuple; set by first call to _getSourceMetrics
+        self._idKeyDTypeList = None # numpy dtype for data ID tuple, as a list of (key, type);
+            # set by first call to _getSourceMetrics
+        self._sourceDTypeList = None # numpy dtype for source data, as a list of (key, type);
+            # set by first call to _getSourceMetrics
         self._repoKeyTuple = None # tuple of repo ID keys, in order; set by first call to addSourceMetrics
-        self._repoDType = None # numpy dtype for repoArr; set by first call to addSourceMetrics
+        self._repoDTypeList = None # numpy dtype for repoArr, as a list of (key, type);
+            # set by first call to addSourceMetrics
 
         self._tempDataList = [] # list (one entry per repository)
             # of dict of source ID: tuple of data ID data concatenated with source metric data, where:
@@ -108,7 +111,8 @@ class SourceData(object):
         """
         if self._idKeyTuple is None:
             self._idKeyTuple = taskResult.idKeyTuple
-            self._idKeyDType = getDType(keyTuple = self._idKeyTuple, valTuple = taskResult.idValList[0])
+            self._idKeyDTypeList = _getDTypeList(keyTuple = self._idKeyTuple,
+                valTuple = taskResult.idValList[0])
 
         sourceTableList = taskResult.sourceDict[self.datasetType]
         
@@ -118,19 +122,17 @@ class SourceData(object):
                 continue
             
             idList = sourceTable.get("id")
-            dataList = []
-            nullRow = (numpy.nan,)*len(sourceTable)
-            dataArr = numpy.array([sourceTable.get(key) if key in sourceTable.schema else nullRow \
-                for key in self._sourceKeyTuple]).transpose()
-            
-            isGoodList = numpy.any(numpy.isfinite(dataArr), 1)
-            
-            goodIdList = numpy.compress(isGoodList, idList)
-            del idList
-            goodDataArr = numpy.compress(isGoodList, dataArr, axis=0)
-            del dataArr
+            dataList = [sourceTable.get(key) for key in self._sourceKeyTuple]
 
-            dataDict.update((srcId, idTuple + tuple(data)) for srcId, data in itertools.izip(goodIdList, goodDataArr))
+            if self._sourceDTypeList is None:
+                self._sourceDTypeList = [(key, arr.dtype)
+                    for key, arr in itertools.izip(self._sourceKeyTuple, dataList)]
+                
+            transposedDataList = zip(*dataList)
+            del dataList
+
+            dataDict.update((srcId, idTuple + tuple(data))
+                for srcId, data in itertools.izip(idList, transposedDataList))
         return dataDict
     
     def addSourceMetrics(self, repoInfo, taskResult):
@@ -142,7 +144,7 @@ class SourceData(object):
         """
         if self._repoKeyTuple is None:
             self._repoKeyTuple = repoInfo.keyTuple
-            self._repoDType = repoInfo.dtype
+            self._repoDTypeList = repoInfo.dtype
 
         dataDict = self._getSourceMetrics(taskResult)
 
@@ -157,16 +159,17 @@ class SourceData(object):
 
         Reads data from self._tempDataList and then deletes the list.
         """
+        if len(self._tempDataList) == 0:
+            raise RuntimeError("No data found")
+
         self.fullSrcIdSet = set()
         for dataIdDict in self._tempDataList:
             self.fullSrcIdSet.update(dataIdDict.iterkeys())
         
         # source data
-        sourceArrDType = [("sourceId", int)] \
-            + self._idKeyDType \
-            + [(name, float) for name in self._sourceKeyTuple]
+        sourceArrDType = [("sourceId", int)] + self._idKeyDTypeList + self._sourceDTypeList
         # data for missing sources (only for the data in the source data dict, so excludes srcId)
-        nullSourceTuple = ("",)*len(self._idKeyTuple) + (numpy.nan,)*len(self._sourceKeyTuple)
+        nullSourceTuple = tuple(numpy.zeros(1, dtype=self._idKeyDTypeList + self._sourceDTypeList)[0])
         
         sourceData = [[(srcId,) + srcDataDict.get(srcId, nullSourceTuple) for srcId in self.fullSrcIdSet]
             for srcDataDict in self._tempDataList]
@@ -176,7 +179,7 @@ class SourceData(object):
         
         # repository data
         repoData = [repoInfo.valTuple for repoInfo in self.repoInfoList]
-        self.repoArr = numpy.array(repoData, dtype=self._repoDType)
+        self.repoArr = numpy.array(repoData, dtype=self._repoDTypeList)
 
         self._tempDataList = None
 
@@ -237,7 +240,7 @@ class RepositoryIterator(object):
         """
         return self._keyTuple
     
-    def getDType(self):
+    def _getDTypeList(self):
         """Get a dtype for a structured array of repository keys
         """
         return self._dtype
