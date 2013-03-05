@@ -63,6 +63,7 @@ class SourceData(object):
         - source ID
         - each data ID key
         - each item of data extracted from the source table
+    - self.sourceIdDict: a dict of (source ID: index of axis 0 of self.sourceArr)
     - self.repoArr: a numpy structured array of shape (num repositories,)
         containing a named column for each repository key (see RepositoryIterator)
     
@@ -162,20 +163,22 @@ class SourceData(object):
         if len(self._tempDataList) == 0:
             raise RuntimeError("No data found")
 
-        self.fullSrcIdSet = set()
+        fullSrcIdSet = set()
         for dataIdDict in self._tempDataList:
-            self.fullSrcIdSet.update(dataIdDict.iterkeys())
+            fullSrcIdSet.update(dataIdDict.iterkeys())
         
         # source data
         sourceArrDType = [("sourceId", int)] + self._idKeyDTypeList + self._sourceDTypeList
         # data for missing sources (only for the data in the source data dict, so excludes srcId)
         nullSourceTuple = tuple(numpy.zeros(1, dtype=self._idKeyDTypeList + self._sourceDTypeList)[0])
         
-        sourceData = [[(srcId,) + srcDataDict.get(srcId, nullSourceTuple) for srcId in self.fullSrcIdSet]
+        sourceData = [[(srcId,) + srcDataDict.get(srcId, nullSourceTuple) for srcId in fullSrcIdSet]
             for srcDataDict in self._tempDataList]
         
         self.sourceArr = numpy.array(sourceData, dtype=sourceArrDType)
         del sourceData
+
+        self.sourceIdDict = dict((srcId, i) for i, srcId in enumerate(fullSrcIdSet))
         
         # repository data
         repoData = [repoInfo.valTuple for repoInfo in self.repoInfoList]
