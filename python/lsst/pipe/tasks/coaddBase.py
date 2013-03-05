@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
+import argparse
 
 import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
@@ -172,7 +173,7 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
             # tract and patch are required
             for key in validKeys:
                 if key not in dataId:
-                    self.error("--id must include " + key)
+                    raise argparse.ArgumentError(None, "--id must include " + key)
             dataRef = namespace.butler.dataRef(
                 datasetType = datasetType,
                 dataId = dataId,
