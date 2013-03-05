@@ -58,12 +58,12 @@ class SourceData(object):
     - call finalize to produce the final data
     
     Data available after calling finalize:
-    - self.sourceArr: a numpy structured array of shape (num sources, num repositories)
+    - self.sourceArr: a numpy structured array of shape (num repositories, num sources)
         containing named columns for:
         - source ID
         - each data ID key
         - each item of data extracted from the source table
-    - self.sourceIdDict: a dict of (source ID: index of axis 0 of self.sourceArr)
+    - self.sourceIdDict: a dict of (source ID: index of axis 1 of self.sourceArr)
     - self.repoArr: a numpy structured array of shape (num repositories,)
         containing a named column for each repository key (see RepositoryIterator)
     
