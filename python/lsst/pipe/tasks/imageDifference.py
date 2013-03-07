@@ -137,6 +137,9 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Use all manner of nefarious workarounds specific to late Winter 2013 production") 
     winter2013templateId = pexConfig.Field(dtype=int, default=88868666,
         doc = "88868666 for sparse data; 22222200 (g) and 11111100 (i) for dense data") 
+    winter2013borderMask = pexConfig.Field(dtype=int, default=320,
+        doc = "Mask the outer N pixels during fitting, as they are rife with false positives")
+
 
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
@@ -255,6 +258,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             raise pipeBase.TaskError("No psf found")
         exposure.setPsf(sciencePsf)
 
+        if self.config.useWinter2013Hacks and self.config.winter2013borderMask > 0:
+            self.log.warn("USING WINTER2013 HACK: MASKING BORDER PIXELS")
+            bbox = exposure.getBBox(afwImage.PARENT)
+            bbox.grow(-self.config.winter2013borderMask)
+            self.setEdgeBits(exposure.getMaskedImage(), bbox, 
+                             exposure.getMaskedImage().getMask().getPlaneBitMask("EDGE"))
+            
         # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
         ctr = afwGeom.Box2D(exposure.getBBox(afwImage.PARENT)).getCenter()
         psfAttr = PsfAttributes(sciencePsf, afwGeom.Point2I(ctr))
@@ -617,6 +627,26 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             DipoleAnalysis().displayDipoles(subtractRes.subtractedExposure, diaSources, 
                                             frame=lsstDebug.frame)
             lsstDebug.frame += 1
+
+    # Stolen from detection.py
+    def setEdgeBits(self, maskedImage, goodBBox, edgeBitmask):
+        """Set the edgeBitmask bits for all of maskedImage outside goodBBox"""
+        msk = maskedImage.getMask()
+
+        mx0, my0 = maskedImage.getXY0()
+        for x0, y0, w, h in ([0, 0,
+                              msk.getWidth(), goodBBox.getBeginY() - my0],
+                             [0, goodBBox.getEndY() - my0, msk.getWidth(),
+                              maskedImage.getHeight() - (goodBBox.getEndY() - my0)],
+                             [0, 0,
+                              goodBBox.getBeginX() - mx0, msk.getHeight()],
+                             [goodBBox.getEndX() - mx0, 0,
+                              maskedImage.getWidth() - (goodBBox.getEndX() - mx0), msk.getHeight()],
+                             ):
+            edgeMask = msk.Factory(msk, afwGeom.BoxI(afwGeom.PointI(x0, y0),
+                                                     afwGeom.ExtentI(w, h)), afwImage.LOCAL)
+            edgeMask |= edgeBitmask
+
             
            
     def getTemplate(self, exposure, sensorRef, border=10):
