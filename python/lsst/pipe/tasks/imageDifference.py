@@ -633,9 +633,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateId = type(sensorRef.dataId)(sensorRef.dataId)
             templateId["visit"] = self.config.winter2013templateId
             template = sensorRef.getButler().get(datasetType="calexp", dataId = templateId)
-            templateBg = sensorRef.getButler().get(datasetType="calexpBackground", dataId = templateId)
-            mi = template.getMaskedImage()
-            mi += templateBg
+            if self.config.doAddCalexpBackground:
+                templateBg = sensorRef.getButler().get(datasetType="calexpBackground", dataId = templateId)
+                mi = template.getMaskedImage()
+                mi += templateBg
             templatePsf = sensorRef.getButler().get(datasetType="psf", dataId = templateId)
             template.setPsf(templatePsf)
             templateApCorr = sensorRef.getButler().get(datasetType="apCorr", dataId = templateId)
