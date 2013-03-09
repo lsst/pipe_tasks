@@ -78,8 +78,8 @@ class MockObjectTask(lsst.pipe.base.Task):
         return catalog
 
     def generatePositions(self, tractInfo):
-        """A generator (iterator) that yields positions (as a (coord, point) tuple) for the
-        centers of objects (the point returned is in the tract coordinate system).
+        """Generate the centers (as a (coord, point) tuple) of mock objects (the point returned is
+        in the tract coordinate system).
 
         Default implementation puts objects on a grid that is square in the tract's image coordinate
         system, with spacing approximately given by config.spacings.

@@ -24,32 +24,24 @@ from matplotlib import pyplot
 
 import lsst.afw.geom
 
-def getBoxVertices(box):
-    """Convenience function to get the corners of a bounding box as sequences in x and y.
-    """
-    return ((box.getMinX(), box.getMinX(), box.getMaxX(), box.getMaxX()),
-            (box.getMinY(), box.getMaxY(), box.getMaxY(), box.getMinY()))
-    
-
 def plotObservations(catalog, wcs):
     """Plot the bounding boxes of an observation catalog (see MockCoaddTask.buildObservationCatalog)
     using matplotlib, in the coordinates defined by the given Wcs (usually a skymap Wcs).
     """
     for record in catalog:
         box = lsst.afw.geom.Box2D(record.getBBox())
-        x1, y1 = getBoxVertices(box)
-        x2 = []
-        y2 = []
+        x = []
+        y = []
         iWcs = record.getWcs()
-        for xi, yi in zip(x1, y1):
+        for xi, yi in box.getCorners():
             try:
                 coord = iWcs.pixelToSky(xi, yi)
                 xo, yo = wcs.skyToPixel(coord)
-                x2.append(xo)
-                y2.append(yo)
+                x.append(xo)
+                y.append(yo)
             except:
                 print "WARNING: point %d, %d failed" % (xi, yi)
-        pyplot.fill(x2, y2, facecolor='r', alpha=0.1, edgecolor=None)
+        pyplot.fill(x, y, facecolor='r', alpha=0.1, edgecolor=None)
 
 def plotPatches(tractInfo):
     """Plot the patches in a skymap tract using matplotlib.
@@ -58,8 +50,8 @@ def plotPatches(tractInfo):
     for iPatchX in range(nPatchX):
         for iPatchY in range(nPatchY):
             patchInfo = tractInfo.getPatchInfo((iPatchX, iPatchY))
-            xp1, yp1 = getBoxVertices(patchInfo.getOuterBBox())
-            xp2, yp2 = getBoxVertices(patchInfo.getInnerBBox())
+            xp1, yp1 = zip(*patchInfo.getOuterBBox().getCorners())
+            xp2, yp2 = zip(*patchInfo.getInnerBBox().getCorners())
             pyplot.fill(xp1, yp1, fill=False, edgecolor='g', linestyle='dashed')
             pyplot.fill(xp2, yp2, fill=False, edgecolor='g')
 

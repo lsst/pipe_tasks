@@ -108,8 +108,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         return catalog
 
     def generatePointings(self, n, tractInfo):
-        """A generator (iterator) that yields (celestial) positions and rotation angles that define
-        field locations.
+        """Generate (celestial) positions and rotation angles that define field locations.
 
         Default implementation draws random pointings that are uniform in the tract's image
         coordinate system.

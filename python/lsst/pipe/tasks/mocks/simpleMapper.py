@@ -30,12 +30,13 @@ prototyping a future paf-free mapper class, and it does everything it
 needs to do right now.
 """
 
-import lsst.daf.persistence
-import lsst.afw.cameraGeom
-import lsst.afw.cameraGeom.utils
 import os
 import shutil
 import re
+
+import lsst.daf.persistence
+import lsst.afw.cameraGeom
+import lsst.afw.cameraGeom.utils
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
 
