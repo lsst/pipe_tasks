@@ -34,7 +34,7 @@ from lsst.afw.fits.fitsLib import FitsError
 from .selectImages import WcsSelectImagesTask, SelectStruct
 
 try:
-    from meas_mosaic import applyMosaicResults
+    from lsst.meas.mosaic import applyMosaicResults
 except ImportError:
     applyMosaicResults = None
 
