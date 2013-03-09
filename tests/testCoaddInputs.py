@@ -38,10 +38,10 @@ import lsst.daf.persistence
 
 REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
 CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
-DATAREPO_ROOT = "testCoaddProvenance-data"
+DATAREPO_ROOT = "testCoaddInputs-data"
 
-class CoaddProvenanceTestCase(unittest.TestCase):
-    """A test case for CoaddProvenanceTask."""
+class CoaddInputsTestCase(unittest.TestCase):
+    """A test case for CoaddInputsTask."""
 
     def assertClose(self, a, b, rtol=1E-5, atol=1E-8):
         self.assert_(numpy.allclose(a, b, rtol=rtol, atol=atol), "\n%s\n!=\n%s" % (a, b))
@@ -90,7 +90,7 @@ class CoaddProvenanceTestCase(unittest.TestCase):
             for aParam, bParam in zip(aFuncParams, bFuncParams):
                 self.assertEqual(aParam, bParam)
 
-    def testTempExpProvenance(self, tract=0):
+    def testTempExpInputs(self, tract=0):
         skyMap = self.butler.get(self.task.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
         for visit, obsVisitDict in self.getObsDict(tract).iteritems():
@@ -119,7 +119,7 @@ class CoaddProvenanceTestCase(unittest.TestCase):
                     self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
             self.assert_(foundOneTempExp)
 
-    def testCoaddProvenance(self, tract=0):
+    def testCoaddInputs(self, tract=0):
         skyMap = self.butler.get(self.task.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
         obsCatalog = self.butler.get("observations", tract=tract, immediate=True)
@@ -224,7 +224,7 @@ class CoaddProvenanceTestCase(unittest.TestCase):
 def suite():
     utilsTests.init()
     suites = []
-    suites += unittest.makeSuite(CoaddProvenanceTestCase)
+    suites += unittest.makeSuite(CoaddInputsTestCase)
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)
 

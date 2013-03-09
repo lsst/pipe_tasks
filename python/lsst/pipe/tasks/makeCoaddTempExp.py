@@ -174,8 +174,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     origExp = self.warpAndPsfMatch.getCalExp(calExpRef, getPsf=doPsfMatch,
                                                              bgSubtracted=self.config.bgSubtracted)
                     if origExp:
-                        ccdProvenance = self.inputRecorder.makeCcdRecord(coaddInputs, visit=tempExpInd,
-                                                                      calexp=origExp, dataRef=calExpRef)
+                        ccdInputRecord = self.inputRecorder.makeCcdRecord(coaddInputs, visit=tempExpInd,
+                                                                          calexp=origExp, dataRef=calExpRef)
 
                     exposure = self.warpAndPsfMatch.run(origExp, wcs=tractWcs, maxBBox=patchBBox).exposure
                     numGoodPix = coaddUtils.copyGoodPixels(
@@ -191,13 +191,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                             coaddTempExp.setCalib(exposure.getCalib())
                             coaddTempExp.setFilter(exposure.getFilter())
                             didSetMetadata = True
-                    self.inputRecorder.saveCcdRecord(coaddInputs, ccdProvenance, nGoodPix=numGoodPix)
+                    self.inputRecorder.saveCcdRecord(coaddInputs, ccdInputRecord, nGoodPix=numGoodPix)
 
                 except Exception, e:
                     self.log.warn("Error processing calexp %s; skipping it: %s" % \
                         (calExpRef.dataId, e))
                     if self.config.inputRecorder.saveErrorCcds:
-                        self.inputRecorder.saveCcdRecord(coaddInputs, ccdProvenance, numGoodPix=numGoodPix)
+                        self.inputRecorder.saveCcdRecord(coaddInputs, ccdInputRecord, numGoodPix=numGoodPix)
                     continue
 
             if (totGoodPix == 0) or not didSetMetadata: # testing didSetMetadata is not needed but safer

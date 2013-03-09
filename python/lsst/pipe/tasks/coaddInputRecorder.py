@@ -148,8 +148,8 @@ class CoaddInputRecorderTask(pipeBase.Task):
         """
         tempExpInputs = coaddTempExp.getInfo().getCoaddInputs()
         if len(tempExpInputs.visits) != 1:
-            self.log.warn("Provenance for coaddTempExp should have exactly one record in visits table "
-                          "(found %d).  Provenance for this visit will not be saved."
+            self.log.warn("CoaddInputs for coaddTempExp should have exactly one record in visits table "
+                          "(found %d).  CoaddInputs for this visit will not be saved."
                           % len(tempExpInputs.visits))
             return None
         inputVisitRecord = tempExpInputs.visits[0];
@@ -158,8 +158,8 @@ class CoaddInputRecorderTask(pipeBase.Task):
         outputVisitRecord.setD(self.visitWeightKey, weight)
         for inputCcdRecord in tempExpInputs.ccds:
             if inputCcdRecord.getL(self.ccdVisitKey) != inputVisitRecord.getId():
-                self.log.warn("Provenance for coaddTempExp with id %d contains CCDs with visit=%d. "
-                              "Provenance may be unreliable."
+                self.log.warn("CoaddInputs for coaddTempExp with id %d contains CCDs with visit=%d. "
+                              "CoaddInputs may be unreliable."
                               % (inputVisitRecord.getId(), inputCcdRecord.getL(self.ccdVisitKey)))
             outputCcdRecord = coaddInputs.ccds.addNew()
             outputCcdRecord.assign(inputCcdRecord)
