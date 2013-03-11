@@ -88,8 +88,8 @@ class MockCoaddConfig(lsst.pex.config.Config):
 
 class MockCoaddTask(lsst.pipe.base.CmdLineTask):
     """MockCoaddTask is a driver task for creating mock coadds.  As opposed to more realistic
-    simulations, MockCoadd generates and uses extremely simple "toy" data that can be use to more
-    rigorously test the behavior of high-level task code because the expected results can are
+    simulations, MockCoadd generates and uses extremely simple "toy" data that can be used to more
+    rigorously test the behavior of high-level task code because the expected results are
     more easily predicted.  In particular, calexps are generated directly from the truth catalog,
     and contain only zero-noise stars that are created using the same Psf, Calib, and Wcs that will
     be attached to the mock calexp.
