@@ -53,8 +53,8 @@ class ReferencesTask(Task):
         @return Catalog (lsst.afw.table.SourceCatalog) of reference sources
         """
         # XXX put something in the Mapper???
-        self.log.log(self.log.FATAL,
-                     """Calling base class implementation of ReferencesTask.getReferences()!
+        self.log.fatal(
+            """Calling base class implementation of ReferencesTask.getReferences()!
             You need to configure a subclass of ReferencesTask.  Put in your configuration
             override file something like:
                 from some.namespace import SubclassReferencesTask

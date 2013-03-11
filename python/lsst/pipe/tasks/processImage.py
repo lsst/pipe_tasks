@@ -177,7 +177,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     psf = dataRef.get(self.dataPrefix + "psf", immediate=True)
                     calExposure.setPsf(psf)
                 except pexExceptions.LsstCppException:
-                    self.log.log(self.log.WARN, "Unable to read calibrated PSF from disk; using initial guess")
+                    self.log.warn("Unable to read calibrated PSF from disk; using initial guess")
                     
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
