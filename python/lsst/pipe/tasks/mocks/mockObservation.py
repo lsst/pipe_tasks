@@ -88,7 +88,7 @@ class MockObservationTask(lsst.pipe.base.Task):
             if not catalog.getSchema().contains(self.schema):
                 raise ValueError("Catalog schema does not match Task schema")
         visit = 1
-        for position, pa in self.generatePointings(n, tractInfo):
+        for position, pa in self.makePointings(n, tractInfo):
             for raft in camera:
                 raft = lsst.afw.cameraGeom.cast_Raft(raft)
                 calib = self.buildCalib()
@@ -107,11 +107,15 @@ class MockObservationTask(lsst.pipe.base.Task):
             visit += 1
         return catalog
 
-    def generatePointings(self, n, tractInfo):
+    def makePointings(self, n, tractInfo):
         """Generate (celestial) positions and rotation angles that define field locations.
 
         Default implementation draws random pointings that are uniform in the tract's image
         coordinate system.
+
+        The return value is a Python iterable over (coord, angle) pairs; the default implementation
+        is actually an iterator (i.e. the function is a "generator"), but derived-class overrides may
+        return any iterable. 
         """
         wcs = tractInfo.getWcs()
         bbox = lsst.afw.geom.Box2D(tractInfo.getBBox())
@@ -119,9 +123,9 @@ class MockObservationTask(lsst.pipe.base.Task):
         for i in xrange(n):
             x = numpy.random.rand() * bbox.getWidth() + bbox.getMinX()
             y = numpy.random.rand() * bbox.getHeight() + bbox.getMinY()
-            pa = 0.0
+            pa = 0.0 * lsst.afw.geom.radians
             if self.config.doRotate:
-                pa = numpy.random.rand() * 2.0 * numpy.pi
+                pa = numpy.random.rand() * 2.0 * numpy.pi * lsst.afw.geom.radians
             yield wcs.pixelToSky(x, y), pa
 
     def buildWcs(self, position, pa, ccd):
@@ -129,7 +133,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         crval = position.getPosition(lsst.afw.geom.degrees)
         pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
         cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) 
-              * lsst.afw.geom.LinearTransform.makeRotation(pa))
+              * lsst.afw.geom.LinearTransform.makeRotation(pa.asRadians()))
         crpix = ccd.getPixelFromPosition(lsst.afw.cameraGeom.FpPoint(0,0))
         wcs = lsst.afw.image.Wcs(crval, crpix, cd.getMatrix())
         return wcs

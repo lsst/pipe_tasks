@@ -58,7 +58,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         self.magKey = self.schema.addField("mag", type=float, doc="exact true magnitude")
 
     def run(self, tractInfo, catalog=None):
-        """Add records to the truth catalog and return it, delegating to generatePositions and defineObject.
+        """Add records to the truth catalog and return it, delegating to makePositions and defineObject.
 
         If the given catalog is not None, add records to this catalog and return it instead
         of creating a new one.
@@ -70,19 +70,23 @@ class MockObjectTask(lsst.pipe.base.Task):
         else:
             if not catalog.getSchema().contains(self.schema):
                 raise ValueError("Catalog schema does not match Task schema")
-        for coord, center in self.generatePositions(tractInfo):
+        for coord, center in self.makePositions(tractInfo):
             record = catalog.addNew()
             record.setCoord(coord)
             record.setPointD(self.center, center)
             self.defineObject(record)
         return catalog
 
-    def generatePositions(self, tractInfo):
+    def makePositions(self, tractInfo):
         """Generate the centers (as a (coord, point) tuple) of mock objects (the point returned is
         in the tract coordinate system).
 
         Default implementation puts objects on a grid that is square in the tract's image coordinate
         system, with spacing approximately given by config.spacings.
+
+        The return value is a Python iterable over (coord, point) pairs; the default implementation
+        is actually an iterator (i.e. the function is a "generator"), but derived-class overrides may
+        return any iterable. 
         """
         wcs = tractInfo.getWcs()
         spacing = self.config.spacing / wcs.pixelScale().asArcseconds() # get spacing in tract pixels
