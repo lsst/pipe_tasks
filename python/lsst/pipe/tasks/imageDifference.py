@@ -139,6 +139,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "88868666 for sparse data; 22222200 (g) and 11111100 (i) for dense data") 
     winter2013borderMask = pexConfig.Field(dtype=int, default=320,
         doc = "Mask the outer N pixels during fitting, as they are rife with false positives")
+    winter2013WcsShift = pexConfig.Field(dtype=float, default=0.0,
+        doc = "Shift stars going into RegisterTask by this amount")
+    winter2013WcsRms = pexConfig.Field(dtype=float, default=0.0,
+        doc = "Perturb stars going into RegisterTask by this amount")
 
 
     def setDefaults(self):
@@ -384,6 +388,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     results = self.register.run(templateSources, newWcs, 
                                                 templateExposure.getBBox(afwImage.PARENT), selectSources)
                 else:
+                    if self.config.winter2013WcsShift > 0.0:
+                        offset = afwGeom.Extent2D(self.config.winter2013WcsShift, self.config.winter2013WcsShift)
+                        cKey = templateSources[0].getTable().getCentroidKey()
+                        for source in templateSources:
+                            centroid = source.get(cKey)
+                            source.set(cKey, centroid+offset)
+                    elif self.config.winter2013WcsRms > 0.0:
+                        cKey = templateSources[0].getTable().getCentroidKey()
+                        for source in templateSources:
+                            offset = afwGeom.Extent2D(self.config.winter2013WcsRms*np.random.normal(), self.config.winter2013WcsRms*np.random.normal())
+                            centroid = source.get(cKey)
+                            source.set(cKey, centroid+offset)
+
                     results = self.register.run(templateSources, templateExposure.getWcs(),
                                                 templateExposure.getBBox(afwImage.PARENT), selectSources)
 
