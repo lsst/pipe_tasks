@@ -56,11 +56,12 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
 
     def __call__(self, butler):
         task = self.TaskClass(config=self.config, log=self.log)
-        task.writeConfig(butler)
         if self.doRaise:
+            task.writeConfig(butler, clobber=self.clobberConfig)
             result = task.run(butler)
         else:
             try:
+                task.writeConfig(butler, clobber=self.clobberConfig)
                 result = task.run(butler)
             except Exception, e:
                 task.log.fatal("Failed: %s" % e)
