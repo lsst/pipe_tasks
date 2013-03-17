@@ -27,6 +27,7 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.pipe.base as pipeBase
+import lsst.meas.algorithms as measAlg
 from lsst.ip.diffim import ModelPsfMatchTask
 
 __all__ = ["WarpAndPsfMatchTask"]
@@ -101,8 +102,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
             kernelDim = exposure.getPsf().getKernel().getDimensions()
             coreSigma = fwhmPixels / FwhmPerSigma
-            modelPsf = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-                coreSigma, coreSigma * 2.5, 0.1)
+            modelPsf = measAlg.DoubleGaussianPsf(kernelDim[0], kernelDim[1], coreSigma, coreSigma * 2.5, 0.1)
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
         self.log.info("Warp exposure")
         with self.timer("warp"):

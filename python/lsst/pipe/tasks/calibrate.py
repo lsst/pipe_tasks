@@ -297,11 +297,12 @@ class CalibrateTask(pipeBase.Task):
         wcs = exposure.getWcs()
         assert wcs, "No wcs in exposure"
 
-        model = self.config.initialPsf.model
+        cls = getattr(measAlg, self.config.initialPsf.model + "Psf")
+
         fwhm = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
         size = self.config.initialPsf.size
         self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
-        psf = afwDet.createPsf(model, size, size, fwhm/(2*math.sqrt(2*math.log(2))))
+        psf = cls(size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)
 
     @pipeBase.timeMethod

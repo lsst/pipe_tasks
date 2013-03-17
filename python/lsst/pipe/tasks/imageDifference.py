@@ -33,6 +33,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
+import lsst.meas.algorithms as measAlg
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
     starSelectorRegistry, PsfAttributes
 from lsst.ip.diffim import ImagePsfMatchTask
@@ -245,7 +246,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.useGaussianForPreConvolution:
                     # convolve with a simplified PSF model: a double Gaussian
                     kWidth, kHeight = sciencePsf.getKernel().getDimensions()
-                    preConvPsf = afwDetect.createPsf("SingleGaussian", kWidth, kHeight, scienceSigmaOrig)
+                    preConvPsf = measAlg.SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
                 else:
                     # convolve with science exposure's PSF model
                     preConvPsf = psf
