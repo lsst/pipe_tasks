@@ -511,6 +511,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """
         return "%sDiff_metadata" % (self.config.coaddName,)
 
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        diaSrc = afwTable.SourceCatalog(self.schema)
+        diaSrc.getTable().setMetadata(self.algMetadata)
+        return {self.config.coaddName + "Diff_diaSrc_shema": diaSrc}
+
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser

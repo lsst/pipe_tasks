@@ -176,7 +176,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 try:
                     psf = dataRef.get(self.dataPrefix + "psf", immediate=True)
                     calExposure.setPsf(psf)
-                except pexExceptions.LsstCppException:
+                except Exception:
                     self.log.warn("Unable to read calibrated PSF from disk; using initial guess")
                     
             table = afwTable.SourceTable.make(self.schema, idFactory)
@@ -293,6 +293,21 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             s.assign(ics, self.schemaMapper)
 
         return
+
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        src = afwTable.SourceCatalog(self.schema)
+        src.getTable().setMetadata(self.algMetadata)
+        d = {self.dataPrefix + "src": src}
+        icSrc = None
+        try:
+            icSrc = afwTable.SourceCatalog(self.calibrate.schema)
+            icSrc.getTable().setMetadata(self.calibrate.algMetadata)
+        except AttributeError:
+            pass
+        if icSrc is not None:
+            d[self.dataPrefix + "icSrc"] = icSrc
+        return d
 
     def writeBackgrounds(self, dataRef, backgrounds):
         """Backgrounds are persisted via the butler
