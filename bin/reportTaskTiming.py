@@ -30,13 +30,13 @@ import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-
-__all__ = ["ReportTaskTimingTask", "ReportTaskTimingArgumentParser"]
+from lsst.pipe.tasks.getRepositoryData import DataRefListRunner
 
 class ReportTaskTimingConfig(pexConfig.Config):
     """Config for ReportTaskTimingTask
     """
     pass
+
 
 class ResourceInfo(object):
     # note: UTime, STime and MaxRss were renamed to UserTime, SystemTime and MaxResidentSetSize;
@@ -125,59 +125,23 @@ class ResourceInfo(object):
             stdDev = numpy.std(deltaList)
             min = numpy.min(deltaList)
             max = numpy.max(deltaList)
-        self.log.info("%s: %s median=%s; mean=%s; stdDev=%s; min=%s; max=%s; n=%s" % \
-            (self.taskName, baseName, median, mean, stdDev, min, max, len(deltaList)))
+        print "%s: %s median=%s; mean=%s; stdDev=%s; min=%s; max=%s; n=%s" % \
+            (self.taskName, baseName, median, mean, stdDev, min, max, len(deltaList))
     
     def __str__(self):
         return "ResourceUsage(%s)" % (self.taskName,)
         
 
-class RunDataRefListRunner(pipeBase.TaskRunner):
-    @staticmethod
-    def getTargetList(parsedCmd):
-        """Return a list of targets (arguments for __call__); one entry per invocation
-        """
-        return [dict(dataRefList=parsedCmd.dataRefList)]
-
-    @staticmethod
-    def getTargetList(parsedCmd):
-        """Return a list of targets (arguments for __call__); one entry per invocation
-        """
-        return [parsedCmd.dataRefList] # one argument consisting of a list of dataRefs
-
-    def __call__(self, dataRefList):
-        """Run ReportTaskTimingTask.run on a single target
-        
-        @param dataRefList: argument dict for run; contains one key: dataRefList
-
-        @return:
-        - None if doReturnResults false
-        - A pipe_base Struct containing these fields if doReturnResults true:
-            - dataRefList: the argument dict sent to runDataRef
-            - metadata: task metadata after execution of runDataRef
-            - result: result returned by task runDataRef
-        """
-        task = self.TaskClass(config=self.config, log=self.log)
-        result = task.run(dataRefList)
-        
-        if self.doReturnResults:
-            return Struct(
-                dataRefList = dataRefList,
-                metadata = task.metadata,
-                result = result,
-            )
-
-
 class ReportTaskTimingTask(pipeBase.CmdLineTask):
     """Report which tracts and patches are needed for coaddition
     """
     ConfigClass = ReportTaskTimingConfig
-    RunnerClass = RunDataRefListRunner
+    RunnerClass = DataRefListRunner
     _DefaultName = "reportTaskTiming"
+    _NameRe = re.compile(r"((?:Start|End)[a-zA-Z]+)$")
     
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
-        self._nameRe = re.compile(r"((?:Start|End)[a-zA-Z]+)$")
 
     @pipeBase.timeMethod
     def run(self, dataRefList):
@@ -194,7 +158,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
             for name in taskMetadata.names(False): # hierarchical names
                 # make stripped version of name without Start... or End...;
                 # if neither present then skip this name
-                strList = self._nameRe.split(name, 1)
+                strList = self._NameRe.split(name, 1)
                 if len(strList) < 2:
                     continue
                 taskName, itemName = strList[0:2]
