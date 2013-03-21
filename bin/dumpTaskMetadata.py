@@ -52,19 +52,15 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
         """Report task metadata
         """
         print "%s for dataId=%s" % (dataRef.butlerSubset.datasetType, dataRef.dataId)
+        TimerSuffixList = ("CpuTime", "InBlock", "MajFlt", "MaxRss",
+            "MinFlt",  "NIvCsw", "NVCsw", "OuBlock", "STime", "UTime", "Utc")
 
         taskMetadata = dataRef.get()
         nameList = list(taskMetadata.names(False)) # hierarchical names
         nameList.sort()
         for name in nameList:
             if not self.config.showTimingData:
-                doSkip = False
-                for timerSuffix in ("CpuTime", "InBlock", "MajFlt", "MaxRss",
-                    "MinFlt",  "NIvCsw", "NVCsw", "OuBlock", "STime", "UTime", "Utc"):
-                    if name.endswith(timerSuffix):
-                        doSkip = True
-                        continue
-                if doSkip:
+                if any(name.endswith(timerSuffix) for timerSuffix in TimerSuffixList):
                     continue
 
             data = taskMetadata.get(name)

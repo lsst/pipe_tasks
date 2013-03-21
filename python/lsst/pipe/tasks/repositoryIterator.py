@@ -28,8 +28,9 @@ import itertools
 
 import numpy
 
-StrPadding = 5 # used by _getDTypeList; the number of characters to add to the first string value seen
+STR_PADDING = 5 # used by _getDTypeList; the number of characters to add to the first string value seen
     # when estimating the number of characters needed to store values for a key
+
 def _getDTypeList(keyTuple, valTuple):
     """Construct a numpy dtype for a data ID or repository ID
     
@@ -37,23 +38,23 @@ def _getDTypeList(keyTuple, valTuple):
     @param[in] valTuple: a value tuple
     @return numpy dtype as a list
     
-    @warning: this guesses at string length (StrPadding + length of string in valTuple);
+    @warning: this guesses at string length (STR_PADDING + length of string in valTuple);
     longer strings will be truncated when inserted into numpy structured arrays
     """
     typeList = []
     for name, val in itertools.izip(keyTuple, valTuple):
         if isinstance(val, str):
-            predLen = len(val) + StrPadding
+            predLen = len(val) + STR_PADDING
             typeList.append((name, str, predLen))
         else:
             typeList.append((name, numpy.array([val]).dtype))
     return typeList
 
 class SourceData(object):
-    """Accumulate data about a set of sources
+    """Accumulate a set of measurements from a set of source tables
     
     To use:
-    - specify the desired items of source data when constructing this object
+    - specify the desired source measurements when constructing this object
     - call addSourceMetrics for each repository you harvest data from
     - call finalize to produce the final data
     
@@ -72,7 +73,7 @@ class SourceData(object):
     def __init__(self, datasetType, sourceKeyTuple):
         """
         @param[in] datasetType: dataset type for source
-        @param[in] sourceKeyTuple: list of keys of data items to extract from the source data tables
+        @param[in] sourceKeyTuple: list of keys of data items to extract from the source tables
         
         @raise RuntimeError if sourceKeyTuple is empty
         """
@@ -96,29 +97,40 @@ class SourceData(object):
             # source metric data is in order self._sourceKeyTuple
         self.repoInfoList = [] # list of repoInfo
 
-    def _getSourceMetrics(self, taskResult):
-        """Obtain a set of source metrics as a dict of source ID: data
+    def _getSourceMetrics(self, idKeyTuple, idValList, sourceTableList):
+        """Obtain the desired source measurements from a list of source tables
         
-        @param[in] taskResult: a Struct containing:
-        - idKeyTuple
-        - idValList
-        - sourceDict with an entry for datasetType
+        Extracts a set of source measurements (specified by sourceKeyTuple) from a list of source tables
+        (one per data ID) and saves them as a dict of source ID: list of data
+        
+        @param[in] idKeyTuple: a tuple of data ID keys; must be the same for each call
+        @param[in] idValList: a list of data ID value tuples;
+            each tuple contains values in the order in idKeyTuple
+        @param[in] sourceTableList: a list of source tables, one per entry in idValList
+
         @return a dict of source id: data id tuple + source data tuple
             where source data tuple order matches sourceKeyTuple
-            and data id tuple matches self._idKeyTuple (which is set from the first taskResult)
+            and data id tuple matches self._idKeyTuple (which is set from the first idKeyTuple)
+        
+        @raise RuntimeError if idKeyTuple is different than it was for the first call.
+        
+        GetRepositoryDataTask.run returns idKeyTuple and idValList; you can easily make
+        a subclass of GetRepositoryDataTask that also returns sourceTableList.
         
         Updates instance variables:
         - self._idKeyTuple if not already set.
         """
         if self._idKeyTuple is None:
-            self._idKeyTuple = taskResult.idKeyTuple
+            self._idKeyTuple = tuple(idKeyTuple)
             self._idKeyDTypeList = _getDTypeList(keyTuple = self._idKeyTuple,
-                valTuple = taskResult.idValList[0])
+                valTuple = idValList[0])
+        else:
+            if self._idKeyTuple != tuple(idKeyTuple):
+                raise RuntimeError("idKeyTuple = %s != %s = first idKeyTuple; must be the same each time" % \
+                    (idKeyTuple, self._idKeyTuple))
 
-        sourceTableList = taskResult.sourceDict[self.datasetType]
-        
         dataDict = {}
-        for idTuple, sourceTable in itertools.izip(taskResult.idValList, sourceTableList):
+        for idTuple, sourceTable in itertools.izip(idValList, sourceTableList):
             if len(sourceTable) == 0:
                 continue
             
@@ -136,10 +148,20 @@ class SourceData(object):
                 for srcId, data in itertools.izip(idList, transposedDataList))
         return dataDict
     
-    def addSourceMetrics(self, repoInfo, taskResult):
-        """Accumulate source data from a repository.
+    def addSourceMetrics(self, repoInfo, idKeyTuple, idValList, sourceTableList):
+        """Accumulate source measurements from a list of source tables.
         
-        Adds data to self._tempDataList
+        Once you have accumulated all source measurements, call finalize to process the data.
+        
+        @param[in] repoInfo: a RepositoryInfo instance
+        @param[in] idKeyTuple: a tuple of data ID keys; must be the same for each call
+        @param[in] idValList: a list of data ID value tuples;
+            each tuple contains values in the order in idKeyTuple
+        @param[in] sourceTableList: a list of source tables, one per entry in idValList
+        
+        @raise RuntimeError if idKeyTuple is different than it was for the first call.
+        
+        Accumulates the data in temporary cache self._tempDataList.
         
         @return number of sources
         """
@@ -147,18 +169,18 @@ class SourceData(object):
             self._repoKeyTuple = repoInfo.keyTuple
             self._repoDTypeList = repoInfo.dtype
 
-        dataDict = self._getSourceMetrics(taskResult)
+        dataDict = self._getSourceMetrics(idKeyTuple, idValList, sourceTableList)
 
         self._tempDataList.append(dataDict)
         self.repoInfoList.append(repoInfo)
         return len(dataDict)
         
     def finalize(self):
-        """Combine all source metrics into the final products
+        """Process the accumulated source measurements to create the final data products.
         
         Only call this after you have added all source metrics using addSourceMetrics.
 
-        Reads data from self._tempDataList and then deletes the list.
+        Reads temporary cache self._tempDataList and then deletes it.
         """
         if len(self._tempDataList) == 0:
             raise RuntimeError("No data found")

@@ -120,13 +120,13 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
         return [dataRef.get(datasetType=datasetType) for dataRef in dataRefList]
     
     def getMetadataItems(self, dataRefList, datasetType, nameList):
-        """Retrieve a list of tuples of items of metadata
+        """Retrieve a list of dictionaries of metadata
         
         @param dataRefList: a list of data references
         @param datasetType: datasetType of metadata (or any object that supports get(name))
-        @return a list of tuples of metadata:
+        @return a list of dicts of metadata:
         - each entry in the list corresponds to a dataRef in dataRefList
-        - each entry in the tuple contains one entry per name in nameList
+        - each dict contains name: item of metadata, for each name in nameList
         """
         valList = []
         for dataRef in dataRefList:
