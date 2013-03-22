@@ -159,7 +159,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         butler = dataRef.getButler()
         groupData = groupPatchExposures(dataRef, calExpRefList, self.getCoaddDataset(),
-                                        self.getTempExpDataset(), checkExist=False)
+                                        self.getTempExpDataset())
         tempExpRefList = [getGroupDataRef(butler, self.getTempExpDataset(), g, groupData.keys) for
                           g in groupData.groups.keys()]
         inputData = self.prepareInputs(tempExpRefList)

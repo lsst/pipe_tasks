@@ -103,7 +103,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         if len(calExpRefList) == 0:
             self.log.warn("No exposures to coadd for patch %s" % patchRef.dataId)
             return None
-        self.log.info("Processing %d calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
+        self.log.info("Selected %d calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
+        calExpRefList = [calExpRef for calExpRef in calExpRefList if calExpRef.datasetExists("calexp")]
+        self.log.info("Processing %d existing calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
 
         groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDataset(),
                                         self.getTempExpDataset())
