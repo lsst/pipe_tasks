@@ -110,7 +110,7 @@ class BaseSelectImagesTask(pipeBase.Task):
         @param[in] coordList: list of coordinates defining region of interest; if None, search the whole sky
         @param[in] makeDataRefList: if True, return dataRefList
         @return a pipeBase Struct containing:
-        - exposureInfoList: a list of ccdInfo objects
+        - exposureInfoList: a list of objects derived from ExposureInfo
         - dataRefList: a list of data references (None if makeDataRefList False)
         """
         runArgDict = self._runArgDictFromDataId(dataRef.dataId)
@@ -120,8 +120,8 @@ class BaseSelectImagesTask(pipeBase.Task):
             butler = dataRef.butlerSubset.butler
             dataRefList = [butler.dataRef(
                 datasetType = "calexp",
-                dataId = ccdInfo.dataId,
-            ) for ccdInfo in exposureInfoList]
+                dataId = expInfo.dataId,
+            ) for expInfo in exposureInfoList]
         else:
             dataRefList = None
 
