@@ -29,7 +29,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddBaseTask
+from .coaddBase import CoaddBaseTask, DoubleGaussianPsfConfig
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
@@ -38,17 +38,7 @@ __all__ = ["MakeCoaddTempExpTask"]
 class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     """Config for MakeCoaddTempExpTask
     """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-        check = lambda x: x is None or x > 0.0,
-    )
-    coaddKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
-        default = 3.0,
-    )
+    modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
         doc = "Task to warp, PSF-match and zero-point-match calexp",
@@ -126,8 +116,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 if self.config.doWrite:
                     self.writeCoaddOutput(tempExpRef, exp, "tempExp")
                     if self.config.desiredFwhm is not None:
-                        psf = self.makeModelPsf(fwhm=self.config.desiredFwhm, wcs=wcs,
-                                                sizeFactor=self.config.coaddKernelSizeFactor)
+                        psf = self.makeModelPsf(self.config.modelPsf, wcs)
                         self.writeCoaddOutput(patchRef, psf, "initPsf")
 
             else:
@@ -155,8 +144,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
         totGoodPix = 0
         didSetMetadata = False
-        modelPsf = self.makeModelPsf(fwhm=self.config.desiredFwhm, wcs=skyInfo.wcs,
-                                     sizeFactor=self.config.coaddKernelSizeFactor)
+        modelPsf = self.makeModelPsf(self.config.modelPsf, skyInfo.wcs)
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s" %
                           (calExpInd+1, len(calexpRefList), calExpRef.dataId))

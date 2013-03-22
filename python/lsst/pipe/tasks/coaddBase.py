@@ -33,6 +33,17 @@ __all__ = ["CoaddBaseTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
+class DoubleGaussianPsfConfig(pexConfig.Config):
+    """Configuration for DoubleGaussian model Psf"""
+    desiredFwhm = pexConfig.Field(dtype=float, doc="Desired FWHM (arcseconds); None for no FWHM matching",
+                                  optional=True, check=lambda x: x is None or x > 0.0)
+    sizeFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for kernel size", default=3.0,
+                                 check=lambda x: x > 0.0)
+    wingFwhmFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for wing fwhm", default=2.5,
+                                     check=lambda x: x > 0)
+    wingAmplitude = pexConfig.Field(dtype=float, doc="Relative amplitude of wing", default=0.1,
+                                    check=lambda x: x >= 0)
+
 class CoaddBaseConfig(pexConfig.Config):
     """Config for CoaddBaseTask
     """
@@ -50,7 +61,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
     )
-
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.
@@ -125,25 +135,31 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             exposure.setPsf(psf)
         return exposure
 
-    def makeModelPsf(self, fwhm, wcs, sizeFactor=3.0):
-        """Construct a model PSF, or reuse the prior model, if possible
-        
-        The model PSF is a double Gaussian with core FWHM = fwhmPixels
-        and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
-        
-        @param fwhm: desired FWHM of core Gaussian, in arcseconds
+    def makeModelPsf(self, config, wcs):
+        """Construct a model PSF
+
+        The model PSF is a double Gaussian with core config.fwhm
+        and wings of config.wingAmplitude relative to the core
+        and width config.wingFwhmFactor relative to config.fwhm.
+
+        None is returned if the config.fwhm is None.
+
+        @param config: Configuration for Psf
         @param wcs: Wcs of the image (for pixel scale)
-        @param sizeFactor: multiplier of fwhm for kernel size
-        @return model PSF
+        @return model PSF or None
         """
-        if fwhm is None or fwhm <= 0:
+        if fwhm is None or fwhm == 0:
             return None
+        if not isinstance(config, DoubleGaussianPsfConfig):
+            raise ValueError("Config class is %s instead of DoubleGaussianPsfConfig" %
+                             (config.__class__.__name__))
         fwhmPixels = fwhm / wcs.pixelScale().asArcseconds()
-        kernelDim = int(sizeFactor * fwhmPixels + 0.5)
+        kernelDim = int(config.sizeFactor * fwhmPixels + 0.5)
         self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
                           (fwhmPixels, kernelDim, kernelDim))
         coreSigma = fwhmPixels / FwhmPerSigma
-        return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma, coreSigma * 2.5, 0.1)
+        return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma,
+                                      coreSigma * config.wingFwhmFactor, config.wingAmplitude)
 
     def getCoaddDatasetName(self):
         return self.config.coaddName + "Coadd"

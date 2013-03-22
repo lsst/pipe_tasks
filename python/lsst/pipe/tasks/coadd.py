@@ -40,17 +40,7 @@ __all__ = ["CoaddTask", "CoaddArgumentParser"]
 class CoaddConfig(CoaddBaseTask.ConfigClass):
     """Config for CoaddTask
     """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-        check = lambda x: x is None or x > 0.0,
-    )
-    coaddKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
-        default = 3.0,
-    )
+    modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
         doc = "Task to warp, PSF-match and zero-point-match calexp",
@@ -123,7 +113,7 @@ class CoaddTask(CoaddBaseTask):
             raise pipeBase.TaskError("No exposures to coadd")
         self.log.info("Coadding %d exposures" % len(imageRefList))
 
-        modelPsf = self.makeModelPsf(self.config.desiredFwhm, tractWcs, self.config.coaddKernelSizeFactor)
+        modelPsf = self.makeModelPsf(self.config.modelPsf, tractWcs)
         coaddData = self.warpAndCoadd(imageRefList, patchBBox, tractWcs, modelPsf=modelPsf)
         if self.config.doInterp:
             self.interpolateExposure(coaddData.coaddExposure)
@@ -132,8 +122,7 @@ class CoaddTask(CoaddBaseTask):
             self.writeCoaddOutput(patchRef, coaddData.coaddExposure)
             self.writeCoaddOutput(patchRef, coaddData.weightMap, "depth")
             if self.config.desiredFwhm is not None:
-                psf = self.makeModelPsf(fwhmPixels=self.config.desiredFwhm, wcs=wcs,
-                                        sizeFactor=self.config.coaddKernelSizeFactor)
+                psf = self.makeModelPsf(self.config.modelPsf, wcs)
                 self.writeCoaddOutput(patchRef, psf, "initPsf")
 
         return coaddData
