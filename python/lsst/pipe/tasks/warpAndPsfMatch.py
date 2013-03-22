@@ -55,7 +55,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
 
     def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if self.config.desiredFwhm is not None) and warp
+        """PSF-match exposure (if modelPsf is not None) and warp
 
         Note that PSF-matching is performed before warping, which is incorrect:
         a position-dependent warping (as is used in the general case) will
