@@ -145,12 +145,10 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         coreSigma = fwhmPixels / FwhmPerSigma
         return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma, coreSigma * 2.5, 0.1)
 
-    def getCoaddDataset(self):
-        """Return the name of the coadd dataset"""
+    def getCoaddDatasetName(self):
         return self.config.coaddName + "Coadd"
 
-    def getTempExpDataset(self):
-        """Return the name of the coadd tempExp (i.e., warp) dataset"""
+    def getTempExpDatasetName(self):
         return self.config.coaddName + "Coadd_tempExp"
 
     @classmethod
@@ -180,7 +178,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         @param obj: coadd product to write
         @param suffix: suffix to apply to coadd dataset name
         """
-        objName = self.getCoaddDataset()
+        objName = self.getCoaddDatasetName()
         if suffix is not None:
             objName += "_" + suffix
         self.log.info("Persisting %s" % objName)

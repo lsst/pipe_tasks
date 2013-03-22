@@ -107,13 +107,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         calExpRefList = [calExpRef for calExpRef in calExpRefList if calExpRef.datasetExists("calexp")]
         self.log.info("Processing %d existing calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
 
-        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDataset(),
-                                        self.getTempExpDataset())
+        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
+                                        self.getTempExpDatasetName())
         self.log.info("Processing %d tempExps for patch %s" % (len(groupData.groups), patchRef.dataId))
 
         dataRefList = []
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.iteritems()):
-            tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDataset(),
+            tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDatasetName(),
                                          tempExpTuple, groupData.keys)
             if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=tempExpName):
                 self.log.info("tempCoaddExp %s exists; skipping" % (tempExpRef.dataId,))
