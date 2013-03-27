@@ -187,8 +187,11 @@ class CoaddTask(CoaddBaseTask):
 
         In this case, we're interested in interpolating over "EDGE" pixels,
         which are pixels that have no contributing (good) input pixels.
+
+        Presently, the interpolation code in meas_algorithms doesn't use
+        the input PSF, so we're not too careful what we give it.
         """
-        fwhmArcSec = self.config.desiredFwhm or self.config.interpFwhm
+        fwhmArcSec = self.config.interpFwhm
         fwhmPixels = fwhmArcSec / exp.getWcs().pixelScale().asArcseconds()
         self.interpImage.interpolateOnePlane(
             maskedImage = exp.getMaskedImage(),
