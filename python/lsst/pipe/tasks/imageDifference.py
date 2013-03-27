@@ -156,10 +156,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
         
-        # If pre-convolving then be sure to enable the flux.filtered measurement algorithm
-        # (for now keep the other algorithms, though they will have incorrect error estimates)
-        if self.doPreConvolve:
-            self.measurement.algorithms.names.add("flux.filtered")
+        # Add filtered flux measurement, the correct measurement for pre-convolved images.
+        # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
+        # To change that you must modify algorithms.names in the task's applyOverrides method,
+        # after the user has set doPreConvolved.
+        self.measurement.algorithms.names.add("flux.filtered")
 
         # For shuffling the control sample
         random.seed(self.controlRandomSeed)
