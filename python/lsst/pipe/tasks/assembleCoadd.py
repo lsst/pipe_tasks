@@ -67,7 +67,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = True,
     )
     interpFwhm = pexConfig.Field(
-        doc = "FWHM of PSF used for interplation (arcsec)",
+        doc = "FWHM of PSF used for interpolation (arcsec)",
         dtype = float,
         default = 1.5,
     )
@@ -91,9 +91,8 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = True,
     )
     doMatchBackgrounds = pexConfig.Field(
-        doc = "Match backgrounds of coadd temp exposures before coadding them. " \
-        "If False, the coadd temp expsosures must already have been background subtracted or " \
-        "matched backgrounds",
+        doc = "Match backgrounds of coadd temp exposures before coadding them? " \
+        "If False, the coadd temp expsosures must already have been background subtracted or matched",
         dtype = bool,
         default = True,
     )

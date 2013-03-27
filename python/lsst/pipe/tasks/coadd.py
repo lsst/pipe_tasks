@@ -60,7 +60,7 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
     )
     interpFwhm = pexConfig.Field(
         dtype = float,
-        doc = "Interpolation PSF FWHM (arcsec) if desiredFwhm is not specified",
+        doc = "FWHM of PSf used for interpolation (arcsec)",
         default = 1.5,
         check = lambda x: x > 0,
         )

@@ -41,7 +41,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
-        doc = "Task to warp, PSF-match and zero-point-match calexp",
+        doc = "Task to warp and PSF-match calexp",
     )
     doWrite = pexConfig.Field(
         doc = "persist <coaddName>Coadd_tempExp and (if desiredFwhm not None) <coaddName>Coadd_initPsf?",
