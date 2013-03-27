@@ -375,15 +375,14 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
+        self.assembleMetadata(coaddExposure, tempExpRefList)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
-        didSetMetadata = False
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             try:
-                didSetMetadata = self.assembleSubregion(coaddExposure, subBBox, tempExpRefList,
-                                                        imageScalerList, weightList, bgInfoList, statsFlags,
-                                                        statsCtrl, not didSetMetadata)
+                self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
+                                       weightList, bgInfoList, statsFlags, statsCtrl)
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
 
@@ -391,8 +390,21 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         return coaddExposure
 
+    def assembleMetadata(self, coaddExposure, tempExpRefList):
+        """Set the metadata for the coadd
+
+        This basic implementation simply sets the filter from the
+        first input.
+
+        @param coaddExposure: The target image for the coadd
+        @param tempExpRefList: List of data references to tempExp
+        """
+        tempExpName = self.getTempExpDatasetName()
+        header = tempExpRefList[0].get(tempExpName + "_md")
+        exposure.setFilter(afwImage.Filter(header))
+
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
-                          bgInfoList, statsFlags, statsCtrl, doSetMetadata=False):
+                          bgInfoList, statsFlags, statsCtrl):
         """Assemble the coadd for a sub-region
 
         @param coaddExposure: The target image for the coadd
@@ -403,23 +415,17 @@ class AssembleCoaddTask(CoaddBaseTask):
         @param bgInfoList: List of background data from background matching
         @param statsFlags: Statistic for coadd
         @param statsCtrl: Statistics control object for coadd
-        @param doSetMetadata: Set metadata on coadd?
-        @return whether we set metadata on the coadd (which may be False even if doSetMetadata is True)
         """
         self.log.info("Computing coadd over %s" % bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
         coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)
         maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-        didSetMetadata = False
         for tempExpRef, imageScaler, bgInfo in zip(tempExpRefList, imageScalerList, bgInfoList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox, imageOrigin="PARENT")
             maskedImage = exposure.getMaskedImage()
             imageScaler.scaleMaskedImage(maskedImage)
 
-            if doSetMetadata:
-                coaddExposure.setFilter(exposure.getFilter())
-                didSetMetadata = True
             if self.config.doMatchBackgrounds and not bgInfo.isReference:
                 backgroundModel = bgInfo.backgroundModel
                 backgroundImage = backgroundModel.getImage() if \
@@ -437,7 +443,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                 maskedImageList, statsFlags, statsCtrl, weightList)
 
         coaddView <<= coaddSubregion
-        return didSetMetadata
 
 
     def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):
