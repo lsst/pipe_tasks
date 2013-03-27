@@ -121,9 +121,8 @@ class CoaddTask(CoaddBaseTask):
         if self.config.doWrite:
             self.writeCoaddOutput(patchRef, coaddData.coaddExposure)
             self.writeCoaddOutput(patchRef, coaddData.weightMap, "depth")
-            if self.config.desiredFwhm is not None:
-                psf = self.makeModelPsf(self.config.modelPsf, wcs)
-                self.writeCoaddOutput(patchRef, psf, "initPsf")
+            if modelPsf is not None:
+                self.writeCoaddOutput(patchRef, modelPsf, "initPsf")
 
         return coaddData
     
@@ -151,7 +150,7 @@ class CoaddTask(CoaddBaseTask):
         - weightMap: the weight map of the coadded exposure
         - coadd: coaddUtils.Coadd object with results
         """
-        doPsfMatch = self.config.desiredFwhm is not None
+        doPsfMatch = modelPsf is not None
         coadd = self.makeCoadd(bbox, wcs)
         for ind, calExpRef in enumerate(imageRefList):
             if not calExpRef.datasetExists("calexp"):

@@ -116,7 +116,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 if self.config.doWrite:
                     self.writeCoaddOutput(tempExpRef, exp, "tempExp")
                     if self.config.desiredFwhm is not None:
-                        psf = self.makeModelPsf(self.config.modelPsf, wcs)
+                        psf = self.makeModelPsf(self.config.modelPsf, skyInfo.wcs)
                         self.writeCoaddOutput(patchRef, psf, "initPsf")
 
             else:
