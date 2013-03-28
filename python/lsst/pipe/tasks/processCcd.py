@@ -66,8 +66,6 @@ class ProcessCcdTask(ProcessImageTask):
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
             else as upersisted and updated if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
-        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
-            if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
