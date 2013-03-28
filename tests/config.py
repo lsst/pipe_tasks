@@ -33,9 +33,7 @@ class CalibrateTestCase(unittest.TestCase):
     # Demonstrate typo
     conf.doPhotoCal = False
     conf.validate()
-    conf.doComputeApCorr = False
     conf.doPsf = True
-    conf.measurement.doApplyApCorr = False
     conf.validate()
     conf.doAstrometry = False
     conf.validate()

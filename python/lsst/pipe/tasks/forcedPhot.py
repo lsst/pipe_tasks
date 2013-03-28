@@ -163,20 +163,19 @@ class ForcedPhotTask(CmdLineTask):
         references = self.references.run(dataRef, exposure)
         self.log.info("Performing forced measurement on %d sources" % len(references))
         sources = self.generateSources(references, idFactory)
-        self.measurement.run(exposure, sources, apCorr=inputs.apCorr, references=references)
+        self.measurement.run(exposure, sources, references=references)
         self.writeOutput(dataRef, sources)
 
-    def readInputs(self, dataRef, exposureName="calexp", psfName="psf", apCorrName="apCorr"):
+    def readInputs(self, dataRef, exposureName="calexp", psfName="psf"):
         """Read inputs for exposure
 
         @param dataRef         Data reference from butler
         @param exposureName    Name for exposure in butler
         @param psfName         Name for PSF in butler
-        @param apCorrName      Name for aperture correction, or None
+
         """
         return Struct(exposure=dataRef.get(exposureName),
                       psf=dataRef.get(psfName),
-                      apCorr=dataRef.get(apCorrName) if apCorrName is not None else None,
                       )
 
     def generateSources(self, references, idFactory):
