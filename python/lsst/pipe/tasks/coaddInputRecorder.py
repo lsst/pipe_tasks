@@ -58,6 +58,65 @@ class CoaddInputRecorderConfig(pexConfig.Config):
              " (This is necessary for easy construction of CoaddPsf, but otherwise duplicate information.)")
     )
 
+class CoaddTempExpInputRecorder(object):
+    """A helper class for CoaddInputRecorderTask, managing the CoaddInputs object for that a single
+    CoaddTempExp.  This will contain single 'visit' record for the CoaddTempExp and a number of 'ccd'
+    records.
+
+    Should generally be created by calling CoaddInputRecorderTask.makeCoaddTempExp().
+    """
+
+    def __init__(self, task, visitId):
+        self.task = task
+        self.coaddInputs = self.task.makeCoaddInputs()
+        self.visitRecord = self.coaddInputs.visits.addNew()
+        self.visitRecord.setId(visitId)
+
+    def addCalExp(self, calExp, ccdId, nGoodPix):
+        """Add a 'ccd' record for a calexp just added to the CoaddTempExp
+
+        @param[in] calExp   Calibrated exposure just added to the CoaddTempExp, or None in case of
+                            failures that should nonetheless be tracked.  Should be the original
+                            calexp, in that it should contain the original Psf and Wcs, not the
+                            warped and/or matched ones.
+        @param[in] ccdId    A unique numeric ID for the Exposure.
+        @param[in] nGoodPix Number of good pixels this image will contribute to the CoaddTempExp.
+                            If saveEmptyCcds is not set and this value is zero, no record will be
+                            added.
+        """
+        if nGoodPix == 0 and not self.task.config.saveEmptyCcds:
+            return
+        record = self.coaddInputs.ccds.addNew()
+        record.setId(ccdId)
+        record.setL(self.task.ccdVisitKey, self.visitRecord.getId())
+        try:
+            record.setI(self.task.ccdCcdKey, calExp.getDetector().getId().getSerial())
+        except:
+            self.task.log.warn("Error getting detector serial number in visit %d; using -1"
+                                   % self.visitRecord.getId())
+            record.setI(self.task.ccdCcdKey, -1)
+        record.setI(self.task.ccdGoodPixKey, nGoodPix)
+        if calExp is not None:
+            record.setPsf(calExp.getPsf())
+            record.setWcs(calExp.getWcs())
+            record.setBBox(calExp.getBBox(afwImage.PARENT))
+
+    def finish(self, coaddTempExp, nGoodPix=None):
+        """Finish creating the CoaddInputs for a CoaddTempExp.
+
+        @param[in,out] coaddTempExp   Exposure object from which to obtain the PSF, WCS, and bounding
+                                      box for the entry in the 'visits' table.  On return, the completed
+                                      CoaddInputs object will be attached to it.
+        @param[in]     nGoodPix       Total number of good pixels in the CoaddTempExp; ignored unless
+                                      saveVisitGoodPix is true.
+        """
+        self.visitRecord.setPsf(coaddTempExp.getPsf())
+        self.visitRecord.setWcs(coaddTempExp.getWcs())
+        self.visitRecord.setBBox(coaddTempExp.getBBox(afwImage.PARENT))
+        if self.task.config.saveVisitGoodPix:
+            self.visitRecord.setI(self.visitGoodPixKey, nGoodPix)
+        coaddTempExp.getInfo().setCoaddInputs(self.coaddInputs)
+
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
     visits that went into a coadd.
@@ -86,54 +145,17 @@ class CoaddInputRecorderTask(pipeBase.Task):
             self.ccdWeightKey = self.ccdSchema.addField("weight", type=float,
                                                         doc="Weight for this visit in the coadd")
 
+    def makeCoaddTempExpRecorder(self, visitId):
+        """Return a CoaddTempExpInputRecorder instance to help with saving a CoaddTempExp's inputs.
+
+        The visitId may be any number that is unique for each CoaddTempExp that goes into a coadd,
+        but ideally should be something more meaningful that can be used to reconstruct a data ID.
+        """
+        return CoaddTempExpInputRecorder(self, visitId)
+
     def makeCoaddInputs(self):
-        """Create a CoaddInputs object using the schemas defined by the config parameters.
-        """
+        """Create a CoaddInputs object with schemas defined by the task configuration"""
         return afwImage.CoaddInputs(self.visitSchema, self.ccdSchema)
-
-    def makeCoaddTempExp(self, coaddInputs, visit, nGoodPix, coaddTempExp):
-        """Called once for each coaddTempExp by MakeCoaddTempExpTask, to add a single record
-        to the visits table and attach the CoaddInputs object to the exposure.  Returns
-        the record, so subclasses can call the base class method and fill additional fields.
-        """
-        coaddTempExp.getInfo().setCoaddInputs(coaddInputs)
-        record = coaddInputs.visits.addNew()
-        record.setId(visit)
-        if self.config.saveVisitGoodPix:
-            record.setI(self.visitGoodPixKey, nGoodPix)
-        record.setPsf(coaddTempExp.getPsf())
-        record.setWcs(coaddTempExp.getWcs())
-        record.setBBox(coaddTempExp.getBBox(afwImage.PARENT))
-        return record
-
-    def makeCcdRecord(self, coaddInputs, visit, calexp, dataRef):
-        """Called once for each CCD by MakeCoaddTempExpTask, to create a record for the ccds catalog.
-        The record is *not* immediately added to the catalog, reflecting the fact that we may
-        not want to add it later, depending on the inputRecorder configuration and how many good
-        pixels are found (see saveCcdRecord).
-        """
-        record = coaddInputs.ccds.getTable().makeRecord()
-        record.setId(dataRef.get("ccdExposureId", immediate=True))
-        record.setL(self.ccdVisitKey, visit)
-        try:
-            record.setI(self.ccdCcdKey, calexp.getDetector().getId().getSerial())
-        except:
-            self.log.warn("Error getting detector serial number in visit %d; using -1" % visit)
-            record.setI(self.ccdCcdKey, -1)
-        if calexp is not None:
-            record.setPsf(calexp.getPsf())
-            record.setWcs(calexp.getWcs())
-            record.setBBox(calexp.getBBox(afwImage.PARENT))
-        return record
-
-    def saveCcdRecord(self, coaddInputs, record, nGoodPix):
-        """Save a CCD inputRecorder record previously created by makeCcdRecord.
-
-        If the nGoodPix is zero, the record will only be saved if config.saveEmptyCcds is True.
-        """
-        if nGoodPix != 0 or self.config.saveEmptyCcds:
-            record.setI(self.ccdGoodPixKey, nGoodPix)
-            coaddInputs.ccds.append(record)
 
     def addVisitToCoadd(self, coaddInputs, coaddTempExp, weight):
         """Called by AssembleCoaddTask when adding (a subset of) a coaddTempExp to a coadd.  The
