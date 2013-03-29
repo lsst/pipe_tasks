@@ -27,6 +27,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
+import lsst.meas.algorithms as measAlg
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
@@ -414,6 +415,11 @@ class AssembleCoaddTask(CoaddBaseTask):
                 first = False
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
+        if self.config.doPsfMatch:
+            psf = self.config.modelPsf.apply(coaddExposure.getWcs())
+        else:
+            psf = measAlg.CoaddPsf(coaddInputs.ccds, coaddExposure.getWcs())
+        coaddExposure.setPsf(psf)
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
                           bgInfoList, statsFlags, statsCtrl):
