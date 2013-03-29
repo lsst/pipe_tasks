@@ -21,19 +21,32 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
-import numpy
+import argparse
 
+import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
-from .selectImages import BadSelectImagesTask
-from .coaddInputRecorder import CoaddInputRecorderTask
+
+from lsst.afw.fits.fitsLib import FitsError
+from .selectImages import WcsSelectImagesTask, SelectStruct
 
 __all__ = ["CoaddBaseTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
+
+class DoubleGaussianPsfConfig(pexConfig.Config):
+    """Configuration for DoubleGaussian model Psf"""
+    fwhm = pexConfig.Field(dtype=float, doc="FWHM of core (arcseconds)",
+                           default=1.0, check=lambda x: x is None or x > 0.0)
+    sizeFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for kernel size", default=3.0,
+                                 check=lambda x: x > 0.0)
+    wingFwhmFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for wing fwhm", default=2.5,
+                                     check=lambda x: x > 0)
+    wingAmplitude = pexConfig.Field(dtype=float, doc="Relative amplitude of wing", default=0.1,
+                                    check=lambda x: x >= 0)
 
 class CoaddBaseConfig(pexConfig.Config):
     """Config for CoaddBaseTask
@@ -45,17 +58,19 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc = "Image selection subtask.",
-        target = BadSelectImagesTask,
+        target = WcsSelectImagesTask,
     )
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
     )
-    inputRecorder = pexConfig.ConfigurableField(
-        doc = "Subtask that handles inputRecorder catalogs added to the final Exposure",
-        target = CoaddInputRecorderTask
-    )
+
+class CoaddTaskRunner(pipeBase.TaskRunner):
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
+                                                 **kwargs)
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.
@@ -63,30 +78,25 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     Subclasses must specify _DefaultName
     """
     ConfigClass = CoaddBaseConfig
+    RunnerClass = CoaddTaskRunner
     
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
-        self.makeSubtask("inputRecorder")
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
-    def getBadPixelMask(self):
-        """Get the bad pixel mask
-        """
-        return self._badPixelMask
-
-    def selectExposures(self, patchRef, wcs, bbox):
+    def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
         """Select exposures to coadd
         
         @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] wcs: WCS of coadd patch
-        @param[in] bbox: bbox of coadd patch
+        @param[in] skyInfo: geometry for the patch; output from getSkyInfo
         @return a list of science exposures to coadd, as butler data references
         """
-        cornerPosList = afwGeom.Box2D(bbox).getCorners()
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
-        return self.select.runDataRef(patchRef, coordList).dataRefList
+        if skyInfo is None:
+            skyInfo = self.getSkyInfo(patchRef)
+        cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
+        return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
     
     def getSkyInfo(self, patchRef):
         """Return SkyMap, tract and patch
@@ -115,28 +125,65 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             wcs = tractInfo.getWcs(),
             bbox = patchInfo.getOuterBBox(),
         )
-    
-    def makeModelPsf(self, fwhmPixels, kernelDim):
-        """Construct a model PSF, or reuse the prior model, if possible
-        
-        The model PSF is a double Gaussian with core FWHM = fwhmPixels
-        and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
-        
-        @param fwhmPixels: desired FWHM of core Gaussian, in pixels
-        @param kernelDim: desired dimensions of PSF kernel, in pixels
-        @return model PSF
+
+    def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
+        """Return one "calexp" calibrated exposure, optionally with psf
+
+        @param dataRef: a sensor-level data reference
+        @param getPsf: include the PSF?
+        @param bgSubtracted: return calexp with background subtracted? If False
+            get the calexp's background background model and add it to the cale
+        @return calibrated exposure with psf
         """
-        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" % \
-            (fwhmPixels, kernelDim[0], kernelDim[1]))
+        exposure = dataRef.get("calexp", immediate=True)
+        if not bgSubtracted:
+            background = dataRef.get("calexpBackground", immediate=True)
+            mi = exposure.getMaskedImage()
+            mi += background
+            del mi
+        if getPsf:
+            psf = dataRef.get("psf", immediate=True)
+            exposure.setPsf(psf)
+        return exposure
+
+    def makeModelPsf(self, config, wcs):
+        """Construct a model PSF
+
+        The model PSF is a double Gaussian with core config.fwhm
+        and wings of config.wingAmplitude relative to the core
+        and width config.wingFwhmFactor relative to config.fwhm.
+
+        @param config: Configuration for Psf
+        @param wcs: Wcs of the image (for pixel scale)
+        @return model PSF or None
+        """
+        if not isinstance(config, DoubleGaussianPsfConfig):
+            raise ValueError("Config class is %s instead of DoubleGaussianPsfConfig" %
+                             (config.__class__.__name__))
+        fwhmPixels = config.fwhm / wcs.pixelScale().asArcseconds()
+        kernelDim = int(config.sizeFactor * fwhmPixels + 0.5)
+        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
+                          (fwhmPixels, kernelDim, kernelDim))
         coreSigma = fwhmPixels / FwhmPerSigma
-        return afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-            coreSigma, coreSigma * 2.5, 0.1)
+        return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma,
+                                      coreSigma * config.wingFwhmFactor, config.wingAmplitude)
+
+    def getCoaddDatasetName(self):
+        return self.config.coaddName + "Coadd"
+
+    def getTempExpDatasetName(self):
+        return self.config.coaddName + "Coadd_tempExp"
 
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
+                               ContainerClass=CoaddDataIdContainer)
+        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
+                               ContainerClass=SelectDataIdContainer)
+        return parser
 
     def _getConfigName(self):
         """Return the name of the config dataset
@@ -148,25 +195,66 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
-class CoaddArgumentParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for coaddition.
+    def getBadPixelMask(self):
+        """Convenience method to provide the bitmask from the mask plane names"""
+        return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
+
+    def writeCoaddOutput(self, dataRef, obj, suffix=None):
+        """Write a coadd product through the butler
+
+        @param dataRef: data reference for coadd
+        @param obj: coadd product to write
+        @param suffix: suffix to apply to coadd dataset name
+        """
+        objName = self.getCoaddDatasetName()
+        if suffix is not None:
+            objName += "_" + suffix
+        self.log.info("Persisting %s" % objName)
+        dataRef.put(obj, objName)
+
+class CoaddDataIdContainer(pipeBase.DataIdContainer):
+    """A version of lsst.pipe.base.DataIdContainer specialized for coaddition.
     
     Required because butler.subset does not support patch and tract
     """
-    def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
+    def makeDataRefList(self, namespace):
+        """Make self.refList from self.idList
         """
         datasetType = namespace.config.coaddName + "Coadd"
-        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self._dataRefLevel)
+        validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self.level)
 
-        namespace.dataRefList = []
-        for dataId in namespace.dataIdList:
+        for dataId in self.idList:
             # tract and patch are required
             for key in validKeys:
                 if key not in dataId:
-                    self.error("--id must include " + key)
+                    raise argparse.ArgumentError(None, "--id must include " + key)
             dataRef = namespace.butler.dataRef(
                 datasetType = datasetType,
                 dataId = dataId,
             )
-            namespace.dataRefList.append(dataRef)
+            self.refList.append(dataRef)
+
+class SelectDataIdContainer(pipeBase.DataIdContainer):
+    """A dataId container for inputs to be selected.
+
+    We will read the header (including the size and Wcs) for all specified
+    inputs and pass those along, ultimately for the SelectImagesTask.
+    This is most useful when used with multiprocessing, as input headers are
+    only read once.
+    """
+    def makeDataRefList(self, namespace):
+        """Add a dataList containing useful information for selecting images"""
+        super(SelectDataIdContainer, self).makeDataRefList(namespace)
+        self.dataList = []
+        for ref in self.refList:
+            try:
+                md = ref.get("calexp_md", immediate=True)
+                wcs = afwImage.makeWcs(md)
+                data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
+            except pexExceptions.LsstCppException, e:
+                if not isinstance(e, FitsError): # Unable to open file
+                    raise
+                namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
+                continue
+            self.dataList.append(data)
+

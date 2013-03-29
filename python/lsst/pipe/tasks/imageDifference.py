@@ -42,6 +42,8 @@ FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
     """
+    doAddCalexpBackground = pexConfig.Field(dtype=bool, default=True,
+        doc = "Add background to calexp before processing it? This may improve calexp quality.")
     doSelectSources = pexConfig.Field(dtype=bool, default=True, doc = "Select stars to use for kernel fitting")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc = "Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
@@ -101,7 +103,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     )
     
     def setDefaults(self):
-        
         # High sigma detections only
         self.selectDetection.reEstimateBackground = False
         self.selectDetection.thresholdValue = 10.0
@@ -113,10 +114,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.selectMeasurement.slots.apFlux = None 
         self.selectMeasurement.doApplyApCorr = False
 
-        # Config different types of source selectors.
-        # Second moment:
-        self.sourceSelector["secondMoment"].clumpNSigma  = 2.0
-        # Catalog (defaults are OK)
+        # Set default source selector and configure defaults for that one and some common alternatives
+        self.sourceSelector.name = "diacatalog"
+        self.sourceSelector["secondMoment"].clumpNSigma = 2.0
+        # defaults are OK for catalog and diacatalog
 
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
@@ -211,6 +212,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         # Retrieve the science image we wish to analyze
         exposure = sensorRef.get("calexp")
+        if self.config.doAddCalexpBackground:
+            calexpBackground = sensorRef.get("calexpBackground")
+            mi = exposure.getMaskedImage()
+            mi += calexpBackground
         sciencePsf = sensorRef.get("psf")
         if not sciencePsf:
             raise pipeBase.TaskError("No psf found")
@@ -506,8 +511,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """
         return "%sDiff_metadata" % (self.config.coaddName,)
 
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        diaSrc = afwTable.SourceCatalog(self.schema)
+        diaSrc.getTable().setMetadata(self.algMetadata)
+        return {self.config.coaddName + "Diff_diaSrc_shema": diaSrc}
+
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="calexp")
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
+        return parser

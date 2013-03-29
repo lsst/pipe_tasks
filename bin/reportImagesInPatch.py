@@ -29,7 +29,7 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
-from lsst.pipe.tasks.selectImages import BadSelectImagesTask
+from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
 
 __all__ = ["ReportImagesInPatchTask", "ReportImagesInPatchArgumentParser"]
 
@@ -43,7 +43,7 @@ class ReportImagesInPatchConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc = "image selection subtask",
-        target = BadSelectImagesTask, # must be retargeted
+        target = WcsSelectImagesTask,
     )
 
 
@@ -121,8 +121,11 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
-        return ReportImagesInPatchArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
-    
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
+                               ContainerClass=ReportImagesInPatchDataIdContainer)
+        return parser
+
     def _getConfigName(self):
         """Don't persist config, so return None
         """
@@ -134,24 +137,22 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         return None
     
 
-
-class ReportImagesInPatchArgumentParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for reporting images.
+class ReportImagesInPatchDataIdContainer(pipeBase.DataIdContainer):
+    """A version of lsst.pipe.base.DataIdContainer specialized for reporting images.
     
     Required because butler.subset cannot handle this dataset type.
     """
-    def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
-        """
+    def makeDataRefList(self, namespace):
+        """Make self.refList from self.idList"""
         datasetType = namespace.config.coaddName + "Coadd"
 
-        namespace.dataRefList = []
-        for dataId in namespace.dataIdList:
+        for dataId in self.idList:
             dataRef = namespace.butler.dataRef(
                 datasetType = datasetType,
                 dataId = dataId,
             )
-            namespace.dataRefList.append(dataRef)
+            self.refList.append(dataRef)
+
 
 def _getBox2DCorners(bbox):
     """Return the four corners of a bounding box (Box2I or Box2D) as four afwGeom Point2D

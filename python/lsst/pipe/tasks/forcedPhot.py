@@ -53,8 +53,8 @@ class ReferencesTask(Task):
         @return Catalog (lsst.afw.table.SourceCatalog) of reference sources
         """
         # XXX put something in the Mapper???
-        self.log.log(self.log.FATAL,
-                     """Calling base class implementation of ReferencesTask.getReferences()!
+        self.log.fatal(
+            """Calling base class implementation of ReferencesTask.getReferences()!
             You need to configure a subclass of ReferencesTask.  Put in your configuration
             override file something like:
                 from some.namespace import SubclassReferencesTask
@@ -146,7 +146,9 @@ class ForcedPhotTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         """Overriding CmdLineTask._makeArgumentParser to set dataset type"""
-        return ArgumentParser(name=cls._DefaultName, datasetType="calexp")
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
+        return parser
 
     @timeMethod
     def run(self, dataRef):

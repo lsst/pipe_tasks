@@ -215,12 +215,13 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
-        
-        Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
-        need filter information for this particular task).
+
+        We specify a dynamic id argument through the use of DatasetArgument.
         """
-        return pipeBase.ArgumentParser(name=cls._DefaultName,
-            datasetType=pipeBase.DatasetArgument(help="dataset type for task metadata"))
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", pipeBase.DatasetArgument(help="dataset type for task metadata"),
+                               help="data ID, e.g. --id visit=12345 ccd=1,2")
+        return parser
 
 
 if __name__ == "__main__":

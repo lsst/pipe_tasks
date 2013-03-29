@@ -96,8 +96,11 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
-        return ReportPatchesArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
-    
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
+                               ContainerClass=ReportPatchesDataIdContainer)
+        return parser
+
     def _getConfigName(self):
         """Don't persist config, so return None
         """
@@ -109,28 +112,29 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         return None
 
 
-class ReportPatchesArgumentParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for reporting images.
+
+
+class ReportPatchesDataIdContainer(pipeBase.DataIdContainer):
+    """A version of lsst.pipe.base.DataIdContainer specialized for reporting images.
     
     Required because there is no dataset type that is has exactly the right keys for this task.
     datasetType = namespace.config.coaddName + "Coadd" comes closest, but includes "patch" and "tract",
     which are irrelevant to the task, but required to make a data reference of this dataset type.
     Also required because butler.subset cannot handle this dataset type.
     """
-    def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
+    def makeDataRefList(self, namespace):
+        """Make self.refList from self.idList
         """
         datasetType = namespace.config.coaddName + "Coadd"
 
-        namespace.dataRefList = []
-        for dataId in namespace.dataIdList:
+        for dataId in self.idList:
             expandedDataId = dict(patch=0, tract=(0,0))
             expandedDataId.update(dataId)
             dataRef = namespace.butler.dataRef(
                 datasetType = datasetType,
                 dataId = expandedDataId,
             )
-            namespace.dataRefList.append(dataRef)
+            self.refList.append(dataRef)
 
 
 if __name__ == "__main__":

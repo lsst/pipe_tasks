@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.pex.exceptions as pexExceptions
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
@@ -172,8 +173,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
                 calExposure = dataRef.get(self.dataPrefix + "calexp")
             if calib is None or calib.psf is None:
-                psf = dataRef.get(self.dataPrefix + "psf")
-                calExposure.setPsf(psf)
+                try:
+                    psf = dataRef.get(self.dataPrefix + "psf", immediate=True)
+                    calExposure.setPsf(psf)
+                except Exception:
+                    self.log.warn("Unable to read calibrated PSF from disk; using initial guess")
+                    
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.makeSourceCatalog(table, calExposure)
@@ -204,16 +209,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 self.log.warn("calibrated exposure is None; cannot save it")
             else:
                 if self.config.persistBackgroundModel:
-                    self.log.warn("Persisting background models as an image")
-                    bg = backgrounds[0].getImageF()
-                    for b in backgrounds[1:]:
-                        bg += b.getImageF()
-                    dataRef.put(bg, self.dataPrefix+"calexpBackground")
-                    del bg
+                    self.writeBackgrounds(dataRef, backgrounds)
                 else:
-                    mi = calExposure.getMaskedImage()
-                    for bg in backgrounds:
-                        mi += bg.getImageF()
+                    self.restoreBackgrounds(calExposure, backgrounds)
                 dataRef.put(calExposure, self.dataPrefix + "calexp")
 
         if calib is not None:
@@ -295,3 +293,45 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             s.assign(ics, self.schemaMapper)
 
         return
+
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        src = afwTable.SourceCatalog(self.schema)
+        src.getTable().setMetadata(self.algMetadata)
+        d = {self.dataPrefix + "src": src}
+        icSrc = None
+        try:
+            icSrc = afwTable.SourceCatalog(self.calibrate.schema)
+            icSrc.getTable().setMetadata(self.calibrate.algMetadata)
+        except AttributeError:
+            pass
+        if icSrc is not None:
+            d[self.dataPrefix + "icSrc"] = icSrc
+        return d
+
+    def writeBackgrounds(self, dataRef, backgrounds):
+        """Backgrounds are persisted via the butler
+
+        Currently, due to the lack of support for writing the background models
+        directly, we are forced to write them as full-size images instead of the
+        internal representation.  This unfortunately increases the disk usage,
+        but will hopefully change for the better soon.
+
+        @param dataRef: Data reference
+        @param backgrounds: List of background models
+        """
+        self.log.warn("Persisting background models as an image")
+        bg = backgrounds[0].getImageF()
+        for b in backgrounds[1:]:
+            bg += b.getImageF()
+        dataRef.put(bg, self.dataPrefix+"calexpBackground")
+
+    def restoreBackgrounds(self, exp, backgrounds):
+        """Add backgrounds back in to an exposure
+
+        @param exp: Exposure to which to add backgrounds
+        @param backgrounds: List of background models
+        """
+        mi = exp.getMaskedImage()
+        for bg in backgrounds:
+            mi += bg.getImageF()
