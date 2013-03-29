@@ -37,6 +37,17 @@ __all__ = ["CoaddBaseTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
+class DoubleGaussianPsfConfig(pexConfig.Config):
+    """Configuration for DoubleGaussian model Psf"""
+    fwhm = pexConfig.Field(dtype=float, doc="FWHM of core (arcseconds)",
+                           default=1.0, check=lambda x: x is None or x > 0.0)
+    sizeFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for kernel size", default=3.0,
+                                 check=lambda x: x > 0.0)
+    wingFwhmFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for wing fwhm", default=2.5,
+                                     check=lambda x: x > 0)
+    wingAmplitude = pexConfig.Field(dtype=float, doc="Relative amplitude of wing", default=0.1,
+                                    check=lambda x: x >= 0)
+
 class CoaddBaseConfig(pexConfig.Config):
     """Config for CoaddBaseTask
     """
@@ -61,7 +72,6 @@ class CoaddTaskRunner(pipeBase.TaskRunner):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
                                                  **kwargs)
 
-
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.
     
@@ -73,24 +83,19 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
-    def getBadPixelMask(self):
-        """Get the bad pixel mask
-        """
-        return self._badPixelMask
-
-    def selectExposures(self, patchRef, wcs, bbox, selectDataList=[]):
+    def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
         """Select exposures to coadd
         
         @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] wcs: WCS of coadd patch
-        @param[in] bbox: bbox of coadd patch
+        @param[in] skyInfo: geometry for the patch; output from getSkyInfo
         @return a list of science exposures to coadd, as butler data references
         """
-        cornerPosList = afwGeom.Box2D(bbox).getCorners()
-        coordList = [wcs.pixelToSky(pos) for pos in cornerPosList]
+        if skyInfo is None:
+            skyInfo = self.getSkyInfo(patchRef)
+        cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
         return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
     
     def getSkyInfo(self, patchRef):
@@ -120,22 +125,54 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             wcs = tractInfo.getWcs(),
             bbox = patchInfo.getOuterBBox(),
         )
-    
-    def makeModelPsf(self, fwhmPixels, kernelDim):
-        """Construct a model PSF, or reuse the prior model, if possible
-        
-        The model PSF is a double Gaussian with core FWHM = fwhmPixels
-        and wings of amplitude 1/10 of core and FWHM = 2.5 * core.
-        
-        @param fwhmPixels: desired FWHM of core Gaussian, in pixels
-        @param kernelDim: desired dimensions of PSF kernel, in pixels
-        @return model PSF
+
+    def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
+        """Return one "calexp" calibrated exposure, optionally with psf
+
+        @param dataRef: a sensor-level data reference
+        @param getPsf: include the PSF?
+        @param bgSubtracted: return calexp with background subtracted? If False
+            get the calexp's background background model and add it to the cale
+        @return calibrated exposure with psf
         """
-        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" % \
-            (fwhmPixels, kernelDim[0], kernelDim[1]))
+        exposure = dataRef.get("calexp", immediate=True)
+        if not bgSubtracted:
+            background = dataRef.get("calexpBackground", immediate=True)
+            mi = exposure.getMaskedImage()
+            mi += background
+            del mi
+        if getPsf:
+            psf = dataRef.get("psf", immediate=True)
+            exposure.setPsf(psf)
+        return exposure
+
+    def makeModelPsf(self, config, wcs):
+        """Construct a model PSF
+
+        The model PSF is a double Gaussian with core config.fwhm
+        and wings of config.wingAmplitude relative to the core
+        and width config.wingFwhmFactor relative to config.fwhm.
+
+        @param config: Configuration for Psf
+        @param wcs: Wcs of the image (for pixel scale)
+        @return model PSF or None
+        """
+        if not isinstance(config, DoubleGaussianPsfConfig):
+            raise ValueError("Config class is %s instead of DoubleGaussianPsfConfig" %
+                             (config.__class__.__name__))
+        fwhmPixels = config.fwhm / wcs.pixelScale().asArcseconds()
+        kernelDim = int(config.sizeFactor * fwhmPixels + 0.5)
+        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
+                          (fwhmPixels, kernelDim, kernelDim))
         coreSigma = fwhmPixels / FwhmPerSigma
-        return afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-            coreSigma, coreSigma * 2.5, 0.1)
+        return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma,
+                                      coreSigma * config.wingFwhmFactor, config.wingAmplitude)
+
+    def getCoaddDatasetName(self):
+        return self.config.coaddName + "Coadd"
+
+    def getTempExpDatasetName(self):
+        return self.config.coaddName + "Coadd_tempExp"
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -157,6 +194,23 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """Return the name of the metadata dataset
         """
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
+
+    def getBadPixelMask(self):
+        """Convenience method to provide the bitmask from the mask plane names"""
+        return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
+
+    def writeCoaddOutput(self, dataRef, obj, suffix=None):
+        """Write a coadd product through the butler
+
+        @param dataRef: data reference for coadd
+        @param obj: coadd product to write
+        @param suffix: suffix to apply to coadd dataset name
+        """
+        objName = self.getCoaddDatasetName()
+        if suffix is not None:
+            objName += "_" + suffix
+        self.log.info("Persisting %s" % objName)
+        dataRef.put(obj, objName)
 
 class CoaddDataIdContainer(pipeBase.DataIdContainer):
     """A version of lsst.pipe.base.DataIdContainer specialized for coaddition.

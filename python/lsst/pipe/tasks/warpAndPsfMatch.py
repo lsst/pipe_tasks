@@ -31,16 +31,9 @@ from lsst.ip.diffim import ModelPsfMatchTask
 
 __all__ = ["WarpAndPsfMatchTask"]
 
-FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
-
 class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-    )
     psfMatch = pexConfig.ConfigurableField(
         target = ModelPsfMatchTask,
         doc = "PSF matching model to model task",
@@ -52,7 +45,7 @@ class WarpAndPsfMatchConfig(pexConfig.Config):
 
 
 class WarpAndPsfMatchTask(pipeBase.Task):
-    """A task to warp, PSF-match and zeropoint scale an exposure
+    """A task to warp and PSF-match an exposure
     """
     ConfigClass = WarpAndPsfMatchConfig
 
@@ -61,31 +54,18 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
 
-    def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
-        """Return one "calexp" calibrated exposure, optionally with psf
-        
-        @param dataRef: a sensor-level data reference
-        @param getPsf: include the PSF?
-        @param bgSubtracted: return calexp with background subtracted? If False then
-            get the calexp's background background model and add it to the calexp.
-        @return calibrated exposure with psf
-        """
-        exposure = dataRef.get("calexp", immediate=True)
-        if not bgSubtracted:
-            background = dataRef.get("calexpBackground", immediate=True)
-            mi = exposure.getMaskedImage()
-            mi += background
-            del mi
-        if getPsf:
-            psf = dataRef.get("psf", immediate=True)
-            exposure.setPsf(psf)
-        return exposure
-    
-    def run(self, exposure, wcs, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if self.config.desiredFwhm is not None) and warp
-        
+    def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None):
+        """PSF-match exposure (if modelPsf is not None) and warp
+
+        Note that PSF-matching is performed before warping, which is incorrect:
+        a position-dependent warping (as is used in the general case) will
+        re-introduce a position-dependent PSF.  However, this is easier, and
+        sufficient for now (until we are able to warp PSFs to determine the
+        correct target PSF).
+
         @param[in,out] exposure: exposure to preprocess; PSF matching is done in place
         @param[in] wcs: desired WCS of temporary images
+        @param[in] modelPsf: target PSF to which to match (or None)
         @param maxBBox: maximum allowed parent bbox of warped exposure (an afwGeom.Box2I or None);
             if None then the warped exposure will be just big enough to contain all warped pixels;
             if provided then the warped exposure may be smaller, and so missing some warped pixels;
@@ -96,18 +76,10 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         @return a pipe_base Struct containing:
         - exposure: processed exposure
         """
-        if self.config.desiredFwhm is not None:
-            self.log.info("PSF-match exposure")
-            fwhmPixels = self.config.desiredFwhm / wcs.pixelScale().asArcseconds()
-            kernelDim = exposure.getPsf().getKernel().getDimensions()
-            coreSigma = fwhmPixels / FwhmPerSigma
-            modelPsf = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-                coreSigma, coreSigma * 2.5, 0.1)
+        if modelPsf is not None:
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-        self.log.info("Warp exposure")
         with self.timer("warp"):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
-        
         return pipeBase.Struct(
             exposure = exposure,
         )
