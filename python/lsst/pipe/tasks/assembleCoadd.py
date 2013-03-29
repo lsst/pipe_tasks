@@ -401,7 +401,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         """
         tempExpName = self.getTempExpDatasetName()
         header = tempExpRefList[0].get(tempExpName + "_md")
-        exposure.setFilter(afwImage.Filter(header))
+        coaddExposure.setFilter(afwImage.Filter(header))
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
                           bgInfoList, statsFlags, statsCtrl):

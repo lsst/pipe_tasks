@@ -73,7 +73,7 @@ def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepC
     coaddKeys = sorted(butler.getKeys(datasetType=coaddDatasetType))
     keys = sorted(set(tempExpKeys) - set(coaddKeys)) # Keys that will specify an exposure
     patchId = patchDataRef.dataId
-    groups = groupExposures(keys, calexpDataRefList)
+    groups = groupDataRefs(keys, calexpDataRefList)
 
     # Supplement the groups with the coadd-specific information (e.g., tract, patch; these are constant)
     coaddValues = tuple(patchId[k] for k in coaddKeys)
