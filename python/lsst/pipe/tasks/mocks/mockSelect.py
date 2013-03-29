@@ -26,14 +26,11 @@ import lsst.pipe.base
 
 class MockSelectImagesTask(lsst.pipe.base.Task):
     """Simple select images task that just returns all the objects we simulated.
-
-    This isn't a complete implementation of the SelectImagesTask API, but that API is broken
-    for our purposes, so we'll need to wait for #2590 and #2593 to fix that.
     """
 
     ConfigClass = lsst.pex.config.Config
 
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True):
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
         observations = dataRef.butlerSubset.butler.get("observations", tract=dataRef.dataId["tract"])
         assert(makeDataRefList) # this is all we make, so the user better want it
         butler = dataRef.butlerSubset.butler
