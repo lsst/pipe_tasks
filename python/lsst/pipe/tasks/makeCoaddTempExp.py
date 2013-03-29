@@ -38,18 +38,20 @@ __all__ = ["MakeCoaddTempExpTask"]
 class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     """Config for MakeCoaddTempExpTask
     """
+    doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
     modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
         doc = "Task to warp and PSF-match calexp",
     )
     doWrite = pexConfig.Field(
-        doc = "persist <coaddName>Coadd_tempExp and (if desiredFwhm not None) <coaddName>Coadd_initPsf?",
+        doc = "persist <coaddName>Coadd_tempExp and (if doPsfMatch) <coaddName>Coadd_initPsf?",
         dtype = bool,
         default = True,
     )
     doOverwrite = pexConfig.Field(
-        doc = "overwrite <coaddName>Coadd_tempExp and (if desiredFwhm not None) <coaddName>Coadd_initPsf?  If False, continue if the file exists on disk",
+        doc = "overwrite <coaddName>Coadd_tempExp and (if doPsfMatch not None) <coaddName>Coadd_initPsf?" + \
+            "If False, continue if the file exists on disk",
         dtype = bool,
         default = True,
     )
@@ -115,7 +117,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
                     self.writeCoaddOutput(tempExpRef, exp, "tempExp")
-                    if self.config.desiredFwhm is not None:
+                    if self.config.doPsfMatch:
                         psf = self.makeModelPsf(self.config.modelPsf, skyInfo.wcs)
                         self.writeCoaddOutput(patchRef, psf, "initPsf")
 
@@ -144,12 +146,12 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
         totGoodPix = 0
         didSetMetadata = False
-        modelPsf = self.makeModelPsf(self.config.modelPsf, skyInfo.wcs)
+        modelPsf = self.makeModelPsf(self.config.modelPsf, skyInfo.wcs) if self.config.doPsfMatch else None
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s" %
                           (calExpInd+1, len(calexpRefList), calExpRef.dataId))
             try:
-                exposure = self.getCalExp(calExpRef, getPsf=self.config.desiredFwhm is not None,
+                exposure = self.getCalExp(calExpRef, getPsf=self.config.doPsfMatch,
                                           bgSubtracted=self.config.bgSubtracted)
                 exposure = self.warpAndPsfMatch.run(exposure, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                     maxBBox=skyInfo.bbox).exposure

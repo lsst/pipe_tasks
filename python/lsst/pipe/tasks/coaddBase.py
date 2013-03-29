@@ -35,8 +35,8 @@ FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
 class DoubleGaussianPsfConfig(pexConfig.Config):
     """Configuration for DoubleGaussian model Psf"""
-    desiredFwhm = pexConfig.Field(dtype=float, doc="Desired FWHM (arcseconds); None for no FWHM matching",
-                                  optional=True, check=lambda x: x is None or x > 0.0)
+    fwhm = pexConfig.Field(dtype=float, doc="FWHM of core (arcseconds)",
+                           default=1.0, check=lambda x: x is None or x > 0.0)
     sizeFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for kernel size", default=3.0,
                                  check=lambda x: x > 0.0)
     wingFwhmFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for wing fwhm", default=2.5,
@@ -142,18 +142,14 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         and wings of config.wingAmplitude relative to the core
         and width config.wingFwhmFactor relative to config.fwhm.
 
-        None is returned if the config.fwhm is None.
-
         @param config: Configuration for Psf
         @param wcs: Wcs of the image (for pixel scale)
         @return model PSF or None
         """
-        if fwhm is None or fwhm == 0:
-            return None
         if not isinstance(config, DoubleGaussianPsfConfig):
             raise ValueError("Config class is %s instead of DoubleGaussianPsfConfig" %
                              (config.__class__.__name__))
-        fwhmPixels = fwhm / wcs.pixelScale().asArcseconds()
+        fwhmPixels = config.fwhm / wcs.pixelScale().asArcseconds()
         kernelDim = int(config.sizeFactor * fwhmPixels + 0.5)
         self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
                           (fwhmPixels, kernelDim, kernelDim))

@@ -29,7 +29,7 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
-from .coaddBase import CoaddBaseTask, CoaddArgumentParser
+from .coaddBase import CoaddBaseTask, CoaddArgumentParser, DoubleGaussianPsfConfig
 from .interpImage import InterpImageTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 
@@ -40,6 +40,7 @@ __all__ = ["CoaddTask", "CoaddArgumentParser"]
 class CoaddConfig(CoaddBaseTask.ConfigClass):
     """Config for CoaddTask
     """
+    doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
     modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
@@ -113,7 +114,7 @@ class CoaddTask(CoaddBaseTask):
             raise pipeBase.TaskError("No exposures to coadd")
         self.log.info("Coadding %d exposures" % len(imageRefList))
 
-        modelPsf = self.makeModelPsf(self.config.modelPsf, tractWcs)
+        modelPsf = self.makeModelPsf(self.config.modelPsf, tractWcs) if self.doPsfMatch else None
         coaddData = self.warpAndCoadd(imageRefList, patchBBox, tractWcs, modelPsf=modelPsf)
         if self.config.doInterp:
             self.interpolateExposure(coaddData.coaddExposure)
@@ -150,7 +151,6 @@ class CoaddTask(CoaddBaseTask):
         - weightMap: the weight map of the coadded exposure
         - coadd: coaddUtils.Coadd object with results
         """
-        doPsfMatch = modelPsf is not None
         coadd = self.makeCoadd(bbox, wcs)
         for ind, calExpRef in enumerate(imageRefList):
             if not calExpRef.datasetExists("calexp"):
@@ -158,7 +158,7 @@ class CoaddTask(CoaddBaseTask):
                 continue
 
             self.log.info("Processing exposure %d of %d: %s" % (ind+1, len(imageRefList), calExpRef.dataId))
-            exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=True)
+            exposure = self.getCalExp(calExpRef, getPsf=self.config.doPsfMatch, bgSubtracted=True)
             try:
                 exposure = self.warpAndPsfMatch.run(exposure, wcs=wcs, modelPsf=modelPsf,
                                                     maxBBox=bbox).exposure
