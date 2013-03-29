@@ -27,7 +27,7 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
-from .coaddBase import CoaddBaseTask, CoaddArgumentParser, DoubleGaussianPsfConfig
+from .coaddBase import CoaddBaseTask, DoubleGaussianPsfConfig
 from .interpImage import InterpImageTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 
