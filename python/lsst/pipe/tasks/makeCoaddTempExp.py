@@ -111,7 +111,17 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 dataRefList.append(tempExpRef)
                 continue
             self.log.info("Processing tempExp %d/%d: id=%s" % (i, len(groupData.groups), tempExpRef.dataId))
-            exp = self.createTempExp(calexpRefList, skyInfo)
+
+            # TODO: mappers should define a way to go from the "grouping keys" to a numeric ID (#2776).
+            # For now, we try to get a long integer "visit" key, and if we can't, we just use the index
+            # of the visit in the list.
+            try:
+                visitId = long(tempExpRef.dataId["visit"])
+            except (KeyError, ValueError):
+                visitId = i
+            inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId)
+
+            exp = self.createTempExp(calexpRefList, skyInfo, inputRecorder)
             if exp is not None:
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
@@ -124,7 +134,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
         return dataRefList
 
-    def createTempExp(self, calexpRefList, skyInfo):
+    def createTempExp(self, calexpRefList, skyInfo, inputRecorder):
         """Create a tempExp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
@@ -138,6 +148,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             overlap the patch of interest
         @param skyInfo: Struct from CoaddBaseTask.getSkyInfo() with geometric
             information about the patch
+        @param inputRecorder: CoaddTempExpInputRecorder that builds a catalog
+            of calexps that went into this tempExp.
         @return warped exposure, or None if no pixels overlap
         """
         coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
@@ -150,9 +162,14 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s" %
                           (calExpInd+1, len(calexpRefList), calExpRef.dataId))
             try:
-                exposure = self.getCalExp(calExpRef, getPsf=self.config.doPsfMatch,
-                                          bgSubtracted=self.config.bgSubtracted)
-                exposure = self.warpAndPsfMatch.run(exposure, modelPsf=modelPsf, wcs=skyInfo.wcs,
+                ccdId = calExpRef.get("ccdExposureId", immediate=True)
+            except Exception:
+                ccdId = calExpInd
+            numGoodPix = 0
+            try:
+                calExp = self.getCalExp(calExpRef, getPsf=self.config.doPsfMatch,
+                                        bgSubtracted=self.config.bgSubtracted)
+                exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                     maxBBox=skyInfo.bbox).exposure
                 numGoodPix = coaddUtils.copyGoodPixels(
                     coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
@@ -166,6 +183,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             except Exception, e:
                 self.log.warn("Error processing calexp %s; skipping it: %s" % (calExpRef.dataId, e))
                 continue
+            inputRecorder.addCalExp(calExp, ccdId, numGoodPix)
+
+        inputRecorder.finish(coaddTempExp, totGoodPix)
 
         self.log.info("coaddTempExp has %d good pixels" % (totGoodPix))
         return coaddTempExp if totGoodPix > 0 and didSetMetadata else None

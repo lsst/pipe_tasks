@@ -32,6 +32,7 @@ import lsst.pipe.base as pipeBase
 
 from lsst.afw.fits.fitsLib import FitsError
 from .selectImages import WcsSelectImagesTask, SelectStruct
+from .coaddInputRecorder import CoaddInputRecorderTask
 
 __all__ = ["CoaddBaseTask"]
 
@@ -65,6 +66,10 @@ class CoaddBaseConfig(pexConfig.Config):
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
     )
+    inputRecorder = pexConfig.ConfigurableField(
+        doc = "Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
+        target = CoaddInputRecorderTask
+    )
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
     @staticmethod
@@ -83,6 +88,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
+        self.makeSubtask("inputRecorder")
 
     def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
         """Select exposures to coadd

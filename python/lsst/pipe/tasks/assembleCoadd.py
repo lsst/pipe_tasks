@@ -375,7 +375,8 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
-        self.assembleMetadata(coaddExposure, tempExpRefList)
+        coaddExposure.getInfo().setCoaddInputs(self.inputRecorder.makeCoaddInputs())
+        self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
@@ -390,7 +391,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         return coaddExposure
 
-    def assembleMetadata(self, coaddExposure, tempExpRefList):
+    def assembleMetadata(self, coaddExposure, tempExpRefList, weightList):
         """Set the metadata for the coadd
 
         This basic implementation simply sets the filter from the
@@ -398,10 +399,21 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         @param coaddExposure: The target image for the coadd
         @param tempExpRefList: List of data references to tempExp
+        @param weightList: List of weights
         """
         tempExpName = self.getTempExpDatasetName()
-        header = tempExpRefList[0].get(tempExpName + "_md")
-        coaddExposure.setFilter(afwImage.Filter(header))
+        # We load a single pixel of each coaddTempExp, because we just want to get at the metadata
+        # (and we need more than just the PropertySet that contains the header).  See #2777.
+        bbox = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(1,1))
+        first = True
+        coaddInputs = coaddExposure.getInfo().getCoaddInputs()
+        for tempExpRef, weight in zip(tempExpRefList, weightList):
+            tempExp = tempExpRef.get(tempExpName + "_sub", bbox=bbox, imageOrigin="LOCAL", immediate=True)
+            if first:
+                coaddExposure.setFilter(tempExp.getFilter())
+                first = False
+            self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
+        coaddInputs.visits.sort()
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
                           bgInfoList, statsFlags, statsCtrl):
