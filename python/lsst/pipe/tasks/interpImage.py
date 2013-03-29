@@ -51,6 +51,10 @@ class InterpImageTask(pipeBase.Task):
     def interpolateOnePlane(self, maskedImage, planeName, fwhmPixels):
         """Interpolate over one mask plane, in place
 
+        Note that the interpolation code in meas_algorithms currently
+        doesn't use the input PSF (though it's a required argument),
+        so it's not important to set the input PSF parameters exactly.
+
         @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
         @param[in] fwhmPixels: FWHM of double Gaussian model to use for interpolation (pixels)
         @param[in] planeName: mask plane over which to interpolate

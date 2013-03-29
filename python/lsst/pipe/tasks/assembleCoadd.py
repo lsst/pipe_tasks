@@ -67,7 +67,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = True,
     )
     interpFwhm = pexConfig.Field(
-        doc = "FWHM of PSF used for interplation (arcsec)",
+        doc = "FWHM of PSF used for interpolation (arcsec)",
         dtype = float,
         default = 1.5,
     )
@@ -91,9 +91,8 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = True,
     )
     doMatchBackgrounds = pexConfig.Field(
-        doc = "Match backgrounds of coadd temp exposures before coadding them. " \
-        "If False, the coadd temp expsosures must already have been background subtracted or " \
-        "matched backgrounds",
+        doc = "Match backgrounds of coadd temp exposures before coadding them? " \
+        "If False, the coadd temp expsosures must already have been background subtracted or matched",
         dtype = bool,
         default = True,
     )
@@ -158,13 +157,13 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.log.info("Coadding %d exposures" % len(calExpRefList))
 
         butler = dataRef.getButler()
-        groupData = groupPatchExposures(dataRef, calExpRefList, self.getCoaddDataset(),
-                                        self.getTempExpDataset(), checkExist=False)
-        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDataset(), g, groupData.keys) for
+        groupData = groupPatchExposures(dataRef, calExpRefList, self.getCoaddDatasetName(),
+                                        self.getTempExpDatasetName())
+        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(), g, groupData.keys) for
                           g in groupData.groups.keys()]
         inputData = self.prepareInputs(tempExpRefList)
         tempExpRefList = inputData.tempExpRefList
-        self.log.info("Found %d %s" % (len(inputData.tempExpRefList), self.getTempExpDataset()))
+        self.log.info("Found %d %s" % (len(inputData.tempExpRefList), self.getTempExpDatasetName()))
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
@@ -206,11 +205,11 @@ class AssembleCoaddTask(CoaddBaseTask):
             return None
 
         # We've been given the data reference
-        dataset = self.getTempExpDataset()
+        dataset = self.getTempExpDatasetName()
         if not dataRef.datasetExists(dataset):
             raise RuntimeError("Could not find reference exposure %s %s." % (dataset, dataRef.dataId))
 
-        refExposure = dataRef.get(self.getTempExpDataset(), immediate=True)
+        refExposure = dataRef.get(self.getTempExpDatasetName(), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
             exposure = refExposure,
             exposureId = dataRef.dataId,
@@ -242,7 +241,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         tempExpRefList = []
         weightList = []
         imageScalerList = []
-        tempExpName = self.getTempExpDataset()
+        tempExpName = self.getTempExpDatasetName()
         for tempExpRef in refList:
             if not tempExpRef.datasetExists(tempExpName):
                 self.log.warn("Could not find %s %s; skipping it" % (tempExpName, tempExpRef.dataId))
@@ -298,7 +297,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                 imageScalerList = inputData.imageScalerList,
                 refExpDataRef = refExpDataRef if not self.config.autoReference else None,
                 refImageScaler = refImageScaler,
-                expDatasetType = self.getTempExpDataset(),
+                expDatasetType = self.getTempExpDatasetName(),
             ).backgroundInfoList
         except Exception, e:
             self.log.fatal("Cannot match backgrounds: %s" % (e))
@@ -356,7 +355,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         @param bgInfoList: List of background data from background matching
         @return coadded exposure
         """
-        tempExpName = self.getTempExpDataset()
+        tempExpName = self.getTempExpDatasetName()
         self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
 
         statsCtrl = afwMath.StatisticsControl()
@@ -376,15 +375,14 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
+        self.assembleMetadata(coaddExposure, tempExpRefList)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
-        didSetMetadata = False
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             try:
-                didSetMetadata = self.assembleSubregion(coaddExposure, subBBox, tempExpRefList,
-                                                        imageScalerList, weightList, bgInfoList, statsFlags,
-                                                        statsCtrl, not didSetMetadata)
+                self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
+                                       weightList, bgInfoList, statsFlags, statsCtrl)
             except Exception, e:
                 self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
 
@@ -392,8 +390,21 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         return coaddExposure
 
+    def assembleMetadata(self, coaddExposure, tempExpRefList):
+        """Set the metadata for the coadd
+
+        This basic implementation simply sets the filter from the
+        first input.
+
+        @param coaddExposure: The target image for the coadd
+        @param tempExpRefList: List of data references to tempExp
+        """
+        tempExpName = self.getTempExpDatasetName()
+        header = tempExpRefList[0].get(tempExpName + "_md")
+        coaddExposure.setFilter(afwImage.Filter(header))
+
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
-                          bgInfoList, statsFlags, statsCtrl, doSetMetadata=False):
+                          bgInfoList, statsFlags, statsCtrl):
         """Assemble the coadd for a sub-region
 
         @param coaddExposure: The target image for the coadd
@@ -404,23 +415,17 @@ class AssembleCoaddTask(CoaddBaseTask):
         @param bgInfoList: List of background data from background matching
         @param statsFlags: Statistic for coadd
         @param statsCtrl: Statistics control object for coadd
-        @param doSetMetadata: Set metadata on coadd?
-        @return whether we set metadata on the coadd (which may be False even if doSetMetadata is True)
         """
         self.log.info("Computing coadd over %s" % bbox)
-        tempExpName = self.getTempExpDataset()
+        tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
         coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)
         maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
-        didSetMetadata = False
         for tempExpRef, imageScaler, bgInfo in zip(tempExpRefList, imageScalerList, bgInfoList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox, imageOrigin="PARENT")
             maskedImage = exposure.getMaskedImage()
             imageScaler.scaleMaskedImage(maskedImage)
 
-            if doSetMetadata:
-                coaddExposure.setFilter(exposure.getFilter())
-                didSetMetadata = True
             if self.config.doMatchBackgrounds and not bgInfo.isReference:
                 backgroundModel = bgInfo.backgroundModel
                 backgroundImage = backgroundModel.getImage() if \
@@ -438,7 +443,6 @@ class AssembleCoaddTask(CoaddBaseTask):
                 maskedImageList, statsFlags, statsCtrl, weightList)
 
         coaddView <<= coaddSubregion
-        return didSetMetadata
 
 
     def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):

@@ -102,7 +102,7 @@ class BaseSelectImagesTask(pipeBase.Task):
         @param[in] makeDataRefList: if True, return dataRefList
         @param[in] selectDataList: List of SelectStruct with dataRefs to consider for selection
         @return a pipeBase Struct containing:
-        - exposureInfoList: a list of ccdInfo objects
+        - exposureInfoList: a list of objects derived from ExposureInfo
         - dataRefList: a list of data references (None if makeDataRefList False)
         """
         runArgDict = self._runArgDictFromDataId(dataRef.dataId)
@@ -123,10 +123,9 @@ class BaseSelectImagesTask(pipeBase.Task):
 
         if makeDataRefList:
             butler = dataRef.butlerSubset.butler
-            dataRefList = [butler.dataRef(
-                datasetType = "calexp",
-                dataId = ccdInfo.dataId,
-                ) for ccdInfo in exposureInfoList]
+            dataRefList = [butler.dataRef(datasetType = "calexp",
+                                          dataId = expInfo.dataId,
+                                          ) for expInfo in exposureInfoList]
         else:
             dataRefList = None
 

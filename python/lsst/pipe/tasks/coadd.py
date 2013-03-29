@@ -24,12 +24,10 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
-import lsst.meas.algorithms as measAlg
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
-from .coaddBase import CoaddBaseTask
+from .coaddBase import CoaddBaseTask, DoubleGaussianPsfConfig
 from .interpImage import InterpImageTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 
@@ -38,17 +36,8 @@ __all__ = ["CoaddTask"]
 class CoaddConfig(CoaddBaseTask.ConfigClass):
     """Config for CoaddTask
     """
-    desiredFwhm = pexConfig.Field(
-        doc = "desired FWHM of coadd (arc seconds); None for no FWHM matching",
-        dtype = float,
-        optional = True,
-        check = lambda x: x is None or x > 0.0,
-    )
-    coaddKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "coadd kernel size = coadd FWHM converted to pixels * coaddKernelSizeFactor",
-        default = 3.0,
-    )
+    doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
+    modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
         doc = "Task to warp, PSF-match and zero-point-match calexp",
@@ -68,7 +57,7 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
     )
     interpFwhm = pexConfig.Field(
         dtype = float,
-        doc = "Interpolation PSF FWHM (arcsec) if desiredFwhm is not specified",
+        doc = "FWHM of PSf used for interpolation (arcsec)",
         default = 1.5,
         check = lambda x: x > 0,
         )
@@ -121,7 +110,7 @@ class CoaddTask(CoaddBaseTask):
             raise pipeBase.TaskError("No exposures to coadd")
         self.log.info("Coadding %d exposures" % len(imageRefList))
 
-        modelPsf = self.makeModelPsf(self.config.desiredFwhm, tractWcs, self.config.coaddKernelSizeFactor)
+        modelPsf = self.makeModelPsf(self.config.modelPsf, tractWcs) if self.doPsfMatch else None
         coaddData = self.warpAndCoadd(imageRefList, patchBBox, tractWcs, modelPsf=modelPsf)
         if self.config.doInterp:
             self.interpolateExposure(coaddData.coaddExposure)
@@ -129,10 +118,8 @@ class CoaddTask(CoaddBaseTask):
         if self.config.doWrite:
             self.writeCoaddOutput(patchRef, coaddData.coaddExposure)
             self.writeCoaddOutput(patchRef, coaddData.weightMap, "depth")
-            if self.config.desiredFwhm is not None:
-                psf = self.makeModelPsf(fwhmPixels=self.config.desiredFwhm, wcs=wcs,
-                                        sizeFactor=self.config.coaddKernelSizeFactor)
-                self.writeCoaddOutput(patchRef, psf, "initPsf")
+            if modelPsf is not None:
+                self.writeCoaddOutput(patchRef, modelPsf, "initPsf")
 
         return coaddData
     
@@ -160,7 +147,6 @@ class CoaddTask(CoaddBaseTask):
         - weightMap: the weight map of the coadded exposure
         - coadd: coaddUtils.Coadd object with results
         """
-        doPsfMatch = self.config.desiredFwhm is not None
         coadd = self.makeCoadd(bbox, wcs)
         for ind, calExpRef in enumerate(imageRefList):
             if not calExpRef.datasetExists("calexp"):
@@ -168,7 +154,7 @@ class CoaddTask(CoaddBaseTask):
                 continue
 
             self.log.info("Processing exposure %d of %d: %s" % (ind+1, len(imageRefList), calExpRef.dataId))
-            exposure = self.getCalExp(calExpRef, getPsf=doPsfMatch, bgSubtracted=True)
+            exposure = self.getCalExp(calExpRef, getPsf=self.config.doPsfMatch, bgSubtracted=True)
             try:
                 exposure = self.warpAndPsfMatch.run(exposure, wcs=wcs, modelPsf=modelPsf,
                                                     maxBBox=bbox).exposure
@@ -196,8 +182,11 @@ class CoaddTask(CoaddBaseTask):
 
         In this case, we're interested in interpolating over "EDGE" pixels,
         which are pixels that have no contributing (good) input pixels.
+
+        Presently, the interpolation code in meas_algorithms doesn't use
+        the input PSF, so we're not too careful what we give it.
         """
-        fwhmArcSec = self.config.desiredFwhm or self.config.interpFwhm
+        fwhmArcSec = self.config.interpFwhm
         fwhmPixels = fwhmArcSec / exp.getWcs().pixelScale().asArcseconds()
         self.interpImage.interpolateOnePlane(
             maskedImage = exp.getMaskedImage(),

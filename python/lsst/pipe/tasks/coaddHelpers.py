@@ -32,20 +32,20 @@ values, and carry the data identifier keys separately.  Doing the key/value
 gymnastics can be annoying, so we provide these helper functions to do this.
 """
 
-def groupExposures(keys, dataRefList, checkDataset=None):
-    """Group data references into groups with the same values specified by keys
+def groupDataRefs(keys, dataRefIterable):
+    """Group data references by data identifier value-tuple.
 
-    @param keys: List of keys to consider when grouping
-    @param dataRefList: List of data references to group
-    @param checkDataset: If not None, include only if dataset exists
-    @return Dict of <group tuple>: <list of data references for group>
+    Value-tuples are built from the values of the given keys.
+    The effect is that the data references in each group have the same
+    values for the provided keys.
+
+    @param keys: List of keys to consider when grouping (order is important)
+    @param dataRefIterable: Iterable of data references to group
+    @return Dict of <value-tuple>: <list of data references for group>
     """
     groupDict = dict()
-    for dataRef in dataRefList:
+    for dataRef in dataRefIterable:
         dataId = dataRef.dataId
-        if checkDataset is not None and not dataRef.datasetExists(checkDataset):
-            continue
-
         values = tuple(dataId[key] for key in keys) # NOT dataId.values() as we must preserve order
         group = groupDict.get(values)
         if group:
@@ -55,24 +55,25 @@ def groupExposures(keys, dataRefList, checkDataset=None):
 
     return groupDict
 
-def groupPatchExposures(patchRef, calexpRefList, coaddDataset="deepCoadd", tempExpDataset="deepCoadd_tempExp",
-                        calexpDataset="calexp", checkExist=True):
-    """Group calexp references into groups of exposures
+def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepCoadd",
+                        tempExpDatasetType="deepCoadd_tempExp"):
+    """Group calibrated exposures overlapping a patch by the warped
+    (temporary) exposure they contribute to.
 
-    @param patchRef: Data reference for patch
-    @param calexpRefList: List of data references for calexps
-    @param coaddDataset: Dataset name for tempExps
-    @param calexpDataset: Dataset name for calexp
+    For example, if the instrument has a mosaic camera, each group would
+    consist of the subset of CCD exposures from a single camera exposure
+    that potentially overlap the patch.
+
     @return Struct with:
     - groups: Dict of <group tuple>: <list of data references for group>
     - keys: List of keys for group tuple
     """
-    butler = patchRef.getButler()
-    tempExpKeys = sorted(butler.getKeys(datasetType=tempExpDataset))
-    coaddKeys = sorted(butler.getKeys(datasetType=coaddDataset))
+    butler = patchDataRef.getButler()
+    tempExpKeys = butler.getKeys(datasetType=tempExpDatasetType)
+    coaddKeys = sorted(butler.getKeys(datasetType=coaddDatasetType))
     keys = sorted(set(tempExpKeys) - set(coaddKeys)) # Keys that will specify an exposure
-    patchId = patchRef.dataId
-    groups = groupExposures(keys, calexpRefList, checkDataset=calexpDataset if checkExist else None)
+    patchId = patchDataRef.dataId
+    groups = groupDataRefs(keys, calexpDataRefList)
 
     # Supplement the groups with the coadd-specific information (e.g., tract, patch; these are constant)
     coaddValues = tuple(patchId[k] for k in coaddKeys)
