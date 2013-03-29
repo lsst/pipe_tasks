@@ -24,10 +24,8 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
-import lsst.meas.algorithms as measAlg
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-import lsst.ip.isr as ipIsr
 from lsst.ip.diffim import ModelPsfMatchTask
 from .coaddBase import CoaddBaseTask, CoaddArgumentParser, DoubleGaussianPsfConfig
 from .interpImage import InterpImageTask
