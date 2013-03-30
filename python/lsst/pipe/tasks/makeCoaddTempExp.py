@@ -28,7 +28,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from .coaddBase import CoaddBaseTask, DoubleGaussianPsfConfig
+from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
@@ -37,8 +37,6 @@ __all__ = ["MakeCoaddTempExpTask"]
 class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     """Config for MakeCoaddTempExpTask
     """
-    doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
-    modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target = WarpAndPsfMatchTask,
         doc = "Task to warp and PSF-match calexp",
@@ -127,9 +125,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 if self.config.doWrite:
                     self.writeCoaddOutput(tempExpRef, exp, "tempExp")
                     if self.config.doPsfMatch:
-                        psf = self.makeModelPsf(self.config.modelPsf, skyInfo.wcs)
+                        psf = self.config.modelPsf.apply(skyInfo.wcs)
                         self.writeCoaddOutput(patchRef, psf, "initPsf")
-
             else:
                 self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
         return dataRefList
@@ -157,7 +154,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
         totGoodPix = 0
         didSetMetadata = False
-        modelPsf = self.makeModelPsf(self.config.modelPsf, skyInfo.wcs) if self.config.doPsfMatch else None
+        modelPsf = self.config.modelPsf.apply(skyInfo.wcs) if self.config.doPsfMatch else None
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s" %
                           (calExpInd+1, len(calexpRefList), calExpRef.dataId))
