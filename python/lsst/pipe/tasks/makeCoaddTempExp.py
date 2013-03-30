@@ -42,13 +42,12 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         doc = "Task to warp and PSF-match calexp",
     )
     doWrite = pexConfig.Field(
-        doc = "persist <coaddName>Coadd_tempExp and (if doPsfMatch) <coaddName>Coadd_initPsf?",
+        doc = "persist <coaddName>Coadd_tempExp",
         dtype = bool,
         default = True,
     )
     doOverwrite = pexConfig.Field(
-        doc = "overwrite <coaddName>Coadd_tempExp and (if doPsfMatch not None) <coaddName>Coadd_initPsf?" + \
-            "If False, continue if the file exists on disk",
+        doc = "overwrite <coaddName>Coadd_tempExp; If False, continue if the file exists on disk",
         dtype = bool,
         default = True,
     )
@@ -60,7 +59,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
-    """Task to produce <coaddName>Coadd_tempExp images and (optional) <coaddName>Coadd_initPsf
+    """Task to produce <coaddName>Coadd_tempExp images
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
@@ -71,10 +70,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
     @pipeBase.timeMethod
     def run(self, patchRef, selectDataList=[]):
-        """Produce <coaddName>Coadd_tempExp images and (optional) <coaddName>Coadd_initPsf
+        """Produce <coaddName>Coadd_tempExp images
         
         <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
-        If PSF-matching is used then <coaddName>Coadd_initPsf is also computed.
         
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
@@ -124,9 +122,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
                     self.writeCoaddOutput(tempExpRef, exp, "tempExp")
-                    if self.config.doPsfMatch:
-                        psf = self.config.modelPsf.apply(skyInfo.wcs)
-                        self.writeCoaddOutput(patchRef, psf, "initPsf")
             else:
                 self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
         return dataRefList
