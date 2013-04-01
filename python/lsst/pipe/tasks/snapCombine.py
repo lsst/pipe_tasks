@@ -29,6 +29,7 @@ import lsst.pipe.base as pipeBase
 from lsst.coadd.utils import Coadd, addToCoadd, setCoaddEdgeBits
 from lsst.ip.diffim import SnapPsfMatchTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+import lsst.meas.algorithms as measAlg
 
 from .repair import RepairTask
 from .calibrate import InitialPsfConfig
@@ -266,5 +267,6 @@ class SnapCombineTask(pipeBase.Task):
         size = self.config.initialPsf.size
         model = self.config.initialPsf.model
         self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
-        psf = afwDet.createPsf(model, size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
+        psfCls = getattr(measAlg, model + "Psf")
+        psf = cls(size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
         return psf

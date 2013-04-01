@@ -64,8 +64,7 @@ class InterpImageTask(pipeBase.Task):
         kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
         kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
         coreSigma = fwhmPixels / FwhmPerSigma
-        psfModel = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-            coreSigma, coreSigma * 2.5, 0.1)
+        psfModel = measAlg.DoubleGaussianPsf(kernelDim[0], kernelDim[1], coreSigma, coreSigma * 2.5, 0.1)
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
         measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, 0.0)

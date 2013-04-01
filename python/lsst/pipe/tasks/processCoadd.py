@@ -87,11 +87,6 @@ class ProcessCoaddTask(ProcessImageTask):
 
         if self.config.doCalibrate:
             coadd = dataRef.get(self.config.coaddName + "Coadd")
-            if dataRef.datasetExists(self.dataPrefix + "initPsf"):
-                initPsf = dataRef.get(self.dataPrefix + "initPsf")
-                coadd.setPsf(initPsf)
-            else:
-                self.log.warn("Could not load initial PSF; dataset does not exist")
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
 

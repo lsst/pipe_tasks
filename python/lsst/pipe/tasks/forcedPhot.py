@@ -162,7 +162,7 @@ class ForcedPhotTask(CmdLineTask):
 
         references = self.references.run(dataRef, exposure)
         self.log.info("Performing forced measurement on %d sources" % len(references))
-        sources = self.generateSources(references, idFactory)
+        sources = self.makeSources(references, idFactory)
         self.measurement.run(exposure, sources, apCorr=inputs.apCorr, references=references)
         self.writeOutput(dataRef, sources)
 
@@ -179,7 +179,7 @@ class ForcedPhotTask(CmdLineTask):
                       apCorr=dataRef.get(apCorrName) if apCorrName is not None else None,
                       )
 
-    def generateSources(self, references, idFactory):
+    def makeSources(self, references, idFactory):
         """Generate sources to be measured
         
         @param references  Reference source catalog 
