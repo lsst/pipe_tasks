@@ -29,6 +29,7 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
+import lsst.meas.algorithms as measAlg
 
 from lsst.afw.fits.fitsLib import FitsError
 from .selectImages import WcsSelectImagesTask, SelectStruct
@@ -64,8 +65,8 @@ class DoubleGaussianPsfConfig(pexConfig.Config):
         self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
                           (fwhmPixels, kernelDim, kernelDim))
         coreSigma = fwhmPixels / FwhmPerSigma
-        return afwDetection.createPsf("DoubleGaussian", kernelDim, kernelDim, coreSigma,
-                                      coreSigma * self.wingFwhmFactor, self.wingAmplitude)
+        return measAlg.DoubleGaussianPsf(kernelDim, kernelDim, coreSigma,
+                                         coreSigma * self.wingFwhmFactor, self.wingAmplitude)
 
 class CoaddBaseConfig(pexConfig.Config):
     """Config for CoaddBaseTask

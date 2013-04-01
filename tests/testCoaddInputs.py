@@ -80,8 +80,8 @@ class CoaddInputsTestCase(unittest.TestCase):
     def comparePsfs(self, a, b):
         if a is None and b is None:
             return
-        ak = a.getKernel()
-        bk = b.getKernel()
+        ak = lsst.meas.algorithms.KernelPsf.swigConvert(a).getKernel()
+        bk = lsst.meas.algorithms.KernelPsf.swigConvert(b).getKernel()
         self.assertEqual(type(ak), type(bk))
         self.assertEqual(ak.getDimensions(), bk.getDimensions())
         self.assertEqual(ak.getNKernelParameters(), ak.getNKernelParameters())

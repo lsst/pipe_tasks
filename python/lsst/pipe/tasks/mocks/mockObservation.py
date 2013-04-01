@@ -178,4 +178,4 @@ class MockObservationTask(lsst.pipe.base.Task):
             lsst.afw.math.GaussianFunction2D(self.config.psfMinSigma, self.config.psfMinSigma),
             spatialFuncList
             )
-        return lsst.afw.detection.KernelPsf(kernel)
+        return lsst.meas.algorithms.KernelPsf(kernel)
