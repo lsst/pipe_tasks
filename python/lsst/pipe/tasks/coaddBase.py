@@ -171,7 +171,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         if not bgSubtracted:
             background = dataRef.get("calexpBackground", immediate=True)
             mi = exposure.getMaskedImage()
-            mi += background
+            mi += background.getMaskedImage()
             del mi
         if getPsf:
             psf = dataRef.get("psf", immediate=True)
