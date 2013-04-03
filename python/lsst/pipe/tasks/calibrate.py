@@ -24,6 +24,7 @@ import math
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
@@ -174,7 +175,7 @@ class CalibrateTask(pipeBase.Task):
         self.installInitialPsf(exposure)
         if idFactory is None:
             idFactory = afwTable.IdFactory.makeSimple()
-        backgrounds = []
+        backgrounds = afwMath.BackgroundList()
         keepCRs = True                  # At least until we know the PSF
         self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
         self.display('repair', exposure=exposure)

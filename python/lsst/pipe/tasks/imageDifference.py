@@ -214,9 +214,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # Retrieve the science image we wish to analyze
         exposure = sensorRef.get("calexp")
         if self.config.doAddCalexpBackground:
-            calexpBackground = sensorRef.get("calexpBackground")
             mi = exposure.getMaskedImage()
-            mi += calexpBackground
+            mi += sensorRef.get("calexpBackground").getImage()
         sciencePsf = sensorRef.get("psf")
         if not sciencePsf:
             raise pipeBase.TaskError("No psf found")
