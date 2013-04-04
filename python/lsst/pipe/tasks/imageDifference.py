@@ -389,7 +389,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                                 templateExposure.getBBox(afwImage.PARENT), selectSources)
                 else:
                     if self.config.winter2013WcsShift > 0.0:
-                        offset = afwGeom.Extent2D(self.config.winter2013WcsShift, self.config.winter2013WcsShift)
+                        offset = afwGeom.Extent2D(self.config.winter2013WcsShift, 
+                                                  self.config.winter2013WcsShift)
                         cKey = templateSources[0].getTable().getCentroidKey()
                         for source in templateSources:
                             centroid = source.get(cKey)
@@ -397,7 +398,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     elif self.config.winter2013WcsRms > 0.0:
                         cKey = templateSources[0].getTable().getCentroidKey()
                         for source in templateSources:
-                            offset = afwGeom.Extent2D(self.config.winter2013WcsRms*np.random.normal(), self.config.winter2013WcsRms*np.random.normal())
+                            offset = afwGeom.Extent2D(self.config.winter2013WcsRms*np.random.normal(), 
+                                                      self.config.winter2013WcsRms*np.random.normal())
                             centroid = source.get(cKey)
                             source.set(cKey, centroid+offset)
 
@@ -504,7 +506,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     #srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
                     #                         srcMatch in srcMatches])
                     srcMatchDict = diUtils.matchXY(sensorRef.get("src"), diaSources, matchRadPixel)
-                    self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict), len(diaSources)))
+                    self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict), 
+                                                                             len(diaSources)))
                 else:
                     self.log.warn("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
@@ -517,7 +520,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.log.warn("No diaSource matches with reference catalog")
                     refMatchDict = {}
                 else:
-                    self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches), len(diaSources)))
+                    self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches), 
+                                                                                       len(diaSources)))
                     refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for \
                                              refMatch in refMatches])
 
