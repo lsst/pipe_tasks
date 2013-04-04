@@ -24,6 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.afw.geom as afwGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
@@ -138,7 +139,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         calib = None
         sources = None
         psf = None
-        backgrounds = []        
+        backgrounds = afwMath.BackgroundList()
         if self.config.doCalibrate:
             calib = self.calibrate.run(inputExposure, idFactory=idFactory)
             psf = calib.psf
@@ -304,19 +305,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     def writeBackgrounds(self, dataRef, backgrounds):
         """Backgrounds are persisted via the butler
 
-        Currently, due to the lack of support for writing the background models
-        directly, we are forced to write them as full-size images instead of the
-        internal representation.  This unfortunately increases the disk usage,
-        but will hopefully change for the better soon.
-
         @param dataRef: Data reference
         @param backgrounds: List of background models
         """
-        self.log.warn("Persisting background models as an image")
-        bg = backgrounds[0].getImageF()
-        for b in backgrounds[1:]:
-            bg += b.getImageF()
-        dataRef.put(bg, self.dataPrefix+"calexpBackground")
+        self.log.warn("Persisting background models")
+        
+        dataRef.put(backgrounds, self.dataPrefix+"calexpBackground")
 
     def restoreBackgrounds(self, exp, backgrounds):
         """Add backgrounds back in to an exposure
@@ -325,5 +319,4 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         @param backgrounds: List of background models
         """
         mi = exp.getMaskedImage()
-        for bg in backgrounds:
-            mi += bg.getImageF()
+        mi += backgrounds.getImage()
