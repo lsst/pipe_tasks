@@ -268,5 +268,5 @@ class SnapCombineTask(pipeBase.Task):
         model = self.config.initialPsf.model
         self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
         psfCls = getattr(measAlg, model + "Psf")
-        psf = cls(size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
+        psf = psfCls(size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
         return psf
