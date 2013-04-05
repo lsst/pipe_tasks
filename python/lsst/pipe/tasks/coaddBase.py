@@ -35,6 +35,11 @@ from lsst.afw.fits.fitsLib import FitsError
 from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
 
+try:
+    from lsst.meas.mosaic import applyMosaicResults
+except ImportError:
+    applyMosaicResults = None
+
 __all__ = ["CoaddBaseTask"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -91,6 +96,11 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
     modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
+    doApplyUberCal = pexConfig.Field(
+        dtype = bool,
+        doc = "Apply meas_mosaic ubercal results to input calexps?",
+        default = False
+    )
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
     @staticmethod
@@ -159,8 +169,11 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         @param dataRef: a sensor-level data reference
         @param getPsf: include the PSF?
         @param bgSubtracted: return calexp with background subtracted? If False
-            get the calexp's background background model and add it to the cale
+            get the calexp's background background model and add it to the calexp.
         @return calibrated exposure with psf
+
+        If config.doApplyUberCal, meas_mosaic calibrations will be applied to
+        the returned exposure.
         """
         exposure = dataRef.get("calexp", immediate=True)
         if not bgSubtracted:
@@ -171,6 +184,15 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         if getPsf:
             psf = dataRef.get("psf", immediate=True)
             exposure.setPsf(psf)
+        if not self.config.doApplyUberCal:
+            return exposure
+        if applyMosaicResults is None:
+            raise RuntimeError(
+                "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
+                % dataRef.dataId
+                )
+        else:
+            applyMosaicResults(dataRef, calexp=exposure)
         return exposure
 
     def getCoaddDatasetName(self):
