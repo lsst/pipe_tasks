@@ -137,7 +137,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Use all manner of nefarious workarounds specific to late Winter 2013 production") 
     winter2013templateId = pexConfig.Field(dtype=int, default=88868666,
         doc = "88868666 for sparse data; 22222200 (g) and 11111100 (i) for dense data") 
-    winter2013borderMask = pexConfig.Field(dtype=int, default=320,
+    winter2013borderMask = pexConfig.Field(dtype=int, default=0,
         doc = "Mask the outer N pixels during fitting, as they are rife with false positives")
     winter2013WcsShift = pexConfig.Field(dtype=float, default=0.0,
         doc = "Shift stars going into RegisterTask by this amount")
