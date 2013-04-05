@@ -60,7 +60,6 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
     def __call__(self, args):
         butler, dataRefList = args
         task = self.TaskClass(config=self.config, log=self.log)
-        task.writeConfig(butler)
         if self.doRaise:
             result = task.run(butler, dataRefList)
         else:
