@@ -502,10 +502,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
 
                     # This does not do what I expect so I cobbled together a brute force method in python 
-                    #srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
-                    #srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
-                    #                         srcMatch in srcMatches])
-                    srcMatchDict = diUtils.matchXY(sensorRef.get("src"), diaSources, matchRadPixel)
+                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
+                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
+                                             srcMatch in srcMatches])
                     self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict), 
                                                                              len(diaSources)))
                 else:
