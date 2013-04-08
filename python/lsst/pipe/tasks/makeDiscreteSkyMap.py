@@ -29,7 +29,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.skymap import DiscreteSkyMap
+from lsst.skymap import DiscreteSkyMap, BaseSkyMap
 
 class MakeDiscreteSkyMapConfig(pexConfig.Config):
     """Config for MakeDiscreteSkyMapTask
@@ -38,6 +38,10 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
         doc = "coadd name, e.g. deep, goodSeeing, chiSquared",
         dtype = str,
         default = "deep",
+    )
+    skyMap = pexConfig.ConfigField(
+        dtype = BaseSkyMap.ConfigClass,
+        doc = "SkyMap configuration parameters, excluding position and radius"
     )
     borderSize = pexConfig.Field(
         doc = "additional border added to the bounding box of the calexps, in degrees",
@@ -50,6 +54,8 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
         default = True,
     )
 
+    def setDefaults(self):
+        self.skyMap.tractOverlap = 0.0
 
 class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
     """Want to run on all the dataRefs at once, not one at a time."""
@@ -113,11 +119,12 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
                 "they may not be hemispherical."
                 )
         circle = polygon.getBoundingCircle()
-        
+       
         skyMapConfig = DiscreteSkyMap.ConfigClass()
         skyMapConfig.raList = [circle.center[0]]
         skyMapConfig.decList = [circle.center[1]]
         skyMapConfig.radiusList = [circle.radius + self.config.borderSize]
+        skyMapConfig.update(**self.config.skyMap.toDict())
         skyMap = DiscreteSkyMap(skyMapConfig)
 
         assert len(skyMap) == 1
@@ -144,10 +151,10 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
     def _getConfigName(self):
         """Return the name of the config dataset
         """
-        return "%s_makeSkyMap_config" % (self.config.coaddName,)
+        return "%s_makeDiscreteSkyMap_config" % (self.config.coaddName,)
 
     def _getMetadataName(self):
         """Return the name of the metadata dataset
         """
-        return "%s_makeSkyMap_metadata" % (self.config.coaddName,)
+        return "%s_makeDiscreteSkyMap_metadata" % (self.config.coaddName,)
 
