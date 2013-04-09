@@ -240,6 +240,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         """Match the sources to the reference object loaded by the calibrate task"""
         try:
             astrometer = self.calibrate.astrometry.astrometer
+            if astrometer is None:
+                raise AttributeError("No astrometer")
         except AttributeError:
             self.log.warn("Failed to find an astrometer in calibrate's astronomy task")
             return None, None
