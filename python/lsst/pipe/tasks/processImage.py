@@ -137,21 +137,17 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         idFactory = self.makeIdFactory(dataRef)
 
         # initialize outputs
-        calExposure = None
+        calExposure = inputExposure
         calib = None
         apCorr = None
         sources = None
-        psf = None
         backgrounds = afwMath.BackgroundList()
         if self.config.doCalibrate:
             calib = self.calibrate.run(inputExposure, idFactory=idFactory)
-            psf = calib.psf
             calExposure = calib.exposure
             apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
                 dataRef.put(calib.sources, self.dataPrefix + "icSrc")
-                if calib.psf is not None:
-                    dataRef.put(calib.psf, self.dataPrefix + "psf")
                 if calib.apCorr is not None:
                     dataRef.put(calib.apCorr, self.dataPrefix + "apCorr")
                 if calib.matches is not None and self.config.doWriteCalibrateMatches:
@@ -169,17 +165,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             calib = None
 
         if self.config.doDetection:
-            if calExposure is None:
-                if not dataRef.datasetExists(self.dataPrefix + "calexp"):
-                    raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
-                calExposure = dataRef.get(self.dataPrefix + "calexp")
-            if calib is None or calib.psf is None:
-                try:
-                    psf = dataRef.get(self.dataPrefix + "psf", immediate=True)
-                    calExposure.setPsf(psf)
-                except Exception:
-                    self.log.warn("Unable to read calibrated PSF from disk; using initial guess")
-                    
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.makeSourceCatalog(table, calExposure)
@@ -189,12 +174,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 backgrounds.append(fpSets.background)
 
         if self.config.doDeblend:
-            if calExposure is None:
-                calExposure = dataRef.get(self.dataPrefix + 'calexp')
-            if psf is None:
-                psf = dataRef.get(self.dataPrefix + 'psf')
-
-            self.deblend.run(calExposure, sources, psf)
+            self.deblend.run(calExposure, sources, calExposure.getPsf())
 
         if self.config.doMeasurement:
             if apCorr is None:

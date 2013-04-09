@@ -152,7 +152,10 @@ class CalibrateTask(pipeBase.Task):
         Return a sequence of schema keys that represent fields that should be propagated from
         icSrc to src by ProcessCcdTask.
         """
-        return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+        if self.config.doPsf:
+            return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+        else:
+            return ()
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, idFactory=None):
@@ -172,7 +175,8 @@ class CalibrateTask(pipeBase.Task):
         """
         assert exposure is not None, "No exposure provided"
 
-        self.installInitialPsf(exposure)
+        if not exposure.hasPsf():
+            self.installInitialPsf(exposure)
         if idFactory is None:
             idFactory = afwTable.IdFactory.makeSimple()
         backgrounds = afwMath.BackgroundList()
@@ -205,6 +209,9 @@ class CalibrateTask(pipeBase.Task):
             psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
+        elif exposure.hasPsf():
+            psf = exposure.getPsf()
+            cellSet = None
         else:
             psf, cellSet = None, None
 
