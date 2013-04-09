@@ -38,6 +38,23 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
     )
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise")
 
+    def setDefaults(self):
+        ProcessImageTask.ConfigClass.setDefaults(self)
+        self.calibrate.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.calibrate.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.calibrate.doPsf = False
+        self.calibrate.astrometry.forceKnownWcs = True
+        self.calibrate.astrometry.solver.calculateSip = False
+        self.calibrate.repair.doInterpolate = False
+        self.calibrate.repair.doCosmicRay = False
+        self.detection.isotropicGrow = True
+        self.detection.returnOriginalFootprints = False
+        self.doWriteSourceMatches = True
+        self.measurement.doReplaceWithNoise = True
+        self.doDeblend = True
+        self.deblend.maxNumberOfPeaks = 20
+
 class ProcessCoaddTask(ProcessImageTask):
     """Process a Coadd image
     
