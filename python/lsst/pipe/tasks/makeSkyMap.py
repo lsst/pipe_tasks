@@ -54,6 +54,13 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
     def getTargetList(parsedCmd):
         return [parsedCmd.butler]
 
+    def precall(self, parsedCmd):
+        # We overload to disable writing/checking of schemas and configs.
+        # There's only one SkyMap per rerun anyway, so the config is redundant,
+        # and checking it means we can't overwrite or append to one once we've
+        # written it.
+        pass
+
     def __call__(self, butler):
         task = self.TaskClass(config=self.config, log=self.log)
         if self.doRaise:
