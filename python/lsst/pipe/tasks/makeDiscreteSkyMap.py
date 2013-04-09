@@ -48,6 +48,11 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
         dtype = float,
         default = 0.0
     )
+    doAppend = pexConfig.Field(
+        doc = "append another tract to an existing DiscreteSkyMap on disk, if present?",
+        dtype = bool,
+        default = False
+    )
     doWrite = pexConfig.Field(
         doc = "persist the skyMap?",
         dtype = bool,
@@ -126,15 +131,26 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
                 "they may not be hemispherical."
                 )
         circle = polygon.getBoundingCircle()
-       
+
+        datasetName = self.config.coaddName + "Coadd_skyMap"
+
         skyMapConfig = DiscreteSkyMap.ConfigClass()
-        skyMapConfig.raList = [circle.center[0]]
-        skyMapConfig.decList = [circle.center[1]]
-        skyMapConfig.radiusList = [circle.radius + self.config.borderSize]
+        if self.config.doAppend and butler.datasetExists(datasetName):
+            oldSkyMap = butler.get(datasetName, immediate=True)
+            if not isinstance(oldSkyMap.config, DiscreteSkyMap.ConfigClass):
+                raise TypeError("Cannot append to existing non-discrete skymap")
+            compareLog = []
+            if not self.config.skyMap.compare(oldSkyMap.config, output=compareLog.append):
+                raise ValueError("Cannot append to existing skymap - configurations differ:", *compareLog)
+            skyMapConfig.raList.extend(oldSkyMap.config.raList)
+            skyMapConfig.decList.extend(oldSkyMap.config.decList)
+            skyMapConfig.radiusList.extend(oldSkyMap.config.radiusList)
         skyMapConfig.update(**self.config.skyMap.toDict())
+        skyMapConfig.raList.append(circle.center[0])
+        skyMapConfig.decList.append(circle.center[1])
+        skyMapConfig.radiusList.append(circle.radius + self.config.borderSize)
         skyMap = DiscreteSkyMap(skyMapConfig)
 
-        assert len(skyMap) == 1
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
             posBox = afwGeom.Box2D(tractInfo.getBBox())
@@ -150,7 +166,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
                 (tractInfo.getId(), ", ".join(posStrList), \
                 tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
         if self.config.doWrite:
-            butler.put(skyMap, self.config.coaddName + "Coadd_skyMap")
+            butler.put(skyMap, datasetName)
         return pipeBase.Struct(
             skyMap = skyMap
         )
