@@ -96,6 +96,11 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
     modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
+    doApplyUberCal = pexConfig.Field(
+        dtype = bool,
+        doc = "Apply meas_mosaic ubercal results to input calexps?",
+        default = False
+    )
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
     @staticmethod
@@ -166,6 +171,9 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         @param bgSubtracted: return calexp with background subtracted? If False
             get the calexp's background background model and add it to the calexp.
         @return calibrated exposure with psf
+
+        If config.doApplyUberCal, meas_mosaic calibrations will be applied to
+        the returned exposure.
         """
         exposure = dataRef.get("calexp", immediate=True)            
         if not bgSubtracted:
@@ -180,19 +188,15 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         # (this would help abstract away where the ubercal comes from).
         # but that doesn't handle the background correctly when we need to add it back in.
         # So we have to do it manually here, until we can get background models saved in Exposure.
+        if not self.config.doApplyUberCal:
+            return exposure
         if applyMosaicResults is None:
-            self.log.warn(
+            raise RuntimeError(
                 "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
                 % dataRef.dataId
                 )
         else:
-            try:
-                applyMosaicResults(dataRef, calexp=exposure)
-            except Exception as err:
-                self.log.warn(
-                    "Failed to apply calibrations for %s: %s"
-                    % (dataRef.dataId, err)
-                    )
+            applyMosaicResults(dataRef, calexp=exposure)
         return exposure
 
     def getCoaddDatasetName(self):
