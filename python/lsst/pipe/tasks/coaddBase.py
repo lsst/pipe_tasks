@@ -99,7 +99,7 @@ class CoaddBaseConfig(pexConfig.Config):
     doApplyUberCal = pexConfig.Field(
         dtype = bool,
         doc = "Apply meas_mosaic ubercal results to input calexps?",
-        default = False
+        default = True
     )
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
@@ -192,11 +192,19 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             return exposure
         if applyMosaicResults is None:
             raise RuntimeError(
-                "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
+                ("Cannot use improved calibrations for %s because meas_mosaic could not be imported; "
+                 "either run meas_mosaic or set doApplyUberCal = False")
                 % dataRef.dataId
                 )
         else:
-            applyMosaicResults(dataRef, calexp=exposure)
+            try:
+                applyMosaicResults(dataRef, calexp=exposure)
+            except Exception as err:
+                raise RuntimeError(
+                    ("Cannot use improved calibrations for %s (%s); "
+                     "either run meas_mosaic or set doApplyUberCal = False")
+                    % (dataRef.dataId, err)
+                    )
         return exposure
 
     def getCoaddDatasetName(self):
