@@ -130,8 +130,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
             else as upersisted and updated if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
-        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
-            if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
         idFactory = self.makeIdFactory(dataRef)
@@ -139,7 +137,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         # initialize outputs
         calExposure = None
         calib = None
-        apCorr = None
         sources = None
         psf = None
         backgrounds = afwMath.BackgroundList()
@@ -147,13 +144,10 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             calib = self.calibrate.run(inputExposure, idFactory=idFactory)
             psf = calib.psf
             calExposure = calib.exposure
-            apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
                 dataRef.put(calib.sources, self.dataPrefix + "icSrc")
                 if calib.psf is not None:
                     dataRef.put(calib.psf, self.dataPrefix + "psf")
-                if calib.apCorr is not None:
-                    dataRef.put(calib.apCorr, self.dataPrefix + "apCorr")
                 if calib.matches is not None and self.config.doWriteCalibrateMatches:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
@@ -197,9 +191,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.deblend.run(calExposure, sources, psf)
 
         if self.config.doMeasurement:
-            if apCorr is None:
-                apCorr = dataRef.get(self.dataPrefix + "apCorr")
-            self.measurement.run(calExposure, sources, apCorr)
+            self.measurement.run(calExposure, sources)
 
         if self.config.doWriteCalibrate:
             # wait until after detection and measurement, since detection sets detected mask bits and both require 
@@ -237,7 +229,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             inputExposure = inputExposure,
             exposure = calExposure,
             calib = calib,
-            apCorr = apCorr,
             sources = sources,
             matches = srcMatches,
             matchMeta = srcMatchMeta,

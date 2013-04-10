@@ -22,6 +22,7 @@
 #
 import unittest
 
+import os
 import eups
 
 from lsst.meas.algorithms import *
@@ -29,6 +30,7 @@ import lsst.pipe.tasks as pipeTasks
 import lsst.pipe.tasks.astrometry as pipeTasksAstrom
 import lsst.utils.tests as utilsTests
 import lsst.afw.image   as afwImage
+import lsst.afw.table   as afwTable
 import lsst.pex.logging as pexLog
 
 class TestForceWcs(unittest.TestCase):
