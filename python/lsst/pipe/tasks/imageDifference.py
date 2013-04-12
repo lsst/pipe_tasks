@@ -160,8 +160,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
         # To change that you must modify algorithms.names in the task's applyOverrides method,
         # after the user has set doPreConvolved.
-        self.measurement.algorithms.names.add("flux.filtered")
-        self.dipolemeasurement.algorithms.names.add("flux.filtered")
+        self.measurement.algorithms.names.add("flux.peakLikelihood")
+        self.dipolemeasurement.algorithms.names.add("flux.peakLikelihood")
 
         # For shuffling the control sample
         random.seed(self.controlRandomSeed)
