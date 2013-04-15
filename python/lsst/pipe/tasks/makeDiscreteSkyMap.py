@@ -116,6 +116,9 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         self.log.info("Extracting bounding boxes of %d images" % len(dataRefList))
         points = []
         for dataRef in dataRefList:
+            if not dataRef.datasetExists("calexp"):
+                self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
+                continue
             md = dataRef.get("calexp_md", immediate=True)
             wcs = afwImage.makeWcs(md)
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
