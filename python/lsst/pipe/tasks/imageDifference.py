@@ -137,7 +137,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "Use all manner of nefarious workarounds specific to late Winter 2013 production") 
     winter2013templateId = pexConfig.Field(dtype=int, default=88868666,
         doc = "88868666 for sparse data; 22222200 (g) and 11111100 (i) for dense data") 
-    winter2013borderMask = pexConfig.Field(dtype=int, default=320,
+    winter2013borderMask = pexConfig.Field(dtype=int, default=0,
         doc = "Mask the outer N pixels during fitting, as they are rife with false positives")
     winter2013WcsShift = pexConfig.Field(dtype=float, default=0.0,
         doc = "Shift stars going into RegisterTask by this amount")
@@ -396,7 +396,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                                 templateExposure.getBBox(afwImage.PARENT), selectSources)
                 else:
                     if self.config.winter2013WcsShift > 0.0:
-                        offset = afwGeom.Extent2D(self.config.winter2013WcsShift, self.config.winter2013WcsShift)
+                        offset = afwGeom.Extent2D(self.config.winter2013WcsShift, 
+                                                  self.config.winter2013WcsShift)
                         cKey = templateSources[0].getTable().getCentroidKey()
                         for source in templateSources:
                             centroid = source.get(cKey)
@@ -404,7 +405,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     elif self.config.winter2013WcsRms > 0.0:
                         cKey = templateSources[0].getTable().getCentroidKey()
                         for source in templateSources:
-                            offset = afwGeom.Extent2D(self.config.winter2013WcsRms*np.random.normal(), self.config.winter2013WcsRms*np.random.normal())
+                            offset = afwGeom.Extent2D(self.config.winter2013WcsRms*np.random.normal(), 
+                                                      self.config.winter2013WcsRms*np.random.normal())
                             centroid = source.get(cKey)
                             source.set(cKey, centroid+offset)
 
@@ -508,11 +510,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
 
                     # This does not do what I expect so I cobbled together a brute force method in python 
-                    #srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
-                    #srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
-                    #                         srcMatch in srcMatches])
-                    srcMatchDict = diUtils.matchXY(sensorRef.get("src"), diaSources, matchRadPixel)
-                    self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict), len(diaSources)))
+                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True) 
+                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for \
+                                             srcMatch in srcMatches])
+                    self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict), 
+                                                                             len(diaSources)))
                 else:
                     self.log.warn("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
@@ -525,7 +527,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     self.log.warn("No diaSource matches with reference catalog")
                     refMatchDict = {}
                 else:
-                    self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches), len(diaSources)))
+                    self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches), 
+                                                                                       len(diaSources)))
                     refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for \
                                              refMatch in refMatches])
 
