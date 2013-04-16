@@ -155,6 +155,13 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.detection.thresholdPolarity = "both"
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
+        
+        # Add filtered flux measurement, the correct measurement for pre-convolved images.
+        # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
+        # To change that you must modify algorithms.names in the task's applyOverrides method,
+        # after the user has set doPreConvolved.
+        self.measurement.algorithms.names.add("flux.peakLikelihood")
+        self.dipolemeasurement.algorithms.names.add("flux.peakLikelihood")
 
         # For shuffling the control sample
         random.seed(self.controlRandomSeed)
@@ -489,6 +496,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         templateExposure, templateApCorr, templateSources = \
                             self.getTemplate(exposure, sensorRef)
                     apCorr = templateApCorr
+
                 if len(diaSources) < self.config.maxDiaSourcesToMeasure:
                     self.dipolemeasurement.run(subtractedExposure, diaSources, apCorr)
                 else:
