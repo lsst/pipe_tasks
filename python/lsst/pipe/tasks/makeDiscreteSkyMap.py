@@ -125,7 +125,8 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             boxI = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(md.get("NAXIS1"), md.get("NAXIS2")))
             boxD = afwGeom.Box2D(boxI)
             points.extend(tuple(wcs.pixelToSky(corner).getVector()) for corner in boxD.getCorners())
-        
+        if len(points) == 0:
+            raise RuntimeError("No data found from which to compute convex hull")
         self.log.info("Computing spherical convex hull")
         polygon = lsst.geom.convexHull(points)
         if polygon is None:
