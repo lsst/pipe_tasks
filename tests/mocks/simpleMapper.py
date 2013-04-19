@@ -344,5 +344,5 @@ def makeDataRepo(root):
         shutil.rmtree(root)
     os.makedirs(root)
     with open(os.path.join(root, "_mapper"), "w") as f:
-        f.write("lsst.pipe.tasks.mocks.SimpleMapper\n")
+        f.write("mocks.SimpleMapper\n")
     return lsst.daf.persistence.Butler(root=root)

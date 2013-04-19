@@ -33,8 +33,10 @@ import lsst.afw.geom
 import lsst.afw.image
 import lsst.afw.table.io
 import lsst.meas.algorithms
-import lsst.pipe.tasks.mocks
 import lsst.daf.persistence
+
+sys.path = [os.path.dirname(__file__)] + sys.path
+import mocks
 
 REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
 CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
@@ -50,11 +52,11 @@ class CoaddInputsTestCase(unittest.TestCase):
         self.assert_(not numpy.allclose(a, b, rtol=rtol, atol=atol), "\n%s\n==\n%s" % (a, b))
 
     def setUp(self):
-        self.task = lsst.pipe.tasks.mocks.MockCoaddTask()
+        self.task = mocks.MockCoaddTask()
         if REUSE_DATAREPO and os.path.exists(os.path.join(DATAREPO_ROOT, "_mapper")):
             self.butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)
         else:
-            self.butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
+            self.butler = mocks.makeDataRepo(DATAREPO_ROOT)
 
             self.task.buildAllInputs(self.butler)
             self.task.buildCoadd(self.butler)
