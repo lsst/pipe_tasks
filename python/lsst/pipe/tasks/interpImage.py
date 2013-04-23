@@ -51,6 +51,10 @@ class InterpImageTask(pipeBase.Task):
     def interpolateOnePlane(self, maskedImage, planeName, fwhmPixels):
         """Interpolate over one mask plane, in place
 
+        Note that the interpolation code in meas_algorithms currently
+        doesn't use the input PSF (though it's a required argument),
+        so it's not important to set the input PSF parameters exactly.
+
         @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
         @param[in] fwhmPixels: FWHM of double Gaussian model to use for interpolation (pixels)
         @param[in] planeName: mask plane over which to interpolate
@@ -60,8 +64,7 @@ class InterpImageTask(pipeBase.Task):
         kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
         kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
         coreSigma = fwhmPixels / FwhmPerSigma
-        psfModel = afwDetection.createPsf("DoubleGaussian", kernelDim[0], kernelDim[1],
-            coreSigma, coreSigma * 2.5, 0.1)
+        psfModel = measAlg.DoubleGaussianPsf(kernelDim[0], kernelDim[1], coreSigma, coreSigma * 2.5, 0.1)
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
         measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, 0.0)

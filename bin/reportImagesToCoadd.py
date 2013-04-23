@@ -29,7 +29,7 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
-from lsst.pipe.tasks.selectImages import BadSelectImagesTask
+from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
 
 __all__ = ["ReportImagesToCoaddTask", "ReportImagesToCoaddArgumentParser"]
 
@@ -43,7 +43,7 @@ class ReportImagesToCoaddConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc = "image selection subtask",
-        target = BadSelectImagesTask, # must be retargeted
+        target = WcsSelectImagesTask,
     )
     raDecRange = pexConfig.ListField(
         doc = "min RA, min Dec, max RA, max Dec (ICRS, deg); if omitted then search whole sky",
@@ -161,8 +161,15 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
-        return ReportImagesToCoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
-    
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument(
+            name = "--id",
+            datasetType = "deepCoadd",
+            help = "data ID, e.g. --id filter=i",
+            ContainerClass = SkyMapPlusFilterIdContainer,
+        )
+        return parser
+            
     def _getConfigName(self):
         """Don't persist config, so return None
         """
@@ -174,28 +181,28 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         return None
 
 
-class ReportImagesToCoaddArgumentParser(pipeBase.ArgumentParser):
-    """A version of lsst.pipe.base.ArgumentParser specialized for reporting images.
+class SkyMapPlusFilterIdContainer(pipeBase.DataIdContainer):
+    """Make dataRefs for skyMap plus filter
     
     Required because there is no dataset type that is has exactly the right keys for this task.
     datasetType = namespace.config.coaddName + "Coadd" comes closest, but includes "patch" and "tract",
     which are irrelevant to the task, but required to make a data reference of this dataset type.
-    Also required because butler.subset cannot handle this dataset type.
     """
-    def _makeDataRefList(self, namespace):
-        """Make namespace.dataRefList from namespace.dataIdList
+    def makeDataRefList(self, namespace):
+        """Make namespace.id.refList from namespace.dataIdList
         """
         datasetType = namespace.config.coaddName + "Coadd"
 
-        namespace.dataRefList = []
-        for dataId in namespace.dataIdList:
-            expandedDataId = dict(patch=0, tract=(0,0))
+        namespace.id.refList = []
+        for dataId in namespace.id.idList:
+            expandedDataId = dict(patch=0, tract="0,0")
             expandedDataId.update(dataId)
             dataRef = namespace.butler.dataRef(
                 datasetType = datasetType,
                 dataId = expandedDataId,
             )
-            namespace.dataRefList.append(dataRef)
+            namespace.id.refList.append(dataRef)
+
 
 if __name__ == "__main__":
     ReportImagesToCoaddTask.parseAndRun()

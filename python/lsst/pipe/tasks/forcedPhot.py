@@ -53,8 +53,8 @@ class ReferencesTask(Task):
         @return Catalog (lsst.afw.table.SourceCatalog) of reference sources
         """
         # XXX put something in the Mapper???
-        self.log.log(self.log.FATAL,
-                     """Calling base class implementation of ReferencesTask.getReferences()!
+        self.log.fatal(
+            """Calling base class implementation of ReferencesTask.getReferences()!
             You need to configure a subclass of ReferencesTask.  Put in your configuration
             override file something like:
                 from some.namespace import SubclassReferencesTask
@@ -146,7 +146,9 @@ class ForcedPhotTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         """Overriding CmdLineTask._makeArgumentParser to set dataset type"""
-        return ArgumentParser(name=cls._DefaultName, datasetType="calexp")
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
+        return parser
 
     @timeMethod
     def run(self, dataRef):
@@ -160,24 +162,23 @@ class ForcedPhotTask(CmdLineTask):
 
         references = self.references.run(dataRef, exposure)
         self.log.info("Performing forced measurement on %d sources" % len(references))
-        sources = self.generateSources(references, idFactory)
-        self.measurement.run(exposure, sources, apCorr=inputs.apCorr, references=references)
+        sources = self.makeSources(references, idFactory)
+        self.measurement.run(exposure, sources, references=references)
         self.writeOutput(dataRef, sources)
 
-    def readInputs(self, dataRef, exposureName="calexp", psfName="psf", apCorrName="apCorr"):
+    def readInputs(self, dataRef, exposureName="calexp", psfName="psf"):
         """Read inputs for exposure
 
         @param dataRef         Data reference from butler
         @param exposureName    Name for exposure in butler
         @param psfName         Name for PSF in butler
-        @param apCorrName      Name for aperture correction, or None
+
         """
         return Struct(exposure=dataRef.get(exposureName),
                       psf=dataRef.get(psfName),
-                      apCorr=dataRef.get(apCorrName) if apCorrName is not None else None,
                       )
 
-    def generateSources(self, references, idFactory):
+    def makeSources(self, references, idFactory):
         """Generate sources to be measured
         
         @param references  Reference source catalog 

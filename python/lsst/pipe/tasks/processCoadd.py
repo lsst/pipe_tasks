@@ -76,8 +76,6 @@ class ProcessCoaddTask(ProcessImageTask):
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
             else as upersisted and updated if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
-        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
-            if config.doMeasure, else None
         - sources: detected source if config.doDetection, else None
         """
         self.log.info("Processing %s" % (dataRef.dataId))
@@ -87,11 +85,6 @@ class ProcessCoaddTask(ProcessImageTask):
 
         if self.config.doCalibrate:
             coadd = dataRef.get(self.config.coaddName + "Coadd")
-            if dataRef.datasetExists(self.dataPrefix + "initPsf"):
-                initPsf = dataRef.get(self.dataPrefix + "initPsf")
-                coadd.setPsf(initPsf)
-            else:
-                self.log.warn("Could not load initial PSF; dataset does not exist")
             if self.config.doScaleVariance:
                 self.scaleVariance(coadd)
 

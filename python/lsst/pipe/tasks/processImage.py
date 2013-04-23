@@ -21,8 +21,10 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.pex.exceptions as pexExceptions
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.afw.geom as afwGeom
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
@@ -128,8 +130,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
             else as upersisted and updated if config.doDetection, else None
         - calib: object returned by calibration process if config.doCalibrate, else None
-        - apCorr: aperture correction: as computed config.doCalibrate, else as unpersisted
-            if config.doMeasure, else None
         - sources: detected source if config.doPhotometry, else None
         """
         idFactory = self.makeIdFactory(dataRef)
@@ -137,21 +137,17 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         # initialize outputs
         calExposure = None
         calib = None
-        apCorr = None
         sources = None
         psf = None
-        backgrounds = []        
+        backgrounds = afwMath.BackgroundList()
         if self.config.doCalibrate:
             calib = self.calibrate.run(inputExposure, idFactory=idFactory)
             psf = calib.psf
             calExposure = calib.exposure
-            apCorr = calib.apCorr
             if self.config.doWriteCalibrate:
                 dataRef.put(calib.sources, self.dataPrefix + "icSrc")
                 if calib.psf is not None:
                     dataRef.put(calib.psf, self.dataPrefix + "psf")
-                if calib.apCorr is not None:
-                    dataRef.put(calib.apCorr, self.dataPrefix + "apCorr")
                 if calib.matches is not None and self.config.doWriteCalibrateMatches:
                     normalizedMatches = afwTable.packMatches(calib.matches)
                     normalizedMatches.table.setMetadata(calib.matchMeta)
@@ -172,8 +168,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                     raise pipeBase.TaskError("doCalibrate false, doDetection true and calexp does not exist")
                 calExposure = dataRef.get(self.dataPrefix + "calexp")
             if calib is None or calib.psf is None:
-                psf = dataRef.get(self.dataPrefix + "psf")
-                calExposure.setPsf(psf)
+                try:
+                    psf = dataRef.get(self.dataPrefix + "psf", immediate=True)
+                    calExposure.setPsf(psf)
+                except Exception:
+                    self.log.warn("Unable to read calibrated PSF from disk; using initial guess")
+                    
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.makeSourceCatalog(table, calExposure)
@@ -191,9 +191,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.deblend.run(calExposure, sources, psf)
 
         if self.config.doMeasurement:
-            if apCorr is None:
-                apCorr = dataRef.get(self.dataPrefix + "apCorr")
-            self.measurement.run(calExposure, sources, apCorr)
+            self.measurement.run(calExposure, sources)
 
         if self.config.doWriteCalibrate:
             # wait until after detection and measurement, since detection sets detected mask bits and both require 
@@ -204,16 +202,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 self.log.warn("calibrated exposure is None; cannot save it")
             else:
                 if self.config.persistBackgroundModel:
-                    self.log.warn("Persisting background models as an image")
-                    bg = backgrounds[0].getImageF()
-                    for b in backgrounds[1:]:
-                        bg += b.getImageF()
-                    dataRef.put(bg, self.dataPrefix+"calexpBackground")
-                    del bg
+                    self.writeBackgrounds(dataRef, backgrounds)
                 else:
-                    mi = calExposure.getMaskedImage()
-                    for bg in backgrounds:
-                        mi += bg.getImageF()
+                    self.restoreBackgrounds(calExposure, backgrounds)
                 dataRef.put(calExposure, self.dataPrefix + "calexp")
 
         if calib is not None:
@@ -224,7 +215,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 sources.setWriteHeavyFootprints(True)
             dataRef.put(sources, self.dataPrefix + 'src')
             
-        if self.config.doWriteSourceMatches:
+        if self.config.doMeasurement and self.config.doWriteSourceMatches:
             self.log.info("Matching src to reference catalogue" % (dataRef.dataId))
             srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
 
@@ -238,7 +229,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             inputExposure = inputExposure,
             exposure = calExposure,
             calib = calib,
-            apCorr = apCorr,
             sources = sources,
             matches = srcMatches,
             matchMeta = srcMatchMeta,
@@ -295,3 +285,37 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             s.assign(ics, self.schemaMapper)
 
         return
+
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        src = afwTable.SourceCatalog(self.schema)
+        src.getTable().setMetadata(self.algMetadata)
+        d = {self.dataPrefix + "src": src}
+        icSrc = None
+        try:
+            icSrc = afwTable.SourceCatalog(self.calibrate.schema)
+            icSrc.getTable().setMetadata(self.calibrate.algMetadata)
+        except AttributeError:
+            pass
+        if icSrc is not None:
+            d[self.dataPrefix + "icSrc"] = icSrc
+        return d
+
+    def writeBackgrounds(self, dataRef, backgrounds):
+        """Backgrounds are persisted via the butler
+
+        @param dataRef: Data reference
+        @param backgrounds: List of background models
+        """
+        self.log.warn("Persisting background models")
+        
+        dataRef.put(backgrounds, self.dataPrefix+"calexpBackground")
+
+    def restoreBackgrounds(self, exp, backgrounds):
+        """Add backgrounds back in to an exposure
+
+        @param exp: Exposure to which to add backgrounds
+        @param backgrounds: List of background models
+        """
+        mi = exp.getMaskedImage()
+        mi += backgrounds.getImage()

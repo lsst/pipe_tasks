@@ -22,7 +22,7 @@
 #
 import math
 import random
-import numpy as np
+import numpy
 
 import lsst.afw.display.ds9 as ds9
 import lsst.pex.config as pexConfig
@@ -36,7 +36,7 @@ import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
-    starSelectorRegistry, PsfAttributes
+    starSelectorRegistry, PsfAttributes, SingleGaussianPsf
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList
 import lsst.ip.diffim.utils as diUtils
@@ -225,7 +225,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - psf
         - ccdExposureId
         - ccdExposureId_bits
-        - apCorr
         - self.config.coaddName + "Coadd_skyMap"
         - self.config.coaddName + "Coadd"
         Input or output, depending on config:
@@ -261,9 +260,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # Retrieve the science image we wish to analyze
         exposure = sensorRef.get("calexp")
         if self.config.doAddCalexpBackground:
-            calexpBackground = sensorRef.get("calexpBackground")
             mi = exposure.getMaskedImage()
-            mi += calexpBackground
+            mi += sensorRef.get("calexpBackground").getImage()
         sciencePsf = sensorRef.get("psf")
         if not sciencePsf:
             raise pipeBase.TaskError("No psf found")
@@ -283,10 +281,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
         templateExposure = None  # Stitched coadd exposure
-        templateApCorr = None    # Aperture correction appropriate for the coadd
         templateSources = None   # Sources on the template image
         if self.config.doSubtract:
-            templateExposure, templateApCorr, templateSources = self.getTemplate(exposure, sensorRef)
+            templateExposure, templateSources = self.getTemplate(exposure, sensorRef)
 
             # sigma of PSF of template image before warping
             ctr = afwGeom.Box2D(templateExposure.getBBox(afwImage.PARENT)).getCenter()
@@ -306,7 +303,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.useGaussianForPreConvolution:
                     # convolve with a simplified PSF model: a double Gaussian
                     kWidth, kHeight = sciencePsf.getKernel().getDimensions()
-                    preConvPsf = afwDetect.createPsf("SingleGaussian", kWidth, kHeight, scienceSigmaOrig)
+                    preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
                 else:
                     # convolve with science exposure's PSF model
                     preConvPsf = psf
@@ -405,8 +402,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     elif self.config.winter2013WcsRms > 0.0:
                         cKey = templateSources[0].getTable().getCentroidKey()
                         for source in templateSources:
-                            offset = afwGeom.Extent2D(self.config.winter2013WcsRms*np.random.normal(), 
-                                                      self.config.winter2013WcsRms*np.random.normal())
+                            offset = afwGeom.Extent2D(self.config.winter2013WcsRms*numpy.random.normal(), 
+                                                      self.config.winter2013WcsRms*numpy.random.normal())
                             centroid = source.get(cKey)
                             source.set(cKey, centroid+offset)
 
@@ -461,8 +458,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     subtractedExposure.setPsf(exposure.getPsf())
                 else:
                     if templateExposure is None:
-                        templateExposure, templateApCorr, templateSources = \
-                            self.getTemplate(exposure, sensorRef)
+                        templateExposure, templateSources = self.getTemplate(exposure, sensorRef)
                     subtractedExposure.setPsf(templateExposure.getPsf())
 
             # Erase existing detection mask planes
@@ -489,18 +485,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if self.config.doMeasurement:
                 self.log.info("Running diaSource measurement")
-                if self.config.convolveTemplate:
-                    apCorr = sensorRef.get("apCorr")
-                else:
-                    if templateApCorr is None:
-                        templateExposure, templateApCorr, templateSources = \
-                            self.getTemplate(exposure, sensorRef)
-                    apCorr = templateApCorr
-
                 if len(diaSources) < self.config.maxDiaSourcesToMeasure:
-                    self.dipolemeasurement.run(subtractedExposure, diaSources, apCorr)
+                    self.dipolemeasurement.run(subtractedExposure, diaSources)
                 else:
-                    self.measurement.run(subtractedExposure, diaSources, apCorr)
+                    self.measurement.run(subtractedExposure, diaSources)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
@@ -697,9 +685,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 mi += templateBg
             templatePsf = sensorRef.getButler().get(datasetType="psf", dataId = templateId)
             template.setPsf(templatePsf)
-            templateApCorr = sensorRef.getButler().get(datasetType="apCorr", dataId = templateId)
             templateSources = sensorRef.getButler().get(datasetType="src", dataId = templateId)
-            return template, templateApCorr, templateSources
+            return template, templateSources
 
         skyMap = sensorRef.get(datasetType=self.config.coaddName + "Coadd_skyMap")
         expWcs = exposure.getWcs()
@@ -728,11 +715,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # assemble coadd exposure from subregions of patches
         coaddExposure = afwImage.ExposureF(coaddBBox, coaddWcs)
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.getMaskedImage().set(np.nan, edgeMask, np.nan)
+        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
         nPatchesFound = 0
         coaddFilter = None
         coaddPsf = None
-        coaddApCorr = None
         coaddSources = None
         for patchInfo in patchList:
             patchSubBBox = patchInfo.getOuterBBox()
@@ -773,20 +759,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                       % patchPsfDict)
                     continue
                 coaddPsf = sensorRef.get(**patchPsfDict)
-
-            # Retrieve the aperture correction for this coadd tract, if not already retrieved
-            if coaddApCorr is None:
-                patchApCorrDict = dict(
-                    datasetType = self.config.coaddName + "Coadd_apCorr",
-                    tract = tractInfo.getId(),
-                    patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
-                    )
-                if not sensorRef.datasetExists(**patchApCorrDict):
-                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist" \
-                                      % patchApCorrDict)
-                    continue
-                coaddApCorr = sensorRef.get(**patchApCorrDict)
-
+        
         if nPatchesFound == 0:
             raise RuntimeError("No patches found!")
 
@@ -795,7 +768,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         coaddExposure.setPsf(coaddPsf)
         coaddExposure.setFilter(coaddFilter)
-        return coaddExposure, coaddApCorr, coaddSources
+        return coaddExposure, coaddSources
 
     def _getConfigName(self):
         """Return the name of the config dataset
@@ -807,8 +780,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """
         return "%sDiff_metadata" % (self.config.coaddName,)
 
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        diaSrc = afwTable.SourceCatalog(self.schema)
+        diaSrc.getTable().setMetadata(self.algMetadata)
+        return {self.config.coaddName + "Diff_diaSrc_shema": diaSrc}
+
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return pipeBase.ArgumentParser(name=cls._DefaultName, datasetType="calexp")
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
+        return parser
