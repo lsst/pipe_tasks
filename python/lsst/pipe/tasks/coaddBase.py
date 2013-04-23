@@ -208,7 +208,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=CoaddDataIdContainer)
-        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
+        parser.add_id_argument("--selectId", "raw", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
                                ContainerClass=SelectDataIdContainer)
         return parser
 
@@ -279,7 +279,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
                 wcs = afwImage.makeWcs(md)
                 data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
             except pexExceptions.LsstCppException, e:
-                if not isinstance(e, FitsError): # Unable to open file
+                if not isinstance(e.message, FitsError): # Unable to open file
                     raise
                 namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
                 continue
