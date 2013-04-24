@@ -121,6 +121,17 @@ class CalibrateConfig(pexConfig.Config):
         aperture_elliptical = "flux.aperture.elliptical"
         if aperture_elliptical in self.measurement.value.algorithms.names:
             self.measurement.value.algorithms.names -= (aperture_elliptical,)
+        #
+        # Stop flux.gaussian recomputing the Gaussian's weights (as shape.sdss already did that)
+        #
+        try:
+            self.initialMeasurement.algorithms['flux.gaussian'].fixed = True
+            self.measurement.algorithms['flux.gaussian'].fixed = True
+            root.calibrate.initialMeasurement.algorithms['flux.gaussian'].centroid = \
+                'initial.shape.sdss.centroid'
+            root.calibrate.initialMeasurement.algorithms['flux.gaussian'].shape = 'initial.shape.sdss'
+        except pexConfig.FieldValidationError: # "flux.gaussian" isn't there
+            pass
         
 class CalibrateTask(pipeBase.Task):
     """Calibrate an exposure: measure PSF, subtract background, etc.

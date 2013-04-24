@@ -74,6 +74,15 @@ class ProcessImageConfig(pexConfig.Config):
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
             raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
 
+    def setDefaults(self):
+        #
+        # Stop flux.gaussian recomputing the Gaussian's weights (as shape.sdss already did that)
+        #
+        try:
+            self.measurement.algorithms['flux.gaussian'].fixed = True
+        except pexConfig.FieldValidationError: # "flux.gaussian" isn't there
+            pass
+
 class ProcessImageTask(pipeBase.CmdLineTask):
     """An abstract base class for tasks do simple calibration, detection, deblending, and measurement
     on individual images.
