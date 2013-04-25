@@ -127,9 +127,9 @@ class CalibrateConfig(pexConfig.Config):
         try:
             self.initialMeasurement.algorithms['flux.gaussian'].fixed = True
             self.measurement.algorithms['flux.gaussian'].fixed = True
-            root.calibrate.initialMeasurement.algorithms['flux.gaussian'].centroid = \
+            self.initialMeasurement.algorithms['flux.gaussian'].centroid = \
                 'initial.shape.sdss.centroid'
-            root.calibrate.initialMeasurement.algorithms['flux.gaussian'].shape = 'initial.shape.sdss'
+            self.initialMeasurement.algorithms['flux.gaussian'].shape = 'initial.shape.sdss'
         except pexConfig.FieldValidationError: # "flux.gaussian" isn't there
             pass
         
