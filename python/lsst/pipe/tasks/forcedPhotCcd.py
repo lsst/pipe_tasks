@@ -48,14 +48,15 @@ class CcdForcedSrcDataIdContainer(lsst.pipe.base.DataIdContainer):
             if "tract" not in dataId:
                 raise argparse.ArgumentError(None, "--id must include tract")
             tract = dataId.pop("tract")
-            # making a DataRef for src fills out any missing keys
-            srcDataRef = namespace.butler.dataRef("src", dataId=dataId)
-            dataId.update(srcDataRef.dataId, tract=tract)
-            dataRef = namespace.butler.dataRef(
-                datasetType = "forced_src",
-                dataId = dataId,
-            )
-            self.refList.append(dataRef)
+            # making a DataRef for src fills out any missing keys and allows us to iterate
+            for srcDataRef in namespace.butler.subset("src", dataId=dataId):
+                forcedDataId = srcDataRef.dataId.copy()
+                forcedDataId['tract'] = tract
+                dataRef = namespace.butler.dataRef(
+                    datasetType = "forced_src",
+                    dataId = forcedDataId,
+                    )
+                self.refList.append(dataRef)
 
 class ForcedPhotCcdConfig(ForcedPhotImageTask.ConfigClass):
     doApplyUberCal = Field(
