@@ -102,7 +102,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.iteritems()):
             tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDatasetName(),
                                          tempExpTuple, groupData.keys)
-            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=tempExpName):
+            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=self.getTempExpDatasetName()):
                 self.log.info("tempCoaddExp %s exists; skipping" % (tempExpRef.dataId,))
                 dataRefList.append(tempExpRef)
                 continue
