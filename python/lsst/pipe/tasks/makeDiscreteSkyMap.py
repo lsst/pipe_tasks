@@ -73,7 +73,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
         # There's only one SkyMap per rerun anyway, so the config is redundant,
         # and checking it means we can't overwrite or append to one once we've
         # written it.
-        pass
+        return True
 
     def __call__(self, args):
         butler, dataRefList = args
