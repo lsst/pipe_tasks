@@ -24,7 +24,7 @@
 import lsst.afw.geom
 
 from lsst.pex.config import Config, Field, FieldValidationError
-from lsst.pipe.base import Task
+from lsst.pipe.base import Task, TaskError
 
 __all__ = ("BaseReferencesTask", "CoaddSrcReferencesTask")
 
@@ -162,13 +162,14 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
         tract = dataRef.dataId["tract"]
         butler = dataRef.butlerSubset.butler
         for patch in patchList:
-            self.log.info("Getting references in tract=%s, patch=%s" % (tract, patch.getIndex()))
+            dataId = {'tract': tract, 'patch': "%d,%d" % patch.getIndex()}
             if self.config.filter is not None:
-                catalog = butler.get(dataset, tract=tract, patch="%d,%d" % patch.getIndex(),
-                                     filter=self.config.filter, immediate=True)
-            else:
-                catalog = butler.get(dataset, tract=tract, patch="%d,%d" % patch.getIndex(),
-                                     immediate=True)
+                dataId['filter'] = self.config.filter
+
+            if not butler.datasetExists(dataset, dataId):
+                raise TaskError("Reference %s doesn't exist" % (dataId,))
+            self.log.info("Getting references in %s" % (dataId,))
+            catalog = butler.get(dataset, dataId, immediate=True)
             if self.config.removePatchOverlaps:
                 bbox = lsst.afw.geom.Box2D(patch.getInnerBBox())
                 for source in catalog:
