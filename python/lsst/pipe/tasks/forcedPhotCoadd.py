@@ -24,7 +24,7 @@
 import lsst.afw.table
 import lsst.pipe.base
 from lsst.pex.config import Config, Field
-from .coaddBase import CoaddDataIdContainer
+from .coaddBase import ExistingCoaddDataIdContainer
 from .forcedPhotImage import ForcedPhotImageTask
 
 __all__ = ("ForcedPhotCoaddTask",)
@@ -63,7 +63,7 @@ class ForcedPhotCoaddTask(ForcedPhotImageTask):
     def _makeArgumentParser(cls):
         parser = lsst.pipe.base.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
-                               ContainerClass=CoaddDataIdContainer)
+                               ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
     def _getConfigName(self):

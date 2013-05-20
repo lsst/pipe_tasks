@@ -273,6 +273,14 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
             )
             self.refList.append(dataRef)
 
+
+class ExistingCoaddDataIdContainer(CoaddDataIdContainer):
+    """A version of CoaddDataIdContainer that only produces references that exist"""
+    def makeDataRefList(self, namespace):
+        super(ExistingCoaddDataIdContainer, self).makeDataRefList(namespace)
+        self.refList = [ref for ref in self.refList if ref.datasetExists()]
+
+
 class SelectDataIdContainer(pipeBase.DataIdContainer):
     """A dataId container for inputs to be selected.
 

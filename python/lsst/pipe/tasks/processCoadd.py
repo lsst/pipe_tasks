@@ -26,7 +26,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
-from .coaddBase import CoaddDataIdContainer
+from .coaddBase import ExistingCoaddDataIdContainer
 from .processImage import ProcessImageTask
 
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
@@ -115,7 +115,7 @@ class ProcessCoaddTask(ProcessImageTask):
     def _makeArgumentParser(cls):
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
-                               ContainerClass=CoaddDataIdContainer)
+                               ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
     def _getConfigName(self):
