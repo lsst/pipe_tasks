@@ -154,7 +154,6 @@ class ForcedPhotTask(CmdLineTask):
     def run(self, dataRef):
         inputs = self.readInputs(dataRef)
         exposure = inputs.exposure
-        exposure.setPsf(inputs.psf)
 
         expBits = dataRef.get("ccdExposureId_bits")
         expId = long(dataRef.get("ccdExposureId"))
