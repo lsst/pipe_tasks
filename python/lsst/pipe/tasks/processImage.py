@@ -67,8 +67,11 @@ class ProcessImageConfig(pexConfig.Config):
 
     def validate(self):
         pexConfig.Config.validate(self)
-        if self.doMeasurement and not self.doDetection:
-            raise ValueError("Cannot run source measurement without source detection.")
+        if self.doMeasurement:
+            if not self.doDetection:
+                raise ValueError("Cannot run source measurement without source detection.")
+            if "skycoord" not in self.measurement.algorithms.names:
+                raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
@@ -91,22 +94,20 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("calibrate")
-        self.schema = kwargs.pop("schema", None)
-        if self.schema is None:
-            self.schema = afwTable.SourceTable.makeMinimalSchema()
-        # add fields needed to identify stars used in the calibration step
-        self.makeSubtask("calibrate")
 
         # Setup our schema by starting with fields we want to propagate from icSrc.
         calibSchema = self.calibrate.schema
         self.schemaMapper = afwTable.SchemaMapper(calibSchema)
         self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
+
+        # Add fields needed to identify stars used in the calibration step
         self.calibSourceKey = self.schemaMapper.addOutputField(
             afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
             )
         for key in self.calibrate.getCalibKeys():
             self.schemaMapper.addMapping(key)
         self.schema = self.schemaMapper.getOutputSchema()
+        
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
@@ -119,11 +120,13 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         raise NotImplementedError()
 
     @pipeBase.timeMethod
-    def process(self, dataRef, inputExposure):
+    def process(self, dataRef, inputExposure, enableWriteSources=True):
         """Process an Image
         
         @param dataRef: data reference that corresponds to the input image
         @param inputExposure:  exposure to process
+        @param enableWriteSources: if True then writing sources is allowed.
+            Set False if you need to postprocess sources before writing them.
 
         @return pipe_base Struct containing these fields:
         - postIsrExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
@@ -154,7 +157,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             except TypeError:     
                 backgrounds.append(calib.backgrounds)
             except AttributeError:
-                self.log.warn("The calibration task did not return any backgrounds.  Any background subtracted in the calibration process cannot be persisted.")
+                self.log.warn("The calibration task did not return any backgrounds. " +
+                    "Any background subtracted in the calibration process cannot be persisted.")
         else:
             calib = None
 
@@ -174,8 +178,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.measurement.run(calExposure, sources)
 
         if self.config.doWriteCalibrate:
-            # wait until after detection and measurement, since detection sets detected mask bits and both require 
-            # a background subtracted exposure;
+            # wait until after detection and measurement, since detection sets detected mask bits
+            # and both require a background subtracted exposure;
             # note that this overwrites an existing calexp if doCalibrate false
                
             if calExposure is None:
@@ -193,7 +197,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         if sources is not None and self.config.doWriteSources:
             if self.config.doWriteHeavyFootprintsInSources:
                 sources.setWriteHeavyFootprints(True)
-            dataRef.put(sources, self.dataPrefix + 'src')
+            if enableWriteSources:
+                dataRef.put(sources, self.dataPrefix + 'src')
             
         if self.config.doMeasurement and self.config.doWriteSourceMatches:
             self.log.info("Matching src to reference catalogue" % (dataRef.dataId))

@@ -26,7 +26,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
-from .coaddBase import CoaddDataIdContainer
+from .coaddBase import CoaddDataIdContainer, getSkyInfo
 from .processImage import ProcessImageTask
 
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
@@ -66,6 +66,12 @@ class ProcessCoaddTask(ProcessImageTask):
     def __init__(self, **kwargs):
         ProcessImageTask.__init__(self, **kwargs)
         self.dataPrefix = self.config.coaddName + "Coadd_"
+        self.inPatchInnerKey = self.schema.addField(
+            "detect.in_patch_inner", type="Flag", doc="is source in the inner region of a coadd patch?"
+        )
+        self.inTractInnerKey = self.schema.addField(
+            "detect.in_tract_inner", type="Flag", doc="is source in the inner region of a coadd tract?"
+        )
 
     @pipeBase.timeMethod
     def scaleVariance(self, exposure):
@@ -100,6 +106,14 @@ class ProcessCoaddTask(ProcessImageTask):
 
         # initialize outputs
         coadd = None
+        
+        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=dataRef)
+# skyInfo fields:
+#     - skyMap: sky map
+#     - tractInfo: information for chosen tract of sky map
+#     - patchInfo: information about chosen patch of tract
+#     - wcs: WCS of tract
+#     - bbox: outer bbox of patch, as an afwGeom Box2I
 
         if self.config.doCalibrate:
             coadd = dataRef.get(self.config.coaddName + "Coadd")
@@ -107,8 +121,31 @@ class ProcessCoaddTask(ProcessImageTask):
                 self.scaleVariance(coadd)
 
         # delegate most of the work to ProcessImageTask
-        result = self.process(dataRef, coadd)
+        result = self.process(dataRef, coadd, enableWriteSources=False)
         result.coadd = coadd
+        
+        if result.sources is not None:
+            # set inner flags for each source
+            innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
+            tractId = tractInfo.getId()
+            wcs = skyInfo.patchInfo.getWcs()
+            for source in results.sources:
+                if not source.getCentroidFlag():
+                    # centroid unknown, so leave the inner flags False
+                    continue
+
+                centroidPos = source.getCentroid()
+                isInnerPatch = innerFloatBBox.contains(centroidPos)
+                source.setFlag(self.inPatchInnerKey, isInnerPatch)
+                
+                skyPos = source.getCoord()
+                sourceInnerTractId = skyMap.findTract(skyPos).getId()
+                source.setFlag(self.inTractInnerKey, sourceInnerTractId == tractId)
+            
+            # write sources
+            if self.config.doWriteSources:
+                dataRef.put(sources, self.dataPrefix + 'src')
+
         return result
 
     @classmethod
