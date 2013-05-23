@@ -213,7 +213,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         refExposure = dataRef.get(self.getTempExpDatasetName(), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
             exposure = refExposure,
-            exposureId = dataRef.dataId,
+            dataRef = dataRef,
             )
         return refImageScaler
 
@@ -252,7 +252,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             maskedImage = tempExp.getMaskedImage()
             imageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure = tempExp,
-                exposureId = tempExpRef.dataId,
+                dataRef = tempExpRef,
             )
             try:
                 imageScaler.scaleMaskedImage(maskedImage)
