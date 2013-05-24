@@ -31,6 +31,7 @@ import lsst.meas.algorithms as measAlg
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
+from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
 __all__ = ["AssembleCoaddTask"]
@@ -59,7 +60,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = 2,
     )
     scaleZeroPoint = pexConfig.ConfigurableField(
-        target = coaddUtils.ScaleZeroPointTask,
+        target = ScaleZeroPointTask,
         doc = "Task to adjust the photometric zero point of the coadd temp exposures",
     )
     doInterp = pexConfig.Field(
