@@ -41,7 +41,6 @@ import lsst.afw.math as afwMath
 import lsst.utils.tests as utilsTests
 import lsst.pex.exceptions as pexExcept
 import lsst.pex.logging as pexLog
-#import lsst.coadd.utils as coaddUtils
 import lsst.pex.policy as pexPolicy
 from lsst.pipe.tasks.scaleZeroPoint import ScaleZeroPointTask
 
