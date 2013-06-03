@@ -24,8 +24,9 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
-import lsst.afw.table as afwTable
+import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
+import lsst.afw.table as afwTable
 from .coaddBase import CoaddDataIdContainer, getSkyInfo
 from .processImage import ProcessImageTask
 
@@ -108,12 +109,6 @@ class ProcessCoaddTask(ProcessImageTask):
         coadd = None
         
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=dataRef)
-# skyInfo fields:
-#     - skyMap: sky map
-#     - tractInfo: information for chosen tract of sky map
-#     - patchInfo: information about chosen patch of tract
-#     - wcs: WCS of tract
-#     - bbox: outer bbox of patch, as an afwGeom Box2I
 
         if self.config.doCalibrate:
             coadd = dataRef.get(self.config.coaddName + "Coadd")
@@ -128,7 +123,6 @@ class ProcessCoaddTask(ProcessImageTask):
             # set inner flags for each source
             innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
             tractId = tractInfo.getId()
-            wcs = skyInfo.patchInfo.getWcs()
             for source in results.sources:
                 if not source.getCentroidFlag():
                     # centroid unknown, so leave the inner flags False
