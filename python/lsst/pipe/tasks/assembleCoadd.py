@@ -87,6 +87,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         dtype = float,
         default = 1.1
     )
+    maxMatchResidualRMS = pexConfig.Field(
+        doc = "Maximum RMS of residuals of the background offset fit in matchBackgrounds.",
+        dtype = float,
+        default = 1.0
+    )
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
         dtype = bool,
@@ -123,7 +128,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.makeSubtask("interpImage")
         self.makeSubtask("matchBackgrounds")
         self.makeSubtask("scaleZeroPoint")
-        
+
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of coaddTempExp
@@ -335,7 +340,10 @@ class AssembleCoaddTask(CoaddBaseTask):
                     self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
                             varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
                     continue
-
+                elif ( bgInfo.fitRMS > self.config.maxMatchResidualRMS):
+                    self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping" % (
+                            bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId,))
+                    continue
             newWeightList.append(1 / (1 / weight + bgInfo.fitRMS**2))
             newTempExpRefList.append(tempExpRef)
             newBackgroundStructList.append(bgInfo)
@@ -482,7 +490,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                 metadata.addString("CTExp_ID_%d" % (ind), tempExpStr)
                 metadata.addDouble("CTExp_SDQA1_%d" % (ind),
                                    backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
-
+                metadata.addDouble("CTExp_SDQA2_%d" % (ind),
+                                   backgroundInfo.fitRMS)
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
