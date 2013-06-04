@@ -67,11 +67,18 @@ class ProcessCoaddTask(ProcessImageTask):
     def __init__(self, **kwargs):
         ProcessImageTask.__init__(self, **kwargs)
         self.dataPrefix = self.config.coaddName + "Coadd_"
-        self.inPatchInnerKey = self.schema.addField(
-            "detect.in_patch_inner", type="Flag", doc="is source in the inner region of a coadd patch?"
+        self.isPatchInnerKey = self.schema.addField(
+            "detect.is-patch-inner", type="Flag",
+            doc="true if source is in the inner region of a coadd patch",
         )
-        self.inTractInnerKey = self.schema.addField(
-            "detect.in_tract_inner", type="Flag", doc="is source in the inner region of a coadd tract?"
+        self.isTractInnerKey = self.schema.addField(
+            "detect.is-tract-inner", type="Flag",
+            doc="true if source is in the inner region of a coadd tract",
+        )
+        self.isPrimaryKey = self.schema.addField(
+            "detect.is-primary", type="Flag",
+            doc="true if source has no children and is in the inner region of a coadd patch " \
+                + "and is in the inner region of a coadd tract",
         )
 
     @pipeBase.timeMethod
@@ -118,14 +125,23 @@ class ProcessCoaddTask(ProcessImageTask):
         # delegate most of the work to ProcessImageTask
         result = self.process(dataRef, coadd, enableWriteSources=False)
         result.coadd = coadd
-        
+
         if result.sources is not None:
-            # set inner flags for each source
+            # Test for the presence of the nchild key instead of checking config.doDeblend because sources
+            # might be unpersisted with deblend info, even if deblending is not run again. Then make sure
+            # the nchild key exists if the deblender was run to expose noncompliant variants of the deblender.
+            nChildKey = "deblend.nchild"
+            haveDeblendInfo = self.schema.contains(nChildKey)
+            if self.config.doDeblend and not haveDeblendInfo:
+                raise RuntimeError("Ran the deblender but cannot find %r in the source table" % (nChildKey,))
+
+            # set inner flags for each source and set primary flags for sources with no children
+            # (or all sources if deblend info not available)
             innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
             tractId = tractInfo.getId()
             for source in results.sources:
                 if not source.getCentroidFlag():
-                    # centroid unknown, so leave the inner flags False
+                    # centroid unknown, so leave the inner and primary flags False
                     continue
 
                 centroidPos = source.getCentroid()
@@ -134,8 +150,12 @@ class ProcessCoaddTask(ProcessImageTask):
                 
                 skyPos = source.getCoord()
                 sourceInnerTractId = skyMap.findTract(skyPos).getId()
-                source.setFlag(self.inTractInnerKey, sourceInnerTractId == tractId)
-            
+                isTractInner = sourceInnerTractId == tractId
+                source.setFlag(self.isTractInnerKey, isTractInner)
+
+                if not haveDeblendInfo or source.get(nChildKey) == 0:
+                    source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner)
+
             # write sources
             if self.config.doWriteSources:
                 dataRef.put(sources, self.dataPrefix + 'src')
