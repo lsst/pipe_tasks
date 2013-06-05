@@ -140,7 +140,7 @@ class ProcessCoaddTask(ProcessImageTask):
             innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
             tractId = skyInfo.tractInfo.getId()
             for source in result.sources:
-                if not source.getCentroidFlag():
+                if source.getCentroidFlag():
                     # centroid unknown, so leave the inner and primary flags False
                     continue
 
