@@ -131,10 +131,7 @@ class ProcessCoaddTask(ProcessImageTask):
             # might be unpersisted with deblend info, even if deblending is not run again. Then make sure
             # the nchild key exists if the deblender was run to expose noncompliant variants of the deblender.
             nChildKey = "deblend.nchild"
-            try:
-                haveDeblendInfo = self.schema.find(nChildKey).getKey()
-            except:
-                haveDeblendInfo = False
+            haveDeblendInfo = nChildKey in self.schema
             if self.config.doDeblend and not haveDeblendInfo:
                 raise RuntimeError("Ran the deblender but cannot find %r in the source table" % (nChildKey,))
 
@@ -152,7 +149,7 @@ class ProcessCoaddTask(ProcessImageTask):
                 source.setFlag(self.isPatchInnerKey, isPatchInner)
                 
                 skyPos = source.getCoord()
-                sourceInnerTractId = skyMap.findTract(skyPos).getId()
+                sourceInnerTractId = skyInfo.skyMap.findTract(skyPos).getId()
                 isTractInner = sourceInnerTractId == tractId
                 source.setFlag(self.isTractInnerKey, isTractInner)
 
