@@ -131,22 +131,25 @@ class ProcessCoaddTask(ProcessImageTask):
             # might be unpersisted with deblend info, even if deblending is not run again. Then make sure
             # the nchild key exists if the deblender was run to expose noncompliant variants of the deblender.
             nChildKey = "deblend.nchild"
-            haveDeblendInfo = self.schema.contains(nChildKey)
+            try:
+                haveDeblendInfo = self.schema.find(nChildKey).getKey()
+            except:
+                haveDeblendInfo = False
             if self.config.doDeblend and not haveDeblendInfo:
                 raise RuntimeError("Ran the deblender but cannot find %r in the source table" % (nChildKey,))
 
             # set inner flags for each source and set primary flags for sources with no children
             # (or all sources if deblend info not available)
             innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
-            tractId = tractInfo.getId()
-            for source in results.sources:
+            tractId = skyInfo.tractInfo.getId()
+            for source in result.sources:
                 if not source.getCentroidFlag():
                     # centroid unknown, so leave the inner and primary flags False
                     continue
 
                 centroidPos = source.getCentroid()
-                isInnerPatch = innerFloatBBox.contains(centroidPos)
-                source.setFlag(self.inPatchInnerKey, isInnerPatch)
+                isPatchInner = innerFloatBBox.contains(centroidPos)
+                source.setFlag(self.isPatchInnerKey, isPatchInner)
                 
                 skyPos = source.getCoord()
                 sourceInnerTractId = skyMap.findTract(skyPos).getId()
@@ -158,7 +161,7 @@ class ProcessCoaddTask(ProcessImageTask):
 
             # write sources
             if self.config.doWriteSources:
-                dataRef.put(sources, self.dataPrefix + 'src')
+                dataRef.put(result.sources, self.dataPrefix + 'src')
 
         return result
 
