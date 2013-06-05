@@ -26,7 +26,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
-from .coaddBase import CoaddArgumentParser
+from .coaddBase import CoaddDataIdContainer
 from .processImage import ProcessImageTask
 
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
@@ -37,6 +37,24 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         default = "deep",
     )
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise")
+
+    def setDefaults(self):
+        ProcessImageTask.ConfigClass.setDefaults(self)
+        self.calibrate.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.calibrate.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.calibrate.doPsf = False
+        self.calibrate.astrometry.forceKnownWcs = True
+        self.calibrate.astrometry.solver.calculateSip = False
+        self.calibrate.repair.doInterpolate = False
+        self.calibrate.repair.doCosmicRay = False
+        self.calibrate.doPhotoCal = False
+        self.detection.isotropicGrow = True
+        self.detection.returnOriginalFootprints = False
+        self.doWriteSourceMatches = True
+        self.measurement.doReplaceWithNoise = True
+        self.doDeblend = True
+        self.deblend.maxNumberOfPeaks = 20
 
 class ProcessCoaddTask(ProcessImageTask):
     """Process a Coadd image
@@ -95,7 +113,10 @@ class ProcessCoaddTask(ProcessImageTask):
 
     @classmethod
     def _makeArgumentParser(cls):
-        return CoaddArgumentParser(name=cls._DefaultName, datasetType="deepCoadd")
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
+                               ContainerClass=CoaddDataIdContainer)
+        return parser
 
     def _getConfigName(self):
         """Return the name of the config dataset
