@@ -127,7 +127,7 @@ class ProcessCoaddTask(ProcessImageTask):
         result.coadd = coadd
 
         if result.sources is not None:
-            self.setIsPrimaryFlag(sources=results.sources, skyInfo=skyInfo)
+            self.setIsPrimaryFlag(sources=result.sources, skyInfo=skyInfo)
 
             # write sources
             if self.config.doWriteSources:
@@ -164,7 +164,7 @@ class ProcessCoaddTask(ProcessImageTask):
         # (or all sources if deblend info not available)
         innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
         tractId = skyInfo.tractInfo.getId()
-        for source in result.sources:
+        for source in sources:
             if source.getCentroidFlag():
                 # centroid unknown, so leave the inner and primary flags False
                 continue
