@@ -279,7 +279,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
                 wcs = afwImage.makeWcs(md)
                 data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
             except pexExceptions.LsstCppException, e:
-                if not isinstance(e, FitsError): # Unable to open file
+                if not isinstance(e.message, FitsError): # Unable to open file
                     raise
                 namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
                 continue
