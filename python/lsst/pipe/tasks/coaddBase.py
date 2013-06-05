@@ -40,7 +40,7 @@ try:
 except ImportError:
     applyMosaicResults = None
 
-__all__ = ["CoaddBaseTask", "getSkyMap"]
+__all__ = ["CoaddBaseTask", "getSkyInfo"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 

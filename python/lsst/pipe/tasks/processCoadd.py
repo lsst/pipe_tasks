@@ -127,40 +127,59 @@ class ProcessCoaddTask(ProcessImageTask):
         result.coadd = coadd
 
         if result.sources is not None:
-            # Test for the presence of the nchild key instead of checking config.doDeblend because sources
-            # might be unpersisted with deblend info, even if deblending is not run again. Then make sure
-            # the nchild key exists if the deblender was run to expose noncompliant variants of the deblender.
-            nChildKey = "deblend.nchild"
-            haveDeblendInfo = nChildKey in self.schema
-            if self.config.doDeblend and not haveDeblendInfo:
-                raise RuntimeError("Ran the deblender but cannot find %r in the source table" % (nChildKey,))
-
-            # set inner flags for each source and set primary flags for sources with no children
-            # (or all sources if deblend info not available)
-            innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
-            tractId = skyInfo.tractInfo.getId()
-            for source in result.sources:
-                if source.getCentroidFlag():
-                    # centroid unknown, so leave the inner and primary flags False
-                    continue
-
-                centroidPos = source.getCentroid()
-                isPatchInner = innerFloatBBox.contains(centroidPos)
-                source.setFlag(self.isPatchInnerKey, isPatchInner)
-                
-                skyPos = source.getCoord()
-                sourceInnerTractId = skyInfo.skyMap.findTract(skyPos).getId()
-                isTractInner = sourceInnerTractId == tractId
-                source.setFlag(self.isTractInnerKey, isTractInner)
-
-                if not haveDeblendInfo or source.get(nChildKey) == 0:
-                    source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner)
+            self.setIsPrimaryFlag(sources=results.sources, skyInfo=skyInfo)
 
             # write sources
             if self.config.doWriteSources:
                 dataRef.put(result.sources, self.dataPrefix + 'src')
 
         return result
+    
+    def setIsPrimaryFlag(self, sources, skyInfo):
+        """Set is-primary and related flags on sources
+        
+        @param[in,out] sources: a SourceTable
+            - reads centroid fields and an nChild field
+            - writes is-patch-inner, is-tract-inner and is-primary flags
+        @param[in] skyInfo: a SkyInfo object as returned by getSkyInfo;
+            reads skyMap, patchInfo, and tractInfo fields
+            
+        
+        @raise RuntimeError if self.config.doDeblend and the nChild key is not found in the table
+        """
+        # Test for the presence of the nchild key instead of checking config.doDeblend because sources
+        # might be unpersisted with deblend info, even if deblending is not run again.
+        nChildKeyName = "deblend.nchild"
+        try:
+            nChildKey = self.schema.find(nChildKeyName).key
+        except Exception:
+            nChildKey = None
+
+        if self.config.doDeblend and nChildKey is None:
+            # deblending was run but the nChildKey was not found; this suggests a variant deblender
+            # was used that we cannot use the output from, or some obscure error.
+            raise RuntimeError("Ran the deblender but cannot find %r in the source table" % (nChildKeyName,))
+
+        # set inner flags for each source and set primary flags for sources with no children
+        # (or all sources if deblend info not available)
+        innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
+        tractId = skyInfo.tractInfo.getId()
+        for source in result.sources:
+            if source.getCentroidFlag():
+                # centroid unknown, so leave the inner and primary flags False
+                continue
+
+            centroidPos = source.getCentroid()
+            isPatchInner = innerFloatBBox.contains(centroidPos)
+            source.setFlag(self.isPatchInnerKey, isPatchInner)
+            
+            skyPos = source.getCoord()
+            sourceInnerTractId = skyInfo.skyMap.findTract(skyPos).getId()
+            isTractInner = sourceInnerTractId == tractId
+            source.setFlag(self.isTractInnerKey, isTractInner)
+
+            if nChildKey is None or source.get(nChildKey) == 0:
+                source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner)
 
     @classmethod
     def _makeArgumentParser(cls):
