@@ -40,7 +40,7 @@ try:
 except ImportError:
     applyMosaicResults = None
 
-__all__ = ["CoaddBaseTask"]
+__all__ = ["CoaddBaseTask", "getSkyInfo"]
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 
@@ -147,21 +147,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         - wcs: WCS of tract
         - bbox: outer bbox of patch, as an afwGeom Box2I
         """
-        skyMap = patchRef.get(self.config.coaddName + "Coadd_skyMap")
-        tractId = patchRef.dataId["tract"]
-        tractInfo = skyMap[tractId]
-
-        # patch format is "xIndex,yIndex"
-        patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
-        patchInfo = tractInfo.getPatchInfo(patchIndex)
-        
-        return pipeBase.Struct(
-            skyMap = skyMap,
-            tractInfo = tractInfo,
-            patchInfo = patchInfo,
-            wcs = tractInfo.getWcs(),
-            bbox = patchInfo.getOuterBBox(),
-        )
+        return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
     def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
         """Return one "calexp" calibrated exposure, optionally with psf
@@ -285,3 +271,31 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
                 continue
             self.dataList.append(data)
 
+def getSkyInfo(coaddName, patchRef):
+    """Return SkyMap, tract and patch
+
+    @param coaddName: coadd name; typically one of deep or goodSeeing
+    @param patchRef: data reference for sky map. Must include keys "tract" and "patch"
+    
+    @return pipe_base Struct containing:
+    - skyMap: sky map
+    - tractInfo: information for chosen tract of sky map
+    - patchInfo: information about chosen patch of tract
+    - wcs: WCS of tract
+    - bbox: outer bbox of patch, as an afwGeom Box2I
+    """
+    skyMap = patchRef.get(coaddName + "Coadd_skyMap")
+    tractId = patchRef.dataId["tract"]
+    tractInfo = skyMap[tractId]
+
+    # patch format is "xIndex,yIndex"
+    patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
+    patchInfo = tractInfo.getPatchInfo(patchIndex)
+    
+    return pipeBase.Struct(
+        skyMap = skyMap,
+        tractInfo = tractInfo,
+        patchInfo = patchInfo,
+        wcs = tractInfo.getWcs(),
+        bbox = patchInfo.getOuterBBox(),
+    )
