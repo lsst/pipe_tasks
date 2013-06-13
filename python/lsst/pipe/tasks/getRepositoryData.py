@@ -45,7 +45,7 @@ class DataRefListRunner(pipeBase.TaskRunner):
     def getTargetList(parsedCmd):
         """Return a list of targets (arguments for __call__); one entry per invocation
         """
-        return [parsedCmd.dataRefList] # one argument consisting of a list of dataRefs
+        return [parsedCmd.id.refList] # one argument consisting of a list of dataRefs
 
     def __call__(self, dataRefList):
         """Run GetRepositoryDataTask.run on a single target
