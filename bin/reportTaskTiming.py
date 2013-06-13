@@ -187,6 +187,16 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
                                help="data ID, e.g. --id visit=12345 ccd=1,2")
         return parser
 
+    def _getConfigName(self):
+        """Don't persist config, so return None
+        """
+        return None
+
+    def _getMetadataName(self):
+        """Don't persist metadata, so return None
+        """
+        return None
+
 
 if __name__ == "__main__":
     ReportTaskTimingTask.parseAndRun()
