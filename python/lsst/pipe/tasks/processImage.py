@@ -27,7 +27,8 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.meas.deblender import SourceDeblendTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 

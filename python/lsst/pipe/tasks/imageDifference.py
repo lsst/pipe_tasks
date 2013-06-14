@@ -35,8 +35,9 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, SourceDeblendTask, \
+from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, \
     starSelectorRegistry, PsfAttributes, SingleGaussianPsf
+from lsst.meas.deblender import SourceDeblendTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList
 import lsst.ip.diffim.utils as diUtils
