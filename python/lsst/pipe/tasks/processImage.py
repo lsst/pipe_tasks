@@ -196,10 +196,10 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.propagateCalibFlags(calib.sources, sources)
 
         if sources is not None and self.config.doWriteSources:
-            if self.config.doWriteHeavyFootprintsInSources:
-                sources.setWriteHeavyFootprints(True)
+            sourceWriteFlags = (0 if self.config.doWriteHeavyFootprintsInSources
+                                else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS)
             if enableWriteSources:
-                dataRef.put(sources, self.dataPrefix + 'src')
+                dataRef.put(sources, self.dataPrefix + 'src', flags=sourceWriteFlags)
             
         if self.config.doMeasurement and self.config.doWriteSourceMatches:
             self.log.info("Matching src to reference catalogue" % (dataRef.dataId))
