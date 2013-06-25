@@ -256,6 +256,12 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
     
     Required because butler.subset does not support patch and tract
     """
+    def getSkymap(self, namespace, datasetType):
+        """Only retrieve skymap if required"""
+        if not hasattr(self, "_skymap"):
+            self._skymap = namespace.butler.get(datasetType + "_skyMap")
+        return self._skymap
+
     def makeDataRefList(self, namespace):
         """Make self.refList from self.idList
         """
@@ -263,15 +269,27 @@ class CoaddDataIdContainer(pipeBase.DataIdContainer):
         validKeys = namespace.butler.getKeys(datasetType=datasetType, level=self.level)
 
         for dataId in self.idList:
-            # tract and patch are required
             for key in validKeys:
+                if key in ("tract", "patch"):
+                    # Will deal with these explicitly
+                    continue
                 if key not in dataId:
                     raise argparse.ArgumentError(None, "--id must include " + key)
-            dataRef = namespace.butler.dataRef(
-                datasetType = datasetType,
-                dataId = dataId,
-            )
-            self.refList.append(dataRef)
+
+            # tract and patch are required; iterate over them if not provided
+            if not "tract" in dataId:
+                if "patch" in dataId:
+                    raise RuntimeError("'patch' cannot be specified without 'tract'")
+                addList = [dict(tract=tract.getId(), patch="%d,%d" % patch.getIndex(), **dataId)
+                           for tract in self.getSkymap(namespace, datasetType) for patch in tract]
+            elif not "patch" in dataId:
+                tract = self.getSkymap(namespace, datasetType)[dataId["tract"]]
+                addList = [dict(patch="%d,%d" % patch.getIndex(), **dataId) for patch in tract]
+            else:
+                addList = [dataId]
+
+            self.refList += [namespace.butler.dataRef(datasetType=datasetType, dataId=addId)
+                             for addId in addList]
 
 
 class ExistingCoaddDataIdContainer(CoaddDataIdContainer):
