@@ -24,6 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
+from .polygon import SkyPolygon
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "DatabaseSelectImagesConfig"]
 
@@ -167,9 +168,13 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         """Images in the selectDataList that overlap the region specified by the
         coordList are selected.
 
-        This comparison is conservative and non-exact: images that do not
-        actually overlap the coordList (but are close to it) may also be
-        selected.
+        A coarse-grained threshing is first performed by testing the bounding
+        box of the patch in the frame of the image.  This comparison is
+        conservative and non-exact: images that do not actually overlap the
+        coordList (but are close to it) may also be selected.
+
+        A more fine-grained threshind is then performed by testing if the
+        patch polygon and image boundary polygon overlap.
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
         @param coordList: List of Coord specifying boundary of patch
@@ -178,29 +183,42 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         """
         dataRefList = []
         exposureInfoList = []
+
         for data in selectDataList:
             dataRef = data.dataRef
-            wcs = data.wcs
+            imageWcs = data.wcs
             nx,ny = data.dims
+
+            # Coarse-grained threshing: does bounding box of patch in the image frame overlap with image?
+            patchBounds = afwGeom.Box2D()
             try:
-                bbox = afwGeom.Box2D(afwGeom.Point2D(0,0), afwGeom.Extent2D(nx, ny))
-                bounds = afwGeom.Box2D()
                 for coord in coordList:
-                    pix = wcs.skyToPixel(coord) # May throw() if wcslib barfs
-                    bounds.include(pix)
-                if not bbox.overlaps(bounds):
-                    self.log.logdebug("De-selecting calexp %s" % dataRef.dataId)
-                    continue
-                self.log.info("Selecting calexp %s" % dataRef.dataId)
-                dataRefList.append(dataRef)
-                corners = [wcs.pixelToSky(x,y) for x in (0, nx) for y in (0, ny)]
-                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, corners))
+                    pix = imageWcs.skyToPixel(coord) # May throw() if wcslib barfs
+                    patchBounds.include(pix)
             except pexExceptions.LsstCppException, e:
                 if not isinstance(e.message, pexExceptions.DomainErrorException):
                     raise
                 # Particularly interested in catching problems from wcslib, which may throw() if this exposure
                 # is far from the coordinates under consideration.
                 self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                continue
+
+            imageBox = afwGeom.Box2D(afwGeom.Point2D(0,0), afwGeom.Extent2D(nx, ny))
+            if not imageBox.overlaps(patchBounds):
+                self.log.logdebug("De-selecting calexp %s" % dataRef.dataId)
+                continue
+
+            # Fine-grained threshing: do the patch and image polygons overlap?
+            patchPoly = SkyPolygon(coordList)
+            polyWcs = patchPoly.calculateWcs(imageWcs.pixelScale()) # Wcs centered on patch
+            patchPoly = patchPoly.toImage(polyWcs)
+
+            corners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
+            imagePoly = SkyPolygon(corners).toImage(polyWcs)
+            if imagePoly.overlaps(patchPoly):
+                self.log.info("Selecting calexp %s" % dataRef.dataId)
+                dataRefList.append(dataRef)
+                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, cornersSky))
 
         return pipeBase.Struct(
             dataRefList = dataRefList if makeDataRefList else None,
