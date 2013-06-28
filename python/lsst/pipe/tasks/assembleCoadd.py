@@ -564,7 +564,7 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
             # tract and patch are required
             for key in validKeys:
                 if key not in dataId:
-                    self.error("--id must include " + key)
+                    raise RuntimeError("--id must include " + key)
 
             for key in dataId: # check if users supplied visit/run
                 if (key not in keysCoadd) and (key in keysCoaddTempExp):  #user supplied a visit/run
