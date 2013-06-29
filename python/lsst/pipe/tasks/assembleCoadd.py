@@ -31,6 +31,7 @@ import lsst.meas.algorithms as measAlg
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
+from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
 __all__ = ["AssembleCoaddTask"]
@@ -59,7 +60,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         default = 2,
     )
     scaleZeroPoint = pexConfig.ConfigurableField(
-        target = coaddUtils.ScaleZeroPointTask,
+        target = ScaleZeroPointTask,
         doc = "Task to adjust the photometric zero point of the coadd temp exposures",
     )
     doInterp = pexConfig.Field(
@@ -85,6 +86,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         "of the difference in backgrounds",
         dtype = float,
         default = 1.1
+    )
+    maxMatchResidualRMS = pexConfig.Field(
+        doc = "Maximum RMS of residuals of the background offset fit in matchBackgrounds.",
+        dtype = float,
+        default = 1.0
     )
     doWrite = pexConfig.Field(
         doc = "Persist coadd?",
@@ -122,7 +128,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.makeSubtask("interpImage")
         self.makeSubtask("matchBackgrounds")
         self.makeSubtask("scaleZeroPoint")
-        
+
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of coaddTempExp
@@ -213,7 +219,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         refExposure = dataRef.get(self.getTempExpDatasetName(), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
             exposure = refExposure,
-            exposureId = dataRef.dataId,
+            dataRef = dataRef,
             )
         return refImageScaler
 
@@ -252,7 +258,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             maskedImage = tempExp.getMaskedImage()
             imageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure = tempExp,
-                exposureId = tempExpRef.dataId,
+                dataRef = tempExpRef,
             )
             try:
                 imageScaler.scaleMaskedImage(maskedImage)
@@ -334,7 +340,10 @@ class AssembleCoaddTask(CoaddBaseTask):
                     self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
                             varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
                     continue
-
+                elif ( bgInfo.fitRMS > self.config.maxMatchResidualRMS):
+                    self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping" % (
+                            bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId,))
+                    continue
             newWeightList.append(1 / (1 / weight + bgInfo.fitRMS**2))
             newTempExpRefList.append(tempExpRef)
             newBackgroundStructList.append(bgInfo)
@@ -481,7 +490,8 @@ class AssembleCoaddTask(CoaddBaseTask):
                 metadata.addString("CTExp_ID_%d" % (ind), tempExpStr)
                 metadata.addDouble("CTExp_SDQA1_%d" % (ind),
                                    backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
-
+                metadata.addDouble("CTExp_SDQA2_%d" % (ind),
+                                   backgroundInfo.fitRMS)
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
@@ -553,7 +563,7 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
             # tract and patch are required
             for key in validKeys:
                 if key not in dataId:
-                    self.error("--id must include " + key)
+                    raise RuntimeError("--id must include " + key)
 
             for key in dataId: # check if users supplied visit/run
                 if (key not in keysCoadd) and (key in keysCoaddTempExp):  #user supplied a visit/run

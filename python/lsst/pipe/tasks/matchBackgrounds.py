@@ -436,26 +436,28 @@ class MatchBackgroundsTask(pipeBase.Task):
         sciMI += bkgdImage
         del sciMI
 
+        #Need RMS from fit: 2895 will replace this:
+        rms = 0.0
+        X, Y, Z, dZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
+        x0, y0 = diffMI.getXY0()
+        modelValueArr = numpy.empty(len(Z))
+        for i in range(len(X)):
+            modelValueArr[i] = bkgdImage.get(int(X[i]-x0),int(Y[i]-y0))
+        resids = Z - modelValueArr
+        rms = numpy.sqrt(numpy.mean(resids[~numpy.isnan(resids)]**2))
+
         if lsstDebug.Info(__name__).savefits:
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
 
         if lsstDebug.Info(__name__).savefig:
             bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
-            X, Y, Z, dZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
-            x0, y0 = diffMI.getXY0()
-            Xshift = X - x0 # get positions in local image coords
-            Yshift = Y - y0
-            modelValueArr = numpy.empty(len(Z))
-            for i in range(len(X)):
-                modelValueArr[i] = bkgdImage.get(int(Xshift[i]),int(Yshift[i]))
-            resids = Z - modelValueArr
             try:
                 self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
             except Exception, e:
                 self.log.warn('Debug plot not generated: %s'%(e))
 
         meanVar = afwMath.makeStatistics(diffMI.getVariance(),diffMI.getMask(),
-                                         afwMath.MEAN, self.sctrl).getValue()
+                                         afwMath.MEANCLIP, self.sctrl).getValue()
 
         diffIm  = diffMI.getImage()
         diffIm -= bkgdImage #diffMI should now have a mean ~ 0
@@ -464,7 +466,7 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         outBkgd =  approx if self.config.usePolynomial else bkgd
 
-        rms = 0.0  #place holder for an error on the fit to add to the matchedImage
+
         return pipeBase.Struct(
              backgroundModel = outBkgd,
              fitRMS = rms,
