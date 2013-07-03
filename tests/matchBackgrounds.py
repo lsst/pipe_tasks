@@ -291,25 +291,20 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         im.getArray()[200:300,:] = numpy.nan #simulate 100pix chip gap horizontal
         chipGapHorizontal.getMaskedImage().getVariance().set(1.0)
         self.checkAccuracy(self.vanilla, chipGapHorizontal)
-        #self.assertRaises(RuntimeError, self.matcher.matchBackgrounds,self.chipGap, self.vanilla)
-        
 
-    #Demonstrate Known Failures
-    def testChipGapVerticalBackground(self): #Known Failure
-        """ Test Background class throws RuntimeError for vertical chip gaps (column of nans) wider than bin size"""
+    def testChipGapVerticalBackground(self):
+        """ Test able to match images with vertical chip gaps (column of nans) wider than bin size"""
         self.matcher.config.usePolynomial = False
         self.matcher.config.binSize = 64
-        self.assertRaises(RuntimeError, self.matcher.matchBackgrounds,self.chipGap, self.vanilla)
-        
-    def testLowCoverBackground(self): #Known Failure
-        """ Test Background class throws RuntimeError for images that do not cover the whole patch"""
+        self.checkAccuracy(self.chipGap, self.vanilla)
+
+    def testLowCoverBackground(self):
+        """ Test able to match images that do not cover the whole patch"""
         self.matcher.config.usePolynomial = False
         self.matcher.config.binSize = 64
-        self.assertRaises(RuntimeError, self.matcher.matchBackgrounds, self.vanilla, self.lowCover)
+        self.checkAccuracy(self.vanilla, self.lowCover)
 
 
-    
-       
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 def suite():
