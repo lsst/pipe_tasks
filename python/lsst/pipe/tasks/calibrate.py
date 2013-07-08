@@ -78,6 +78,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Compute photometric zeropoint?",
         default = True,
     )
+    requireAstrometry = pexConfig.Field(
+        dtype = bool,
+        doc = "Require astrometry to succeed, if activated?",
+        default = False,
+        )
     background = pexConfig.ConfigField(
         dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
@@ -201,13 +206,17 @@ class CalibrateTask(pipeBase.Task):
         if self.config.doPsf:
             self.initialMeasurement.measure(exposure, sources)
 
+            matches = None
             if self.config.doAstrometry:
-                astromRet = self.astrometry.run(exposure, sources)
-                matches = astromRet.matches
-            else:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
-                matches = None
+                try:
+                    astromRet = self.astrometry.run(exposure, sources)
+                    matches = astromRet.matches
+                except RuntimeError as e:
+                    if self.config.requireAstrometry:
+                        raise
+                    self.log.warn("Unable to perform astrometry (%s): attempting to proceed", e)
             psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
@@ -240,12 +249,16 @@ class CalibrateTask(pipeBase.Task):
         if self.config.doAstrometry or self.config.doPhotoCal:
             self.measurement.run(exposure, sources)
 
+        matches, matchMeta = None, None
         if self.config.doAstrometry:
-            astromRet = self.astrometry.run(exposure, sources)
-            matches = astromRet.matches
-            matchMeta = astromRet.matchMeta
-        else:
-            matches, matchMeta = None, None
+            try:
+                astromRet = self.astrometry.run(exposure, sources)
+                matches = astromRet.matches
+                matchMeta = astromRet.matchMeta
+            except RuntimeError as e:
+                if self.config.requireAstrometry:
+                    raise
+                self.log.warn("Unable to perform astrometry (%s): attempting to proceed", e)
 
         if self.config.doPhotoCal:
             assert(matches is not None)
