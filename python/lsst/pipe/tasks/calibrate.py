@@ -216,7 +216,7 @@ class CalibrateTask(pipeBase.Task):
                 except RuntimeError as e:
                     if self.config.requireAstrometry:
                         raise
-                    self.log.warn("Unable to perform astrometry (%s): attempting to proceed", e)
+                    self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
             psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
@@ -258,7 +258,7 @@ class CalibrateTask(pipeBase.Task):
             except RuntimeError as e:
                 if self.config.requireAstrometry:
                     raise
-                self.log.warn("Unable to perform astrometry (%s): attempting to proceed", e)
+                self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
 
         if self.config.doPhotoCal:
             assert(matches is not None)
