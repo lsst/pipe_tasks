@@ -88,6 +88,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Compute photometric zeropoint?",
         default = True,
     )
+    requireAstrometry = pexConfig.Field(
+        dtype = bool,
+        doc = "Require astrometry to succeed, if activated?",
+        default = False,
+        )
     background = pexConfig.ConfigField(
         dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
@@ -385,7 +390,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
         self.makeSubtask("measureApCorr", schema=schema)
         self.makeSubtask("photocal", schema=schema)
-
         # the final schema is the same as the schemaMapper output
         self.schema = self.schemaMapper.getOutputSchema()
 
@@ -453,13 +457,17 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.initialMeasurement.run(exposure, sources1, allowApCorr=False)
 
         if self.config.doPsf:
+            matches = None
             if self.config.doAstrometry:
-                astromRet = self.astrometry.run(exposure, sources1)
-                matches = astromRet.matches
-            else:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
-                matches = None
+                try:
+                    astromRet = self.astrometry.run(exposure, sources1)
+                    matches = astromRet.matches
+                except RuntimeError as e:
+                    if self.config.requireAstrometry:
+                        raise
+                    self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
             psfRet = self.measurePsf.run(exposure, sources1, matches=matches)
             psf = psfRet.psf
         elif exposure.hasPsf():
@@ -506,12 +514,16 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         else:
             self.measurement.run(exposure, sources)
 
+        matches, matchMeta = None, None
         if self.config.doAstrometry:
-            astromRet = self.astrometry.run(exposure, sources)
-            matches = astromRet.matches
-            matchMeta = astromRet.matchMeta
-        else:
-            matches, matchMeta = None, None
+            try:
+                astromRet = self.astrometry.run(exposure, sources)
+                matches = astromRet.matches
+                matchMeta = astromRet.matchMeta
+            except RuntimeError as e:
+                if self.config.requireAstrometry:
+                    raise
+                self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
 
         if self.config.doPhotoCal:
             assert(matches is not None)
