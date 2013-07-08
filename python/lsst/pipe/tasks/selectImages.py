@@ -209,11 +209,18 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 continue
 
             # Fine-grained threshing: do the patch and image polygons overlap?
-            patchPoly = SkyPolygon(coordList)
-            polyWcs = patchPoly.calculateWcs(imageWcs.pixelScale()) # Wcs centered on patch
-            patchPoly = patchPoly.toImage(polyWcs)
+            try:
+                patchPoly = SkyPolygon(coordList)
+                polyWcs = patchPoly.calculateWcs(imageWcs.pixelScale()) # Wcs centered on patch
+                patchPoly = patchPoly.toImage(polyWcs)
+                corners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
+            except pexExceptions.LsstCppException, e:
+                if (not isinstance(e.message, pexExceptions.DomainErrorException) and
+                    not isinstance(e.message, pexExceptions.RuntimeErrorException)):
+                    raise
+                self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                continue
 
-            corners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
             imagePoly = SkyPolygon(corners).toImage(polyWcs)
             if imagePoly.overlaps(patchPoly):
                 self.log.info("Selecting calexp %s" % dataRef.dataId)
