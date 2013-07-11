@@ -269,6 +269,9 @@ class AssembleCoaddTask(CoaddBaseTask):
                 afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
+            if not numpy.isfinite(weight):
+                self.log.warn("Non-finite weight for %s: skipping" % (tempExpRef.dataId,))
+                continue
             self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
 
             del maskedImage
