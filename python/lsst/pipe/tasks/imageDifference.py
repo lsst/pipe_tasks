@@ -530,9 +530,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         diaSource.set("refMatchId", refMatchDict[sid])
                         
             if diaSources is not None and self.config.doWriteSources:
-                if self.config.doWriteHeavyFootprintsInSources:
-                    diaSources.setWriteHeavyFootprints(True)
-                sensorRef.put(diaSources, self.config.coaddName + "Diff_diaSrc")
+                sourceWriteFlags = (0 if self.config.doWriteHeavyFootprintsInSources
+                                    else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS)
+                sensorRef.put(diaSources, self.config.coaddName + "Diff_diaSrc", flags=sourceWriteFlags)
 
             if self.config.doAddMetrics and self.config.doSelectSources:
                 self.log.info("Evaluating metrics and control sample")
