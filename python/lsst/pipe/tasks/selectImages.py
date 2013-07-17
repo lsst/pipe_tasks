@@ -164,43 +164,51 @@ class SelectStruct(pipeBase.Struct):
 class WcsSelectImagesTask(BaseSelectImagesTask):
     """Select images using their Wcs"""
     def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """Images in the selectDataList that overlap the region specified by the
-        coordList are selected.
+        """Select images in the selectDataList that overlap the patch
 
-        This comparison is conservative and non-exact: images that do not
-        actually overlap the coordList (but are close to it) may also be
-        selected.
+        We use the "convexHull" function in the geom package to define
+        polygons on the celestial sphere, and test the polygon of the
+        patch for overlap with the polygon of the image.
+
+        We use "convexHull" instead of generating a SphericalConvexPolygon
+        directly because the standard for the inputs to SphericalConvexPolygon
+        are pretty high and we don't want to be responsible for reaching them.
+        If "convexHull" is found to be too slow, we can revise this.
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
         @param coordList: List of Coord specifying boundary of patch
         @param makeDataRefList: Construct a list of data references?
         @param selectDataList: List of SelectStruct, to consider for selection
         """
+        from lsst.geom import convexHull
+
         dataRefList = []
         exposureInfoList = []
+
+        patchVertices = [coord.getVector() for coord in coordList]
+        patchPoly = convexHull(patchVertices)
+
         for data in selectDataList:
             dataRef = data.dataRef
-            wcs = data.wcs
+            imageWcs = data.wcs
             nx,ny = data.dims
+
+            imageBox = afwGeom.Box2D(afwGeom.Point2D(0,0), afwGeom.Extent2D(nx, ny))
             try:
-                bbox = afwGeom.Box2D(afwGeom.Point2D(0,0), afwGeom.Extent2D(nx, ny))
-                bounds = afwGeom.Box2D()
-                for coord in coordList:
-                    pix = wcs.skyToPixel(coord) # May throw() if wcslib barfs
-                    bounds.include(pix)
-                if not bbox.overlaps(bounds):
-                    self.log.logdebug("De-selecting calexp %s" % dataRef.dataId)
-                    continue
+                imageCorners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
+            except pexExceptions.LsstCppException, e:
+                # Protecting ourselves from awful Wcs solutions in input images
+                if (not isinstance(e.message, pexExceptions.DomainErrorException) and
+                    not isinstance(e.message, pexExceptions.RuntimeErrorException)):
+                    raise
+                self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                continue
+
+            imagePoly = convexHull([coord.getVector() for coord in imageCorners])
+            if patchPoly.intersects(imagePoly): # "intersects" also covers "contains" or "is contained by"
                 self.log.info("Selecting calexp %s" % dataRef.dataId)
                 dataRefList.append(dataRef)
-                corners = [wcs.pixelToSky(x,y) for x in (0, nx) for y in (0, ny)]
-                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, corners))
-            except pexExceptions.LsstCppException, e:
-                if not isinstance(e.message, pexExceptions.DomainErrorException):
-                    raise
-                # Particularly interested in catching problems from wcslib, which may throw() if this exposure
-                # is far from the coordinates under consideration.
-                self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, imageCorners))
 
         return pipeBase.Struct(
             dataRefList = dataRefList if makeDataRefList else None,
