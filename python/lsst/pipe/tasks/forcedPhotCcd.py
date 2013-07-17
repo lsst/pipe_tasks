@@ -41,6 +41,35 @@ class CcdForcedSrcDataIdContainer(lsst.pipe.base.DataIdContainer):
     
     Required because we need to add "tract" to the raw data ID keys, and that's tricky.
     """
+    def castDataIds(self, butler):
+        """Validate data IDs and cast them to the correct type (modify idList in place).
+
+        @param butler: data butler
+        """
+        if self.datasetType is None:
+            raise RuntimeError("Must call setDatasetType first")
+        try:
+            idKeyTypeDict = butler.getKeys(datasetType="src", level=self.level)
+        except KeyError as e:
+            raise KeyError("Cannot get keys for datasetType %s at level %s" % (self.datasetType, self.level))
+
+        idKeyTypeDict = idKeyTypeDict.copy()
+        idKeyTypeDict["tract"] = int
+
+        for dataDict in self.idList:
+            for key, strVal in dataDict.iteritems():
+                try:
+                    keyType = idKeyTypeDict[key]
+                except KeyError:
+                    validKeys = sorted(idKeyTypeDict.keys())
+                    raise KeyError("Unrecognized ID key %r; valid keys are: %s" % (key, validKeys))
+                if keyType != str:
+                    try:
+                        castVal = keyType(strVal)
+                    except Exception:
+                        raise TypeError("Cannot cast value %r to %s for ID key %r" % (strVal, keyType, key,))
+                    dataDict[key] = castVal
+
     def makeDataRefList(self, namespace):
         """Make self.refList from self.idList
         """
