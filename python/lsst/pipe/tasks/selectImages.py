@@ -205,6 +205,9 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 continue
 
             imagePoly = convexHull([coord.getVector() for coord in imageCorners])
+            if imagePoly is None:
+                self.log.logdebug("Unable to create polygon from image %s: deselecting" % dataRef.dataId)
+                continue
             if patchPoly.intersects(imagePoly): # "intersects" also covers "contains" or "is contained by"
                 self.log.info("Selecting calexp %s" % dataRef.dataId)
                 dataRefList.append(dataRef)
