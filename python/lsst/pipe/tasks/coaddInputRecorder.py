@@ -114,7 +114,7 @@ class CoaddTempExpInputRecorder(object):
         self.visitRecord.setWcs(coaddTempExp.getWcs())
         self.visitRecord.setBBox(coaddTempExp.getBBox(afwImage.PARENT))
         if self.task.config.saveVisitGoodPix:
-            self.visitRecord.setI(self.visitGoodPixKey, nGoodPix)
+            self.visitRecord.setI(self.task.visitGoodPixKey, nGoodPix)
         coaddTempExp.getInfo().setCoaddInputs(self.coaddInputs)
 
 class CoaddInputRecorderTask(pipeBase.Task):
