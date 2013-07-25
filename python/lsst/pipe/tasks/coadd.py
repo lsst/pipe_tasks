@@ -118,8 +118,6 @@ class CoaddTask(CoaddBaseTask):
         if self.config.doWrite:
             self.writeCoaddOutput(patchRef, coaddData.coaddExposure)
             self.writeCoaddOutput(patchRef, coaddData.weightMap, "depth")
-            if modelPsf is not None:
-                self.writeCoaddOutput(patchRef, modelPsf, "initPsf")
 
         return coaddData
     
@@ -154,7 +152,7 @@ class CoaddTask(CoaddBaseTask):
                 continue
 
             self.log.info("Processing exposure %d of %d: %s" % (ind+1, len(imageRefList), calExpRef.dataId))
-            exposure = self.getCalExp(calExpRef, getPsf=self.config.doPsfMatch, bgSubtracted=True)
+            exposure = self.getCalExp(calExpRef, bgSubtracted=True)
             try:
                 exposure = self.warpAndPsfMatch.run(exposure, wcs=wcs, modelPsf=modelPsf,
                                                     maxBBox=bbox).exposure
@@ -165,6 +163,8 @@ class CoaddTask(CoaddBaseTask):
                 continue
         
         coaddExposure = coadd.getCoadd()
+        if modelPsf is not None:
+            coaddExposure.setPsf(modelPsf)
         coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
         return pipeBase.Struct(coaddExposure=coaddExposure, weightMap=coadd.getWeightMap(), coadd=coadd)
 

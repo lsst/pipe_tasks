@@ -149,17 +149,16 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
-    def getCalExp(self, dataRef, getPsf=True, bgSubtracted=False):
-        """Return one "calexp" calibrated exposure, optionally with psf
+    def getCalExp(self, dataRef, bgSubtracted):
+        """Return one "calexp" calibrated exposure
 
         @param dataRef: a sensor-level data reference
-        @param getPsf: include the PSF?
         @param bgSubtracted: return calexp with background subtracted? If False
             get the calexp's background background model and add it to the calexp.
-        @return calibrated exposure with psf
+        @return calibrated exposure
 
         If config.doApplyUberCal, meas_mosaic calibrations will be applied to
-        the returned exposure.
+        the returned exposure using applyMosaicResults.
         """
         exposure = dataRef.get("calexp", immediate=True)
         if not bgSubtracted:
@@ -167,9 +166,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             mi = exposure.getMaskedImage()
             mi += background.getImage()
             del mi
-        if getPsf:
-            psf = dataRef.get("psf", immediate=True)
-            exposure.setPsf(psf)
         if not self.config.doApplyUberCal:
             return exposure
         if applyMosaicResults is None:

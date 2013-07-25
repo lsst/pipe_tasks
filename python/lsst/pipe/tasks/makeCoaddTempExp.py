@@ -159,8 +159,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 ccdId = calExpInd
             numGoodPix = 0
             try:
-                calExp = self.getCalExp(calExpRef, getPsf=self.config.doPsfMatch,
-                                        bgSubtracted=self.config.bgSubtracted)
+                calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
                 exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                     maxBBox=skyInfo.bbox).exposure
                 numGoodPix = coaddUtils.copyGoodPixels(
