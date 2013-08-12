@@ -48,16 +48,10 @@ class AstrometryConfig(pexConfig.Config):
                                       min=0)
 
 class AstrometryTask(pipeBase.Task):
-    """Conversion notes:
-    
-    Extracted from the Calibration task, since it seemed a good self-contained task.
-    
-    Warning: I'm not sure I'm using the filter information correctly. There are two issue:
-    - Renamed policy item filters to filterTable, for clarity (it's not just a list of filter names)
-      but it still needs work to flesh it out!
-    - Is the filter data being handled correctly in applyColorTerms?
-    - There was code that dealt with the filter table in astrometry, but it didn't seem to be doing
-      anything so I removed it.
+    """Match input sources with a reference catalog and solve for the Wcs
+
+    The actual matching and solving is done by the 'solver'; this Task
+    serves as a wrapper for taking into account the known optical distortion.
     """
     ConfigClass = AstrometryConfig
 
@@ -71,8 +65,18 @@ class AstrometryTask(pipeBase.Task):
     def run(self, exposure, sources):
         """Match with reference sources and calculate an astrometric solution
 
+        The reference catalog actually used is up to the implementation
+        of the solver; it will be manifested in the returned matches as
+        a list of ReferenceMatch objects.
+
+        The input sources have the centroid slot moved to a new column
+        which has the positions corrected for any known optical distortion;
+        the 'solver' (which is instantiated in the 'astrometry' member)
+        should therefore simply use the centroids provided by calling
+        "getCentroid()" on the individual source records.
+
         @param exposure Exposure to calibrate
-        @param sources List of measured sources
+        @param sources SourceCatalog of measured sources
         @return a pipeBase.Struct with fields:
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
