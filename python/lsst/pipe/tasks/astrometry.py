@@ -221,10 +221,10 @@ class AstrometryTask(pipeBase.Task):
 
         @return the resolved-Wcs object, or None if config.solver.calculateSip is False.
         """
+        sip = None
         if self.config.solver.calculateSip:
             self.log.info("Refitting WCS")
             numRejected = 0
-            sip = None
             try:
                 for i in range(self.config.rejectIter):
                     sip = makeCreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
