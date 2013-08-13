@@ -25,6 +25,7 @@ from contextlib import contextmanager
 
 from lsst.pex.exceptions import LsstCppException, LengthErrorException
 import lsst.afw.geom as afwGeom
+import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom as afwCG
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -120,7 +121,7 @@ class AstrometryTask(pipeBase.Task):
                 self.log.info("Null distortion correction")
             for s in sources:
                 s.set(self.centroidKey, s.getCentroid())
-            return afwGeom.Box2I(afwGeom.Point2I(0,0), exposure.getDimensions())
+            return exposure.getBBox(afwImage.PARENT)
 
         # Distort source positions
         self.log.info("Applying distortion correction: %s" % distorter.prynt())
@@ -165,7 +166,8 @@ class AstrometryTask(pipeBase.Task):
             # Un-apply distortion
             sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
                                          sources.table.getCentroidFlagKey())
-            exposure.getWcs().shiftReferencePixel(-bbox.getMinX(), -bbox.getMinY())
+            x0, y0 = exposure.getXY0()
+            exposure.getWcs().shiftReferencePixel(-bbox.getMinX() + x0, -bbox.getMinY() + y0)
 
     @pipeBase.timeMethod
     def astrometry(self, exposure, sources, bbox=None):
@@ -180,7 +182,7 @@ class AstrometryTask(pipeBase.Task):
             self.log.info("Solving astrometry")
 
         if bbox is None:
-            bbox = exposure.getBBox()
+            bbox = exposure.getBBox(afwImage.PARENT)
 
         if not self.astrometer:
             self.astrometer = Astrometry(self.config.solver, log=self.log)
