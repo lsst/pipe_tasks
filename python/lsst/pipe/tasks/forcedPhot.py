@@ -152,8 +152,7 @@ class ForcedPhotTask(CmdLineTask):
 
     @timeMethod
     def run(self, dataRef):
-        inputs = self.readInputs(dataRef)
-        exposure = inputs.exposure
+        exposure = dataRef.get(exposureName)
 
         expBits = dataRef.get("ccdExposureId_bits")
         expId = long(dataRef.get("ccdExposureId"))
@@ -164,18 +163,6 @@ class ForcedPhotTask(CmdLineTask):
         sources = self.makeSources(references, idFactory)
         self.measurement.run(exposure, sources, references=references)
         self.writeOutput(dataRef, sources)
-
-    def readInputs(self, dataRef, exposureName="calexp", psfName="psf"):
-        """Read inputs for exposure
-
-        @param dataRef         Data reference from butler
-        @param exposureName    Name for exposure in butler
-        @param psfName         Name for PSF in butler
-
-        """
-        return Struct(exposure=dataRef.get(exposureName),
-                      psf=dataRef.get(psfName),
-                      )
 
     def makeSources(self, references, idFactory):
         """Generate sources to be measured
