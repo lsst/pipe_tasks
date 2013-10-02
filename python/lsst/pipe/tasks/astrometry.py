@@ -229,12 +229,27 @@ class AstrometryTask(pipeBase.Task):
         sip = None
         if self.config.solver.calculateSip:
             self.log.info("Refitting WCS")
+            origMatches = matches
             wcs = exposure.getWcs()
+
+            import lsstDebug
+            display = lsstDebug.Info(__name__).display
+            frame = lsstDebug.Info(__name__).frame
+            pause = lsstDebug.Info(__name__).pause
+            if display:
+                # This is a linear WCS, so don't panic if it doesn't correct for distortion or has large
+                # residuals --- we're going to fit a non-linear WCS next.
+                showAstrometry(exposure, wcs, origMatches, matches, frame=frame,
+                               title="Linear astrometry", pause=pause)
+
             numRejected = 0
             try:
                 for i in range(self.config.rejectIter):
                     sip = makeCreateWcsWithSip(matches, wcs, self.config.solver.sipOrder)
                     wcs = sip.getNewWcs()
+                    if display:
+                        showAstrometry(exposure, wcs, origMatches, matches, frame=frame,
+                                       title="Iteration %d" % i, pause=pause)
 
                     ref = numpy.array([wcs.skyToPixel(m.first.getCoord()) for m in matches])
                     src = numpy.array([m.second.getCentroid() for m in matches])
@@ -253,6 +268,10 @@ class AstrometryTask(pipeBase.Task):
                 # Final fit after rejection iterations
                 sip = makeCreateWcsWithSip(matches, wcs, self.config.solver.sipOrder)
                 wcs = sip.getNewWcs()
+                if display:
+                    showAstrometry(exposure, wcs, origMatches, matches, frame=frame,
+                                   title="Final astrometry", pause=pause)
+
             except LsstCppException as e:
                 if not isinstance(e.message, LengthErrorException):
                     raise
@@ -274,3 +293,57 @@ class AstrometryTask(pipeBase.Task):
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
         return sip
+
+
+def showAstrometry(exposure, wcs, allMatches, useMatches, frame=0, title=None, pause=False):
+    """Show results of astrometry fitting
+
+    @param exposure: Image to display
+    @param wcs: Astrometric solution
+    @param allMatches: List of all astrometric matches (including rejects)
+    @param useMatches: List of used astrometric matches
+    @param frame: Frame number for display
+    @param title: Title for display
+    @param pause: Pause to allow viewing of the display and optional debugging?
+    """
+    import lsst.afw.display.ds9 as ds9
+    ds9.mtv(exposure, frame=frame, title=title)
+
+    useIndices = set(m.second.getId() for m in useMatches)
+
+    radii = []
+    with ds9.Buffering():
+        for i, m in enumerate(allMatches):
+            x, y = m.second.getX(), m.second.getY()
+            pix = wcs.skyToPixel(m.first.getCoord())
+
+            isUsed = m.second.getId() in useIndices
+            if isUsed:
+                radii.append(numpy.hypot(pix[0] - x, pix[1] - y))
+
+            color = ds9.YELLOW if isUsed else ds9.RED
+
+            ds9.dot("+", x, y, size=10, frame=frame, ctype=color)
+            ds9.dot("x", pix[0], pix[1], size=10, frame=frame, ctype=color)
+
+    radii = numpy.array(radii)
+    print "<dr> = %.4g +- %.4g pixels [%d/%d matches]" % (radii.mean(), radii.std(),
+                                                          len(useMatches), len(allMatches))
+
+    if pause:
+        import sys
+        while True:
+            try:
+                reply = raw_input("Debugging? [p]db [q]uit; any other key to continue... ").strip()
+            except EOFError:
+                reply = ""
+
+            reply = reply.split()
+            if len(reply) > 1:
+                reply, _ = reply[0], reply[1:]
+            if reply == "p":
+                import pdb;pdb.set_trace()
+            elif reply == "q":
+                sys.exit(1)
+            else:
+                break
