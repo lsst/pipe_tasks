@@ -229,12 +229,13 @@ class AstrometryTask(pipeBase.Task):
         sip = None
         if self.config.solver.calculateSip:
             self.log.info("Refitting WCS")
+            wcs = exposure.getWcs()
             numRejected = 0
             try:
                 for i in range(self.config.rejectIter):
-                    sip = makeCreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+                    sip = makeCreateWcsWithSip(matches, wcs, self.config.solver.sipOrder)
+                    wcs = sip.getNewWcs()
 
-                    wcs = exposure.getWcs()
                     ref = numpy.array([wcs.skyToPixel(m.first.getCoord()) for m in matches])
                     src = numpy.array([m.second.getCentroid() for m in matches])
                     diff = ref - src
@@ -250,19 +251,18 @@ class AstrometryTask(pipeBase.Task):
                     matches = trimmed
 
                 # Final fit after rejection iterations
-                sip = makeCreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+                sip = makeCreateWcsWithSip(matches, wcs, self.config.solver.sipOrder)
+                wcs = sip.getNewWcs()
             except LsstCppException as e:
                 if not isinstance(e.message, LengthErrorException):
                     raise
                 self.log.warn("Unable to fit SIP: %s" % e)
 
-            if sip:
-                wcs = sip.getNewWcs()
-                self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
-                              (sip.getScatterOnSky().asArcseconds(),
-                               "with" if wcs.hasDistortion() else "without",
-                               len(matches), numRejected))
-                exposure.setWcs(wcs)
+            self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
+                          (sip.getScatterOnSky().asArcseconds(),
+                           "with" if wcs.hasDistortion() else "without",
+                           len(matches), numRejected))
+            exposure.setWcs(wcs)
 
             # Apply WCS to sources
             for index, source in enumerate(sources):
