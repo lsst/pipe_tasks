@@ -116,9 +116,8 @@ class AstrometryTask(pipeBase.Task):
         else:
             distorter = ccd.getDistortion()
 
-        if distorter is None or exposure.getWcs().hasDistortion():
-            if distorter is None:
-                self.log.info("Null distortion correction")
+        if distorter is None:
+            self.log.info("Null distortion correction")
             for s in sources:
                 s.set(self.centroidKey, s.getCentroid())
             return exposure.getBBox(afwImage.PARENT)
