@@ -236,20 +236,20 @@ class AstrometryTask(pipeBase.Task):
             display = lsstDebug.Info(__name__).display
             frame = lsstDebug.Info(__name__).frame
             pause = lsstDebug.Info(__name__).pause
-            if display:
-                # This is a linear WCS, so don't panic if it doesn't correct for distortion or has large
-                # residuals --- we're going to fit a non-linear WCS next.
-                showAstrometry(exposure, wcs, origMatches, matches, frame=frame,
-                               title="Linear astrometry", pause=pause)
+
+            def fitWcs(initialWcs, title=None):
+                """Do the WCS fitting and display of the results"""
+                sip = makeCreateWcsWithSip(matches, initialWcs, self.config.solver.sipOrder)
+                resultWcs = sip.getNewWcs()
+                if display:
+                    showAstrometry(exposure, resultWcs, origMatches, matches, frame=frame,
+                                   title=title, pause=pause)
+                return resultWcs
 
             numRejected = 0
             try:
                 for i in range(self.config.rejectIter):
-                    sip = makeCreateWcsWithSip(matches, wcs, self.config.solver.sipOrder)
-                    wcs = sip.getNewWcs()
-                    if display:
-                        showAstrometry(exposure, wcs, origMatches, matches, frame=frame,
-                                       title="Iteration %d" % i, pause=pause)
+                    wcs = fitWcs(wcs, title="Iteration %d" % i)
 
                     ref = numpy.array([wcs.skyToPixel(m.first.getCoord()) for m in matches])
                     src = numpy.array([m.second.getCentroid() for m in matches])
@@ -266,11 +266,7 @@ class AstrometryTask(pipeBase.Task):
                     matches = trimmed
 
                 # Final fit after rejection iterations
-                sip = makeCreateWcsWithSip(matches, wcs, self.config.solver.sipOrder)
-                wcs = sip.getNewWcs()
-                if display:
-                    showAstrometry(exposure, wcs, origMatches, matches, frame=frame,
-                                   title="Final astrometry", pause=pause)
+                wcs = fitWcs(wcs, title="Final astrometry")
 
             except LsstCppException as e:
                 if not isinstance(e.message, LengthErrorException):
