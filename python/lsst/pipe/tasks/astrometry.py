@@ -244,12 +244,12 @@ class AstrometryTask(pipeBase.Task):
                 if display:
                     showAstrometry(exposure, resultWcs, origMatches, matches, frame=frame,
                                    title=title, pause=pause)
-                return resultWcs
+                return resultWcs, sip.getScatterOnSky()
 
             numRejected = 0
             try:
                 for i in range(self.config.rejectIter):
-                    wcs = fitWcs(wcs, title="Iteration %d" % i)
+                    wcs, scatter = fitWcs(wcs, title="Iteration %d" % i)
 
                     ref = numpy.array([wcs.skyToPixel(m.first.getCoord()) for m in matches])
                     src = numpy.array([m.second.getCentroid() for m in matches])
@@ -266,7 +266,7 @@ class AstrometryTask(pipeBase.Task):
                     matches = trimmed
 
                 # Final fit after rejection iterations
-                wcs = fitWcs(wcs, title="Final astrometry")
+                wcs, scatter = fitWcs(wcs, title="Final astrometry")
 
             except LsstCppException as e:
                 if not isinstance(e.message, LengthErrorException):
@@ -274,8 +274,7 @@ class AstrometryTask(pipeBase.Task):
                 self.log.warn("Unable to fit SIP: %s" % e)
 
             self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
-                          (sip.getScatterOnSky().asArcseconds(),
-                           "with" if wcs.hasDistortion() else "without",
+                          (scatter.asArcseconds(), "with" if wcs.hasDistortion() else "without",
                            len(matches), numRejected))
             exposure.setWcs(wcs)
 
