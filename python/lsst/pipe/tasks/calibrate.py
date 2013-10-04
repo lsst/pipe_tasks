@@ -461,6 +461,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             if self.config.doAstrometry:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
+                origWcs = exposure.getWcs()
                 try:
                     astromRet = self.astrometry.run(exposure, sources1)
                     matches = astromRet.matches
@@ -468,6 +469,10 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                     if self.config.requireAstrometry:
                         raise
                     self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
+                finally:
+                    # Restore original Wcs: we're going to repeat the astrometry later, and if it succeeded
+                    # this time, running it again with the same basic setup means it should succeed again.
+                    exposure.setWcs(origWcs)
             psfRet = self.measurePsf.run(exposure, sources1, matches=matches)
             psf = psfRet.psf
         elif exposure.hasPsf():
