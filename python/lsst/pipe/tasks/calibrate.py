@@ -210,6 +210,7 @@ class CalibrateTask(pipeBase.Task):
             if self.config.doAstrometry:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
+                origWcs = exposure.getWcs()
                 try:
                     astromRet = self.astrometry.run(exposure, sources)
                     matches = astromRet.matches
@@ -217,6 +218,10 @@ class CalibrateTask(pipeBase.Task):
                     if self.config.requireAstrometry:
                         raise
                     self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
+                finally:
+                    # Restore original Wcs: we're going to repeat the astrometry later, and if it succeeded
+                    # this time, running it again with the same basic setup means it should succeed again.
+                    exposure.setWcs(origWcs)
             psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
