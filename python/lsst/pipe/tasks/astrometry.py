@@ -116,9 +116,8 @@ class AstrometryTask(pipeBase.Task):
         else:
             distorter = ccd.getDistortion()
 
-        if distorter is None or exposure.getWcs().hasDistortion():
-            if distorter is None:
-                self.log.info("Null distortion correction")
+        if distorter is None:
+            self.log.info("Null distortion correction")
             for s in sources:
                 s.set(self.centroidKey, s.getCentroid())
             return exposure.getBBox(afwImage.PARENT)
@@ -230,12 +229,28 @@ class AstrometryTask(pipeBase.Task):
         sip = None
         if self.config.solver.calculateSip:
             self.log.info("Refitting WCS")
+            origMatches = matches
+            wcs = exposure.getWcs()
+
+            import lsstDebug
+            display = lsstDebug.Info(__name__).display
+            frame = lsstDebug.Info(__name__).frame
+            pause = lsstDebug.Info(__name__).pause
+
+            def fitWcs(initialWcs, title=None):
+                """Do the WCS fitting and display of the results"""
+                sip = makeCreateWcsWithSip(matches, initialWcs, self.config.solver.sipOrder)
+                resultWcs = sip.getNewWcs()
+                if display:
+                    showAstrometry(exposure, resultWcs, origMatches, matches, frame=frame,
+                                   title=title, pause=pause)
+                return resultWcs, sip.getScatterOnSky()
+
             numRejected = 0
             try:
                 for i in range(self.config.rejectIter):
-                    sip = makeCreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+                    wcs, scatter = fitWcs(wcs, title="Iteration %d" % i)
 
-                    wcs = exposure.getWcs()
                     ref = numpy.array([wcs.skyToPixel(m.first.getCoord()) for m in matches])
                     src = numpy.array([m.second.getCentroid() for m in matches])
                     diff = ref - src
@@ -251,19 +266,17 @@ class AstrometryTask(pipeBase.Task):
                     matches = trimmed
 
                 # Final fit after rejection iterations
-                sip = makeCreateWcsWithSip(matches, exposure.getWcs(), self.config.solver.sipOrder)
+                wcs, scatter = fitWcs(wcs, title="Final astrometry")
+
             except LsstCppException as e:
                 if not isinstance(e.message, LengthErrorException):
                     raise
                 self.log.warn("Unable to fit SIP: %s" % e)
 
-            if sip:
-                wcs = sip.getNewWcs()
-                self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
-                              (sip.getScatterOnSky().asArcseconds(),
-                               "with" if wcs.hasDistortion() else "without",
-                               len(matches), numRejected))
-                exposure.setWcs(wcs)
+            self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
+                          (scatter.asArcseconds(), "with" if wcs.hasDistortion() else "without",
+                           len(matches), numRejected))
+            exposure.setWcs(wcs)
 
             # Apply WCS to sources
             for index, source in enumerate(sources):
@@ -275,3 +288,57 @@ class AstrometryTask(pipeBase.Task):
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
         return sip
+
+
+def showAstrometry(exposure, wcs, allMatches, useMatches, frame=0, title=None, pause=False):
+    """Show results of astrometry fitting
+
+    @param exposure: Image to display
+    @param wcs: Astrometric solution
+    @param allMatches: List of all astrometric matches (including rejects)
+    @param useMatches: List of used astrometric matches
+    @param frame: Frame number for display
+    @param title: Title for display
+    @param pause: Pause to allow viewing of the display and optional debugging?
+    """
+    import lsst.afw.display.ds9 as ds9
+    ds9.mtv(exposure, frame=frame, title=title)
+
+    useIndices = set(m.second.getId() for m in useMatches)
+
+    radii = []
+    with ds9.Buffering():
+        for i, m in enumerate(allMatches):
+            x, y = m.second.getX(), m.second.getY()
+            pix = wcs.skyToPixel(m.first.getCoord())
+
+            isUsed = m.second.getId() in useIndices
+            if isUsed:
+                radii.append(numpy.hypot(pix[0] - x, pix[1] - y))
+
+            color = ds9.YELLOW if isUsed else ds9.RED
+
+            ds9.dot("+", x, y, size=10, frame=frame, ctype=color)
+            ds9.dot("x", pix[0], pix[1], size=10, frame=frame, ctype=color)
+
+    radii = numpy.array(radii)
+    print "<dr> = %.4g +- %.4g pixels [%d/%d matches]" % (radii.mean(), radii.std(),
+                                                          len(useMatches), len(allMatches))
+
+    if pause:
+        import sys
+        while True:
+            try:
+                reply = raw_input("Debugging? [p]db [q]uit; any other key to continue... ").strip()
+            except EOFError:
+                reply = ""
+
+            reply = reply.split()
+            if len(reply) > 1:
+                reply, _ = reply[0], reply[1:]
+            if reply == "p":
+                import pdb;pdb.set_trace()
+            elif reply == "q":
+                sys.exit(1)
+            else:
+                break
