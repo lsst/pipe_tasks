@@ -138,7 +138,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         @param[in] expRefList: list of data references to science exposures to be background-matched;
             all exposures must exist.
         @param[in] expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
-        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
+        @param[in] imageScalerList: list of image scalers (ImageScaler);
             if None then the images are not scaled
         @param[in] refExpDataRef: data reference for the reference exposure.
             If None, then this task selects the best exposures from expRefList.
@@ -259,7 +259,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         @param[in] expRefList: list of data references to exposures.
             Retrieves dataset type specified by expDatasetType.
             If an exposure is not found, it is skipped with a warning.
-        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
+        @param[in] imageScalerList: list of image scalers (ImageScaler);
             must be the same length as expRefList
         @param[in] expDatasetType: dataset type of exposure: e.g. 'goodSeeingCoadd_tempExp'
 
