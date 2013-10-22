@@ -1,7 +1,7 @@
 import os
 import sys
 import shutil
-import sqlite
+import sqlite3 as sqlite
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 from lsst.pipe.base import Task, Struct, ArgumentParser
