@@ -20,6 +20,10 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+
+# This import of scipy before anything else is necessary to get around
+# a symbol collision, suspected to be due to astrometry.net corrupting
+# python's paths
 try:
     import scipy.stats
 except ImportError:
