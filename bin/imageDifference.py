@@ -21,9 +21,10 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-# This import of scipy before anything else is necessary to get around
-# a symbol collision, suspected to be due to astrometry.net corrupting
-# python's paths
+# Workaround for a problem in the lsstimport module.  This module sets
+# RTLD_GLOBAL for all LSST imports, which is necessary for RTTI, but
+# causes scipy to fail when loading numpy.  Importing scipy beforehand
+# avoids this problem.
 try:
     import scipy.stats
 except ImportError:
