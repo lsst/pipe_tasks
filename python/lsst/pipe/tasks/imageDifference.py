@@ -39,7 +39,8 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, \
     starSelectorRegistry, PsfAttributes, SingleGaussianPsf
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
-    SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList
+    SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
+    KernelCandidateQa
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
@@ -72,8 +73,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
         doc="Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
-    doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
-        doc="Include HeavyFootprint data in source table?")
     doAddMetrics = pexConfig.Field(dtype=bool, default=True,
         doc="Add columns to the source table to hold analysis metrics?")
 
@@ -161,8 +160,6 @@ class ImageDifferenceConfig(pexConfig.Config):
             raise ValueError("Cannot run source measurement without source detection.")
         if self.doMerge and not self.doDetection:
             raise ValueError("Cannot run source merging without source detection.")
-        if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
-            raise ValueError("Cannot write HeavyFootprints without doWriteSources")
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
     """Subtract an image from a template coadd and measure the result
@@ -281,12 +278,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 srcPsf = sciencePsf
                 if self.config.useGaussianForPreConvolution:
                     # convolve with a simplified PSF model: a double Gaussian
-                    kWidth, kHeight = sciencePsf.getKernel().getDimensions()
+                    kWidth, kHeight = sciencePsf.getLocalKernel().getDimensions()
                     preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
                 else:
                     # convolve with science exposure's PSF model
                     preConvPsf = psf
-                afwMath.convolve(destMI, srcMI, preConvPsf.getKernel(), convControl)
+                afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
                 exposure.setMaskedImage(destMI)
                 scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
             else:
@@ -315,7 +312,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 if self.config.doAddMetrics:
                     # Modify the schema of all Sources
-                    kcQa = diUtils.KernelCandidateQa(nparam, self.log)
+                    kcQa = KernelCandidateQa(nparam)
                     selectSources = kcQa.addToSchema(selectSources)
 
                 astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
@@ -463,9 +460,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         diaSource.set("refMatchId", refMatchDict[sid])
 
             if diaSources is not None and self.config.doWriteSources:
-                sourceWriteFlags = (0 if self.config.doWriteHeavyFootprintsInSources
-                                    else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS)
-                sensorRef.put(diaSources, self.config.coaddName + "Diff_diaSrc", flags=sourceWriteFlags)
+                sensorRef.put(diaSources, self.config.coaddName + "Diff_diaSrc")
 
             if self.config.doAddMetrics and self.config.doSelectSources:
                 self.log.info("Evaluating metrics and control sample")
@@ -484,7 +479,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                                            subtractRes.warpedExposure, exposure,
                                                            self.config.subtract.kernel.active,
                                                            self.config.subtract.kernel.active.detectionConfig,
-                                                           self.log, dobuild=True, basisList=basisList)
+                                                           self.log, doBuild=True, basisList=basisList)
 
                 kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel,
                                 dof=nparam)
@@ -653,7 +648,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             nPatchesFound += 1
             self.log.info("Reading patch %s" % patchArgDict)
-            coaddPatch = sensorRef.get(**patchArgDict, immediate=True)
+            coaddPatch = sensorRef.get(patchArgDict, immediate=True)
             coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
                 coaddPatch.getBBox(afwImage.PARENT), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
@@ -688,7 +683,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """Return a dict of empty catalogs for each catalog dataset produced by this task."""
         diaSrc = afwTable.SourceCatalog(self.schema)
         diaSrc.getTable().setMetadata(self.algMetadata)
-        return {self.config.coaddName + "Diff_diaSrc_shema": diaSrc}
+        return {self.config.coaddName + "Diff_diaSrc": diaSrc}
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -730,8 +725,8 @@ class Winter2013ImageDifferenceTask(ImageDifferenceTask):
             templateBg = sensorRef.getButler().get(datasetType="calexpBackground", dataId=templateId)
             mi = template.getMaskedImage()
             mi += templateBg
-        templatePsf = sensorRef.getButler().get(datasetType="psf", dataId=templateId)
-        template.setPsf(templatePsf)
+        if not template.hasPsf():
+            raise pipeBase.TaskError("Template has no psf")
         templateSources = sensorRef.getButler().get(datasetType="src", dataId=templateId)
         return template, templateSources
 
