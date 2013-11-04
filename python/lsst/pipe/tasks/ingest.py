@@ -24,6 +24,8 @@ class ParseConfig(Config):
                             doc="Translation table for property --> header")
     translators = DictField(keytype=str, itemtype=str, default={},
                             doc="Properties and name of translator method")
+    defaults = DictField(keytype=str, itemtype=str, default={},
+                         doc="Default values if header is not present")
     hdu = Field(dtype=int, default=0, doc="HDU to read for metadata")
     extnames = ListField(dtype=str, default=[], doc="Extension names to search for")
 
@@ -83,6 +85,10 @@ class ParseTask(Task):
                 if isinstance(value, basestring):
                     value = value.strip()
                 info[p] = value
+            elif p in self.config.defaults:
+                info[p] = self.config.defaults[p]
+            else:
+                self.log.warn("Unable to find value for %s (derived from %s)" % (p, h))
         for p, t in self.config.translators.iteritems():
             func = getattr(self, t)
             try:
