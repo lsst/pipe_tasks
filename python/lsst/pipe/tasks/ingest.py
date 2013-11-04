@@ -1,7 +1,10 @@
 import os
 import sys
 import shutil
-import sqlite3 as sqlite
+try:
+    import sqlite3 as sqlite
+except:
+    import sqlite
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 from lsst.pipe.base import Task, Struct, ArgumentParser
