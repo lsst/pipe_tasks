@@ -338,7 +338,7 @@ class IngestTask(Task):
         registry = self.register.openRegistry(args.butler, create=args.create) if not args.dryrun else None
         for infile in args.files:
             fileInfo, hduInfoList = self.parse.getInfo(infile)
-            outfile = os.path.join(args.butler, self.parse.getDestination(args.butler, fileInfo, infile))
+            outfile = self.parse.getDestination(args.butler, fileInfo, infile)
             ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
             if not ingested:
                 continue
