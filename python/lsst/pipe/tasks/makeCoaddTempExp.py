@@ -114,9 +114,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 visitId = long(tempExpRef.dataId["visit"])
             except (KeyError, ValueError):
                 visitId = i
-            inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId)
 
-            exp = self.createTempExp(calexpRefList, skyInfo, inputRecorder)
+            exp = self.createTempExp(calexpRefList, skyInfo, visitId)
             if exp is not None:
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
@@ -125,7 +124,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
         return dataRefList
 
-    def createTempExp(self, calexpRefList, skyInfo, inputRecorder):
+    def createTempExp(self, calexpRefList, skyInfo, visitId=0):
         """Create a tempExp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
@@ -139,10 +138,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             overlap the patch of interest
         @param skyInfo: Struct from CoaddBaseTask.getSkyInfo() with geometric
             information about the patch
-        @param inputRecorder: CoaddTempExpInputRecorder that builds a catalog
-            of calexps that went into this tempExp.
+        @param visitId: integer identifier for visit, for the table that will
+            produce the CoaddPsf
         @return warped exposure, or None if no pixels overlap
         """
+        inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId)
         coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
         coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
