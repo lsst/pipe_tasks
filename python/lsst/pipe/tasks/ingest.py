@@ -5,6 +5,7 @@ try:
 except ImportError:
     # try external pysqlite package; deprecated
     import sqlite as sqlite3
+from fnmatch import fnmatch
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
@@ -20,6 +21,9 @@ class IngestArgumentParser(ArgumentParser):
         self.add_argument("--mode", choices=["move", "copy", "link", "skip"], default="move",
                           help="Mode of delivering the files to their destination")
         self.add_argument("--create", action="store_true", help="Create new registry (clobber old)?")
+        self.add_id_argument("--badId", "raw", "Data identifier for bad data", doMakeDataRefList=False)
+        self.add_argument("--badFile", nargs="*", default=[],
+                          help="Names of bad files (no path; wildcards allowed)")
         self.add_argument("files", nargs="+", help="Names of file")
 
 class ParseConfig(Config):
@@ -223,7 +227,7 @@ class RegisterTask(Task):
 
         conn.commit()
 
-    def check(self, conn, filename, info):
+    def check(self, conn, info):
         """Check for the presence of a row already
 
         Not sure this is required, given the 'ignore' configuration option.
@@ -237,7 +241,6 @@ class RegisterTask(Task):
 
         cursor.execute(sql, values)
         if cursor.fetchone()[0] > 0:
-            print "File %s is already in the registry" % filename
             return True
         return False
 
@@ -278,6 +281,7 @@ class IngestConfig(Config):
     """Configuration for IngestTask"""
     parse = ConfigurableField(target=ParseTask, doc="File parsing")
     register = ConfigurableField(target=RegisterTask, doc="Registry entry")
+    allowError = Field(dtype=bool, default=False, doc="Allow error in ingestion?")
 
 class IngestTask(Task):
     """Task that will ingest images into the data repository"""
@@ -330,14 +334,49 @@ class IngestTask(Task):
             print "%s --<%s>--> %s" % (infile, mode, outfile)
         except Exception, e:
             self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
+            if not self.config.allowError:
+                raise
             return False
         return True
+
+    def isBadFile(self, filename, badFileList):
+        """Return whether the file qualifies as bad
+
+        We match against the list of bad file patterns.
+        """
+        filename = os.path.basename(filename)
+        if not badFileList:
+            return False
+        for badFile in badFileList:
+            if fnmatch(filename, badFile):
+                return True
+        return False
+
+    def isBadId(self, info, badIdList):
+        """Return whether the file information qualifies as bad
+
+        We match against the list of bad data identifiers.
+        """
+        if not badIdList:
+            return False
+        for badId in badIdList:
+            if all(info[key] == value for key, value in badId.iteritems()):
+                return True
+        return False
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
         registry = self.register.openRegistry(args.butler, create=args.create) if not args.dryrun else None
         for infile in args.files:
+            if self.isBadFile(infile, args.badFile):
+                self.log.warn("Skipping declared bad file %s" % infile)
+                continue
             fileInfo, hduInfoList = self.parse.getInfo(infile)
+            if self.isBadId(fileInfo, args.badId.idList):
+                self.log.warn("Skipping declared bad file %s: %s" % (infile, fileInfo))
+                continue
+            if self.register.check(registry, fileInfo):
+                self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
             outfile = self.parse.getDestination(args.butler, fileInfo, infile)
             ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
             if not ingested:
