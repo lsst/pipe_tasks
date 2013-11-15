@@ -17,7 +17,7 @@ class IngestArgumentParser(ArgumentParser):
         super(IngestArgumentParser, self).__init__(*args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true", default=False,
                           help="Don't perform any action?")
-        self.add_argument("--mode", choices=["move", "copy", "link", "skip"], default="move",
+        self.add_argument("--mode", choices=["move", "copy", "link", "skip"], default="link",
                           help="Mode of delivering the files to their destination")
         self.add_argument("--create", action="store_true", help="Create new registry (clobber old)?")
         self.add_id_argument("--badId", "raw", "Data identifier for bad data", doMakeDataRefList=False)
