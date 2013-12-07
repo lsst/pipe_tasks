@@ -1,11 +1,11 @@
 import os
-import sys
 import shutil
-try:
-    import sqlite3 as sqlite
-except:
-    import sqlite
 from fnmatch import fnmatch
+try:
+    import sqlite3
+except ImportError:
+    # try external pysqlite package; deprecated
+    import sqlite as sqlite3
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 from lsst.pipe.base import Task, Struct, ArgumentParser
@@ -185,7 +185,7 @@ class RegisterTask(Task):
         else:
             makeTable = not os.path.exists(registryName)
 
-        conn = sqlite.connect(registryName)
+        conn = sqlite3.connect(registryName)
         if makeTable:
             self.createTable(conn)
         return conn

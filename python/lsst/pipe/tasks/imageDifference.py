@@ -259,14 +259,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
         
         # Retrieve the science image we wish to analyze
-        exposure = sensorRef.get("calexp")
+        exposure = sensorRef.get("calexp", immediate=True)
         if self.config.doAddCalexpBackground:
             mi = exposure.getMaskedImage()
             mi += sensorRef.get("calexpBackground").getImage()
-        sciencePsf = sensorRef.get("psf")
-        if not sciencePsf:
-            raise pipeBase.TaskError("No psf found")
-        exposure.setPsf(sciencePsf)
+        if not exposure.hasPsf():
+            raise pipeBase.TaskError("Exposure has no psf")
+        sciencePsf = exposure.getPsf()
 
         if self.config.useWinter2013Hacks and self.config.winter2013borderMask > 0:
             self.log.warn("USING WINTER2013 HACK: MASKING BORDER PIXELS")
@@ -741,7 +740,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             nPatchesFound += 1
             self.log.info("Reading patch %s" % patchArgDict)
-            coaddPatch = sensorRef.get(**patchArgDict)
+            coaddPatch = sensorRef.get(**patchArgDict, immediate=True)
             coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
                 coaddPatch.getBBox(afwImage.PARENT), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
@@ -749,17 +748,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 coaddFilter = coaddPatch.getFilter()
 
             # Retrieve the PSF for this coadd tract, if not already retrieved
-            if coaddPsf is None:
-                patchPsfDict = dict(
-                    datasetType = self.config.coaddName + "Coadd_psf",
-                    tract = tractInfo.getId(),
-                    patch = "%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
-                )
-                if not sensorRef.datasetExists(**patchPsfDict):
-                    self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist" \
-                                      % patchPsfDict)
-                    continue
-                coaddPsf = sensorRef.get(**patchPsfDict)
+            if coaddPsf is None and coaddPatch.hasPsf():
+                coaddPsf = coaddPatch.getPsf()
         
         if nPatchesFound == 0:
             raise RuntimeError("No patches found!")
