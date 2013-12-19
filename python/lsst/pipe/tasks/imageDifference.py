@@ -321,7 +321,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
                 random.shuffle(kernelSources, random.random)
                 controlSources = kernelSources[::self.config.controlStepSize]
-                kernelSources = [k for i,k in enumerate(kernelSources) if not i % self.config.controlStepSize]
+                kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
 
                 self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" 
                               % (len(kernelSources), len(selectSources), len(controlSources)))
