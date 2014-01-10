@@ -453,7 +453,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         @param statsFlags: Statistic for coadd
         @param statsCtrl: Statistics control object for coadd
         """
-        self.log.info("Computing coadd over %s" % bbox)
+        self.log.logdebug("Computing coadd over %s" % bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
         coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)
