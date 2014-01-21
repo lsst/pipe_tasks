@@ -71,8 +71,8 @@ class ProcessImageConfig(pexConfig.Config):
         if self.doMeasurement:
             if not self.doDetection:
                 raise ValueError("Cannot run source measurement without source detection.")
-            if "skycoord" not in self.measurement.algorithms.names:
-                raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
+            if "skycoord" not in self.measurement.plugins.names:
+                pass #raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
