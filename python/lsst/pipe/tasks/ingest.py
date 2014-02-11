@@ -282,6 +282,7 @@ class IngestConfig(Config):
     parse = ConfigurableField(target=ParseTask, doc="File parsing")
     register = ConfigurableField(target=RegisterTask, doc="Registry entry")
     allowError = Field(dtype=bool, default=False, doc="Allow error in ingestion?")
+    clobber = Field(dtype=bool, default=False, doc="Clobber existing file?")
 
 class IngestTask(Task):
     """Task that will ingest images into the data repository"""
@@ -321,6 +322,8 @@ class IngestTask(Task):
             outdir = os.path.dirname(outfile)
             if not os.path.isdir(outdir):
                 os.makedirs(outdir)
+            if self.config.clobber and os.path.lexists(outfile):
+                os.unlink(outfile)
             if mode == "copy":
                 assertCanCopy(infile, outfile)
                 shutil.copyfile(infile, outfile)
