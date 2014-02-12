@@ -27,7 +27,8 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
-from .coaddBase import CoaddDataIdContainer, getSkyInfo
+from lsst.coadd.utils import CoaddDataIdContainer
+from .coaddBase import getSkyInfo
 from .processImage import ProcessImageTask
 
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
