@@ -202,6 +202,7 @@ class RegistryContext(object):
         makeTable = True
         if os.path.exists(registryName) and createTableFunc is None:
             assertCanCopy(registryName, updateName)
+            os.chmod(updateName, os.stat(registryName).st_mode)
             shutil.copyfile(registryName, updateName)
             makeTable = False
 
