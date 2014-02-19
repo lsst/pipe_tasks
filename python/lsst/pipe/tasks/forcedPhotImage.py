@@ -25,7 +25,7 @@ import lsst.afw.table
 from lsst.daf.base import PropertyList
 from lsst.meas.algorithms import SourceMeasurementTask
 from lsst.pex.config import Config, ConfigurableField, DictField, Field, FieldValidationError
-from lsst.pipe.base import Task, CmdLineTask, Struct, timeMethod
+from lsst.pipe.base import Task, CmdLineTask, Struct, timeMethod, ButlerInitializedTaskRunner
 from .references import CoaddSrcReferencesTask
 
 __all__ = ("ForcedPhotImageTask",)
@@ -83,42 +83,32 @@ class ForcedPhotImageTask(CmdLineTask):
      - Implement fetchReferences
     """
 
+    RunnerClass = ButlerInitializedTaskRunner
     ConfigClass = ForcedPhotImageConfig
     dataPrefix = ""  # Name to prepend to all input and output datasets (e.g. 'goodSeeingCoadd_')
 
     def __init__(self, *args, **kwargs):
+        butler = kwargs.pop("butler")
         super(ForcedPhotImageTask, self).__init__(*args, **kwargs)
-        # this schema will contain all the outputs from the forced measurement, but *not*
-        # the fields copied from the reference catalog (see comment below)
-        self.measSchema = lsst.afw.table.SourceTable.makeMinimalSchema()
         self.algMetadata = PropertyList()
-        self.makeSubtask("measurement", schema=self.measSchema, algMetadata=self.algMetadata, isForced=True)
         self.makeSubtask("references")
-        self.schema = None
-
-    # The implementation for defining the schema for the forced photometry catalog is perhaps not quite
-    # ideal; we'd like to be able to generate the schema in the constructor, but because it depends on
-    # the reference schema (which we can't generally get without a butler), we can't do it there.  But
-    # we can't wait until we process the first dataRef, because getSchemaCatalogs() needs to be called
-    # before then by Task.writeSchemas.  The solution I have used here is to add a butler argument to
-    # getSchemaCatalogs() (which requires changes in pipe_base).  We then build the schema upon first
-    # request.  An alternative would be to pass a butler argument to task constructors, which would
-    # have required slightly more disruptive changes in pipe_base, but may provide a cleaner solution.
-    def _buildSchema(self, butler):
-        # we make a SchemaMapper to transfer fields from the reference catalog
+        # Start by loading the reference schema using the butler the special TaskRunner gave us
         refSchema = self.references.getSchema(butler)
+        # We make a SchemaMapper to transfer fields from the reference catalog
         self.schemaMapper = lsst.afw.table.SchemaMapper(refSchema)
-        # but we add the schema with the forced measurement fields first, before any mapped fields
-        # (just because that's easier with the SchemaMapper API)
-        self.schemaMapper.addMinimalSchema(self.measSchema, False)
+        # First we have to include the minimal schema all SourceCatalogs must have, but we don't
+        # want to transfer those fields from the refSchema (hence doMap=False)
+        self.schemaMapper.addMinimalSchema(lsst.afw.table.SourceTable.makeMinimalSchema(), False)
+        # Now we setup mappings from refSchema to the output schema, setting doReplace=True
+        # so we can set minimal schema fields if so configured.
         for refName, targetName in self.config.copyColumns.items():
             refItem = refSchema.find(refName)
-            self.schemaMapper.addMapping(refItem.key, targetName)
+            self.schemaMapper.addMapping(refItem.key, targetName, True) # doReplace=True
+        # Extract the output schema, and add the actual forced measurement fields to it.
         self.schema = self.schemaMapper.getOutputSchema()
+        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata, isForced=True)
 
-    def getSchemaCatalogs(self, butler):
-        if self.schema is None:
-            self._buildSchema(butler)
+    def getSchemaCatalogs(self):
         catalog = lsst.afw.table.SourceCatalog(self.schema)
         return {self.dataPrefix + "forced_src": catalog}
 

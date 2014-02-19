@@ -284,7 +284,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
 
         return
 
-    def getSchemaCatalogs(self, butler):
+    def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task."""
         src = afwTable.SourceCatalog(self.schema)
         src.getTable().setMetadata(self.algMetadata)

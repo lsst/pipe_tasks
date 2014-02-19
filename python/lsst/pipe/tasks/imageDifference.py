@@ -771,7 +771,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """
         return "%sDiff_metadata" % (self.config.coaddName,)
 
-    def getSchemaCatalogs(self, butler):
+    def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task."""
         diaSrc = afwTable.SourceCatalog(self.schema)
         diaSrc.getTable().setMetadata(self.algMetadata)
