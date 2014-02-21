@@ -28,7 +28,7 @@ import lsst.pipe.base as pipeBase
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "DatabaseSelectImagesConfig"]
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
-    """Configuration for BaseSelectImagesTask, using a database"""
+    """Base configuration for subclasses of BaseSelectImagesTask that use a database"""
     host = pexConfig.Field(
         doc = "Database server host name",
         dtype = str,
