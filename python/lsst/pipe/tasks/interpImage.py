@@ -20,26 +20,19 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import math
-
 import lsst.pex.config as pexConfig
-import lsst.afw.detection as afwDetection
-import lsst.afw.geom as afwGeom
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 import lsst.ip.isr as ipIsr
 
 __all__ = ["InterpImageConfig", "InterpMixinTask"]
 
-FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
-
 class InterpImageConfig(pexConfig.Config):
     """Config for InterpImageTask
     """
-    interpKernelSizeFactor = pexConfig.Field(
-        dtype = float,
-        doc = "Interpolation kernel size = interpFwhm converted to pixels * interpKernelSizeFactor.",
-        default = 3.0,
+    modelPsf = measAlg.analyticPsfRegistry.makeField(
+        doc = "Model Psf specification",
+        default = "doubleGaussian",
     )
 
 class InterpImageTask(pipeBase.Task):
@@ -48,7 +41,7 @@ class InterpImageTask(pipeBase.Task):
     ConfigClass = InterpImageConfig
 
     @pipeBase.timeMethod
-    def interpolateOnePlane(self, maskedImage, planeName, fwhmPixels):
+    def interpolateOnePlane(self, maskedImage, planeName, pixelScale, fwhm):
         """Interpolate over one mask plane, in place
 
         Note that the interpolation code in meas_algorithms currently
@@ -56,15 +49,12 @@ class InterpImageTask(pipeBase.Task):
         so it's not important to set the input PSF parameters exactly.
 
         @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
-        @param[in] fwhmPixels: FWHM of double Gaussian model to use for interpolation (pixels)
         @param[in] planeName: mask plane over which to interpolate
-        @param[in] PSF to use to detect NaNs
+        @param[in] pixelScale: pixel size as an angle on the sky, along x or y (an lsst.afw.geom.Angle)
+        @param[in] fwhm: FWHM of core star (arcsec); if None then defaultFwhm is used
         """
         self.log.info("Interpolate over %s pixels" % (planeName,))
-        kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
-        kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-        coreSigma = fwhmPixels / FwhmPerSigma
-        psfModel = measAlg.DoubleGaussianPsf(kernelDim[0], kernelDim[1], coreSigma, coreSigma * 2.5, 0.1)
+        psfModel = self.config.modelPsf.apply(pixelScale=pixelScale, fwhm=fwhm)
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
         measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, 0.0)

@@ -149,7 +149,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
         totGoodPix = 0
         didSetMetadata = False
-        modelPsf = self.config.modelPsf.apply(skyInfo.wcs) if self.config.doPsfMatch else None
+        modelPsf = self.config.modelPsf.apply(skyInfo.wcs.pixelScale()) if self.config.doPsfMatch else None
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s" %
                           (calExpInd+1, len(calexpRefList), calExpRef.dataId))
