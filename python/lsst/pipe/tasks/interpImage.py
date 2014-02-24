@@ -25,15 +25,12 @@ import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 import lsst.ip.isr as ipIsr
 
-__all__ = ["InterpImageConfig", "InterpMixinTask"]
+__all__ = ["InterpImageConfig", "InterpImageTask"]
 
 class InterpImageConfig(pexConfig.Config):
     """Config for InterpImageTask
     """
-    modelPsf = measAlg.analyticPsfRegistry.makeField(
-        doc = "Model Psf specification",
-        default = "doubleGaussian",
-    )
+    modelPsf = measAlg.GaussianPsfFactory.makeField(doc = "Model Psf factory")
 
 class InterpImageTask(pipeBase.Task):
     """Interpolate over bad image pixels

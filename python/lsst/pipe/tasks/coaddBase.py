@@ -63,10 +63,7 @@ class CoaddBaseConfig(pexConfig.Config):
         target = CoaddInputRecorderTask,
     )
     doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
-    modelPsf = measAlg.analyticPsfRegistry.makeField(
-        doc = "Model Psf specification",
-        default = "doubleGaussian",
-    )
+    modelPsf = measAlg.GaussianPsfFactory.makeField(doc = "Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype = bool,
         doc = "Apply meas_mosaic ubercal results to input calexps?",
