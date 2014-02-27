@@ -40,7 +40,7 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, \
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
-    KernelCandidateQa
+    KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
@@ -57,6 +57,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="Writing debugging data for doUseRegister")
     doSelectSources = pexConfig.Field(dtype=bool, default=True,
         doc="Select stars to use for kernel fitting")
+    doSelectDcrCatalog = pexConfig.Field(dtype=bool, default=False,
+        doc="Select stars of extreme color as part of the control sample") 
+    doSelectVariableCatalog = pexConfig.Field(dtype=bool, default=False,
+        doc="Select stars that are variable to be part of the control sample") 
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc="Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
         doc="Convolve science image by its PSF before PSF-matching?")
@@ -322,6 +326,20 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 random.shuffle(kernelSources, random.random)
                 controlSources = kernelSources[::self.config.controlStepSize]
                 kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
+
+                if self.config.doSelectDcrCatalog:
+                    redSelector  = DiaCatalogSourceSelector(DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
+                    redSources   = redSelector.selectSources(exposure, selectSources, matches=matches)
+                    controlSources.extend(redSources)
+
+                    blueSelector = DiaCatalogSourceSelector(DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
+                    blueSources  = blueSelector.selectSources(exposure, selectSources, matches=matches)
+                    controlSources.extend(blueSources)
+
+                if self.config.doSelectVariableCatalog:
+                    varSelector = DiaCatalogSourceSelector(DiaCatalogSourceSelectorConfig(includeVariable=True))
+                    varSources  = varSelector.selectSources(exposure, selectSources, matches=matches)
+                    controlSources.extend(varSources)
 
                 self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" 
                               % (len(kernelSources), len(selectSources), len(controlSources)))
