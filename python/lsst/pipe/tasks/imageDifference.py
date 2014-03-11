@@ -45,6 +45,7 @@ import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
+IqrToSigma = 0.741
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
@@ -328,16 +329,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
 
                 if self.config.doSelectDcrCatalog:
-                    redSelector  = DiaCatalogSourceSelector(DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
+                    redSelector  = DiaCatalogSourceSelector(
+                        DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
                     redSources   = redSelector.selectSources(exposure, selectSources, matches=matches)
                     controlSources.extend(redSources)
 
-                    blueSelector = DiaCatalogSourceSelector(DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
+                    blueSelector = DiaCatalogSourceSelector(
+                        DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
                     blueSources  = blueSelector.selectSources(exposure, selectSources, matches=matches)
                     controlSources.extend(blueSources)
 
                 if self.config.doSelectVariableCatalog:
-                    varSelector = DiaCatalogSourceSelector(DiaCatalogSourceSelectorConfig(includeVariable=True))
+                    varSelector = DiaCatalogSourceSelector(
+                        DiaCatalogSourceSelectorConfig(includeVariable=True))
                     varSources  = varSelector.selectSources(exposure, selectSources, matches=matches)
                     controlSources.extend(varSources)
 
@@ -375,32 +379,43 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     inCentroidKey = wcsResults.matches[0].second.getTable().getCentroidKey()
                     sids      = [m.first.getId() for m in wcsResults.matches]
                     positions = [m.first.get(refCoordKey) for m in wcsResults.matches]
-                    residuals = [m.first.get(refCoordKey).getOffsetFrom(
-                            wcsResults.wcs.pixelToSky(m.second.get(inCentroidKey))) for m in wcsResults.matches]
+                    residuals = [m.first.get(refCoordKey).getOffsetFrom(wcsResults.wcs.pixelToSky(
+                                m.second.get(inCentroidKey))) for m in wcsResults.matches]
                     allresids = dict(zip(sids, zip(positions, residuals)))
 
                     cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
-                            wcsResults.wcs.pixelToSky(m.second.get(inCentroidKey))) for m in wcsResults.matches]
-                    colors     = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))+2.5*numpy.log10(srcToMatch[x].get("r")) 
-                                               for x in sids if x in srcToMatch.keys()])
-                    dlong      = numpy.array([r[0].asArcseconds() for s,r in zip(sids, cresiduals) if s in srcToMatch.keys()])
-                    dlat       = numpy.array([r[1].asArcseconds() for s,r in zip(sids, cresiduals) if s in srcToMatch.keys()])
-                    idx1       = numpy.where(colors<self.sourceSelector.config.grMin)
-                    idx2       = numpy.where((colors>=self.sourceSelector.config.grMin)&(colors<=self.sourceSelector.config.grMax))
-                    idx3       = numpy.where(colors>self.sourceSelector.config.grMax)
-                    rms1Long   = 0.741*(numpy.percentile(dlong[idx1],75)-numpy.percentile(dlong[idx1],25))
-                    rms1Lat    = 0.741*(numpy.percentile(dlat[idx1],75)-numpy.percentile(dlat[idx1],25))
-                    rms2Long   = 0.741*(numpy.percentile(dlong[idx2],75)-numpy.percentile(dlong[idx2],25))
-                    rms2Lat    = 0.741*(numpy.percentile(dlat[idx2],75)-numpy.percentile(dlat[idx2],25))
-                    rms3Long   = 0.741*(numpy.percentile(dlong[idx3],75)-numpy.percentile(dlong[idx3],25))
-                    rms3Lat    = 0.741*(numpy.percentile(dlat[idx3],75)-numpy.percentile(dlat[idx3],25))
-                    self.log.info("Blue star offsets (long, lat in arcsec): %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx1]), rms1Long,
-                                                                                                      numpy.median(dlat[idx1]), rms1Lat))
-                    self.log.info("Green star offsets (long, lat in arcsec): %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx2]), rms2Long,
-                                                                                                       numpy.median(dlat[idx2]), rms2Lat))
-                    self.log.info("Red star offsets (long, lat in arcsec): %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx3]), rms3Long,
-                                                                                                     numpy.median(dlat[idx3]), rms3Lat))
-                    
+                            wcsResults.wcs.pixelToSky(
+                                m.second.get(inCentroidKey))) for m in wcsResults.matches]
+                    colors    = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))
+                                              + 2.5*numpy.log10(srcToMatch[x].get("r")) 
+                                              for x in sids if x in srcToMatch.keys()])
+                    dlong     = numpy.array([r[0].asArcseconds() for s,r in zip(sids, cresiduals) 
+                                             if s in srcToMatch.keys()])
+                    dlat      = numpy.array([r[1].asArcseconds() for s,r in zip(sids, cresiduals) 
+                                             if s in srcToMatch.keys()])
+                    idx1      = numpy.where(colors<self.sourceSelector.config.grMin)
+                    idx2      = numpy.where((colors>=self.sourceSelector.config.grMin)&
+                                            (colors<=self.sourceSelector.config.grMax))
+                    idx3      = numpy.where(colors>self.sourceSelector.config.grMax)
+                    rms1Long  = IqrToSigma*(numpy.percentile(dlong[idx1],75)-numpy.percentile(dlong[idx1],25))
+                    rms1Lat   = IqrToSigma*(numpy.percentile(dlat[idx1],75)-numpy.percentile(dlat[idx1],25))
+                    rms2Long  = IqrToSigma*(numpy.percentile(dlong[idx2],75)-numpy.percentile(dlong[idx2],25))
+                    rms2Lat   = IqrToSigma*(numpy.percentile(dlat[idx2],75)-numpy.percentile(dlat[idx2],25))
+                    rms3Long  = IqrToSigma*(numpy.percentile(dlong[idx3],75)-numpy.percentile(dlong[idx3],25))
+                    rms3Lat   = IqrToSigma*(numpy.percentile(dlat[idx3],75)-numpy.percentile(dlat[idx3],25))
+                    self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx1]), 
+                                                                                  rms1Long,
+                                                                                  numpy.median(dlat[idx1]), 
+                                                                                  rms1Lat))
+                    self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx2]), 
+                                                                                   rms2Long,
+                                                                                   numpy.median(dlat[idx2]), 
+                                                                                   rms2Lat))
+                    self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx3]), 
+                                                                                 rms3Long,
+                                                                                 numpy.median(dlat[idx3]), 
+                                                                                 rms3Lat))
+
                     self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
                     self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))
                     self.metadata.add("RegisterRedLongOffsetMedian", numpy.median(dlong[idx3]))
