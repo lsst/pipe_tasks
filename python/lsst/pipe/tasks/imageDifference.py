@@ -40,11 +40,12 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, \
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
-    KernelCandidateQa
+    KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig
 import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
+IqrToSigma = 0.741
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
@@ -57,6 +58,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="Writing debugging data for doUseRegister")
     doSelectSources = pexConfig.Field(dtype=bool, default=True,
         doc="Select stars to use for kernel fitting")
+    doSelectDcrCatalog = pexConfig.Field(dtype=bool, default=False,
+        doc="Select stars of extreme color as part of the control sample") 
+    doSelectVariableCatalog = pexConfig.Field(dtype=bool, default=False,
+        doc="Select stars that are variable to be part of the control sample") 
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc="Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
         doc="Convolve science image by its PSF before PSF-matching?")
@@ -323,6 +328,23 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 controlSources = kernelSources[::self.config.controlStepSize]
                 kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
 
+                if self.config.doSelectDcrCatalog:
+                    redSelector  = DiaCatalogSourceSelector(
+                        DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
+                    redSources   = redSelector.selectSources(exposure, selectSources, matches=matches)
+                    controlSources.extend(redSources)
+
+                    blueSelector = DiaCatalogSourceSelector(
+                        DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
+                    blueSources  = blueSelector.selectSources(exposure, selectSources, matches=matches)
+                    controlSources.extend(blueSources)
+
+                if self.config.doSelectVariableCatalog:
+                    varSelector = DiaCatalogSourceSelector(
+                        DiaCatalogSourceSelectorConfig(includeVariable=True))
+                    varSources  = varSelector.selectSources(exposure, selectSources, matches=matches)
+                    controlSources.extend(varSources)
+
                 self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" 
                               % (len(kernelSources), len(selectSources), len(controlSources)))
             allresids = {}
@@ -350,14 +372,63 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # residuals as a function of position.  Persistence
                 # not yet implemented; expected on (I believe) #2636.
                 if self.config.doDebugRegister:
+                    # Grab matches to reference catalog
+                    srcToMatch = {x.second.getId() : x.first for x in matches}
+
                     refCoordKey = wcsResults.matches[0].first.getTable().getCoordKey()
                     inCentroidKey = wcsResults.matches[0].second.getTable().getCentroidKey()
                     sids      = [m.first.getId() for m in wcsResults.matches]
                     positions = [m.first.get(refCoordKey) for m in wcsResults.matches]
-                    residuals = [m.first.get(refCoordKey).getOffsetFrom(
-                                   wcsResults.wcs.pixelToSky(m.second.get(inCentroidKey))) for
-                                 m in wcsResults.matches]
+                    residuals = [m.first.get(refCoordKey).getOffsetFrom(wcsResults.wcs.pixelToSky(
+                                m.second.get(inCentroidKey))) for m in wcsResults.matches]
                     allresids = dict(zip(sids, zip(positions, residuals)))
+
+                    cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
+                            wcsResults.wcs.pixelToSky(
+                                m.second.get(inCentroidKey))) for m in wcsResults.matches]
+                    colors    = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))
+                                              + 2.5*numpy.log10(srcToMatch[x].get("r")) 
+                                              for x in sids if x in srcToMatch.keys()])
+                    dlong     = numpy.array([r[0].asArcseconds() for s,r in zip(sids, cresiduals) 
+                                             if s in srcToMatch.keys()])
+                    dlat      = numpy.array([r[1].asArcseconds() for s,r in zip(sids, cresiduals) 
+                                             if s in srcToMatch.keys()])
+                    idx1      = numpy.where(colors<self.sourceSelector.config.grMin)
+                    idx2      = numpy.where((colors>=self.sourceSelector.config.grMin)&
+                                            (colors<=self.sourceSelector.config.grMax))
+                    idx3      = numpy.where(colors>self.sourceSelector.config.grMax)
+                    rms1Long  = IqrToSigma*(numpy.percentile(dlong[idx1],75)-numpy.percentile(dlong[idx1],25))
+                    rms1Lat   = IqrToSigma*(numpy.percentile(dlat[idx1],75)-numpy.percentile(dlat[idx1],25))
+                    rms2Long  = IqrToSigma*(numpy.percentile(dlong[idx2],75)-numpy.percentile(dlong[idx2],25))
+                    rms2Lat   = IqrToSigma*(numpy.percentile(dlat[idx2],75)-numpy.percentile(dlat[idx2],25))
+                    rms3Long  = IqrToSigma*(numpy.percentile(dlong[idx3],75)-numpy.percentile(dlong[idx3],25))
+                    rms3Lat   = IqrToSigma*(numpy.percentile(dlat[idx3],75)-numpy.percentile(dlat[idx3],25))
+                    self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx1]), 
+                                                                                  rms1Long,
+                                                                                  numpy.median(dlat[idx1]), 
+                                                                                  rms1Lat))
+                    self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx2]), 
+                                                                                   rms2Long,
+                                                                                   numpy.median(dlat[idx2]), 
+                                                                                   rms2Lat))
+                    self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx3]), 
+                                                                                 rms3Long,
+                                                                                 numpy.median(dlat[idx3]), 
+                                                                                 rms3Lat))
+
+                    self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
+                    self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))
+                    self.metadata.add("RegisterRedLongOffsetMedian", numpy.median(dlong[idx3]))
+                    self.metadata.add("RegisterBlueLongOffsetStd", rms1Long)
+                    self.metadata.add("RegisterGreenLongOffsetStd", rms2Long)
+                    self.metadata.add("RegisterRedLongOffsetStd", rms3Long)
+
+                    self.metadata.add("RegisterBlueLatOffsetMedian", numpy.median(dlat[idx1]))
+                    self.metadata.add("RegisterGreenLatOffsetMedian", numpy.median(dlat[idx2]))
+                    self.metadata.add("RegisterRedLatOffsetMedian", numpy.median(dlat[idx3]))
+                    self.metadata.add("RegisterBlueLatOffsetStd", rms1Lat)
+                    self.metadata.add("RegisterGreenLatOffsetStd", rms2Lat)
+                    self.metadata.add("RegisterRedLatOffsetStd", rms3Lat)
 
             # warp template exposure to match exposure,
             # PSF match template exposure to exposure,
@@ -416,10 +487,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 diaSources = results.sources
 
             if self.config.doMeasurement:
-                self.log.info("Running diaSource measurement")
                 if len(diaSources) < self.config.maxDiaSourcesToMeasure:
+                    self.log.info("Running diaSource dipole measurement")
                     self.dipoleMeasurement.run(subtractedExposure, diaSources)
                 else:
+                    self.log.info("Running diaSource measurement")
                     self.measurement.run(subtractedExposure, diaSources)
 
             # Match with the calexp sources if possible
