@@ -286,8 +286,9 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
             )
 
     def std_calexp(self, item, dataId):
-        ccdId = lsst.afw.cameraGeom.Id(dataId["ccd"])
-        item.setDetector(lsst.afw.cameraGeom.utils.findCcd(self.camera, ccdId))
+        detectorId = dataId["ccd"]
+        detector = self.camera[detectorId]
+        item.setDetector(detector)
         return item
 
     def _computeCcdExposureId(self, dataId):

@@ -108,8 +108,7 @@ class MockObservationTask(lsst.pipe.base.Task):
                 record.setCalib(calib)
                 record.setPsf(self.buildPsf(detector))
                 record.setBBox(detector.getBBox())
-                record.setId(butler.get("ccdExposureId", visit=visit, detector=detector.getId(),
-                    immediate=True))
+                record.setId(butler.get("ccdExposureId", visit=visit, ccd=detector.getId(), immediate=True))
             visit += 1
         return catalog
 
@@ -149,8 +148,8 @@ class MockObservationTask(lsst.pipe.base.Task):
         crval = position.getPosition(lsst.afw.geom.degrees)
         pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
         cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) *
-              lsst.afw.geom.LinearTransform.makeRotation(pa))
-        fpCtr = detector.makeCameraPoint(FOCAL_PLANE, lsst.afw.geom.Point2D(0, 0))
+              lsst.afw.geom.LinearTransform.makeRotation(pa.asRadians()))
+        fpCtr = detector.makeCameraPoint(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE)
         crpix = detector.transform(fpCtr, PIXELS).getPoint()
         wcs = lsst.afw.image.Wcs(crval, crpix, cd.getMatrix())
         return wcs
