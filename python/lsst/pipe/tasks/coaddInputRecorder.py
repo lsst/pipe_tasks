@@ -90,7 +90,7 @@ class CoaddTempExpInputRecorder(object):
         record.setId(ccdId)
         record.setL(self.task.ccdVisitKey, self.visitRecord.getId())
         try:
-            record.setI(self.task.ccdCcdKey, calExp.getDetector().getId().getSerial())
+            record.setI(self.task.ccdCcdKey, calExp.getDetector().getId())
         except:
             self.task.log.warn("Error getting detector serial number in visit %d; using -1"
                                    % self.visitRecord.getId())

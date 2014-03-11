@@ -19,19 +19,17 @@
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import math
 import numpy
 from contextlib import contextmanager
 
 from lsst.pex.exceptions import LsstCppException, LengthErrorException
 import lsst.afw.geom as afwGeom
+from lsst.afw.cameraGeom import TAN_PIXELS
 import lsst.afw.image as afwImage
-import lsst.afw.cameraGeom as afwCG
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.meas.astrom.astrom import Astrometry
 from lsst.meas.astrom.sip import makeCreateWcsWithSip
-from .detectorUtil import getCcd
 
 class AstrometryConfig(pexConfig.Config):
     solver = pexConfig.ConfigField(
@@ -109,31 +107,31 @@ class AstrometryTask(pipeBase.Task):
                                 with distorted points in "centroid.distorted" field.
         @return bounding box of distorted exposure
         """
-        ccd = getCcd(exposure, allowRaise=False)
-        if ccd is None:
-            self.log.warn("No CCD associated with exposure; assuming null distortion")
-            distorter = None
+        detector = exposure.getDetector()
+        pixToTanXYTransform = None
+        if detector is None:
+            self.log.warn("No detector associated with exposure; assuming null distortion")
         else:
-            distorter = ccd.getDistortion()
+            tanSys = detector.makeCameraSys(TAN_PIXELS)
+            if tanSys in detector.getTransformMap():
+                pixToTanXYTransform = detector.getTransformMap()[tanSys]
 
-        if distorter is None:
+        if pixToTanXYTransform is None:
             self.log.info("Null distortion correction")
             for s in sources:
                 s.set(self.centroidKey, s.getCentroid())
             return exposure.getBBox(afwImage.PARENT)
 
         # Distort source positions
-        self.log.info("Applying distortion correction: %s" % distorter.prynt())
+        self.log.info("Applying distortion correction")
         for s in sources:
-            s.set(self.centroidKey, distorter.undistort(s.getCentroid(), ccd))
+            s.set(self.centroidKey, pixToTanXYTransform.forward(s.getCentroid()))
 
         # Get distorted image size so that astrometry_net does not clip.
-        corners = numpy.array([distorter.undistort(afwGeom.Point2D(cnr), ccd) for
-                               cnr in exposure.getBBox().getCorners()])
-        xMin, xMax = int(corners[:,0].min()), int(corners[:,0].max() + 0.5)
-        yMin, yMax = int(corners[:,1].min()), int(corners[:,1].max() + 0.5)
-
-        return afwGeom.Box2I(afwGeom.Point2I(xMin, yMin), afwGeom.Extent2I(xMax - xMin, yMax - yMin))
+        bboxD = afwGeom.Box2D()
+        for corner in detector.getCorners(TAN_PIXELS):
+            bboxD.include(corner)
+        return afwGeom.Box2I(bboxD)
 
     @contextmanager
     def distortionContext(self, exposure, sources):

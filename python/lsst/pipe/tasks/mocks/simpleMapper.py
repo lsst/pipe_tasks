@@ -36,7 +36,7 @@ import re
 
 import lsst.daf.persistence
 import lsst.afw.cameraGeom
-import lsst.afw.cameraGeom.utils
+from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
 
@@ -149,6 +149,7 @@ class RawMapping(SimpleMapping):
     keys = dict(visit=int, ccd=int)
 
     def query(self, index, level, format, dataId):
+        results = []
         visit = dataId.get('visit', None)
         dictList = self.index[level][visit]
         ccd = dataId.get('ccd', None)
@@ -184,7 +185,6 @@ class MapperMeta(type):
     @staticmethod
     def _makeQueryClosure(dataset, mapping):
         def queryClosure(self, level, format, dataId):
-            index = self.index[dataset]
             return mapping.query(self.index, level, format, dataId)
         return queryClosure
 
@@ -302,37 +302,65 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
     def bypass_ccdExposureId_bits(self, datasetType, pythonType, location, dataId):
         return 32
 
-def makeSimpleCamera(nX, nY, sizeX, sizeY, gapX, gapY, pixelSize=1.0):
-    """Create a simple single-raft camera with nX x nY CCDs of size sizeX x sizeY and
-    gaps of size gapX x gapY (in focal plane coordinates).  The 'pixelSize' parameter
-    sets the size of pixel in focal plane units.
+def makeSimpleCamera(
+    nX, nY,
+    sizeX, sizeY,
+    gapX, gapY,
+    pixelSize=1.0,
+    plateScale=20.0,
+    radialDistortion=0.925,
+):
+    """Create a camera
+
+    @param[in] nx: number of detectors in x
+    @param[in] ny: number of detectors in y
+    @param[in] sizeX: detector size in x (pixels)
+    @param[in] sizeY: detector size in y (pixels)
+    @param[in] gapX: gap between detectors in x (mm)
+    @param[in] gapY: gap between detectors in y (mm)
+    @param[in] pixelSize: pixel size (mm) (a float)
+    @param[in] plateScale: plate scale in arcsec/mm; 20.0 is for LSST
+    @param[in] radialDistortion: radial distortion, in mm/rad^2
+        (the r^3 coefficient of the radial distortion polynomial
+        that converts PUPIL in radians to FOCAL_PLANE in mm);
+        0.925 is the value Dave Monet measured for lsstSim data
+
+    Each detector will have one amplifier (with no raw information).
     """
-    camera = lsst.afw.cameraGeom.Camera(lsst.afw.cameraGeom.Id(0), 1, 1)
-    raft = lsst.afw.cameraGeom.Raft(lsst.afw.cameraGeom.Id(0), nX, nY)
-    camera.addDetector(
-        lsst.afw.geom.Point2I(0, 0),
-        lsst.afw.cameraGeom.FpPoint(0.0, 0.0),
-        lsst.afw.cameraGeom.Orientation(),
-        raft
-        )
-    i = 1
+    pScaleRad = lsst.afw.geom.arcsecToRad(plateScale)
+    radialDistortCoeffs = [0.0, 1.0/pScaleRad, 0.0, radialDistortion/pScaleRad]
+    focalPlaneToPupil = lsst.afw.geom.RadialXYTransform(radialDistortCoeffs)
+    transformMap = {
+        lsst.afw.cameraGeom.PUPIL: focalPlaneToPupil
+    }
+
+    detectorList = []
     ccdBBox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(), lsst.afw.geom.Extent2I(sizeX, sizeY))
     for iY in range(nY):
         cY = (iY - 0.5 * (nY - 1)) * (pixelSize * sizeY + gapY)
         for iX in range(nX):
             cX = (iX - 0.5 * (nX - 1)) * (pixelSize * sizeY + gapX)
-            ccd = lsst.afw.cameraGeom.Ccd(lsst.afw.cameraGeom.Id(i), pixelSize)
-            amp = lsst.afw.cameraGeom.Amp(lsst.afw.cameraGeom.Id(0), ccdBBox,
-                                          lsst.afw.geom.Box2I(), ccdBBox, None)
-            ccd.addAmp(amp)
-            raft.addDetector(
-                lsst.afw.geom.Point2I(iX, iY),
-                lsst.afw.cameraGeom.FpPoint(cX, cY),
-                lsst.afw.cameraGeom.Orientation(),
-                ccd
-                )
-            i += 1
-    return camera
+            fpPos = lsst.afw.geom.Point2D(cX, cY)
+            detectorName = "detector %d,%d" % (iX, iY)
+            detectorId = len(detectorList) + 1
+            detectorList.append(DetectorWrapper(
+                name = detectorName,
+                id = detectorId,
+                serial = detectorName + " serial",
+                bbox = ccdBBox,
+                ampExtent = ccdBBox.getDimensions(),
+                numAmps = 1,
+                pixelSize = lsst.afw.geom.Extent2D(pixelSize, pixelSize),
+                orientation = lsst.afw.cameraGeom.Orientation(fpPos),
+                plateScale = plateScale,
+                radialDistortion = radialDistortion,
+            ).detector)
+
+    return lsst.afw.cameraGeom.Camera(
+        name = "Simple Camera",
+        detectorList = detectorList,
+        transformMap = transformMap,
+    )
 
 def makeDataRepo(root):
     """
