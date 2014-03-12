@@ -115,7 +115,6 @@ class AstrometryTask(pipeBase.Task):
             tanSys = detector.makeCameraSys(TAN_PIXELS)
             if tanSys in detector.getTransformMap():
                 pixToTanXYTransform = detector.getTransformMap()[tanSys]
-
         if pixToTanXYTransform is None:
             self.log.info("Null distortion correction")
             for s in sources:
@@ -125,7 +124,7 @@ class AstrometryTask(pipeBase.Task):
         # Distort source positions
         self.log.info("Applying distortion correction")
         for s in sources:
-            s.set(self.centroidKey, pixToTanXYTransform.forward(s.getCentroid()))
+            s.set(self.centroidKey, pixToTanXYTransform.forwardTransform(s.getCentroid()))
 
         # Get distorted image size so that astrometry_net does not clip.
         bboxD = afwGeom.Box2D()
