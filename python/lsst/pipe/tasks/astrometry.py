@@ -113,8 +113,8 @@ class AstrometryTask(pipeBase.Task):
             self.log.warn("No detector associated with exposure; assuming null distortion")
         else:
             tanSys = detector.makeCameraSys(TAN_PIXELS)
-            if tanSys in detector.getTransformMap():
-                pixToTanXYTransform = detector.getTransformMap()[tanSys]
+            pixToTanXYTransform = detector.getTransformMap().get(tanSys)
+
         if pixToTanXYTransform is None:
             self.log.info("Null distortion correction")
             for s in sources:

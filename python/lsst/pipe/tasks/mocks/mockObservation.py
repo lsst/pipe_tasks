@@ -70,7 +70,7 @@ class MockObservationTask(lsst.pipe.base.Task):
     of MockCoaddTask.
 
     @todo:
-    - document "pa" in detail; angle of want to what?
+    - document "pa" in detail; angle of what to what?
     - document the catalog parameter of the run method
     """
 
@@ -89,7 +89,8 @@ class MockObservationTask(lsst.pipe.base.Task):
         @param[in] butler: a data butler
         @param[in] n: number of pointings
         @param[in] camera: camera geometry (an lsst.afw.cameraGeom.Camera)
-        @param[in] catalog: ???
+        @param[in] catalog: catalog to which to add observations (an ExposureCatalog);
+            if None then a new catalog is created.
         """
         if catalog is None:
             catalog = lsst.afw.table.ExposureCatalog(self.schema)
@@ -124,7 +125,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         - coord is an object position (an lsst.afw.coord.Coord)
         - angle is a position angle (???) (an lsst.afw.geom.Angle)
 
-        The default implementation is an iterator (i.e. the function is a "generator"),
+        The default implementation returns an iterator (i.e. the function is a "generator"),
         but derived-class overrides may return any iterable.
         """
         wcs = tractInfo.getWcs()
