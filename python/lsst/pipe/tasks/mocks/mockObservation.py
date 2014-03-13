@@ -25,7 +25,7 @@ import numpy
 import lsst.pex.config
 import lsst.afw.table
 import lsst.afw.geom
-import lsst.afw.cameraGeom
+from lsst.afw.cameraGeom import PIXELS, FOCAL_PLANE
 import lsst.afw.image
 import lsst.afw.math
 import lsst.afw.detection
@@ -68,6 +68,10 @@ class MockObservationConfig(lsst.pex.config.Config):
 class MockObservationTask(lsst.pipe.base.Task):
     """Task to generate mock Exposure parameters (Wcs, Psf, Calib), intended for use as a subtask
     of MockCoaddTask.
+
+    @todo:
+    - document "pa" in detail; angle of what to what?
+    - document the catalog parameter of the run method
     """
 
     ConfigClass = MockObservationConfig
@@ -81,6 +85,12 @@ class MockObservationTask(lsst.pipe.base.Task):
 
     def run(self, butler, n, tractInfo, camera, catalog=None):
         """Driver that generates an ExposureCatalog of mock observations.
+
+        @param[in] butler: a data butler
+        @param[in] n: number of pointings
+        @param[in] camera: camera geometry (an lsst.afw.cameraGeom.Camera)
+        @param[in] catalog: catalog to which to add observations (an ExposureCatalog);
+            if None then a new catalog is created.
         """
         if catalog is None:
             catalog = lsst.afw.table.ExposureCatalog(self.schema)
@@ -89,21 +99,17 @@ class MockObservationTask(lsst.pipe.base.Task):
                 raise ValueError("Catalog schema does not match Task schema")
         visit = 1
         for position, pa in self.makePointings(n, tractInfo):
-            for raft in camera:
-                raft = lsst.afw.cameraGeom.cast_Raft(raft)
+            for detector in camera:
                 calib = self.buildCalib()
-                for ccd in raft:
-                    ccd = lsst.afw.cameraGeom.cast_Ccd(ccd)
-                    record = catalog.addNew()
-                    record.setI(self.ccdKey, ccd.getId().getSerial())
-                    record.setI(self.visitKey, visit)
-                    record.setCoord(self.pointingKey, position)
-                    record.setWcs(self.buildWcs(position, pa, ccd))
-                    record.setCalib(calib)
-                    record.setPsf(self.buildPsf(ccd))
-                    record.setBBox(ccd.getAllPixels())
-                    record.setId(butler.get("ccdExposureId", visit=visit, ccd=ccd.getId().getSerial(),
-                                            immediate=True))
+                record = catalog.addNew()
+                record.setI(self.ccdKey, detector.getId())
+                record.setI(self.visitKey, visit)
+                record.setCoord(self.pointingKey, position)
+                record.setWcs(self.buildWcs(position, pa, detector))
+                record.setCalib(calib)
+                record.setPsf(self.buildPsf(detector))
+                record.setBBox(detector.getBBox())
+                record.setId(butler.get("ccdExposureId", visit=visit, ccd=detector.getId(), immediate=True))
             visit += 1
         return catalog
 
@@ -113,9 +119,14 @@ class MockObservationTask(lsst.pipe.base.Task):
         Default implementation draws random pointings that are uniform in the tract's image
         coordinate system.
 
-        The return value is a Python iterable over (coord, angle) pairs; the default implementation
-        is actually an iterator (i.e. the function is a "generator"), but derived-class overrides may
-        return any iterable. 
+        @param[in] n: number of pointings
+        @param[in] tractInfo: skymap tract (a lsst.skymap.TractInfo)
+        @return a Python iterable over (coord, angle) pairs:
+        - coord is an object position (an lsst.afw.coord.Coord)
+        - angle is a position angle (???) (an lsst.afw.geom.Angle)
+
+        The default implementation returns an iterator (i.e. the function is a "generator"),
+        but derived-class overrides may return any iterable.
         """
         wcs = tractInfo.getWcs()
         bbox = lsst.afw.geom.Box2D(tractInfo.getBBox())
@@ -128,13 +139,19 @@ class MockObservationTask(lsst.pipe.base.Task):
                 pa = numpy.random.rand() * 2.0 * numpy.pi * lsst.afw.geom.radians
             yield wcs.pixelToSky(x, y), pa
 
-    def buildWcs(self, position, pa, ccd):
-        """Build a simple TAN Wcs with no distortion and exactly-aligned CCDs."""
+    def buildWcs(self, position, pa, detector):
+        """Build a simple TAN Wcs with no distortion and exactly-aligned CCDs.
+
+        @param[in] position: object position on sky (an lsst.afw.coord.Coord)
+        @param[in] pa: position angle (an lsst.afw.geom.Angle)
+        @param[in] detector: detector information (an lsst.afw.cameraGeom.Detector)
+        """
         crval = position.getPosition(lsst.afw.geom.degrees)
         pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
         cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) *
-              lsst.afw.geom.LinearTransform.makeRotation(pa))
-        crpix = ccd.getPixelFromPosition(lsst.afw.cameraGeom.FpPoint(0,0))
+              lsst.afw.geom.LinearTransform.makeRotation(pa.asRadians()))
+        fpCtr = detector.makeCameraPoint(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE)
+        crpix = detector.transform(fpCtr, PIXELS).getPoint()
         wcs = lsst.afw.image.Wcs(crval, crpix, cd.getMatrix())
         return wcs
 
@@ -151,13 +168,16 @@ class MockObservationTask(lsst.pipe.base.Task):
             )
         return calib
 
-    def buildPsf(self, ccd):
+    def buildPsf(self, detector):
         """Build a simple Gaussian Psf with linearly-varying ellipticity and size.
 
         The Psf pattern increases sigma_x linearly along the x direction, and sigma_y
         linearly along the y direction.
+
+        @param[in] detector: detector information (an lsst.afw.cameraGeom.Detector)
+        @return a psf (an instance of lsst.meas.algorithms.KernelPsf)
         """
-        bbox = ccd.getAllPixels()
+        bbox = detector.getBBox()
         dx = (self.config.psfMaxSigma - self.config.psfMinSigma) / bbox.getWidth()
         dy = (self.config.psfMaxSigma - self.config.psfMinSigma) / bbox.getHeight()
         sigmaXFunc = lsst.afw.math.PolynomialFunction2D(1)

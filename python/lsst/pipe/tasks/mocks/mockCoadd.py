@@ -174,9 +174,6 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
 
         Must be run after buildTruthCatalog and buildObservationCatalog.
         """
-        skyMap = butler.get(self.config.coaddName + "Coadd_skyMap")
-        tractInfo = skyMap[tract]
-        tractWcs = tractInfo.getWcs()
         if obsCatalog is None:
             obsCatalog = butler.get("observations", tract=tract)
         if truthCatalog is None:
