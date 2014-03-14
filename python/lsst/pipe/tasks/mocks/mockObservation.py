@@ -149,7 +149,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         crval = position.getPosition(lsst.afw.geom.degrees)
         pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
         cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) *
-              lsst.afw.geom.LinearTransform.makeRotation(pa.asRadians()))
+              lsst.afw.geom.LinearTransform.makeRotation(pa))
         fpCtr = detector.makeCameraPoint(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE)
         crpix = detector.transform(fpCtr, PIXELS).getPoint()
         wcs = lsst.afw.image.Wcs(crval, crpix, cd.getMatrix())
