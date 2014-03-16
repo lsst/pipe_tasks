@@ -132,8 +132,8 @@ class MockObservationTask(lsst.pipe.base.Task):
         """Build a simple TAN Wcs with no distortion and exactly-aligned CCDs."""
         crval = position.getPosition(lsst.afw.geom.degrees)
         pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
-        cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) 
-              * lsst.afw.geom.LinearTransform.makeRotation(pa.asRadians()))
+        cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale)
+              * lsst.afw.geom.LinearTransform.makeRotation(pa))
         crpix = ccd.getPixelFromPosition(lsst.afw.cameraGeom.FpPoint(0,0))
         wcs = lsst.afw.image.Wcs(crval, crpix, cd.getMatrix())
         return wcs
