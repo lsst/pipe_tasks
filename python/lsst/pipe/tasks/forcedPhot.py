@@ -3,7 +3,7 @@
 import math
 
 from lsst.pex.config import Config, ConfigurableField, DictField, Field
-from lsst.pipe.base import Task, CmdLineTask, Struct, ArgumentParser, timeMethod
+from lsst.pipe.base import Task, CmdLineTask, ArgumentParser, timeMethod
 
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
@@ -105,7 +105,7 @@ class ReferencesTask(Task):
         draMean = draStats.getValue(afwMath.MEANCLIP)
         ddecMean = ddecStats.getValue(afwMath.MEANCLIP)
         self.log.info("Offset from %d sources is dRA = %f +/- %f arcsec, dDec = %f +/- %f arcsec" %
-                      (num, draMean, draStats.getValue(afwMath.STDEVCLIP), dDecMean,
+                      (num, draMean, draStats.getValue(afwMath.STDEVCLIP), ddecMean,
                        ddecStats.getValue(afwMath.STDEVCLIP)))
         angle = math.atan2(ddecMean, draMean)*afwGeom.radians
         distance = math.hypot(draMean, ddecMean)*units
@@ -152,7 +152,7 @@ class ForcedPhotTask(CmdLineTask):
 
     @timeMethod
     def run(self, dataRef):
-        exposure = dataRef.get(exposureName)
+        exposure = dataRef.get("calexp")
 
         expBits = dataRef.get("ccdExposureId_bits")
         expId = long(dataRef.get("ccdExposureId"))
