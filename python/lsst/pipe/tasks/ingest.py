@@ -7,6 +7,7 @@ except ImportError:
     import sqlite as sqlite3
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
+from lsst.pex.exceptions import LsstException
 from lsst.pipe.base import Task, Struct, ArgumentParser
 import lsst.afw.image as afwImage
 
@@ -60,11 +61,24 @@ class ParseTask(Task):
             except:
                 self.log.warn("Error reading %s extensions %s" % (filename, extnames))
                 break
-            ext = md.get("EXTNAME").strip()
+            ext = self.getExtensionName(md)
             if ext in extnames:
                 infoList.append(self.getInfoFromMetadata(md, info=phuInfo.copy()))
                 extnames.discard(ext)
         return phuInfo, infoList
+
+    @staticmethod
+    def getExtensionName(md):
+        """ Get the name of an extension.
+        @param md: PropertySet like one obtained from afwImage.readMetadata)
+        @return Name of the extension if it exists.  None otherwise.
+        """
+        try:
+            # This returns a tuple
+            ext = md.get("EXTNAME")
+            return ext[1]
+        except LsstException:
+            return None
 
     def getInfoFromMetadata(self, md, info={}):
         """Attempt to pull the desired information out of the header
@@ -235,7 +249,7 @@ class RegisterTask(Task):
         sql += ")"
         values = [info[col] for col in self.config.columns]
         if dryrun:
-            print "Would execute: '%s' with %s" % sql, values
+            print "Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values]))
         else:
             conn.execute(sql, values)
 
@@ -291,7 +305,8 @@ class IngestTask(Task):
         if mode == "skip":
             return True
         if dryrun:
-            self.log.info("Would %s from %s to %s" % (args.mode, infile, outfile))
+            self.log.info("Would %s from %s to %s" % (mode, infile, outfile))
+            return True
         try:
             outdir = os.path.dirname(outfile)
             if not os.path.isdir(outdir):
