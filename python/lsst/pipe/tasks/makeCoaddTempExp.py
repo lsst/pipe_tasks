@@ -158,6 +158,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 ccdId = calExpInd
             numGoodPix = 0
             try:
+                # We augment the dataRef here with the tract, which is harmless for loading things
+                # like calexps that don't need the tract, and necessary for meas_mosaic outputs,
+                # which do.
+                calExpRef = calExpRef.butlerSubset.butler.dataRef("wcs", dataId=calExpRef.dataId,
+                                                                  tract=skyInfo.tractInfo.getId())
                 calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
                 exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                     maxBBox=skyInfo.bbox).exposure
