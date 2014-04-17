@@ -280,9 +280,10 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         #
         for ics, s, d in matched:
             s.setFlag(self.calibSourceKey, True)
+            # We don't want to overwrite s's footprint with ics's; DM-407
             icsFootprint = ics.getFootprint()
-            ics.setFootprint(None)
             try:
+                ics.setFootprint(s.getFootprint())
                 s.assign(ics, self.schemaMapper)
             finally:
                 ics.setFootprint(icsFootprint)
