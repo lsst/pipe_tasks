@@ -280,7 +280,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         #
         for ics, s, d in matched:
             s.setFlag(self.calibSourceKey, True)
-            s.assign(ics, self.schemaMapper)
+            icsFootprint = ics.getFootprint()
+            ics.setFootprint(None)
+            try:
+                s.assign(ics, self.schemaMapper)
+            finally:
+                ics.setFootprint(icsFootprint)
 
         return
 
