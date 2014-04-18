@@ -227,7 +227,7 @@ class RegisterTask(Task):
             @contextmanager
             def fakeContext():
                 yield
-            return fakeContext
+            return fakeContext()
         registryName = os.path.join(butler.mapper.root, "registry.sqlite3")
         context = RegistryContext(registryName, self.createTable if create else None)
         return context
@@ -260,6 +260,8 @@ class RegisterTask(Task):
 
         Not sure this is required, given the 'ignore' configuration option.
         """
+        if conn == None:
+            return False        # For dryrun
         if self.config.ignore or len(self.config.unique) == 0:
             return False # Our entry could already be there, but we don't care
         cursor = conn.cursor()
@@ -286,7 +288,7 @@ class RegisterTask(Task):
         sql += ")"
         values = [info[col] for col in self.config.columns]
         if dryrun:
-            print "Would execute: '%s' with %s" % sql, values
+            print "Would execute: '%s' with %s" % (sql, values)
         else:
             conn.execute(sql, values)
 
@@ -344,7 +346,8 @@ class IngestTask(Task):
         if mode == "skip":
             return True
         if dryrun:
-            self.log.info("Would %s from %s to %s" % (args.mode, infile, outfile))
+            self.log.info("Would %s from %s to %s" % (mode, infile, outfile))
+            return True
         try:
             outdir = os.path.dirname(outfile)
             if not os.path.isdir(outdir):
