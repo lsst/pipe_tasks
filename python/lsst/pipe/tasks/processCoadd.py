@@ -134,6 +134,8 @@ class ProcessCoaddTask(ProcessImageTask):
             if self.config.doWriteSources:
                 dataRef.put(result.sources, self.dataPrefix + 'src')
 
+        self.log.info("Finish processing %s" % (dataRef.dataId))
+
         return result
     
     def setIsPrimaryFlag(self, sources, skyInfo):
@@ -171,6 +173,10 @@ class ProcessCoaddTask(ProcessImageTask):
                 continue
 
             centroidPos = source.getCentroid()
+            # Skip source whose centroidPos is nan
+            # I do not know why this can happen (NY)
+            if centroidPos[0] != centroidPos[0] or centroidPos[1] != centroidPos[1]:
+                continue
             isPatchInner = innerFloatBBox.contains(centroidPos)
             source.setFlag(self.isPatchInnerKey, isPatchInner)
             
