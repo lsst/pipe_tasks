@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+from __future__ import division, absolute_import
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -38,7 +38,7 @@ class InterpImageTask(pipeBase.Task):
     ConfigClass = InterpImageConfig
 
     @pipeBase.timeMethod
-    def interpolateOnePlane(self, maskedImage, planeName, pixelScale, fwhm):
+    def interpolateOnePlane(self, maskedImage, planeName, fwhmPixels=None):
         """Interpolate over one mask plane, in place
 
         Note that the interpolation code in meas_algorithms currently
@@ -47,11 +47,10 @@ class InterpImageTask(pipeBase.Task):
 
         @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
         @param[in] planeName: mask plane over which to interpolate
-        @param[in] pixelScale: pixel size as an angle on the sky, along x or y (an lsst.afw.geom.Angle)
-        @param[in] fwhm: FWHM of core star (arcsec); if None then defaultFwhm is used
+        @param[in] fwhmPixels: FWHM of core star (pixels); if None then the default is used
         """
         self.log.info("Interpolate over %s pixels" % (planeName,))
-        psfModel = self.config.modelPsf.apply(pixelScale=pixelScale, fwhm=fwhm)
+        psfModel = self.config.modelPsf.apply(fwhm=fwhmPixels)
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
         measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, 0.0)

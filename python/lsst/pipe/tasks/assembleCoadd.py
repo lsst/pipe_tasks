@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+from __future__ import division, absolute_import
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -187,7 +187,6 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.interpImage.interpolateOnePlane(
                 maskedImage = coaddExp.getMaskedImage(),
                 planeName = "EDGE",
-                pixelScale = skyInfo.wcs.pixelScale(),
             )
 
         if self.config.doWrite:
@@ -425,7 +424,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
         if self.config.doPsfMatch:
-            psf = self.config.modelPsf.apply(coaddExposure.getWcs().pixelScale())
+            psf = self.config.modelPsf.apply()
         else:
             psf = measAlg.CoaddPsf(coaddInputs.ccds, coaddExposure.getWcs())
         coaddExposure.setPsf(psf)
