@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+from __future__ import division, absolute_import
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -20,12 +20,10 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import math
 import argparse
 
 import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
-import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
@@ -42,37 +40,6 @@ except ImportError:
     applyMosaicResults = None
 
 __all__ = ["CoaddBaseTask", "getSkyInfo"]
-
-FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
-
-class DoubleGaussianPsfConfig(pexConfig.Config):
-    """Configuration for DoubleGaussian model Psf"""
-    fwhm = pexConfig.Field(dtype=float, doc="FWHM of core (arcseconds)",
-                           default=1.0, check=lambda x: x is None or x > 0.0)
-    sizeFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for kernel size", default=3.0,
-                                 check=lambda x: x > 0.0)
-    wingFwhmFactor = pexConfig.Field(dtype=float, doc="Multiplier of fwhm for wing fwhm", default=2.5,
-                                     check=lambda x: x > 0)
-    wingAmplitude = pexConfig.Field(dtype=float, doc="Relative amplitude of wing", default=0.1,
-                                    check=lambda x: x >= 0)
-
-    def apply(self, wcs):
-        """Construct a model PSF
-
-        The model PSF is a double Gaussian with core self.fwhm
-        and wings of self.wingAmplitude relative to the core
-        and width self.wingFwhmFactor relative to self.fwhm.
-
-        @param wcs: Wcs of the image (for pixel scale)
-        @return model PSF or None
-        """
-        fwhmPixels = self.fwhm / wcs.pixelScale().asArcseconds()
-        kernelDim = int(self.sizeFactor * fwhmPixels + 0.5)
-        self.log.logdebug("Create double Gaussian PSF model with core fwhm %0.1f pixels and size %dx%d" %
-                          (fwhmPixels, kernelDim, kernelDim))
-        coreSigma = fwhmPixels / FwhmPerSigma
-        return measAlg.DoubleGaussianPsf(kernelDim, kernelDim, coreSigma,
-                                         coreSigma * self.wingFwhmFactor, self.wingAmplitude)
 
 class CoaddBaseConfig(pexConfig.Config):
     """Config for CoaddBaseTask
@@ -93,14 +60,14 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     inputRecorder = pexConfig.ConfigurableField(
         doc = "Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
-        target = CoaddInputRecorderTask
+        target = CoaddInputRecorderTask,
     )
     doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
-    modelPsf = pexConfig.ConfigField(dtype=DoubleGaussianPsfConfig, doc="Model Psf specification")
+    modelPsf = measAlg.GaussianPsfFactory.makeField(doc = "Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype = bool,
         doc = "Apply meas_mosaic ubercal results to input calexps?",
-        default = False
+        default = False,
     )
 
 class CoaddTaskRunner(pipeBase.TaskRunner):

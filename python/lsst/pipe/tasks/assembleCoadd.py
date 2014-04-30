@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+from __future__ import division, absolute_import
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -67,11 +67,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
         dtype = bool,
         default = True,
-    )
-    interpFwhm = pexConfig.Field(
-        doc = "FWHM of PSF used for interpolation (arcsec)",
-        dtype = float,
-        default = 1.5,
     )
     interpImage = pexConfig.ConfigurableField(
         target = InterpImageTask,
@@ -189,9 +184,10 @@ class AssembleCoaddTask(CoaddBaseTask):
                                                inputData.backgroundInfoList)
 
         if self.config.doInterp:
-            fwhmPixels = self.config.interpFwhm / skyInfo.wcs.pixelScale().asArcseconds(),
-            self.interpImage.interpolateOnePlane(maskedImage=coaddExp.getMaskedImage(), planeName="EDGE",
-                                                 fwhmPixels=self.config.interpFwhm)
+            self.interpImage.interpolateOnePlane(
+                maskedImage = coaddExp.getMaskedImage(),
+                planeName = "EDGE",
+            )
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
@@ -428,7 +424,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
         if self.config.doPsfMatch:
-            psf = self.config.modelPsf.apply(coaddExposure.getWcs())
+            psf = self.config.modelPsf.apply()
         else:
             psf = measAlg.CoaddPsf(coaddInputs.ccds, coaddExposure.getWcs())
         coaddExposure.setPsf(psf)
