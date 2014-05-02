@@ -115,6 +115,14 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
         default = ("EDGE",),
     )
+    maskPropagationThresholds = pexConfig.DictField(
+        keytype = str,
+        itemtype = float,
+        doc = ("Threshold (in fractional weight) of rejection at which we propagate a mask plane to "
+               "the coadd; that is, we set the mask bit on the coadd if the fraction the rejected frames "
+               "would have contributed exceeds this value."),
+        default = {"SAT": 0.1},
+    )
 
 
 class AssembleCoaddTask(CoaddBaseTask):
@@ -377,6 +385,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl.setAndMask(self.getBadPixelMask())
         statsCtrl.setNanSafe(True)
         statsCtrl.setCalcErrorFromInputVariance(True)
+        for plane, threshold in self.config.maskPropagationThresholds.items():
+            bit = afwImage.MaskU.getMaskPlane(plane)
+            statsCtrl.setMaskPropagationThreshold(bit, threshold)
 
         if self.config.doSigmaClip:
             statsFlags = afwMath.MEANCLIP
