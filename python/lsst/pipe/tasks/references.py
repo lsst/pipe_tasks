@@ -167,7 +167,9 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
                 dataId['filter'] = self.config.filter
 
             if not butler.datasetExists(dataset, dataId):
-                raise TaskError("Reference %s doesn't exist" % (dataId,))
+                #raise TaskError("Reference %s doesn't exist" % (dataId,))
+                self.log.warn("Reference %s doesn't exist" % (dataId,))
+                continue
             self.log.info("Getting references in %s" % (dataId,))
             catalog = butler.get(dataset, dataId, immediate=True)
             if self.config.removePatchOverlaps:
