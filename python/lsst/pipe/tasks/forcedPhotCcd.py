@@ -115,6 +115,8 @@ class ForcedPhotCcdTask(ForcedPhotImageTask):
 
         @param dataRef       Data reference from butler
         """
+        if not dataRef.datasetExists(self.dataPrefix + "calexp"):
+            return None
         exposure = dataRef.get("calexp", immediate=True)
         if not self.config.doApplyUberCal:
             return exposure
