@@ -65,6 +65,7 @@ class ProcessImageConfig(pexConfig.Config):
         target = SourceMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
     )
+    tableVersion = pexConfig.Field(dtype=int, default=0, doc = "Table version to use for measurement")
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -167,6 +168,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.makeSourceCatalog(table, calExposure)
+            table.setVersion(self.config.tableVersion)
             sources = detections.sources
             fpSets = detections.fpSets
             if fpSets.background:           
