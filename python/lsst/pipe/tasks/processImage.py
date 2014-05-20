@@ -167,6 +167,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.makeSourceCatalog(table, calExposure)
+            table.setVersion(self.measurement.TableVersion)
             sources = detections.sources
             fpSets = detections.fpSets
             if fpSets.background:           
