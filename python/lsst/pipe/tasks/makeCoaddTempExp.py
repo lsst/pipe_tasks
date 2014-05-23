@@ -144,8 +144,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         """
         inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId)
         coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
-        edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddTempExp.getMaskedImage().set(numpy.nan, edgeMask, numpy.inf) # XXX these are the wrong values!
+        coaddTempExp.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.inf)
         totGoodPix = 0
         didSetMetadata = False
         modelPsf = self.config.modelPsf.apply(skyInfo.wcs) if self.config.doPsfMatch else None

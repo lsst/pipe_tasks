@@ -113,7 +113,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("EDGE",),
+        default = ("NO_DATA",),
     )
     maskPropagationThresholds = pexConfig.DictField(
         keytype = str,
@@ -198,7 +198,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if self.config.doInterp:
             fwhmPixels = self.config.interpFwhm / skyInfo.wcs.pixelScale().asArcseconds(),
-            self.interpImage.interpolateOnePlane(maskedImage=coaddExp.getMaskedImage(), planeName="EDGE",
+            self.interpImage.interpolateOnePlane(maskedImage=coaddExp.getMaskedImage(), planeName="NO_DATA",
                                                  fwhmPixels=self.config.interpFwhm)
 
         if self.config.doWrite:

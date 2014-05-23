@@ -88,7 +88,7 @@ class CoaddBaseConfig(pexConfig.Config):
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
         doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("EDGE",),
+        default = ("NO_DATA",),
     )
     inputRecorder = pexConfig.ConfigurableField(
         doc = "Subtask that helps fill CoaddInputs catalogs added to the final Exposure",

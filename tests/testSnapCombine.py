@@ -87,7 +87,7 @@ class SnapCombineTestCase(unittest.TestCase):
         config = SnapCombineTask.ConfigClass()
         config.doRepair = False
         config.doDiffIm = False
-        config.badMaskPlanes = ("BAD", "SAT", "EDGE", "CR")
+        config.badMaskPlanes = ("BAD", "SAT", "NO_DATA", "CR")
         badPixelMask = afwImage.MaskU.getPlaneBitMask(config.badMaskPlanes)
         task = SnapCombineTask(config=config)
 

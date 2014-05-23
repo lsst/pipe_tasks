@@ -42,7 +42,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     )
     badMaskPlanes = pexConfig.ListField(
         doc = "Names of mask planes to ignore while estimating the background",
-        dtype = str, default = ["EDGE", "DETECTED", "DETECTED_NEGATIVE","SAT","BAD","INTRP","CR"],
+        dtype = str, default = ["NO_DATA", "DETECTED", "DETECTED_NEGATIVE","SAT","BAD","INTRP","CR"],
         itemCheck = lambda x: x in afwImage.MaskU().getMaskPlaneDict().keys(),
     )
     gridStatistic = pexConfig.ChoiceField(
