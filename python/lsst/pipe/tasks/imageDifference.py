@@ -690,8 +690,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         # assemble coadd exposure from subregions of patches
         coaddExposure = afwImage.ExposureF(coaddBBox, coaddWcs)
-        edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
+        coaddExposure.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.nan)
         nPatchesFound = 0
         coaddFilter = None
         coaddPsf = None
