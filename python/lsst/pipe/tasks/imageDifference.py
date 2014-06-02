@@ -740,7 +740,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             nPatchesFound += 1
             self.log.info("Reading patch %s" % patchArgDict)
-            coaddPatch = sensorRef.get(**patchArgDict, immediate=True)
+            coaddPatch = sensorRef.get(immediate=True, **patchArgDict)
             coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
                 coaddPatch.getBBox(afwImage.PARENT), afwImage.PARENT)
             coaddView <<= coaddPatch.getMaskedImage()
