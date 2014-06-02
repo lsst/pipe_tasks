@@ -166,6 +166,10 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
                 exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                     maxBBox=skyInfo.bbox).exposure
+                if didSetMetadata:
+                    mimg = exposure.getMaskedImage()
+                    mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])
+                    del mimg
                 numGoodPix = coaddUtils.copyGoodPixels(
                     coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                 totGoodPix += numGoodPix
