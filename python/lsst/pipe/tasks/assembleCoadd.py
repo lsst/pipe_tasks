@@ -110,11 +110,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
-    badMaskPlanes = pexConfig.ListField(
-        dtype = str,
-        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("NO_DATA",),
-    )
     maskPropagationThresholds = pexConfig.DictField(
         keytype = str,
         itemtype = float,
@@ -123,6 +118,10 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                "would have contributed exceeds this value."),
         default = {"SAT": 0.1},
     )
+
+    def setDefaults(self):
+        super(AssembleCoaddConfig, self).setDefaults()
+        self.badMaskPlanes = ["NO_DATA", "BAD", "CR",]
 
 
 class AssembleCoaddTask(CoaddBaseTask):
