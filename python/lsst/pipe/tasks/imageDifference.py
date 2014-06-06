@@ -272,7 +272,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             bbox = exposure.getBBox(afwImage.PARENT)
             bbox.grow(-self.config.winter2013borderMask)
             self.setEdgeBits(exposure.getMaskedImage(), bbox, 
-                             exposure.getMaskedImage().getMask().getPlaneBitMask("EDGE"))
+                             exposure.getMaskedImage().getMask().getPlaneBitMask("NO_DATA"))
             
         # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
         ctr = afwGeom.Box2D(exposure.getBBox(afwImage.PARENT)).getCenter()
@@ -714,8 +714,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         
         # assemble coadd exposure from subregions of patches
         coaddExposure = afwImage.ExposureF(coaddBBox, coaddWcs)
-        edgeMask = afwImage.MaskU.getPlaneBitMask("EDGE")
-        coaddExposure.getMaskedImage().set(numpy.nan, edgeMask, numpy.nan)
+        coaddExposure.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.nan)
         nPatchesFound = 0
         coaddFilter = None
         coaddPsf = None

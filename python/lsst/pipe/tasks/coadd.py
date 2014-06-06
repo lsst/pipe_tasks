@@ -47,13 +47,13 @@ class CoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Task to compute zero point scale",
     )
     doInterp = pexConfig.Field(
-        doc = "Interpolate over EDGE pixels?",
+        doc = "Interpolate over NO_DATA pixels?",
         dtype = bool,
         default = True,
     )
     interpImage = pexConfig.ConfigurableField(
         target = InterpImageTask,
-        doc = "Task to interpolate over EDGE pixels",
+        doc = "Task to interpolate over NO_DATA pixels",
     )
     interpFwhm = pexConfig.Field(
         dtype = float,
@@ -180,7 +180,7 @@ class CoaddTask(CoaddBaseTask):
     def interpolateExposure(self, exp):
         """Interpolate an exposure to remove bad pixels
 
-        In this case, we're interested in interpolating over "EDGE" pixels,
+        In this case, we're interested in interpolating over "NO_DATA" pixels,
         which are pixels that have no contributing (good) input pixels.
 
         Presently, the interpolation code in meas_algorithms doesn't use
@@ -190,6 +190,6 @@ class CoaddTask(CoaddBaseTask):
         fwhmPixels = fwhmArcSec / exp.getWcs().pixelScale().asArcseconds()
         self.interpImage.interpolateOnePlane(
             maskedImage = exp.getMaskedImage(),
-            planeName = "EDGE",
+            planeName = "NO_DATA",
             fwhmPixels = fwhmPixels,
             )
