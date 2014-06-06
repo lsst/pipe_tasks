@@ -56,7 +56,8 @@ class AstrometryTask(pipeBase.Task):
 
     def __init__(self, schema, **kwds):
         pipeBase.Task.__init__(self, **kwds)
-        self.centroidKey = schema.addField("centroid.distorted", type="PointD",
+        self._centroidKeyName = "centroid.distorted"
+        self.centroidKey = schema.addField(self._centroidKeyName, type="PointD",
                                            doc="centroid distorted for astrometry solver")
         self.astrometer = None
 
@@ -80,6 +81,12 @@ class AstrometryTask(pipeBase.Task):
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
         """
+        try:
+            sources.getSchema().find(self.centroidKey)
+        except:
+            raise RuntimeError("sources' schema does not contain the distorted centroid field \"%s\"" %
+                               self._centroidKeyName)
+
         with self.distortionContext(exposure, sources) as bbox:
             results = self.astrometry(exposure, sources, bbox=bbox)
 
