@@ -126,7 +126,10 @@ class ForcedPhotCcdTask(ForcedPhotImageTask):
                 % dataRef.dataId
                 )
         else:
-            applyMosaicResults(dataRef, calexp=exposure)
+            try:
+                applyMosaicResults(dataRef, calexp=exposure)
+            except Exception as err:
+                return None
         return exposure
 
     @classmethod
