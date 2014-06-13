@@ -23,7 +23,7 @@
 import math
 
 import lsst.pex.config as pexConfig
-import lsst.afw.detection as afwDetection
+import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
@@ -41,30 +41,57 @@ class InterpImageConfig(pexConfig.Config):
         doc = "Interpolation kernel size = interpFwhm converted to pixels * interpKernelSizeFactor.",
         default = 3.0,
     )
+    useFallbackValueAtEdge = pexConfig.Field(
+        dtype = bool,
+        doc = "Smoothly taper (on the PSF scale) to the fallback value at the edge of the image?",
+        default = True,
+    )
 
 class InterpImageTask(pipeBase.Task):
     """Interpolate over bad image pixels
     """
     ConfigClass = InterpImageConfig
+    _DefaultName = "interpImage"
 
     @pipeBase.timeMethod
-    def interpolateOnePlane(self, maskedImage, planeName, fwhmPixels):
-        """Interpolate over one mask plane, in place
+    def run(self, maskedImage, planeName, psf, fallbackValue=None):
+        """Interpolate in place over the pixels in a maskedImage which are marked bad by a mask plane
 
         Note that the interpolation code in meas_algorithms currently
         doesn't use the input PSF (though it's a required argument),
         so it's not important to set the input PSF parameters exactly.
 
         @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
-        @param[in] fwhmPixels: FWHM of double Gaussian model to use for interpolation (pixels)
         @param[in] planeName: mask plane over which to interpolate
-        @param[in] PSF to use to detect NaNs
+        @param[in] PSF to use to detect NaNs (if a float, interpreted as PSF's Gaussian FWHM)
+        """
+        return self.interpolateOnePlane(maskedImage, planeName, psf, fallbackValue)
+
+    @pipeBase.timeMethod
+    def interpolateOnePlane(self, maskedImage, planeName, psf, fallbackValue=None):
+        """Interpolate in place over the pixels in a maskedImage which are marked bad by a mask plane
+
+        Note that the interpolation code in meas_algorithms currently
+        doesn't use the input PSF (though it's a required argument),
+        so it's not important to set the input PSF parameters exactly.
+
+        @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
+        @param[in] planeName: mask plane over which to interpolate
+        @param[in] PSF to use to detect NaNs (if a float, interpreted as PSF's Gaussian FWHM)
+        @param[in] fallbackValue Pixel value to use when all else fails (if None, use median)
         """
         self.log.info("Interpolate over %s pixels" % (planeName,))
-        kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
-        kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
-        coreSigma = fwhmPixels / FwhmPerSigma
-        psfModel = measAlg.DoubleGaussianPsf(kernelDim[0], kernelDim[1], coreSigma, coreSigma * 2.5, 0.1)
+
+        if isinstance(psf, float):
+            fwhmPixels = psf
+            kernelSize = int(round(fwhmPixels * self.config.interpKernelSizeFactor))
+            kernelDim = afwGeom.Point2I(kernelSize, kernelSize)
+            coreSigma = fwhmPixels / FwhmPerSigma
+            psf = measAlg.DoubleGaussianPsf(kernelDim[0], kernelDim[1], coreSigma, coreSigma*2.5, 0.1)
+
+        if fallbackValue is None:
+            fallbackValue = afwMath.makeStatistics(maskedImage, afwMath.MEDIAN).getValue()
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
-        measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, 0.0)
+        measAlg.interpolateOverDefects(maskedImage, psf, nanDefectList, fallbackValue,
+                                       self.config.useFallbackValueAtEdge)
