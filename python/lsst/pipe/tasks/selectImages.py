@@ -198,8 +198,8 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 imageCorners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
             except pexExceptions.LsstCppException, e:
                 # Protecting ourselves from awful Wcs solutions in input images
-                if (not isinstance(e.message, pexExceptions.DomainErrorException) and
-                    not isinstance(e.message, pexExceptions.RuntimeErrorException)):
+                if (not isinstance(e.message, pexExceptions.DomainError) and
+                    not isinstance(e.message, pexExceptions.RuntimeError)):
                     raise
                 self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
                 continue
