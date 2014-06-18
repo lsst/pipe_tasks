@@ -58,24 +58,8 @@ class InterpImageTask(pipeBase.Task):
         @param[in] fwhmPixels: FWHM of core star (pixels); if None then the default is used
         @param[in] fallbackValue Pixel value to use when all else fails (if None, use median)
         """
-        return self.interpolateOnePlane(maskedImage, planeName, fwhmPixels, fallbackValue)
-
-    @pipeBase.timeMethod
-    def interpolateOnePlane(self, maskedImage, planeName, fwhmPixels=None, fallbackValue=None):
-        """Interpolate in place over the pixels in a maskedImage which are marked bad by a mask plane
-
-        Note that the interpolation code in meas_algorithms currently
-        doesn't use the input PSF (though it's a required argument),
-        so it's not important to set the input PSF parameters exactly.
-
-        @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
-        @param[in] planeName: mask plane over which to interpolate
-        @param[in] fwhmPixels: FWHM of core star (pixels); if None then the default is used
-        @param[in] fallbackValue Pixel value to use when all else fails (if None, use median)
-        """
         self.log.info("Interpolate over %s pixels" % (planeName,))
         psfModel = self.config.modelPsf.apply(fwhm=fwhmPixels)
-
 
         if fallbackValue is None:
             fallbackValue = afwMath.makeStatistics(maskedImage, afwMath.MEDIAN).getValue()
@@ -83,3 +67,5 @@ class InterpImageTask(pipeBase.Task):
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
         measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, fallbackValue,
                                        self.config.useFallbackValueAtEdge)
+
+    interpolateOnePlane = run
