@@ -26,6 +26,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.detection as afwDet
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 from lsst.meas.photocal import PhotoCalTask
@@ -68,6 +69,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Perform PSF fitting?",
         default = True,
     )
+    doMeasureApCorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Compute aperture corrections?",
+        default = True,
+    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -100,6 +106,10 @@ class CalibrateConfig(pexConfig.Config):
     measurement = pexConfig.ConfigurableField(
         target = measAlg.SourceMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
+    )
+    measureApCorr   = pexConfig.ConfigurableField(
+        target = measAlg.MeasureApCorrTask,
+        doc = "subtask to measure aperture corrections"
     )
     astrometry    = pexConfig.ConfigurableField(target = AstrometryTask, doc = "")
     photocal      = pexConfig.ConfigurableField(target = PhotoCalTask, doc="")
@@ -152,6 +162,7 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("initialMeasurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("measurePsf", schema=self.schema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("measureApCorr", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
         self.makeSubtask("photocal", schema=self.schema)
 
@@ -169,7 +180,8 @@ class CalibrateTask(pipeBase.Task):
     def run(self, exposure, defects=None, idFactory=None):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
 
-        @param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
+        @param[in,out]  exposure   Exposure to calibrate; measured Psf, Wcs, ApCorr, Calib, etc. will
+                                   be installed there as well
         @param[in]      defects    List of defects on exposure
         @param[in]      idFactory  afw.table.IdFactory to use for source catalog.
         @return a pipeBase.Struct with fields:
@@ -178,6 +190,7 @@ class CalibrateTask(pipeBase.Task):
         - sources: Sources used in calibration
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
+        - apCorrMap: Map of aperture corrections
         - photocal: Output of photocal subtask
         """
         assert exposure is not None, "No exposure provided"
@@ -251,8 +264,11 @@ class CalibrateTask(pipeBase.Task):
 
             self.display('background', exposure=exposure)
 
-        if self.config.doAstrometry or self.config.doPhotoCal:
+        if self.config.doMeasureApCorr or self.config.doAstrometry:  # doPhotoCal implied by doAstrometry
             self.measurement.run(exposure, sources)
+
+        apCorrMap = self.measureApCorr.run(exposure.getBBox(afwImage.PARENT), sources)
+        exposure.getInfo().setApCorrMap(apCorrMap)
 
         matches, matchMeta = None, None
         if self.config.doAstrometry:
@@ -301,6 +317,7 @@ class CalibrateTask(pipeBase.Task):
             sources = sources,
             matches = matches,
             matchMeta = matchMeta,
+            apCorrMap = apCorrMap,
             photocal = photocalRet,
         )
 
