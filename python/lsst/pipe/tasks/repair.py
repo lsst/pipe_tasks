@@ -24,6 +24,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
+from lsst.pipe.tasks.interpImage import InterpImageConfig
 
 import lsstDebug
 
@@ -32,6 +33,10 @@ class RepairConfig(pexConfig.Config):
         dtype = bool,
         doc = "Interpolate over defects? (ignored unless you provide a list of defects)",
         default = True,
+    )
+    interp = pexConfig.ConfigField(
+        dtype = InterpImageConfig,
+        doc = "Options for interpolating",
     )
     doCosmicRay = pexConfig.Field(
         dtype = bool,
@@ -64,14 +69,15 @@ class RepairTask(pipeBase.Task):
 
         self.display('repair.before', exposure=exposure)
         if defects is not None and self.config.doInterpolate:
-            self.interpolate(exposure, defects)
+            self.interpolate(exposure, defects,
+                             useFallbackValueAtEdge=self.config.interp.useFallbackValueAtEdge)
 
         if self.config.doCosmicRay:
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
         self.display('repair.after', exposure=exposure)
 
-    def interpolate(self, exposure, defects):
+    def interpolate(self, exposure, defects, useFallbackValueAtEdge=False):
         """Interpolate over defects
 
         @param[in,out] exposure Exposure to process
@@ -84,7 +90,8 @@ class RepairTask(pipeBase.Task):
 
         mi = exposure.getMaskedImage()
         fallbackValue = afwMath.makeStatistics(mi, afwMath.MEANCLIP).getValue()
-        measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
+        measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue, useFallbackValueAtEdge)
+
         self.log.info("Interpolated over %d defects." % len(defects))
 
     def cosmicRay(self, exposure, keepCRs=None):

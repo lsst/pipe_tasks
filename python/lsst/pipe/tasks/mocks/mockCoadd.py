@@ -203,6 +203,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
                     simSrcRecord.setFlag(self.partialOverlapKey, status == 1)
                     self.log.info("  added object {id}".format(id=truthRecord.getId()))
             exposure.getMaskedImage().getVariance().set(1.0)
+            #
             if butler is not None:
                 butler.put(exposure, "calexp", ccd=ccd, visit=visit)
         if butler is not None:

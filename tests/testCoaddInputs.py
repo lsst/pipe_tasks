@@ -36,9 +36,12 @@ import lsst.meas.algorithms
 import lsst.pipe.tasks.mocks
 import lsst.daf.persistence
 
-REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
-CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
-DATAREPO_ROOT = "testCoaddInputs-data"
+try:
+    REUSE_DATAREPO
+except NameError:                       # only set variables on initial import
+    REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
+    CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
+    DATAREPO_ROOT = "testCoaddInputs-data"
 
 class CoaddInputsTestCase(unittest.TestCase):
     """A test case for CoaddInputsTask."""
@@ -230,10 +233,18 @@ def suite():
 
 def run(shouldExit=False):
     status = utilsTests.run(suite(), False)
-    if CLEANUP_DATAREPO and os.path.exists(DATAREPO_ROOT):
-        shutil.rmtree(DATAREPO_ROOT)
-    if shouldExit:
-        sys.exit(status)
+    if os.path.exists(DATAREPO_ROOT):
+        if CLEANUP_DATAREPO:
+            if status == 0:
+                shutil.rmtree(DATAREPO_ROOT)
+            else:
+                print >> sys.stderr, "Tests failed; not cleaning up %s" % os.path.abspath(DATAREPO_ROOT)
+        else:
+            print >> sys.stderr, "CLEANUP_DATAREPO is False; not cleaning up %s" % \
+                os.path.abspath(DATAREPO_ROOT)
+        if shouldExit:
+            sys.exit(status)
+
     return status
 
 if __name__ == "__main__":
