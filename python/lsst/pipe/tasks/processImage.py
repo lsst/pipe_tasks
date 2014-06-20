@@ -89,12 +89,14 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     Subclasses are responsible for meeting the requirements of CmdLineTask.
     """
     ConfigClass = ProcessImageConfig
-
     dataPrefix = ""  # Name to prepend to all input and output datasets (e.g. 'goodSeeingCoadd_')
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
-        self.makeSubtask("calibrate")
+
+        #  Do this task using whatever tableVersion is set for the measurement task 
+        tableVersion = self.config.measurement.target.TableVersion
+        self.makeSubtask("calibrate", tableVersion=tableVersion)
 
         # Setup our schema by starting with fields we want to propagate from icSrc.
         calibSchema = self.calibrate.schema
@@ -102,18 +104,23 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
 
         # Add fields needed to identify stars used in the calibration step
-        self.calibSourceKey = self.schemaMapper.addOutputField(
-            afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
-            )
+        if tableVersion == 0:
+            self.calibSourceKey = self.schemaMapper.addOutputField(
+                afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
+                )
+        else:
+            self.calibSourceKey = self.schemaMapper.addOutputField(
+                afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSrc")
+                )
+
         for key in self.calibrate.getCalibKeys():
             self.schemaMapper.addMapping(key)
         self.schema = self.schemaMapper.getOutputSchema()
-        
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
-            self.makeSubtask("detection", schema=self.schema)
+            self.makeSubtask("detection", schema=self.schema, tableVersion=tableVersion)
         if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
+            self.makeSubtask("deblend", schema=self.schema, tableVersion=tableVersion)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
