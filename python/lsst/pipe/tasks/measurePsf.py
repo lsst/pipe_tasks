@@ -50,19 +50,31 @@ Conversion notes:
     """
     ConfigClass = MeasurePsfConfig
 
-    def __init__(self, schema=None, **kwargs):
+    def __init__(self, schema=None, tableVersion=0, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
         if schema is not None:
-            self.candidateKey = schema.addField(
-                "calib.psf.candidate", type="Flag",
-                doc=("Flag set if the source was a candidate for PSF determination, "
-                     "as determined by the '%s' star selector.") % self.config.starSelector.name
-                )
-            self.usedKey = schema.addField(
-                "calib.psf.used", type="Flag",
-                doc=("Flag set if the source was actually used for PSF determination, "
-                     "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
-                )
+            if tableVersion == 0:
+                self.candidateKey = schema.addField(
+                    "calib.psf.candidate", type="Flag",
+                    doc=("Flag set if the source was a candidate for PSF determination, "
+                         "as determined by the '%s' star selector.") % self.config.starSelector.name
+                    )
+                self.usedKey = schema.addField(
+                    "calib.psf.used", type="Flag",
+                    doc=("Flag set if the source was actually used for PSF determination, "
+                         "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
+                    )
+            else:
+                self.candidateKey = schema.addField(
+                    "calib_psf_candidate", type="Flag",
+                    doc=("Flag set if the source was a candidate for PSF determination, "
+                         "as determined by the '%s' star selector.") % self.config.starSelector.name
+                    )
+                self.usedKey = schema.addField(
+                    "calib_psf_used", type="Flag",
+                    doc=("Flag set if the source was actually used for PSF determination, "
+                         "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
+                    )
         else:
             self.candidateKey = None
             self.usedKey = None

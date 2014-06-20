@@ -68,19 +68,34 @@ class ProcessCoaddTask(ProcessImageTask):
     def __init__(self, **kwargs):
         ProcessImageTask.__init__(self, **kwargs)
         self.dataPrefix = self.config.coaddName + "Coadd_"
-        self.isPatchInnerKey = self.schema.addField(
-            "detect.is-patch-inner", type="Flag",
-            doc="true if source is in the inner region of a coadd patch",
-        )
-        self.isTractInnerKey = self.schema.addField(
-            "detect.is-tract-inner", type="Flag",
-            doc="true if source is in the inner region of a coadd tract",
-        )
-        self.isPrimaryKey = self.schema.addField(
-            "detect.is-primary", type="Flag",
-            doc="true if source has no children and is in the inner region of a coadd patch " \
-                + "and is in the inner region of a coadd tract",
-        )
+        if self.schema.getVersion() == 0:
+            self.isPatchInnerKey = self.schema.addField(
+                "detect.is-patch-inner", type="Flag",
+                doc="true if source is in the inner region of a coadd patch",
+            )
+            self.isTractInnerKey = self.schema.addField(
+                "detect.is-tract-inner", type="Flag",
+                doc="true if source is in the inner region of a coadd tract",
+            )
+            self.isPrimaryKey = self.schema.addField(
+                "detect.is-primary", type="Flag",
+                doc="true if source has no children and is in the inner region of a coadd patch " \
+                    + "and is in the inner region of a coadd tract",
+            )
+        else:
+            self.isPatchInnerKey = self.schema.addField(
+                "detect_is-patch-inner", type="Flag",
+                doc="true if source is in the inner region of a coadd patch",
+            )
+            self.isTractInnerKey = self.schema.addField(
+                "detect_is-tract-inner", type="Flag",
+                doc="true if source is in the inner region of a coadd tract",
+            )
+            self.isPrimaryKey = self.schema.addField(
+                "detect_is-primary", type="Flag",
+                doc="true if source has no children and is in the inner region of a coadd patch " \
+                    + "and is in the inner region of a coadd tract",
+            )
 
     @pipeBase.timeMethod
     def scaleVariance(self, exposure):

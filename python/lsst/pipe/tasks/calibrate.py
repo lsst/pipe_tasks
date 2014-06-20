@@ -323,19 +323,20 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         """
         self.__init__(**kwargs)
 
-    def __init__(self, **kwargs):
+    def __init__(self, tableVersion=0, **kwargs):
         """!Create the calibration task.  See CalibrateTask.init for documentation
         """
         pipeBase.Task.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
+        self.tableVersion = tableVersion
         self.makeSubtask("repair")
-        self.makeSubtask("detection", schema=self.schema)
+        self.makeSubtask("detection", schema=self.schema, tableVersion=tableVersion)
         self.makeSubtask("initialMeasurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("measurePsf", schema=self.schema)
+        self.makeSubtask("measurePsf", schema=self.schema, tableVersion=tableVersion)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("astrometry", schema=self.schema)
-        self.makeSubtask("photocal", schema=self.schema)
+        self.makeSubtask("astrometry", schema=self.schema, tableVersion=tableVersion)
+        self.makeSubtask("photocal", schema=self.schema, tableVersion=tableVersion)
 
     def getCalibKeys(self):
         """!
@@ -384,6 +385,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             self.display('background', exposure=exposure)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         table.setMetadata(self.algMetadata)
+        table.setVersion(self.tableVersion)
         detRet = self.detection.makeSourceCatalog(table, exposure)
         sources = detRet.sources
         if detRet.fpSets.background:
