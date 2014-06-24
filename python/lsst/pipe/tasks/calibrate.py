@@ -264,11 +264,15 @@ class CalibrateTask(pipeBase.Task):
 
             self.display('background', exposure=exposure)
 
-        if self.config.doMeasureApCorr or self.config.doAstrometry:  # doPhotoCal implied by doAstrometry
-            self.measurement.run(exposure, sources)
-
+        # Because we want to both compute the aperture corrections and apply them - and we do the latter
+        # as a source measurement plugin ("CorrectFluxes"), we have to sandwich the aperture correction
+        # measurement in between two source measurement passes, using the priority range arguments added
+        # just for this purpose.
+        apCorrApplyPriority = self.config.measurement.algorithms["correctfluxes"].priority
+        self.measurement.run(exposure, sources, endPriority=apCorrApplyPriority)
         apCorrMap = self.measureApCorr.run(exposure.getBBox(afwImage.PARENT), sources)
         exposure.getInfo().setApCorrMap(apCorrMap)
+        self.measurement.run(exposure, sources, beginPriority=apCorrApplyPriority)
 
         matches, matchMeta = None, None
         if self.config.doAstrometry:
