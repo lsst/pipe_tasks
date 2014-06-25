@@ -28,6 +28,7 @@ import lsst.afw.image
 import lsst.pipe.base
 from lsst.pex.config import Config, ConfigurableField, DictField, Field
 from .forcedPhotImage import ForcedPhotImageTask
+from .dataIds import PerTractCcdDataIdContainer
 
 try:
     from lsst.meas.mosaic import applyMosaicResults
@@ -36,56 +37,6 @@ except ImportError:
 
 __all__ = ("ForcedPhotCcdTask",)
 
-class CcdForcedSrcDataIdContainer(lsst.pipe.base.DataIdContainer):
-    """A version of lsst.pipe.base.DataIdContainer specialized for forced photometry on CCDs.
-    
-    Required because we need to add "tract" to the raw data ID keys, and that's tricky.
-    """
-    def castDataIds(self, butler):
-        """Validate data IDs and cast them to the correct type (modify idList in place).
-
-        @param butler: data butler
-        """
-        if self.datasetType is None:
-            raise RuntimeError("Must call setDatasetType first")
-        try:
-            idKeyTypeDict = butler.getKeys(datasetType="src", level=self.level)
-        except KeyError as e:
-            raise KeyError("Cannot get keys for datasetType %s at level %s" % (self.datasetType, self.level))
-
-        idKeyTypeDict = idKeyTypeDict.copy()
-        idKeyTypeDict["tract"] = int
-
-        for dataDict in self.idList:
-            for key, strVal in dataDict.iteritems():
-                try:
-                    keyType = idKeyTypeDict[key]
-                except KeyError:
-                    validKeys = sorted(idKeyTypeDict.keys())
-                    raise KeyError("Unrecognized ID key %r; valid keys are: %s" % (key, validKeys))
-                if keyType != str:
-                    try:
-                        castVal = keyType(strVal)
-                    except Exception:
-                        raise TypeError("Cannot cast value %r to %s for ID key %r" % (strVal, keyType, key,))
-                    dataDict[key] = castVal
-
-    def makeDataRefList(self, namespace):
-        """Make self.refList from self.idList
-        """
-        for dataId in self.idList:
-            if "tract" not in dataId:
-                raise argparse.ArgumentError(None, "--id must include tract")
-            tract = dataId.pop("tract")
-            # making a DataRef for src fills out any missing keys and allows us to iterate
-            for srcDataRef in namespace.butler.subset("src", dataId=dataId):
-                forcedDataId = srcDataRef.dataId.copy()
-                forcedDataId['tract'] = tract
-                dataRef = namespace.butler.dataRef(
-                    datasetType = "forced_src",
-                    dataId = forcedDataId,
-                    )
-                self.refList.append(dataRef)
 
 class ForcedPhotCcdConfig(ForcedPhotImageTask.ConfigClass):
     doApplyUberCal = Field(
@@ -131,5 +82,5 @@ class ForcedPhotCcdTask(ForcedPhotImageTask):
     def _makeArgumentParser(cls):
         parser = lsst.pipe.base.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "forced_src", help="data ID, with raw CCD keys + tract",
-                               ContainerClass=CcdForcedSrcDataIdContainer)
+                               ContainerClass=PerTractCcdDataIdContainer)
         return parser
