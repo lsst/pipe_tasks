@@ -21,12 +21,10 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import argparse
-
 import lsst.afw.table
 import lsst.afw.image
 import lsst.pipe.base
-from lsst.pex.config import Config, ConfigurableField, DictField, Field
+from lsst.pex.config import Field
 from .forcedPhotImage import ForcedPhotImageTask
 from .dataIds import PerTractCcdDataIdContainer
 

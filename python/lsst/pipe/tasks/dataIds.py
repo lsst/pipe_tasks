@@ -21,7 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import argparse
 import collections
 
 import lsst.pex.logging
@@ -46,7 +45,7 @@ class PerTractCcdDataIdContainer(CoaddDataIdContainer):
         try:
             idKeyTypeDict = butler.getKeys(datasetType="src", level=self.level)
         except KeyError as e:
-            raise KeyError("Cannot get keys for datasetType %s at level %s" % ("src", self.level))
+            raise KeyError("Cannot get keys for datasetType %s at level %s: %s" % ("src", self.level, e))
 
         idKeyTypeDict = idKeyTypeDict.copy()
         idKeyTypeDict["tract"] = int
