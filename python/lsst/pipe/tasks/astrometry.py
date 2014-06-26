@@ -22,7 +22,7 @@
 import numpy
 from contextlib import contextmanager
 
-from lsst.pex.exceptions import LsstCppException, LengthErrorException
+from lsst.pex.exceptions import LsstCppException, LengthError
 import lsst.afw.geom as afwGeom
 from lsst.afw.cameraGeom import TAN_PIXELS
 import lsst.afw.image as afwImage
@@ -266,7 +266,7 @@ class AstrometryTask(pipeBase.Task):
                 wcs, scatter = fitWcs(wcs, title="Final astrometry")
 
             except LsstCppException as e:
-                if not isinstance(e.message, LengthErrorException):
+                if not isinstance(e.message, LengthError):
                     raise
                 self.log.warn("Unable to fit SIP: %s" % e)
 

@@ -331,9 +331,11 @@ def makeSimpleCamera(
     pScaleRad = lsst.afw.geom.arcsecToRad(plateScale)
     radialDistortCoeffs = [0.0, 1.0/pScaleRad, 0.0, radialDistortion/pScaleRad]
     focalPlaneToPupil = lsst.afw.geom.RadialXYTransform(radialDistortCoeffs)
-    transformMap = {
-        lsst.afw.cameraGeom.PUPIL: focalPlaneToPupil
+    nativeSys = lsst.afw.cameraGeom.FOCAL_PLANE
+    transforms = {
+        lsst.afw.cameraGeom.PUPIL: focalPlaneToPupil,
     }
+    transformMap = lsst.afw.cameraGeom.CameraTransformMap(nativeSys, transforms)
 
     detectorList = []
     ccdBBox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(), lsst.afw.geom.Extent2I(sizeX, sizeY))
