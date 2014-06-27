@@ -107,7 +107,8 @@ class CalibrateConfig(pexConfig.Config):
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
-        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification"]
+        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
+        self.measurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
         initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024        
@@ -215,18 +216,24 @@ class CalibrateTask(pipeBase.Task):
         table1.setVersion(self.tableVersion)
         detRet = self.detection.makeSourceCatalog(table1, exposure)
         sources1 = detRet.sources
+
+
         if self.config.doAstrometry or self.config.doPhotoCal:
+            # make a second table with which to do the second measurement
+            # the schemaMapper will copy the footprints and ids, which is all we need.
             table2 = afwTable.SourceTable.make(self.schema2, idFactory)
             table2.setMetadata(self.algMetadata)
             table2.setVersion(self.tableVersion)
-
-            # Reproduced this code from detection to match sources1
             sources2 = afwTable.SourceCatalog(table2)
-            table2.preallocate(detRet.fpSets.numPos + detRet.fpSets.numNeg) # not required, but nice
-            if detRet.fpSets.negative:
-                detRet.fpSets.negative.makeSources(sources2)
-            if detRet.fpSets.positive:
-                detRet.fpSets.positive.makeSources(sources2)
+            # transfer to a second table
+            schemaMapper = afwTable.SchemaMapper(self.schema1)
+            count = 0
+            for item in self.schema1:
+                field = item.getField()
+                name = field.getName()
+                schemaMapper.addMapping(item.key, name)
+                break
+            sources2.extend(sources1, schemaMapper)
 
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
