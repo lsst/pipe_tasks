@@ -435,12 +435,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             sources2 = afwTable.SourceCatalog(table2)
             # transfer to a second table
             schemaMapper = afwTable.SchemaMapper(self.schema1)
-            count = 0
-            for item in self.schema1:
-                field = item.getField()
-                name = field.getName()
-                schemaMapper.addMapping(item.key, name)
-                break
+            key = self.schema1.find("id").key
+            schemaMapper.addMapping(key, "id")
             sources2.extend(sources1, schemaMapper)
 
         if detRet.fpSets.background:
