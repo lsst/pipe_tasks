@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
@@ -107,10 +107,11 @@ class CalibrateConfig(pexConfig.Config):
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
-        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification"]
+        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
+        self.measurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
         initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
-        self.background.binSize = 1024        
+        self.background.binSize = 1024
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -325,7 +326,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         pipeBase.Task.__init__(self, **kwargs)
 
         # the calibrate Source Catalog is divided into two catalogs to allow measurement to be run twice
-        # the field count at critical points is used to identify the measurement fields for later prefixing 
+        # the field count at critical points is used to identify the measurement fields for later prefixing
         self.schema1 = afwTable.SourceTable.makeMinimalSchema()
         minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
@@ -355,8 +356,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             count = count + 1
             field = item.getField()
             name = field.getName()
-            if count > beginInitial and count <= endInitial: 
-                name = "initial" + separator + name 
+            if count > beginInitial and count <= endInitial:
+                name = "initial" + separator + name
             self.schemaMapper1.addMapping(item.key, name)
             self.schemaMapper2.addOutputField(field.copyRenamed(name))
         count = 0
@@ -365,7 +366,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             if count <= minimalCount: continue
             field = item.getField()
             name = field.getName()
-            if count > beginMeasurement and count <= endMeasurement: name = "measurement" + separator + name 
+            if count > beginMeasurement and count <= endMeasurement: name = "measurement" + separator + name
             self.schemaMapper2.addMapping(item.key, name)
             self.schemaMapper1.addOutputField(field.copyRenamed(name))
 
@@ -423,18 +424,34 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         table1.setVersion(self.tableVersion)
         detRet = self.detection.makeSourceCatalog(table1, exposure)
         sources1 = detRet.sources
+
+
         if self.config.doAstrometry or self.config.doPhotoCal:
+            # make a second table with which to do the second measurement
+            # the schemaMapper will copy the footprints and ids, which is all we need.
             table2 = afwTable.SourceTable.make(self.schema2, idFactory)
             table2.setMetadata(self.algMetadata)
             table2.setVersion(self.tableVersion)
 
             # Reproduced this code from detection to match sources1
             sources2 = afwTable.SourceCatalog(table2)
+<<<<<<< HEAD
             table2.preallocate(detRet.fpSets.numPos + detRet.fpSets.numNeg) # not required, but nice
             if detRet.fpSets.negative:
                 detRet.fpSets.negative.makeSources(sources2)
             if detRet.fpSets.positive:
                 detRet.fpSets.positive.makeSources(sources2)
+=======
+            # transfer to a second table
+            schemaMapper = afwTable.SchemaMapper(self.schema1)
+            count = 0
+            for item in self.schema1:
+                field = item.getField()
+                name = field.getName()
+                schemaMapper.addMapping(item.key, name)
+                break
+            sources2.extend(sources1, schemaMapper)
+>>>>>>> Use schemaMapper to create second of two calibrate catalogs.
 
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
@@ -497,7 +514,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
-                
+
             if photocalRet:
                 self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
                 exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
@@ -512,7 +529,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
                 metadata.set('COLORTERM1', 0.0)
                 metadata.set('COLORTERM2', 0.0)
-                metadata.set('COLORTERM3', 0.0)    
+                metadata.set('COLORTERM3', 0.0)
         else:
             photocalRet = None
 
@@ -530,7 +547,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # this loop will be done in C++ code on a different ticket
         for i in range(len(sources)):
             sources[i].assign(sources2[i], self.schemaMapper2)
-      
+
         return pipeBase.Struct(
             exposure = exposure,
             backgrounds = backgrounds,
@@ -548,7 +565,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         \throws AssertionError If exposure or exposure.getWcs() are None
         """
         assert exposure, "No exposure provided"
-        
+
         wcs = exposure.getWcs()
         assert wcs, "No wcs in exposure"
 
