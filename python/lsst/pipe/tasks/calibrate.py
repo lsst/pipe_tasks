@@ -432,16 +432,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             table2 = afwTable.SourceTable.make(self.schema2, idFactory)
             table2.setMetadata(self.algMetadata)
             table2.setVersion(self.tableVersion)
-
-            # Reproduced this code from detection to match sources1
             sources2 = afwTable.SourceCatalog(table2)
-<<<<<<< HEAD
-            table2.preallocate(detRet.fpSets.numPos + detRet.fpSets.numNeg) # not required, but nice
-            if detRet.fpSets.negative:
-                detRet.fpSets.negative.makeSources(sources2)
-            if detRet.fpSets.positive:
-                detRet.fpSets.positive.makeSources(sources2)
-=======
             # transfer to a second table
             schemaMapper = afwTable.SchemaMapper(self.schema1)
             count = 0
@@ -451,7 +442,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 schemaMapper.addMapping(item.key, name)
                 break
             sources2.extend(sources1, schemaMapper)
->>>>>>> Use schemaMapper to create second of two calibrate catalogs.
 
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
