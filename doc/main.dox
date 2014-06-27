@@ -12,8 +12,10 @@ Documentation for Tasks is in \ref LSST_task_documentation.
  */
 
 /**
-\defgroup LSST_task_documentation Documentation for Individual Tasks
+\defgroup LSST_task_documentation Task Documentation
+\brief Documentation for individual processing Tasks
 
-Documentation for Tasks from the doxygen group LSST_task_documentation, scattered over implementation products.
+Tasks are scattered over various implementation products and gathered together by their membership of the
+doxygen group LSST_task_documentation.
 */
 }}}
