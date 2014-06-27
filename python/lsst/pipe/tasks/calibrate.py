@@ -120,6 +120,9 @@ class CalibrateTask(pipeBase.Task):
 
     def __init__(self, tableVersion=0, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
+
+        # the calibrate Source Catalog is divided into two catalogs to allow measurement to be run twice
+        # the field count at critical points is used to identify the measurement fields for later prefixing 
         self.schema1 = afwTable.SourceTable.makeMinimalSchema()
         minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
@@ -131,13 +134,15 @@ class CalibrateTask(pipeBase.Task):
         endInitial = self.schema1.getFieldCount()
         self.makeSubtask("measurePsf", schema=self.schema1, tableVersion=tableVersion)
 
+        # measurements fo the second measurement step done with a second schema
         self.schema2 = afwTable.SourceTable.makeMinimalSchema()
         beginMeasurement = self.schema2.getFieldCount()
         self.makeSubtask("measurement", schema=self.schema2, algMetadata=self.algMetadata)
         endMeasurement = self.schema2.getFieldCount()
         self.makeSubtask("astrometry", schema=self.schema2, tableVersion=tableVersion)
         self.makeSubtask("photocal", schema=self.schema2, tableVersion=tableVersion)
-        self.schema = afwTable.Schema()
+
+        # create a schemaMapper for each of the catalogs
         self.schemaMapper1 = afwTable.SchemaMapper(self.schema1)
         self.schemaMapper2 = afwTable.SchemaMapper(self.schema2)
         if self.tableVersion == 0: separator = "."
@@ -160,6 +165,8 @@ class CalibrateTask(pipeBase.Task):
             if count > beginMeasurement and count <= endMeasurement: name = "measurement" + separator + name 
             self.schemaMapper2.addMapping(item.key, name)
             self.schemaMapper1.addOutputField(field.copyRenamed(name))
+
+        # Both schemaMappers have the same output.  The final schema is recorded as this.
         self.schema = self.schemaMapper2.getOutputSchema()
 
     def getCalibKeys(self):
@@ -201,8 +208,9 @@ class CalibrateTask(pipeBase.Task):
             with self.timer("background"):
                 bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
                 backgrounds.append(bg)
-
             self.display('background', exposure=exposure)
+
+        # Make both tables from the same detRet, since detRet can only be run once
         table1 = afwTable.SourceTable.make(self.schema1, idFactory)
         table1.setMetadata(self.algMetadata)
         table1.setVersion(self.tableVersion)
@@ -307,34 +315,17 @@ class CalibrateTask(pipeBase.Task):
             photocalRet = None
 
         self.display('calibrate', exposure=exposure, sources=sources2, matches=matches)
-        assert(len(sources1) == len(sources2))
-        for i in range(len(sources1)):
-            foot2 = sources2[i].getFootprint()
-            foot = sources1[i].getFootprint()
-            assert(foot.getCentroid() == foot2.getCentroid())
-            spans = foot.getSpans()
-            spans2 = foot2.getSpans()
-            assert(len(spans) == len(spans2))
-            for j in range(len(spans)):
-                assert(spans[j] == spans2[j])
+
+        # Now that that is done, reassemble this all into a single catalog, using the mappers built in init
         # now make the final sources catalog
         table = afwTable.SourceTable.make(self.schemaMapper1.getOutputSchema(), idFactory)
         table.setMetadata(self.algMetadata)
         table.setVersion(self.tableVersion)
-        table.preallocate(len(sources1)) # not required, but nice
+        table.preallocate(len(sources1))
         sources = afwTable.SourceCatalog(table)
         sources.extend(sources1, self.schemaMapper1)
-        assert(len(sources) == len(sources2))
-        for i in range(len(sources)):
-            foot2 = sources2[i].getFootprint()
-            foot = sources[i].getFootprint()
-            assert(foot.getCentroid() == foot2.getCentroid())
-            spans = foot.getSpans()
-            spans2 = foot2.getSpans()
-            assert(len(spans) == len(spans2))
-            for j in range(len(spans)):
-                assert(spans[j] == spans2[j])
 
+        # this loop will be done in C++ code on a different ticket
         for i in range(len(sources)):
             sources[i].assign(sources2[i], self.schemaMapper2)
       
