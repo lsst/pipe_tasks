@@ -180,7 +180,6 @@ class AstrometryTask(pipeBase.Task):
         """
         if not self.config.forceKnownWcs:
             self.log.info("Solving astrometry")
-
         if bbox is None:
             bbox = exposure.getBBox(afwImage.PARENT)
 
