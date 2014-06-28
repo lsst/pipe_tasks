@@ -46,15 +46,110 @@ class AstrometryConfig(pexConfig.Config):
     rejectIter = pexConfig.RangeField(dtype=int, default=3, doc="Rejection iterations for Wcs fitting",
                                       min=0)
 
-class AstrometryTask(pipeBase.Task):
-    """Match input sources with a reference catalog and solve for the Wcs
 
-    The actual matching and solving is done by the 'solver'; this Task
-    serves as a wrapper for taking into account the known optical distortion.
+## \addtogroup LSST_task_documentation
+## \{
+## \page AstrometryTask
+## \ref AstrometryTask_ "AstrometryTask"
+##      Match sources to a reference catalog
+## \}
+
+class AstrometryTask(pipeBase.Task):
+    """!
+\anchor AstrometryTask_
+
+\brief Match input sources with a reference catalog and solve for the Wcs
+
+\warning This task is currently in \link lsst.pipe.tasks.astrometry.py\endlink;
+it should be moved to lsst.meas.astrom.
+
+The actual matching and solving is done by the 'solver'; this Task
+serves as a wrapper for taking into account the known optical distortion.
+
+\section Contents
+
+ - \ref pipe_tasks_astrometry_Purpose
+ - \ref pipe_tasks_astrometry_Initialize
+ - \ref pipe_tasks_astrometry_IO
+ - \ref pipe_tasks_astrometry_Config
+ - \ref pipe_tasks_astrometry_Debug
+ - \ref pipe_tasks_astrometry_Example
+
+\section pipe_tasks_astrometry_Purpose	Description
+
+\copybrief AstrometryTask
+
+Calculate an Exposure's zero-point given a set of flux measurements of stars matched to an input catalogue.
+The type of flux to use is specified by AstrometryConfig.fluxField.
+
+The algorithm clips outliers iteratively, with parameters set in the configuration.
+
+\note This task can adds fields to the schema, so any code calling this task must ensure that
+these columns are indeed present in the input match list; see \ref pipe_tasks_astrometry_Example
+
+\section pipe_tasks_astrometry_Initialize	Task initialisation
+
+\copydoc init
+
+\section pipe_tasks_astrometry_IO		Inputs/Outputs to the run method
+
+\copydoc run
+
+\section pipe_tasks_astrometry_Config       Configuration parameters
+
+See \ref AstrometryConfig
+
+\section pipe_tasks_astrometry_Debug		Debug variables
+
+The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
+flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
+
+The available variables in AstrometryTask are:
+<DL>
+  <DT> \c display
+  <DD> If True call astrometry.showAstrometry while iterating AstrometryConfig.rejectIter times,
+  and also after converging.
+  <DT> \c frame
+  <DD> ds9 frame to use in astrometry.showAstrometry
+  <DT> \c pause
+  <DD> Pause within astrometry.showAstrometry
+</DL>  
+
+\section pipe_tasks_astrometry_Example	A complete example of using AstrometryTask
+
+See \ref meas_photocal_photocal_Example.
+
+To investigate the \ref pipe_tasks_astrometry_Debug, put something like
+\code{.py}
+    import lsstDebug
+    def DebugInfo(name):
+        di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
+        if name == "lsst.pipe.tasks.astrometry":
+            di.display = 1
+
+        return di
+
+    lsstDebug.Info = DebugInfo
+\endcode
+into your debug.py file and run photoCalTask.py with the \c --debug flag.
     """
     ConfigClass = AstrometryConfig
 
+    # Need init as well as __init__ because "\copydoc __init__" fails (doxygen bug 732264)
+    def init(self, schema, **kwds):
+        """!Create the astrometric calibration task.  Most arguments are simply passed onto pipe.base.Task.
+
+        \param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
+        \param **kwds keyword arguments to be passed to the lsst.pipe.base.task.Task constructor
+
+        A centroid field "centroid.distorted" (used internally during the Task's operation)
+        will be added to the schema.
+        """
+        self.__init__(schema, **kwds)
+
     def __init__(self, schema, **kwds):
+        """!Create the astrometric calibration task.  See AstrometricTask.init for documentation
+        """
         pipeBase.Task.__init__(self, **kwds)
         self.centroidKey = schema.addField("centroid.distorted", type="PointD",
                                            doc="centroid distorted for astrometry solver")
@@ -62,23 +157,25 @@ class AstrometryTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, exposure, sources):
-        """Match with reference sources and calculate an astrometric solution
+        """!Match with reference sources and calculate an astrometric solution
+
+        \param exposure Exposure to calibrate
+        \param sources SourceCatalog of measured sources
+        \return a pipeBase.Struct with fields:
+        - matches: Astrometric matches
+        - matchMeta: Metadata for astrometric matches
 
         The reference catalog actually used is up to the implementation
         of the solver; it will be manifested in the returned matches as
         a list of ReferenceMatch objects.
 
-        The input sources have the centroid slot moved to a new column
+        \note
+        The input sources have the centroid slot moved to a new column "centroid.distorted"
         which has the positions corrected for any known optical distortion;
         the 'solver' (which is instantiated in the 'astrometry' member)
         should therefore simply use the centroids provided by calling
-        "getCentroid()" on the individual source records.
-
-        @param exposure Exposure to calibrate
-        @param sources SourceCatalog of measured sources
-        @return a pipeBase.Struct with fields:
-        - matches: Astrometric matches
-        - matchMeta: Metadata for astrometric matches
+        afw.table.Source.getCentroid() on the individual source records.  This column \em must
+        be present in the sources table.
         """
         with self.distortionContext(exposure, sources) as bbox:
             results = self.astrometry(exposure, sources, bbox=bbox)
@@ -90,7 +187,7 @@ class AstrometryTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def distort(self, exposure, sources):
-        """Calculate distorted source positions
+        """!Calculate distorted source positions
 
         CCD images are often affected by optical distortion that makes
         the astrometric solution higher order than linear.  Unfortunately,
@@ -102,10 +199,10 @@ class AstrometryTask(pipeBase.Task):
         The distortion correction moves sources, so we return the distorted
         bounding box.
 
-        @param[in]     exposure Exposure to process
-        @param[in,out] sources  SourceCatalog; getX() and getY() will be used as inputs,
+        \param[in]     exposure Exposure to process
+        \param[in,out] sources  SourceCatalog; getX() and getY() will be used as inputs,
                                 with distorted points in "centroid.distorted" field.
-        @return bounding box of distorted exposure
+        \return bounding box of distorted exposure
         """
         detector = exposure.getDetector()
         pixToTanXYTransform = None
@@ -134,7 +231,7 @@ class AstrometryTask(pipeBase.Task):
 
     @contextmanager
     def distortionContext(self, exposure, sources):
-        """Context manager that applies and removes distortion
+        """!Context manager that applies and removes distortion
 
         We move the "centroid" definition in the catalog table to
         point to the distorted positions.  This is undone on exit
@@ -147,9 +244,9 @@ class AstrometryTask(pipeBase.Task):
         distortion correction is removed, the Wcs needs to be
         shifted to compensate.
 
-        @param exposure: Exposure holding Wcs
-        @param sources: Sources to correct for distortion
-        @return bounding box of distorted exposure
+        \param exposure Exposure holding Wcs
+        \param sources Sources to correct for distortion
+        \return bounding box of distorted exposure
         """
         # Apply distortion
         bbox = self.distort(exposure, sources)
@@ -167,12 +264,12 @@ class AstrometryTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def astrometry(self, exposure, sources, bbox=None):
-        """Solve astrometry to produce WCS
+        """!Solve astrometry to produce WCS
 
-        @param exposure Exposure to process
-        @param sources Sources
-        @param bbox Bounding box, or None to use exposure
-        @return Struct(matches: star matches, matchMeta: match metadata)
+        \param exposure Exposure to process
+        \param sources Sources
+        \param bbox Bounding box, or None to use exposure
+        \return Struct(matches: star matches, matchMeta: match metadata)
         """
         if not self.config.forceKnownWcs:
             self.log.info("Solving astrometry")
@@ -212,16 +309,16 @@ class AstrometryTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def refitWcs(self, exposure, sources, matches):
-        """A final Wcs solution after matching and removing distortion
+        """!A final Wcs solution after matching and removing distortion
 
         Specifically, fitting the non-linear part, since the linear
         part has been provided by the matching engine.
 
-        @param exposure Exposure of interest
-        @param sources Sources on image (no distortion applied)
-        @param matches Astrometric matches
+        \param exposure Exposure of interest
+        \param sources Sources on image (no distortion applied)
+        \param matches Astrometric matches
 
-        @return the resolved-Wcs object, or None if config.solver.calculateSip is False.
+        \return the resolved-Wcs object, or None if config.solver.calculateSip is False.
         """
         sip = None
         if self.config.solver.calculateSip:
@@ -235,7 +332,7 @@ class AstrometryTask(pipeBase.Task):
             pause = lsstDebug.Info(__name__).pause
 
             def fitWcs(initialWcs, title=None):
-                """Do the WCS fitting and display of the results"""
+                """!Do the WCS fitting and display of the results"""
                 sip = makeCreateWcsWithSip(matches, initialWcs, self.config.solver.sipOrder)
                 resultWcs = sip.getNewWcs()
                 if display:
@@ -288,15 +385,19 @@ class AstrometryTask(pipeBase.Task):
 
 
 def showAstrometry(exposure, wcs, allMatches, useMatches, frame=0, title=None, pause=False):
-    """Show results of astrometry fitting
+    """!Show results of astrometry fitting
 
-    @param exposure: Image to display
-    @param wcs: Astrometric solution
-    @param allMatches: List of all astrometric matches (including rejects)
-    @param useMatches: List of used astrometric matches
-    @param frame: Frame number for display
-    @param title: Title for display
-    @param pause: Pause to allow viewing of the display and optional debugging?
+    \param exposure Image to display
+    \param wcs Astrometric solution
+    \param allMatches List of all astrometric matches (including rejects)
+    \param useMatches List of used astrometric matches
+    \param frame Frame number for display
+    \param title Title for display
+    \param pause Pause to allow viewing of the display and optional debugging?
+
+    - Matches are shown in yellow if used in the Wcs solution, otherwise red
+     - +: Detected objects
+     - x: Catalogue objects
     """
     import lsst.afw.display.ds9 as ds9
     ds9.mtv(exposure, frame=frame, title=title)
