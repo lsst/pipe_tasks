@@ -151,11 +151,18 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """!Create the astrometric calibration task.  See AstrometricTask.init for documentation
         """
         pipeBase.Task.__init__(self, **kwds)
+        self.tableVersion = tableVersion
         if tableVersion == 0:
             self.centroidKey = schema.addField("centroid.distorted", type="PointD",
                                            doc="centroid distorted for astrometry solver")
         else:
-            self.centroidKey = schema.addField("centroid_distorted", type="PointD",
+            self.centroidXKey = schema.addField("centroid_distorted_x", type="D",
+                                           doc="centroid distorted for astrometry solver")
+            self.centroidYKey = schema.addField("centroid_distorted_y", type="D",
+                                           doc="centroid distorted for astrometry solver")
+            self.centroidXErrKey = schema.addField("centroid_distorted_xSigma", type="F",
+                                           doc="centroid distorted for astrometry solver")
+            self.centroidYErrKey = schema.addField("centroid_distorted_ySigma", type="F",
                                            doc="centroid distorted for astrometry solver")
         self.astrometer = None
 
@@ -221,13 +228,27 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         if pixToTanXYTransform is None:
             self.log.info("Null distortion correction")
             for s in sources:
-                s.set(self.centroidKey, s.getCentroid())
+                if self.tableVersion == 0:
+                    s.set(self.centroidKey, s.getCentroid())
+                else:
+                    s.set(self.centroidXKey, s.getX())
+                    s.set(self.centroidYKey, s.getY())
+                    s.set(self.centroidXErrKey, 0)
+                    s.set(self.centroidYErrKey, 0)
             return exposure.getBBox(afwImage.PARENT)
 
         # Distort source positions
         self.log.info("Applying distortion correction")
         for s in sources:
-            s.set(self.centroidKey, pixToTanXYTransform.forwardTransform(s.getCentroid()))
+            centroid = pixToTanXYTransform.forwardTransform(s.getCentroid())
+            if self.tableVersion == 0:
+                s.set(self.centroidKey, s.getCentroid())
+            else:
+                s.set(self.centroidXKey, centroid.getX())
+                s.set(self.centroidYKey, centroid.getY())
+                s.set(self.centroidXErrKey, 0)
+                s.set(self.centroidYErrKey, 0)
+
 
         # Get distorted image size so that astrometry_net does not clip.
         bboxD = afwGeom.Box2D()
@@ -256,15 +277,22 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         # Apply distortion
         bbox = self.distort(exposure, sources)
-        oldCentroidKey = sources.table.getCentroidKey()
-        sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
+        if self.tableVersion == 0:
+            oldCentroidKey = sources.table.getCentroidKey()
+            sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
                                      sources.table.getCentroidFlagKey())
+        else:
+            oldCentroidName = sources.table.getCentroidDefinition()
+            sources.table.defineCentroid("centroid_distorted")
         try:
             yield bbox # Execute 'with' block, providing bbox to 'as' variable
         finally:
             # Un-apply distortion
-            sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
+            if self.tableVersion == 0:
+                sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
                                          sources.table.getCentroidFlagKey())
+            else:
+                sources.table.defineCentroid(oldCentroidName)
             x0, y0 = exposure.getXY0()
             wcs = exposure.getWcs()
             if wcs:
