@@ -108,7 +108,6 @@ class CalibrateConfig(pexConfig.Config):
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
-        self.measurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
         initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024        
@@ -122,7 +121,9 @@ class CalibrateTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwargs)
 
         # the calibrate Source Catalog is divided into two catalogs to allow measurement to be run twice
-        # the field count at critical points is used to identify the measurement fields for later prefixing 
+        # schema1 contains everything except what is added by the second measurement task.
+        # Before the second measurement task is run, self.schemaMapper transforms the sources into
+        # the final output schema, at the same time renaming the measurement fields to "initial_" 
         self.schema1 = afwTable.SourceTable.makeMinimalSchema()
         minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
@@ -133,18 +134,11 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
         self.makeSubtask("measurePsf", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("astrometry", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("photocal", schema=self.schema1, tableVersion=tableVersion)
 
-        # measurements fo the second measurement step done with a second schema
-        self.schema2 = afwTable.SourceTable.makeMinimalSchema()
-        beginMeasurement = self.schema2.getFieldCount()
-        self.makeSubtask("measurement", schema=self.schema2, algMetadata=self.algMetadata)
-        endMeasurement = self.schema2.getFieldCount()
-        self.makeSubtask("astrometry", schema=self.schema2, tableVersion=tableVersion)
-        self.makeSubtask("photocal", schema=self.schema2, tableVersion=tableVersion)
-
-        # create a schemaMapper for each of the catalogs
-        self.schemaMapper1 = afwTable.SchemaMapper(self.schema1)
-        self.schemaMapper2 = afwTable.SchemaMapper(self.schema2)
+        # create a schemaMapper to map schema1 into schema2
+        self.schemaMapper = afwTable.SchemaMapper(self.schema1)
         if self.tableVersion == 0: separator = "."
         else: separator =  "_"
         count = 0
@@ -154,20 +148,14 @@ class CalibrateTask(pipeBase.Task):
             name = field.getName()
             if count > beginInitial and count <= endInitial: 
                 name = "initial" + separator + name 
-            self.schemaMapper1.addMapping(item.key, name)
-            self.schemaMapper2.addOutputField(field.copyRenamed(name))
-        count = 0
-        for item in self.schema2:
-            count = count + 1
-            if count <= minimalCount: continue
-            field = item.getField()
-            name = field.getName()
-            if count > beginMeasurement and count <= endMeasurement: name = "measurement" + separator + name 
-            self.schemaMapper2.addMapping(item.key, name)
-            self.schemaMapper1.addOutputField(field.copyRenamed(name))
+            self.schemaMapper.addMapping(item.key, name)
 
-        # Both schemaMappers have the same output.  The final schema is recorded as this.
-        self.schema = self.schemaMapper2.getOutputSchema()
+        # measurements fo the second measurement step done with a second schema
+        schema = self.schemaMapper.editOutputSchema()
+        self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
+
+        # the final schema is the same as the schemaMapper output
+        self.schema = self.schemaMapper.getOutputSchema()
 
     def getCalibKeys(self):
         """
@@ -218,19 +206,6 @@ class CalibrateTask(pipeBase.Task):
         sources1 = detRet.sources
 
 
-        if self.config.doAstrometry or self.config.doPhotoCal:
-            # make a second table with which to do the second measurement
-            # the schemaMapper will copy the footprints and ids, which is all we need.
-            table2 = afwTable.SourceTable.make(self.schema2, idFactory)
-            table2.setMetadata(self.algMetadata)
-            table2.setVersion(self.tableVersion)
-            sources2 = afwTable.SourceCatalog(table2)
-            # transfer to a second table
-            schemaMapper = afwTable.SchemaMapper(self.schema1)
-            key = self.schema1.find("id").key
-            schemaMapper.addMapping(key, "id")
-            sources2.extend(sources1, schemaMapper)
-
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
 
@@ -274,10 +249,18 @@ class CalibrateTask(pipeBase.Task):
             self.display('background', exposure=exposure)
 
         if self.config.doAstrometry or self.config.doPhotoCal:
-            self.measurement.run(exposure, sources2)
+            # make a second table with which to do the second measurement
+            # the schemaMapper will copy the footprints and ids, which is all we need.
+            table2 = afwTable.SourceTable.make(self.schema, idFactory)
+            table2.setMetadata(self.algMetadata)
+            table2.setVersion(self.tableVersion)
+            sources = afwTable.SourceCatalog(table2)
+            # transfer to a second table
+            sources.extend(sources1, self.schemaMapper)
+            self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
-            astromRet = self.astrometry.run(exposure, sources2)
+            astromRet = self.astrometry.run(exposure, sources)
             matches = astromRet.matches
             matchMeta = astromRet.matchMeta
         else:
@@ -310,21 +293,7 @@ class CalibrateTask(pipeBase.Task):
         else:
             photocalRet = None
 
-        self.display('calibrate', exposure=exposure, sources=sources2, matches=matches)
-
-        # Now that that is done, reassemble this all into a single catalog, using the mappers built in init
-        # now make the final sources catalog
-        table = afwTable.SourceTable.make(self.schemaMapper1.getOutputSchema(), idFactory)
-        table.setMetadata(self.algMetadata)
-        table.setVersion(self.tableVersion)
-        table.preallocate(len(sources1))
-        sources = afwTable.SourceCatalog(table)
-        sources.extend(sources1, self.schemaMapper1)
-
-        # this loop will be done in C++ code on a different ticket
-        for i in range(len(sources)):
-            sources[i].assign(sources2[i], self.schemaMapper2)
-      
+        self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
         return pipeBase.Struct(
             exposure = exposure,
             backgrounds = backgrounds,
