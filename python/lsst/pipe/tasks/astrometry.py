@@ -51,14 +51,14 @@ class AstrometryConfig(pexConfig.Config):
 ## \{
 ## \page AstrometryTask
 ## \ref AstrometryTask_ "AstrometryTask"
-##      Match sources to a reference catalog
+## \copybrief AstrometryTask
 ## \}
 
 class AstrometryTask(pipeBase.Task):
     """!
 \anchor AstrometryTask_
 
-\brief Match input sources with a reference catalog and solve for the Wcs
+\brief %Match input sources with a reference catalog and solve for the Wcs
 
 \warning This task is currently in \link lsst.pipe.tasks.astrometry.py\endlink;
 it should be moved to lsst.meas.astrom.
@@ -66,7 +66,7 @@ it should be moved to lsst.meas.astrom.
 The actual matching and solving is done by the 'solver'; this Task
 serves as a wrapper for taking into account the known optical distortion.
 
-\section Contents
+\section pipe_tasks_astrometry_Contents Contents
 
  - \ref pipe_tasks_astrometry_Purpose
  - \ref pipe_tasks_astrometry_Initialize
@@ -167,7 +167,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         The reference catalog actually used is up to the implementation
         of the solver; it will be manifested in the returned matches as
-        a list of ReferenceMatch objects.
+        a list of lsst.afw.table.ReferenceMatch objects (\em i.e. of lsst.afw.table.Match with
+        \c first being of type lsst.afw.table.SimpleRecord and \c second type lsst.afw.table.SourceRecord ---
+        the reference object and matched object respectively).
 
         \note
         The input sources have the centroid slot moved to a new column "centroid.distorted"

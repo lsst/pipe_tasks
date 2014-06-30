@@ -34,7 +34,7 @@ from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
 
 class InitialPsfConfig(pexConfig.Config):
-    """Describes the initial PSF used for detection and measurement before we do PSF determination."""
+    """!Describes the initial PSF used for detection and measurement before we do PSF determination."""
 
     model = pexConfig.ChoiceField(
         dtype = str,
@@ -116,12 +116,218 @@ class CalibrateConfig(pexConfig.Config):
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024        
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page CalibrateTask
+## \ref CalibrateTask_ "CalibrateTask"
+## \copybrief CalibrateTask
+## \}
+
 class CalibrateTask(pipeBase.Task):
-    """Calibrate an exposure: measure PSF, subtract background, etc.
+    """!
+\anchor CalibrateTask_
+
+\brief Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
+
+\section pipe_tasks_calibrate_Contents Contents
+
+ - \ref pipe_tasks_calibrate_Purpose
+ - \ref pipe_tasks_calibrate_Initialize
+ - \ref pipe_tasks_calibrate_IO
+ - \ref pipe_tasks_calibrate_Config
+ - \ref pipe_tasks_calibrate_Metadata
+ - \ref pipe_tasks_calibrate_Debug
+ - \ref pipe_tasks_calibrate_Example
+
+\section pipe_tasks_calibrate_Purpose	Description
+
+\copybrief CalibrateTask
+
+Calculate an Exposure's zero-point given a set of flux measurements of stars matched to an input catalogue.
+The type of flux to use is specified by CalibrateConfig.fluxField.
+
+The algorithm clips outliers iteratively, with parameters set in the configuration.
+
+\note This task can adds fields to the schema, so any code calling this task must ensure that
+these columns are indeed present in the input match list; see \ref pipe_tasks_calibrate_Example
+
+\section pipe_tasks_calibrate_Initialize	Task initialisation
+
+\copydoc init
+
+CalibrateTask delegates most of its work to a set of sub-Tasks:
+<DL>
+<DT> repair \ref RepairTask_ "RepairTask"
+<DD> Interpolate over defects such as bad columns and cosmic rays.  This task is called twice;  once
+before the %measurePsf step and again after the PSF has been measured.
+<DT> detection \ref SourceDetectionTask_ "SourceDetectionTask"
+<DD> Initial (high-threshold) detection phase for calibration
+<DT> initialMeasurement \ref SourceMeasurementTask_ "SourceMeasurementTask"
+<DD> Make the initial measurements used to feed PSF determination and aperture correction determination
+<DT> astrometry \ref AstrometryTask_ "AstrometryTask"
+<DD> Solve the astrometry.  May be disabled by setting CalibrateTaskConfig.doAstrometry to be False.
+This task is called twice;  once before the %measurePsf step and again after the PSF has been measured.
+<DT> %measurePsf \ref MeasurePsfTask_ "MeasurePsfTask"
+<DD> Estimate the PSF.  May be disabled by setting CalibrateTaskConfig.doPsf to be False.  If requested
+the astrometry is solved before this is called, so if you disable the astrometry the %measurePsf
+task won't have access to objects positions.
+<DT> measurement \ref SourceMeasurementTask_ "SourceMeasurementTask"
+<DD> Post-PSF-determination measurements used to feed other calibrations
+<DT> photocal \ref PhotoCalTask_ "PhotoCalTask"
+<DD> Solve for the photometric zeropoint.
+May be disabled by setting CalibrateTaskConfig.doPhotoCal to be False.
+\em N.b.  Requires that \c astrometry was successfully run.
+</DL>
+
+You can replace any of these subtasks if you wish, see \ref calibrate_MyAstrometryTask.
+\note These task APIs are not well controlled, so replacing a task is a matter of matching
+a poorly specified interface.  We will be working on this over the first year of construction.
+
+\section pipe_tasks_calibrate_IO		Inputs/Outputs to the run method
+
+\copydoc run
+
+\section pipe_tasks_calibrate_Config       Configuration parameters
+
+See \ref CalibrateConfig
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+\section pipe_tasks_calibrate_Metadata   Quantities set in Metadata
+
+<DL>
+<DT>Task metadata
+<DD>
+<DL>
+<DT> MAGZERO <DD> Measured zeropoint (DN per second)
+</DL>
+
+<DT> Exposure metadata
+<DD>
+<DL>
+<DT> MAGZERO_RMS <DD> MAGZERO's RMS == return.sigma
+<DT> MAGZERO_NOBJ <DD> Number of stars used == return.ngood
+<DT> COLORTERM1 <DD> ?? (always 0.0)
+<DT> COLORTERM2 <DD> ?? (always 0.0)
+<DT> COLORTERM3 <DD> ?? (always 0.0)
+</DL>
+</DL>
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+\section pipe_tasks_calibrate_Debug		Debug variables
+
+The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
+flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
+
+The calibrate task has a debug dictionary with keys which correspond to stages of the CalibrationTask
+processing:
+<DL>
+<DT>repair
+<DD> Fixed defects and masked cosmic rays with a guessed PSF.  Show the exposure.
+<DT>background
+<DD> Subtracted background (no sources masked).  Show the exposure
+<DT>PSF_repair
+<DD> Fixed defects and removed cosmic rays with an estimated PSF.  Show the exposure
+<DT>PSF_background
+<DD> Subtracted background (calibration sources masked).  Show the exposure
+<DT>calibrate
+<DD> Just before astro/photo calibration.  Show the exposure, and
+ - sources as smallish green o
+ - matches (if exposure has a Wcs).
+  - catalog position as a largish yellow +
+  - source position as a largish red x
+</DL>
+The values are the \c ds9 frame to display in (if >= 1); if <= 0, nothing's displayed.
+There's an example \ref pipe_tasks_calibrate_Debug_example "here".
+
+If one of these
+
+Some subtasks may also have their own debug information; see individual Task documentation.
+
+\section pipe_tasks_calibrate_Example	A complete example of using CalibrateTask
+
+This code is in \link measAlgTasks.py\endlink in the examples directory, and can be run as \em e.g.
+\code
+examples/calibrateTask.py --ds9
+\endcode
+\dontinclude calibrateTask.py
+
+Import the task (there are some other standard imports; read the file if you're curious)
+\skipline CalibrateTask
+
+Create the detection task
+\skip CalibrateTask.ConfigClass
+\until config=config
+Note that we're using a custom AstrometryTask (because we don't have a valid astrometric catalogue handy);
+see \ref calibrate_MyAstrometryTask.
+
+We're now ready to process the data (we could loop over multiple exposures/catalogues using the same
+task objects) and unpack the results
+\skip result
+\until sources
+
+We then might plot the results (\em e.g. if you set \c --ds9 on the command line)
+\skip display
+\until dot
+
+\subsection calibrate_MyAstrometryTask Using a Custom Astrometry Task
+
+The first thing to do is define my own task:
+\dontinclude calibrateTask.py
+\skip MyAstrometryTask
+\skip MyAstrometryTask
+\until super
+
+Then we need our own \c run method.  First unpack the filtername
+\skip run
+\until filterName
+Then build a "reference catalog" by shamelessly copying the catalog of detected sources
+\skip schema
+\until get("photometric")
+(you need to set "flux" as well as \c filterName due to a bug in the photometric calibration code;
+<A HREF=https://jira.lsstcorp.org/browse/DM-933>DM-933</A>).
+
+Then "match" by zipping up the two catalogs,
+\skip matches
+\until append
+and finally return the desired results.
+\skip return
+\until )
+
+<HR>
+\anchor pipe_tasks_calibrate_Debug_example
+To investigate the \ref pipe_tasks_calibrate_Debug, put something like
+\code{.py}
+    import lsstDebug
+    def DebugInfo(name):
+        di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
+        if name == "lsst.pipe.tasks.calibrate":
+            di.display = dict(
+                repair = 1,
+                calibrate = 2,
+            )
+
+        return di
+
+    lsstDebug.Info = DebugInfo
+\endcode
+into your debug.py file and run calibrateTask.py with the \c --debug flag.
     """
     ConfigClass = CalibrateConfig
+    _DefaultName = "calibrate"
+
+    def init(self, **kwargs):
+        """!
+        Create the calibration task
+
+        \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
+        """
+        self.__init__(**kwargs)
 
     def __init__(self, **kwargs):
+        """!Create the calibration task.  See CalibrateTask.init for documentation
+        """
         pipeBase.Task.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
@@ -134,7 +340,7 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("photocal", schema=self.schema)
 
     def getCalibKeys(self):
-        """
+        """!
         Return a sequence of schema keys that represent fields that should be propagated from
         icSrc to src by ProcessCcdTask.
         """
@@ -145,18 +351,22 @@ class CalibrateTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, idFactory=None):
-        """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
+        """!Run the calibration task on an exposure
 
-        @param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
-        @param[in]      defects    List of defects on exposure
-        @param[in]      idFactory  afw.table.IdFactory to use for source catalog.
-        @return a pipeBase.Struct with fields:
+        \param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
+         - The exposure must have an initial guess at the PSF, or a WCS to determine the plate scale
+        \param[in]      defects    List of defects on exposure
+        \param[in]      idFactory  afw.table.IdFactory to use for source catalog.
+        \return a pipeBase.Struct with fields:
         - backgrounds: A list of background models applied in the calibration phase
         - psf: Point spread function
         - sources: Sources used in calibration
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
         - photocal: Output of photocal subtask
+
+        If the exposure contains an lsst.afw.image.Calib object with the exposure time set, MAGZERO
+        will be set in the task metadata.
         """
         assert exposure is not None, "No exposure provided"
 
@@ -204,7 +414,7 @@ class CalibrateTask(pipeBase.Task):
 
         if self.config.doPsf:
             self.repair.run(exposure, defects=defects, keepCRs=None)
-            self.display('repair', exposure=exposure)
+            self.display('PSF_repair', exposure=exposure)
 
         if self.config.doBackground:
             # Background estimation ignores (by default) pixels with the
@@ -218,7 +428,7 @@ class CalibrateTask(pipeBase.Task):
                 self.log.info("Fit and subtracted background")
                 backgrounds.append(bg)
 
-            self.display('background', exposure=exposure)
+            self.display('PSF_background', exposure=exposure)
 
         if self.config.doAstrometry or self.config.doPhotoCal:
             self.measurement.run(exposure, sources)
@@ -235,6 +445,7 @@ class CalibrateTask(pipeBase.Task):
             try:
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
+                raise
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
@@ -270,9 +481,10 @@ class CalibrateTask(pipeBase.Task):
         )
 
     def installInitialPsf(self, exposure):
-        """Initialise the calibration procedure by setting the PSF to a configuration-defined guess.
+        """!Initialise the calibration procedure by setting the PSF to a configuration-defined guess.
 
-        @param[in,out] exposure Exposure to process; fake PSF will be installed here.
+        \param[in,out] exposure Exposure to process; fake PSF will be installed here.
+        \throws AssertionError If exposure or exposure.getWcs() are None
         """
         assert exposure, "No exposure provided"
         

@@ -47,14 +47,14 @@ class RepairConfig(pexConfig.Config):
 ## \{
 ## \page RepairTask
 ## \ref RepairTask_ "RepairTask"
-##      Match sources to a reference catalog
+## \copybrief RepairTask
 ## \}
 
 class RepairTask(pipeBase.Task):
     """!
 \anchor RepairTask_
 
-Interpolate over defects in an exposure and handle cosmic rays
+\brief Interpolate over defects in an exposure and handle cosmic rays
 
 Conversion notes:
     Display code should be updated once we settle on a standard way of controlling what is displayed.

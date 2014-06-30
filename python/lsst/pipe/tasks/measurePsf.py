@@ -28,9 +28,18 @@ class MeasurePsfConfig(pexConfig.Config):
     starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page MeasurePsfTask
+## \ref MeasurePsfTask_ "MeasurePsfTask"
+##      Measure the PSF
+## \}
+
 class MeasurePsfTask(pipeBase.Task):
-    """Conversion notes:
+    """!
+\anchor MeasurePsfTask_
     
+Conversion notes:
     Split out of Calibrate since it seemed a good self-contained task
     
     @warning
