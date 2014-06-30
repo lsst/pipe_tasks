@@ -260,7 +260,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
                                          sources.table.getCentroidFlagKey())
             x0, y0 = exposure.getXY0()
-            exposure.getWcs().shiftReferencePixel(-bbox.getMinX() + x0, -bbox.getMinY() + y0)
+            wcs = exposure.getWcs()
+            if wcs:
+                wcs.shiftReferencePixel(-bbox.getMinX() + x0, -bbox.getMinY() + y0)
 
     @pipeBase.timeMethod
     def astrometry(self, exposure, sources, bbox=None):
