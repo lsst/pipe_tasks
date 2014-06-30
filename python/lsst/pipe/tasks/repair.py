@@ -43,9 +43,20 @@ class RepairConfig(pexConfig.Config):
         doc = "Options for finding and masking cosmic rays",
     )
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page RepairTask
+## \ref RepairTask_ "RepairTask"
+##      Match sources to a reference catalog
+## \}
+
 class RepairTask(pipeBase.Task):
-    """Conversion notes:
-    
+    """!
+\anchor RepairTask_
+
+Interpolate over defects in an exposure and handle cosmic rays
+
+Conversion notes:
     Display code should be updated once we settle on a standard way of controlling what is displayed.
     """
     ConfigClass = RepairConfig
