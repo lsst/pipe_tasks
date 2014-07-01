@@ -224,15 +224,15 @@ The calibrate task has a debug dictionary with keys which correspond to stages o
 processing:
 <DL>
 <DT>repair
-<DD> Fixed defects and masked cosmic rays with a guessed PSF.  Show the exposure.
+<DD> Fixed defects and masked cosmic rays with a guessed PSF.  Action: show the exposure.
 <DT>background
-<DD> Subtracted background (no sources masked).  Show the exposure
+<DD> Subtracted background (no sources masked).  Action: show the exposure
 <DT>PSF_repair
-<DD> Fixed defects and removed cosmic rays with an estimated PSF.  Show the exposure
+<DD> Fixed defects and removed cosmic rays with an estimated PSF.  Action: show the exposure
 <DT>PSF_background
-<DD> Subtracted background (calibration sources masked).  Show the exposure
+<DD> Subtracted background (calibration sources masked).  Action: show the exposure
 <DT>calibrate
-<DD> Just before astro/photo calibration.  Show the exposure, and
+<DD> Just before astro/photo calibration.  Action: show the exposure, and
  - sources as smallish green o
  - matches (if exposure has a Wcs).
   - catalog position as a largish yellow +
@@ -241,13 +241,11 @@ processing:
 The values are the \c ds9 frame to display in (if >= 1); if <= 0, nothing's displayed.
 There's an example \ref pipe_tasks_calibrate_Debug_example "here".
 
-If one of these
-
 Some subtasks may also have their own debug information; see individual Task documentation.
 
 \section pipe_tasks_calibrate_Example	A complete example of using CalibrateTask
 
-This code is in \link measAlgTasks.py\endlink in the examples directory, and can be run as \em e.g.
+This code is in \link calibrateTask.py\endlink in the examples directory, and can be run as \em e.g.
 \code
 examples/calibrateTask.py --ds9
 \endcode
@@ -279,9 +277,9 @@ The first thing to do is define my own task:
 \skip MyAstrometryTask
 \until super
 
-Then we need our own \c run method.  First unpack the filtername
+Then we need our own \c run method.  First unpack the filtername and wcs
 \skip run
-\until filterName
+\until wcs
 Then build a "reference catalog" by shamelessly copying the catalog of detected sources
 \skip schema
 \until get("photometric")
