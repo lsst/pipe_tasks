@@ -45,6 +45,11 @@ class InitialPsfConfig(pexConfig.Config):
             "DoubleGaussian": "Double Gaussian model",
         },
     )
+    pixelScale = pexConfig.Field(
+        dtype = float,
+        doc = "Pixel size (arcsec).  Only needed if no Wcs is provided",
+        default = 0.25,
+    )
     fwhm = pexConfig.Field(
         dtype = float,
         doc = "FWHM of PSF model (arcsec)",
@@ -487,11 +492,14 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         assert exposure, "No exposure provided"
         
         wcs = exposure.getWcs()
-        assert wcs, "No wcs in exposure"
+        if wcs:
+            pixelScale = wcs.pixelScale().asArcseconds()
+        else:
+            pixelScale = self.config.initialPsf.pixelScale
 
         cls = getattr(measAlg, self.config.initialPsf.model + "Psf")
 
-        fwhm = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
+        fwhm = self.config.initialPsf.fwhm/pixelScale
         size = self.config.initialPsf.size
         self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
         psf = cls(size, size, fwhm/(2*math.sqrt(2*math.log(2))))
