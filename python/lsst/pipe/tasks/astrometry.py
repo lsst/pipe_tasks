@@ -273,7 +273,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         \param exposure Exposure to process
         \param sources Sources
         \param bbox Bounding box, or None to use exposure
-        \return Struct(matches: star matches, matchMeta: match metadata)
+        \return a pipe.base.Struct with fields:
+         - matches: star matches
+         - matchMeta: match metadata
         """
         if not self.config.forceKnownWcs:
             self.log.info("Solving astrometry")

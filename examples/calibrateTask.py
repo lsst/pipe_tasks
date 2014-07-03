@@ -38,7 +38,7 @@ import lsst.meas.algorithms        as measAlg
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.astrometry import AstrometryTask
 
-def loadData():
+def loadData(pixelScale=1.0):
     """Prepare the data we need to run the example"""
 
     # Load sample input from disk
@@ -58,9 +58,10 @@ def loadData():
     filterName = "r"
     afwImage.Filter.define(afwImage.FilterProperty(filterName, 600, True))
     exposure.setFilter(afwImage.Filter(filterName))
-    # and a trivial WCS
-    scale = 0.185/3600.0                # degrees per pixel
-    wcs = afwImage.makeWcs(afwCoord.Coord(afwGeom.PointD(15, 1)), afwGeom.PointD(0, 0), scale, 0.0, 0.0, scale)
+    # and a trivial WCS (needed by MyAstrometryTask)
+    pixelScale /= 3600.0                # degrees per pixel
+    wcs = afwImage.makeWcs(afwCoord.Coord(afwGeom.PointD(15, 1)), afwGeom.PointD(0, 0),
+                           pixelScale, 0.0, 0.0, pixelScale)
     exposure.setWcs(wcs)
 
     return exposure
@@ -106,19 +107,21 @@ class MyAstrometryTask(AstrometryTask):
             )
 
 def run(display=False):
-    exposure = loadData()
     #
     # Create the task
     #
     config = CalibrateTask.ConfigClass()
+    config.initialPsf.pixelScale = 0.185 # arcsec per pixel
     config.initialPsf.fwhm = 1.0
     config.astrometry.retarget(MyAstrometryTask)
     calibrateTask = CalibrateTask(config=config)
     #
     # Process the data
     #
+    exposure = loadData(config.initialPsf.pixelScale)
     result = calibrateTask.run(exposure)
 
+    exposure0, exposure = exposure, result.exposure
     sources = result.sources
 
     if display:                         # display on ds9 (see also --debug argparse option)

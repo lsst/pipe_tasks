@@ -267,7 +267,7 @@ see \ref calibrate_MyAstrometryTask.
 
 We're now ready to process the data (we could loop over multiple exposures/catalogues using the same
 task objects) and unpack the results
-\skip result
+\skip loadData
 \until sources
 
 We then might plot the results (\em e.g. if you set \c --ds9 on the command line)
@@ -357,16 +357,21 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         """!Run the calibration task on an exposure
 
         \param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
-         - The exposure must have an initial guess at the PSF, or a WCS to determine the plate scale
         \param[in]      defects    List of defects on exposure
         \param[in]      idFactory  afw.table.IdFactory to use for source catalog.
         \return a pipeBase.Struct with fields:
+        - exposure: Repaired exposure
         - backgrounds: A list of background models applied in the calibration phase
         - psf: Point spread function
         - sources: Sources used in calibration
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
         - photocal: Output of photocal subtask
+
+        It is moderately important to provide a decent initial guess for the seeing if you want to
+        deal with cosmic rays.  If there's a PSF in the exposure it'll be used; failing that the
+        CalibrateConfig.initialPsf is consulted (although the pixel scale will be taken from the
+        WCS if available).
 
         If the exposure contains an lsst.afw.image.Calib object with the exposure time set, MAGZERO
         will be set in the task metadata.
