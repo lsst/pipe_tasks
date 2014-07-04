@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
@@ -113,7 +113,7 @@ The available variables in AstrometryTask are:
   <DD> ds9 frame to use in astrometry.showAstrometry
   <DT> \c pause
   <DD> Pause within astrometry.showAstrometry
-</DL>  
+</DL>
 
 \section pipe_tasks_astrometry_Example	A complete example of using AstrometryTask
 
@@ -136,7 +136,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     ConfigClass = AstrometryConfig
 
     # Need init as well as __init__ because "\copydoc __init__" fails (doxygen bug 732264)
-    def init(self, schema, **kwds):
+    def init(self, schema, tableVersion=0, **kwds):
         """!Create the astrometric calibration task.  Most arguments are simply passed onto pipe.base.Task.
 
         \param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
@@ -147,11 +147,22 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         self.__init__(schema, **kwds)
 
-    def __init__(self, schema, **kwds):
+    def __init__(self, schema, tableVersion=0, **kwds):
         """!Create the astrometric calibration task.  See AstrometricTask.init for documentation
         """
         pipeBase.Task.__init__(self, **kwds)
-        self.centroidKey = schema.addField("centroid.distorted", type="PointD",
+        self.tableVersion = tableVersion
+        if tableVersion == 0:
+            self.centroidKey = schema.addField("centroid.distorted", type="PointD",
+                                           doc="centroid distorted for astrometry solver")
+        else:
+            self.centroidXKey = schema.addField("astrom_distorted_x", type="D",
+                                           doc="centroid distorted for astrometry solver")
+            self.centroidYKey = schema.addField("astrom_distorted_y", type="D",
+                                           doc="centroid distorted for astrometry solver")
+            self.centroidXErrKey = schema.addField("astrom_distorted_xSigma", type="F",
+                                           doc="centroid distorted for astrometry solver")
+            self.centroidYErrKey = schema.addField("astrom_distorted_ySigma", type="F",
                                            doc="centroid distorted for astrometry solver")
         self.astrometer = None
 
@@ -217,13 +228,27 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         if pixToTanXYTransform is None:
             self.log.info("Null distortion correction")
             for s in sources:
-                s.set(self.centroidKey, s.getCentroid())
+                if self.tableVersion == 0:
+                    s.set(self.centroidKey, s.getCentroid())
+                else:
+                    s.set(self.centroidXKey, s.getX())
+                    s.set(self.centroidYKey, s.getY())
+                    s.set(self.centroidXErrKey, 0)
+                    s.set(self.centroidYErrKey, 0)
             return exposure.getBBox(afwImage.PARENT)
 
         # Distort source positions
         self.log.info("Applying distortion correction")
         for s in sources:
-            s.set(self.centroidKey, pixToTanXYTransform.forwardTransform(s.getCentroid()))
+            centroid = pixToTanXYTransform.forwardTransform(s.getCentroid())
+            if self.tableVersion == 0:
+                s.set(self.centroidKey, s.getCentroid())
+            else:
+                s.set(self.centroidXKey, centroid.getX())
+                s.set(self.centroidYKey, centroid.getY())
+                s.set(self.centroidXErrKey, 0)
+                s.set(self.centroidYErrKey, 0)
+
 
         # Get distorted image size so that astrometry_net does not clip.
         bboxD = afwGeom.Box2D()
@@ -252,15 +277,22 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         # Apply distortion
         bbox = self.distort(exposure, sources)
-        oldCentroidKey = sources.table.getCentroidKey()
-        sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
+        if self.tableVersion == 0:
+            oldCentroidKey = sources.table.getCentroidKey()
+            sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
                                      sources.table.getCentroidFlagKey())
+        else:
+            oldCentroidName = sources.table.getCentroidDefinition()
+            sources.table.defineCentroid("astrom_distorted")
         try:
             yield bbox # Execute 'with' block, providing bbox to 'as' variable
         finally:
             # Un-apply distortion
-            sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
+            if self.tableVersion == 0:
+                sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
                                          sources.table.getCentroidFlagKey())
+            else:
+                sources.table.defineCentroid(oldCentroidName)
             x0, y0 = exposure.getXY0()
             wcs = exposure.getWcs()
             if wcs:
@@ -279,7 +311,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         if not self.config.forceKnownWcs:
             self.log.info("Solving astrometry")
-
         if bbox is None:
             bbox = exposure.getBBox(afwImage.PARENT)
 
@@ -384,7 +415,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 source.setCoord(sky)
         else:
             self.log.warn("Not calculating a SIP solution; matches may be suspect")
-        
+
         self.display('astrometry', exposure=exposure, sources=sources, matches=matches)
 
         return sip

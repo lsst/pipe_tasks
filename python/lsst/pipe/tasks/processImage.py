@@ -71,7 +71,7 @@ class ProcessImageConfig(pexConfig.Config):
         if self.doMeasurement:
             if not self.doDetection:
                 raise ValueError("Cannot run source measurement without source detection.")
-            if "skycoord" not in self.measurement.algorithms.names:
+            if "skycoord" not in self.measurement.algorithms.names and "base_SkyCoord" not in self.measurement.algorithms.names:
                 raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
@@ -89,12 +89,14 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     Subclasses are responsible for meeting the requirements of CmdLineTask.
     """
     ConfigClass = ProcessImageConfig
-
     dataPrefix = ""  # Name to prepend to all input and output datasets (e.g. 'goodSeeingCoadd_')
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
-        self.makeSubtask("calibrate")
+
+        #  Do this task using whatever tableVersion is set for the measurement task 
+        tableVersion = self.config.measurement.target.tableVersion
+        self.makeSubtask("calibrate", tableVersion=tableVersion)
 
         # Setup our schema by starting with fields we want to propagate from icSrc.
         calibSchema = self.calibrate.schema
@@ -102,18 +104,23 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
 
         # Add fields needed to identify stars used in the calibration step
-        self.calibSourceKey = self.schemaMapper.addOutputField(
-            afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
-            )
+        if tableVersion == 0:
+            self.calibSourceKey = self.schemaMapper.addOutputField(
+                afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
+                )
+        else:
+            self.calibSourceKey = self.schemaMapper.addOutputField(
+                afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSrc")
+                )
+
         for key in self.calibrate.getCalibKeys():
             self.schemaMapper.addMapping(key)
         self.schema = self.schemaMapper.getOutputSchema()
-        
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
-            self.makeSubtask("detection", schema=self.schema)
+            self.makeSubtask("detection", schema=self.schema, tableVersion=tableVersion)
         if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
+            self.makeSubtask("deblend", schema=self.schema, tableVersion=tableVersion)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
@@ -167,7 +174,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.run(table, calExposure)
-            table.setVersion(self.measurement.TableVersion)
+            table.setVersion(self.measurement.tableVersion)
             sources = detections.sources
             fpSets = detections.fpSets
             if fpSets.background:           
@@ -246,7 +253,10 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         closest = False                 # return all matched objects
         matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
         if self.config.doDeblend:
-            matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+            if self.config.measurement.target.tableVersion == 0:
+                matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+            else:
+                matched = [m for m in matched if m[1].get("deblend_nChild") == 0] # if deblended, keep children
         #
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches

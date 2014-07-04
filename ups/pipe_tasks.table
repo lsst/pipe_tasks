@@ -1,6 +1,7 @@
 setupRequired(pipe_base)
 setupRequired(pex_config)
 setupOptional(afw)
+setupOptional(meas_base)
 setupOptional(meas_algorithms)
 setupOptional(meas_astrom)
 setupOptional(meas_deblender)

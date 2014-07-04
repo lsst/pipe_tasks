@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
@@ -106,20 +106,15 @@ class CalibrateConfig(pexConfig.Config):
 
     def validate(self):
         pexConfig.Config.validate(self)
-        if self.doPsf and (self.doPhotoCal or self.doAstrometry):
-            if self.initialMeasurement.prefix == self.measurement.prefix:
-                raise ValueError("CalibrateConfig.initialMeasurement and CalibrateConfig.measurement "\
-                                     "have the same prefix; field names may clash.")
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
-        self.initialMeasurement.prefix = "initial."
-        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification"]
-        initflags = [self.initialMeasurement.prefix+x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
+        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
+        initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
-        self.background.binSize = 1024        
+        self.background.binSize = 1024
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -320,27 +315,57 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def init(self, **kwargs):
+    def init(self, tableVersion=0, **kwargs):
         """!
         Create the calibration task
 
         \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
-        self.__init__(**kwargs)
+        self.__init__(tableVersion, **kwargs)
 
-    def __init__(self, **kwargs):
+    def __init__(self, tableVersion=0, **kwargs):
         """!Create the calibration task.  See CalibrateTask.init for documentation
         """
         pipeBase.Task.__init__(self, **kwargs)
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
+
+        # the calibrate Source Catalog is divided into two catalogs to allow measurement to be run twice
+        # schema1 contains everything except what is added by the second measurement task.
+        # Before the second measurement task is run, self.schemaMapper transforms the sources into
+        # the final output schema, at the same time renaming the measurement fields to "initial_" 
+        self.schema1 = afwTable.SourceTable.makeMinimalSchema()
+        minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
+        self.tableVersion = tableVersion
         self.makeSubtask("repair")
-        self.makeSubtask("detection", schema=self.schema)
-        self.makeSubtask("initialMeasurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("measurePsf", schema=self.schema)
-        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("astrometry", schema=self.schema)
-        self.makeSubtask("photocal", schema=self.schema)
+        self.makeSubtask("detection", schema=self.schema1, tableVersion=tableVersion)
+        beginInitial = self.schema1.getFieldCount()
+        self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
+        endInitial = self.schema1.getFieldCount()
+        self.makeSubtask("measurePsf", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("astrometry", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("photocal", schema=self.schema1, tableVersion=tableVersion)
+
+        # create a schemaMapper to map schema1 into schema2
+        self.schemaMapper = afwTable.SchemaMapper(self.schema1)
+        if self.tableVersion == 0: 
+            separator = "."
+        else: 
+            separator =  "_"
+        count = 0
+        for item in self.schema1:
+            count = count + 1
+            field = item.getField()
+            name = field.getName()
+            if count > beginInitial and count <= endInitial: 
+                name = "initial" + separator + name 
+            self.schemaMapper.addMapping(item.key, name)
+
+        # measurements fo the second measurement step done with a second schema
+        schema = self.schemaMapper.editOutputSchema()
+        self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
+
+        # the final schema is the same as the schemaMapper output
+        self.schema = self.schemaMapper.getOutputSchema()
 
     def getCalibKeys(self):
         """!
@@ -390,26 +415,30 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             with self.timer("background"):
                 bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
                 backgrounds.append(bg)
-
             self.display('background', exposure=exposure)
-        table = afwTable.SourceTable.make(self.schema, idFactory)
-        table.setMetadata(self.algMetadata)
-        detRet = self.detection.makeSourceCatalog(table, exposure)
-        sources = detRet.sources
+
+        # Make both tables from the same detRet, since detRet can only be run once
+        table1 = afwTable.SourceTable.make(self.schema1, idFactory)
+        table1.setMetadata(self.algMetadata)
+        table1.setVersion(self.tableVersion)
+        detRet = self.detection.makeSourceCatalog(table1, exposure)
+        sources1 = detRet.sources
+
+
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
 
         if self.config.doPsf:
-            self.initialMeasurement.measure(exposure, sources)
+            self.initialMeasurement.measure(exposure, sources1)
 
             if self.config.doAstrometry:
-                astromRet = self.astrometry.run(exposure, sources)
+                astromRet = self.astrometry.run(exposure, sources1)
                 matches = astromRet.matches
             else:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
                 matches = None
-            psfRet = self.measurePsf.run(exposure, sources, matches=matches)
+            psfRet = self.measurePsf.run(exposure, sources1, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
         elif exposure.hasPsf():
@@ -439,6 +468,14 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             self.display('PSF_background', exposure=exposure)
 
         if self.config.doAstrometry or self.config.doPhotoCal:
+            # make a second table with which to do the second measurement
+            # the schemaMapper will copy the footprints and ids, which is all we need.
+            table2 = afwTable.SourceTable.make(self.schema, idFactory)
+            table2.setMetadata(self.algMetadata)
+            table2.setVersion(self.tableVersion)
+            sources = afwTable.SourceCatalog(table2)
+            # transfer to a second table
+            sources.extend(sources1, self.schemaMapper)
             self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
@@ -457,7 +494,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
-                
+
             if photocalRet:
                 self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
                 exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
@@ -472,12 +509,10 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
                 metadata.set('COLORTERM1', 0.0)
                 metadata.set('COLORTERM2', 0.0)
-                metadata.set('COLORTERM3', 0.0)    
+                metadata.set('COLORTERM3', 0.0)
         else:
             photocalRet = None
-
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
-
         return pipeBase.Struct(
             exposure = exposure,
             backgrounds = backgrounds,
@@ -495,7 +530,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         \throws AssertionError If exposure or exposure.getWcs() are None
         """
         assert exposure, "No exposure provided"
-        
+
         wcs = exposure.getWcs()
         if wcs:
             pixelScale = wcs.pixelScale().asArcseconds()
