@@ -89,7 +89,7 @@ class ProcessCoaddTask(ProcessImageTask):
                 doc="true if source is in the inner region of a coadd patch",
             )
             self.isTractInnerKey = self.schema.addField(
-                "detect_isTractIinner", type="Flag",
+                "detect_isTractInner", type="Flag",
                 doc="true if source is in the inner region of a coadd tract",
             )
             self.isPrimaryKey = self.schema.addField(
