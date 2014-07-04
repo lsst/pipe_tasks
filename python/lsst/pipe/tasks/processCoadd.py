@@ -68,7 +68,8 @@ class ProcessCoaddTask(ProcessImageTask):
     def __init__(self, **kwargs):
         ProcessImageTask.__init__(self, **kwargs)
         self.dataPrefix = self.config.coaddName + "Coadd_"
-        if self.schema.getVersion() == 0:
+        tableVersion = self.config.measurement.target.tableVersion
+        if tableVersion == 0:
             self.isPatchInnerKey = self.schema.addField(
                 "detect.is-patch-inner", type="Flag",
                 doc="true if source is in the inner region of a coadd patch",
@@ -84,15 +85,15 @@ class ProcessCoaddTask(ProcessImageTask):
             )
         else:
             self.isPatchInnerKey = self.schema.addField(
-                "detect_is-patch-inner", type="Flag",
+                "detect_isPatchInner", type="Flag",
                 doc="true if source is in the inner region of a coadd patch",
             )
             self.isTractInnerKey = self.schema.addField(
-                "detect_is-tract-inner", type="Flag",
+                "detect_isTractIinner", type="Flag",
                 doc="true if source is in the inner region of a coadd tract",
             )
             self.isPrimaryKey = self.schema.addField(
-                "detect_is-primary", type="Flag",
+                "detect_isPrimary", type="Flag",
                 doc="true if source has no children and is in the inner region of a coadd patch " \
                     + "and is in the inner region of a coadd tract",
             )
@@ -165,7 +166,11 @@ class ProcessCoaddTask(ProcessImageTask):
         """
         # Test for the presence of the nchild key instead of checking config.doDeblend because sources
         # might be unpersisted with deblend info, even if deblending is not run again.
-        nChildKeyName = "deblend.nchild"
+        if self.config.measurement.target.tableVersion == 0:
+            nChildKeyName = "deblend.nchild"
+        else:
+            nChildKeyName = "deblend_nChild"
+
         try:
             nChildKey = self.schema.find(nChildKeyName).key
         except Exception:

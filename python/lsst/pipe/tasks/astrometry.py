@@ -156,13 +156,13 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             self.centroidKey = schema.addField("centroid.distorted", type="PointD",
                                            doc="centroid distorted for astrometry solver")
         else:
-            self.centroidXKey = schema.addField("centroid_distorted_x", type="D",
+            self.centroidXKey = schema.addField("astrom_distorted_x", type="D",
                                            doc="centroid distorted for astrometry solver")
-            self.centroidYKey = schema.addField("centroid_distorted_y", type="D",
+            self.centroidYKey = schema.addField("astrom_distorted_y", type="D",
                                            doc="centroid distorted for astrometry solver")
-            self.centroidXErrKey = schema.addField("centroid_distorted_xSigma", type="F",
+            self.centroidXErrKey = schema.addField("astrom_distorted_xSigma", type="F",
                                            doc="centroid distorted for astrometry solver")
-            self.centroidYErrKey = schema.addField("centroid_distorted_ySigma", type="F",
+            self.centroidYErrKey = schema.addField("astrom_distorted_ySigma", type="F",
                                            doc="centroid distorted for astrometry solver")
         self.astrometer = None
 
@@ -283,7 +283,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                                      sources.table.getCentroidFlagKey())
         else:
             oldCentroidName = sources.table.getCentroidDefinition()
-            sources.table.defineCentroid("centroid_distorted")
+            sources.table.defineCentroid("astrom_distorted")
         try:
             yield bbox # Execute 'with' block, providing bbox to 'as' variable
         finally:

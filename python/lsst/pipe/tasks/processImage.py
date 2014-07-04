@@ -71,7 +71,7 @@ class ProcessImageConfig(pexConfig.Config):
         if self.doMeasurement:
             if not self.doDetection:
                 raise ValueError("Cannot run source measurement without source detection.")
-            if "skycoord" not in self.measurement.algorithms.names:
+            if "skycoord" not in self.measurement.algorithms.names and "base_SkyCoord" not in self.measurement.algorithms.names:
                 raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
@@ -95,7 +95,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
         #  Do this task using whatever tableVersion is set for the measurement task 
-        tableVersion = self.config.measurement.target.TableVersion
+        tableVersion = self.config.measurement.target.tableVersion
         self.makeSubtask("calibrate", tableVersion=tableVersion)
 
         # Setup our schema by starting with fields we want to propagate from icSrc.
@@ -174,7 +174,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.makeSourceCatalog(table, calExposure)
-            table.setVersion(self.measurement.TableVersion)
+            table.setVersion(self.measurement.tableVersion)
             sources = detections.sources
             fpSets = detections.fpSets
             if fpSets.background:           
@@ -253,7 +253,10 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         closest = False                 # return all matched objects
         matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
         if self.config.doDeblend:
-            matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+            if self.config.measurement.target.tableVersion == 0:
+                matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
+            else:
+                matched = [m for m in matched if m[1].get("deblend_nChild") == 0] # if deblended, keep children
         #
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches

@@ -101,7 +101,6 @@ class CalibrateConfig(pexConfig.Config):
 
     def validate(self):
         pexConfig.Config.validate(self)
-
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
 
@@ -311,13 +310,13 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def init(self, **kwargs):
+    def init(self, tableVersion=0, **kwargs):
         """!
         Create the calibration task
 
         \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
-        self.__init__(**kwargs)
+        self.__init__(tableVersion, **kwargs)
 
     def __init__(self, tableVersion=0, **kwargs):
         """!Create the calibration task.  See CalibrateTask.init for documentation
@@ -343,8 +342,10 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         # create a schemaMapper to map schema1 into schema2
         self.schemaMapper = afwTable.SchemaMapper(self.schema1)
-        if self.tableVersion == 0: separator = "."
-        else: separator =  "_"
+        if self.tableVersion == 0: 
+            separator = "."
+        else: 
+            separator =  "_"
         count = 0
         for item in self.schema1:
             count = count + 1
@@ -501,7 +502,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 metadata.set('COLORTERM3', 0.0)
         else:
             photocalRet = None
-
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
         return pipeBase.Struct(
             exposure = exposure,

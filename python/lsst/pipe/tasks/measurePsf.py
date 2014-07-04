@@ -66,12 +66,12 @@ Conversion notes:
                     )
             else:
                 self.candidateKey = schema.addField(
-                    "calib_psf_candidate", type="Flag",
+                    "calib_psfCandidate", type="Flag",
                     doc=("Flag set if the source was a candidate for PSF determination, "
                          "as determined by the '%s' star selector.") % self.config.starSelector.name
                     )
                 self.usedKey = schema.addField(
-                    "calib_psf_used", type="Flag",
+                    "calib_psfUsed", type="Flag",
                     doc=("Flag set if the source was actually used for PSF determination, "
                          "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
                     )
