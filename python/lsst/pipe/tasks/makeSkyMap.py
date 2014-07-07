@@ -23,7 +23,6 @@
 import sys
 import traceback
 
-import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -57,10 +56,10 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
     def __call__(self, butler):
         task = self.TaskClass(config=self.config, log=self.log)
         if self.doRaise:
-            result = task.run(butler)
+            results = task.run(butler)
         else:
             try:
-                result = task.run(butler)
+                results = task.run(butler)
             except Exception, e:
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
