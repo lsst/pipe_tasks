@@ -477,6 +477,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             # transfer to a second table
             sources.extend(sources1, self.schemaMapper)
             self.measurement.run(exposure, sources)
+        else:
+            sources = sources1
 
         if self.config.doAstrometry:
             astromRet = self.astrometry.run(exposure, sources)
