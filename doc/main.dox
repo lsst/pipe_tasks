@@ -6,7 +6,7 @@
 Each data processing pipeline is implemented as a task that is a subclass of pipe_base CmdLineTask.
 Tasks often call other tasks as subtasks; these may be derived from CmdLineTask or Task.
 
-See lsst.pipe.base documentation for more information about the basics of writing and using tasks.
+See \ref pipeTasks_writeCmdLineTask for information on writing a task.
 
 Documentation for Tasks is in \ref LSST_task_documentation.
  */
