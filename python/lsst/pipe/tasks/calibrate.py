@@ -124,12 +124,14 @@ class CalibrateConfig(pexConfig.Config):
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
 
     def setDefaults(self):
+        pexConfig.Config.setDefaults(self)
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.prefix = "initial."
-        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification"]
-        initflags = [self.initialMeasurement.prefix+x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
+        self.initialMeasurement.algorithms.names -= ["correctfluxes"]
+        initflags = [self.initialMeasurement.prefix+x
+                     for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
-        self.background.binSize = 1024        
+        self.background.binSize = 1024
         #
         # Don't measure the elliptical aperture fluxes when calibrating
         #
@@ -235,6 +237,22 @@ class CalibrateTask(pipeBase.Task):
                     # Restore original Wcs: we're going to repeat the astrometry later, and if it succeeded
                     # this time, running it again with the same basic setup means it should succeed again.
                     exposure.setWcs(origWcs)
+
+            # This is an initial, throw-away run of photocal, since we need a valid Calib to run CModel,
+            # and we need to run CModel to compute aperture corrections from it.
+            if self.config.doPhotoCal:
+                assert(matches is not None)
+                try:
+                    photocalRet = self.photocal.run(exposure, matches,
+                                                    prefix=self.config.initialMeasurement.prefix)
+                except Exception, e:
+                    self.log.warn("Failed to determine photometric zero-point: %s" % e)
+                    photocalRet = None
+                    self.metadata.set('MAGZERO', float("NaN"))
+                if photocalRet:
+                    self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
+                    exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
+
             psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
@@ -293,7 +311,7 @@ class CalibrateTask(pipeBase.Task):
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
-                
+
             if photocalRet:
                 self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
                 exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
