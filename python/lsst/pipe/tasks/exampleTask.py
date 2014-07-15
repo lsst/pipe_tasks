@@ -55,11 +55,10 @@ class ExampleSimpleStatsTask(pipeBase.Task):
         - stdDevErr: uncertainty in standard deviation
         """
         self._statsControl = afwMath.StatisticsControl()
-        statObj = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
-            afwMath.MEAN | afwMath.STDEV, self._statsControl)
+        statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV, self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEAN)
-        stdDev, stdDevErr = statObj.getResult(afwMath.STDDEV)
-        self.log.info("mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
+        stdDev, stdDevErr = statObj.getResult(afwMath.STDEV)
+        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
             (mean, meanErr, stdDev, stdDevErr))
 
         return pipeBase.Struct(
@@ -122,11 +121,11 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         - stdDev: standard deviation of image plane
         - stdDevErr: uncertainty in standard deviation
         """
-        statObj = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
+        statObj = afwMath.makeStatistics(maskedImage,
             afwMath.MEANCLIP | afwMath.STDEVCLIP, self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEANCLIP)
-        stdDev, stdDevErr = statObj.getResult(afwMath.STDDEVCLIP)
-        self.log.info("mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
+        stdDev, stdDevErr = statObj.getResult(afwMath.STDEVCLIP)
+        self.log.info("clipped mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
             (mean, meanErr, stdDev, stdDevErr))
         return pipeBase.Struct(
             mean = mean,
@@ -166,6 +165,10 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     ConfigClass = ExampleCmdLineConfig
     _DefaultName = "exampleTask"
     _imageNum = 0   # number of images processed; used to implement raiseEveryN
+
+    def __init__(self, *args, **kwargs):
+        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
+        self.makeSubtask("stats")   # make the stats subtask from the config field of the same name
     
     @pipeBase.timeMethod
     def run(self, dataRef):
@@ -178,7 +181,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         - stdDev: standard deviation of image plane
         - stdDevErr: uncertainty in standard deviation
         """
-        self._imageNum += 1
+        ExampleCmdLineTask._imageNum += 1
         self.log.info("Processing image number=%d: id=%s" % (self._imageNum, dataRef.dataId))
         if self.config.raiseEveryN > 0 and self._imageNum % self.config.raiseEveryN == 0:
             raise pipeBase.TaskError(
