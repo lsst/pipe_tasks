@@ -75,6 +75,7 @@ class CoaddTaskRunner(pipeBase.TaskRunner):
     def getTargetList(parsedCmd, **kwargs):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
                                                  **kwargs)
+    # end CoaddTaskRunner (marker for Doxygen)
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.

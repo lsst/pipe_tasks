@@ -55,11 +55,10 @@ class ExampleSimpleStatsTask(pipeBase.Task):
         - stdDevErr: uncertainty in standard deviation
         """
         self._statsControl = afwMath.StatisticsControl()
-        statObj = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
-            afwMath.MEAN | afwMath.STDEV, self._statsControl)
+        statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV, self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEAN)
-        stdDev, stdDevErr = statObj.getResult(afwMath.STDDEV)
-        self.log.info("mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
+        stdDev, stdDevErr = statObj.getResult(afwMath.STDEV)
+        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
             (mean, meanErr, stdDev, stdDevErr))
 
         return pipeBase.Struct(
@@ -96,7 +95,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
     _DefaultName = "exampleSigmaClippedStats"
 
     def __init__(self, *args, **kwargs):
-        """!Construct a ExampleSigmaClippedStatsTask
+        """!Construct an ExampleSigmaClippedStatsTask
 
         The init method may compute anything that that does not require data.
         In this case we create a statistics control object using the config
@@ -110,7 +109,9 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         self._statsControl.setNumSigmaClip(3.0)
         self._statsControl.setNumIter(2)
         self._statsControl.setAndMask(self._badPixelMask)
+        # end init (marker for Doxygen)
 
+    # start run (marker for Doxygen)
     @pipeBase.timeMethod
     def run(self, maskedImage):
         """!Compute and return statistics for a masked image
@@ -122,11 +123,11 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         - stdDev: standard deviation of image plane
         - stdDevErr: uncertainty in standard deviation
         """
-        statObj = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
+        statObj = afwMath.makeStatistics(maskedImage,
             afwMath.MEANCLIP | afwMath.STDEVCLIP, self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEANCLIP)
-        stdDev, stdDevErr = statObj.getResult(afwMath.STDDEVCLIP)
-        self.log.info("mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
+        stdDev, stdDevErr = statObj.getResult(afwMath.STDEVCLIP)
+        self.log.info("clipped mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
             (mean, meanErr, stdDev, stdDevErr))
         return pipeBase.Struct(
             mean = mean,
@@ -134,6 +135,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
             stdDev = stdDev,
             stdDevErr = stdDevErr,
         )
+        # end run (marker for Doxygen)
 
 
 class ExampleCmdLineConfig(pexConfig.Config):
@@ -150,6 +152,7 @@ class ExampleCmdLineConfig(pexConfig.Config):
         dtype = int,
         default = 0,
     )
+    # end ExampleCmdLineConfig (marker for Doxygen)
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
     """!Example command-line task
@@ -166,7 +169,14 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     ConfigClass = ExampleCmdLineConfig
     _DefaultName = "exampleTask"
     _imageNum = 0   # number of images processed; used to implement raiseEveryN
+    # end class variables (marker for Doxygen)
+
+    def __init__(self, *args, **kwargs):
+        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
+        self.makeSubtask("stats")   # make the stats subtask from the config field of the same name
+        # end init (marker for Doxygen)
     
+    # start run (marker for Doxygen)
     @pipeBase.timeMethod
     def run(self, dataRef):
         """Compute a few statistics on the image plane of an exposure
@@ -178,7 +188,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         - stdDev: standard deviation of image plane
         - stdDevErr: uncertainty in standard deviation
         """
-        self._imageNum += 1
+        ExampleCmdLineTask._imageNum += 1
         self.log.info("Processing image number=%d: id=%s" % (self._imageNum, dataRef.dataId))
         if self.config.raiseEveryN > 0 and self._imageNum % self.config.raiseEveryN == 0:
             raise pipeBase.TaskError(
@@ -213,6 +223,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
             ds9.mtv(calExp, frame=frame, title="photocal")
 
         return self.stats.run(maskedImage)
+        # end run (marker for Doxygen)
 
     def _getConfigName(self):
         """Get the name prefix for the task config's dataset type, or None to prevent persisting the config

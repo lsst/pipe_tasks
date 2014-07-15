@@ -21,5 +21,4 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from lsst.pipe.tasks.exampleTask import ExampleCmdLineTask
-
 ExampleCmdLineTask.parseAndRun()
