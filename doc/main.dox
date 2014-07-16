@@ -3,17 +3,16 @@
 
 \section pipeTasks_introduction Introduction
 
-Each data processing pipeline is implemented as a task that is a subclass of pipe_base CmdLineTask.
-Tasks often call other tasks as subtasks; these may be derived from CmdLineTask or Task.
+Data processing pipeline tasks.
 
-See \ref pipeTasks_writeCmdLineTask for information on writing a task.
+Documentation for existing tasks is in \ref LSST_task_documentation.
 
-Documentation for Tasks is in \ref LSST_task_documentation.
+Instructions for writing new tasks is in \ref pipeTasks_writeCmdLineTask
  */
 
 /**
 \defgroup LSST_task_documentation Task Documentation
-\brief Documentation for individual processing Tasks
+Documentation for existing data processing Tasks
 
 Tasks are scattered over various implementation products and gathered together by their membership of the
 doxygen group LSST_task_documentation.

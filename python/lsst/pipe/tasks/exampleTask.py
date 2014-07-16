@@ -20,54 +20,28 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import lsst.afw.image as afwImage
+from lsst.afw.display.ds9 import mtv
+from lsst.afw.image import MaskU
 import lsst.afw.math as afwMath
-import lsst.afw.display.ds9 as ds9
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-class ExampleSimpleStatsTask(pipeBase.Task):
-    """!Example task to compute mean and standard deviation of an image
+# The following block adds links to these tasks from the Task Documentation page.
+# This works even for task(s) that are not in lsst.pipe.tasks.
+## \addtogroup LSST_task_documentation
+## \{
+## \page pipeTasks_exampleTask
+## \ref ExampleCmdLineTask "ExampleCmdLineTask"
+##      An example intended to show how to write a command-line task.
+## <br>
+## \ref ExampleSigmaClippedStatsTask "ExampleSigmaClippedStatsTask"
+##      A simple example subtask that computes sigma-clipped statistics of an image
+## <br>
+## \ref ExampleSimpleStatsTask "ExampleSimpleStatsTask"
+##      A very simple example subtask that computes statistics of an image.
+## \}
 
-    This is about as simple as a task can be; it requires no configuration and no special initialization.
-    """
-    ### Even a task with no configuration requires setting ConfigClass
-    ConfigClass = pexConfig.Config
-    ### Having a default name simplifies construction of the task, since the parent task
-    ### need not specify a name. Note: having a default name is required for command-line tasks.
-    ### The name can be simple and need not be unique (except for multiple subtasks that will
-    ### be run by a parent task at the same time).
-    _DefaultName = "exampleSimpleStats"
-
-    # The `pipeBase.timeMethod` decorator measures how long a task method takes to run,
-    # and the resources needed to run it. The information is recorded in the task's `metadata` field.
-    # Most command-line tasks (not including the example below) save metadata for the task
-    # and all of its subtasks whenver the task is run.
-    @pipeBase.timeMethod
-    def run(self, maskedImage):
-        """!Compute and return statistics for a masked image
-
-        @param[in] maskedImage: masked image (an lsst::afw::MaskedImage)
-        @return a pipeBase Struct containing:
-        - mean: mean of image plane
-        - meanErr: uncertainty in mean
-        - stdDev: standard deviation of image plane
-        - stdDevErr: uncertainty in standard deviation
-        """
-        self._statsControl = afwMath.StatisticsControl()
-        statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV, self._statsControl)
-        mean, meanErr = statObj.getResult(afwMath.MEAN)
-        stdDev, stdDevErr = statObj.getResult(afwMath.STDEV)
-        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
-            (mean, meanErr, stdDev, stdDevErr))
-
-        return pipeBase.Struct(
-            mean = mean,
-            meanErr = meanErr,
-            stdDev = stdDev,
-            stdDevErr = stdDevErr,
-        )
-
+#------------------------- ExampleSigmaClippedStatsTask -------------------------#
 
 class ExampleSigmaClippedStatsConfig(pexConfig.Config):
     """!Configuration for ExampleSigmaClippedStatsTask
@@ -88,8 +62,41 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
         default = 2,
     )
 
+
 class ExampleSigmaClippedStatsTask(pipeBase.Task):
-    """!Example task to compute statistics on an image using sigma clipping
+    """!Example task to compute sigma-clipped mean and standard deviation of an image
+
+    \section pipeTasks_ExampleSigmaClippedStatsTask_Contents Contents
+
+     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Purpose 
+     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Config
+     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Debug
+     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Example
+
+    \section pipeTasks_ExampleSigmaClippedStatsTask_Purpose Description
+
+    \copybrief ExampleSigmaClippedStatsTask
+
+    This is a simple example task designed to be run as a subtask by ExampleCmdLineTask.
+    See also ExampleSimpleStatsTask as a variant that is even simpler.
+    
+    The main method is \ref ExampleSigmaClippedStatsTask.run "run".
+
+    \section pipeTasks_ExampleSigmaClippedStatsTask_Config  Configuration parameters
+
+    See \ref ExampleSigmaClippedStatsConfig
+
+    \section pipeTasks_ExampleSigmaClippedStatsTask_Debug   Debug variables
+
+    This task has no debug variables.
+
+    \section pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example of using ExampleSigmaClippedStatsTask
+
+    This code is in \link examples/exampleStatsTask.py\endlink (this one example runs both
+    ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run as:
+    \code
+    examples/exampleStatsTask.py [fitsFile]
+    \endcode
     """
     ConfigClass = ExampleSigmaClippedStatsConfig
     _DefaultName = "exampleSigmaClippedStats"
@@ -103,7 +110,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         """
         pipeBase.Task.__init__(self, *args, **kwargs)
 
-        self._badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
+        self._badPixelMask = MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
         self._statsControl = afwMath.StatisticsControl()
         self._statsControl.setNumSigmaClip(3.0)
@@ -137,6 +144,82 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         )
         # end run (marker for Doxygen)
 
+#------------------------- ExampleSimpleStatsTask -------------------------#
+
+class ExampleSimpleStatsTask(pipeBase.Task):
+    """!Example task to compute mean and standard deviation of an image
+
+    \section pipeTasks_ExampleSimpleStatsTask_Contents Contents
+
+     - \ref pipeTasks_ExampleSimpleStatsTask_Purpose
+     - \ref pipeTasks_ExampleSimpleStatsTask_Config
+     - \ref pipeTasks_ExampleSimpleStatsTask_Debug
+     - \ref pipeTasks_ExampleSimpleStatsTask_Example
+
+    \section pipeTasks_ExampleSimpleStatsTask_Purpose Description
+
+    \copybrief ExampleSimpleStatsTask
+
+    This was designed to be run as a subtask by ExampleCmdLineTask.
+    It is about as simple as a task can be; it has no configuration parameters and requires no special
+    initialization. See also ExampleSigmaClippedStatsTask as a variant that is slightly more complicated.
+    
+    The main method is \ref ExampleSimpleTask.run "run".
+
+    \section pipeTasks_ExampleSimpleStatsTask_Config    Configuration parameters
+
+    This task has no configuration parameters.
+
+    \section pipeTasks_ExampleSimpleStatsTask_Debug     Debug variables
+
+    This task has no debug variables.
+
+    \section pipeTasks_ExampleSimpleStatsTask_Example A complete example of using ExampleSimpleStatsTask
+
+    This code is in \link examples/exampleStatsTask.py\endlink (this one example runs both
+    ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run as:
+    \code
+    examples/exampleStatsTask.py [fitsFile]
+    \endcode
+    """
+    ### Even a task with no configuration requires setting ConfigClass
+    ConfigClass = pexConfig.Config
+    ### Having a default name simplifies construction of the task, since the parent task
+    ### need not specify a name. Note: having a default name is required for command-line tasks.
+    ### The name can be simple and need not be unique (except for multiple subtasks that will
+    ### be run by a parent task at the same time).
+    _DefaultName = "exampleSimpleStats"
+
+    # The `lsst.pipe.timeMethod` decorator measures how long a task method takes to run,
+    # and the resources needed to run it. The information is recorded in the task's `metadata` field.
+    # Most command-line tasks (not including the example below) save metadata for the task
+    # and all of its subtasks whenver the task is run.
+    @pipeBase.timeMethod
+    def run(self, maskedImage):
+        """!Compute and return statistics for a masked image
+
+        @param[in] maskedImage: masked image (an lsst::afw::MaskedImage)
+        @return a pipeBase Struct containing:
+        - mean: mean of image plane
+        - meanErr: uncertainty in mean
+        - stdDev: standard deviation of image plane
+        - stdDevErr: uncertainty in standard deviation
+        """
+        self._statsControl = afwMath.StatisticsControl()
+        statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV, self._statsControl)
+        mean, meanErr = statObj.getResult(afwMath.MEAN)
+        stdDev, stdDevErr = statObj.getResult(afwMath.STDEV)
+        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
+            (mean, meanErr, stdDev, stdDevErr))
+
+        return pipeBase.Struct(
+            mean = mean,
+            meanErr = meanErr,
+            stdDev = stdDev,
+            stdDevErr = stdDevErr,
+        )
+
+#------------------------- ExampleCmdLineTask -------------------------#
 
 class ExampleCmdLineConfig(pexConfig.Config):
     """!Configuration for ExampleCmdLineTask
@@ -155,16 +238,70 @@ class ExampleCmdLineConfig(pexConfig.Config):
     # end ExampleCmdLineConfig (marker for Doxygen)
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
-    """!Example command-line task
+    """!Example command-line task that computes simple statistics on an image
 
-    This example is intended to show how to write a command-line task.
-    The task reads in a "calexp" (a calibrated science image),
+    \section pipeTasks_ExampleCmdLineTask_Contents Contents
+
+     - \ref pipeTasks_ExampleCmdLineTask_Purpose
+     - \ref pipeTasks_ExampleCmdLineTask_Config
+     - \ref pipeTasks_ExampleCmdLineTask_Debug
+     - \ref pipeTasks_ExampleCmdLineTask_Example
+
+    \section pipeTasks_ExampleCmdLineTask_Purpose Description
+
+    \copybrief ExampleCmdLineTask
+
+    This example task was written for the document \ref pipeTasks_writeCmdLineTask, which describes
+    the task in great detail.
+    The task reads in a "calexp" (a calibrated science \ref lsst::afw::image::Exposure "exposure"),
     computes statistics on the image plane, and logs and returns the statistics.
-    In addition, if debugging is enabled, it displays the image.
+    In addition, if debugging is enabled, it displays the image in ds9.
 
-    The image statistics are computed using a sub-task (even though the job
-    is too simple to justify a subtask), in order to show how to call subtasks
-    and how to "retarget" (replace) them with variant subtasks.
+    The image statistics are computed using a subtask, in order to show how to call subtasks and how to
+    "retarget" (replace) them with variant subtasks. See \ref pipeTasks_writeCmdLineTask_retargetingSubtasks
+    for more information.
+
+    The main method is \ref ExampleCmdLineTask.run "run".
+
+    \section pipeTasks_ExampleCmdLineTask_Config    Configuration parameters
+
+    See \ref ExampleCmdLineConfig
+
+    \section pipeTasks_ExampleCmdLineTask_Debug     Debug variables
+
+    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
+    flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
+
+    The available variables in ExampleCmdLineTask are:
+    <dl>
+        <dt>`display`
+        <dd>If True then display the calepx in ds9
+    </dl>
+
+    \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
+
+    This code is in \link examples/exampleCmdLineTask.py\endlink, and can be run as _e.g._
+    \code
+    examples/exampleCmdLineTask.py <path_to_data_repo> --id <data_id>
+    # The following will work on an NCSA lsst* computer:
+    examples/exampleCmdLineTask.py /lsst8/krughoff/diffim_data/sparse_diffim_output_v7_2 --id visit=6866601
+    # also try these flags:
+    --config raiseEveryN=2 --doraise
+    --show config data
+    \endcode
+
+    <hr>
+    To investigate the \ref pipeTasks_ExampleCmdLineTask_Debug, put something like
+    \code{.py}
+        import lsstDebug
+        def DebugInfo(name):
+            di = lsstDebug.getInfo(name)    # N.b. lsstDebug.Info(name) would call us recursively
+            if name == "lsst.pipe.tasks.exampleTask":
+                di.display = 1
+            return di
+        lsstDebug.Info = DebugInfo
+    \endcode
+    into your debug.py file and run exampleTask.py with the `--debug` flag.
     """
     ConfigClass = ExampleCmdLineConfig
     _DefaultName = "exampleTask"
@@ -172,14 +309,18 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     # end class variables (marker for Doxygen)
 
     def __init__(self, *args, **kwargs):
+        """Construct an ExampleCmdLineTask
+
+        Call the parent class constructor and make the `stats` subtask from the config field of the same name.
+        """
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
-        self.makeSubtask("stats")   # make the stats subtask from the config field of the same name
+        self.makeSubtask("stats")
         # end init (marker for Doxygen)
     
     # start run (marker for Doxygen)
     @pipeBase.timeMethod
     def run(self, dataRef):
-        """Compute a few statistics on the image plane of an exposure
+        """!Compute a few statistics on the image plane of an exposure
         
         @param dataRef: data reference for a calibrated science exposure ("calexp")
         @return a pipeBase Struct containing:
@@ -220,13 +361,13 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         display = lsstDebug.Info(__name__).display
         if display:
             frame = 1
-            ds9.mtv(calExp, frame=frame, title="photocal")
+            mtv(calExp, frame=frame, title="photocal")
 
         return self.stats.run(maskedImage)
         # end run (marker for Doxygen)
 
     def _getConfigName(self):
-        """Get the name prefix for the task config's dataset type, or None to prevent persisting the config
+        """!Get the name prefix for the task config's dataset type, or None to prevent persisting the config
 
         This override returns None to avoid persisting metadata for this trivial task.
 
@@ -250,7 +391,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         return None
     
     def _getMetadataName(self):
-        """Get the name prefix for the task metadata's dataset type, or None to prevent persisting metadata
+        """!Get the name prefix for the task metadata's dataset type, or None to prevent persisting metadata
 
         This override returns None to avoid persisting metadata for this trivial task.
 

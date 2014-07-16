@@ -2,10 +2,24 @@ namespace lsst { namespace pipe { namespace tasks {
 /**
 \page pipeTasks_writeCmdLineTask How to write a command-line task
 
-\section writeCmdLineTask_overview Overview
+\section pipeTasks_writeCmdLineTask_contents Contents
+
+- \ref pipeTasks_writeCmdLineTask_overview
+- \ref pipeTasks_writeCmdLineTask_runScript
+- \ref pipeTasks_writeCmdLineTask_configuration
+- \ref pipeTasks_writeCmdLineTask_taskClassVariables
+- \ref pipeTasks_writeCmdLineTask_taskMethods
+- \ref pipeTasks_writeCmdLineTask_documentation
+- \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata
+- \ref pipeTasks_writeCmdLineTask_retargetingSubtasks
+- \ref pipeTasks_writeCmdLineTask_customArgumentParser
+- \ref pipeTasks_writeCmdLineTask_customTaskRunner
+
+\section pipeTasks_writeCmdLineTask_overview Overview
 
 This document describes how to write a command-line task, which is the LSST version of a data processing
-pipeline. Before reading this this document, please skim through \ref pipeBase_introduction "pipe_base documentation" to get a basic idea of what tasks are and what classes are used to implement them.
+pipeline. Before reading this this document, please skim through \ref pipeBase_introduction
+"pipe_base documentation" to get a basic idea of what tasks are and what classes are used to implement them.
 It also helps to have a basic understanding of data repositories and how to use the butler to read and write
 data (link???).
 
@@ -21,12 +35,12 @@ In a bit more detail, `parseAndRun`:
 All this is described in more detail below, with heavy emphasis on a simple
 example task: exampleTask.ExampleCmdLineTask.
 
-\section writeCmdLineTask_runScript Run Script
+\section pipeTasks_writeCmdLineTask_runScript Run Script
 
 The script to run the task is usually very simple, since all it needs to do is import the
 command-line task and call parseAndRun. Here is the runner script for ExampleCmdLineTask:
-examples/exampleTask.py:
-\dontinclude examples/exampleTask.py
+exampleCmdLineTask.py:
+\dontinclude exampleCmdLineTask.py
 \skip from lsst.pipe
 \until parseAndRun
 
@@ -34,17 +48,18 @@ For a task that you want to be readily available, put the script into your packa
 and make it executable using `chmod +x`, so that it is on your $PATH when you setup your package with eups.
 Our example script does not need to be so accessible, so it is placed in `examples/` instead of `bin/`.
 
-\section writeCmdLineTask_configuration Configuration
+\section pipeTasks_writeCmdLineTask_configuration Configuration
 
 Every task requires a configuration. The configuration is created when the command line is parsed.
-The configuration is also validated (to catch errors early) and frozen, o assure that the same config
+The configuration is also validated (to catch errors early) and frozen, to assure that the same config
 is used to process each item of data.
 
 Each task must specify its configuration as a task-specific subclass of lsst.pex.config.Config.
 Configurations include user-settable parameters (e.g. number of iterations of outlier rejection)
-and also the subtasks called by the top-level task (the task run by the \ref writeCmdLineTask_runScript
-"run script"). Subtasks are specified using a field of type lsst.pex.config.ConfigurableField,
-which allows subtasks to be writeCmdLineTask_retargetingSubtasks "retarged" (replaced with a variant subtask).
+and also the subtasks called by the top-level task (the task run by the
+\ref pipeTasks_writeCmdLineTask_runScript "run script"). Subtasks are specified using a field of
+type lsst.pex.config.ConfigurableField, which allows subtasks to be
+\ref pipeTasks_writeCmdLineTask_retargetingSubtasks "retargeted" (replaced with a variant subtask).
 
 Please document each field of the configuration carefully, so other users can figure out how to
 configure your task.
@@ -54,9 +69,10 @@ exampleTask.ExampleCmdLineTask uses the following \ref exampleTask.ExampleCmdLin
 \skip class ExampleCmdLineConfig
 \until end ExampleCmdLineConfig
 
-The configuration class is specified as a \ref writeCmdLineTask_taskClassVariables "task class variable" `ConfigClass`.
+The configuration class is specified as a \ref pipeTasks_writeCmdLineTask_taskClassVariables
+"task class variable" `ConfigClass`.
 
-\section writeCmdLineTask_taskClassVariables Task Class Variables
+\section pipeTasks_writeCmdLineTask_taskClassVariables Task Class Variables
 
 Tasks require several class variables to function:
 - `ConfigClass: the config class used by the task.
@@ -75,7 +91,7 @@ Tasks require several class variables to function:
 - `TaskRunner: a class used to run the script, once the command-line has been parsed.
     The default task runner will work for any script whose `run` method accepts a single
     data reference. If your task needs something else then you will have to provide a
-    \ref writeCmdLineTask_customTaskRunner "custom task runner".
+    \ref pipeTasks_writeCmdLineTask_customTaskRunner "custom task runner".
 
 Here are the class variables for exampleTask.ExampleCmdLineTask (including one used internally
 to support the raiseEveryN configuration parameter).
@@ -84,18 +100,19 @@ to support the raiseEveryN configuration parameter).
 \skip ConfigClass
 \until # end
 
-\section writeCmdLineTask_taskMethods Task Methods
+\section pipeTasks_writeCmdLineTask_taskMethods Task Methods
 
 Command-line tasks have the following important methods:
 - `__init__`: construct and initialize a task and construct subtasks and a schema (if needed)
 - `run`: process one item of data
 - `_makeArgumentParser`: a class method that return an argument parser (subclass of
     pipe.base.argumentParser.ArgumentParser);
-    the default may do; see \ref writeCmdLineTask_customArgumentParser "custom argument parser" for more information.
+    the default may do; see \ref pipeTasks_writeCmdLineTask_customArgumentParser "custom argument parser"
+    for more information.
 
 These methods are described in more depth below:
 
-\subsection writeCmdLineTask_initMethod The __init__ Method
+\subsection pipeTasks_writeCmdLineTask_initMethod The __init__ Method
 
 Use the `__init__` method (task constructor) to call `CmdLineTask.__init__`, make subtasks, make a table
 schema if your task uses an afw table, and initialize any other instance variables your task needs.
@@ -121,13 +138,13 @@ this is strongly recommended, as explained in the next section.
 See pipe.tasks.calibrate.CalibrateTask for an example of a task that uses an afw table,
 and thus must set up a schema.
 
-\subsection writeCmdLineTask_runMethod The run Method
+\subsection pipeTasks_writeCmdLineTask_runMethod The run Method
 
 The `run` method is a command-line task's the main entry point for processing data.
 By default, your task's `run` methods will receive one argument: a data reference
 for a single raw or calibrated image. If your task needs something else then you must supply a
-a \ref writeCmdLineTask_customArgumentParser "custom argument parser" and possibly a 
-\ref writeCmdLineTask_customTaskRunner "custom task runner".
+a \ref pipeTasks_writeCmdLineTask_customArgumentParser "custom argument parser" and possibly a 
+\ref pipeTasks_writeCmdLineTask_customTaskRunner "custom task runner".
 
 Your task may supply additional methods that do much of the work of processing the data.
 Breaking the work into logical pieces, each handled by a separate method, will allow
@@ -161,12 +178,12 @@ version of that task: exampleTask.ExampleSigmaClippedStatsTask.run:
 \skip # start run
 \until # end run
 
-\section writeCmdLineTask_readWriteData Reading and Writing Data
+\section pipeTasks_writeCmdLineTask_readWriteData Reading and Writing Data
 
-The \ref writeCmdLineTask_runMethod "run method" typically receives a single data reference, as mentioned above.
-It read and writes data using this data reference (or the underlying butler, if necessary).
+The \ref pipeTasks_writeCmdLineTask_runMethod "run method" typically receives a single data reference, as
+mentioned above. It read and writes data using this data reference (or the underlying butler, if necessary).
 
-\anchor writeCmdLineTask_addDatasetType Every time you write a task that writes a new kind of data
+\anchor pipeTasks_writeCmdLineTask_addDatasetType Every time you write a task that writes a new kind of data
 to the data butler (a new "dataset type") you must tell the butler about it. This is done by editing
 the mapper configuration file for each obs_* package whose data the task can be run on. For instance
 the configuration for the lsstSim mapper is defined in obs_lsstSim/policy/LsstSimMapper.paf.
@@ -175,23 +192,42 @@ Warning: there are plans to rewrite how mappers are configured, so this informat
 In addition, if you write a new task for which you want to save configuration and metadata
 (which is the case for most tasks that process data, rather than simply report on data),
 you will have to add dataset types to each obs_*'s mapper for the task's configuration and metadata,
-as explainined in \ref writeCmdLineTask_persistingConfigAndMetadata "Persisting Task Config and Metadata".
+as explainined in \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata "Persisting Task Config and
+Metadata".
 
 If the task is of general interest (wanted for most or all obs_* packackages)
 then this process of updating all the mapper configs can be fairly time consuming.
 
-\section writeCmdLineTask_persistingConfigAndMetadata Persisting Task Config and Metadata
+\section pipeTasks_writeCmdLineTask_documentation Task Documentation
+
+Please read the source code for \link pipe/tasks/exampleTask.py\endlink for a documentation template.
+
+Using `"""!` instead of `"""`to start doc strings (i.e. including an exclamation mark)
+causes Doxygen to parse Doxygen commands in the doc string. This is almost always what you want.
+
+By including a section such as the following your task's documentation will appear on the
+page of \ref LSST_task_documentation, even if your task is not in the pipe_tasks package:
+\code
+## \addtogroup LSST_task_documentation
+## \{
+## \page exampleTask
+## \ref ExampleCmdLineTask "ExampleCmdLineTask"
+##      An example intended to show how to write a command-line task.
+## \}
+\endcode
+
+\section pipeTasks_writeCmdLineTask_persistingConfigAndMetadata Persisting Task Config and Metadata
 
 Normally when you run a task you want the configuration for the task and the metadata generated by the task
 to be saved to the data repository. By default, this is done automatically, using dataset types:
 - <i>_DefaultName</i>`_config` for the configuration
 - <i>_DefaultName</i>`_metadata` for the metadata
 
-Whether you use these default dataset types or \ref writeCmdLineTask_customzeConfigDatasetType
-"customize the dataset types", you will have to \ref writeCmdLineTask_addDatasetType "add dataset types"
-for the configuration and metadata.
+Whether you use these default dataset types or \ref pipeTasks_writeCmdLineTask_customzeConfigDatasetType
+"customize the dataset types", you will have to \ref pipeTasks_writeCmdLineTask_addDatasetType "add dataset
+types" for the configuration and metadata.
 
-\subsection writeCmdLineTask_customzeConfigDatasetType Customizing the Config and Metadata Dataset Types
+\subsection pipeTasks_writeCmdLineTask_customzeConfigDatasetType Customizing Config and Metadata Dataset Types
 
 Occasionally the default dataset types for configuration and metadata are not sufficient. For instance
 in the case of the pipe.tasks.MakeSkyMapTask and various coaddition tasks, the coadd type must be part of
@@ -199,14 +235,14 @@ the config and metadata dataset type name. To customize the dataset type of a ta
 define task methods _getConfigName and _getMetadataName to return the desired names. For an example see
 pipe.tasks.MakeSkyMapTask._getConfigName and pipe.tasks.MakeSkyMapTask._getMetadataName.
 
-\subsection writeCmdLineTask_preventSavingConfig Prevent Saving Config and Metadata
+\subsection pipeTasks_writeCmdLineTask_preventSavingConfig Prevent Saving Config and Metadata
 
 For some tasks you may wish to not save config and metadata at all. This is appropriate for tasks that
 simply report information without saving data, such as pipe_tasks/bin/reportTaskTiming.py. To disable saving
 configuration and metadata define task methods `_getConfigName` and `_getMetadataName` methods to return
 `None`.
 
-\section writeCmdLineTask_retargetingSubtasks Retargeting Subtasks
+\section pipeTasks_writeCmdLineTask_retargetingSubtasks Retargeting Subtasks
 
 You may replace one subtask with another; this is called "retargeting" the subtask.
 One common use case is to use a camera-specific variant of a subtask (e.g. a special version for Suprime-Cam).
@@ -238,7 +274,7 @@ The following existing config override files should give the idea:
     task for Hyper Suprime-Cam
 
 
-\section writeCmdLineTask_customArgumentParser Custom Argument Parser
+\section pipeTasks_writeCmdLineTask_customArgumentParser Custom Argument Parser
 
 The default argument parser returned by base.cmdLineTask.CmdLineTask._makeArgumentParser
 assumes that your task's `run` method processes raw or calibrated images. If this is not the case
@@ -270,10 +306,10 @@ Here are some examples:
     \until return
 
 Note that if your task requires a custom argument parser to do more than just change the
-type of the single data reference, then it also require a \ref writeCmdLineTask_customTaskRunner
+type of the single data reference, then it also require a \ref pipeTasks_writeCmdLineTask_customTaskRunner
 "custom task runner", as well (see next section).
 
-\section writeCmdLineTask_customTaskRunner Custom Task Runner
+\section pipeTasks_writeCmdLineTask_customTaskRunner Custom Task Runner
 
 The standard task runner is lsst.pipe.base.task.TaskRunner. It assumes that your task's `run` method
 wants a single data referefence and nothing else. If that is not the case then you will have to provide
