@@ -21,7 +21,7 @@ This document describes how to write a command-line task, which is the LSST vers
 pipeline. Before reading this this document, please skim through \ref pipeBase_introduction
 "pipe_base documentation" to get a basic idea of what tasks are and what classes are used to implement them.
 It also helps to have a basic understanding of data repositories and how to use the butler to read and write
-data (link???).
+data (to be written; for now read existing tasks to see how it is done).
 
 Command-line tasks are subclasses of lsst.pipe.base.cmdLineTask.CmdLineTask.
 A task is launched via a runner script, which usually does no more than calls the task's
