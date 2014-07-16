@@ -89,9 +89,9 @@ parameters (as we do in \ref pipe_tasks_measurePsf_Example) your code is no long
 
 \section pipe_tasks_measurePsf_Initialize	Task initialisation
 
-\copydoc init
+\copydoc \_\_init\_\_
 
-\section pipe_tasks_measurePsf_IO		Inputs/Outputs to the run method
+\section pipe_tasks_measurePsf_IO		Invoking the Task
 
 \copydoc run
 
@@ -213,10 +213,11 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
     ConfigClass = MeasurePsfConfig
     _DefaultName = "measurePsf"
 
-    def init(self, schema=None, **kwargs):
+    def __init__(self, schema=None, tableVersion=0, **kwargs):
         """!Create the detection task.  Most arguments are simply passed onto pipe.base.Task.
 
         \param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
+        \param tableVersion Used in meas.base transition.  0 => old field names
         \param **kwargs Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
 
         If schema is not None, 'calib.psf.candidate' and 'calib.psf.used' fields will be added to
@@ -226,9 +227,6 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         these fields are indeed present in the input table.
         """
 
-        self.__init__(schema, **kwargs)
-
-    def __init__(self, schema=None, tableVersion=0, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
         if schema is not None:
             if tableVersion == 0:
