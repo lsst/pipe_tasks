@@ -1,1 +1,3 @@
 EXAMPLE_PATH = examples python/lsst/pipe/tasks/
+REFERENCED_BY_RELATION = NO
+REFERENCES_RELATION = NO

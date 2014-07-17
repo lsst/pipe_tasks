@@ -278,6 +278,18 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         <dd>If True then display the calepx in ds9
     </dl>
 
+    To investigate the debug variables, put something like
+    \code{.py}
+        import lsstDebug
+        def DebugInfo(name):
+            di = lsstDebug.getInfo(name)    # N.b. lsstDebug.Info(name) would call us recursively
+            if name == "lsst.pipe.tasks.exampleTask":
+                di.display = 1
+            return di
+        lsstDebug.Info = DebugInfo
+    \endcode
+    into your debug.py file and run the task with the `--debug` flag.
+
     \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
 
     This code is in \link examples/exampleCmdLineTask.py\endlink, and can be run as _e.g._
@@ -289,19 +301,6 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     --config raiseEveryN=2 --doraise
     --show config data
     \endcode
-
-    <hr>
-    To investigate the \ref pipeTasks_ExampleCmdLineTask_Debug, put something like
-    \code{.py}
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)    # N.b. lsstDebug.Info(name) would call us recursively
-            if name == "lsst.pipe.tasks.exampleTask":
-                di.display = 1
-            return di
-        lsstDebug.Info = DebugInfo
-    \endcode
-    into your debug.py file and run exampleTask.py with the `--debug` flag.
     """
     ConfigClass = ExampleCmdLineConfig
     _DefaultName = "exampleTask"
