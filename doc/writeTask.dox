@@ -2,7 +2,7 @@ namespace lsst { namespace pipe { namespace tasks {
 /**
 \page pipeTasks_writeTask How to Write a Task
 
-In which it is explained how to write a data processing task.
+How to write a data processing task.
 
 \section pipeTasks_writeTask_contents Contents
 
