@@ -61,6 +61,7 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
         dtype = int,
         default = 2,
     )
+    # end ExampleSigmaClippedStatsConfig (marker for Doxygen)
 
 
 class ExampleSigmaClippedStatsTask(pipeBase.Task):
@@ -113,8 +114,8 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         self._badPixelMask = MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
         self._statsControl = afwMath.StatisticsControl()
-        self._statsControl.setNumSigmaClip(3.0)
-        self._statsControl.setNumIter(2)
+        self._statsControl.setNumSigmaClip(self.config.numSigmaClip)
+        self._statsControl.setNumIter(self.config.numIter)
         self._statsControl.setAndMask(self._badPixelMask)
         # end init (marker for Doxygen)
 
@@ -228,11 +229,10 @@ class ExampleCmdLineConfig(pexConfig.Config):
         doc = "Subtask to compute statistics of an image",
         target = ExampleSigmaClippedStatsTask,
     )
-    raiseEveryN = pexConfig.Field(
-        doc = "Raise an lsst.base.TaskError exception when processing every raiseEveryN'th image; " \
-            + "if 0 then never raise. " \
+    doFail = pexConfig.Field(
+        doc = "Raise an lsst.base.TaskError exception when processing each image? " \
             + "This allows one to see the effects of the --doraise command line flag",
-        dtype = int,
+        dtype = bool,
         default = 0,
     )
     # end ExampleCmdLineConfig (marker for Doxygen)
@@ -251,15 +251,14 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
 
     \copybrief ExampleCmdLineTask
 
-    This example task was written for the document \ref pipeTasks_writeCmdLineTask, which describes
-    the task in great detail.
+    This task was written as an example for the documents \ref pipeTasks_writeTask
+    and \ref pipeTasks_writeCmdLineTask.
     The task reads in a "calexp" (a calibrated science \ref lsst::afw::image::Exposure "exposure"),
     computes statistics on the image plane, and logs and returns the statistics.
     In addition, if debugging is enabled, it displays the image in ds9.
 
     The image statistics are computed using a subtask, in order to show how to call subtasks and how to
-    "retarget" (replace) them with variant subtasks. See \ref pipeTasks_writeCmdLineTask_retargetingSubtasks
-    for more information.
+    \ref pipeTasks_writeCmdLineTask_retargetingSubtasks "retarget (replace) them with variant subtasks".
 
     The main method is \ref ExampleCmdLineTask.run "run".
 
@@ -298,13 +297,12 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     # The following will work on an NCSA lsst* computer:
     examples/exampleCmdLineTask.py /lsst8/krughoff/diffim_data/sparse_diffim_output_v7_2 --id visit=6866601
     # also try these flags:
-    --config raiseEveryN=2 --doraise
+    --config doFail=True --doraise
     --show config data
     \endcode
     """
     ConfigClass = ExampleCmdLineConfig
     _DefaultName = "exampleTask"
-    _imageNum = 0   # number of images processed; used to implement raiseEveryN
     # end class variables (marker for Doxygen)
 
     def __init__(self, *args, **kwargs):
@@ -328,12 +326,8 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         - stdDev: standard deviation of image plane
         - stdDevErr: uncertainty in standard deviation
         """
-        ExampleCmdLineTask._imageNum += 1
-        self.log.info("Processing image number=%d: id=%s" % (self._imageNum, dataRef.dataId))
-        if self.config.raiseEveryN > 0 and self._imageNum % self.config.raiseEveryN == 0:
-            raise pipeBase.TaskError(
-                "As requested, raising TaskError for image number %d (raiseEveryN=%d)" % \
-                (self._imageNum, self.config.raiseEveryN))
+        if self.config.doFail:
+            raise pipeBase.TaskError("Raising TaskError by request (config.doFail=True)")
 
         # Unpersist the data. In this case the data reference will retrieve a "calexp" by default,
         # so the the string "calexp" is optiona, but the same data reference can be used

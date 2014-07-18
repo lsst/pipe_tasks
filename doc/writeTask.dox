@@ -1,0 +1,200 @@
+namespace lsst { namespace pipe { namespace tasks {
+/**
+\page pipeTasks_writeTask How to Write a Task
+
+In which it is explained how to write a data processing task.
+
+\section pipeTasks_writeTask_contents Contents
+
+- \ref pipeTasks_writeTask_overview
+- \ref pipeTasks_writeTask_configuration
+- \ref pipeTasks_writeTask_documentation
+- \ref pipeTasks_writeTask_classVariables
+- \ref pipeTasks_writeTask_taskMethods
+
+\section pipeTasks_writeTask_overview Overview
+
+This document describes how to write a \ref lsst.pipe.base.task.Task "data processing task",
+the LSST version of a stage in a data processing pipeline. Before reading this this document,
+please skim through \ref pipeBase_introduction "pipe_base documentation" to get a basic idea
+of what data processing tasks are and what classes are used to implement them. It also helps
+to have a basic understanding of data repositories and how to use the butler to read and write data
+(to be written; for now read existing tasks to see how it is done).
+
+After reading this document you may wish to read \ref pipeTasks_writeCmdLineTask
+for additional information needed to write a \ref lsst.pipe.base.cmdLineTask.CmdLineTask "command-line task"
+(a task that can be used as a full data processing pipeline).
+
+Tasks are subclasses of \ref lsst.pipe.base.task.Task "lsst.pipe.base.Task" or (command-line tasks)
+\ref lsst.pipe.base.cmdLineTask.CmdLineTask "lsst.pipe.base.CmdLineTask".
+
+Tasks are constructed by calling `__init__` with the task
+\ref pipeTasks_writeTask_configuration "configuration".
+Occasionally additional arguments are required (see the task's documentation for details).
+\ref lsst.pipe.base.task.Task.__init__ "lsst.pipe.base.Task.__init__" has a few other arguments that are
+usually only specified when a task is created as a subtask of another task; you will probably 
+never have to specify them yourself.
+
+Command-line tasks are often constructed and run by calling parseAndRun, as described in
+\ref pipeTasks_writeCmdLineTask, but this does not apply to ordinary data processing tasks.
+
+Tasks typically have a `run` method that executes the task's main function
+See \ref pipeTasks_writeTask_taskMethods for more information.
+
+\section pipeTasks_writeTask_configuration Configuration
+
+Every task requires a configuration: a task-specific set of configuration parameters.
+The configuration is read-only; once you construct a task, the same configuration will be used
+to process all data with that task. This makes the data processing more predictable:
+it does not depend on the order in which items of data are processed.
+
+The task's configuration is specified using the pex_config package, as a task-specific subclass of
+\ref lsst.pex.config.config.Config "lsst.pex.config.Config". The task class specifies its configuration
+class using class variable `ConfigClass`. If the task has no configuration parameters
+then it may use \ref lsst.pex.config.config.Config "lsst.pex.config.Config" as its configuration class.
+
+Some important details of configurations:
+- __Supply useful defaults for all config parameters__ if at all possible.
+    This makes it much easier to use your task: a user can usually simply construct a default
+    configuration and use that to construct the task.
+- Please document each field of the configuration carefully, so other users can figure out how to
+    configure your task. Pretend you don't know anything about your task and ask yourself
+    what you would need to be told. What units does the parameter use? What valid values does it have?
+    What do these values mean?
+- Subtasks are specified in your configuration as fields of type
+    \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField".
+    This allows subtasks to be \ref pipeTasks_writeCmdLineTask_retargetingSubtasks "retargeted"
+    (replaced with a variant subtask).
+
+exampleTask.ExampleSigmaClippedStatsTask uses configuration class exampleTask.ExampleSigmaClippedStatsConfig:
+\dontinclude tasks/exampleTask.py
+\skip class ExampleSigmaClippedStatsConfig
+\until end ExampleSigmaClippedStatsConfig
+
+The configuration class is specified as ExampleSigmaClippedStatsTask class variable `ConfigClass`,
+as described in \ref pipeTasks_writeTask_classVariables.
+
+\section pipeTasks_writeTask_documentation Documentation
+
+Please read the source code for \link pipe/tasks/exampleTask.py\endlink for a documentation template.
+
+Please document your class thoroughly, so other people can use it without asking you lots of questions.
+For parameters be sure to specify the units and expected data types (unless really obvious).
+
+Use """! instead of """ to start doc strings (i.e. include an exclamation mark). This causes
+Doxygen to parse Doxygen commands in the doc string, which is almost always what you want.
+
+Include a section such as the following in your task's documentation. This will make it appear on the
+page \ref LSST_task_documentation, even if your task is not in the pipe_tasks package.
+\code
+## \addtogroup LSST_task_documentation
+## \{
+## \page exampleTask
+## \ref ExampleCmdLineTask "ExampleCmdLineTask"
+##      An example intended to show how to write a command-line task.
+## \}
+\endcode
+
+\section pipeTasks_writeTask_classVariables Class Variables
+
+Tasks require several class variables to function:
+- `ConfigClass: the \ref pipeTasks_writeTask_configuration "configuration class" used by the task.
+
+- `_DefaultName: a string used as the default name for the task. This is required for a
+    \ref pipe.base.CmdLineTask "command-line task", and strongly recommended for other tasks
+    because it makes them easier to construct for unit tests.
+    Note that when a task creates a subtask, it ignores the subtask's `_DefaultName` and assigns
+    the name of the config parameter as the subtask's name. For example
+    exampleTask.ExampleCmdLineConfig creates the statistics subtask with name "stats"
+    because the config field for that subtask is `stats = lsst.pex.config.ConfigurableField(...)`.
+
+    Task names are used for the hierarchy of task and subtask metadata. Also, for command-line tasks
+    the name is used as a component of the of the dataset type for saving the task's
+    configuration and metadata; see  \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata
+    for more information.
+
+Here are the class variables for exampleTask.ExampleCmdLineTask:
+\dontinclude tasks/exampleTask.py
+\skip class ExampleCmdLineTask
+\skip ConfigClass
+\until # end
+
+\section pipeTasks_writeTask_taskMethods Methods
+
+Tasks have the following important methods:
+- `__init__`: construct and initialize a task
+- `run`: process one item of data
+
+These methods are described in more depth below:
+
+\subsection pipeTasks_writeTask_initMethod The __init__ Method
+
+Use the `__init__` method (task constructor) to do the following:
+- Call the parent task's `__init__` method
+- Make subtasks by calling `self.makeSubtask(<name>)`, where `<name>` is the name
+    of a field of type \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField" in your task's
+    pipeTasks_writeTask_configuration "configuration".
+- Make a schema if your task uses an \ref lsst.afw.table "afw table". For an example of such a task
+    see lsst.pipe.tasks.calibrate.CalibrateTask.
+- Initialize any other instance variables your task needs.
+
+Here is exampleTask.ExampleCmdLineTask.__init__:
+\dontinclude tasks/exampleTask.py
+\skip class ExampleCmdLineTask
+\skip def \_\_init\_\_
+\until # end
+
+That task creates a subtask named `stats` to compute image statistics.
+Here is the \_\_init\_\_ method for the default version of the `stats` subtask:
+exampleTask.ExampleSigmaClippedStatsTask, which is slightly more interesting:
+\dontinclude tasks/exampleTask.py
+\skip class ExampleSigmaClippedStatsTask
+\skip def \_\_init\_\_
+\until # end
+This creates a binary mask identifying bad pixels in the mask plane
+and an lsst.afw.math.StatisticsControl, specifying how statistics are computed.
+Both of these are constants, and thus are the same for each invocation of the `run` method;
+this is strongly recommended, as explained in the next section.
+
+\subsection pipeTasks_writeTask_runMethod The run Method
+
+Most tasks have a `run` method which perform's the task's data processing operation.
+This is required for command-line tasks and strongly recommended for most other tasks.
+One exception is if your task needs different methods to handle different data types
+(C++ handles this using overloaded functions, but the standard technique is Python
+is to provide different methods for different call signatures).
+
+If your task's processing can be divided into logical units, then we recommend that
+you provide methods for each unit. `run` can then call each method to do its work.
+This allows your task to be more easily adapted: a subclass can override just a few methods.
+
+We strongly recommend that you make your task stateless, by not using instance variables
+as part of your data processing. Pass data between methods by calling and returning it.
+This makes the task much easier to reason about, since processing one item of data
+cannot affect future items of data.
+
+The `run` method should always return its results in an lsst.pipe.base.struct.Struct object,
+with a named field for each item of data. This is safer than returning a tuple of items,
+and allows adding fields without affecting existing code. Other methods should also
+return Structs if they return more than one or two items.
+
+Any method that is likely to take significant time or memory should be preceded by this python decorator:
+<code>\@lsst.pipe.base.timeMethod</code>. This automatically records the execution time and memory
+of the method in the task's `metadata` attribute.
+
+The example exampleTask.ExampleCmdLineTask is so simple that it needs no other methods;
+`run` does everything:
+\dontinclude tasks/exampleTask.py
+\skip class ExampleCmdLineTask
+\skip # start run
+\until # end run
+
+The statistics are actually computed by the `stats` subtask. Here is the run method for the default
+version of that task: exampleTask.ExampleSigmaClippedStatsTask.run:
+\dontinclude tasks/exampleTask.py
+\skip class ExampleSigmaClippedStatsTask
+\skip # start run
+\until # end run
+
+*/
+}}} // namespace lsst::pipe::tasks

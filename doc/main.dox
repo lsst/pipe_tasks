@@ -7,7 +7,7 @@ Data processing pipeline tasks.
 
 Documentation for existing tasks is in \ref LSST_task_documentation.
 
-Instructions for writing new tasks is in \ref pipeTasks_writeCmdLineTask
+Instructions for writing new tasks is in \ref pipeTasks_writeTask and \ref pipeTasks_writeCmdLineTask.
  */
 
 /**
