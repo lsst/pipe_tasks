@@ -192,8 +192,7 @@ Warning: there are plans to rewrite how mappers are configured, so this informat
 In addition, if you write a new task for which you want to save configuration and metadata
 (which is the case for most tasks that process data, rather than simply report on data),
 you will have to add dataset types to each obs_*'s mapper for the task's configuration and metadata,
-as explainined in \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata "Persisting Task Config and
-Metadata".
+as explained in \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata.
 
 If the task is of general interest (wanted for most or all obs_* packackages)
 then this process of updating all the mapper configs can be fairly time consuming.
@@ -202,8 +201,8 @@ then this process of updating all the mapper configs can be fairly time consumin
 
 Please read the source code for \link pipe/tasks/exampleTask.py\endlink for a documentation template.
 
-Using `"""!` instead of `"""`to start doc strings (i.e. including an exclamation mark)
-causes Doxygen to parse Doxygen commands in the doc string. This is almost always what you want.
+Use """! instead of """ to start doc strings (i.e. including an exclamation mark). This causes
+Doxygen to parse Doxygen commands in the doc string, which is almost always what you want.
 
 By including a section such as the following your task's documentation will appear on the
 page of \ref LSST_task_documentation, even if your task is not in the pipe_tasks package:
@@ -312,10 +311,10 @@ type of the single data reference, then it also require a \ref pipeTasks_writeCm
 \section pipeTasks_writeCmdLineTask_customTaskRunner Custom Task Runner
 
 The standard task runner is lsst.pipe.base.task.TaskRunner. It assumes that your task's `run` method
-wants a single data referefence and nothing else. If that is not the case then you will have to provide
+wants a single data reference and nothing else. If that is not the case then you will have to provide
 a custom task runner (subclass of lsst.pipe.base.task.TaskRunner).
 
-Here are some examples where a custom task runner is required:
+Here are some situations where a custom task runner is required:
 - The task's `run` method requires extra arguments. An example is coaddition, which optionally accepts
     a list of calexp to coadd. The custom task runner is coaddBase.CoaddTaskRunner and is pleasantly simple.
     \dontinclude coaddBase.py
