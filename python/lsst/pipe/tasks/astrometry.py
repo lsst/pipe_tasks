@@ -61,7 +61,7 @@ class AstrometryTask(pipeBase.Task):
 
 \brief %Match input sources with a reference catalog and solve for the Wcs
 
-\warning This task is currently in \link lsst.pipe.tasks.astrometry.py\endlink;
+\warning This task is currently in \link lsst.pipe.tasks.astrometry\endlink;
 it should be moved to lsst.meas.astrom.
 
 The actual matching and solving is done by the 'solver'; this Task
@@ -90,9 +90,9 @@ these columns are indeed present in the input match list; see \ref pipe_tasks_as
 
 \section pipe_tasks_astrometry_Initialize	Task initialisation
 
-\copydoc init
+\copydoc \_\_init\_\_
 
-\section pipe_tasks_astrometry_IO		Inputs/Outputs to the run method
+\section pipe_tasks_astrometry_IO		Invoking the Task
 
 \copydoc run
 
@@ -137,21 +137,18 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     ConfigClass = AstrometryConfig
 
     # Need init as well as __init__ because "\copydoc __init__" fails (doxygen bug 732264)
-    def init(self, schema, tableVersion=0, **kwds):
+    def __init__(self, schema, tableVersion=0, **kwds):
         """!Create the astrometric calibration task.  Most arguments are simply passed onto pipe.base.Task.
 
         \param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
+        \param tableVersion Used in meas.base transition.  0 => old field names
         \param **kwds keyword arguments to be passed to the lsst.pipe.base.task.Task constructor
 
         A centroid field "centroid.distorted" (used internally during the Task's operation)
         will be added to the schema.
         """
-        self.__init__(schema, **kwds)
-
-    def __init__(self, schema, tableVersion=0, **kwds):
-        """!Create the astrometric calibration task.  See AstrometricTask.init for documentation
-        """
         pipeBase.Task.__init__(self, **kwds)
+
         self.tableVersion = tableVersion
         if tableVersion == 0:
             self.distortedName = "centroid.distorted"

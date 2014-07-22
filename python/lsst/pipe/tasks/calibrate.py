@@ -153,7 +153,7 @@ these columns are indeed present in the input match list; see \ref pipe_tasks_ca
 
 \section pipe_tasks_calibrate_Initialize	Task initialisation
 
-\copydoc init
+\copydoc \_\_init\_\_
 
 CalibrateTask delegates most of its work to a set of sub-Tasks:
 <DL>
@@ -183,7 +183,7 @@ You can replace any of these subtasks if you wish, see \ref calibrate_MyAstromet
 \note These task APIs are not well controlled, so replacing a task is a matter of matching
 a poorly specified interface.  We will be working on this over the first year of construction.
 
-\section pipe_tasks_calibrate_IO		Inputs/Outputs to the run method
+\section pipe_tasks_calibrate_IO		Invoking the Task
 
 \copydoc run
 
@@ -315,16 +315,12 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def init(self, tableVersion=0, **kwargs):
+    def __init__(self, tableVersion=0, **kwargs):
         """!
         Create the calibration task
 
+        \param tableVersion Used in meas.base transition.  0 => old field names
         \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
-        """
-        self.__init__(tableVersion, **kwargs)
-
-    def __init__(self, tableVersion=0, **kwargs):
-        """!Create the calibration task.  See CalibrateTask.init for documentation
         """
         pipeBase.Task.__init__(self, **kwargs)
 
