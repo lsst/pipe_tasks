@@ -98,7 +98,7 @@ class RegisterTestCase(unittest.TestCase):
 
         def newCatalog():
             catalog = afwTable.SourceCatalog(schema)
-            catalog.getTable().defineCentroid(centroidKey)
+            catalog.getTable().defineCentroid("center")
             return catalog
 
         templateSources = newCatalog()
