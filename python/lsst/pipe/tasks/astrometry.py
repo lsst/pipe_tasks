@@ -30,6 +30,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.meas.astrom.astrom import Astrometry
 from lsst.meas.astrom.sip import makeCreateWcsWithSip
+from lsst.afw.table import Point2DKey, CovarianceMatrix2fKey
 
 class AstrometryConfig(pexConfig.Config):
     solver = pexConfig.ConfigField(
@@ -153,17 +154,28 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         pipeBase.Task.__init__(self, **kwds)
         self.tableVersion = tableVersion
         if tableVersion == 0:
-            self.centroidKey = schema.addField("centroid.distorted", type="PointD",
+            self.distortedName = "centroid.distorted"
+            self.centroidKey = schema.addField(self.distortedName, type="PointD",
                                            doc="centroid distorted for astrometry solver")
+            self.centroidErrKey = schema.addField(self.distortedName + ".err", type="CovPointF",
+                                           doc="centroid distorted err for astrometry solver")
+            self.centroidFlagKey = schema.addField(self.distortedName + ".flag", type="Flag",
+                                           doc="centroid distorted flag astrometry solver")
         else:
-            self.centroidXKey = schema.addField("astrom_distorted_x", type="D",
+            self.distortedName = "astrom_distorted"
+            self.centroidXKey = schema.addField(self.distortedName + "_x", type="D",
                                            doc="centroid distorted for astrometry solver")
-            self.centroidYKey = schema.addField("astrom_distorted_y", type="D",
+            self.centroidYKey = schema.addField(self.distortedName + "_y", type="D",
                                            doc="centroid distorted for astrometry solver")
-            self.centroidXErrKey = schema.addField("astrom_distorted_xSigma", type="F",
-                                           doc="centroid distorted for astrometry solver")
-            self.centroidYErrKey = schema.addField("astrom_distorted_ySigma", type="F",
-                                           doc="centroid distorted for astrometry solver")
+            self.centroidXErrKey = schema.addField(self.distortedName + "_xSigma", type="F",
+                                           doc="centroid distorted err for astrometry solver")
+            self.centroidYErrKey = schema.addField(self.distortedName + "_ySigma", type="F",
+                                           doc="centroid distorted err for astrometry solver")
+            self.centroidFlagKey = schema.addField(self.distortedName + "_flag", type="Flag",
+                                           doc="centroid distorted flag astrometry solver")
+            self.centroidKey = Point2DKey(self.centroidXKey, self.centroidYKey)
+            self.centroidErrKey = CovarianceMatrix2fKey((self.centroidXErrKey, self.centroidYErrKey))
+ 
         self.astrometer = None
 
     @pipeBase.timeMethod
@@ -228,26 +240,18 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         if pixToTanXYTransform is None:
             self.log.info("Null distortion correction")
             for s in sources:
-                if self.tableVersion == 0:
-                    s.set(self.centroidKey, s.getCentroid())
-                else:
-                    s.set(self.centroidXKey, s.getX())
-                    s.set(self.centroidYKey, s.getY())
-                    s.set(self.centroidXErrKey, 0)
-                    s.set(self.centroidYErrKey, 0)
+                s.set(self.centroidKey, s.getCentroid())
+                s.set(self.centroidErrKey, s.getCentroidErr())
+                s.set(self.centroidFlagKey, s.getCentroidFlag())
             return exposure.getBBox(afwImage.PARENT)
 
         # Distort source positions
         self.log.info("Applying distortion correction")
         for s in sources:
             centroid = pixToTanXYTransform.forwardTransform(s.getCentroid())
-            if self.tableVersion == 0:
-                s.set(self.centroidKey, s.getCentroid())
-            else:
-                s.set(self.centroidXKey, centroid.getX())
-                s.set(self.centroidYKey, centroid.getY())
-                s.set(self.centroidXErrKey, 0)
-                s.set(self.centroidYErrKey, 0)
+            s.set(self.centroidKey, centroid)
+            s.set(self.centroidErrKey, s.getCentroidErr())
+            s.set(self.centroidFlagKey, s.getCentroidFlag())
 
 
         # Get distorted image size so that astrometry_net does not clip.
@@ -277,22 +281,13 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         # Apply distortion
         bbox = self.distort(exposure, sources)
-        if self.tableVersion == 0:
-            oldCentroidKey = sources.table.getCentroidKey()
-            sources.table.defineCentroid(self.centroidKey, sources.table.getCentroidErrKey(),
-                                     sources.table.getCentroidFlagKey())
-        else:
-            oldCentroidName = sources.table.getCentroidDefinition()
-            sources.table.defineCentroid("astrom_distorted")
+        oldCentroidName = sources.table.getCentroidDefinition()
+        sources.table.defineCentroid(self.distortedName)
         try:
             yield bbox # Execute 'with' block, providing bbox to 'as' variable
         finally:
             # Un-apply distortion
-            if self.tableVersion == 0:
-                sources.table.defineCentroid(oldCentroidKey, sources.table.getCentroidErrKey(),
-                                         sources.table.getCentroidFlagKey())
-            else:
-                sources.table.defineCentroid(oldCentroidName)
+            sources.table.defineCentroid(oldCentroidName)
             x0, y0 = exposure.getXY0()
             wcs = exposure.getWcs()
             if wcs:
