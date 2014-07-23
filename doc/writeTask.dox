@@ -2,19 +2,6 @@ namespace lsst { namespace pipe { namespace tasks {
 /**
 \page pipeTasks_writeTask How to Write a Task
 
-How to write a data processing task.
-
-\section pipeTasks_writeTask_contents Contents
-
-- \ref pipeTasks_writeTask_overview
-- \ref pipeTasks_writeTask_configuration
-- \ref pipeTasks_writeTask_classVariables
-- \ref pipeTasks_writeTask_taskMethods
-- \ref pipeTasks_writeTask_debugVariables
-- \ref pipeTasks_writeTask_documentation
-
-\section pipeTasks_writeTask_overview Overview
-
 This document describes how to write a data processing task. For an introduction to data processing tasks,
 please read \ref pipeBase_introduction "pipe_base introduction".
 It also helps to have a basic understanding of data repositories and how to use the butler to read
@@ -23,8 +10,19 @@ and write data (to be written; for now read existing tasks to see how it is done
 After reading this document you may wish to read \ref pipeTasks_writeCmdLineTask
 for additional information needed to write a \ref pipeBase_introduction "command-line task".
 
-Tasks are subclasses of \ref lsst.pipe.base.task.Task "lsst.pipe.base.Task" or (command-line tasks)
-\ref lsst.pipe.base.cmdLineTask.CmdLineTask "lsst.pipe.base.CmdLineTask".
+\section pipeTasks_writeTask_contents Contents
+
+- \ref pipeTasks_writeTask_introduction
+- \ref pipeTasks_writeTask_configuration
+- \ref pipeTasks_writeTask_classVariables
+- \ref pipeTasks_writeTask_taskMethods
+- \ref pipeTasks_writeTask_debugVariables
+- \ref pipeTasks_writeTask_documentation
+
+\section pipeTasks_writeTask_introduction Introduction
+
+\ref pipeBase_introduction "Tasks" are subclasses of \ref lsst.pipe.base.task.Task "lsst.pipe.base.Task"
+or (command-line tasks) \ref lsst.pipe.base.cmdLineTask.CmdLineTask "lsst.pipe.base.CmdLineTask".
 
 Tasks are constructed by calling `__init__` with the task
 \ref pipeTasks_writeTask_configuration "configuration".
@@ -53,7 +51,7 @@ as its configuration class.
 Some important details of configurations:
 - __Supply useful defaults for all config parameters__ if at all possible.
     Your task will be much easier to use if the default configuration usually suffices.
-- Please document each field of the configuration carefully. Pretend you don't know anything
+- Document each field of the configuration carefully. Pretend you don't know anything
     about your task and ask yourself what you would need to be told to change the parameter.
     What does the parameter do and why might you change it? What units does it have?
 - Subtasks are specified in your configuration as fields of type

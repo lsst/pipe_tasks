@@ -2,23 +2,6 @@ namespace lsst { namespace pipe { namespace tasks {
 /**
 \page pipeTasks_writeCmdLineTask How to Write a Command-Line Task
 
-The exciting sequel to \ref pipeTasks_writeTask.
-
-\section pipeTasks_writeCmdLineTask_contents Contents
-
-- \ref pipeTasks_writeCmdLineTask_overview
-    - \ref pipeTasks_writeCmdLineTask_differences
-- \ref pipeTasks_writeCmdLineTask_runScript
-- \ref pipeTasks_writeCmdLineTask_readWriteData
-    - \ref pipeTasks_writeCmdLineTask_addDatasetTypes
-- \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata
-    - \ref pipeTasks_writeCmdLineTask_customzeConfigDatasetType
-    - \ref pipeTasks_writeCmdLineTask_preventSavingConfig
-- \ref pipeTasks_writeCmdLineTask_customArgumentParser
-- \ref pipeTasks_writeCmdLineTask_customTaskRunner
-
-\section pipeTasks_writeCmdLineTask_overview Overview
-
 This document describes how to write a command-line task, which is the LSST version of a complete
 data processing pipeline. To create a command-line task you will benefit from some background:
 - Read the \ref pipeBase_introduction "pipe_base documentation" to get a basic idea of what tasks are
@@ -29,19 +12,31 @@ data processing pipeline. To create a command-line task you will benefit from so
 - Acquire a basic understanding of data repositories and how to use the butler to read and write data
     (to be written; for now read existing tasks to see how it is done).
 
-\subsection pipeTasks_writeCmdLineTask_differences Types of Tasks
+\section pipeTasks_writeCmdLineTask_contents Contents
 
-A command-line task is an enhanced version of a regular task (see \ref pipeTasks_writeTask).
-Regular tasks are only intended to be used as relatively self-contained stages in data processing pipelines,
-whereas command-line tasks can also be used as complete pipelines. As such,
-command-line tasks include \ref pipeTasks_writeCmdLineTask_runScript that run them as pipelines.
+- \ref pipeTasks_writeCmdLineTask_introduction
+- \ref pipeTasks_writeCmdLineTask_runScript
+- \ref pipeTasks_writeCmdLineTask_readWriteData
+    - \ref pipeTasks_writeCmdLineTask_addDatasetTypes
+- \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata
+    - \ref pipeTasks_writeCmdLineTask_customzeConfigDatasetType
+    - \ref pipeTasks_writeCmdLineTask_preventSavingConfig
+- \ref pipeTasks_writeCmdLineTask_customArgumentParser
+- \ref pipeTasks_writeCmdLineTask_customTaskRunner
+
+\section pipeTasks_writeCmdLineTask_introduction Introduction
+
+A \ref pipeBase_introduction "command-line task" is an enhanced version of a regular task
+(see \ref pipeTasks_writeTask). Regular tasks are only intended to be used as relatively self-contained
+stages in data processing pipelines, whereas command-line tasks can also be used as complete pipelines.
+As such, command-line tasks include \ref pipeTasks_writeCmdLineTask_runScript that run them as pipelines.
 
 Command-line tasks have the following key attributes, in addition to the attributes for regular tasks:
 
 - They are subclasses of \ref lsst.pipe.base.cmdLineTask.CmdLineTask "lsst.pipe.base.CmdLineTask",
-    whereas ordinary tasks are subclasses of \ref lsst.pipe.base.task.Task "lsst.pipe.base.Task".
+    whereas regular tasks are subclasses of \ref lsst.pipe.base.task.Task "lsst.pipe.base.Task".
 - They have an associated \ref pipeTasks_writeCmdLineTask_runScript "run script" to run them from the
-    command-line as pipelines.
+    command-line as pipelines (this is common, but not required, for regular tasks).
 - \anchor pipeTasks_writeCmdLineTask_runMethod They have a `run` method which performs the full pipeline
     data processing.
 - By default the `run` method takes exactly one argument: a data reference for the item of data to be
@@ -49,7 +44,7 @@ Command-line tasks have the following key attributes, in addition to the attribu
     \ref pipeTasks_writeCmdLineTask_customArgumentParser and often a
     \ref pipeTasks_writeCmdLineTask_customTaskRunner.
 - When run from the command line, most command-line tasks save the configuration used and the metadata
-    generated. See pipeTasks_writeCmdLineTask_persistingConfigAndMetadata for more information.
+    generated. See \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata for more information.
 - \anchor pipeTasks_writeCmdLineTask_taskRunner They have one additional
     \ref pipeTasks_writeTask_classVariables "class variable": `TaskRunner', which specifies a "task runner"
     for the task. The task runner takes a parsed command and runs the task. The default task runner
