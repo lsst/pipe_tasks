@@ -166,6 +166,7 @@ class RegisterConfig(Config):
     visit = ListField(dtype=str, default=["visit", "object", "date", "filter"],
                       doc="List of columns for raw_visit table")
     ignore = Field(dtype=bool, default=False, doc="Ignore duplicates in the table?")
+    permissions = Field(dtype=int, default=664, doc="Permissions mode for registry") # 664 = rw-rw-r--
 
 class RegistryContext(object):
     """Context manager to provide a registry
@@ -174,13 +175,14 @@ class RegistryContext(object):
     to be used while we add to this new registry.  Finally,
     the new registry is moved into the right place.
     """
-    def __init__(self, registryName, createTableFunc=None):
+    def __init__(self, registryName, createTableFunc=None, permissions=664):
         """Construct a context manager
 
         @param registryName: Name of registry file
         @param createTableFunc: Function to create tables
         """
         self.registryName = registryName
+        self.permissions = permissions
         updateFd, updateName = tempfile.mkstemp(prefix=registryName,
                                                 dir=os.path.dirname(self.registryName))
         self.updateName = updateName
@@ -195,6 +197,7 @@ class RegistryContext(object):
         self.conn = sqlite3.connect(self.updateName)
         if makeTable:
             createTableFunc(self.conn)
+        os.chmod(self.updateName, self.permissions)
 
     def __enter__(self):
         """Provide the 'as' value"""
@@ -208,6 +211,7 @@ class RegistryContext(object):
             if os.path.exists(self.registryName):
                 os.unlink(self.registryName)
             os.rename(self.updateName, self.registryName)
+            os.chmod(self.registryName, self.permissions)
         return False # Don't suppress any exceptions
 
 class RegisterTask(Task):
@@ -229,7 +233,7 @@ class RegisterTask(Task):
                 yield
             return fakeContext()
         registryName = os.path.join(butler.mapper.root, "registry.sqlite3")
-        context = RegistryContext(registryName, self.createTable if create else None)
+        context = RegistryContext(registryName, self.createTable if create else None, self.config.permissions)
         return context
 
     def createTable(self, conn):
