@@ -135,7 +135,10 @@ class ForcedPhotImageTask(CmdLineTask):
 
         @param dataRef       Data reference from butler
         """
-        return dataRef.get(self.dataPrefix + "calexp", immediate=True)
+        if dataRef.datasetExists(self.dataPrefix + "calexp"):
+            return dataRef.get(self.dataPrefix + "calexp", immediate=True)
+        else:
+            return None
 
     def writeOutput(self, dataRef, sources):
         """Write forced source table
@@ -174,9 +177,13 @@ class ForcedPhotImageTask(CmdLineTask):
         """
         refWcs = self.references.getWcs(dataRef)
         exposure = self.getExposure(dataRef)
-        references = list(self.fetchReferences(dataRef, exposure))
-        self.log.info("Performing forced measurement on %d sources" % len(references))
-        sources = self.generateSources(dataRef, references)
-        self.measurement.run(exposure, sources, references=references, refWcs=refWcs)
-        self.writeOutput(dataRef, sources)
-        return Struct(sources=sources)
+        if exposure:
+            references = list(self.fetchReferences(dataRef, exposure))
+            self.log.info("Performing forced measurement on %d sources" % len(references))
+            sources = self.generateSources(dataRef, references)
+            self.measurement.run(exposure, sources, references=references, refWcs=refWcs)
+            self.writeOutput(dataRef, sources)
+            return Struct(sources=sources)
+        else:
+            self.log.info("No image exists for %s" % (dataRef.dataId))
+            return Struct(sources=None)

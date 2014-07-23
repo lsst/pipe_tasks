@@ -64,6 +64,8 @@ class ForcedPhotCcdTask(ForcedPhotImageTask):
 
         @param dataRef       Data reference from butler
         """
+        if not dataRef.datasetExists(self.dataPrefix + "calexp"):
+            return None
         exposure = dataRef.get("calexp", immediate=True)
         if not self.config.doApplyUberCal:
             return exposure
@@ -73,7 +75,10 @@ class ForcedPhotCcdTask(ForcedPhotImageTask):
                 % dataRef.dataId
                 )
         else:
-            applyMosaicResults(dataRef, calexp=exposure)
+            try:
+                applyMosaicResults(dataRef, calexp=exposure)
+            except Exception as err:
+                return None
         return exposure
 
     @classmethod
