@@ -25,7 +25,7 @@ import sys
 
 from eups import productDir
 from lsst.afw.image import MaskedImageF
-from lsst.pipe.tasks.exampleTask import ExampleSimpleStatsTask, ExampleSigmaClippedStatsTask
+from lsst.pipe.tasks.exampleStatsTasks import ExampleSimpleStatsTask, ExampleSigmaClippedStatsTask
 
 # Parse command-line arguments. If the user supplies an image, use it;
 # otherwise use one from the afwdata package (or complain if afwdata is not setup).

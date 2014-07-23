@@ -20,7 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.afw.display.ds9 import mtv
 from lsst.afw.image import MaskU
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
@@ -30,10 +29,7 @@ import lsst.pipe.base as pipeBase
 # This works even for task(s) that are not in lsst.pipe.tasks.
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page pipeTasks_exampleTask
-## \ref ExampleCmdLineTask "ExampleCmdLineTask"
-##      An example intended to show how to write a command-line task.
-## <br>
+## \page pipeTasks_exampleStatsTasks
 ## \ref ExampleSigmaClippedStatsTask "ExampleSigmaClippedStatsTask"
 ##      A simple example subtask that computes sigma-clipped statistics of an image
 ## <br>
@@ -93,7 +89,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     \section pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example of using ExampleSigmaClippedStatsTask
 
-    This code is in \link examples/exampleStatsTask.py\endlink (this one example runs both
+    This code is in examples/exampleStatsTask.py (this one example runs both
     ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run as:
     \code
     examples/exampleStatsTask.py [fitsFile]
@@ -177,7 +173,7 @@ class ExampleSimpleStatsTask(pipeBase.Task):
 
     \section pipeTasks_ExampleSimpleStatsTask_Example A complete example of using ExampleSimpleStatsTask
 
-    This code is in \link examples/exampleStatsTask.py\endlink (this one example runs both
+    This code is in examples/exampleStatsTask.py (this one example runs both
     ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run as:
     \code
     examples/exampleStatsTask.py [fitsFile]
@@ -219,169 +215,3 @@ class ExampleSimpleStatsTask(pipeBase.Task):
             stdDev = stdDev,
             stdDevErr = stdDevErr,
         )
-
-#------------------------- ExampleCmdLineTask -------------------------#
-
-class ExampleCmdLineConfig(pexConfig.Config):
-    """!Configuration for ExampleCmdLineTask
-    """
-    stats = pexConfig.ConfigurableField(
-        doc = "Subtask to compute statistics of an image",
-        target = ExampleSigmaClippedStatsTask,
-    )
-    doFail = pexConfig.Field(
-        doc = "Raise an lsst.base.TaskError exception when processing each image? " \
-            + "This allows one to see the effects of the --doraise command line flag",
-        dtype = bool,
-        default = 0,
-    )
-    # end ExampleCmdLineConfig (marker for Doxygen)
-
-class ExampleCmdLineTask(pipeBase.CmdLineTask):
-    """!Example command-line task that computes simple statistics on an image
-
-    \section pipeTasks_ExampleCmdLineTask_Contents Contents
-
-     - \ref pipeTasks_ExampleCmdLineTask_Purpose
-     - \ref pipeTasks_ExampleCmdLineTask_Config
-     - \ref pipeTasks_ExampleCmdLineTask_Debug
-     - \ref pipeTasks_ExampleCmdLineTask_Example
-
-    \section pipeTasks_ExampleCmdLineTask_Purpose Description
-
-    \copybrief ExampleCmdLineTask
-
-    This task was written as an example for the documents \ref pipeTasks_writeTask
-    and \ref pipeTasks_writeCmdLineTask.
-    The task reads in a "calexp" (a calibrated science \ref lsst::afw::image::Exposure "exposure"),
-    computes statistics on the image plane, and logs and returns the statistics.
-    In addition, if debugging is enabled, it displays the image in ds9.
-
-    The image statistics are computed using a subtask, in order to show how to call subtasks and how to
-    \ref pipeTasks_writeCmdLineTask_retargetingSubtasks "retarget (replace) them with variant subtasks".
-
-    The main method is \ref ExampleCmdLineTask.run "run".
-
-    \section pipeTasks_ExampleCmdLineTask_Config    Configuration parameters
-
-    See \ref ExampleCmdLineConfig
-
-    \section pipeTasks_ExampleCmdLineTask_Debug     Debug variables
-
-    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
-    flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
-
-    The available variables in ExampleCmdLineTask are:
-    <dl>
-        <dt>`display`
-        <dd>If True then display the calepx in ds9
-    </dl>
-
-    To enable debugging, see \ref pipeBase_argumentParser_debugVariables "Specifying Debug Variables"
-
-    \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
-
-    This code is in \link examples/exampleCmdLineTask.py\endlink, and can be run as _e.g._
-    \code
-    examples/exampleCmdLineTask.py <path_to_data_repo> --id <data_id>
-    # The following will work on an NCSA lsst* computer:
-    examples/exampleCmdLineTask.py /lsst8/krughoff/diffim_data/sparse_diffim_output_v7_2 --id visit=6866601
-    # also try these flags:
-    --config doFail=True --doraise
-    --show config data
-    \endcode
-    """
-    ConfigClass = ExampleCmdLineConfig
-    _DefaultName = "exampleTask"
-    # end class variables (marker for Doxygen)
-
-    def __init__(self, *args, **kwargs):
-        """Construct an ExampleCmdLineTask
-
-        Call the parent class constructor and make the `stats` subtask from the config field of the same name.
-        """
-        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
-        self.makeSubtask("stats")
-        # end init (marker for Doxygen)
-    
-    # start run (marker for Doxygen)
-    @pipeBase.timeMethod
-    def run(self, dataRef):
-        """!Compute a few statistics on the image plane of an exposure
-        
-        @param dataRef: data reference for a calibrated science exposure ("calexp")
-        @return a pipeBase Struct containing:
-        - mean: mean of image plane
-        - meanErr: uncertainty in mean
-        - stdDev: standard deviation of image plane
-        - stdDevErr: uncertainty in standard deviation
-        """
-        if self.config.doFail:
-            raise pipeBase.TaskError("Raising TaskError by request (config.doFail=True)")
-
-        # Unpersist the data. In this case the data reference will retrieve a "calexp" by default,
-        # so the the string "calexp" is optiona, but the same data reference can be used
-        # to retrieve other dataset types that use the same data ID, so it is nice to be explicit
-        calExp = dataRef.get("calexp")
-        maskedImage = calExp.getMaskedImage()
-
-        # Support extra debug output. To trigger debug output the user must do two things:
-        # Add the following to a file named debug.py somewhere on your $PYTHONPATH:
-        # \code
-        # import lsstDebug
-        # def DebugInfo(name):
-        #     di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-        #     if name == "lsst.pipe.tasks.exampleCmdLineTask":
-        #         di.display = 1
-        #
-        #     return di
-        #
-        # lsstDebug.Info = DebugInfo
-        # \endcode
-        # into your debug.py file and run this task with the \c --debug flag.
-        # - 
-        import lsstDebug
-        display = lsstDebug.Info(__name__).display
-        if display:
-            frame = 1
-            mtv(calExp, frame=frame, title="photocal")
-
-        return self.stats.run(maskedImage)
-        # end run (marker for Doxygen)
-
-    def _getConfigName(self):
-        """!Get the name prefix for the task config's dataset type, or None to prevent persisting the config
-
-        This override returns None to avoid persisting metadata for this trivial task.
-
-        However, if the method returns a name, then the full name of the dataset type will be <name>_config.
-        The default CmdLineTask._getConfigName returns _DefaultName,
-        which for this task would result in a dataset name of "exampleTask_config".
-
-        Normally you can use the default CmdLineTask._getConfigName, but here are two reasons
-        why you might want to override it:
-        - If you do not want your task to write its config, then have the override return None.
-          That is done for this example task, because I didn't want to clutter up the
-          repository with config information for a trivial task.
-        - If the default name would not be unique. An example is
-          \ref lsst.pipe.tasks.makeSkyMap.MakeSkyMapTask "MakeSkyMapTask": it makes a
-          \ref lsst.skymap.SkyMap "sky map" (sky pixelization for a coadd)
-          for any of several different types of coadd, such as deep or goodSeeing.
-          As such, the name of the persisted config must include the coadd type in order to be unique.
-
-        Normally if you override _getConfigName then you override _getMetadataName to match.
-        """
-        return None
-    
-    def _getMetadataName(self):
-        """!Get the name prefix for the task metadata's dataset type, or None to prevent persisting metadata
-
-        This override returns None to avoid persisting metadata for this trivial task.
-
-        However, if the method returns a name, then the full name of the dataset type will be <name>_metadata.
-        The default CmdLineTask._getConfigName returns _DefaultName,
-        which for this task would result in a dataset name of "exampleTask_metadata".
-
-        See the description of _getConfigName for reasons to override this method.
-        """
-        return None

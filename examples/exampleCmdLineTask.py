@@ -20,5 +20,5 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.exampleTask import ExampleCmdLineTask
+from lsst.pipe.tasks.exampleCmdLineTask import ExampleCmdLineTask
 ExampleCmdLineTask.parseAndRun()
