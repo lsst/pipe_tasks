@@ -277,17 +277,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         <dd>If True then display the calepx in ds9
     </dl>
 
-    To investigate the debug variables, put something like
-    \code{.py}
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)    # N.b. lsstDebug.Info(name) would call us recursively
-            if name == "lsst.pipe.tasks.exampleTask":
-                di.display = 1
-            return di
-        lsstDebug.Info = DebugInfo
-    \endcode
-    into your debug.py file and run the task with the `--debug` flag.
+    To enable debugging, see \ref pipeBase_argumentParser_debugVariables "Specifying Debug Variables"
 
     \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
 

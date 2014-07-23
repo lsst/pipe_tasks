@@ -27,6 +27,8 @@ from eups import productDir
 from lsst.afw.image import MaskedImageF
 from lsst.pipe.tasks.exampleTask import ExampleSimpleStatsTask, ExampleSigmaClippedStatsTask
 
+# Parse command-line arguments. If the user supplies an image, use it;
+# otherwise use one from the afwdata package (or complain if afwdata is not setup).
 if len(sys.argv) < 2:
     afwDataDir = productDir("afwdata")
     if not afwDataDir:
@@ -40,17 +42,21 @@ else:
     maskedImagePath = sys.argv[1]
 print "computing statistics on %r\n" % (maskedImagePath,)
 
+# Read the masked image from the specified file. The file may be a masked image or exposure,
+# but if the file is a simple image, with no mask or variance plane, then this call will fail.
 maskedImage = MaskedImageF(maskedImagePath)
 
+# Construct the simple stats task configuration and use that to construct and run the task
 print "running ExampleSimpleStatsTask"
 config1 = ExampleSimpleStatsTask.ConfigClass()
 # ...modify the config if desired...
-config1.validate() # optional, but this will catch errors early
+config1.validate() # check that the config parameters are valid; optional, but catches errors early
 task1 = ExampleSimpleStatsTask(config=config1)
 res1 = task1.run(maskedImage)
 print "result  =", res1
 print
 
+# Construct the sigma-clipped stats task configuration and use that to construct and run the task
 print "running ExampleSigmaClippedStatsTask"
 config2 = ExampleSigmaClippedStatsTask.ConfigClass()
 # ...modify the config if desired...

@@ -11,19 +11,17 @@ How to write a data processing task.
 - \ref pipeTasks_writeTask_documentation
 - \ref pipeTasks_writeTask_classVariables
 - \ref pipeTasks_writeTask_taskMethods
+- \ref pipeTasks_writeTask_debugVariables
 
 \section pipeTasks_writeTask_overview Overview
 
-This document describes how to write a \ref lsst.pipe.base.task.Task "data processing task",
-the LSST version of a stage in a data processing pipeline. Before reading this this document,
-please skim through \ref pipeBase_introduction "pipe_base documentation" to get a basic idea
-of what data processing tasks are and what classes are used to implement them. It also helps
-to have a basic understanding of data repositories and how to use the butler to read and write data
-(to be written; for now read existing tasks to see how it is done).
+This document describes how to write a data processing task. For an introduction to data processing tasks,
+please read \ref pipeBase_introduction "pipe_base introduction".
+It also helps to have a basic understanding of data repositories and how to use the butler to read
+and write data (to be written; for now read existing tasks to see how it is done).
 
 After reading this document you may wish to read \ref pipeTasks_writeCmdLineTask
-for additional information needed to write a \ref lsst.pipe.base.cmdLineTask.CmdLineTask "command-line task"
-(a task that can be used as a full data processing pipeline).
+for additional information needed to write a \ref pipeBase_introduction "command-line task".
 
 Tasks are subclasses of \ref lsst.pipe.base.task.Task "lsst.pipe.base.Task" or (command-line tasks)
 \ref lsst.pipe.base.cmdLineTask.CmdLineTask "lsst.pipe.base.CmdLineTask".
@@ -33,12 +31,10 @@ Tasks are constructed by calling `__init__` with the task
 Occasionally additional arguments are required (see the task's documentation for details).
 \ref lsst.pipe.base.task.Task.__init__ "lsst.pipe.base.Task.__init__" has a few other arguments that are
 usually only specified when a task is created as a subtask of another task; you will probably 
-never have to specify them yourself.
+never have to specify them yourself. (Command-line tasks are often constructed and run by calling parseAndRun,
+as described in \ref pipeTasks_writeCmdLineTask.)
 
-Command-line tasks are often constructed and run by calling parseAndRun, as described in
-\ref pipeTasks_writeCmdLineTask, but this does not apply to ordinary data processing tasks.
-
-Tasks typically have a `run` method that executes the task's main function
+Tasks typically have a `run` method that executes the task's main function.
 See \ref pipeTasks_writeTask_taskMethods for more information.
 
 \section pipeTasks_writeTask_configuration Configuration
@@ -48,19 +44,18 @@ The configuration is read-only; once you construct a task, the same configuratio
 to process all data with that task. This makes the data processing more predictable:
 it does not depend on the order in which items of data are processed.
 
-The task's configuration is specified using the pex_config package, as a task-specific subclass of
-\ref lsst.pex.config.config.Config "lsst.pex.config.Config". The task class specifies its configuration
-class using class variable `ConfigClass`. If the task has no configuration parameters
-then it may use \ref lsst.pex.config.config.Config "lsst.pex.config.Config" as its configuration class.
+The task's configuration is specified using the \ref secConfigIntro "pex_config package",
+as a task-specific subclass of \ref lsst.pex.config.config.Config "lsst.pex.config.Config".
+The task class specifies its configuration class using class variable `ConfigClass`. If the task
+has no configuration parameters then it may use \ref lsst.pex.config.config.Config "lsst.pex.config.Config"
+as its configuration class.
 
 Some important details of configurations:
 - __Supply useful defaults for all config parameters__ if at all possible.
-    This makes it much easier to use your task: a user can usually simply construct a default
-    configuration and use that to construct the task.
-- Please document each field of the configuration carefully, so other users can figure out how to
-    configure your task. Pretend you don't know anything about your task and ask yourself
-    what you would need to be told. What units does the parameter use? What valid values does it have?
-    What do these values mean?
+    Your task will be much easier to use if the default configuration usually suffices.
+- Please document each field of the configuration carefully. Pretend you don't know anything
+    about your task and ask yourself what you would need to be told to change the parameter.
+    What does the parameter do and why might you change it? What units does it have?
 - Subtasks are specified in your configuration as fields of type
     \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField".
     This allows subtasks to be \ref pipeTasks_writeCmdLineTask_retargetingSubtasks "retargeted"
@@ -76,10 +71,16 @@ as described in \ref pipeTasks_writeTask_classVariables.
 
 \section pipeTasks_writeTask_documentation Documentation
 
-Please read the source code for \link pipe/tasks/exampleTask.py\endlink for a documentation template.
+For others to use your task, it must be clearly documented. \link pipe/tasks/exampleTask.py\endlink
+provides a useful example and documentation template.
 
-Please document your class thoroughly, so other people can use it without asking you lots of questions.
-For parameters be sure to specify the units and expected data types (unless really obvious).
+Content should include:
+- The task's purpose.
+- An overview of the important task methods, including `run` (if present), including links to the detailed documentation for each method.
+- The detailed documentation for each method must carefully describe its parameters, including data type (unless blindingly obvious). If a method takes a data reference or a butler, describe which dataset types are read and written.
+- A link to the config class, which should have clear help strings for each parameter.
+- A description of debug options.
+- A complete working example.
 
 Use """! instead of """ to start doc strings (i.e. include an exclamation mark). This causes
 Doxygen to parse Doxygen commands in the doc string, which is almost always what you want.
@@ -98,9 +99,9 @@ page \ref LSST_task_documentation, even if your task is not in the pipe_tasks pa
 \section pipeTasks_writeTask_classVariables Class Variables
 
 Tasks require several class variables to function:
-- `ConfigClass: the \ref pipeTasks_writeTask_configuration "configuration class" used by the task.
+- `ConfigClass`: the \ref pipeTasks_writeTask_configuration "configuration class" used by the task.
 
-- `_DefaultName: a string used as the default name for the task. This is required for a
+- `_DefaultName`: a string used as the default name for the task. This is required for a
     \ref pipe.base.CmdLineTask "command-line task", and strongly recommended for other tasks
     because it makes them easier to construct for unit tests.
     Note that when a task creates a subtask, it ignores the subtask's `_DefaultName` and assigns
@@ -112,6 +113,8 @@ Tasks require several class variables to function:
     the name is used as a component of the of the dataset type for saving the task's
     configuration and metadata; see  \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata
     for more information.
+
+- `TaskRunner`: only needed for command-line tasks; see pipeTasks_writeCmdLineTask for more information.
 
 Here are the class variables for exampleTask.ExampleCmdLineTask:
 \dontinclude tasks/exampleTask.py
@@ -134,7 +137,7 @@ Use the `__init__` method (task constructor) to do the following:
 - Make subtasks by calling `self.makeSubtask(<name>)`, where `<name>` is the name
     of a field of type \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField" in your task's
     pipeTasks_writeTask_configuration "configuration".
-- Make a schema if your task uses an \ref lsst.afw.table "afw table". For an example of such a task
+- Make a schema if your task uses an \ref afwTable "afw table". For an example of such a task
     see lsst.pipe.tasks.calibrate.CalibrateTask.
 - Initialize any other instance variables your task needs.
 
@@ -195,6 +198,23 @@ version of that task: exampleTask.ExampleSigmaClippedStatsTask.run:
 \skip class ExampleSigmaClippedStatsTask
 \skip # start run
 \until # end run
+
+\section pipeTasks_writeTask_taskMethods Methods
+
+If you want your task to support debug variables, have it import the lsstDebug package
+and call `lsstDebug.Info(__name__).`&lt;name&gt; to look for a debug variable named &lt;name&gt;.
+If you look for a variable that the user has not specified, it will have a value of `None`.
+For example, to look for a debug variable named `display`:
+
+\code{.py}
+  import lsstDebug
+  display = lsstDebug.Info(__name__).display
+  if display:
+     ...
+\endcode
+
+See pipeBase_argumentParser_debugVariables for information on specifying specify debug variables
+while running a command-line task.
 
 */
 }}} // namespace lsst::pipe::tasks
