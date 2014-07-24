@@ -7,7 +7,7 @@ except ImportError:
     import sqlite as sqlite3
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
-from lsst.pex.exceptions import LsstException
+import lsst.pex.exceptions
 from lsst.pipe.base import Task, Struct, ArgumentParser
 import lsst.afw.image as afwImage
 
@@ -77,7 +77,7 @@ class ParseTask(Task):
             # This returns a tuple
             ext = md.get("EXTNAME")
             return ext[1]
-        except LsstException:
+        except lsst.pex.exceptions.Exception:
             return None
 
     def getInfoFromMetadata(self, md, info={}):
