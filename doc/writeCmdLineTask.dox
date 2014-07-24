@@ -198,14 +198,16 @@ Here are some situations where a custom task runner is required:
     a list of images to co-add. The custom task runner is coaddBase.CoaddTaskRunner and is pleasantly simple:
     \dontinclude coaddBase.py
     \skip class CoaddTaskRunner
-    \until end CoaddTaskRunner
+    \until return
+    \until )
 - The task requires no data references, just a butler. An example is makeSkyMap.MakeSkyMapTask,
     which makes a skymap.SkyMap for a set of co-adds. It uses the custom task runner
     makeSkyMap.MakeSkyMapRunner, which is more complicated than the previous example
     because the entire `__call__` method must be overridden:
     \dontinclude makeSkyMap.py
     \skip class MakeSkyMapRunner
-    \until end MakeSkyMapRunner
+    \until if self.doReturnResults
+    \until return
 
 */
 }}} // namespace lsst::pipe::tasks

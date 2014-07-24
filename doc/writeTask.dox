@@ -63,7 +63,8 @@ Some important details of configurations:
 \ref exampleStatsTasks.ExampleSigmaClippedStatsConfig "ExampleSigmaClippedStatsConfig":
 \dontinclude tasks/exampleStatsTasks.py
 \skip class ExampleSigmaClippedStatsConfig
-\until end ExampleSigmaClippedStatsConfig
+\until numIter
+\until )
 
 The configuration class is specified as ExampleSigmaClippedStatsTask class variable `ConfigClass`,
 as described in \ref pipeTasks_writeTask_classVariables.
@@ -118,7 +119,7 @@ Here is exampleCmdLineTask.ExampleCmdLineTask.__init__:
 \dontinclude tasks/exampleCmdLineTask.py
 \skip class ExampleCmdLineTask
 \skip def \_\_init\_\_
-\until # end
+\until self.makeSubtask
 
 That task creates a subtask named `stats` to compute image statistics.
 Here is the \_\_init\_\_ method for the default version of the `stats` subtask:
@@ -126,7 +127,7 @@ exampleTask.ExampleSigmaClippedStatsTask, which is slightly more interesting:
 \dontinclude tasks/exampleStatsTasks.py
 \skip class ExampleSigmaClippedStatsTask
 \skip def \_\_init\_\_
-\until # end
+\until self._statsControl.setAndMask
 This creates a binary mask identifying bad pixels in the mask plane
 and an lsst.afw.math.StatisticsControl, specifying how statistics are computed.
 Both of these are constants, and thus are the same for each invocation of the `run` method;
@@ -172,7 +173,8 @@ version of that task: exampleTask.ExampleSigmaClippedStatsTask.run:
 \skip class ExampleSigmaClippedStatsTask
 \skipline pipeBase.timeMethod
 \skip def run
-\until # end run
+\until return pipeBase
+\until )
 
 \section pipeTasks_writeTask_debugVariables Debug Variables
 

@@ -57,7 +57,6 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
         dtype = int,
         default = 2,
     )
-    # end ExampleSigmaClippedStatsConfig (marker for Doxygen)
 
 
 class ExampleSigmaClippedStatsTask(pipeBase.Task):
@@ -113,7 +112,6 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         self._statsControl.setNumSigmaClip(self.config.numSigmaClip)
         self._statsControl.setNumIter(self.config.numIter)
         self._statsControl.setAndMask(self._badPixelMask)
-        # end init (marker for Doxygen)
 
     @pipeBase.timeMethod
     def run(self, maskedImage):
@@ -138,7 +136,6 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
             stdDev = stdDev,
             stdDevErr = stdDevErr,
         )
-        # end run (marker for Doxygen)
 
 #------------------------- ExampleSimpleStatsTask -------------------------#
 

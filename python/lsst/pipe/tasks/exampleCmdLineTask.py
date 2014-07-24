@@ -109,7 +109,6 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         """
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("stats")
-        # end init (marker for Doxygen)
     
     @pipeBase.timeMethod
     def run(self, dataRef):

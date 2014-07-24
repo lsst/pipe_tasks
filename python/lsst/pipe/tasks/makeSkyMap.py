@@ -68,7 +68,6 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
         task.writeMetadata(butler)
         if self.doReturnResults:
             return results
-    # end MakeSkyMapRunner (this is a Doxygen marker)
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
     """Make a sky map in a repository
