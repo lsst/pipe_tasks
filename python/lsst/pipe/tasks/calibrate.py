@@ -245,13 +245,10 @@ class CalibrateTask(pipeBase.Task):
                 try:
                     photocalRet = self.photocal.run(exposure, matches,
                                                     prefix=self.config.initialMeasurement.prefix)
-                except Exception, e:
-                    self.log.warn("Failed to determine photometric zero-point: %s" % e)
-                    photocalRet = None
-                    self.metadata.set('MAGZERO', float("NaN"))
-                if photocalRet:
-                    self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
+                    self.log.info("Initial photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
                     exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
+                except Exception, e:
+                    self.log.warn("Failed to determine initial photometric zero-point: %s" % e)
 
             psfRet = self.measurePsf.run(exposure, sources, matches=matches)
             cellSet = psfRet.cellSet
@@ -308,12 +305,12 @@ class CalibrateTask(pipeBase.Task):
             try:
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
-                self.log.warn("Failed to determine photometric zero-point: %s" % e)
+                self.log.warn("Failed to determine updated photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
 
             if photocalRet:
-                self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
+                self.log.info("Updated photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
                 exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
                 metadata = exposure.getMetadata()
                 # convert to (mag/sec/adu) for metadata
