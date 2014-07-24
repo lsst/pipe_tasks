@@ -47,7 +47,6 @@ class ExampleCmdLineConfig(pexConfig.Config):
         dtype = bool,
         default = 0,
     )
-    # end ExampleCmdLineConfig (marker for Doxygen)
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
     """!Example command-line task that computes simple statistics on an image
@@ -80,16 +79,13 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
 
     \section pipeTasks_ExampleCmdLineTask_Debug     Debug variables
 
-    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
-    flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
-
-    The available variables in ExampleCmdLineTask are:
+    This task supports the following debug variables:
     <dl>
         <dt>`display`
-        <dd>If True then display the calepx in ds9
+        <dd>If True then display the exposure in ds9
     </dl>
 
-    To enable debugging, see \ref pipeBase_argumentParser_debugVariables "Specifying Debug Variables"
+    To enable debugging, see \ref baseDebug.
 
     \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
 
@@ -105,18 +101,16 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     """
     ConfigClass = ExampleCmdLineConfig
     _DefaultName = "exampleTask"
-    # end class variables (marker for Doxygen)
 
     def __init__(self, *args, **kwargs):
         """Construct an ExampleCmdLineTask
 
-        Call the parent class constructor and make the `stats` subtask from the config field of the same name.
+        Call the parent class constructor and make the "stats" subtask from the config field of the same name.
         """
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("stats")
         # end init (marker for Doxygen)
     
-    # start run (marker for Doxygen)
     @pipeBase.timeMethod
     def run(self, dataRef):
         """!Compute a few statistics on the image plane of an exposure
@@ -137,20 +131,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         calExp = dataRef.get("calexp")
         maskedImage = calExp.getMaskedImage()
 
-        # Support extra debug output. To trigger debug output the user must do two things:
-        # Add the following to a file named debug.py somewhere on your $PYTHONPATH:
-        # \code
-        # import lsstDebug
-        # def DebugInfo(name):
-        #     di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-        #     if name == "lsst.pipe.tasks.exampleCmdLineTask":
-        #         di.display = 1
-        #
-        #     return di
-        #
-        # lsstDebug.Info = DebugInfo
-        # \endcode
-        # into your debug.py file and run this task with the \c --debug flag.
+        # Support extra debug output.
         # - 
         import lsstDebug
         display = lsstDebug.Info(__name__).display
@@ -158,8 +139,8 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
             frame = 1
             mtv(calExp, frame=frame, title="photocal")
 
+        # return the pipe_base Struct that is returned by self.stats.run
         return self.stats.run(maskedImage)
-        # end run (marker for Doxygen)
 
     def _getConfigName(self):
         """!Get the name prefix for the task config's dataset type, or None to prevent persisting the config

@@ -23,7 +23,6 @@
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable

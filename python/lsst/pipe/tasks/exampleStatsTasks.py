@@ -115,7 +115,6 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         self._statsControl.setAndMask(self._badPixelMask)
         # end init (marker for Doxygen)
 
-    # start run (marker for Doxygen)
     @pipeBase.timeMethod
     def run(self, maskedImage):
         """!Compute and return statistics for a masked image
@@ -127,8 +126,8 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         - stdDev: standard deviation of image plane
         - stdDevErr: uncertainty in standard deviation
         """
-        statObj = afwMath.makeStatistics(maskedImage,
-            afwMath.MEANCLIP | afwMath.STDEVCLIP, self._statsControl)
+        statObj = afwMath.makeStatistics(maskedImage, afwMath.MEANCLIP | afwMath.STDEVCLIP | afwMath.ERRORS,
+            self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEANCLIP)
         stdDev, stdDevErr = statObj.getResult(afwMath.STDEVCLIP)
         self.log.info("clipped mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
@@ -203,7 +202,8 @@ class ExampleSimpleStatsTask(pipeBase.Task):
         - stdDevErr: uncertainty in standard deviation
         """
         self._statsControl = afwMath.StatisticsControl()
-        statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV, self._statsControl)
+        statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV | afwMath.ERRORS,
+            self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEAN)
         stdDev, stdDevErr = statObj.getResult(afwMath.STDEV)
         self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \

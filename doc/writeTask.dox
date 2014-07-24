@@ -93,7 +93,7 @@ Here are the class variables for exampleCmdLineTask.ExampleCmdLineTask:
 \dontinclude tasks/exampleCmdLineTask.py
 \skip class ExampleCmdLineTask
 \skip ConfigClass
-\until # end
+\until _DefaultName
 
 \section pipeTasks_writeTask_taskMethods Methods
 
@@ -162,22 +162,25 @@ The example exampleCmdLineTask.ExampleCmdLineTask is so simple that it needs no 
 `run` does everything:
 \dontinclude tasks/exampleCmdLineTask.py
 \skip class ExampleCmdLineTask
-\skip # start run
-\until # end run
+\skipline pipeBase.timeMethod
+\skip def run
+\until return self.stats.run
 
-The statistics are actually computed by the `stats` subtask. Here is the run method for the default
+The statistics are actually computed by the "stats" subtask. Here is the run method for the default
 version of that task: exampleTask.ExampleSigmaClippedStatsTask.run:
 \dontinclude tasks/exampleStatsTasks.py
 \skip class ExampleSigmaClippedStatsTask
-\skip # start run
+\skipline pipeBase.timeMethod
+\skip def run
 \until # end run
 
 \section pipeTasks_writeTask_debugVariables Debug Variables
 
-If you want your task to support debug variables, have it import the lsstDebug package
-and call `lsstDebug.Info(__name__).`&lt;name&gt; to look for a debug variable named &lt;name&gt;.
-If you look for a variable that the user has not specified, it will have a value of `None`.
-For example, to look for a debug variable named `display`:
+Debug variables are variables the user may set while running your task, to enable additional debug output.
+To have your task support debug variables, have it import `lsstDebug` and call
+`lsstDebug.Info(__name__).`<em>varname</em> to get the debug variable <em>varname</em> specific to your task.
+If you look for a variable the user has not specified, it will have a value of `False`.
+For example, to look for a debug variable named "display":
 
 \code{.py}
   import lsstDebug
@@ -186,8 +189,8 @@ For example, to look for a debug variable named `display`:
      ...
 \endcode
 
-See \ref pipeBase_argumentParser_debugVariables "specifying debug variables" for information on specifying
-debug variables while running a command-line task.
+See \ref baseDebug for more information about debug variables, including how to specify them while running
+a command-line task.
 
 \section pipeTasks_writeTask_documentation Documentation
 

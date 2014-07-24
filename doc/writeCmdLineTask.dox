@@ -125,7 +125,8 @@ methods `_getConfigName` and `_getMetadataName` methods to return `None`.
 
 \section pipeTasks_writeCmdLineTask_customArgumentParser Custom Argument Parser
 
-The default argument parser returned by `CmdLineTask._makeArgumentParser` assumes that your task's
+The default \ref lsst.pipe.base.argumentParser.ArgumentParser "argument parser" returned by
+`CmdLineTask._makeArgumentParser` assumes that your task's
 \ref pipeTasks_writeCmdLineTask_runMethod "run method" processes raw or calibrated images. If this is not
 the case you can easily provide a modified argument parser by overriding the `_makeArgumentParser` method.
 
@@ -133,11 +134,30 @@ Here are some examples:
 - A task's `run` methd requires a data reference of some kind other than a raw or calibrated image.
     This is a common case, and easily solved. For example the processCoadd.ProcessCoaddTask
     processes co-adds, which are specified by \ref skyMap_introduction "sky map patch".
-    `ProcessCoaddTask._makeArgumentParser` is very simple:
+    `ProcessCoaddTask._makeArgumentParser`:
     \dontinclude processCoadd.py
     \skipline classmethod
     \skip def _makeArgumentParser
     \until return
+
+    The first argument to \ref lsst.pipe.base.argumentParser.ArgumentParser "pipeBase.ArgumentParser"
+    is the name of the ID argument.
+
+    The second argument is a dataset type, which specifies the keys that are used with this ID argument.
+    The keys associated with a particular dataset type are specified in the mapper configuration file
+    for the obs_ package and camera in question, and thus may vary from camera to camera. In practice,
+    the keys for "raw" and "calexp" dataset types usually do vary from camera to camera, but the keys
+    for coadds do not. However, this is not a fixed rule. For most obs_ packages "deepCoadd" is one of
+    two coadd dataset types, and the other, "goodSeeingCoadd", would work just as well for this argument.
+    
+    A custom "ContainerClass"
+    `\ref lsst.coadd.utils.coaddDataIdContainer.CoaddDataIdContainer "CoaddDataIdContainer"
+    is provided to support iterating over missing keys (e.g. if you provide a tract but not a patch
+    then the task will iterate over all available patches for that tract). This happens automatically
+    for "raw" and "calexp" dataset types, but not most other dataset types. Examine the code in
+    \ref lsst.coadd.utils.coaddDataIdContainer.CoaddDataIdContainer "CoaddDataIdContainer"
+    to see how it works.
+
 - A task's `run` method requires more than one kind of data reference. An example is co-addition,
     which requires the user to specify the co-add as a \ref skyMap_introduction "sky map patch",
     and optionally allows the user to specify a list of exposures to co-add.
@@ -147,6 +167,11 @@ Here are some examples:
     \skipline classmethod
     \skip def _makeArgumentParser
     \until return
+
+    In this case the custom container class
+    \ref lsst.pipe.tasks.coaddBase.SelectDataIdContainer "SelectDataIdContainer"
+    adds additional information for the task, to save processing time.
+
 - A task's `run` method requires no data references at all. An example is makeSkyMap.MakeSkyMapTask,
     which makes a \ref skyMap_introduction "sky map" for a set of co-adds.
     makeSkyMap.MakeSkyMapTask._makeArgumentParser is trivial:
