@@ -41,7 +41,8 @@ class MakeSkyMapConfig(pexConfig.Config):
         default = "dodeca",
     )
     doWrite = pexConfig.Field(
-        doc = "persist the skyMap?",
+        doc = "persist the skyMap? If False then run generates the sky map and returns it, " \
+            + "but does not save it to the data repository",
         dtype = bool,
         default = True,
     )
@@ -69,7 +70,10 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
             return results
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
-    """Make a SkyMap in a repository, setting it up for coaddition
+    """Make a sky map in a repository
+
+    Making a sky map in a repository is a prerequisite for making a coadd,
+    since the sky map is used as the pixelization for the coadd.
     """
     ConfigClass = MakeSkyMapConfig
     _DefaultName = "makeSkyMap"
@@ -80,13 +84,25 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
     
     @pipeBase.timeMethod
     def run(self, butler):
-        """Make a skymap
+        """Make a skymap, persist it (optionally) and log some information about it
         
         @param butler: data butler
         @return a pipeBase Struct containing:
         - skyMap: the constructed SkyMap
         """
         skyMap = self.config.skyMap.apply()
+        self.logSkyMapInfo(skyMap)
+        if self.config.doWrite:
+            butler.put(skyMap, self.config.coaddName + "Coadd_skyMap")
+        return pipeBase.Struct(
+            skyMap = skyMap
+        )
+
+    def logSkyMapInfo(self, skyMap):
+        """Log information about a sky map
+
+        @param[in] skyMap: sky map (an lsst.skyMap.SkyMap)
+        """
         self.log.info("sky map has %s tracts" % (len(skyMap),))
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
@@ -102,11 +118,6 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
             self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
                 (tractInfo.getId(), ", ".join(posStrList), \
                 tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
-        if self.config.doWrite:
-            butler.put(skyMap, self.config.coaddName + "Coadd_skyMap")
-        return pipeBase.Struct(
-            skyMap = skyMap
-        )
 
     @classmethod
     def _makeArgumentParser(cls):

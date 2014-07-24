@@ -20,8 +20,6 @@ from __future__ import division, absolute_import
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import argparse
-
 import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
@@ -192,7 +190,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
 class SelectDataIdContainer(pipeBase.DataIdContainer):
     """A dataId container for inputs to be selected.
 
-    We will read the header (including the size and Wcs) for all specified
+    Read the header (including the size and Wcs) for all specified
     inputs and pass those along, ultimately for the SelectImagesTask.
     This is most useful when used with multiprocessing, as input headers are
     only read once.
