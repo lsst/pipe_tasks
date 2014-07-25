@@ -47,7 +47,7 @@ class CoaddInputRecorderConfig(pexConfig.Config):
              " due to an exception (often due to the calexp not being found on disk).")
     )
     saveVisitGoodPix = pexConfig.Field(
-        dtype=bool, default=True, optional=False,
+        dtype=bool, default=False, optional=False,
         doc=("Save the total number of good pixels in each coaddTempExp (redundant with a sum of"
              " good pixels in associated CCDs)")
     )
@@ -99,8 +99,7 @@ class CoaddTempExpInputRecorder(object):
             record.setPsf(calExp.getPsf())
             record.setWcs(calExp.getWcs())
             record.setBBox(calExp.getBBox())
-            if self.task.config.saveCcdWeights:
-                record.setD(self.task.ccdWeightKey, 1.0) # No weighting or overlap when warping
+            record.setApCorrMap(calExp.getInfo().getApCorrMap())
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
