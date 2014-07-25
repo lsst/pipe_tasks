@@ -87,7 +87,7 @@ Tasks require several class variables to function:
     configuration and metadata; see  \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata
     for more information.
 
-- `TaskRunner`: only needed for command-line tasks; see \ref pipeTasks_writeCmdLineTask_taskRunner 
+- `RunnerClass`: only needed for command-line tasks; see \ref pipeTasks_writeCmdLineTask_taskRunner 
     "task runner" for more information.
 
 - `canMultitask`: only needed for command-line tasks; see \ref pipeTasks_writeCmdLineTask_canMultitask

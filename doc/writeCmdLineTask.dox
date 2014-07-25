@@ -46,7 +46,7 @@ Command-line tasks have the following key attributes, in addition to the attribu
 - When run from the command line, most command-line tasks save the configuration used and the metadata
     generated. See \ref pipeTasks_writeCmdLineTask_persistingConfigAndMetadata for more information.
 - \anchor pipeTasks_writeCmdLineTask_taskRunner They have an additional
-    \ref pipeTasks_writeTask_classVariables "class variable": `TaskRunner', which specifies a "task runner"
+    \ref pipeTasks_writeTask_classVariables "class variable": `RunnerClass', which specifies a "task runner"
     for the task. The task runner takes a parsed command and runs the task. The default task runner
     will work for any script whose `run` method accepts a single data reference, such as
     \ref exampleCmdLineTask.ExampleCmdLineTask "ExampleCmdLineTask".
@@ -201,7 +201,7 @@ The standard \ref pipeTasks_writeCmdLineTask_taskRunner "task runner" is
 It assumes that your task's `run` method wants a single data reference and nothing else. If that is not
 the case then you will have to provide a custom task runner for your task. This involves writing a subclass of
 \ref lsst.pipe.base.cmdLineTask.TaskRunner "lsst.pipe.base.TaskRunner" and specifying it in your task
-using the `TaskRunner` \ref pipeTasks_writeTask_classVariables" class variable".
+using the `RunnerClass` \ref pipeTasks_writeTask_classVariables" class variable".
 
 Here are some situations where a custom task runner is required:
 - The task's `run` method requires extra arguments. An example is co-addition, which optionally accepts
