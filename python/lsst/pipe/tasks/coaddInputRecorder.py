@@ -27,6 +27,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
+from lsst.meas.algorithms import CoaddPsf, makeCoaddApCorrMap
 
 __all__ = ["CoaddInputRecorderTask"]
 
@@ -101,6 +102,8 @@ class CoaddTempExpInputRecorder(object):
             record.setWcs(calExp.getWcs())
             record.setBBox(calExp.getBBox(afwImage.PARENT))
             record.setApCorrMap(calExp.getInfo().getApCorrMap())
+            if self.task.config.saveCcdWeights:
+                record.setD(self.task.ccdWeightKey, 1.0) # No weighting or overlap when warping
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
@@ -117,6 +120,12 @@ class CoaddTempExpInputRecorder(object):
         if self.task.config.saveVisitGoodPix:
             self.visitRecord.setI(self.task.visitGoodPixKey, nGoodPix)
         coaddTempExp.getInfo().setCoaddInputs(self.coaddInputs)
+        wcs = coaddTempExp.getWcs()
+        if False:
+            # This causes a test failure, pending fix in issue HSC-802
+            coaddTempExp.setPsf(CoaddPsf(self.coaddInputs.ccds, wcs))
+        apCorrMap = makeCoaddApCorrMap(self.coaddInputs.ccds, coaddTempExp.getBBox(afwImage.PARENT), wcs)
+        coaddTempExp.getInfo().setApCorrMap(apCorrMap)
 
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
