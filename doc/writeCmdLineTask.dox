@@ -52,9 +52,9 @@ Command-line tasks have the following key attributes, in addition to the attribu
     \ref exampleCmdLineTask.ExampleCmdLineTask "ExampleCmdLineTask".
     If your task's `run` method needs something else then you will have to provide a
     \ref pipeTasks_writeCmdLineTask_customTaskRunner "custom task runner".
-- \anchor pipeTasks_writeCmdLineTask_canMultitask They have an additional
-    \ref pipeTasks_writeTask_classVariables "class variable" `canMultitask`, which defaults to `True`.
-    If your \ref pipeTasks_writeCmdLineTask_taskRunner "task runner" cannot run your task with multitasking
+- \anchor pipeTasks_writeCmdLineTask_canMultiprocess They have an additional
+    \ref pipeTasks_writeTask_classVariables "class variable" `canMultiprocess`, which defaults to `True`.
+    If your \ref pipeTasks_writeCmdLineTask_taskRunner "task runner" cannot run your task with multiprocessing
     then set it `False`. Note: multiprocessing only affects how the task runner calls the top-level task;
     thus it is ignored when a task is used as a subtask.
 

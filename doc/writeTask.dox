@@ -90,8 +90,8 @@ Tasks require several class variables to function:
 - `RunnerClass`: only needed for command-line tasks; see \ref pipeTasks_writeCmdLineTask_taskRunner 
     "task runner" for more information.
 
-- `canMultitask`: only needed for command-line tasks; see \ref pipeTasks_writeCmdLineTask_canMultitask
-    "canMultitask" for more information.
+- `canMultiprocess`: only needed for command-line tasks; see \ref pipeTasks_writeCmdLineTask_canMultiprocess
+    "canMultiprocess" for more information.
 
 Here are the class variables for exampleCmdLineTask.ExampleCmdLineTask:
 \dontinclude tasks/exampleCmdLineTask.py
