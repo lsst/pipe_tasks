@@ -440,6 +440,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         else:
             psf = measAlg.CoaddPsf(coaddInputs.ccds, coaddExposure.getWcs())
         coaddExposure.setPsf(psf)
+        apCorrMap = measAlg.makeCoaddApCorrMap(coaddInputs.ccds, coaddExposure.getBBox(afwImage.PARENT),
+                                               coaddExposure.getWcs())
+        coaddExposure.getInfo().setApCorrMap(apCorrMap)
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
                           bgInfoList, statsFlags, statsCtrl):

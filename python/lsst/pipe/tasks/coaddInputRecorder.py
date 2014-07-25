@@ -100,6 +100,7 @@ class CoaddTempExpInputRecorder(object):
             record.setPsf(calExp.getPsf())
             record.setWcs(calExp.getWcs())
             record.setBBox(calExp.getBBox(afwImage.PARENT))
+            record.setApCorrMap(calExp.getInfo().getApCorrMap())
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
