@@ -395,8 +395,6 @@ class MatchBackgroundsTask(pipeBase.Task):
         # Some config and input checks if config.usePolynomial:
         # 1) Check that order/bin size make sense:
         # 2) Change binsize or order if underconstrained.
-        # 3) Add some tiny Gaussian noise if the image is completely uniform
-        #        (change after ticket 2411)
         if self.config.usePolynomial:
             order = self.config.order
             bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
@@ -416,13 +414,6 @@ class MatchBackgroundsTask(pipeBase.Task):
                     bctrl.setNySample(newBinSize)
                     bkgd = afwMath.makeBackground(diffMI, bctrl) #do over
                     self.log.warn("Decreasing binsize to %d"%(newBinSize))
-
-            if not any(dZ > 1e-8 for dZ in bgdZ) and not any(bgZ): #uniform image
-                gaussianNoiseIm = afwImage.ImageF(diffMI.getImage(), True)
-                afwMath.randomGaussianImage(gaussianNoiseIm, afwMath.Random())
-                gaussianNoiseIm *= 1e-8
-                diffMI += gaussianNoiseIm
-                bkgd = afwMath.makeBackground(diffMI, bctrl)
 
         #Add offset to sciExposure
         try:
