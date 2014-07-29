@@ -33,6 +33,8 @@ import lsst.afw.geom as afwGeom
 from lsst.coadd.utils import setCoaddEdgeBits
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
 
+numpy.random.seed(1)
+
 def makeRandomExposure(width, height, imMean, varMean, maxMask):
     """Make a random exposure with Poisson distribution for image and variance
     

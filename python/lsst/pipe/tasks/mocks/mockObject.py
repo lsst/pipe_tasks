@@ -40,6 +40,7 @@ class MockObjectConfig(lsst.pex.config.Config):
         dtype=float, default=20.0, 
         doc="Distance between objects (in arcseconds)."
         )
+    seed = lsst.pex.config.Field(dtype=int, default=1, doc="Seed for numpy random number generator")
 
 class MockObjectTask(lsst.pipe.base.Task):
     """Task that generates simple mock objects and draws them on images, intended as a subtask of
@@ -56,6 +57,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         self.center = self.schema.addField("center", type=lsst.afw.geom.Point2D,
                                            doc="center position in tract WCS")
         self.magKey = self.schema.addField("mag", type=float, doc="exact true magnitude")
+        self.rng = numpy.random.RandomState(self.config.seed)
 
     def run(self, tractInfo, catalog=None):
         """Add records to the truth catalog and return it, delegating to makePositions and defineObject.
@@ -99,7 +101,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         """Fill in additional fields in a truth catalog record (id and coord will already have
         been set).
         """
-        mag = numpy.random.rand() * (self.config.maxMag - self.config.minMag) + self.config.minMag
+        mag = self.rng.rand() * (self.config.maxMag - self.config.minMag) + self.config.minMag
         record.setD(self.magKey, mag)
 
     def drawSource(self, record, exposure, buffer=0):

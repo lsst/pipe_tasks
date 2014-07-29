@@ -64,6 +64,7 @@ class MockObservationConfig(lsst.pex.config.Config):
         dtype=float, default=3.0, optional=False,
         doc="Maximum radius for generated Psfs."
         )
+    seed = lsst.pex.config.Field(dtype=int, default=1, doc="Seed for numpy random number generator")
 
 class MockObservationTask(lsst.pipe.base.Task):
     """Task to generate mock Exposure parameters (Wcs, Psf, Calib), intended for use as a subtask
@@ -82,6 +83,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         self.ccdKey = self.schema.addField("ccd", type=int, doc="CCD number")
         self.visitKey = self.schema.addField("visit", type=int, doc="visit number")
         self.pointingKey = self.schema.addField("pointing", type="Coord", doc="center of visit")
+        self.rng = numpy.random.RandomState(self.config.seed)
 
     def run(self, butler, n, tractInfo, camera, catalog=None):
         """Driver that generates an ExposureCatalog of mock observations.
@@ -132,11 +134,11 @@ class MockObservationTask(lsst.pipe.base.Task):
         bbox = lsst.afw.geom.Box2D(tractInfo.getBBox())
         bbox.grow(lsst.afw.geom.Extent2D(-0.1 * bbox.getWidth(), -0.1 * bbox.getHeight()))
         for i in xrange(n):
-            x = numpy.random.rand() * bbox.getWidth() + bbox.getMinX()
-            y = numpy.random.rand() * bbox.getHeight() + bbox.getMinY()
+            x = self.rng.rand() * bbox.getWidth() + bbox.getMinX()
+            y = self.rng.rand() * bbox.getHeight() + bbox.getMinY()
             pa = 0.0 * lsst.afw.geom.radians
             if self.config.doRotate:
-                pa = numpy.random.rand() * 2.0 * numpy.pi * lsst.afw.geom.radians
+                pa = self.rng.rand() * 2.0 * numpy.pi * lsst.afw.geom.radians
             yield wcs.pixelToSky(x, y), pa
 
     def buildWcs(self, position, pa, detector):
@@ -163,7 +165,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         calib.setMidTime(lsst.daf.base.DateTime.now())
         calib.setExptime(self.config.expTime)
         calib.setFluxMag0(
-            numpy.random.randn() * self.config.fluxMag0Sigma + self.config.fluxMag0,
+            self.rng.randn() * self.config.fluxMag0Sigma + self.config.fluxMag0,
             self.config.fluxMag0Sigma
             )
         return calib

@@ -31,6 +31,8 @@ import lsst.afw.math as afwMath
 import numpy
 from lsst.pipe.tasks.matchBackgrounds import MatchBackgroundsTask
 
+numpy.random.seed(1)
+
 class MatchBackgroundsTestCase(unittest.TestCase):
     """Background Matching"""
 
@@ -39,14 +41,14 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         #1) full coverage (plain vanilla image) has mean = 50counts
         self.vanilla = afwImage.ExposureF(600,600)
         im = self.vanilla.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random(1))
+        afwMath.randomGaussianImage(im,afwMath.Random())
         im += 50
         self.vanilla.getMaskedImage().getVariance().set(1.0)
         
         #2) has chip gap and mean = 10 counts
         self.chipGap = afwImage.ExposureF(600,600)
         im = self.chipGap.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random(2))
+        afwMath.randomGaussianImage(im,afwMath.Random())
         im += 10
         im.getArray()[:,200:300] = numpy.nan #simulate 100pix chip gap
         self.chipGap.getMaskedImage().getVariance().set(1.0)
@@ -54,7 +56,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         #3) has low coverage and mean = 20 counts
         self.lowCover = afwImage.ExposureF(600,600)
         im = self.lowCover.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random(3))
+        afwMath.randomGaussianImage(im,afwMath.Random())
         im += 20
         self.lowCover.getMaskedImage().getImage().getArray()[:,200:] = numpy.nan 
         self.lowCover.getMaskedImage().getVariance().set(1.0)
@@ -145,7 +147,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.binSize = 64
         testExp = afwImage.ExposureF(self.vanilla, True)
         testIm = testExp.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(testIm,afwMath.Random(5))
+        afwMath.randomGaussianImage(testIm,afwMath.Random())
         nx, ny = testExp.getDimensions()
         dzdx, dzdy, z0 = 1, 2, 0.0
         for x in range(nx):
@@ -237,7 +239,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.binSize = 64
         testExp = afwImage.ExposureF(self.vanilla, True)
         testIm = testExp.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(testIm,afwMath.Random(5))
+        afwMath.randomGaussianImage(testIm,afwMath.Random())
         nx, ny = testExp.getDimensions()
         dzdx, dzdy, z0 = 1, 2, 0.0
         for x in range(nx):
@@ -286,7 +288,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.binSize = 64
         chipGapHorizontal = afwImage.ExposureF(600,600)
         im = chipGapHorizontal.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random(8))
+        afwMath.randomGaussianImage(im,afwMath.Random())
         im += 10
         im.getArray()[200:300,:] = numpy.nan #simulate 100pix chip gap horizontal
         chipGapHorizontal.getMaskedImage().getVariance().set(1.0)
