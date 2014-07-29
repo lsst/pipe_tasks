@@ -117,6 +117,13 @@ class MatchBackgroundsConfig(pexConfig.Config):
         default = 0.2,
         min = 0., max = 1.
     )
+    approxWeighting = pexConfig.Field(
+        dtype = bool,
+        doc = ("Use inverse-variance weighting when approximating background model (usePolynomial=True)? " +
+               "This will produce NANs when the background is constant within each super-pixel" +
+               "(this is usually only the case in testing with artificial images)."),
+        default = True,
+    )
 
 
 class MatchBackgroundsTask(pipeBase.Task):
@@ -421,8 +428,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         try:
             if self.config.usePolynomial:
                 actrl = afwMath.ApproximateControl(afwMath.ApproximateControl.CHEBYSHEV,
-                                                   order,
-                                                   order)
+                                                   order, order, self.config.approxWeighting)
                 undersampleStyle = getattr(afwMath, self.config.undersampleStyle)
                 approx = bkgd.getApproximate(actrl,undersampleStyle)
                 bkgdImage = approx.getImage()
