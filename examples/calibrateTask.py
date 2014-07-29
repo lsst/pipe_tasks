@@ -38,6 +38,8 @@ import lsst.meas.algorithms        as measAlg
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.astrometry import AstrometryTask
 
+np.seed(1)
+
 def loadData(pixelScale=1.0):
     """Prepare the data we need to run the example"""
 

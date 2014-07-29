@@ -31,6 +31,8 @@ import lsst.afw.math as afwMath
 import numpy
 from lsst.pipe.tasks.matchBackgrounds import MatchBackgroundsTask
 
+numpy.random.seed(1)
+
 class MatchBackgroundsTestCase(unittest.TestCase):
     """Background Matching"""
 
