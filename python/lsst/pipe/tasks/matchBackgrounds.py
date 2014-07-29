@@ -412,7 +412,7 @@ class MatchBackgroundsTask(pipeBase.Task):
 
             if not any(dZ > 1e-8 for dZ in bgdZ) and not any(bgZ): #uniform image
                 gaussianNoiseIm = afwImage.ImageF(diffMI.getImage(), True)
-                afwMath.randomGaussianImage(gaussianNoiseIm, afwMath.Random(1))
+                afwMath.randomGaussianImage(gaussianNoiseIm, afwMath.Random())
                 gaussianNoiseIm *= 1e-8
                 diffMI += gaussianNoiseIm
                 bkgd = afwMath.makeBackground(diffMI, bctrl)
