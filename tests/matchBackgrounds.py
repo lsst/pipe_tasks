@@ -66,6 +66,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.usePolynomial = True
         self.matcher.binSize = 64
         self.matcher.debugDataIdString = 'Test Visit'
+        self.matcher.config.approxWeighting = False # otherwise approximated exact background is NAN
 
         self.sctrl = afwMath.StatisticsControl()
         self.sctrl.setNanSafe(True)

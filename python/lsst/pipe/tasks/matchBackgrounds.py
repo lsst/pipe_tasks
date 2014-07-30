@@ -117,6 +117,13 @@ class MatchBackgroundsConfig(pexConfig.Config):
         default = 0.2,
         min = 0., max = 1.
     )
+    approxWeighting = pexConfig.Field(
+        dtype = bool,
+        doc = ("Use inverse-variance weighting when approximating background model (usePolynomial=True)? " +
+               "This will produce NANs when the background is constant within each super-pixel" +
+               "(this is usually only the case in testing with artificial images)."),
+        default = True,
+    )
 
 
 class MatchBackgroundsTask(pipeBase.Task):
@@ -388,8 +395,6 @@ class MatchBackgroundsTask(pipeBase.Task):
         # Some config and input checks if config.usePolynomial:
         # 1) Check that order/bin size make sense:
         # 2) Change binsize or order if underconstrained.
-        # 3) Add some tiny Gaussian noise if the image is completely uniform
-        #        (change after ticket 2411)
         if self.config.usePolynomial:
             order = self.config.order
             bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
@@ -410,19 +415,11 @@ class MatchBackgroundsTask(pipeBase.Task):
                     bkgd = afwMath.makeBackground(diffMI, bctrl) #do over
                     self.log.warn("Decreasing binsize to %d"%(newBinSize))
 
-            if not any(dZ > 1e-8 for dZ in bgdZ) and not any(bgZ): #uniform image
-                gaussianNoiseIm = afwImage.ImageF(diffMI.getImage(), True)
-                afwMath.randomGaussianImage(gaussianNoiseIm, afwMath.Random())
-                gaussianNoiseIm *= 1e-8
-                diffMI += gaussianNoiseIm
-                bkgd = afwMath.makeBackground(diffMI, bctrl)
-
         #Add offset to sciExposure
         try:
             if self.config.usePolynomial:
                 actrl = afwMath.ApproximateControl(afwMath.ApproximateControl.CHEBYSHEV,
-                                                   order,
-                                                   order)
+                                                   order, order, self.config.approxWeighting)
                 undersampleStyle = getattr(afwMath, self.config.undersampleStyle)
                 approx = bkgd.getApproximate(actrl,undersampleStyle)
                 bkgdImage = approx.getImage()
