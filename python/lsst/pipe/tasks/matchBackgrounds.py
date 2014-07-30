@@ -415,11 +415,15 @@ class MatchBackgroundsTask(pipeBase.Task):
                     bkgd = afwMath.makeBackground(diffMI, bctrl) #do over
                     self.log.warn("Decreasing binsize to %d"%(newBinSize))
 
+            #If there is no variance in any image pixels, do not weight bins by inverse variance
+            isUniformImageDiff = not any(dZ > 1e-8 for dZ in bgdZ)
+            weightByInverseVariance = False if isUniformImageDiff else self.config.approxWeighting
+
         #Add offset to sciExposure
         try:
             if self.config.usePolynomial:
                 actrl = afwMath.ApproximateControl(afwMath.ApproximateControl.CHEBYSHEV,
-                                                   order, order, self.config.approxWeighting)
+                                                   order, order, weightByInverseVariance)
                 undersampleStyle = getattr(afwMath, self.config.undersampleStyle)
                 approx = bkgd.getApproximate(actrl,undersampleStyle)
                 bkgdImage = approx.getImage()
