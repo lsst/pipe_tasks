@@ -124,7 +124,14 @@ class MatchBackgroundsConfig(pexConfig.Config):
                "(this is usually only the case in testing with artificial images)."),
         default = True,
     )
-
+    gridStdevEpsilon = pexConfig.RangeField(
+        dtype = float,
+        doc = "Tolerance on almost zero standard deviation in a background-offset grid bin. " \
+        "If all bins have a standard deviation below this value, the background offset model " \
+        "is approximated without inverse-variance weighting. (usePolynomial=True)",
+        default = 1e-8,
+        min = 0.
+    )
 
 class MatchBackgroundsTask(pipeBase.Task):
     ConfigClass = MatchBackgroundsConfig
@@ -416,7 +423,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                     self.log.warn("Decreasing binsize to %d"%(newBinSize))
 
             #If there is no variance in any image pixels, do not weight bins by inverse variance
-            isUniformImageDiff = not any(dZ > 1e-8 for dZ in bgdZ)
+            isUniformImageDiff = not numpy.any(bgdZ > self.config.gridStdevEpsilon)
             weightByInverseVariance = False if isUniformImageDiff else self.config.approxWeighting
 
         #Add offset to sciExposure
@@ -557,9 +564,8 @@ class MatchBackgroundsTask(pipeBase.Task):
                 npoints, _ = stats.getResult(afwMath.NPOINT)
                 if npoints >= 2:
                     stdev, _ = stats.getResult(afwMath.STDEV)
-                    if stdev < 1e-8:
-                        #Zero variance. Set to some low but reasonable value
-                        stdev = 1e-8
+                    if stdev < self.config.gridStdevEpsilon:
+                        stdev = self.config.gridStdevEpsilon
                     bgX.append(0.5 * (x0 + xmin + x0 + xmax))
                     bgY.append(0.5 * (y0 + ymin + y0 + ymax))
                     bgdZ.append(stdev/numpy.sqrt(npoints))
