@@ -119,9 +119,10 @@ class MatchBackgroundsConfig(pexConfig.Config):
     )
     approxWeighting = pexConfig.Field(
         dtype = bool,
-        doc = ("Use inverse-variance weighting when approximating background model (usePolynomial=True)? " +
-               "This will produce NANs when the background is constant within each super-pixel" +
-               "(this is usually only the case in testing with artificial images)."),
+        doc = ("Use inverse-variance weighting when approximating background offset model? " +
+               "This will fail when the background offset is constant " +
+               "(this is usually only the case in testing with artificial images)." +
+               "(usePolynomial=True)"),
         default = True,
     )
     gridStdevEpsilon = pexConfig.RangeField(
