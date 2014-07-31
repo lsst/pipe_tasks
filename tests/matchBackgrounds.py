@@ -41,14 +41,14 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         #1) full coverage (plain vanilla image) has mean = 50counts
         self.vanilla = afwImage.ExposureF(600,600)
         im = self.vanilla.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random())
+        afwMath.randomGaussianImage(im,afwMath.Random('MT19937', 1))
         im += 50
         self.vanilla.getMaskedImage().getVariance().set(1.0)
         
         #2) has chip gap and mean = 10 counts
         self.chipGap = afwImage.ExposureF(600,600)
         im = self.chipGap.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random())
+        afwMath.randomGaussianImage(im,afwMath.Random('MT19937', 2))
         im += 10
         im.getArray()[:,200:300] = numpy.nan #simulate 100pix chip gap
         self.chipGap.getMaskedImage().getVariance().set(1.0)
@@ -56,7 +56,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         #3) has low coverage and mean = 20 counts
         self.lowCover = afwImage.ExposureF(600,600)
         im = self.lowCover.getMaskedImage().getImage()
-        afwMath.randomGaussianImage(im,afwMath.Random())
+        afwMath.randomGaussianImage(im,afwMath.Random('MT19937', 3))
         im += 20
         self.lowCover.getMaskedImage().getImage().getArray()[:,200:] = numpy.nan 
         self.lowCover.getMaskedImage().getVariance().set(1.0)
@@ -66,7 +66,6 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.usePolynomial = True
         self.matcher.binSize = 64
         self.matcher.debugDataIdString = 'Test Visit'
-        self.matcher.config.approxWeighting = False # otherwise approximated exact background is NAN
 
         self.sctrl = afwMath.StatisticsControl()
         self.sctrl.setNanSafe(True)
