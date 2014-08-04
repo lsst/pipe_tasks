@@ -36,6 +36,12 @@ import lsst.meas.algorithms
 import lsst.pipe.tasks.mocks
 import lsst.daf.persistence
 
+# NOTE: Sometimes this test fails with a misleading error message, involving inability to read a FITS file.
+# If that happens, set REUSE_DATAREPO to True below (temporarily), and run the test again.  You should then
+# be able to see the real problem.  Once that's fixed, set REUSE_DATAREPO back to False, or the test will
+# be very slow.  (I'm not sure why the original error message gets swallowed when REUSE_DATAREPO=True; it
+# seems to be happening inside Python's unittest module).
+
 try:
     REUSE_DATAREPO
 except NameError:                       # only set variables on initial import
