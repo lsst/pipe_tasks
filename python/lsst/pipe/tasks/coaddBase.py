@@ -198,7 +198,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=CoaddDataIdContainer)
-        parser.add_id_argument("--selectId", "raw", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
+        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
                                ContainerClass=SelectDataIdContainer)
         return parser
 

@@ -511,7 +511,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_tempExp",
                                help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=AssembleCoaddDataIdContainer)
-        parser.add_id_argument("--selectId", "raw", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
+        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
                                ContainerClass=SelectDataIdContainer)
         return parser
 
