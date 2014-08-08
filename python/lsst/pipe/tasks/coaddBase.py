@@ -27,7 +27,7 @@ import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 
-from lsst.afw.fits.fitsLib import FitsError
+from lsst.afw.fits import FitsError
 from lsst.coadd.utils import CoaddDataIdContainer
 from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
@@ -204,9 +204,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
                 md = ref.get("calexp_md", immediate=True)
                 wcs = afwImage.makeWcs(md)
                 data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
-            except pexExceptions.LsstCppException, e:
-                if not isinstance(e.message, FitsError): # Unable to open file
-                    raise
+            except FitsError as e:
                 namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
                 continue
             self.dataList.append(data)

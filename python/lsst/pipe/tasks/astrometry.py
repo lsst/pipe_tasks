@@ -22,7 +22,7 @@
 import numpy
 from contextlib import contextmanager
 
-from lsst.pex.exceptions import LsstCppException, LengthError
+import lsst.pex.exceptions
 import lsst.afw.geom as afwGeom
 from lsst.afw.cameraGeom import TAN_PIXELS
 import lsst.afw.image as afwImage
@@ -391,9 +391,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 # Final fit after rejection iterations
                 wcs, scatter = fitWcs(wcs, title="Final astrometry")
 
-            except LsstCppException as e:
-                if not isinstance(e.message, LengthError):
-                    raise
+            except lsst.pex.exceptions.LengthError as e:
                 self.log.warn("Unable to fit SIP: %s" % e)
 
             self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
