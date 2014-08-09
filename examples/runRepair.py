@@ -46,10 +46,11 @@ def makeTestImage(xsize=200, ysize=100, nCR=15):
 
     # set some CRs
     for xi, yi in zip(xind, yind):
+        xi, yi = int(xi), int(yi)
         img.set(xi, yi, 1e6)
 
-    mi = afwImage.MaskedImageF(img, mask, var)
-    exp = afwImage.ExposureF(mi)
+    mi = afwImage.makeMaskedImage(img, mask, var)
+    exp = afwImage.makeExposure(mi)
     exp.setPsf(psf)
     return exp
 
@@ -61,7 +62,8 @@ def addDefects(exp, nBadCols=10):
     # set some bad cols and add them to a defect list
     for xi in numpy.random.randint(0, xsize, nBadCols):
         yi = numpy.random.randint(0, ysize)
-        bbox = afwGeom.Box2I(afwGeom.Point2I(xi, 0), afwGeom.Extent2I(1, yi+1))
+        xi, yi = int(xi), int(yi)
+        bbox = afwGeom.Box2I(afwGeom.PointI(xi, 0), afwGeom.ExtentI(1, yi+1))
         subIm = afwImage.ImageF(img, bbox)
         subIm.set(1e7)
         defectList.push_back(measAlg.Defect(bbox))

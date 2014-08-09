@@ -69,13 +69,13 @@ class RepairTask(pipeBase.Task):
 
     \copybrief RepairTask
 
-    This task operates on an lsst.afw.image.Eposure in place to interpolate over a set of
+    This task operates on an lsst.afw.image.Exposure in place to interpolate over a set of
     lsst.meas.algorithms.Defect objects.
     It will also, optionally, find and interpolate any cosmic rays in the lsst.afw.image.Exposure.
 
     \section pipe_tasks_repair_Initialize Task initialization
 
-    This task does not require initialization other than that provided by the base class.
+    See: lsst.pipe.base.task.Task.__init__
 
     \section pipe_tasks_repair_IO Inputs/Outputs to the run method
 
@@ -118,7 +118,7 @@ class RepairTask(pipeBase.Task):
     For this example, we manufacture a test image to run on.
 
     First, create a pure Poisson noise image and a Psf to go with it.  The mask plane
-    and variance can be constructed at th same time.
+    and variance can be constructed at the same time.
     \skip poisson
     \until mask
 
@@ -128,8 +128,10 @@ class RepairTask(pipeBase.Task):
     \until setPsf
 
     Defects are represented as bad columns of random lengths.  A defect list must be constructed to pass
-    on to the RepairTask
-    \skip DefectListT
+    on to the RepairTask.
+    \bug This is addressed in <a href="https://jira.lsstcorp.org/browse/DM-963"> DM-963</a>
+
+    \skip addDefects
     \until push_back
 
     Finally, the exposure can be repaired.  Create an instance of the task and run it.  The exposure is modified in place.
@@ -161,16 +163,15 @@ class RepairTask(pipeBase.Task):
     def run(self, exposure, defects=None, keepCRs=None):
         """!Repair an Exposure's defects and cosmic rays
 
-        \param[in] exposure lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.  Modified in place.
+        \param[in, out] exposure lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.  Modified in place.
         \param[in] defects  an lsst.meas.algorithms.DefectListT object.  If None, do no defect correction.
         \param[in] keepCRs  don't interpolate over the CR pixels (defer to RepairConfig if None)
-        \return None -- Exposure is modified in place.
 
         \throws AssertionError with the following strings:
 
         <DL>
           <DT> No exposure provided
-          <DD> The object provided as exposure evaulates to False
+          <DD> The object provided as exposure evaluates to False
           <DT> No PSF provided
           <DD> The Exposure has no associated Psf
         </DL>
