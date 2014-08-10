@@ -21,13 +21,33 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+"""
+Test the basic mechanics of coaddition, coadd processing, and forced photometry.
+
+In this test, we build a mock calexps using perfectly knowns WCSs, with the only sources
+being stars created from a perfectly known PSF, then coadd them, process the coadd (using
+the new measurement framework in meas_base), and then run forced photometry (again, using
+the new forced measurement tasks in meas_base).
+
+We do not check that the results of this processing is exactly what we'd expect, except in
+some cases where it's easy and/or particularly important to do so (e.g. CoaddPsf); we mostly
+just check that everything runs, and that the results make enough sense to let us proceed
+to the next step.
+
+NOTE: if this test fails with what looks like a failure to load a FITS file, try changing
+the REUSE_DATAREPO variable below to False, as sometimes this error message indicates a
+different problem that's revealed when we're not trying to cache the mock data between
+tests (but set REUSE_DATAREPO back to True when done debugging, or this test will be very
+slow).
+"""
+
 import unittest
 import numpy
 import shutil
 import os
 import sys
 
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 import lsst.afw.math
 import lsst.afw.geom
 import lsst.afw.image
@@ -36,35 +56,67 @@ import lsst.meas.algorithms
 import lsst.pipe.tasks.mocks
 import lsst.daf.persistence
 
+try:
+    import lsst.meas.base
+except ImportError:
+    print "meas_base could not be imported; skipping this test"
+    sys.exit(0)
+
+from lsst.pipe.tasks.processCoadd import ProcessCoaddTask
+
 REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
 CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
-DATAREPO_ROOT = "testCoaddInputs-data"
+DATAREPO_ROOT = "testCoadds-data"
 
-class CoaddInputsTestCase(unittest.TestCase):
-    """A test case for CoaddInputsTask."""
-
-    def assertClose(self, a, b, rtol=1E-5, atol=1E-8):
-        self.assert_(numpy.allclose(a, b, rtol=rtol, atol=atol), "\n%s\n!=\n%s" % (a, b))
-
-    def assertNotClose(self, a, b, rtol=1E-5, atol=1E-8):
-        self.assert_(not numpy.allclose(a, b, rtol=rtol, atol=atol), "\n%s\n==\n%s" % (a, b))
+class CoaddsTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):
-        self.task = lsst.pipe.tasks.mocks.MockCoaddTask()
+
+        # Create a task that creates simulated images and builds a coadd from them
+        self.mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
+
+        # Create an instance of ProcessCoaddTask to measure on the coadd
+        # There's no noise in these images, so we set a direct-value threshold,
+        # and since we already have a perfect Wcs/Psf, we don't calibrate.
+        processConfig = ProcessCoaddTask.ConfigClass()
+        processConfig.measurement.retarget(lsst.meas.base.SingleFrameMeasurementTask)
+        processConfig.doCalibrate = False
+        processConfig.detection.thresholdType = "value"
+        processConfig.detection.thresholdValue = 0.01
+        processConfig.doWriteSourceMatches = False
+        self.processTask = ProcessCoaddTask(config=processConfig)
+
         if REUSE_DATAREPO and os.path.exists(os.path.join(DATAREPO_ROOT, "_mapper")):
             self.butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)
         else:
             self.butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
 
-            self.task.buildAllInputs(self.butler)
-            self.task.buildCoadd(self.butler)
-            self.task.buildMockCoadd(self.butler)
+            self.mocksTask.buildAllInputs(self.butler)
+            self.mocksTask.buildCoadd(self.butler)
+            self.mocksTask.buildMockCoadd(self.butler)
+            self.processTask.writeSchemas(self.butler)
 
     def tearDown(self):
         if CLEANUP_DATAREPO and not REUSE_DATAREPO:
             shutil.rmtree(DATAREPO_ROOT)
-        del self.task
+        del self.mocksTask
+        del self.processTask
         del self.butler
+
+    def runTaskOnPatches(self, task, tract=0):
+        skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
+        tractInfo = skyMap[tract]
+        for dataRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+            task.run(dataRef)
+
+    def runTaskOnCcds(self, task, tract=0):
+        catalog = self.butler.get("observations", tract=tract, immediate=True)
+        visitKey = catalog.getSchema().find("visit").key
+        ccdKey = catalog.getSchema().find("ccd").key
+        for record in catalog:
+            dataRef = self.butler.dataRef("forced_src", tract=tract, visit=record.getI(visitKey),
+                                          ccd=record.getI(ccdKey))
+            task.run(dataRef)
 
     def getObsDict(self, tract=0):
         catalog = self.butler.get("observations", tract=tract, immediate=True)
@@ -91,13 +143,13 @@ class CoaddInputsTestCase(unittest.TestCase):
                 self.assertEqual(aParam, bParam)
 
     def testTempExpInputs(self, tract=0):
-        skyMap = self.butler.get(self.task.config.coaddName + "Coadd_skyMap", immediate=True)
+        skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
         for visit, obsVisitDict in self.getObsDict(tract).iteritems():
             foundOneTempExp = False
-            for patchRef in self.task.iterPatchRefs(self.butler, tractInfo):
+            for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
                 try:
-                    tempExp = patchRef.get(self.task.config.coaddName + "Coadd_tempExp", visit=visit,
+                    tempExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd_tempExp", visit=visit,
                                            immediate=True)
                     foundOneTempExp = True
                 except:
@@ -120,11 +172,11 @@ class CoaddInputsTestCase(unittest.TestCase):
             self.assert_(foundOneTempExp)
 
     def testCoaddInputs(self, tract=0):
-        skyMap = self.butler.get(self.task.config.coaddName + "Coadd_skyMap", immediate=True)
+        skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
         obsCatalog = self.butler.get("observations", tract=tract, immediate=True)
-        for patchRef in self.task.iterPatchRefs(self.butler, tractInfo):
-            coaddExp = patchRef.get(self.task.config.coaddName + "Coadd", immediate=True)
+        for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+            coaddExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd", immediate=True)
             self.assertEqual(tractInfo.getWcs(), coaddExp.getWcs())
             coaddInputs = coaddExp.getInfo().getCoaddInputs()
             try:
@@ -147,10 +199,10 @@ class CoaddInputsTestCase(unittest.TestCase):
                 self.assert_(nCcds <= 2)
 
     def testPsfInstallation(self, tract=0):
-        skyMap = self.butler.get(self.task.config.coaddName + "Coadd_skyMap", immediate=True)
+        skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
-        for patchRef in self.task.iterPatchRefs(self.butler, tractInfo):
-            coaddExp = patchRef.get(self.task.config.coaddName + "Coadd", immediate=True)
+        for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+            coaddExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd", immediate=True)
             ccdCat = coaddExp.getInfo().getCoaddInputs().ccds
             savedPsf = lsst.meas.algorithms.CoaddPsf.swigConvert(coaddExp.getPsf())
             newPsf = lsst.meas.algorithms.CoaddPsf(ccdCat, coaddExp.getWcs())
@@ -165,7 +217,7 @@ class CoaddInputsTestCase(unittest.TestCase):
                 self.assertEqual(newPsf.getBBox(n), record.getBBox())
 
     def testCoaddPsf(self, tract=0):
-        skyMap = self.butler.get(self.task.config.coaddName + "Coadd_skyMap", immediate=True)
+        skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
         # Start by finding objects that never appeared on the edge of an image
         simSrcCat = self.butler.get("simsrc", tract=tract, immediate=True)
@@ -191,8 +243,8 @@ class CoaddInputsTestCase(unittest.TestCase):
         truthCatalog = self.butler.get("truth", tract=tract, immediate=True)
         truthCatalog.sort()
         nTested = 0
-        for patchRef in self.task.iterPatchRefs(self.butler, tractInfo):
-            coaddExp = patchRef.get(self.task.config.coaddName + "Coadd", immediate=True)
+        for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+            coaddExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd", immediate=True)
             coaddWcs = coaddExp.getWcs()
             coaddPsf = coaddExp.getPsf()
             coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox(lsst.afw.image.PARENT))
@@ -221,15 +273,29 @@ class CoaddInputsTestCase(unittest.TestCase):
             print ("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
                    "first try running the test again)")
 
+    def testProcessForcedCoaddTask(self):
+        self.runTaskOnPatches(self.processTask)
+        config = lsst.meas.base.ProcessForcedCoaddConfig()
+        config.references.filter = 'r'
+        task = lsst.meas.base.ProcessForcedCoaddTask(config=config, butler=self.butler)
+        self.runTaskOnPatches(task)
+
+    def testProcessForcedCcdTask(self):
+        self.runTaskOnPatches(self.processTask)
+        config = lsst.meas.base.ProcessForcedCcdConfig()
+        config.references.filter = 'r'
+        task = lsst.meas.base.ProcessForcedCcdTask(config=config, butler=self.butler)
+        self.runTaskOnCcds(task)
+
 def suite():
-    utilsTests.init()
+    lsst.utils.tests.init()
     suites = []
-    suites += unittest.makeSuite(CoaddInputsTestCase)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
+    suites += unittest.makeSuite(CoaddsTestCase)
+    suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
     return unittest.TestSuite(suites)
 
 def run(shouldExit=False):
-    status = utilsTests.run(suite(), False)
+    status = lsst.utils.tests.run(suite(), False)
     if CLEANUP_DATAREPO and os.path.exists(DATAREPO_ROOT):
         shutil.rmtree(DATAREPO_ROOT)
     if shouldExit:

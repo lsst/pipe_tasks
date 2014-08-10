@@ -113,8 +113,8 @@ class SimpleCatalogPersistenceType(CatalogPersistenceType):
     cpp = "SimpleCatalog"
 
 class SourceCatalogPersistenceType(SimpleCatalogPersistenceType):
-    python = "lsst.afw.table.SimpleCatalog"
-    cpp = "SimpleCatalog"
+    python = "lsst.afw.table.SourceCatalog"
+    cpp = "SourceCatalog"
 
 class ExposureCatalogPersistenceType(CatalogPersistenceType):
     python = "lsst.afw.table.ExposureCatalog"
@@ -151,7 +151,7 @@ class RawMapping(SimpleMapping):
     def query(self, index, level, format, dataId):
         results = []
         visit = dataId.get('visit', None)
-        dictList = self.index[level][visit]
+        dictList = index[level][visit]
         ccd = dataId.get('ccd', None)
         for d in dictList.values():
             if ccd is not None and d['ccd'] != ccd:
@@ -167,9 +167,15 @@ class SkyMapping(SimpleMapping):
 
 class TempExpMapping(SimpleMapping):
     """Mapping for CoaddTempExp datasets."""
-    
+
     template = "{dataset}-{tract:02d}-{patch}-{visit:04d}{ext}"
     keys = dict(tract=int, patch=str, visit=int)
+
+class ForcedSrcMapping(RawMapping):
+    """Mapping for forced_src datasets."""
+
+    template = "{dataset}-{tract:02d}-{visit:04d}-{ccd:01d}{ext}"
+    keys = dict(tract=int, ccd=int, visit=int)
 
 class MapperMeta(type):
     """Metaclass for SimpleMapper that creates map_ and query_ methods for everything found in the
@@ -203,7 +209,7 @@ class MapperMeta(type):
 class SimpleMapper(lsst.daf.persistence.Mapper):
     """
     An extremely simple mapper for an imaginary camera for use in integration tests.
-    
+
     As SimpleMapper does not inherit from daf.butlerUtils.CameraMapper, it does not
     use a policy file to set mappings or a registry; all the information is here
     (in the map_* and query_* methods).
@@ -216,6 +222,9 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
 
     mappings = dict(
         calexp = RawMapping(ExposurePersistenceType),
+        forced_src = ForcedSrcMapping(SourceCatalogPersistenceType),
+        forced_src_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                          template="{dataset}{ext}", keys={}),
         truth = SimpleMapping(SimpleCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
                               keys={"tract":int}),
         simsrc = RawMapping(SimpleCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
@@ -224,8 +233,21 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
                                      keys={"tract":int}),
         ccdExposureId = RawMapping(BypassPersistenceType),
         ccdExposureId_bits = SimpleMapping(BypassPersistenceType),
+        deepCoaddId = SkyMapping(BypassPersistenceType),
+        deepCoaddId_bits = SimpleMapping(BypassPersistenceType),
         deepCoadd_skyMap = SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
         deepCoadd = SkyMapping(ExposurePersistenceType),
+        deepCoadd_calexp = SkyMapping(ExposurePersistenceType),
+        deepCoadd_calexpBackground = SkyMapping(CatalogPersistenceType),
+        deepCoadd_icSrc = SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_icSrc_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                               template="{dataset}{ext}", keys={}),
+        deepCoadd_src = SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_src_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                             template="{dataset}{ext}", keys={}),
+        deepCoadd_forced_src = SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_forced_src_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                                    template="{dataset}{ext}", keys={}),
         deepCoadd_mock = SkyMapping(ExposurePersistenceType),
         deepCoadd_tempExp = TempExpMapping(ExposurePersistenceType),
         deepCoadd_tempExp_mock = TempExpMapping(ExposurePersistenceType),
@@ -294,6 +316,18 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
     def _computeCcdExposureId(self, dataId):
         return long(dataId["visit"]) * 10 + long(dataId["ccd"])
 
+    def _computeCoaddId(self, dataId):
+        # Note: for real IDs, we'd want to include filter here, but it doesn't actually matter
+        # for any of the tests we've done so far, which all assume filter='r'
+        tract = long(dataId['tract'])
+        if tract < 0 or tract >= 128:
+            raise RuntimeError('tract not in range [0,128)')
+        patchX, patchY = map(int, dataId['patch'].split(','))
+        for p in (patchX, patchY):
+            if p < 0 or p >= 2**13:
+                raise RuntimeError('patch component not in range [0, 8192)')
+        return (tract * 2**13 + patchX) * 2**13 + patchY
+
     def splitCcdExposureId(ccdExposureId):
         return dict(visit=(long(ccdExposureId) // 10), ccd=(long(ccdExposureId) % 10))
 
@@ -302,6 +336,12 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
 
     def bypass_ccdExposureId_bits(self, datasetType, pythonType, location, dataId):
         return 32
+
+    def bypass_deepCoaddId(self, datasetType, pythonType, location, dataId):
+        return self._computeCoaddId(dataId)
+
+    def bypass_deepCoaddId_bits(self, datasetType, pythonType, location, dataId):
+        return 1 + 7 + 13*2 + 3
 
 def makeSimpleCamera(
     nX, nY,
