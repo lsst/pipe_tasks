@@ -133,10 +133,9 @@ class ProcessCoaddTask(ProcessImageTask):
         
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=dataRef)
 
-        if self.config.doCalibrate:
-            coadd = dataRef.get(self.config.coaddName + "Coadd")
-            if self.config.doScaleVariance:
-                self.scaleVariance(coadd)
+        coadd = dataRef.get(self.config.coaddName + "Coadd")
+        if self.config.doScaleVariance:
+            self.scaleVariance(coadd)
 
         # delegate most of the work to ProcessImageTask
         result = self.process(dataRef, coadd, enableWriteSources=False)
