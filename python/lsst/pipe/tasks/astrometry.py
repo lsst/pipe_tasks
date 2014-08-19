@@ -137,11 +137,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     ConfigClass = AstrometryConfig
 
     # Need init as well as __init__ because "\copydoc __init__" fails (doxygen bug 732264)
-    def __init__(self, schema, tableVersion=0, **kwds):
+    def __init__(self, schema, **kwds):
         """!Create the astrometric calibration task.  Most arguments are simply passed onto pipe.base.Task.
 
         \param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
-        \param tableVersion Used in meas.base transition.  0 => old field names
         \param **kwds keyword arguments to be passed to the lsst.pipe.base.task.Task constructor
 
         A centroid field "centroid.distorted" (used internally during the Task's operation)
@@ -149,8 +148,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         pipeBase.Task.__init__(self, **kwds)
 
-        self.tableVersion = tableVersion
-        if tableVersion == 0:
+        if schema.getVersion() == 0:
             self.distortedName = "centroid.distorted"
             self.centroidKey = schema.addField(self.distortedName, type="PointD",
                                            doc="centroid distorted for astrometry solver")
