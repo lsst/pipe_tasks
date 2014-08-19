@@ -116,7 +116,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         for key in self.calibrate.getCalibKeys():
             self.schemaMapper.addMapping(key)
         self.schema = self.schemaMapper.getOutputSchema()
-        self.schema.setVersion(tableVersions)
+        self.schema.setVersion(tableVersion)
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
