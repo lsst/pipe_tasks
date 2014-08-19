@@ -332,14 +332,15 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
         self.tableVersion = tableVersion
+        self.schema1.setVersion(tableVersion)
         self.makeSubtask("repair")
-        self.makeSubtask("detection", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("detection", schema=self.schema1)
         beginInitial = self.schema1.getFieldCount()
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
-        self.makeSubtask("measurePsf", schema=self.schema1, tableVersion=tableVersion)
-        self.makeSubtask("astrometry", schema=self.schema1, tableVersion=tableVersion)
-        self.makeSubtask("photocal", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("measurePsf", schema=self.schema1)
+        self.makeSubtask("astrometry", schema=self.schema1)
+        self.makeSubtask("photocal", schema=self.schema1)
 
         # create a schemaMapper to map schema1 into schema2
         self.schemaMapper = afwTable.SchemaMapper(self.schema1)
@@ -362,6 +363,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         # the final schema is the same as the schemaMapper output
         self.schema = self.schemaMapper.getOutputSchema()
+        self.schema.setVersion(tableVersion)
 
     def getCalibKeys(self):
         """!
@@ -416,7 +418,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # Make both tables from the same detRet, since detRet can only be run once
         table1 = afwTable.SourceTable.make(self.schema1, idFactory)
         table1.setMetadata(self.algMetadata)
-        table1.setVersion(self.tableVersion)
         detRet = self.detection.makeSourceCatalog(table1, exposure)
         sources1 = detRet.sources
 
@@ -468,7 +469,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             # the schemaMapper will copy the footprints and ids, which is all we need.
             table2 = afwTable.SourceTable.make(self.schema, idFactory)
             table2.setMetadata(self.algMetadata)
-            table2.setVersion(self.tableVersion)
             sources = afwTable.SourceCatalog(table2)
             # transfer to a second table
             sources.extend(sources1, self.schemaMapper)

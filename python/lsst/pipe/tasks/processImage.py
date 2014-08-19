@@ -116,11 +116,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         for key in self.calibrate.getCalibKeys():
             self.schemaMapper.addMapping(key)
         self.schema = self.schemaMapper.getOutputSchema()
+        self.schema.setVersion(tableVersions)
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
-            self.makeSubtask("detection", schema=self.schema, tableVersion=tableVersion)
+            self.makeSubtask("detection", schema=self.schema)
         if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema, tableVersion=tableVersion)
+            self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
@@ -174,7 +175,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             detections = self.detection.run(table, calExposure)
-            table.setVersion(self.measurement.tableVersion)
             sources = detections.sources
             fpSets = detections.fpSets
             if fpSets.background:           
