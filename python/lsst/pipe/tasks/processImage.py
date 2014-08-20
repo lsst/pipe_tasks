@@ -71,8 +71,11 @@ class ProcessImageConfig(pexConfig.Config):
         if self.doMeasurement:
             if not self.doDetection:
                 raise ValueError("Cannot run source measurement without source detection.")
-            if "skycoord" not in self.measurement.algorithms.names and "base_SkyCoord" not in self.measurement.algorithms.names:
+            if ("skycoord" not in self.measurement.algorithms.names
+                and "base_SkyCoord" not in self.measurement.algorithms.names):
                 raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
+            if self.measurement.target.tableVersion != self.calibrate.measurement.tableVersion:
+                raise ValueError("measurement subtask tableVersion must match those in calibrate subtask")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
@@ -94,9 +97,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
-        #  Do this task using whatever tableVersion is set for the measurement task 
         tableVersion = self.config.measurement.target.tableVersion
-        self.makeSubtask("calibrate", tableVersion=tableVersion)
+        self.makeSubtask("calibrate")
 
         # Setup our schema by starting with fields we want to propagate from icSrc.
         calibSchema = self.calibrate.schema

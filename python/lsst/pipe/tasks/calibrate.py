@@ -108,6 +108,8 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.measurement.target.tableVersion != self.initialMeasurement.target.tableVersion:
+            raise ValueError("measurement and initialMeasurement subtasks must have the same tableVersion")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
@@ -315,11 +317,10 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, tableVersion=0, **kwargs):
+    def __init__(self, **kwargs):
         """!
         Create the calibration task
 
-        \param tableVersion Used in meas.base transition.  0 => old field names
         \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
         pipeBase.Task.__init__(self, **kwargs)
@@ -331,8 +332,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.schema1 = afwTable.SourceTable.makeMinimalSchema()
         minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
-        self.tableVersion = tableVersion
-        self.schema1.setVersion(tableVersion)
+        self.tableVersion = self.config.measurement.target.tableVersion
+        self.schema1.setVersion(self.tableVersion)
         self.makeSubtask("repair")
         self.makeSubtask("detection", schema=self.schema1)
         beginInitial = self.schema1.getFieldCount()
@@ -363,7 +364,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         # the final schema is the same as the schemaMapper output
         self.schema = self.schemaMapper.getOutputSchema()
-        self.schema.setVersion(tableVersion)
 
     def getCalibKeys(self):
         """!
