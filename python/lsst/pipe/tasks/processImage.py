@@ -74,7 +74,7 @@ class ProcessImageConfig(pexConfig.Config):
             if ("skycoord" not in self.measurement.algorithms.names
                 and "base_SkyCoord" not in self.measurement.algorithms.names):
                 raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
-            if self.measurement.target.tableVersion != self.calibrate.measurement.tableVersion:
+            if self.measurement.target.tableVersion != self.calibrate.measurement.target.tableVersion:
                 raise ValueError("measurement subtask tableVersion must match those in calibrate subtask")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
