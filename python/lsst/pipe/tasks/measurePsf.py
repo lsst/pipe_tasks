@@ -213,11 +213,10 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
     ConfigClass = MeasurePsfConfig
     _DefaultName = "measurePsf"
 
-    def __init__(self, schema=None, tableVersion=0, **kwargs):
+    def __init__(self, schema=None, **kwargs):
         """!Create the detection task.  Most arguments are simply passed onto pipe.base.Task.
 
         \param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
-        \param tableVersion Used in meas.base transition.  0 => old field names
         \param **kwargs Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
 
         If schema is not None, 'calib.psf.candidate' and 'calib.psf.used' fields will be added to
@@ -229,7 +228,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
 
         pipeBase.Task.__init__(self, **kwargs)
         if schema is not None:
-            if tableVersion == 0:
+            if schema.getVersion() == 0:
                 self.candidateKey = schema.addField(
                     "calib.psf.candidate", type="Flag",
                     doc=("Flag set if the source was a candidate for PSF determination, "

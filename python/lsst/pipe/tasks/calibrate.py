@@ -108,6 +108,8 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.measurement.target.tableVersion != self.initialMeasurement.target.tableVersion:
+            raise ValueError("measurement and initialMeasurement subtasks must have the same tableVersion")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
@@ -315,11 +317,10 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, tableVersion=0, **kwargs):
+    def __init__(self, **kwargs):
         """!
         Create the calibration task
 
-        \param tableVersion Used in meas.base transition.  0 => old field names
         \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
         pipeBase.Task.__init__(self, **kwargs)
@@ -331,15 +332,16 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.schema1 = afwTable.SourceTable.makeMinimalSchema()
         minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
-        self.tableVersion = tableVersion
+        self.tableVersion = self.config.measurement.target.tableVersion
+        self.schema1.setVersion(self.tableVersion)
         self.makeSubtask("repair")
-        self.makeSubtask("detection", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("detection", schema=self.schema1)
         beginInitial = self.schema1.getFieldCount()
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
-        self.makeSubtask("measurePsf", schema=self.schema1, tableVersion=tableVersion)
-        self.makeSubtask("astrometry", schema=self.schema1, tableVersion=tableVersion)
-        self.makeSubtask("photocal", schema=self.schema1, tableVersion=tableVersion)
+        self.makeSubtask("measurePsf", schema=self.schema1)
+        self.makeSubtask("astrometry", schema=self.schema1)
+        self.makeSubtask("photocal", schema=self.schema1)
 
         # create a schemaMapper to map schema1 into schema2
         self.schemaMapper = afwTable.SchemaMapper(self.schema1)
@@ -416,7 +418,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # Make both tables from the same detRet, since detRet can only be run once
         table1 = afwTable.SourceTable.make(self.schema1, idFactory)
         table1.setMetadata(self.algMetadata)
-        table1.setVersion(self.tableVersion)
         detRet = self.detection.makeSourceCatalog(table1, exposure)
         sources1 = detRet.sources
 
@@ -468,7 +469,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             # the schemaMapper will copy the footprints and ids, which is all we need.
             table2 = afwTable.SourceTable.make(self.schema, idFactory)
             table2.setMetadata(self.algMetadata)
-            table2.setVersion(self.tableVersion)
             sources = afwTable.SourceCatalog(table2)
             # transfer to a second table
             sources.extend(sources1, self.schemaMapper)
