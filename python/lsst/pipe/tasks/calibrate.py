@@ -174,18 +174,22 @@ class CalibrateTask(pipeBase.Task):
         icSrc to src by ProcessCcdTask.
         """
         if self.config.doPsf:
-            return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+            if self.measurePsf.config.reserveFraction > 0:
+                return (self.measurePsf.candidateKey, self.measurePsf.usedKey, self.measurePsf.reservedKey)
+            else:
+                return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
         else:
             return ()
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None, idFactory=None):
+    def run(self, exposure, defects=None, idFactory=None, expId=0):
         """Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
 
         @param[in,out]  exposure   Exposure to calibrate; measured Psf, Wcs, ApCorr, Calib, etc. will
                                    be installed there as well
         @param[in]      defects    List of defects on exposure
         @param[in]      idFactory  afw.table.IdFactory to use for source catalog.
+        @param[in]      expId      Exposure id used for random number generation.
         @return a pipeBase.Struct with fields:
         - backgrounds: A list of background models applied in the calibration phase
         - psf: Point spread function
@@ -250,7 +254,7 @@ class CalibrateTask(pipeBase.Task):
                 except Exception, e:
                     self.log.warn("Failed to determine initial photometric zero-point: %s" % e)
 
-            psfRet = self.measurePsf.run(exposure, sources, matches=matches)
+            psfRet = self.measurePsf.run(exposure, sources, expId=expId, matches=matches)
             cellSet = psfRet.cellSet
             psf = psfRet.psf
         elif exposure.hasPsf():

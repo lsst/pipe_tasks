@@ -146,6 +146,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         - sources: detected source if config.doPhotometry, else None
         """
         idFactory = self.makeIdFactory(dataRef)
+        expId = self.getExpId(dataRef)
 
         # initialize outputs
         calExposure = inputExposure
@@ -153,7 +154,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         sources = None
         backgrounds = afwMath.BackgroundList()
         if self.config.doCalibrate:
-            calib = self.calibrate.run(inputExposure, idFactory=idFactory)
+            calib = self.calibrate.run(inputExposure, idFactory=idFactory, expId=expId)
             calExposure = calib.exposure
             if self.config.doWriteCalibrate:
                 dataRef.put(calib.sources, self.dataPrefix + "icSrc")
@@ -323,3 +324,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         """
         mi = exp.getMaskedImage()
         mi += backgrounds.getImage()
+
+    def getExpId(self, dataRef):
+        raise NotImplementedError()
+
