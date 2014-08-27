@@ -138,7 +138,8 @@ class ProcessCcdTask(ProcessImageTask):
         backgrounds = afwMath.BackgroundList()
         if self.config.doCalibrate:
             idFactory = self.makeIdFactory(sensorRef)
-            calib = self.calibrate.run(postIsrExposure, idFactory=idFactory)
+            expId = self.getExposureId(sensorRef)
+            calib = self.calibrate.run(postIsrExposure, idFactory=idFactory, expId=expId)
             calExposure = calib.exposure
             if self.config.doWriteCalibrate:
                 sensorRef.put(calib.sources, self.dataPrefix + "icSrc")

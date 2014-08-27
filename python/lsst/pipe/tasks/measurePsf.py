@@ -19,6 +19,8 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import random
+
 import lsst.afw.math as afwMath
 import lsst.afw.display.ds9 as ds9
 import lsst.meas.algorithms as measAlg
@@ -30,6 +32,16 @@ import lsst.afw.table as afwTable
 class MeasurePsfConfig(pexConfig.Config):
     starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
+    reserveFraction = pexConfig.Field(
+        dtype = float,
+        doc = "Fraction PSF candidates to reserve from fitting",
+        default = -1.0,
+    )
+    reserveSeed = pexConfig.Field(
+        dtype = int,
+        doc = "This number will be multplied by the exposure ID to set the random seed for reserving candidates",
+        default = 1,
+    )
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -234,6 +246,12 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
                 doc=("Flag set if the source was actually used for PSF determination, "
                      "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
             )
+            if self.config.reserveFraction > 0:
+                self.reservedKey = schema.addField(
+                    "calib_psfReserved", type="Flag",
+                    doc=("Flag set if the source was selected as a PSF candidate, but was "
+                         "reserved from the PSF fitting."))
+                
         else:
             self.candidateKey = None
             self.usedKey = None
@@ -241,14 +259,14 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         self.psfDeterminer = self.config.psfDeterminer.apply()
 
     @pipeBase.timeMethod
-    def run(self, exposure, sources, matches=None):
+    def run(self, exposure, sources, expId=0, matches=None):
         """!Measure the PSF
 
         \param[in,out]   exposure      Exposure to process; measured PSF will be added.
         \param[in,out]   sources       Measured sources on exposure; flag fields will be set marking
                                        stars chosen by the star selector and the PSF determiner if a schema
                                        was passed to the task constructor.
-
+        \param[in]       expId         Exposure id used for generating random seed.
         \param[in] matches a list of lsst.afw.table.ReferenceMatch objects (\em i.e. of lsst.afw.table.Match
         			       with \c first being of type lsst.afw.table.SimpleRecord and \c second
         			       type lsst.afw.table.SourceRecord --- the reference object and detected
@@ -275,12 +293,29 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         # Run star selector
         #
         psfCandidateList = self.starSelector.selectStars(exposure, sources, matches=matches)
+        reserveList = []
+        
+        if self.config.reserveFraction > 0 :
+            random.seed(self.config.reserveSeed*expId)
+            reserveList = random.sample(psfCandidateList, 
+                                        int((self.config.reserveFraction)*len(psfCandidateList)))
+
+            for cand in reserveList:
+                psfCandidateList.remove(cand)
+
+            if reserveList and self.reservedKey is not None:
+                for cand in reserveList:
+                    source = cand.getSource()
+                    source.set(self.reservedKey,True)
+            
         if psfCandidateList and self.candidateKey is not None:
             for cand in psfCandidateList:
                 source = cand.getSource()
                 source.set(self.candidateKey, True)
 
         self.log.info("PSF star selector found %d candidates" % len(psfCandidateList))
+        if self.config.reserveFraction > 0 :
+            self.log.info("Reserved %d candidates from the fitting" % len(reserveList))
 
         if display:
             frame = display
