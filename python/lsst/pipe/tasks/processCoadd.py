@@ -99,6 +99,8 @@ class ProcessCoaddTask(ProcessImageTask):
         expId = long(dataRef.get(self.config.coaddName + "CoaddId"))
         return afwTable.IdFactory.makeSource(expId, 64 - expBits)
         
+    def getExpId(self, dataRef):
+        return dataRef.get(self.config.coaddName+"CoaddId", immediate=True)
 
     @pipeBase.timeMethod
     def run(self, dataRef):
