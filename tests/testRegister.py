@@ -94,6 +94,7 @@ class RegisterTestCase(unittest.TestCase):
 
         # Generate catalogues
         schema = afwTable.SourceTable.makeMinimalSchema()
+        schema.setVersion(0)   
         centroidKey = schema.addField("center", type="PointD")
 
         def newCatalog():

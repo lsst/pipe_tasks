@@ -60,6 +60,7 @@ class TestForceWcs(unittest.TestCase):
         print 'Reading image', fn
         exposure = afwImage.ExposureF(fn)
         schema = afwTable.SourceTable.makeMinimalSchema()
+        schema.setVersion(0)
         idFactory = afwTable.IdFactory.makeSimple()
 
         dconf = SourceDetectionConfig()
