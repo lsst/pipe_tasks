@@ -241,10 +241,11 @@ class RepairTask(pipeBase.Task):
         # measAlg.estimateBackground().
         if nx*ny <= 1:
             bg = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.MEDIAN).getValue()
+            bkgd = None
         else:
             exposure = exposure.Factory(exposure, True)
-            bg, exposure = measAlg.estimateBackground(exposure, self.config.cosmicray.background,
-                                                      subtract=True)
+            bkgd, exposure = measAlg.estimateBackground(exposure, self.config.cosmicray.background,
+                                                        subtract=True)
             bg = 0.0
 
         if keepCRs is None:
@@ -252,6 +253,15 @@ class RepairTask(pipeBase.Task):
         try:
             crs = measAlg.findCosmicRays(exposure.getMaskedImage(),
                                          psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+            if bkgd:
+                # Add back background image
+                img = exposure.getMaskedImage().getImage()
+                img += bkgd.getImageF()
+                del img
+                # Replace original image with CR subtracted image
+                mimg = exposure0.getMaskedImage()
+                mimg <<= exposure.getMaskedImage()
+                del mimg
         except Exception:
             if display:
                 import lsst.afw.display.ds9 as ds9
