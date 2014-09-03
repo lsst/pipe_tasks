@@ -273,18 +273,18 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             print ("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
                    "first try running the test again)")
 
-    def testProcessForcedCoaddTask(self):
+    def testForcedPhotCoaddTask(self):
         self.runTaskOnPatches(self.processTask)
-        config = lsst.meas.base.ProcessForcedCoaddConfig()
+        config = lsst.meas.base.ForcedPhotCoaddConfig()
         config.references.filter = 'r'
-        task = lsst.meas.base.ProcessForcedCoaddTask(config=config, butler=self.butler)
+        task = lsst.meas.base.ForcedPhotCoaddTask(config=config, butler=self.butler)
         self.runTaskOnPatches(task)
 
-    def testProcessForcedCcdTask(self):
+    def testForcedPhotCcdTask(self):
         self.runTaskOnPatches(self.processTask)
-        config = lsst.meas.base.ProcessForcedCcdConfig()
+        config = lsst.meas.base.ForcedPhotCcdConfig()
         config.references.filter = 'r'
-        task = lsst.meas.base.ProcessForcedCcdTask(config=config, butler=self.butler)
+        task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=self.butler)
         self.runTaskOnCcds(task)
 
 def suite():
