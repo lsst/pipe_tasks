@@ -46,6 +46,7 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         self.calibrate.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
         self.calibrate.doPsf = False
+        self.calibrate.doMeasureApCorr = False
         self.calibrate.astrometry.forceKnownWcs = True
         self.calibrate.astrometry.solver.calculateSip = False
         self.calibrate.repair.doInterpolate = False
