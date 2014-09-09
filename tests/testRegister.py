@@ -128,12 +128,12 @@ class RegisterTestCase(unittest.TestCase):
         """Run the task on the data"""
         config.sipOrder = 2
         task = RegisterTask(name="register", config=config)
-        results = task.run(inData.inputSources, inData.inputExp.getWcs(), inData.inputExp.getBBox(),
-                           inData.templateSources)
+        results = task.run(inData.inputSources, inData.inputExp.getWcs(),
+            inData.inputExp.getBBox(afwImage.LOCAL), inData.templateSources)
         warpedExp = task.warpExposure(inData.inputExp, results.wcs, inData.templateExp.getWcs(),
-                                      inData.templateExp.getBBox())
+                                      inData.templateExp.getBBox(afwImage.LOCAL))
         warpedSources = task.warpSources(inData.inputSources, results.wcs, inData.templateExp.getWcs(),
-                                         inData.templateExp.getBBox())
+                                         inData.templateExp.getBBox(afwImage.LOCAL))
 
         self.showImage(warpedExp, warpedSources, "Aligned", 3)
         return Struct(warpedExp=warpedExp, warpedSources=warpedSources, matches=results.matches,

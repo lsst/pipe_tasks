@@ -7,6 +7,7 @@ from lsst.pipe.base import Task, CmdLineTask, ArgumentParser, timeMethod
 
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
 import lsst.meas.algorithms as measAlg
@@ -69,7 +70,7 @@ class ReferencesTask(Task):
         @param exposure    Exposure of interest
         @return Reference catalog with subset
         """
-        box = afwGeom.Box2D(exposure.getBBox())
+        box = afwGeom.Box2D(exposure.getBBox(afwImage.LOCAL))
         wcs = exposure.getWcs()
         subset = afwTable.SourceCatalog(references.table)
         for ref in references:
