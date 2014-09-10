@@ -31,7 +31,7 @@ class MeasurePsfConfig(pexConfig.Config):
     reserveFraction = pexConfig.Field(
         dtype = float,
         doc = "Fraction PSF candidates to reserve from fitting",
-        default = -1.0,
+        default = 0.2,
     )
     reserveSeed = pexConfig.Field(
         dtype = int,
