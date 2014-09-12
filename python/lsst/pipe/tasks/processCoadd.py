@@ -49,6 +49,7 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
     def setDefaults(self):
         ProcessImageTask.ConfigClass.setDefaults(self)
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
         self.detection.returnOriginalFootprints = False
         self.doWriteSourceMatches = True
