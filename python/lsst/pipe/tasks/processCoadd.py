@@ -52,6 +52,7 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         self.calibrate.repair.doInterpolate = False
         self.calibrate.repair.doCosmicRay = False
         self.calibrate.doPhotoCal = False
+        self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
         self.detection.returnOriginalFootprints = False
         self.doWriteSourceMatches = True
