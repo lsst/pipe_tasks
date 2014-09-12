@@ -122,26 +122,26 @@ class MockObjectTask(lsst.pipe.base.Task):
             psfImage = exposure.getPsf().computeImage(center).convertF()
         except:
             return 0
-        psfBBox = psfImage.getBBox(lsst.afw.image.PARENT)
-        overlap = exposure.getBBox(lsst.afw.image.PARENT)
+        psfBBox = psfImage.getBBox()
+        overlap = exposure.getBBox()
         overlap.clip(psfBBox)
         if overlap.isEmpty():
             return 0
         flux = exposure.getCalib().getFlux(record.getD(self.magKey))
         normalization = flux / psfImage.getArray().sum()
         if psfBBox != overlap:
-            psfImage = psfImage.Factory(psfImage, overlap, lsst.afw.image.PARENT)
+            psfImage = psfImage.Factory(psfImage, overlap)
             result = 1
         else:
             result = 2
             if buffer != 0:
                 bufferedBBox = lsst.afw.geom.Box2I(psfBBox)
                 bufferedBBox.grow(buffer)
-                bufferedOverlap = exposure.getBBox(lsst.afw.image.PARENT)
+                bufferedOverlap = exposure.getBBox()
                 bufferedOverlap.clip(bufferedBBox)
                 if bufferedOverlap != bufferedBBox:
                     result = 1
         image = exposure.getMaskedImage().getImage()
-        subImage = image.Factory(image, overlap, lsst.afw.image.PARENT)
+        subImage = image.Factory(image, overlap)
         subImage.scaledPlus(normalization, psfImage)
         return result

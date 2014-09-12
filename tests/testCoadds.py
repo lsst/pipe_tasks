@@ -42,7 +42,6 @@ slow).
 """
 
 import unittest
-import numpy
 import shutil
 import os
 import sys
@@ -159,7 +158,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 self.assertEqual(len(coaddInputs.visits), 1)
                 visitRecord = coaddInputs.visits[0]
                 self.assertEqual(visitRecord.getWcs(), tempExp.getWcs())
-                self.assertEqual(visitRecord.getBBox(), tempExp.getBBox(lsst.afw.image.PARENT))
+                self.assertEqual(visitRecord.getBBox(), tempExp.getBBox())
                 self.assert_(len(coaddInputs.ccds) > 0)
                 ccdKey = coaddInputs.ccds.getSchema().find("ccd").key
                 for ccdRecord in coaddInputs.ccds:
@@ -247,7 +246,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             coaddExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd", immediate=True)
             coaddWcs = coaddExp.getWcs()
             coaddPsf = coaddExp.getPsf()
-            coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox(lsst.afw.image.PARENT))
+            coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox())
             for objectId in pureObjectIds:
                 truthRecord = truthCatalog.find(objectId)
                 position = coaddWcs.skyToPixel(truthRecord.getCoord())
@@ -257,11 +256,11 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                     psfImage = coaddPsf.computeImage(position)
                 except:
                     continue
-                psfImageBBox = psfImage.getBBox(lsst.afw.image.PARENT)
-                if not coaddExp.getBBox(lsst.afw.image.PARENT).contains(psfImageBBox):
+                psfImageBBox = psfImage.getBBox()
+                if not coaddExp.getBBox().contains(psfImageBBox):
                     continue
                 starImage = lsst.afw.image.ImageF(coaddExp.getMaskedImage().getImage(),
-                                                  psfImageBBox, lsst.afw.image.PARENT).convertD()
+                                                  psfImageBBox).convertD()
                 starImage /= starImage.getArray().sum()
                 psfImage /= psfImage.getArray().sum()
                 residuals = lsst.afw.image.ImageD(starImage, True)
