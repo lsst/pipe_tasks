@@ -355,7 +355,12 @@ class IngestTask(Task):
         try:
             outdir = os.path.dirname(outfile)
             if not os.path.isdir(outdir):
-                os.makedirs(outdir)
+                try:
+                    os.makedirs(outdir)
+                except:
+                    # Silently ignore mkdir failures due to race conditions
+                    if not os.path.isdir(outdir):
+                        raise
             if self.config.clobber and os.path.lexists(outfile):
                 os.unlink(outfile)
             if mode == "copy":
