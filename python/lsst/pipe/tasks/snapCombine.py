@@ -22,11 +22,10 @@
 import numpy as num
 import lsst.pex.config as pexConfig
 import lsst.daf.base as dafBase
-import lsst.afw.detection as afwDet
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.pipe.base as pipeBase
-from lsst.coadd.utils import Coadd, addToCoadd, setCoaddEdgeBits
+from lsst.coadd.utils import addToCoadd, setCoaddEdgeBits
 from lsst.ip.diffim import SnapPsfMatchTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 import lsst.meas.algorithms as measAlg
@@ -188,7 +187,7 @@ class SnapCombineTask(pipeBase.Task):
         combinedMi = combinedExp.getMaskedImage()
         combinedMi.set(0)
         
-        weightMap = combinedMi.getImage().Factory(combinedMi.getBBox(afwImage.PARENT))
+        weightMap = combinedMi.getImage().Factory(combinedMi.getBBox())
         weight = 1.0
         badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
         addToCoadd(combinedMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)

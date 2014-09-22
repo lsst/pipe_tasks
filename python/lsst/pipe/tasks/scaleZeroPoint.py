@@ -21,7 +21,6 @@
 #
 import numpy
 import lsst.afw.geom as afwGeom
-import lsst.afw.image as afwMath
 import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -84,7 +83,7 @@ class SpatialImageScaler(ImageScaler):
 
         @param[in,out] image to scale; scale is applied in place
         """
-        scale = self.getInterpImage(maskedImage.getBBox(afwImage.PARENT))
+        scale = self.getInterpImage(maskedImage.getBBox())
         maskedImage *= scale
 
     def getInterpImage(self, bbox):
@@ -251,7 +250,6 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
         """
 
         wcs = exposure.getWcs()
-        bbox = exposure.getBBox(afwImage.PARENT)
 
         fluxMagInfoList = self.selectFluxMag0.run(dataRef.dataId).fluxMagInfoList
 

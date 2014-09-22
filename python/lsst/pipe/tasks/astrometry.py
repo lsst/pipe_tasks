@@ -25,7 +25,6 @@ from contextlib import contextmanager
 import lsst.pex.exceptions
 import lsst.afw.geom as afwGeom
 from lsst.afw.cameraGeom import TAN_PIXELS
-import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.meas.astrom.astrom import Astrometry
@@ -238,7 +237,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 s.set(self.centroidKey, s.getCentroid())
                 s.set(self.centroidErrKey, s.getCentroidErr())
                 s.set(self.centroidFlagKey, s.getCentroidFlag())
-            return exposure.getBBox(afwImage.PARENT)
+            return exposure.getBBox()
 
         # Distort source positions
         self.log.info("Applying distortion correction")
@@ -302,7 +301,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         if not self.config.forceKnownWcs:
             self.log.info("Solving astrometry")
         if bbox is None:
-            bbox = exposure.getBBox(afwImage.PARENT)
+            bbox = exposure.getBBox()
 
         if not self.astrometer:
             self.astrometer = Astrometry(self.config.solver, log=self.log)
@@ -458,7 +457,7 @@ def showAstrometry(exposure, wcs, allMatches, useMatches, frame=0, title=None, p
 
             reply = reply.split()
             if len(reply) > 1:
-                reply, _ = reply[0], reply[1:]
+                reply = reply[0]
             if reply == "p":
                 import pdb;pdb.set_trace()
             elif reply == "q":

@@ -458,7 +458,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
 
         if lsstDebug.Info(__name__).savefig:
-            bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox(afwImage.PARENT))
+            bbox  = afwGeom.Box2D(refExposure.getMaskedImage().getBBox())
             try:
                 self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
             except Exception, e:
@@ -511,7 +511,6 @@ class MatchBackgroundsTask(pipeBase.Task):
             maxdiff = numpy.max(numpy.abs(resids))
             diffnorm = matplotlib.colors.normalize(vmax=maxdiff, vmin= -maxdiff)
             rms = numpy.sqrt(numpy.mean(resids**2))
-            from mpl_toolkits.axes_grid1 import ImageGrid
             fig = plt.figure(1, (8, 6))
             meanDz = numpy.mean(dZ)
             grid = ImageGrid(fig, 111, nrows_ncols = (1, 2), axes_pad=0.1,

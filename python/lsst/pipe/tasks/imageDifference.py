@@ -24,12 +24,10 @@ import math
 import random
 import numpy
 
-import lsst.afw.display.ds9 as ds9
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
-import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
@@ -37,11 +35,9 @@ import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, \
     starSelectorRegistry, PsfAttributes, SingleGaussianPsf
-from lsst.meas.deblender import SourceDeblendTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig
-import lsst.ip.diffim.utils as diUtils
 import lsst.ip.diffim.diffimTools as diffimTools
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
@@ -262,12 +258,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateExposure, templateSources = self.getTemplate(exposure, sensorRef)
 
             # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
-            ctr = afwGeom.Box2D(exposure.getBBox(afwImage.PARENT)).getCenter()
+            ctr = afwGeom.Box2D(exposure.getBBox()).getCenter()
             psfAttr = PsfAttributes(sciencePsf, afwGeom.Point2I(ctr))
             scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
 
             # sigma of PSF of template image before warping
-            ctr = afwGeom.Box2D(templateExposure.getBBox(afwImage.PARENT)).getCenter()
+            ctr = afwGeom.Box2D(templateExposure.getBBox()).getCenter()
             psfAttr = PsfAttributes(templateExposure.getPsf(), afwGeom.Point2I(ctr))
             templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
 
@@ -287,7 +283,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
                 else:
                     # convolve with science exposure's PSF model
-                    preConvPsf = psf
+                    preConvPsf = srcPsf
                 afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
                 exposure.setMaskedImage(destMI)
                 scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
@@ -365,7 +361,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 #
                 wcsResults = self.fitAstrometry(templateSources, templateExposure, selectSources)
                 warpedExp = self.register.warpExposure(templateExposure, wcsResults.wcs,
-                                            exposure.getWcs(), exposure.getBBox(afwImage.PARENT))
+                                            exposure.getWcs(), exposure.getBBox())
                 templateExposure = warpedExp
 
                 # Create debugging outputs on the astrometric
@@ -587,7 +583,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(sipOrder=sipOrder))
         newWcs = astrometer.determineWcs(templateSources, templateExposure).getWcs()
         results = self.register.run(templateSources, newWcs,
-                                    templateExposure.getBBox(afwImage.PARENT), selectSources)
+                                    templateExposure.getBBox(), selectSources)
         return results
 
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
@@ -671,7 +667,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """
         skyMap = sensorRef.get(datasetType=self.config.coaddName + "Coadd_skyMap")
         expWcs = exposure.getWcs()
-        expBoxD = afwGeom.Box2D(exposure.getBBox(afwImage.PARENT))
+        expBoxD = afwGeom.Box2D(exposure.getBBox())
         expBoxD.grow(self.config.templateBorderSize)
         ctrSkyPos = expWcs.pixelToSky(expBoxD.getCenter())
         tractInfo = skyMap.findTract(ctrSkyPos)
@@ -703,16 +699,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         for patchInfo in patchList:
             patchSubBBox = patchInfo.getOuterBBox()
             patchSubBBox.clip(coaddBBox)
-            if patchSubBBox.isEmpty():
-                self.log.info("skip tract=%(tract)s; no overlapping pixels" % patchArgDict)
-                continue
             patchArgDict = dict(
                 datasetType=self.config.coaddName + "Coadd_sub",
                 bbox=patchSubBBox,
-                imageOrigin="PARENT",
                 tract=tractInfo.getId(),
                 patch="%s,%s" % (patchInfo.getIndex()[0], patchInfo.getIndex()[1]),
             )
+            if patchSubBBox.isEmpty():
+                self.log.info("skip tract=%(tract)s; no overlapping pixels" % patchArgDict)
+                continue
             if not sensorRef.datasetExists(**patchArgDict):
                 self.log.warn("%(datasetType)s, tract=%(tract)s, patch=%(patch)s does not exist" \
                                   % patchArgDict)
@@ -721,8 +716,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             nPatchesFound += 1
             self.log.info("Reading patch %s" % patchArgDict)
             coaddPatch = sensorRef.get(patchArgDict, immediate=True)
-            coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(),
-                coaddPatch.getBBox(afwImage.PARENT), afwImage.PARENT)
+            coaddView = afwImage.MaskedImageF(coaddExposure.getMaskedImage(), coaddPatch.getBBox())
             coaddView <<= coaddPatch.getMaskedImage()
             if coaddFilter is None:
                 coaddFilter = coaddPatch.getFilter()
@@ -821,5 +815,5 @@ class Winter2013ImageDifferenceTask(ImageDifferenceTask):
                 source.set(cKey, centroid+offset)
 
         results = self.register.run(templateSources, templateExposure.getWcs(),
-                                    templateExposure.getBBox(afwImage.PARENT), selectSources)
+                                    templateExposure.getBBox(), selectSources)
         return results

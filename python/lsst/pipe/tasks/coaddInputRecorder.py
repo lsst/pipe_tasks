@@ -20,7 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import math
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -99,7 +98,7 @@ class CoaddTempExpInputRecorder(object):
         if calExp is not None:
             record.setPsf(calExp.getPsf())
             record.setWcs(calExp.getWcs())
-            record.setBBox(calExp.getBBox(afwImage.PARENT))
+            record.setBBox(calExp.getBBox())
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
@@ -112,7 +111,7 @@ class CoaddTempExpInputRecorder(object):
         """
         self.visitRecord.setPsf(coaddTempExp.getPsf())
         self.visitRecord.setWcs(coaddTempExp.getWcs())
-        self.visitRecord.setBBox(coaddTempExp.getBBox(afwImage.PARENT))
+        self.visitRecord.setBBox(coaddTempExp.getBBox())
         if self.task.config.saveVisitGoodPix:
             self.visitRecord.setI(self.task.visitGoodPixKey, nGoodPix)
         coaddTempExp.getInfo().setCoaddInputs(self.coaddInputs)

@@ -448,7 +448,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)
         maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
         for tempExpRef, imageScaler, bgInfo in zip(tempExpRefList, imageScalerList, bgInfoList):
-            exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox, imageOrigin="PARENT")
+            exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             maskedImage = exposure.getMaskedImage()
             imageScaler.scaleMaskedImage(maskedImage)
 
