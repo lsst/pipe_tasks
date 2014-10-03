@@ -79,6 +79,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         # and since we already have a perfect Wcs/Psf, we don't calibrate.
         processConfig = ProcessCoaddTask.ConfigClass()
         processConfig.measurement.retarget(lsst.meas.base.SingleFrameMeasurementTask)
+        processConfig.measurement.slots.shape = "base_SdssShape"
         processConfig.doCalibrate = False
         processConfig.detection.thresholdType = "value"
         processConfig.detection.thresholdValue = 0.01
