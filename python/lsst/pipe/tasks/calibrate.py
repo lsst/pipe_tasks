@@ -426,9 +426,11 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
 
-        if self.config.doPsf:
-            self.initialMeasurement.measure(exposure, sources1)
+        # do the initial measurement.  This is normally done for star selection, but do it 
+        # even if the psf is not going to be calculated for consistency
+        self.initialMeasurement.measure(exposure, sources1)
 
+        if self.config.doPsf:
             if self.config.doAstrometry:
                 astromRet = self.astrometry.run(exposure, sources1)
                 matches = astromRet.matches
@@ -465,17 +467,15 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
             self.display('PSF_background', exposure=exposure)
 
-        if self.config.doAstrometry or self.config.doPhotoCal:
-            # make a second table with which to do the second measurement
-            # the schemaMapper will copy the footprints and ids, which is all we need.
-            table2 = afwTable.SourceTable.make(self.schema, idFactory)
-            table2.setMetadata(self.algMetadata)
-            sources = afwTable.SourceCatalog(table2)
-            # transfer to a second table
-            sources.extend(sources1, self.schemaMapper)
-            self.measurement.run(exposure, sources)
-        else:
-            sources = sources1
+        # make a second table with which to do the second measurement
+        # the schemaMapper will copy the footprints and ids, which is all we need.
+        table2 = afwTable.SourceTable.make(self.schema, idFactory)
+        table2.setMetadata(self.algMetadata)
+        sources = afwTable.SourceCatalog(table2)
+        # transfer to a second table -- note that the slots do not have to be reset here
+        # as long as measurement.run follows immediately
+        sources.extend(sources1, self.schemaMapper)
+        self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
             astromRet = self.astrometry.run(exposure, sources)
