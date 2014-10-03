@@ -94,12 +94,12 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Initial (high-threshold) detection phase for calibration",
     )
     initialMeasurement = pexConfig.ConfigurableField(
-        target = lsst.meas.base.sfm.SingleFrameMeasurementTask,
+        target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Initial measurements used to feed PSF determination and aperture correction determination",
     )
     measurePsf   = pexConfig.ConfigurableField(target = MeasurePsfTask, doc = "")
     measurement = pexConfig.ConfigurableField(
-        target = lsst.meas.base.sfm.SingleFrameMeasurementTask,
+        target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
     astrometry    = pexConfig.ConfigurableField(target = AstrometryTask, doc = "")
