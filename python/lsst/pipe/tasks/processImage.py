@@ -27,7 +27,8 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -62,7 +63,7 @@ class ProcessImageConfig(pexConfig.Config):
         doc = "Split blended sources into their components",
     )
     measurement = pexConfig.ConfigurableField(
-        target = SourceMeasurementTask,
+        target = SingleFrameMeasurementTask,
         doc = "Final source measurement on low-threshold detections",
     )
 

@@ -27,6 +27,7 @@ import lsst.afw.detection as afwDet
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
+import lsst.meas.base
 import lsst.pipe.base as pipeBase
 from lsst.meas.photocal import PhotoCalTask
 from .astrometry import AstrometryTask
@@ -93,12 +94,12 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Initial (high-threshold) detection phase for calibration",
     )
     initialMeasurement = pexConfig.ConfigurableField(
-        target = measAlg.SourceMeasurementTask,
+        target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Initial measurements used to feed PSF determination and aperture correction determination",
     )
     measurePsf   = pexConfig.ConfigurableField(target = MeasurePsfTask, doc = "")
     measurement = pexConfig.ConfigurableField(
-        target = measAlg.SourceMeasurementTask,
+        target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
     astrometry    = pexConfig.ConfigurableField(target = AstrometryTask, doc = "")
