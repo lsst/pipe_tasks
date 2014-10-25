@@ -27,6 +27,7 @@ import lsst.afw.table as afwTable
 from lsst.coadd.utils import CoaddDataIdContainer
 from .coaddBase import getSkyInfo
 from .processImage import ProcessImageTask
+from lsst.meas.astrom import AstrometryTask
 
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
     """Config for ProcessCoadd"""
@@ -40,18 +41,14 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         dtype=bool,
         default=True,
     )
+    astrometry = pexConfig.ConfigurableField(
+        target = AstrometryTask,
+        doc = "Astrometric matching, for matching sources to reference",
+    )
 
     def setDefaults(self):
         ProcessImageTask.ConfigClass.setDefaults(self)
-        self.calibrate.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
-        self.calibrate.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
-        self.calibrate.doPsf = False
-        self.calibrate.measureApCorr.inputFilterFlag = "calib_psfCandidate"
-        self.calibrate.astrometry.forceKnownWcs = True
-        self.calibrate.repair.doInterpolate = False
-        self.calibrate.repair.doCosmicRay = False
-        self.calibrate.doPhotoCal = False
         self.detection.isotropicGrow = True
         self.detection.returnOriginalFootprints = False
         self.doWriteSourceMatches = True
@@ -61,6 +58,7 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         self.measurement.doApplyApCorr = "noButWarn"
         self.doDeblend = True
         self.deblend.maxNumberOfPeaks = 20
+        self.astrometry.forceKnownWcs = True
 
 class ProcessCoaddTask(ProcessImageTask):
     """Process a Coadd image
@@ -84,6 +82,8 @@ class ProcessCoaddTask(ProcessImageTask):
             doc="true if source has no children and is in the inner region of a coadd patch " \
                 + "and is in the inner region of a coadd tract",
         )
+        if self.config.doWriteSourceMatches:
+            self.makeSubtask("astrometry", schema=self.schema)
 
     @pipeBase.timeMethod
     def scaleVariance(self, exposure):
@@ -105,22 +105,21 @@ class ProcessCoaddTask(ProcessImageTask):
     def getExposureId(self, dataRef):
         return long(dataRef.get(self.config.coaddName + "CoaddId"))
 
+    def getAstrometer(self):
+        return self.astrometry
+
     @pipeBase.timeMethod
     def run(self, dataRef):
         """Process a coadd image
 
         @param dataRef: butler data reference corresponding to coadd patch
         @return pipe_base Struct containing these fields:
-        - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
-            else as upersisted and updated if config.doDetection, else None
-        - calib: object returned by calibration process if config.doCalibrate, else None
+        - exposure: input exposure, as modified in the course of processing
         - sources: detected source if config.doDetection, else None
         """
         self.log.info("Processing %s" % (dataRef.dataId))
 
         # initialize outputs
-        coadd = None
-
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=dataRef)
 
         coadd = dataRef.get(self.config.coaddName + "Coadd")
