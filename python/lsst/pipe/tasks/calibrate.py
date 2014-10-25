@@ -349,11 +349,12 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, **kwargs):
+    def __init__(self, schema=None, **kwargs):
         """!
         Create the calibration task
 
-        \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
+        \param[in] schema    input SourceTable schema
+        \param     **kwargs  keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
         pipeBase.Task.__init__(self, **kwargs)
 
@@ -361,7 +362,9 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # schema1 contains everything except what is added by the second measurement task.
         # Before the second measurement task is run, self.schemaMapper transforms the sources into
         # the final output schema, at the same time renaming the measurement fields to "initial_" 
-        self.schema1 = afwTable.SourceTable.makeMinimalSchema()
+        if schema is None:
+            schema = afwTable.SourceTable.makeMinimalSchema()
+        self.schema1 = schema
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("repair")
         self.makeSubtask("detection", schema=self.schema1)
