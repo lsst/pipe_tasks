@@ -56,11 +56,19 @@ class AstrometryTask(pipeBase.Task):
     """
     ConfigClass = AstrometryConfig
 
+    AstrometerClass = Astrometry
+
     def __init__(self, schema, **kwds):
         pipeBase.Task.__init__(self, **kwds)
         self.centroidKey = schema.addField("centroid.distorted", type="PointD",
                                            doc="centroid distorted for astrometry solver")
-        self.astrometer = None
+        self._astrometer = None
+
+    @property
+    def astrometer(self):
+        if not self._astrometer:
+            self._astrometer = self.AstrometerClass(self.config.solver, log=self.log)
+        return self._astrometer
 
     @pipeBase.timeMethod
     def run(self, exposure, sources):
@@ -182,9 +190,6 @@ class AstrometryTask(pipeBase.Task):
 
         if bbox is None:
             bbox = exposure.getBBox(afwImage.PARENT)
-
-        if not self.astrometer:
-            self.astrometer = Astrometry(self.config.solver, log=self.log)
 
         kwargs = dict(x0=bbox.getMinX(), y0=bbox.getMinY(), imageSize=bbox.getDimensions())
         if self.config.forceKnownWcs:
