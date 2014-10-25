@@ -155,9 +155,11 @@ class CalibrateTask(pipeBase.Task):
     """
     ConfigClass = CalibrateConfig
 
-    def __init__(self, **kwargs):
+    def __init__(self, schema=None, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        if schema is None:
+            schema = afwTable.SourceTable.makeMinimalSchema()
+        self.schema = schema
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("repair")
         self.makeSubtask("detection", schema=self.schema)
