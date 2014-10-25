@@ -152,11 +152,14 @@ class ProcessImageTask(pipeBase.CmdLineTask):
 
         srcMatches = None; srcMatchMeta = None
         if self.config.doMeasurement and self.config.doWriteSourceMatches:
-            self.log.info("Matching src to reference catalogue" % (dataRef.dataId))
-            srcMatches, srcMatchMeta = self.matchSources(inputExposure, sources)
-            normalizedSrcMatches = afwTable.packMatches(srcMatches)
-            normalizedSrcMatches.table.setMetadata(srcMatchMeta)
-            dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
+            self.log.info("Matching src to reference catalogue")
+            try:
+                srcMatches, srcMatchMeta = self.matchSources(inputExposure, sources)
+                normalizedSrcMatches = afwTable.packMatches(srcMatches)
+                normalizedSrcMatches.table.setMetadata(srcMatchMeta)
+                dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
+            except Exception as e:
+                self.log.warn("Unable to match to reference catalog: %s" % e)
 
         return pipeBase.Struct(
             exposure = inputExposure,

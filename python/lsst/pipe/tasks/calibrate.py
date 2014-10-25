@@ -247,8 +247,9 @@ class CalibrateTask(pipeBase.Task):
             # This is an initial, throw-away run of photocal, since we need a valid Calib to run CModel,
             # and we need to run CModel to compute aperture corrections from it.
             if self.config.doPhotoCal:
-                assert(matches is not None)
                 try:
+                    if not matches:
+                        raise RuntimeError("No matches available")
                     photocalRet = self.photocal.run(exposure, matches,
                                                     prefix=self.config.initialMeasurement.prefix)
                     self.log.info("Initial photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
@@ -311,8 +312,9 @@ class CalibrateTask(pipeBase.Task):
                 self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
 
         if self.config.doPhotoCal:
-            assert(matches is not None)
             try:
+                if not matches:
+                    raise RuntimeError("No matches available")
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
                 self.log.warn("Failed to determine updated photometric zero-point: %s" % e)
