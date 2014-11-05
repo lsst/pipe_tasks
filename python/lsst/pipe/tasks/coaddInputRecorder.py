@@ -102,6 +102,7 @@ class CoaddTempExpInputRecorder(object):
             record.setWcs(calExp.getWcs())
             record.setBBox(calExp.getBBox(afwImage.PARENT))
             record.setApCorrMap(calExp.getInfo().getApCorrMap())
+            record.setValidPolygon(calExp.getInfo().getValidPolygon())
             if self.task.config.saveCcdWeights:
                 record.setD(self.task.ccdWeightKey, 1.0) # No weighting or overlap when warping
 
@@ -116,6 +117,7 @@ class CoaddTempExpInputRecorder(object):
         """
         self.visitRecord.setPsf(coaddTempExp.getPsf())
         self.visitRecord.setWcs(coaddTempExp.getWcs())
+        self.visitRecord.setValidPolygon(coaddTempExp.getInfo().getValidPolygon())
         self.visitRecord.setBBox(coaddTempExp.getBBox(afwImage.PARENT))
         if self.task.config.saveVisitGoodPix:
             self.visitRecord.setI(self.task.visitGoodPixKey, nGoodPix)
