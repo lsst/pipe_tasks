@@ -89,6 +89,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Require astrometry to succeed, if activated?",
         default = False,
         )
+    requirePhotoCal = pexConfig.Field(
+        dtype = bool,
+        doc = "Require photometric calibration to succeed?",
+        default = False,
+        )
     background = pexConfig.ConfigField(
         dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
@@ -122,6 +127,10 @@ class CalibrateConfig(pexConfig.Config):
                                      "have the same prefix; field names may clash.")
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.requireAstrometry and not self.doAstrometry:
+            raise ValueError("Astrometric solution required, but not activated")
+        if self.requirePhotoCal and not self.doPhotoCal:
+            raise ValueError("Photometric calibration required, but not activated")
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
@@ -317,6 +326,8 @@ class CalibrateTask(pipeBase.Task):
                     raise RuntimeError("No matches available")
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
+                if self.config.requirePhotoCal:
+                    raise
                 self.log.warn("Failed to determine updated photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
