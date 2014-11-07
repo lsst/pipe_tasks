@@ -93,6 +93,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Require astrometry to succeed, if activated?",
         default = False,
         )
+    requirePhotoCal = pexConfig.Field(
+        dtype = bool,
+        doc = "Require photometric calibration to succeed?",
+        default = False,
+        )
     background = pexConfig.ConfigField(
         dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
@@ -134,6 +139,10 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.requireAstrometry and not self.doAstrometry:
+            raise ValueError("Astrometric solution required, but not activated")
+        if self.requirePhotoCal and not self.doPhotoCal:
+            raise ValueError("Photometric calibration required, but not activated")
         if self.doMeasureApCorr and self.measureApCorr.inputFilterFlag == "calib_psfUsed" and not self.doPsf:
             raise ValueError("Cannot measure aperture correction with inputFilterFlag=calib_psfUsed"
                 " unless doPsf is also True")
@@ -539,6 +548,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                     raise RuntimeError("No matches available")
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
+                if self.config.requirePhotoCal:
+                    raise
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
