@@ -187,8 +187,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         @param dataRef: Data reference
         @param backgrounds: List of background models
         """
-        self.log.warn("Persisting background models")
-        
+        self.log.info("Persisting background models")
         dataRef.put(backgrounds, self.dataPrefix+"calexpBackground")
 
     def restoreBackgrounds(self, exp, backgrounds):
