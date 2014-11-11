@@ -137,6 +137,12 @@ class ProcessCcdTask(ProcessImageTask):
         # delegate most of the work to ProcessImageTask
         result = self.process(sensorRef, calExposure)
 
+        # combine the differential background we estimated while detecting the main src catalog
+        # with the background estimated in the calibrate step
+        for bg in result.backgrounds:
+            backgrounds.append(bg)
+        result.backgrounds = backgrounds
+
         if self.config.doCalibrate and self.config.doWriteCalibrate:
             # wait until after detection and measurement, since detection sets detected mask bits
             # and both require a background subtracted exposure;
@@ -148,8 +154,6 @@ class ProcessCcdTask(ProcessImageTask):
 
         if calib is not None:
             self.propagateCalibFlags(calib.sources, sources)
-
-        result.backgrounds = backgrounds
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,
