@@ -110,7 +110,6 @@ class ProcessCcdTask(ProcessImageTask):
         
         # initialize outputs
         calib = None
-        sources = None
         backgrounds = afwMath.BackgroundList()
         if self.config.doCalibrate:
             idFactory = self.makeIdFactory(sensorRef)
@@ -154,7 +153,7 @@ class ProcessCcdTask(ProcessImageTask):
             sensorRef.put(calExposure, self.dataPrefix + "calexp")
 
         if calib is not None:
-            self.propagateCalibFlags(calib.sources, sources)
+            self.propagateCalibFlags(calib.sources, result.sources)
 
         return pipeBase.Struct(
             postIsrExposure = postIsrExposure,
@@ -166,9 +165,15 @@ class ProcessCcdTask(ProcessImageTask):
     def propagateCalibFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
         """
-        self.log.info("Matching icSource and Source catalogs to propagate flags.")
-        if icSources is None or sources is None:
+
+        if icSources is None:
+            self.log.warn("Not matching icSource and Source catalogs, because the former is None")
             return
+        if sources is None:
+            self.log.warn("Not matching icSource and Source catalogs, because the latter is None")
+            return
+
+        self.log.info("Matching icSource and Source catalogs to propagate flags.")
 
         closest = False                 # return all matched objects
         matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
@@ -193,6 +198,10 @@ class ProcessCcdTask(ProcessImageTask):
         #
         if len(set(m[0].getId() for m in matched)) != len(matched):
             self.log.warn("At least one icSource is matched to more than one Source")
+
+        if len(matched) == 0:
+            self.log.warn("No matches found between icSource and Source catalogs.")
+
         #
         # Copy over the desired flags
         #
