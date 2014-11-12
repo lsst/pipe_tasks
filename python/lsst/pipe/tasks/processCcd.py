@@ -73,6 +73,7 @@ class ProcessCcdTask(ProcessImageTask):
             )
         for key in self.calibrate.getCalibKeys():
             self.schemaMapper.addMapping(key)
+        self.schema = self.schemaMapper.getOutputSchema()
 
     def makeIdFactory(self, sensorRef):
         expBits = sensorRef.get("ccdExposureId_bits")
