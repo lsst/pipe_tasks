@@ -7,6 +7,7 @@ from lsst.pipe.tasks.astrometry import AstrometryTask
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
+import lsst.afw.detection as afwDetect
 from lsst.daf.base import PropertyList
 
 """
@@ -237,7 +238,7 @@ class MergeSourcesTask(CmdLineTask):
         patchRefList: list of patch data reference for each filter
         """
         catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
-        mergedCatalog = self.mergeCatalogs(catalogs)
+        mergedCatalog = self.mergeCatalogs(catalogs, patchRefList[0])
         self.write(patchRefList[0], mergedCatalog)
 
     def readCatalog(self, patchRef):
@@ -251,7 +252,7 @@ class MergeSourcesTask(CmdLineTask):
         self.log.info("Read %d sources for filter %s: %s" % (len(catalog), filterName, patchRef.dataId))
         return filterName, catalog
 
-    def mergeCatalogs(self, catalogs):
+    def mergeCatalogs(self, catalogs, patchRef):
         """Merge multiple catalogs
 
         This implementation is a merge placeholder for something hard.
@@ -295,13 +296,53 @@ class MergeSourcesTask(CmdLineTask):
         """No metadata to write, and not sure how to write it for a list of dataRefs"""
         pass
 
+
+class MergeDetectionsConfig(MergeSourcesConfig):
+    minNewPeak = Field(dtype=float, default=1,
+                       doc="Minimum distance from closest peak to create a new one (in arcsec).")
+
+
 class MergeDetectionsTask(MergeSourcesTask):
     """Merge detections from multiple bands"""
+    ConfigClass = MergeDetectionsConfig
     _DefaultName = "mergeDet"
     inputDataset = "det"
     outputDataset = "mergeDet"
     refColumn = "detection.ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("mergeDet")
+
+    def __init__(self, butler, **kwargs):
+        MergeSourcesTask.__init__(self, butler, **kwargs)
+        self.schemaMerge = afwTable.SourceTable.makeMinimalSchema()
+        self.merged = afwDetect.FootprintMergeList(self.schemaMerge, self.config.priorityList)
+
+    def makeIdFactory(self, dataRef):
+        """Return an IdFactory for setting the detection identifiers
+
+        The actual parameters used in the IdFactory are provided by
+        the butler (through the provided data reference).
+        """
+        expBits = dataRef.get(self.config.coaddName + "mergedCoaddId_bits")
+        expId = long(dataRef.get(self.config.coaddName + "mergedCoaddId"))
+        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
+    def mergeCatalogs(self, catalogs, patchRef):
+        """Merge multiple catalogs
+        """
+
+        # Convert distance to tract coordiante
+        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
+        tractWcs = skyInfo.wcs
+        peakDistance = self.config.minNewPeak / tractWcs.pixelScale().asArcseconds()
+
+        # Put catalogs, filters in priority order
+        orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
+        orderedBands = [band for band in self.config.priorityList if band in catalogs.keys()]
+
+        mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
+                                                        self.schemaMerge, self.makeIdFactory(patchRef))
+        self.log.info("Merged to %d sources" % len(mergedList))
+        return mergedList
 
 ##############################################################################################################
 
