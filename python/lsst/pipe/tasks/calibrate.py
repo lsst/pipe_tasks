@@ -366,6 +366,6 @@ class CalibrateTask(pipeBase.Task):
 
         fwhm = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
         size = self.config.initialPsf.size
-        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
+        self.log.info("installInitialPsf fwhm=%.2f pixels; size=%d pixels" % (fwhm, size))
         psf = cls(size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)
