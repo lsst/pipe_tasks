@@ -13,6 +13,7 @@ setupOptional(coadd_chisquared)
 setupOptional(skymap)
 setupOptional(geom)
 
+setupOptional(obs_test) # for unit tests
 setupOptional(matplotlib)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
