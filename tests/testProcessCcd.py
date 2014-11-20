@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import absolute_import, division, print_function
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -20,12 +21,10 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-
 """Test ProcessCcdTask
 
 Run the task on one obs_test image and perform various checks on the results
 """
-
 import os
 import shutil
 import tempfile
@@ -45,40 +44,60 @@ InputDir = os.path.join(obsTestDir, "data", "input")
 
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
     def testProcessCcd(self):
+        """test ProcessCcdTask
+
+        This is intended as a sanity check of the task, not a detailed test of its sub-tasks. As such
+        comparisons are intentionally loose, so as to allow evolution of the sub-tasks over time
+        without breaking this test.
+        """
         outPath = tempfile.mkdtemp()
         try:
+            dataId = dict(visit=1)
+            dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
             fullResult = ProcessCcdTask.parseAndRun(
-                args = [InputDir, "--output", outPath, "--id", "visit=1"],
+                args = [InputDir, "--output", outPath, "--id"] + dataIdStrList,
                 doReturnResults = True,
             )
             self.assertEqual(len(fullResult.resultList), 1)
             runResult = fullResult.resultList[0]
+            butler = fullResult.parsedCmd.butler
             result = runResult.result
 
-            self.assertEqual(len(result.backgrounds), 4)
-            bg0Arr = result.backgrounds[0][0].getImageF().getArray()
-            self.assertAlmostEqual(bg0Arr.mean(), 325.5736, places=3)
-            self.assertAlmostEqual(bg0Arr.std(),    0.0825, places=3)
+            # The following is the way I would prefer to test the background, but getImageF fails,
+            # so for now use result.backgrounds instead
+            # calexpBackground = butler.get("calexpBackground", dataId)
+            # self.assertGreaterEqual(len(calexpBackground), 1)
+            # bg0Arr = calexpBackground[0][0].getImageF().getArray()
+            calexpBackground = result.backgrounds
 
-            self.assertEqual(len(result.calib.sources), 28)
-            psfShape = result.calib.psf.computeShape()
-            self.assertAlmostEqual(psfShape.getIxx(), 2.8800, places=3)
-            self.assertAlmostEqual(psfShape.getIyy(), 2.2986, places=3)
-            self.assertAlmostEqual(psfShape.getIxy(), 0.1880, places=3)
+            self.assertGreaterEqual(len(calexpBackground), 1)
+            bg0Arr = calexpBackground[0][0].getImageF().getArray()
+            self.assertAlmostEqual(bg0Arr.mean(), 325.5736, places=1)
+            self.assertLess(bg0Arr.std(), 0.5) # 0.0825 as of 2014-11
 
-            self.assertEqual(result.exposure.getBBox(),
+            icSrc = butler.get("icSrc", dataId)
+            self.assertGreater(len(icSrc), 20) # 28 as of 2014-11
+
+            calexp = butler.get("calexp", dataId)
+            self.assertEqual(calexp.getBBox(),
                 afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
-            maskedImage = result.exposure.getMaskedImage()
+            maskedImage = calexp.getMaskedImage()
             maskArr = maskedImage.getMask().getArray()
             self.assertGreater(numpy.sum(maskArr == 0), 1900000) # most pixels are good
             imageArr = maskedImage.getImage().getArray()
-            self.assertAlmostEqual(imageArr.mean(),   1.9073, places=3)
-            self.assertAlmostEqual(imageArr.std(),  145.8494, places=3)
+            self.assertAlmostEqual(imageArr.mean(),   1.9073, places=1)
+            self.assertAlmostEqual(imageArr.std(),  145.8494, places=1)
             varArr = maskedImage.getVariance().getArray()
-            self.assertAlmostEqual(varArr.mean(), 246.1445, places=3)
-            self.assertAlmostEqual(varArr.std(),  104.8250, places=3)
+            self.assertAlmostEqual(varArr.mean(), 246.1445, places=1)
+            self.assertAlmostEqual(varArr.std(),  104.8250, places=1)
 
-            self.assertEqual(len(result.sources), 167)
+            psfShape = calexp.getPsf().computeShape()
+            self.assertAlmostEqual(psfShape.getIxx(), 2.8800, places=1)
+            self.assertAlmostEqual(psfShape.getIyy(), 2.2986, places=1)
+            self.assertAlmostEqual(psfShape.getIxy(), 0.1880, places=1)
+
+            sources = butler.get("src", dataId)
+            self.assertGreater(len(sources), 100) # 167 as of 2014-11
 
         finally:
             shutil.rmtree(outPath)
