@@ -63,15 +63,6 @@ class ForcedPhotImageConfig(Config):
 
     def setDefaults(self):
         self.doTweakCentroids = False
-        self.measurement.doReplaceWithNoise = False
-
-    def validate(self):
-        if self.measurement.doReplaceWithNoise:
-            raise FieldValidationError(
-                field=SourceMeasurementTask.Configclass.doReplaceWithNoise,
-                config=self,
-                msg="doReplaceWithNoise is not valid for forced photometry"
-                )
 
 class ForcedPhotImageTask(CmdLineTask):
     """Base class for performing forced measurement, in which the results (often just centroids) from
