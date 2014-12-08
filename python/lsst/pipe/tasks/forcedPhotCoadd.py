@@ -36,6 +36,12 @@ class ForcedPhotCoaddConfig(ForcedPhotImageTask.ConfigClass):
         default = "deep",
     )
 
+    def setDefaults(self):
+        ForcedPhotImageTask.ConfigClass.setDefaults(self)
+        # Because the IDs used in coadd forced photometry *are* the object IDs, we drop the 'object' prefix
+        # that is used in the copied columns in CCD forced photometry.
+        self.copyColumns = dict((k, k) for k in ("id", "parent", "deblend.nchild"))
+
 class ForcedPhotCoaddTask(ForcedPhotImageTask):
     """Run forced measurement on coadded images
     """
@@ -52,6 +58,11 @@ class ForcedPhotCoaddTask(ForcedPhotImageTask):
         return dataRef.get(name) if dataRef.datasetExists(name) else None
 
     def makeIdFactory(self, dataRef):
+        # With the default configuration, this IdFactory doesn't do anything, because
+        # the IDs it generates are immediately overwritten by the ID from the reference
+        # catalog (since that's in config.copyColumns).  But we create one here anyway, to
+        # allow us to revert back to the old behavior of generating new forced source IDs,
+        # just by renaming the ID in config.copyColumns to "object.id".
         expBits = dataRef.get(self.config.coaddName + "CoaddId_bits")
         expId = long(dataRef.get(self.config.coaddName + "CoaddId"))
         return lsst.afw.table.IdFactory.makeSource(expId, 64 - expBits)
