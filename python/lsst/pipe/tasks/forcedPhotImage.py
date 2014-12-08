@@ -72,6 +72,7 @@ class ForcedPhotImageTask(CmdLineTask):
      - Set the _DefaultName class attribute
      - Implement makeIdFactory
      - Implement fetchReferences
+     - (optional) Implement attachFootprints
     """
 
     RunnerClass = ButlerInitializedTaskRunner
@@ -130,6 +131,24 @@ class ForcedPhotImageTask(CmdLineTask):
         """
         raise NotImplementedError()
 
+    def attachFootprints(self, dataRef, sources, references, exposure, refWcs):
+        """Hook for derived classes to define how to attach Footprints to blank sources prior to measurement
+
+        Footprints for forced photometry must be in the pixel coordinate system of the image being
+        measured, while the actual detections may start out in a different coordinate system.
+
+        Subclasses for ForcedPhotImageTask must implement this method to define how those Footprints
+        should be generated.
+
+        The default implementation transforms the Footprints from the reference catalog from the refWcs
+        to the exposure's Wcs, which downgrades HeavyFootprints into regular Footprints, destroying
+        deblend information.
+        """
+        exposureWcs = exposure.getWcs()
+        region = exposure.getBBox(lsst.afw.image.PARENT)
+        for refRecord, srcRecord in zip(sources, references):
+            srcRecord.setFootprint(refRecord.getFootprint().transform(refWcs, exposureWcs, region))
+
     def getExposure(self, dataRef):
         """Read input exposure on which to perform the measurements
 
@@ -181,6 +200,7 @@ class ForcedPhotImageTask(CmdLineTask):
             references = list(self.fetchReferences(dataRef, exposure))
             self.log.info("Performing forced measurement on %d sources" % len(references))
             sources = self.generateSources(dataRef, references)
+            self.attachFootprints(dataRef, sources, references=references, exposure=exposure, refWcs=refWcs)
             self.measurement.run(exposure, sources, references=references, refWcs=refWcs)
             self.writeOutput(dataRef, sources)
             return Struct(sources=sources)
