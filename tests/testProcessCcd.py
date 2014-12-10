@@ -70,8 +70,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             calexpBackground = butler.get("calexpBackground", dataId)
             self.assertGreaterEqual(len(calexpBackground), 1)
             bg0Arr = calexpBackground.getImage().getArray()
-            self.assertAlmostEqual(bg0Arr.mean(), 325.4484, places=1)
-            self.assertLess(bg0Arr.std(), 1.0) # 0.40578011 as of 2014-11
+            self.assertAlmostEqual(bg0Arr.mean(dtype=numpy.float64), 325.4484, places=1)
+            self.assertLess(bg0Arr.std(dtype=numpy.float64), 1.0) # 0.40578011 as of 2014-11
 
             icSrc = butler.get("icSrc", dataId)
             self.assertGreater(len(icSrc), 20) # 28 as of 2014-11
@@ -84,13 +84,13 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
                 maskedImage = exposure.getMaskedImage()
                 maskArr = maskedImage.getMask().getArray()
-                self.assertGreater(numpy.sum(maskArr == 0), 1900000) # most pixels are good
+                self.assertGreater(numpy.sum(maskArr == 0, dtype=numpy.float64), 1900000) # most pixels are good
                 imageArr = maskedImage.getImage().getArray()
-                self.assertAlmostEqual(imageArr.mean(),   1.9073, places=1)
-                self.assertAlmostEqual(imageArr.std(),  145.8494, places=1)
+                self.assertAlmostEqual(imageArr.mean(dtype=numpy.float64),   1.9073, places=1)
+                self.assertAlmostEqual(imageArr.std(dtype=numpy.float64),  145.8494, places=1)
                 varArr = maskedImage.getVariance().getArray()
-                self.assertAlmostEqual(varArr.mean(), 246.1445, places=1)
-                self.assertAlmostEqual(varArr.std(),  104.8250, places=1)
+                self.assertAlmostEqual(varArr.mean(dtype=numpy.float64), 246.1445, places=1)
+                self.assertAlmostEqual(varArr.std(dtype=numpy.float64),  104.8250, places=1)
 
                 psfShape = exposure.getPsf().computeShape()
                 self.assertAlmostEqual(psfShape.getIxx(), 2.8800, places=1)
