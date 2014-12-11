@@ -34,6 +34,14 @@ def _makeGetSchemaCatalogs(datasetSuffix):
         return {self.config.coaddName + "Coadd_" + datasetSuffix: src}
     return getSchemaCatalogs
 
+def copySlots(oldCat, newCat):
+    """Copy table slots definitions from one catalog to another"""
+    for name in ("Centroid", "Shape", "ApFlux", "ModelFlux", "PsfFlux", "InstFlux", "CalibFlux"):
+        meas = getattr(oldCat.table, "get" + name + "Key")()
+        err = getattr(oldCat.table, "get" + name + "ErrKey")()
+        flag = getattr(oldCat.table, "get" + name + "FlagKey")()
+        getattr(newCat.table, "define" + name)(meas, err, flag)
+
 
 ##############################################################################################################
 
@@ -280,6 +288,9 @@ class MergeSourcesTask(CmdLineTask):
         # Can't set a string column; do it row by row
         for s in catalogs[best]:
             s[self.refKey] = best
+
+        copySlots(catalogs[best], merged)
+
         self.log.info("Merged to %d sources" % len(merged))
         return merged
 
@@ -341,6 +352,7 @@ class MergeDetectionsTask(MergeSourcesTask):
 
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
                                                         self.schemaMerge, self.makeIdFactory(patchRef))
+        copySlots(orderedCatalogs[0], mergedList)
         self.log.info("Merged to %d sources" % len(mergedList))
         return mergedList
 
