@@ -151,6 +151,7 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
     """
 
     ConfigClass = CoaddSrcReferencesConfig
+    datasetSuffix = "src" # Suffix to add to "Coadd_" for dataset name
 
     def __init__(self, butler=None, schema=None, **kwargs):
         BaseReferencesTask.__init__(self, butler=butler, schema=schema, **kwargs)
@@ -171,7 +172,7 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
 
         The given dataRef must include the tract in its dataId.
         """
-        dataset = self.config.coaddName + "Coadd_src"
+        dataset = self.config.coaddName + "Coadd_" + self.datasetSuffix
         tract = dataRef.dataId["tract"]
         butler = dataRef.butlerSubset.butler
         for patch in patchList:
