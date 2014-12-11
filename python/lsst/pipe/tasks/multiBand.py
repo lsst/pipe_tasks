@@ -83,7 +83,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
     This operation is performed separately in each band.  The detections from
     each band will be merged before performing the measurement stage.
     """
-    _DefaultName = "detect"
+    _DefaultName = "detectCoaddSources"
     ConfigClass = DetectCoaddSourcesConfig
     getSchemaCatalogs = _makeGetSchemaCatalogs("det")
     makeIdFactory = _makeMakeIdFactory("CoaddId")
@@ -219,12 +219,13 @@ class MergeSourcesTask(CmdLineTask):
     merge: it simply takes the catalog with the highest priority.
 
     Sub-classes should set the following class variables:
+    * _DefaultName: name of Task
     * inputDataset: name of dataset to read
     * outputDataset: name of dataset to write
     * refColumn: name of column to add
     * getSchemaCatalogs to the output of _makeGetSchemaCatalogs(outputDataset)
     """
-    _DefaultName = "merge"
+    _DefaultName = None
     ConfigClass = MergeSourcesConfig
     RunnerClass = MergeSourcesRunner
     inputDataset = None
@@ -347,7 +348,7 @@ class MergeDetectionsConfig(MergeSourcesConfig):
 class MergeDetectionsTask(MergeSourcesTask):
     """Merge detections from multiple bands"""
     ConfigClass = MergeDetectionsConfig
-    _DefaultName = "mergeDet"
+    _DefaultName = "mergeCoaddDetections"
     inputDataset = "det"
     outputDataset = "mergeDet"
     refColumn = "detection.ref"
@@ -403,7 +404,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     the list of merge detections.  The results from each band will subsequently
     be merged to create a final reference catalog for forced measurement.
     """
-    _DefaultName = "measure"
+    _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
     RunnerClass = ButlerInitializedTaskRunner
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
@@ -556,7 +557,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
 class MergeMeasurementsTask(MergeSourcesTask):
     """Measure measurements from multiple bands"""
-    _DefaultName = "mergeMeas"
+    _DefaultName = "mergeCoaddMeasurements"
     inputDataset = "meas"
     outputDataset = "ref"
     refColumn = "measurement.ref"
