@@ -546,9 +546,10 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         sources: source catalog
         """
         result = self.astrometry.astrometer.useKnownWcs(sources, exposure=exposure)
-        matches = afwTable.packMatches(result.matches)
-        matches.table.setMetadata(result.matchMetadata)
-        dataRef.put(matches, self.config.coaddName + "Coadd_srcMatch")
+        if result.matches:
+            matches = afwTable.packMatches(result.matches)
+            matches.table.setMetadata(result.matchMetadata)
+            dataRef.put(matches, self.config.coaddName + "Coadd_srcMatch")
 
     def write(self, dataRef, sources):
         """Write the source catalog"""
