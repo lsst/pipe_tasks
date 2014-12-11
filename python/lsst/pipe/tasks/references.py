@@ -55,6 +55,16 @@ class BaseReferencesTask(Task):
 
     ConfigClass = BaseReferencesConfig
 
+    def __init__(self, butler=None, schema=None, **kwargs):
+        """Initialize the task.
+
+        BaseReferencesTask and its subclasses take two keyword arguments beyond the usual Task arguments:
+         - schema: the Schema of the reference catalog
+         - butler: a butler that will allow the task to load its Schema from disk.
+        At least one of these arguments must be present; if both are, schema takes precedence.
+        """
+        Task.__init__(self, **kwargs)
+
     def getSchema(self, butler):
         """Return the schema for the reference sources.
 
@@ -142,9 +152,12 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
 
     ConfigClass = CoaddSrcReferencesConfig
 
-    def getSchema(self, butler):
-        """Return the schema of the reference catalog"""
-        return butler.get(self.config.coaddName + "Coadd_src_schema", immediate=True).getSchema()
+    def __init__(self, butler=None, schema=None, **kwargs):
+        BaseReferencesTask.__init__(self, butler=butler, schema=schema, **kwargs)
+        if schema is None:
+            assert butler is not None, "No butler nor schema provided"
+            schema = butler.get(self.config.coaddName + "Coadd_ref_schema", immediate=True).getSchema()
+        self.schema = schema
 
     def getWcs(self, dataRef):
         """Return the WCS for reference sources.  The given dataRef must include the tract in its dataId.

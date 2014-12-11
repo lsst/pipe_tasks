@@ -88,12 +88,21 @@ class ForcedPhotImageTask(CmdLineTask):
     dataPrefix = ""  # Name to prepend to all input and output datasets (e.g. 'goodSeeingCoadd_')
 
     def __init__(self, *args, **kwargs):
-        butler = kwargs.pop("butler")
+        """Initialize the task.
+
+        ForcedPhotImageTask takes two keyword arguments beyond the usual CmdLineTask arguments:
+         - schema: the Schema of the reference catalog, passed to the constructor of the references subtask
+         - butler: a butler that will be passed to the references subtask to allow it to load its Schema
+           from disk.
+        At least one of these arguments must be present; if both are, schema takes precedence.
+        """
+        butler = kwargs.pop("butler", None)
+        refSchema = kwargs.pop("schema", None)
         super(ForcedPhotImageTask, self).__init__(*args, **kwargs)
         self.algMetadata = PropertyList()
-        self.makeSubtask("references")
-        # Start by loading the reference schema using the butler the special TaskRunner gave us
-        refSchema = self.references.getSchema(butler)
+        self.makeSubtask("references", butler=butler, schema=refSchema)
+        if refSchema is None:
+            refSchema = self.references.schema
         # We make a SchemaMapper to transfer fields from the reference catalog
         self.schemaMapper = lsst.afw.table.SchemaMapper(refSchema)
         # First we have to include the minimal schema all SourceCatalogs must have, but we don't
