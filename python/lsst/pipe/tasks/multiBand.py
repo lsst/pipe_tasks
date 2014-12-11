@@ -37,6 +37,26 @@ def _makeGetSchemaCatalogs(datasetSuffix):
         return {self.config.coaddName + "Coadd_" + datasetSuffix: src}
     return getSchemaCatalogs
 
+def _makeMakeIdFactory(datasetName):
+    """Construct a makeIdFactory instance method
+
+    These are identical for all the classes here, so this consolidates
+    the code.
+
+    datasetName:  Dataset name without the coadd name prefix, e.g., "CoaddId" for "deepCoaddId"
+    """
+    def makeIdFactory(self, dataRef):
+        """Return an IdFactory for setting the detection identifiers
+
+        The actual parameters used in the IdFactory are provided by
+        the butler (through the provided data reference.
+        """
+        expBits = dataRef.get(self.config.coaddName + datasetName + "_bits")
+        expId = long(dataRef.get(self.config.coaddName + datasetName))
+        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
+    return makeIdFactory
+
+
 def copySlots(oldCat, newCat):
     """Copy table slots definitions from one catalog to another"""
     for name in ("Centroid", "Shape", "ApFlux", "ModelFlux", "PsfFlux", "InstFlux", "CalibFlux"):
@@ -69,6 +89,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
     _DefaultName = "detect"
     ConfigClass = DetectCoaddSourcesConfig
     getSchemaCatalogs = _makeGetSchemaCatalogs("det")
+    makeIdFactory = _makeMakeIdFactory("CoaddId")
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -90,16 +111,6 @@ class DetectCoaddSourcesTask(CmdLineTask):
         self.schema = schema
         self.algMetadata = PropertyList()
         self.makeSubtask("detection", schema=self.schema)
-
-    def makeIdFactory(self, dataRef):
-        """Return an IdFactory for setting the detection identifiers
-
-        The actual parameters used in the IdFactory are provided by
-        the butler (through the provided data reference.
-        """
-        expBits = dataRef.get(self.config.coaddName + "CoaddId_bits")
-        expId = long(dataRef.get(self.config.coaddName + "CoaddId"))
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
     def run(self, patchRef):
         """Run detection on a coadd"""
@@ -344,6 +355,7 @@ class MergeDetectionsTask(MergeSourcesTask):
     outputDataset = "mergeDet"
     refColumn = "detection.ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("mergeDet")
+    makeIdFactory = _makeMakeIdFactory("mergedCoaddId")
 
     def __init__(self, **kwargs):
         """Initialize the task.
@@ -357,16 +369,6 @@ class MergeDetectionsTask(MergeSourcesTask):
         MergeSourcesTask.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.merged = afwDetect.FootprintMergeList(self.schema, self.config.priorityList)
-
-    def makeIdFactory(self, dataRef):
-        """Return an IdFactory for setting the detection identifiers
-
-        The actual parameters used in the IdFactory are provided by
-        the butler (through the provided data reference).
-        """
-        expBits = dataRef.get(self.config.coaddName + "mergedCoaddId_bits")
-        expId = long(dataRef.get(self.config.coaddName + "mergedCoaddId"))
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
     def mergeCatalogs(self, catalogs, patchRef):
         """Merge multiple catalogs
@@ -408,6 +410,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     ConfigClass = MeasureMergedCoaddSourcesConfig
     RunnerClass = ButlerInitializedTaskRunner
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
+    makeIdFactory = _makeMakeIdFactory("mergedCoaddId") # The IDs we already have are of this type
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -474,7 +477,11 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         """
         merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
         self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
-        sources = afwTable.SourceCatalog(self.schema)
+        idFactory = self.makeIdFactory(dataRef)
+        for s in merged:
+            idFactory.notify(s.getId())
+        table = afwTable.SourceTable.make(self.schema, idFactory)
+        sources = afwTable.SourceCatalog(table)
         sources.extend(merged, self.schemaMapper)
         return sources
 
