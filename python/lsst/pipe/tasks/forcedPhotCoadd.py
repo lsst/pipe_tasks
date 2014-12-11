@@ -47,6 +47,10 @@ class ForcedPhotCoaddTask(ForcedPhotImageTask):
         ForcedPhotImageTask.__init__(self, **kwargs)
         self.dataPrefix = self.config.coaddName + "Coadd_"
 
+    def getExposure(self, dataRef):
+        name = self.config.coaddName + "Coadd"
+        return dataRef.get(name) if dataRef.datasetExists(name) else None
+
     def makeIdFactory(self, dataRef):
         expBits = dataRef.get(self.config.coaddName + "CoaddId_bits")
         expId = long(dataRef.get(self.config.coaddName + "CoaddId"))
