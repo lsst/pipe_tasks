@@ -55,6 +55,16 @@ class BaseReferencesTask(Task):
 
     ConfigClass = BaseReferencesConfig
 
+    def __init__(self, butler=None, schema=None, **kwargs):
+        """Initialize the task.
+
+        BaseReferencesTask and its subclasses take two keyword arguments beyond the usual Task arguments:
+         - schema: the Schema of the reference catalog
+         - butler: a butler that will allow the task to load its Schema from disk.
+        At least one of these arguments must be present; if both are, schema takes precedence.
+        """
+        Task.__init__(self, **kwargs)
+
     def getSchema(self, butler):
         """Return the schema for the reference sources.
 
@@ -141,10 +151,14 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
     """
 
     ConfigClass = CoaddSrcReferencesConfig
+    datasetSuffix = "src" # Suffix to add to "Coadd_" for dataset name
 
-    def getSchema(self, butler):
-        """Return the schema of the reference catalog"""
-        return butler.get(self.config.coaddName + "Coadd_src_schema", immediate=True).getSchema()
+    def __init__(self, butler=None, schema=None, **kwargs):
+        BaseReferencesTask.__init__(self, butler=butler, schema=schema, **kwargs)
+        if schema is None:
+            assert butler is not None, "No butler nor schema provided"
+            schema = butler.get(self.config.coaddName + "Coadd_ref_schema", immediate=True).getSchema()
+        self.schema = schema
 
     def getWcs(self, dataRef):
         """Return the WCS for reference sources.  The given dataRef must include the tract in its dataId.
@@ -158,7 +172,7 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
 
         The given dataRef must include the tract in its dataId.
         """
-        dataset = self.config.coaddName + "Coadd_src"
+        dataset = self.config.coaddName + "Coadd_" + self.datasetSuffix
         tract = dataRef.dataId["tract"]
         butler = dataRef.butlerSubset.butler
         for patch in patchList:
@@ -198,3 +212,18 @@ class CoaddSrcReferencesTask(BaseReferencesTask):
                       ", ".join("(%s)" % coord.getPosition(lsst.afw.geom.degrees) for coord in coordList))
         patchList = tract.findPatchList(coordList)
         return self.subset(self.fetchInPatches(dataRef, patchList), bbox, wcs)
+
+
+class MultiBandReferencesConfig(CoaddSrcReferencesTask.ConfigClass):
+
+    def validate(self):
+        if self.filter is not None:
+            raise FieldValidationError(field=MultiBandReferencesConfig.filter, config=self,
+                                       msg="Filter should not be set for the multiband processing scheme")
+        CoaddSrcReferencesTask.validate(self)
+
+
+class MultiBandReferencesTask(CoaddSrcReferencesTask):
+    """Loads references from the multiband processing scheme"""
+    ConfigClass = MultiBandReferencesConfig
+    datasetSuffix = "ref"

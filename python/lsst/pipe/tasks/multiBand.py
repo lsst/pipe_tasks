@@ -34,6 +34,34 @@ def _makeGetSchemaCatalogs(datasetSuffix):
         return {self.config.coaddName + "Coadd_" + datasetSuffix: src}
     return getSchemaCatalogs
 
+def _makeMakeIdFactory(datasetName):
+    """Construct a makeIdFactory instance method
+
+    These are identical for all the classes here, so this consolidates
+    the code.
+
+    datasetName:  Dataset name without the coadd name prefix, e.g., "CoaddId" for "deepCoaddId"
+    """
+    def makeIdFactory(self, dataRef):
+        """Return an IdFactory for setting the detection identifiers
+
+        The actual parameters used in the IdFactory are provided by
+        the butler (through the provided data reference.
+        """
+        expBits = dataRef.get(self.config.coaddName + datasetName + "_bits")
+        expId = long(dataRef.get(self.config.coaddName + datasetName))
+        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
+    return makeIdFactory
+
+
+def copySlots(oldCat, newCat):
+    """Copy table slots definitions from one catalog to another"""
+    for name in ("Centroid", "Shape", "ApFlux", "ModelFlux", "PsfFlux", "InstFlux", "CalibFlux"):
+        meas = getattr(oldCat.table, "get" + name + "Key")()
+        err = getattr(oldCat.table, "get" + name + "ErrKey")()
+        flag = getattr(oldCat.table, "get" + name + "FlagKey")()
+        getattr(newCat.table, "define" + name)(meas, err, flag)
+
 
 ##############################################################################################################
 
@@ -55,9 +83,10 @@ class DetectCoaddSourcesTask(CmdLineTask):
     This operation is performed separately in each band.  The detections from
     each band will be merged before performing the measurement stage.
     """
-    _DefaultName = "detect"
+    _DefaultName = "detectCoaddSources"
     ConfigClass = DetectCoaddSourcesConfig
     getSchemaCatalogs = _makeGetSchemaCatalogs("det")
+    makeIdFactory = _makeMakeIdFactory("CoaddId")
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -66,21 +95,19 @@ class DetectCoaddSourcesTask(CmdLineTask):
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
-    def __init__(self, **kwargs):
+    def __init__(self, schema=None, **kwargs):
+        """Initialize the task.
+
+        Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
+         - schema: the initial schema for the output catalog, modified-in place to include all
+                   fields set by this task.  If None, the source minimal schema will be used.
+        """
         CmdLineTask.__init__(self, **kwargs)
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        if schema is None:
+            schema = afwTable.SourceTable.makeMinimalSchema()
+        self.schema = schema
         self.algMetadata = PropertyList()
         self.makeSubtask("detection", schema=self.schema)
-
-    def makeIdFactory(self, dataRef):
-        """Return an IdFactory for setting the detection identifiers
-
-        The actual parameters used in the IdFactory are provided by
-        the butler (through the provided data reference.
-        """
-        expBits = dataRef.get(self.config.coaddName + "CoaddId_bits")
-        expId = long(dataRef.get(self.config.coaddName + "CoaddId"))
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
     def run(self, patchRef):
         """Run detection on a coadd"""
@@ -192,12 +219,13 @@ class MergeSourcesTask(CmdLineTask):
     merge: it simply takes the catalog with the highest priority.
 
     Sub-classes should set the following class variables:
+    * _DefaultName: name of Task
     * inputDataset: name of dataset to read
     * outputDataset: name of dataset to write
     * refColumn: name of column to add
     * getSchemaCatalogs to the output of _makeGetSchemaCatalogs(outputDataset)
     """
-    _DefaultName = "merge"
+    _DefaultName = None
     ConfigClass = MergeSourcesConfig
     RunnerClass = MergeSourcesRunner
     inputDataset = None
@@ -219,12 +247,24 @@ class MergeSourcesTask(CmdLineTask):
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=g^r^i")
         return parser
 
-    def __init__(self, butler, **kwargs):
+    def __init__(self, butler=None, schema=None, **kwargs):
+        """Initialize the task.
+
+        Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
+         - schema: the schema of the detection catalogs used as input to this one
+         - butler: a butler used to read the input schema from disk, if schema is None
+
+        The task will set its own self.schema attribute to the schema of the output merged catalog.
+        This will include all fields from the input schema, as well as additional fields indicating
+        which inputs contributed to each output record.
+        """
         CmdLineTask.__init__(self, **kwargs)
-        inSchema = butler.get(self.config.coaddName + "Coadd_" + self.inputDataset + "_schema",
-                              immediate=True).schema
-        self.schemaMapper = afwTable.SchemaMapper(inSchema)
-        self.schemaMapper.addMinimalSchema(inSchema)
+        if schema is None:
+            assert butler is not None, "Neither butler nor schema specified"
+            schema = butler.get(self.config.coaddName + "Coadd_" + self.inputDataset + "_schema",
+                                immediate=True).schema
+        self.schemaMapper = afwTable.SchemaMapper(schema)
+        self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = PropertyList()
         self.refKey = self.schema.addField(self.refColumn, type=str,
@@ -280,6 +320,9 @@ class MergeSourcesTask(CmdLineTask):
         # Can't set a string column; do it row by row
         for s in catalogs[best]:
             s[self.refKey] = best
+
+        copySlots(catalogs[best], merged)
+
         self.log.info("Merged to %d sources" % len(merged))
         return merged
 
@@ -305,26 +348,25 @@ class MergeDetectionsConfig(MergeSourcesConfig):
 class MergeDetectionsTask(MergeSourcesTask):
     """Merge detections from multiple bands"""
     ConfigClass = MergeDetectionsConfig
-    _DefaultName = "mergeDet"
+    _DefaultName = "mergeCoaddDetections"
     inputDataset = "det"
     outputDataset = "mergeDet"
     refColumn = "detection.ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("mergeDet")
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
-    def __init__(self, butler, **kwargs):
-        MergeSourcesTask.__init__(self, butler, **kwargs)
-        self.schemaMerge = afwTable.SourceTable.makeMinimalSchema()
-        self.merged = afwDetect.FootprintMergeList(self.schemaMerge, self.config.priorityList)
+    def __init__(self, **kwargs):
+        """Initialize the task.
 
-    def makeIdFactory(self, dataRef):
-        """Return an IdFactory for setting the detection identifiers
+        Additional keyword arguments (forwarded to MergeSourcesTask.__init__):
+         - schema: the schema of the detection catalogs used as input to this one
+         - butler: a butler used to read the input schema from disk, if schema is None
 
-        The actual parameters used in the IdFactory are provided by
-        the butler (through the provided data reference).
+        The task will set its own self.schema attribute to the schema of the output merged catalog.
         """
-        expBits = dataRef.get(self.config.coaddName + "mergedCoaddId_bits")
-        expId = long(dataRef.get(self.config.coaddName + "mergedCoaddId"))
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
+        MergeSourcesTask.__init__(self, **kwargs)
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.merged = afwDetect.FootprintMergeList(self.schema, self.config.priorityList)
 
     def mergeCatalogs(self, catalogs, patchRef):
         """Merge multiple catalogs
@@ -340,7 +382,8 @@ class MergeDetectionsTask(MergeSourcesTask):
         orderedBands = [band for band in self.config.priorityList if band in catalogs.keys()]
 
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
-                                                        self.schemaMerge, self.makeIdFactory(patchRef))
+                                                        self.schema, self.makeIdFactory(patchRef))
+        copySlots(orderedCatalogs[0], mergedList)
         self.log.info("Merged to %d sources" % len(mergedList))
         return mergedList
 
@@ -361,10 +404,11 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     the list of merge detections.  The results from each band will subsequently
     be merged to create a final reference catalog for forced measurement.
     """
-    _DefaultName = "measure"
+    _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
     RunnerClass = ButlerInitializedTaskRunner
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId") # The IDs we already have are of this type
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -373,11 +417,23 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
-    def __init__(self, butler, **kwargs):
+    def __init__(self, butler=None, schema=None, **kwargs):
+        """Initialize the task.
+
+        Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
+         - schema: the schema of the merged detection catalog used as input to this one
+         - butler: a butler used to read the input schema from disk, if schema is None
+
+        The task will set its own self.schema attribute to the schema of the output measurement catalog.
+        This will include all fields from the input schema, as well as additional fields for all the
+        measurements.
+        """
         CmdLineTask.__init__(self, **kwargs)
-        detSchema = butler.get(self.config.coaddName + "Coadd_mergeDet_schema", immediate=True).schema
-        self.schemaMapper = afwTable.SchemaMapper(detSchema)
-        self.schemaMapper.addMinimalSchema(detSchema)
+        if schema is None:
+            assert butler is not None, "Neither butler nor schema is defined"
+            schema = butler.get(self.config.coaddName + "Coadd_mergeDet_schema", immediate=True).schema
+        self.schemaMapper = afwTable.SchemaMapper(schema)
+        self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = PropertyList()
         if self.config.doDeblend:
@@ -419,7 +475,11 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         """
         merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
         self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
-        sources = afwTable.SourceCatalog(self.schema)
+        idFactory = self.makeIdFactory(dataRef)
+        for s in merged:
+            idFactory.notify(s.getId())
+        table = afwTable.SourceTable.make(self.schema, idFactory)
+        sources = afwTable.SourceCatalog(table)
         sources.extend(merged, self.schemaMapper)
         return sources
 
@@ -483,9 +543,10 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         sources: source catalog
         """
         result = self.astrometry.astrometer.useKnownWcs(sources, exposure=exposure)
-        matches = afwTable.packMatches(result.matches)
-        matches.table.setMetadata(result.matchMetadata)
-        dataRef.put(matches, self.config.coaddName + "Coadd_srcMatch")
+        if result.matches:
+            matches = afwTable.packMatches(result.matches)
+            matches.table.setMetadata(result.matchMetadata)
+            dataRef.put(matches, self.config.coaddName + "Coadd_srcMatch")
 
     def write(self, dataRef, sources):
         """Write the source catalog"""
@@ -497,7 +558,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
 class MergeMeasurementsTask(MergeSourcesTask):
     """Measure measurements from multiple bands"""
-    _DefaultName = "mergeMeas"
+    _DefaultName = "mergeCoaddMeasurements"
     inputDataset = "meas"
     outputDataset = "ref"
     refColumn = "measurement.ref"
