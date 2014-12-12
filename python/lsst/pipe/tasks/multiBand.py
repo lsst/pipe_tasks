@@ -353,7 +353,7 @@ class MergeDetectionsTask(MergeSourcesTask):
     outputDataset = "mergeDet"
     refColumn = "detection.ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("mergeDet")
-    makeIdFactory = _makeMakeIdFactory("mergedCoaddId")
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
     def __init__(self, **kwargs):
         """Initialize the task.
@@ -408,7 +408,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     ConfigClass = MeasureMergedCoaddSourcesConfig
     RunnerClass = ButlerInitializedTaskRunner
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
-    makeIdFactory = _makeMakeIdFactory("mergedCoaddId") # The IDs we already have are of this type
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId") # The IDs we already have are of this type
 
     @classmethod
     def _makeArgumentParser(cls):
