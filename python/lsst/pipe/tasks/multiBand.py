@@ -397,6 +397,10 @@ class MeasureMergedCoaddSourcesConfig(Config):
     astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
 
+    def setDefaults(self):
+        Config.setDefaults(self)
+        self.deblend.propagateAllPeaks = True
+
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
     """Measure sources using the merged catalog of detections
 
