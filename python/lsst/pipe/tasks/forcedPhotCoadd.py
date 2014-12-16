@@ -49,6 +49,14 @@ class ForcedPhotCoaddConfig(ForcedPhotImageTask.ConfigClass):
         # Because the IDs used in coadd forced photometry *are* the object IDs, we drop the 'object' prefix
         # that is used in the copied columns in CCD forced photometry.
         self.copyColumns = dict((k, k) for k in ("id", "parent", "deblend.nchild"))
+        self.references.removePatchOverlaps = False  # see validate() for why
+
+    def validate(self):
+        ForcedPhotImageTask.ConfigClass.validate(self)
+        if (self.measurement.doReplaceWithNoise and self.footprintDatasetName is not None
+            and self.references.removePatchOverlaps):
+            raise ValueError("Cannot use removePatchOverlaps=True with deblended footprints, as parent "
+                             "sources may be rejected while their children are not.")
 
 class ForcedPhotCoaddTask(ForcedPhotImageTask):
     """Run forced measurement on coadded images
