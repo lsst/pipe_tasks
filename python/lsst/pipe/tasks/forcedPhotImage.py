@@ -26,14 +26,14 @@ from lsst.daf.base import PropertyList
 from lsst.meas.algorithms import SourceMeasurementTask
 from lsst.pex.config import Config, ConfigurableField, DictField, Field, FieldValidationError
 from lsst.pipe.base import Task, CmdLineTask, Struct, timeMethod, ButlerInitializedTaskRunner
-from .references import CoaddSrcReferencesTask
+from .references import MultiBandReferencesTask
 
 __all__ = ("ForcedPhotImageTask",)
 
 class ForcedPhotImageConfig(Config):
     """Configuration for forced photometry.
     """
-    references = ConfigurableField(target=CoaddSrcReferencesTask, doc="Retrieve reference source catalog")
+    references = ConfigurableField(target=MultiBandReferencesTask, doc="Retrieve reference source catalog")
     measurement = ConfigurableField(target=SourceMeasurementTask, doc="measurement subtask")
     copyColumns = DictField(
         keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
