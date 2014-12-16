@@ -220,7 +220,8 @@ class MultiBandReferencesConfig(CoaddSrcReferencesTask.ConfigClass):
         if self.filter is not None:
             raise FieldValidationError(field=MultiBandReferencesConfig.filter, config=self,
                                        msg="Filter should not be set for the multiband processing scheme")
-        CoaddSrcReferencesTask.validate(self)
+        # Delegate to ultimate base class, because the direct one has a check we don't want.
+        BaseReferencesTask.ConfigClass.validate(self)
 
 
 class MultiBandReferencesTask(CoaddSrcReferencesTask):
