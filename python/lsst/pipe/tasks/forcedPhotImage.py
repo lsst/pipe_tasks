@@ -26,14 +26,14 @@ from lsst.daf.base import PropertyList
 from lsst.meas.algorithms import SourceMeasurementTask
 from lsst.pex.config import Config, ConfigurableField, DictField, Field, FieldValidationError
 from lsst.pipe.base import Task, CmdLineTask, Struct, timeMethod, ButlerInitializedTaskRunner
-from .references import CoaddSrcReferencesTask
+from .references import MultiBandReferencesTask
 
 __all__ = ("ForcedPhotImageTask",)
 
 class ForcedPhotImageConfig(Config):
     """Configuration for forced photometry.
     """
-    references = ConfigurableField(target=CoaddSrcReferencesTask, doc="Retrieve reference source catalog")
+    references = ConfigurableField(target=MultiBandReferencesTask, doc="Retrieve reference source catalog")
     measurement = ConfigurableField(target=SourceMeasurementTask, doc="measurement subtask")
     copyColumns = DictField(
         keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
@@ -63,15 +63,6 @@ class ForcedPhotImageConfig(Config):
 
     def setDefaults(self):
         self.doTweakCentroids = False
-        self.measurement.doReplaceWithNoise = False
-
-    def validate(self):
-        if self.measurement.doReplaceWithNoise:
-            raise FieldValidationError(
-                field=SourceMeasurementTask.Configclass.doReplaceWithNoise,
-                config=self,
-                msg="doReplaceWithNoise is not valid for forced photometry"
-                )
 
 class ForcedPhotImageTask(CmdLineTask):
     """Base class for performing forced measurement, in which the results (often just centroids) from
@@ -81,6 +72,7 @@ class ForcedPhotImageTask(CmdLineTask):
      - Set the _DefaultName class attribute
      - Implement makeIdFactory
      - Implement fetchReferences
+     - (optional) Implement attachFootprints
     """
 
     RunnerClass = ButlerInitializedTaskRunner
@@ -139,6 +131,24 @@ class ForcedPhotImageTask(CmdLineTask):
         """
         raise NotImplementedError()
 
+    def attachFootprints(self, dataRef, sources, references, exposure, refWcs):
+        """Hook for derived classes to define how to attach Footprints to blank sources prior to measurement
+
+        Footprints for forced photometry must be in the pixel coordinate system of the image being
+        measured, while the actual detections may start out in a different coordinate system.
+
+        Subclasses for ForcedPhotImageTask must implement this method to define how those Footprints
+        should be generated.
+
+        The default implementation transforms the Footprints from the reference catalog from the refWcs
+        to the exposure's Wcs, which downgrades HeavyFootprints into regular Footprints, destroying
+        deblend information.
+        """
+        exposureWcs = exposure.getWcs()
+        region = exposure.getBBox(lsst.afw.image.PARENT)
+        for refRecord, srcRecord in zip(sources, references):
+            srcRecord.setFootprint(refRecord.getFootprint().transform(refWcs, exposureWcs, region))
+
     def getExposure(self, dataRef):
         """Read input exposure on which to perform the measurements
 
@@ -188,8 +198,9 @@ class ForcedPhotImageTask(CmdLineTask):
         exposure = self.getExposure(dataRef)
         if exposure:
             references = list(self.fetchReferences(dataRef, exposure))
-            self.log.info("Performing forced measurement on %d sources" % len(references))
+            self.log.info("Performing forced measurement on %s" % dataRef.dataId)
             sources = self.generateSources(dataRef, references)
+            self.attachFootprints(dataRef, sources, references=references, exposure=exposure, refWcs=refWcs)
             self.measurement.run(exposure, sources, references=references, refWcs=refWcs)
             self.writeOutput(dataRef, sources)
             return Struct(sources=sources)
