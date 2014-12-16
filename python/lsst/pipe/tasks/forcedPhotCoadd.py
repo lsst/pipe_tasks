@@ -92,6 +92,8 @@ class ForcedPhotCoaddTask(ForcedPhotImageTask):
         """
         if self.config.footprintDatasetName is None:
             return ForcedPhotImageTask.attachFootprints(dataRef, sources, references, exposure, refWcs)
+        self.log.info("Loading deblended footprints for sources from %s, %s" %
+                      (self.config.footprintDatasetName, dataRef.dataId))
         fpCat = dataRef.get("%sCoadd_%s" % (self.config.coaddName, self.config.footprintDatasetName),
                             immediate=True)
         for refRecord, srcRecord in zip(references, sources):
