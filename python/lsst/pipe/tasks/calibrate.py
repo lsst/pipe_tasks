@@ -260,7 +260,8 @@ class CalibrateTask(pipeBase.Task):
                     if not matches:
                         raise RuntimeError("No matches available")
                     photocalRet = self.photocal.run(exposure, matches,
-                                                    prefix=self.config.initialMeasurement.prefix)
+                                                    prefix=self.config.initialMeasurement.prefix,
+                                                    doSelectUnresolved=False)# don't trust s/g without good PSF
                     self.log.info("Initial photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
                     exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
                 except Exception, e:
