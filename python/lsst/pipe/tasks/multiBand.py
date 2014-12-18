@@ -16,13 +16,18 @@ New dataset types:
 * deepCoadd_mergeDet: merged detections (tract, patch)
 * deepCoadd_meas: measurements of merged detections (tract, patch, filter)
 * deepCoadd_ref: reference sources (tract, patch)
+All of these have associated *_schema catalogs that require no data ID and hold no records.
+
+In addition, we have a schema-only dataset, which saves the schema for the PeakRecords in
+the mergeDet, meas, and ref dataset Footprints:
+* deepCoadd_peak_schema
 """
 
 
 def _makeGetSchemaCatalogs(datasetSuffix):
     """Construct a getSchemaCatalogs instance method
 
-    These are identical for all the classes here, so we'll consolidate
+    These are identical for most of the classes here, so we'll consolidate
     the code.
 
     datasetSuffix:  Suffix of dataset name, e.g., "src" for "deepCoadd_src"
@@ -352,7 +357,6 @@ class MergeDetectionsTask(MergeSourcesTask):
     inputDataset = "det"
     outputDataset = "mergeDet"
     refColumn = "detection.ref"
-    getSchemaCatalogs = _makeGetSchemaCatalogs("mergeDet")
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
     def __init__(self, **kwargs):
@@ -386,6 +390,13 @@ class MergeDetectionsTask(MergeSourcesTask):
         copySlots(orderedCatalogs[0], mergedList)
         self.log.info("Merged to %d sources" % len(mergedList))
         return mergedList
+
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        mergeDet = afwTable.SourceCatalog(self.schema)
+        peak = afwDetect.PeakCatalog(self.merged.getPeakSchema())
+        return {self.config.coaddName + "Coadd_mergeDet": mergeDet,
+                self.config.coaddName + "Coadd_peak": peak}
 
 ##############################################################################################################
 
