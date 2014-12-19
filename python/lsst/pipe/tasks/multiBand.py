@@ -30,6 +30,7 @@ from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
 from lsst.meas.astrom import ANetAstrometryTask
+from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
@@ -458,6 +459,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     doDeblend = Field(dtype=bool, default=True, doc="Deblend sources?")
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
     measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
+    propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
     doMatchSources = Field(dtype=bool, default=False, doc="Match sources to reference catalog?")
     astrometry = ConfigurableField(target=ANetAstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
@@ -516,6 +518,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                 peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
             self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("propagateFlags", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
 
         self.isPatchInnerKey = self.schema.addField(
@@ -546,6 +549,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                               (patchRef.dataId, numBig))
         self.measurement.run(exposure, sources)
         self.setIsPrimaryFlag(sources, patchRef)
+        self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
+                                exposure.getWcs())
         if self.config.doMatchSources:
             self.writeMatches(patchRef, exposure, sources)
         self.write(patchRef, sources)
