@@ -31,6 +31,7 @@ import lsst.afw.table as afwTable
 from .coaddBase import CoaddDataIdContainer
 from .processImage import ProcessImageTask
 from .astrometry import AstrometryTask
+from .propagateVisitFlags import PropagateVisitFlagsTask
 
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
     """Config for ProcessCoadd"""
@@ -44,6 +45,8 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         target = AstrometryTask,
         doc = "Astrometric matching, for matching sources to reference",
     )
+    propagateFlags = pexConfig.ConfigurableField(target=PropagateVisitFlagsTask,
+                                                 doc="Propagate flags to coadd")
 
     def setDefaults(self):
         ProcessImageTask.ConfigClass.setDefaults(self)
@@ -81,6 +84,7 @@ class ProcessCoaddTask(ProcessImageTask):
             doc="true if source has no children and is in the inner region of a coadd patch " \
                 + "and is in the inner region of a coadd tract",
         )
+        self.makeSubtask("propagateFlags", schema=self.schema)
         if self.config.doWriteSourceMatches:
             self.makeSubtask("astrometry", schema=self.schema)
 
@@ -130,6 +134,8 @@ class ProcessCoaddTask(ProcessImageTask):
 
         if result.sources is not None:
             self.setIsPrimaryFlag(sources=result.sources, skyInfo=skyInfo)
+            self.propagateFlags.run(dataRef.getButler(), result.sources,
+                                    self.propagateFlags.getCcdInputs(coadd), coadd.getWcs())
 
             # write sources
             if self.config.doWriteSources:
