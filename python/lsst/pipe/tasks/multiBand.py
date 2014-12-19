@@ -229,9 +229,7 @@ class MergeSourcesTask(CmdLineTask):
 
     Merging detections (MergeDetectionsTask) and merging measurements
     (MergeMeasurementsTask) are currently so similar that it makes
-    sense to re-use the code, in the form of this base class.
-    This base class uses a drop-dead simple implementation for the
-    merge: it simply takes the catalog with the highest priority.
+    sense to re-use the code, in the form of this abstract base class.
 
     Sub-classes should set the following class variables:
     * _DefaultName: name of Task
@@ -239,6 +237,8 @@ class MergeSourcesTask(CmdLineTask):
     * outputDataset: name of dataset to write
     * refColumn: name of column to add
     * getSchemaCatalogs to the output of _makeGetSchemaCatalogs(outputDataset)
+
+    In addition, sub-classes must implement the mergeCatalogs method.
     """
     _DefaultName = None
     ConfigClass = MergeSourcesConfig
@@ -262,6 +262,13 @@ class MergeSourcesTask(CmdLineTask):
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=g^r^i")
         return parser
 
+    def getInputSchema(self, butler=None, schema=None):
+        if schema is None:
+            assert butler is not None, "Neither butler nor schema specified"
+            schema = butler.get(self.config.coaddName + "Coadd_" + self.inputDataset + "_schema",
+                                immediate=True).schema
+        return schema
+
     def __init__(self, butler=None, schema=None, **kwargs):
         """Initialize the task.
 
@@ -269,23 +276,10 @@ class MergeSourcesTask(CmdLineTask):
          - schema: the schema of the detection catalogs used as input to this one
          - butler: a butler used to read the input schema from disk, if schema is None
 
-        The task will set its own self.schema attribute to the schema of the output merged catalog.
-        This will include all fields from the input schema, as well as additional fields indicating
-        which inputs contributed to each output record.
+        Derived classes should use the getInputSchema() method to handle the additional
+        arguments and retreive the actual input schema.
         """
         CmdLineTask.__init__(self, **kwargs)
-        if schema is None:
-            assert butler is not None, "Neither butler nor schema specified"
-            schema = butler.get(self.config.coaddName + "Coadd_" + self.inputDataset + "_schema",
-                                immediate=True).schema
-        self.schemaMapper = afwTable.SchemaMapper(schema)
-        self.schemaMapper.addMinimalSchema(schema)
-        self.schema = self.schemaMapper.getOutputSchema()
-        self.algMetadata = PropertyList()
-        self.refKey = self.schema.addField(self.refColumn, type=str,
-                                           size=max(len(s) for s in self.config.priorityList),
-                                           doc="Band used for reference")
-
 
     def run(self, patchRefList):
         """Merge coadd sources from multiple bands
@@ -310,36 +304,11 @@ class MergeSourcesTask(CmdLineTask):
     def mergeCatalogs(self, catalogs, patchRef):
         """Merge multiple catalogs
 
-        This implementation is a merge placeholder for something hard.
-        It simply takes the catalog for the band with the highest priority.
-
-        We add a field (specified by the 'refColumn' class variable) to this
-        catalog with the band that each individual source came from.
-
         catalogs: dict mapping filter name to source catalog
 
         Returns: merged catalog
         """
-        best = None
-        for f in self.config.priorityList:
-            if f in catalogs:
-                best = f
-                break
-        else:
-            raise RuntimeError("No overlap between catalogs (%s) and priority list (%s)" %
-                               (catalogs.keys(), self.config.priorityList))
-
-        # Tell people where things came from
-        merged = afwTable.SourceCatalog(self.schema)
-        merged.extend(catalogs[best], self.schemaMapper)
-        # Can't set a string column; do it row by row
-        for s in catalogs[best]:
-            s[self.refKey] = best
-
-        copySlots(catalogs[best], merged)
-
-        self.log.info("Merged to %d sources" % len(merged))
-        return merged
+        raise NotImplementedError()
 
     def write(self, patchRef, catalog):
         """Write the output
@@ -369,7 +338,7 @@ class MergeDetectionsTask(MergeSourcesTask):
     refColumn = "detection.ref"
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
-    def __init__(self, **kwargs):
+    def __init__(self, butler=None, schema=None, **kwargs):
         """Initialize the task.
 
         Additional keyword arguments (forwarded to MergeSourcesTask.__init__):
@@ -378,8 +347,8 @@ class MergeDetectionsTask(MergeSourcesTask):
 
         The task will set its own self.schema attribute to the schema of the output merged catalog.
         """
-        MergeSourcesTask.__init__(self, **kwargs)
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
+        MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
+        self.schema = self.getInputSchema(butler=butler, schema=schema)
         self.merged = afwDetect.FootprintMergeList(
             self.schema,
             [getShortFilterName(name) for name in self.config.priorityList]
