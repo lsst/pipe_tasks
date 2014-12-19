@@ -432,12 +432,13 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
-    def __init__(self, butler=None, schema=None, **kwargs):
+    def __init__(self, butler=None, schema=None, peakSchema=None, **kwargs):
         """Initialize the task.
 
         Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
          - schema: the schema of the merged detection catalog used as input to this one
-         - butler: a butler used to read the input schema from disk, if schema is None
+         - peakSchema: the schema of the PeakRecords in the Footprints in the merged detection catalog
+         - butler: a butler used to read the input schemas from disk, if schema or peakSchema is None
 
         The task will set its own self.schema attribute to the schema of the output measurement catalog.
         This will include all fields from the input schema, as well as additional fields for all the
@@ -452,7 +453,10 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = PropertyList()
         if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
+            if peakSchema is None:
+                assert butler is not None, "Neither butler nor peakSchema is defined"
+                peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
+            self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("astrometry", schema=self.schema)
 
