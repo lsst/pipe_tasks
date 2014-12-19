@@ -4,6 +4,7 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
 from lsst.pipe.tasks.astrometry import AstrometryTask
+import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
@@ -66,6 +67,14 @@ def copySlots(oldCat, newCat):
         err = getattr(oldCat.table, "get" + name + "ErrKey")()
         flag = getattr(oldCat.table, "get" + name + "FlagKey")()
         getattr(newCat.table, "define" + name)(meas, err, flag)
+
+
+def getShortFilterName(name):
+    """Given a longer, camera-specific filter name (e.g. "HSC-I") return its shorthand name ("i").
+    """
+    # I'm not sure if this is the way this is supposed to be implemented, but it seems to work,
+    # and its the only way I could get it to work.
+    return afwImage.Filter(name).getFilterProperty().getName()
 
 
 ##############################################################################################################
@@ -370,7 +379,10 @@ class MergeDetectionsTask(MergeSourcesTask):
         """
         MergeSourcesTask.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
-        self.merged = afwDetect.FootprintMergeList(self.schema, self.config.priorityList)
+        self.merged = afwDetect.FootprintMergeList(
+            self.schema,
+            [getShortFilterName(name) for name in self.config.priorityList]
+        )
 
     def mergeCatalogs(self, catalogs, patchRef):
         """Merge multiple catalogs
@@ -383,7 +395,8 @@ class MergeDetectionsTask(MergeSourcesTask):
 
         # Put catalogs, filters in priority order
         orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
-        orderedBands = [band for band in self.config.priorityList if band in catalogs.keys()]
+        orderedBands = [getShortFilterName(band) for band in self.config.priorityList
+                        if band in catalogs.keys()]
 
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
                                                         self.schema, self.makeIdFactory(patchRef))
