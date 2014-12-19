@@ -4,6 +4,7 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
 from lsst.pipe.tasks.astrometry import AstrometryTask
+from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
@@ -393,6 +394,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     doDeblend = Field(dtype=bool, default=True, doc="Deblend sources?")
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
     measurement = ConfigurableField(target=SourceMeasurementTask, doc="Source measurement")
+    propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
     astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
@@ -443,6 +445,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         if self.config.doDeblend:
             self.makeSubtask("deblend", schema=self.schema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("propagateFlags", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
 
         self.isPatchInnerKey = self.schema.addField(
@@ -467,6 +470,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
             self.deblend.run(exposure, sources, exposure.getPsf())
         self.measurement.run(exposure, sources)
         self.setIsPrimaryFlag(sources, patchRef)
+        self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
+                                exposure.getWcs())
         if self.config.doMatchSources:
             self.writeMatches(patchRef, exposure, sources)
         self.write(patchRef, sources)
