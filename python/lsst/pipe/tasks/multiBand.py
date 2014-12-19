@@ -1,3 +1,5 @@
+import numpy
+
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
@@ -569,3 +571,75 @@ class MergeMeasurementsTask(MergeSourcesTask):
     outputDataset = "ref"
     refColumn = "measurement.ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("ref")
+
+    def __init__(self, butler=None, schema=None, **kwargs):
+        """Initialize the task.
+
+        Additional keyword arguments (forwarded to MergeSourcesTask.__init__):
+         - schema: the schema of the detection catalogs used as input to this one
+         - butler: a butler used to read the input schema from disk, if schema is None
+
+        The task will set its own self.schema attribute to the schema of the output merged catalog.
+        """
+        MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
+        inputSchema = self.getInputSchema(butler=butler, schema=schema)
+        self.schemaMapper = afwTable.SchemaMapper(inputSchema)
+        self.schemaMapper.addMinimalSchema(inputSchema, True)
+        self.flagKeys = {}
+        for band in self.config.priorityList:
+            short = getShortFilterName(band)
+            outputKey = self.schemaMapper.editOutputSchema().addField(
+                "merge.measurement.%s" % short,
+                type="Flag",
+                doc="Flag field set if the measurements here are from the %s filter" % band
+            )
+            peakKey = inputSchema.find("merge.peak.%s" % short).key
+            footprintKey = inputSchema.find("merge.footprint.%s" % short).key
+            self.flagKeys[band] = Struct(peak=peakKey, footprint=footprintKey, output=outputKey)
+        self.schema = self.schemaMapper.getOutputSchema()
+
+    def mergeCatalogs(self, catalogs, patchRef):
+        """Merge measurement catalogs to create a single reference catalog for forced photometry
+
+        For parent sources, we choose the first band in config.priorityList for which the
+        merge.footprint flag for that band is is True.
+
+        For child sources, the logic is the same, except that we use the merge.peak flags.
+        """
+        # Put catalogs, filters in priority order
+        orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
+        orderedKeys = [self.flagKeys[band] for band in self.config.priorityList if band in catalogs.keys()]
+
+        mergedCatalog = afwTable.SourceCatalog(self.schema)
+        mergedCatalog.reserve(len(orderedCatalogs[0]))
+
+        idKey = orderedCatalogs[0].table.getIdKey()
+        for catalog in orderedCatalogs[1:]:
+            if numpy.any(orderedCatalogs[0].get(idKey) != catalog.get(idKey)):
+                raise ValueError("Error in inputs to MergeCoaddMeasurements: source IDs do not match")
+
+        # This first zip iterates over all the catalogs simultaneously, yielding a sequence of one
+        # record for each band, in order.
+        for n, orderedRecords in enumerate(zip(*orderedCatalogs)):
+            # Now we iterate over those record-band pairs, until we find the one with the right flag set.
+            for inputRecord, flagKeys in zip(orderedRecords, orderedKeys):
+                bestParent = (inputRecord.getParent() == 0 and inputRecord.get(flagKeys.footprint))
+                bestChild = (inputRecord.getParent() != 0 and inputRecord.get(flagKeys.peak))
+                if bestParent or bestChild:
+                    outputRecord = mergedCatalog.addNew()
+                    outputRecord.assign(inputRecord, self.schemaMapper)
+                    outputRecord.set(flagKeys.output, True)
+                    break
+            else: # if we didn't break (i.e. didn't find any record with right flag set)
+                raise ValueError("Error in inputs to MergeCoaddMeasurements: no valid reference for %s" %
+                                 inputRecord.getId())
+
+        copySlots(orderedCatalogs[0], mergedCatalog)
+
+        # more checking for sane inputs, since zip silently iterates over the smallest sequence
+        for inputCatalog in orderedCatalogs:
+            if len(mergedCatalog) != len(inputCatalog):
+                raise ValueError("Mismatch between catalog sizes: %s != %s" %
+                                 (len(mergedCatalog), len(orderedCatalogs)))
+
+        return mergedCatalog
