@@ -318,7 +318,11 @@ class MergeSourcesTask(CmdLineTask):
         class variable.
         """
         patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
-        self.log.info("Wrote merged catalog: %s" % (patchRef.dataId,))
+        # since the filter isn't actually part of the data ID for the dataset we're saving,
+        # it's confusing to see it in the log message, even if the butler simply ignores it.
+        mergeDataId = patchRef.dataId.copy()
+        del mergeDataId["filter"]
+        self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
 
     def writeMetadata(self, dataRefList):
         """No metadata to write, and not sure how to write it for a list of dataRefs"""
