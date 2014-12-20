@@ -39,7 +39,8 @@ def _makeGetSchemaCatalogs(datasetSuffix):
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task."""
         src = afwTable.SourceCatalog(self.schema)
-        src.getTable().setMetadata(self.algMetadata)
+        if hasattr(self, "algMetadata"):
+            src.getTable().setMetadata(self.algMetadata)
         return {self.config.coaddName + "Coadd_" + datasetSuffix: src}
     return getSchemaCatalogs
 
@@ -123,7 +124,6 @@ class DetectCoaddSourcesTask(CmdLineTask):
         if schema is None:
             schema = afwTable.SourceTable.makeMinimalSchema()
         self.schema = schema
-        self.algMetadata = PropertyList()
         self.makeSubtask("detection", schema=self.schema)
 
     def run(self, patchRef):
@@ -161,7 +161,6 @@ class DetectCoaddSourcesTask(CmdLineTask):
         """
         backgrounds = afwMath.BackgroundList()
         table = afwTable.SourceTable.make(self.schema, idFactory)
-        table.setMetadata(self.algMetadata)
         detections = self.detection.makeSourceCatalog(table, exposure)
         sources = detections.sources
         fpSets = detections.fpSets
