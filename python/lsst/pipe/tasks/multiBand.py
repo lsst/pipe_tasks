@@ -5,6 +5,7 @@ from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
 from lsst.pipe.tasks.astrometry import AstrometryTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
+import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
@@ -17,13 +18,18 @@ New dataset types:
 * deepCoadd_mergeDet: merged detections (tract, patch)
 * deepCoadd_meas: measurements of merged detections (tract, patch, filter)
 * deepCoadd_ref: reference sources (tract, patch)
+All of these have associated *_schema catalogs that require no data ID and hold no records.
+
+In addition, we have a schema-only dataset, which saves the schema for the PeakRecords in
+the mergeDet, meas, and ref dataset Footprints:
+* deepCoadd_peak_schema
 """
 
 
 def _makeGetSchemaCatalogs(datasetSuffix):
     """Construct a getSchemaCatalogs instance method
 
-    These are identical for all the classes here, so we'll consolidate
+    These are identical for most of the classes here, so we'll consolidate
     the code.
 
     datasetSuffix:  Suffix of dataset name, e.g., "src" for "deepCoadd_src"
@@ -62,6 +68,14 @@ def copySlots(oldCat, newCat):
         err = getattr(oldCat.table, "get" + name + "ErrKey")()
         flag = getattr(oldCat.table, "get" + name + "FlagKey")()
         getattr(newCat.table, "define" + name)(meas, err, flag)
+
+
+def getShortFilterName(name):
+    """Given a longer, camera-specific filter name (e.g. "HSC-I") return its shorthand name ("i").
+    """
+    # I'm not sure if this is the way this is supposed to be implemented, but it seems to work,
+    # and its the only way I could get it to work.
+    return afwImage.Filter(name).getFilterProperty().getName()
 
 
 ##############################################################################################################
@@ -353,7 +367,6 @@ class MergeDetectionsTask(MergeSourcesTask):
     inputDataset = "det"
     outputDataset = "mergeDet"
     refColumn = "detection.ref"
-    getSchemaCatalogs = _makeGetSchemaCatalogs("mergeDet")
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
     def __init__(self, **kwargs):
@@ -367,7 +380,10 @@ class MergeDetectionsTask(MergeSourcesTask):
         """
         MergeSourcesTask.__init__(self, **kwargs)
         self.schema = afwTable.SourceTable.makeMinimalSchema()
-        self.merged = afwDetect.FootprintMergeList(self.schema, self.config.priorityList)
+        self.merged = afwDetect.FootprintMergeList(
+            self.schema,
+            [getShortFilterName(name) for name in self.config.priorityList]
+        )
 
     def mergeCatalogs(self, catalogs, patchRef):
         """Merge multiple catalogs
@@ -380,13 +396,21 @@ class MergeDetectionsTask(MergeSourcesTask):
 
         # Put catalogs, filters in priority order
         orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
-        orderedBands = [band for band in self.config.priorityList if band in catalogs.keys()]
+        orderedBands = [getShortFilterName(band) for band in self.config.priorityList
+                        if band in catalogs.keys()]
 
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
                                                         self.schema, self.makeIdFactory(patchRef))
         copySlots(orderedCatalogs[0], mergedList)
         self.log.info("Merged to %d sources" % len(mergedList))
         return mergedList
+
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
+        mergeDet = afwTable.SourceCatalog(self.schema)
+        peak = afwDetect.PeakCatalog(self.merged.getPeakSchema())
+        return {self.config.coaddName + "Coadd_mergeDet": mergeDet,
+                self.config.coaddName + "Coadd_peak": peak}
 
 ##############################################################################################################
 
@@ -423,12 +447,13 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
-    def __init__(self, butler=None, schema=None, **kwargs):
+    def __init__(self, butler=None, schema=None, peakSchema=None, **kwargs):
         """Initialize the task.
 
         Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
          - schema: the schema of the merged detection catalog used as input to this one
-         - butler: a butler used to read the input schema from disk, if schema is None
+         - peakSchema: the schema of the PeakRecords in the Footprints in the merged detection catalog
+         - butler: a butler used to read the input schemas from disk, if schema or peakSchema is None
 
         The task will set its own self.schema attribute to the schema of the output measurement catalog.
         This will include all fields from the input schema, as well as additional fields for all the
@@ -443,7 +468,10 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = PropertyList()
         if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
+            if peakSchema is None:
+                assert butler is not None, "Neither butler nor peakSchema is defined"
+                peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
+            self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("propagateFlags", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
