@@ -62,7 +62,9 @@ class InterpImageTask(pipeBase.Task):
         psfModel = self.config.modelPsf.apply(fwhm=fwhmPixels)
 
         if fallbackValue is None:
-            fallbackValue = afwMath.makeStatistics(maskedImage, afwMath.MEDIAN).getValue()
+            fallbackValue = max(afwMath.makeStatistics(maskedImage, afwMath.MEDIAN).getValue(), 0.0)
+        elif fallbackValue < 0:
+            self.log.warn("Negative interpolation fallback value provided: %f" % fallbackValue)
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
         measAlg.interpolateOverDefects(maskedImage, psfModel, nanDefectList, fallbackValue,
