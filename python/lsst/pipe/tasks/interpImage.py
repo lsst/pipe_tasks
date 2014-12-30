@@ -76,7 +76,9 @@ class InterpImageTask(pipeBase.Task):
             psf = measAlg.DoubleGaussianPsf(kernelDim[0], kernelDim[1], coreSigma, coreSigma*2.5, 0.1)
 
         if fallbackValue is None:
-            fallbackValue = afwMath.makeStatistics(maskedImage, afwMath.MEDIAN).getValue()
+            fallbackValue = max(afwMath.makeStatistics(maskedImage, afwMath.MEDIAN).getValue(), 0.0)
+        elif fallbackValue < 0:
+            self.log.warn("Negative interpolation fallback value provided: %f" % fallbackValue)
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
         measAlg.interpolateOverDefects(maskedImage, psf, nanDefectList, fallbackValue,
