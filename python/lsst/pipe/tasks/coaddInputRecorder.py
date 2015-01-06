@@ -49,7 +49,7 @@ class CoaddInputRecorderConfig(pexConfig.Config):
              " due to an exception (often due to the calexp not being found on disk).")
     )
     saveVisitGoodPix = pexConfig.Field(
-        dtype=bool, default=False, optional=False,
+        dtype=bool, default=True, optional=False,
         doc=("Save the total number of good pixels in each coaddTempExp (redundant with a sum of"
              " good pixels in associated CCDs)")
     )
