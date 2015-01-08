@@ -45,7 +45,7 @@ class ExampleCmdLineConfig(pexConfig.Config):
         doc = "Raise an lsst.base.TaskError exception when processing each image? " \
             + "This allows one to see the effects of the --doraise command line flag",
         dtype = bool,
-        default = 0,
+        default = False,
     )
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
