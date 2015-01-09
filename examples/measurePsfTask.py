@@ -50,7 +50,7 @@ def loadData():
     exposure = afwImage.ExposureF(imFile)
 
     im = exposure.getMaskedImage().getImage()
-    im -= np.median(im.getArray())
+    im -= float(np.median(im.getArray()))
 
     return exposure
 
