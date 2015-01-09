@@ -57,6 +57,7 @@ def loadData():
 def run(display=False):
     exposure = loadData()
     schema = afwTable.SourceTable.makeMinimalSchema()
+    schema.setVersion(0)
     #
     # Create the detection and measurement Tasks
     #
