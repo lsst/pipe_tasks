@@ -55,9 +55,6 @@ class MeasurePsfTask(pipeBase.Task):
 
 \section pipe_tasks_measurePsf_Purpose	Description
 
-\copybrief MeasurePsfTask
-
-
 A task that wraps two algorithms set via a pair of registries specified in the task's
 \ref pipe_tasks_measurePsf_Config.
 Both algorithms are classes with a constructor taking a pex.config.Config object (\em e.g.
@@ -97,7 +94,7 @@ parameters (as we do in \ref pipe_tasks_measurePsf_Example) your code is no long
 
 \section pipe_tasks_measurePsf_Config       Configuration parameters
 
-See \ref MeasurePsfConfig
+See \ref MeasurePsfConfig.
 
 \warning
 The star selector and psf determiner registries should be modified to return a class
@@ -135,60 +132,59 @@ This code is in \link measurePsfTask.py\endlink in the examples directory, and c
 examples/measurePsfTask.py --ds9
 \endcode
 \dontinclude measurePsfTask.py
+
 The example also runs SourceDetectionTask and SourceMeasurementTask; see \ref meas_algorithms_measurement_Example for more explanation.
 
-Import the tasks (there are some other standard imports; read the file to see them all)
+Import the tasks (there are some other standard imports; read the file to see them all):
+
 \skip SourceDetectionTask
 \until MeasurePsfTask
 
 We need to create the tasks before processing any data as the task constructor
-can add an extra column to the schema, but first we need an almost-empty Schema
+can add an extra column to the schema, but first we need an almost-empty
+Schema:
+
 \skipline makeMinimalSchema
-after which we can call the constructors for the tasks we need to find and characterize candidate
+
+We can now call the constructors for the tasks we need to find and characterize candidate
 PSF stars:
+
 \skip SourceDetectionTask.ConfigClass
 \until measureTask
-Now the task that we're interested in:
-\skipline MeasurePsfTask.ConfigClass
-\skipline MeasurePsfTask
 
-Unfortunately that won't quite work as we didn't run the standard bright star measuring code
-which sets fields such as "initial.flags.pixel.edge" rather than "flags.pixel.edge".  One option
-would have been to modify the SourceMeasurementTask configuration with
-\code
-config.prefix = "initial."
-config.algorithms.names -= ["correctfluxes"]
-\endcode
-(you need the second line due to a bug present in the aperture correction code as of 2014-07-01);
-or we can set \c badFlags
-\dontinclude measurePsfTask.py
-\skip starSelector
-\until flags.pixel.saturated.center
-(not beautiful)
+Note that we've chosen a minimal set of measurement plugins: we need the
+outputs of \c base_SdssCentroid, \c base_SdssShape and \c base_SincFlux as
+inputs to the PSF measurement algorithm, while \c base_PixelFlags identifies
+and flags bad sources (e.g. with pixels too close to the edge) so they can be
+removed later.
 
-We can set psfDeterminer options too:
-\skip psfDeterminer
-\until nEigenComponents
+Now we can create and configure the task that we're interested in:
 
-before creating our task
-\skipline MeasurePsfTask
+\skip MeasurePsfTask
+\until measurePsfTask
 
 We're now ready to process the data (we could loop over multiple exposures/catalogues using the same
 task objects).  First create the output table:
+
 \skipline afwTable
 
-And process the image
+And process the image:
+
 \skip sources =
 \until result
 
 We can then unpack and use the results:
+
 \skip psf
 \until cellSet
+
 If you specified \c --ds9 you can see the PSF candidates:
+
 \skip display
 \until RED
 
 <HR>
+
 To investigate the \ref pipe_tasks_measurePsf_Debug, put something like
 \code{.py}
     import lsstDebug
