@@ -33,7 +33,7 @@ import lsst.afw.image              as afwImage
 import lsst.afw.display.ds9        as ds9
 import lsst.meas.algorithms        as measAlg
 from lsst.meas.algorithms.detection import SourceDetectionTask
-from lsst.meas.algorithms.measurement import SourceMeasurementTask
+from lsst.meas.base                 import SingleFrameMeasurementTask
 from lsst.pipe.tasks.measurePsf     import MeasurePsfTask
 
 def loadData():
@@ -48,6 +48,11 @@ def loadData():
     imFile = os.path.join(mypath, "CFHT", "D4", "cal-53535-i-797722_small_1.fits")
 
     exposure = afwImage.ExposureF(imFile)
+
+    # The old (meas_algorithms) SdssCentroid assumed this by default if it
+    # wasn't specified; meas_base requires us to be explicit.
+    psf = measAlg.DoubleGaussianPsf(11, 11, 0.01)
+    exposure.setPsf(psf)
 
     im = exposure.getMaskedImage().getImage()
     im -= np.median(im.getArray())
@@ -64,24 +69,24 @@ def run(display=False):
     config.reEstimateBackground = False
     detectionTask = SourceDetectionTask(config=config, schema=schema)
 
-    config = SourceMeasurementTask.ConfigClass()
-    config.slots.psfFlux = "flux.sinc"  # use of the psf flux is hardcoded in secondMomentStarSelector
-    measureTask = SourceMeasurementTask(schema, config=config)
+    config = SingleFrameMeasurementTask.ConfigClass()
+    # Use the minimum set of plugins required.
+    config.plugins.names.clear()
+    for plugin in ["base_SdssCentroid", "base_SdssShape", "base_SincFlux", "base_PixelFlags"]:
+        config.plugins.names.add(plugin)
+    config.slots.psfFlux = "base_SincFlux" # Use of the PSF flux is hardcoded in secondMomentStarSelector
+    measureTask = SingleFrameMeasurementTask(schema, config=config)
     #
     # Create the measurePsf task
     #
     config = MeasurePsfTask.ConfigClass()
-
-    starSelector = config.starSelector.apply()
-    starSelector.config.badFlags = ["flags.pixel.edge",  "flags.pixel.cr.center",
-                                    "flags.pixel.interpolated.center", "flags.pixel.saturated.center"]
 
     psfDeterminer = config.psfDeterminer.apply()
     psfDeterminer.config.sizeCellX = 128
     psfDeterminer.config.sizeCellY = 128
     psfDeterminer.config.spatialOrder = 1
     psfDeterminer.config.nEigenComponents = 3
-    
+
     measurePsfTask = MeasurePsfTask(config=config, schema=schema)
     #
     # Create the output table
