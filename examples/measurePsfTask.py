@@ -72,9 +72,10 @@ def run(display=False):
     config = SingleFrameMeasurementTask.ConfigClass()
     # Use the minimum set of plugins required.
     config.plugins.names.clear()
-    for plugin in ["base_SdssCentroid", "base_SdssShape", "base_SincFlux", "base_PixelFlags"]:
+    for plugin in ["base_SdssCentroid", "base_SdssShape", "base_CircularApertureFlux", "base_PixelFlags"]:
         config.plugins.names.add(plugin)
-    config.slots.psfFlux = "base_SincFlux" # Use of the PSF flux is hardcoded in secondMomentStarSelector
+    config.plugins["base_CircularApertureFlux_0"].radii = [7.0]
+    config.slots.psfFlux = "base_CircularApertureFlux_0" # Use of the PSF flux is hardcoded in secondMomentStarSelector
     measureTask = SingleFrameMeasurementTask(schema, config=config)
     #
     # Create the measurePsf task

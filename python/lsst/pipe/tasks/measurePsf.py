@@ -153,7 +153,7 @@ PSF stars:
 \until measureTask
 
 Note that we've chosen a minimal set of measurement plugins: we need the
-outputs of \c base_SdssCentroid, \c base_SdssShape and \c base_SincFlux as
+outputs of \c base_SdssCentroid, \c base_SdssShape and \c base_CircularApertureFlux as
 inputs to the PSF measurement algorithm, while \c base_PixelFlags identifies
 and flags bad sources (e.g. with pixels too close to the edge) so they can be
 removed later.
