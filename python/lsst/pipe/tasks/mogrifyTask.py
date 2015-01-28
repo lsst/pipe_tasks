@@ -32,10 +32,17 @@ class MogrifyPluginsTask(pipeBase.Task):
     _DefaultName = "mogrifyPlugins"
 
     def __init__(self, *args, **kwargs):
+        # Need to extract this kwarg, or Task.__init__() chokes.
+        self.measConfig = kwargs.pop('measConfig')
         pipeBase.Task.__init__(self, *args, **kwargs)
 
+        # Get a list of measurement plugins which were used, along with their
+        # configurations.
+        self.measPlugins = [(name, self.measConfig.measurement.value.plugins.get(name))
+                            for name in self.measConfig.measurement.value.plugins.names]
+
     @pipeBase.timeMethod
-    def run(self, mapper, plugins):
+    def run(self, sourceList, wcs, calib):
         """!Generate source table transformations
 
         @param[in] mapper:  A SchemaMapper containing the input and output schemas.
@@ -46,13 +53,31 @@ class MogrifyPluginsTask(pipeBase.Task):
         - tranforms: An iterable of callables which perform record
                      transformations.
         """
+        # Define a mapper which copies basic values across.
+        # (It seems like it would be nice to do this in __init__ but I think
+        # we can't, since we need the input schema from the source list.)
+        mapper = afwTable.SchemaMapper(sourceList.schema)
+        mapper.addMapping(sourceList.schema.find('id').key)
+        mapper.addMapping(sourceList.schema.find('coord').key)
+
         from lsst.meas.base.transform import registry
         transforms = []
-        for name, cfg in plugins:
+        for name, cfg in self.measPlugins:
             transform = registry.get(name)
             if transform:
-                transforms.append(transform(name, mapper, cfg))
-        return pipeBase.Struct(mapper=mapper, transforms=transforms)
+                transforms.append(transform(name, mapper, cfg, wcs, calib))
+
+        # Iterate over the input catalogue, mapping/transforming sources to
+        # the new schema.
+        newSources = afwTable.BaseCatalog(mapper.getOutputSchema())
+        newSources.reserve(len(sourceList))
+        for oldSource in sourceList:
+            newSource = newSources.addNew()
+            newSource.assign(oldSource, mapper)
+            for transform in transforms:
+                transform(oldSource, newSource)
+
+        return newSources
 
 
 class MogrifyMasterConfig(pexConfig.Config):
@@ -83,14 +108,7 @@ class MogrifyMasterTask(pipeBase.CmdLineTask):
 
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
-        self.makeSubtask("plugins")
-
-        # Note: Downside to this is it assumes that the upstream task used to do
-        # the measurement was called "measurement"; could make it configurable
-        # instead.
-        # Note 2: ought to be possible to get this configuration in the init
-        # method.
-        self.measConfig = kwargs['butler'].get('processCcd_config')
+        self.makeSubtask('plugins', measConfig=kwargs['butler'].get('processCcd_config'))
 
     @pipeBase.timeMethod
     def run(self, dataRef):
@@ -99,33 +117,10 @@ class MogrifyMasterTask(pipeBase.CmdLineTask):
         # Note: the source table already has the algorithm metadata attached
         # to it; there should be no need to do anything further.
         sourceList = dataRef.get('src')
+        wcs = dataRef.get('calexp').getWcs()
+        calib = dataRef.get('calexp').getCalib()
 
-        # Define a mapper which copies basic values across.
-        # (It seems like it would be nice to do this in __init__ but I think
-        # we can't, since we need the input schema from the source list.)
-        mapper = afwTable.SchemaMapper(sourceList.schema)
-        mapper.addMapping(sourceList.schema.find('id').key)
-        mapper.addMapping(sourceList.schema.find('coord').key)
-
-        # Call plugin sub-task to generate list of Python mapping functions.
-        measPlugins = [(name, self.measConfig.measurement.value.plugins.get(name))
-                       for name in self.measConfig.measurement.value.plugins.names]
-
-        # Again, it would be nice to do this in __init__, but we need to have
-        # the mapper already configured with the schema.
-        transforms = self.plugins.run(mapper, measPlugins).transforms
-
-        # Iterate over the input catalogue, mapping/transforming sources to
-        # the new schema.
-        newSources = afwTable.BaseCatalog(mapper.getOutputSchema())
-        newSources.reserve(len(sourceList))
-        for oldSource in sourceList:
-            newSource = newSources.addNew()
-            newSource.assign(oldSource, mapper)
-            for transform in transforms:
-                transform(oldSource, newSource)
-
-        return
+        return self.plugins.run(sourceList, wcs, calib)
 
     def _getConfigName(self):
         return None
