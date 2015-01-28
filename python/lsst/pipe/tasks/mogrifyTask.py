@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.afw.table as afwTable
+import lsst.meas.base as measBase
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
@@ -33,13 +34,14 @@ class MogrifyPluginsTask(pipeBase.Task):
 
     def __init__(self, *args, **kwargs):
         # Need to extract this kwarg, or Task.__init__() chokes.
-        self.measConfig = kwargs.pop('measConfig')
+        measConfig = kwargs.pop('measConfig')
+        self.pluginRegistry = kwargs.pop('pluginRegistry')
         pipeBase.Task.__init__(self, *args, **kwargs)
 
         # Get a list of measurement plugins which were used, along with their
         # configurations.
-        self.measPlugins = [(name, self.measConfig.measurement.value.plugins.get(name))
-                            for name in self.measConfig.measurement.value.plugins.names]
+        self.measPlugins = [(name, measConfig.measurement.value.plugins.get(name))
+                            for name in measConfig.measurement.value.plugins.names]
 
     @pipeBase.timeMethod
     def run(self, sourceList, wcs, calib):
@@ -60,12 +62,8 @@ class MogrifyPluginsTask(pipeBase.Task):
         mapper.addMapping(sourceList.schema.find('id').key)
         mapper.addMapping(sourceList.schema.find('coord').key)
 
-        from lsst.meas.base.transform import registry
-        transforms = []
-        for name, cfg in self.measPlugins:
-            transform = registry.get(name)
-            if transform:
-                transforms.append(transform(name, mapper, cfg, wcs, calib))
+        transforms = [self.pluginRegistry.get(name).PluginClass.getTransformClass()(name, mapper, cfg, wcs, calib)
+                      for name, cfg in self.measPlugins]
 
         # Iterate over the input catalogue, mapping/transforming sources to
         # the new schema.
@@ -108,7 +106,7 @@ class MogrifyMasterTask(pipeBase.CmdLineTask):
 
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
-        self.makeSubtask('plugins', measConfig=kwargs['butler'].get('processCcd_config'))
+        self.makeSubtask('plugins', measConfig=kwargs['butler'].get('processCcd_config'), pluginRegistry=measBase.sfm.SingleFramePlugin.registry)
 
     @pipeBase.timeMethod
     def run(self, dataRef):
