@@ -26,7 +26,18 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 class TransformConfig(pexConfig.Config):
-    pass
+    copyFields = pexConfig.ListField(
+        dtype = str,
+        doc = "Fields to copy without tranformation",
+        default = ('id', 'coord')
+    )
+
+## \addtogroup LSST_task_documentation
+## \{
+## \page pipeTasks_transformTask
+## \ref TransformTask "TransformTask"
+##      Transform raw measurements to calibrated quantities.
+## \}
 
 class TransformTask(pipeBase.Task):
     ConfigClass = TransformConfig
@@ -43,23 +54,21 @@ class TransformTask(pipeBase.Task):
                             for name in measConfig.value.plugins.names]
 
     @pipeBase.timeMethod
-    def run(self, sourceList, wcs, calib):
-        """!Generate source table transformations
+    def run(self, sourceCat, wcs, calib):
+        """!Transform raw source measurements to calibrated quantities.
 
-        @param[in] mapper:  A SchemaMapper containing the input and output schemas.
-        @param[in] plugins: A list of (name, configuration) pairs describing
-                            the measurement plugins to be transformed.
-        @return a pipeBase Struct containing:
-        - mapper:    The updated SchemaMapper.
-        - tranforms: An iterable of callables which perform record
-                     transformations.
+        @param[in] sourceCat: SourceCatalog of sources to transform.
+        @param[in] wcs: The world coordinate system under which
+                        transformations will take place.
+        @param[in] calib: The calibration under which transformations will
+                          take place.
+
+        @return A BaseCatalog containing the transformed measurements.
         """
         # Define a mapper which copies basic values across.
-        # (It seems like it would be nice to do this in __init__ but I think
-        # we can't, since we need the input schema from the source list.)
-        mapper = afwTable.SchemaMapper(sourceList.schema)
-        mapper.addMapping(sourceList.schema.find('id').key)
-        mapper.addMapping(sourceList.schema.find('coord').key)
+        mapper = afwTable.SchemaMapper(sourceCat.schema)
+        for field in self.config.copyFields:
+            mapper.addMapping(sourceCat.schema.find(field).key)
 
         transforms = [self.pluginRegistry.get(name).PluginClass.getTransformClass()(name, mapper, cfg, wcs, calib)
                       for name, cfg in self.measPlugins]
@@ -67,8 +76,8 @@ class TransformTask(pipeBase.Task):
         # Iterate over the input catalogue, mapping/transforming sources to
         # the new schema.
         newSources = afwTable.BaseCatalog(mapper.getOutputSchema())
-        newSources.reserve(len(sourceList))
-        for oldSource in sourceList:
+        newSources.reserve(len(sourceCat))
+        for oldSource in sourceCat:
             newSource = newSources.addNew()
             newSource.assign(oldSource, mapper)
             for transform in transforms:
@@ -99,9 +108,6 @@ class TransformInterfaceTask(pipeBase.CmdLineTask):
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", datasetType="fpC",
                                help="data ID, e.g. --id run=1 camcol=2 field=345")
-        # We probably need additional arguments in here to handle setting
-        # alternative WCS and calibration information that isn't provided in
-        # the base dataRef.
         return parser
 
     def __init__(self, *args, **kwargs):
@@ -115,11 +121,11 @@ class TransformInterfaceTask(pipeBase.CmdLineTask):
         """
         # Note: the source table already has the algorithm metadata attached
         # to it; there should be no need to do anything further.
-        sourceList = dataRef.get('src')
+        sourceCat = dataRef.get('src')
         wcs = dataRef.get('calexp').getWcs()
         calib = dataRef.get('calexp').getCalib()
 
-        return self.transform.run(sourceList, wcs, calib)
+        return self.transform.run(sourceCat, wcs, calib)
 
     def _getConfigName(self):
         return None
