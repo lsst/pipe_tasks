@@ -46,12 +46,18 @@ class TransformTask(pipeBase.Task):
     def __init__(self, *args, **kwargs):
         # Need to extract these kwargs, or Task.__init__() chokes.
         measConfig = kwargs.pop('measConfig')
-        self.pluginRegistry = kwargs.pop('pluginRegistry')
+        pluginRegistry = kwargs.pop('pluginRegistry')
+        inputSchema = kwargs.pop('inputSchema')
         pipeBase.Task.__init__(self, *args, **kwargs)
 
-        # A list of measurement plugins & configurations used.
-        self.measPlugins = [(name, measConfig.value.plugins.get(name))
-                            for name in measConfig.value.plugins.names]
+        # Define a mapper which copies basic values across.
+        self.mapper = afwTable.SchemaMapper(inputSchema)
+        for field in self.config.copyFields:
+            self.mapper.addMapping(inputSchema.find(field).key)
+
+        measPlugins = [(name, measConfig.value.plugins.get(name)) for name in measConfig.value.plugins.names]
+        self.transforms = [pluginRegistry.get(name).PluginClass.getTransformClass()(name, self.mapper, cfg)
+                           for name, cfg in measPlugins]
 
     @pipeBase.timeMethod
     def run(self, sourceCat, wcs, calib):
@@ -65,22 +71,30 @@ class TransformTask(pipeBase.Task):
 
         @return A BaseCatalog containing the transformed measurements.
         """
-        # Define a mapper which copies basic values across.
-        mapper = afwTable.SchemaMapper(sourceCat.schema)
-        for field in self.config.copyFields:
-            mapper.addMapping(sourceCat.schema.find(field).key)
-
-        transforms = [self.pluginRegistry.get(name).PluginClass.getTransformClass()(name, mapper, cfg, wcs, calib)
-                      for name, cfg in self.measPlugins]
-
         # Iterate over the input catalogue, mapping/transforming sources to
         # the new schema.
-        newSources = afwTable.BaseCatalog(mapper.getOutputSchema())
-        newSources.extend(sourceCat, mapper=mapper)
-        for transform in transforms:
-            transform(sourceCat, newSources)
+        newSources = afwTable.BaseCatalog(self.mapper.getOutputSchema())
+        newSources.extend(sourceCat, mapper=self.mapper)
+        for transform in self.transforms:
+            transform(sourceCat, newSources, wcs, calib)
 
         return newSources
+
+
+class SchemaInitializedTaskRunner(pipeBase.TaskRunner):
+    # This is based on -- but unfortunately cannot inherit from --
+    # pipeBase.ButlerInitializedTaskRunner
+    def makeTask(self, parsedCmd=None, args=None):
+        if parsedCmd is not None:
+            butler = parsedCmd.butler
+            schema = self.getTargetList(parsedCmd)[0][0].get('src').schema
+        elif args is not None:
+            dataRef, kwargs = args
+            butler = dataRef.butlerSubset.butler
+            schema = args[0].get('src').schema
+        else:
+            raise RuntimeError("parsedCmd or args must be specified")
+        return self.TaskClass(config=self.config, log=self.log, butler=butler, inputSchema=schema)
 
 
 class TransformInterfaceConfig(pexConfig.Config):
@@ -94,7 +108,7 @@ class TransformInterfaceConfig(pexConfig.Config):
 
 class TransformInterfaceTask(pipeBase.CmdLineTask):
     ConfigClass = TransformInterfaceConfig
-    RunnerClass = pipeBase.ButlerInitializedTaskRunner
+    RunnerClass = SchemaInitializedTaskRunner
     _DefaultName = "transformInterface"
 
     @classmethod
@@ -110,7 +124,7 @@ class TransformInterfaceTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
         self.makeSubtask('transform', measConfig=kwargs['butler'].get('processCcd_config').measurement,
-                         pluginRegistry=measBase.sfm.SingleFramePlugin.registry)
+                         pluginRegistry=measBase.sfm.SingleFramePlugin.registry, inputSchema=kwargs['inputSchema'])
 
     @pipeBase.timeMethod
     def run(self, dataRef):
