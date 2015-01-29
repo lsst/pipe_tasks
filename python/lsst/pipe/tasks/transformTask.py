@@ -81,22 +81,6 @@ class TransformTask(pipeBase.Task):
         return newSources
 
 
-class SchemaInitializedTaskRunner(pipeBase.TaskRunner):
-    # This is based on -- but unfortunately cannot inherit from --
-    # pipeBase.ButlerInitializedTaskRunner
-    def makeTask(self, parsedCmd=None, args=None):
-        if parsedCmd is not None:
-            butler = parsedCmd.butler
-            schema = self.getTargetList(parsedCmd)[0][0].get('src').schema
-        elif args is not None:
-            dataRef, kwargs = args
-            butler = dataRef.butlerSubset.butler
-            schema = args[0].get('src').schema
-        else:
-            raise RuntimeError("parsedCmd or args must be specified")
-        return self.TaskClass(config=self.config, log=self.log, butler=butler, inputSchema=schema)
-
-
 class TransformInterfaceConfig(pexConfig.Config):
     """!Configuration for TransformInterfaceTask
     """
@@ -108,7 +92,7 @@ class TransformInterfaceConfig(pexConfig.Config):
 
 class TransformInterfaceTask(pipeBase.CmdLineTask):
     ConfigClass = TransformInterfaceConfig
-    RunnerClass = SchemaInitializedTaskRunner
+    RunnerClass = pipeBase.ButlerInitializedTaskRunner
     _DefaultName = "transformInterface"
 
     @classmethod
@@ -124,7 +108,8 @@ class TransformInterfaceTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
         self.makeSubtask('transform', measConfig=kwargs['butler'].get('processCcd_config').measurement,
-                         pluginRegistry=measBase.sfm.SingleFramePlugin.registry, inputSchema=kwargs['inputSchema'])
+                         pluginRegistry=measBase.sfm.SingleFramePlugin.registry,
+                         inputSchema=kwargs['butler'].get("src_schema").schema)
 
     @pipeBase.timeMethod
     def run(self, dataRef):
