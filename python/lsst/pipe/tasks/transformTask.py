@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2014 LSST Corporation.
+# Copyright 2014-2015 LSST Corporation.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -25,23 +25,22 @@ import lsst.meas.base as measBase
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-class MogrifyPluginsConfig(pexConfig.Config):
+class TransformConfig(pexConfig.Config):
     pass
 
-class MogrifyPluginsTask(pipeBase.Task):
-    ConfigClass = MogrifyPluginsConfig
-    _DefaultName = "mogrifyPlugins"
+class TransformTask(pipeBase.Task):
+    ConfigClass = TransformConfig
+    _DefaultName = "transform"
 
     def __init__(self, *args, **kwargs):
-        # Need to extract this kwarg, or Task.__init__() chokes.
+        # Need to extract these kwargs, or Task.__init__() chokes.
         measConfig = kwargs.pop('measConfig')
         self.pluginRegistry = kwargs.pop('pluginRegistry')
         pipeBase.Task.__init__(self, *args, **kwargs)
 
-        # Get a list of measurement plugins which were used, along with their
-        # configurations.
-        self.measPlugins = [(name, measConfig.measurement.value.plugins.get(name))
-                            for name in measConfig.measurement.value.plugins.names]
+        # A list of measurement plugins & configurations used.
+        self.measPlugins = [(name, measConfig.value.plugins.get(name))
+                            for name in measConfig.value.plugins.names]
 
     @pipeBase.timeMethod
     def run(self, sourceList, wcs, calib):
@@ -78,18 +77,19 @@ class MogrifyPluginsTask(pipeBase.Task):
         return newSources
 
 
-class MogrifyMasterConfig(pexConfig.Config):
-    """!Configuration for MogrifyTask
+class TransformInterfaceConfig(pexConfig.Config):
+    """!Configuration for TransformInterfaceTask
     """
-    plugins = pexConfig.ConfigurableField(
-        doc="Subtask to transform plugin outputs",
-        target=MogrifyPluginsTask
+    transform = pexConfig.ConfigurableField(
+        doc="Subtask which performs transformations",
+        target=TransformTask
     )
 
-class MogrifyMasterTask(pipeBase.CmdLineTask):
-    ConfigClass = MogrifyMasterConfig
+
+class TransformInterfaceTask(pipeBase.CmdLineTask):
+    ConfigClass = TransformInterfaceConfig
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
-    _DefaultName = "mogrifyMaster"
+    _DefaultName = "transformInterface"
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -106,7 +106,8 @@ class MogrifyMasterTask(pipeBase.CmdLineTask):
 
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
-        self.makeSubtask('plugins', measConfig=kwargs['butler'].get('processCcd_config'), pluginRegistry=measBase.sfm.SingleFramePlugin.registry)
+        self.makeSubtask('transform', measConfig=kwargs['butler'].get('processCcd_config').measurement,
+                         pluginRegistry=measBase.sfm.SingleFramePlugin.registry)
 
     @pipeBase.timeMethod
     def run(self, dataRef):
@@ -118,7 +119,7 @@ class MogrifyMasterTask(pipeBase.CmdLineTask):
         wcs = dataRef.get('calexp').getWcs()
         calib = dataRef.get('calexp').getCalib()
 
-        return self.plugins.run(sourceList, wcs, calib)
+        return self.transform.run(sourceList, wcs, calib)
 
     def _getConfigName(self):
         return None

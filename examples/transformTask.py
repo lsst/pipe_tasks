@@ -20,5 +20,5 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.mogrifyTask import MogrifyMasterTask
-MogrifyMasterTask.parseAndRun()
+from lsst.pipe.tasks.transformTask import TransformInterfaceTask
+TransformInterfaceTask.parseAndRun()
