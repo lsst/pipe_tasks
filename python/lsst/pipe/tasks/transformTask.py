@@ -76,12 +76,9 @@ class TransformTask(pipeBase.Task):
         # Iterate over the input catalogue, mapping/transforming sources to
         # the new schema.
         newSources = afwTable.BaseCatalog(mapper.getOutputSchema())
-        newSources.reserve(len(sourceCat))
-        for oldSource in sourceCat:
-            newSource = newSources.addNew()
-            newSource.assign(oldSource, mapper)
-            for transform in transforms:
-                transform(oldSource, newSource)
+        newSources.extend(sourceCat, mapper=mapper)
+        for transform in transforms:
+            transform(sourceCat, newSources)
 
         return newSources
 
