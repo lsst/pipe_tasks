@@ -131,6 +131,9 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     def makeIdFactory(self, sensorRef):
         raise NotImplementedError()
 
+    def getExposureId(self, sensorRef):
+        raise NotImplementedError()
+
     @pipeBase.timeMethod
     def process(self, dataRef, inputExposure, enableWriteSources=True):
         """Process an Image
@@ -187,7 +190,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.deblend.run(calExposure, sources, calExposure.getPsf())
 
         if self.config.doMeasurement:
-            self.measurement.run(calExposure, sources)
+            self.measurement.run(calExposure, sources, exposureId=self.getExposureId(dataRef))
 
         if self.config.doWriteCalibrate:
             # wait until after detection and measurement, since detection sets detected mask bits

@@ -56,6 +56,9 @@ class ProcessCcdTask(ProcessImageTask):
         expId = long(sensorRef.get("ccdExposureId"))
         return afwTable.IdFactory.makeSource(expId, 64 - expBits)        
 
+    def getExposureId(self, sensorRef):
+        return long(sensorRef.get("ccdExposureId"))
+
     @pipeBase.timeMethod
     def run(self, sensorRef):
         """Process one CCD
