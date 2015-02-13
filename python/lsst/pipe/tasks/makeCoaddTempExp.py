@@ -28,6 +28,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
+from lsst.meas.algorithms import CoaddPsf
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -184,6 +185,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             inputRecorder.addCalExp(calExp, ccdId, numGoodPix)
 
         inputRecorder.finish(coaddTempExp, totGoodPix)
+        if totGoodPix > 0 and didSetMetadata:
+            coaddTempExp.setPsf(modelPsf if self.config.doPsfMatch else
+                                CoaddPsf(inputRecorder.coaddInputs.ccds, skyInfo.wcs))
 
         self.log.info("coaddTempExp has %d good pixels (%.1f%%)" %
                       (totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea()))
