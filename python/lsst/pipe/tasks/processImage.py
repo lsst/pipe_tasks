@@ -155,9 +155,10 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.log.info("Matching src to reference catalogue")
             try:
                 srcMatches, srcMatchMeta = self.matchSources(inputExposure, sources)
-                normalizedSrcMatches = afwTable.packMatches(srcMatches)
-                normalizedSrcMatches.table.setMetadata(srcMatchMeta)
-                dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
+                if srcMatches is not None:
+                    normalizedSrcMatches = afwTable.packMatches(srcMatches)
+                    normalizedSrcMatches.table.setMetadata(srcMatchMeta)
+                    dataRef.put(normalizedSrcMatches, self.dataPrefix + "srcMatch")
             except Exception as e:
                 self.log.warn("Unable to match to reference catalog: %s" % e)
 
