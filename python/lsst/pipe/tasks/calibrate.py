@@ -23,14 +23,13 @@ import math
 
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
-import lsst.afw.detection as afwDet
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 import lsst.meas.base
 import lsst.pipe.base as pipeBase
 from lsst.meas.photocal import PhotoCalTask
-from .astrometry import AstrometryTask
+from lsst.meas.astrom import AstrometryTask
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
 
@@ -102,8 +101,14 @@ class CalibrateConfig(pexConfig.Config):
         target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
-    astrometry    = pexConfig.ConfigurableField(target = AstrometryTask, doc = "")
-    photocal      = pexConfig.ConfigurableField(target = PhotoCalTask, doc="")
+    astrometry    = pexConfig.ConfigurableField(
+        target = AstrometryTask,
+        doc = "fit WCS of exposure",
+    )
+    photocal      = pexConfig.ConfigurableField(
+        target = PhotoCalTask,
+        doc = "peform photometric calibration",
+    )
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -329,7 +334,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # Before the second measurement task is run, self.schemaMapper transforms the sources into
         # the final output schema, at the same time renaming the measurement fields to "initial_" 
         self.schema1 = afwTable.SourceTable.makeMinimalSchema()
-        minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("repair")
         self.makeSubtask("detection", schema=self.schema1)
@@ -425,20 +429,18 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         if self.config.doPsf:
             if self.config.doAstrometry:
-                astromRet = self.astrometry.run(exposure, sources1)
-                matches = astromRet.matches
+                astromRet = self.astrometry.run(sourceCat=sources1, exposure=exposure)
+                matches = astromRet.matchList
             else:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
                 matches = None
             psfRet = self.measurePsf.run(exposure, sources1, matches=matches)
-            cellSet = psfRet.cellSet
             psf = psfRet.psf
         elif exposure.hasPsf():
             psf = exposure.getPsf()
-            cellSet = None
         else:
-            psf, cellSet = None, None
+            psf = None
 
         # Wash, rinse, repeat with proper PSF
 
@@ -471,7 +473,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
-            astromRet = self.astrometry.run(exposure, sources)
+            astromRet = self.astrometry.run(sourceCat=sources, exposure=exposure)
             matches = astromRet.matches
             matchMeta = astromRet.matchMeta
         else:
