@@ -381,6 +381,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self.getBadPixelMask())
         statsCtrl.setNanSafe(True)
+        statsCtrl.setWeighted(True)
         statsCtrl.setCalcErrorFromInputVariance(True)
         for plane, threshold in self.config.maskPropagationThresholds.items():
             bit = afwImage.MaskU.getMaskPlane(plane)
