@@ -127,12 +127,10 @@ class DetectCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("detection", schema=self.schema)
 
     def run(self, patchRef):
-        """Run detection on a coadd"""
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
-        if self.config.doScaleVariance:
-            self.scaleVariance(exposure.getMaskedImage())
         results = self.runDetection(exposure, self.makeIdFactory(patchRef))
         self.write(results, patchRef)
+        return results
 
     def scaleVariance(self, maskedImage):
         """Scale the variance in a maskedImage
@@ -159,6 +157,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
                         backgrounds: list of backgrounds
                         )
         """
+        if self.config.doScaleVariance:
+            self.scaleVariance(exposure.getMaskedImage())
         backgrounds = afwMath.BackgroundList()
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.makeSourceCatalog(table, exposure)
