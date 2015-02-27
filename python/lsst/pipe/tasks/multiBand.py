@@ -256,6 +256,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
         results = self.runDetection(exposure, self.makeIdFactory(patchRef))
         self.write(exposure, results, patchRef)
+        return results
 
     def runDetection(self, exposure, idFactory):
         """!
