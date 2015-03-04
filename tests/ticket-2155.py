@@ -26,9 +26,11 @@ import os
 import eups
 
 from lsst.meas.algorithms import *
+from lsst.meas.base import SingleFrameMeasurementTask, SingleFrameMeasurementConfig
 import lsst.pipe.tasks as pipeTasks
 import lsst.pipe.tasks.astrometry as pipeTasksAstrom
 import lsst.utils.tests as utilsTests
+import lsst.afw.detection as afwDetection
 import lsst.afw.image   as afwImage
 import lsst.afw.table   as afwTable
 import lsst.pex.logging as pexLog
@@ -59,21 +61,21 @@ class TestForceWcs(unittest.TestCase):
         fn = os.path.join(os.path.dirname(__file__), 'data', 'mini-r-3-113,0.fits.gz')
         print 'Reading image', fn
         exposure = afwImage.ExposureF(fn)
+        exposure.setPsf(afwDetection.GaussianPsf(15, 15, 3))
         schema = afwTable.SourceTable.makeMinimalSchema()
-        schema.setVersion(0)
         idFactory = afwTable.IdFactory.makeSimple()
 
         dconf = SourceDetectionConfig()
         dconf.reEstimateBackground = False
         dconf.includeThresholdMultiplier = 5.
 
-        mconf = SourceMeasurementConfig()
+        mconf = SingleFrameMeasurementConfig()
 
         aconf = pipeTasksAstrom.AstrometryConfig()
         aconf.forceKnownWcs = True
 
         det = SourceDetectionTask(schema=schema, config=dconf)
-        meas = SourceMeasurementTask(schema, config=mconf)
+        meas = SingleFrameMeasurementTask(schema, config=mconf)
         astrom = pipeTasksAstrom.AstrometryTask(schema, config=aconf, name='astrom')
 
         astrom.log.setThreshold(pexLog.Log.DEBUG)

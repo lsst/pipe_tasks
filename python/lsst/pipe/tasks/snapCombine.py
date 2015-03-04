@@ -27,7 +27,8 @@ import lsst.afw.table as afwTable
 import lsst.pipe.base as pipeBase
 from lsst.coadd.utils import addToCoadd, setCoaddEdgeBits
 from lsst.ip.diffim import SnapPsfMatchTask
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.meas.algorithms as measAlg
 
 from .repair import RepairTask
@@ -83,7 +84,7 @@ class SnapCombineConfig(pexConfig.Config):
     diffim      = pexConfig.ConfigurableField(target = SnapPsfMatchTask, doc = "")
     detection   = pexConfig.ConfigurableField(target = SourceDetectionTask, doc = "")
     initialPsf  = pexConfig.ConfigField(dtype = InitialPsfConfig, doc = "")
-    measurement = pexConfig.ConfigurableField(target = SourceMeasurementTask, doc = "")
+    measurement = pexConfig.ConfigurableField(target = SingleFrameMeasurementTask, doc = "")
 
     def setDefaults(self):
         self.detection.thresholdPolarity = "both"
