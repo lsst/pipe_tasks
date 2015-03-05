@@ -25,12 +25,9 @@ import unittest
 import os
 import eups
 
-from lsst.meas.algorithms import *
-from lsst.meas.base import SingleFrameMeasurementTask, SingleFrameMeasurementConfig
-import lsst.pipe.tasks as pipeTasks
-import lsst.pipe.tasks.astrometry as pipeTasksAstrom
+import lsst.meas.algorithms as measAlg
+from lsst.meas.astrom import ANetAstrometryTask, ANetAstrometryConfig
 import lsst.utils.tests as utilsTests
-import lsst.afw.detection as afwDetection
 import lsst.afw.image   as afwImage
 import lsst.afw.table   as afwTable
 import lsst.pex.logging as pexLog
@@ -61,22 +58,22 @@ class TestForceWcs(unittest.TestCase):
         fn = os.path.join(os.path.dirname(__file__), 'data', 'mini-r-3-113,0.fits.gz')
         print 'Reading image', fn
         exposure = afwImage.ExposureF(fn)
-        exposure.setPsf(afwDetection.GaussianPsf(15, 15, 3))
         schema = afwTable.SourceTable.makeMinimalSchema()
+        schema.setVersion(0)
         idFactory = afwTable.IdFactory.makeSimple()
 
-        dconf = SourceDetectionConfig()
+        dconf = measAlg.SourceDetectionConfig()
         dconf.reEstimateBackground = False
         dconf.includeThresholdMultiplier = 5.
 
-        mconf = SingleFrameMeasurementConfig()
+        mconf = measAlg.SourceMeasurementConfig()
 
-        aconf = pipeTasksAstrom.AstrometryConfig()
+        aconf = ANetAstrometryConfig()
         aconf.forceKnownWcs = True
 
-        det = SourceDetectionTask(schema=schema, config=dconf)
-        meas = SingleFrameMeasurementTask(schema, config=mconf)
-        astrom = pipeTasksAstrom.AstrometryTask(schema, config=aconf, name='astrom')
+        det = measAlg.SourceDetectionTask(schema=schema, config=dconf)
+        meas = measAlg.SourceMeasurementTask(schema, config=mconf)
+        astrom = ANetAstrometryTask(schema, config=aconf, name='astrom')
 
         astrom.log.setThreshold(pexLog.Log.DEBUG)
 
@@ -90,7 +87,7 @@ class TestForceWcs(unittest.TestCase):
 
         for dosip in [False, True]:
             aconf.solver.calculateSip = dosip
-            ast = astrom.run(exposure, sources)
+            ast = astrom.run(sourceCat=sources, exposure=exposure)
             outwcs = exposure.getWcs()
             outstr = outwcs.getFitsMetadata().toString()
             if dosip is False:
@@ -98,8 +95,8 @@ class TestForceWcs(unittest.TestCase):
                 self.assertEqual(instr, outstr)
             print 'inwcs:', instr
             print 'outwcs:', outstr
-            print len(ast.matches), 'matches'
-            self.assertTrue(len(ast.matches) > 10)
+            print len(ast.matchList), 'matches'
+            self.assertTrue(len(ast.matchList) > 10)
         #exposure.writeFits('out-2155.fits')
 
 def suite():
