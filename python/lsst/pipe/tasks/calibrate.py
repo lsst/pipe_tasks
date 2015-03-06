@@ -429,8 +429,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         if self.config.doPsf:
             if self.config.doAstrometry:
-                astromRet = self.astrometry.run(sourceCat=sources1, exposure=exposure)
-                matches = astromRet.matchList
+                astromRet = self.astrometry.run(exposure, sources1)
+                matches = astromRet.matches
             else:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
@@ -473,7 +473,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
-            astromRet = self.astrometry.run(sourceCat=sources, exposure=exposure)
+            astromRet = self.astrometry.run(exposure, sources)
             matches = astromRet.matches
             matchMeta = astromRet.matchMeta
         else:

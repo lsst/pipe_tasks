@@ -95,8 +95,8 @@ class TestForceWcs(unittest.TestCase):
                 self.assertEqual(instr, outstr)
             print 'inwcs:', instr
             print 'outwcs:', outstr
-            print len(ast.matchList), 'matches'
-            self.assertTrue(len(ast.matchList) > 10)
+            print len(ast.matches), 'matches'
+            self.assertTrue(len(ast.matches) > 10)
         #exposure.writeFits('out-2155.fits')
 
 def suite():
