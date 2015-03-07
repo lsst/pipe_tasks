@@ -6,6 +6,7 @@ from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
 from lsst.pipe.tasks.astrometry import AstrometryTask
+from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
@@ -392,6 +393,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     doDeblend = Field(dtype=bool, default=True, doc="Deblend sources?")
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
     measurement = ConfigurableField(target=SourceMeasurementTask, doc="Source measurement")
+    setPrimaryFlags = ConfigurableField(target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch")
     propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
     astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
@@ -447,22 +449,9 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                 peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
             self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("setPrimaryFlags", schema=self.schema)
         self.makeSubtask("propagateFlags", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
-
-        self.isPatchInnerKey = self.schema.addField(
-            "detect.is-patch-inner", type="Flag",
-            doc="true if source is in the inner region of a coadd patch",
-        )
-        self.isTractInnerKey = self.schema.addField(
-            "detect.is-tract-inner", type="Flag",
-            doc="true if source is in the inner region of a coadd tract",
-        )
-        self.isPrimaryKey = self.schema.addField(
-            "detect.is-primary", type="Flag",
-            doc="true if source has no children and is in the inner region of a coadd patch " \
-                + "and is in the inner region of a coadd tract",
-        )
 
     def run(self, patchRef):
         """Measure and deblend"""
@@ -471,7 +460,9 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         if self.config.doDeblend:
             self.deblend.run(exposure, sources, exposure.getPsf())
         self.measurement.run(exposure, sources)
-        self.setIsPrimaryFlag(sources, patchRef)
+        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
+        self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
+                                 includeDeblend=self.config.doDeblend)
         self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
                                 exposure.getWcs())
         if self.config.doMatchSources:
@@ -493,56 +484,6 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         sources = afwTable.SourceCatalog(table)
         sources.extend(merged, self.schemaMapper)
         return sources
-
-    def setIsPrimaryFlag(self, sources, patchRef):
-        """Set is-primary and related flags on sources
-
-        sources: a SourceTable
-            - reads centroid fields and an nChild field
-            - writes is-patch-inner, is-tract-inner and is-primary flags
-        patchRef: a patch reference (for retrieving sky info)
-
-        Will raise RuntimeError if self.config.doDeblend and the nChild key is not found in the table
-        """
-        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
-
-        # Test for the presence of the nchild key instead of checking config.doDeblend because sources
-        # might be unpersisted with deblend info, even if deblending is not run again.
-        nChildKeyName = "deblend.nchild"
-        try:
-            nChildKey = self.schema.find(nChildKeyName).key
-        except Exception:
-            nChildKey = None
-
-        if self.config.doDeblend and nChildKey is None:
-            # deblending was run but the nChildKey was not found; this suggests a variant deblender
-            # was used that we cannot use the output from, or some obscure error.
-            raise RuntimeError("Ran the deblender but cannot find %r in the source table" % (nChildKeyName,))
-
-        # set inner flags for each source and set primary flags for sources with no children
-        # (or all sources if deblend info not available)
-        innerFloatBBox = afwGeom.Box2D(skyInfo.patchInfo.getInnerBBox())
-        tractId = skyInfo.tractInfo.getId()
-        for source in sources:
-            if source.getCentroidFlag():
-                # centroid unknown, so leave the inner and primary flags False
-                continue
-
-            centroidPos = source.getCentroid()
-            # Skip source whose centroidPos is nan
-            # I do not know why this can happen (NY)
-            if centroidPos[0] != centroidPos[0] or centroidPos[1] != centroidPos[1]:
-                continue
-            isPatchInner = innerFloatBBox.contains(centroidPos)
-            source.setFlag(self.isPatchInnerKey, isPatchInner)
-
-            skyPos = source.getCoord()
-            sourceInnerTractId = skyInfo.skyMap.findTract(skyPos).getId()
-            isTractInner = sourceInnerTractId == tractId
-            source.setFlag(self.isTractInnerKey, isTractInner)
-
-            if nChildKey is None or source.get(nChildKey) == 0:
-                source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner)
 
     def writeMatches(self, dataRef, exposure, sources):
         """Write matches of the sources to the astrometric reference catalog
