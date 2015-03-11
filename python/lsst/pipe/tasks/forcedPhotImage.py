@@ -146,7 +146,7 @@ class ForcedPhotImageTask(CmdLineTask):
         """
         exposureWcs = exposure.getWcs()
         region = exposure.getBBox(lsst.afw.image.PARENT)
-        for refRecord, srcRecord in zip(sources, references):
+        for srcRecord, refRecord in zip(sources, references):
             srcRecord.setFootprint(refRecord.getFootprint().transform(refWcs, exposureWcs, region))
 
     def getExposure(self, dataRef):
