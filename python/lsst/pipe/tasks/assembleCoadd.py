@@ -195,6 +195,9 @@ class AssembleCoaddTask(CoaddBaseTask):
                 maskedImage = coaddExp.getMaskedImage(),
                 planeName = "NO_DATA",
             )
+            # Non-positive is bad for variance
+            varArray = coaddExp.getMaskedImage().getVariance().getArray()
+            varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
