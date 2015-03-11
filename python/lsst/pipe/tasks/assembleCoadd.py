@@ -195,6 +195,9 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if self.config.doInterp:
             self.interpImage.interpolateOnePlane(maskedImage=coaddExp.getMaskedImage(), planeName="NO_DATA")
+            # The variance must be positive; work around for DM-3201.
+            varArray = coaddExp.getMaskedImage().getVariance().getArray()
+            varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
