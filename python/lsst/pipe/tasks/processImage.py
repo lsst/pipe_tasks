@@ -75,8 +75,6 @@ class ProcessImageConfig(pexConfig.Config):
             if ("skycoord" not in self.measurement.algorithms.names
                 and "base_SkyCoord" not in self.measurement.algorithms.names):
                 raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
-            if self.measurement.target.tableVersion != self.calibrate.measurement.target.tableVersion:
-                raise ValueError("measurement subtask tableVersion must match those in calibrate subtask")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
@@ -98,7 +96,6 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
-        tableVersion = self.config.measurement.target.tableVersion
         self.makeSubtask("calibrate")
 
         # Setup our schema by starting with fields we want to propagate from icSrc.
@@ -107,19 +104,13 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
 
         # Add fields needed to identify stars used in the calibration step
-        if tableVersion == 0:
-            self.calibSourceKey = self.schemaMapper.addOutputField(
-                afwTable.Field["Flag"]("calib.detected", "Source was detected as an icSrc")
-                )
-        else:
-            self.calibSourceKey = self.schemaMapper.addOutputField(
-                afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSrc")
-                )
+        self.calibSourceKey = self.schemaMapper.addOutputField(
+            afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSrc")
+            )
 
         for key in self.calibrate.getCalibKeys():
             self.schemaMapper.addMapping(key)
         self.schema = self.schemaMapper.getOutputSchema()
-        self.schema.setVersion(tableVersion)
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
@@ -259,10 +250,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         closest = False                 # return all matched objects
         matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
         if self.config.doDeblend:
-            if self.config.measurement.target.tableVersion == 0:
-                matched = [m for m in matched if m[1].get("deblend.nchild") == 0] # if deblended, keep children
-            else:
-                matched = [m for m in matched if m[1].get("deblend_nChild") == 0] # if deblended, keep children
+            matched = [m for m in matched if m[1].get("deblend_nChild") == 0] # if deblended, keep children
         #
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches

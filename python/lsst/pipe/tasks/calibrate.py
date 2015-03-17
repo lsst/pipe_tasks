@@ -109,8 +109,6 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
-        if self.measurement.target.tableVersion != self.initialMeasurement.target.tableVersion:
-            raise ValueError("measurement and initialMeasurement subtasks must have the same tableVersion")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
@@ -333,8 +331,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.schema1 = afwTable.SourceTable.makeMinimalSchema()
         minimalCount = self.schema1.getFieldCount()
         self.algMetadata = dafBase.PropertyList()
-        self.tableVersion = self.config.measurement.target.tableVersion
-        self.schema1.setVersion(self.tableVersion)
         self.makeSubtask("repair")
         self.makeSubtask("detection", schema=self.schema1)
         beginInitial = self.schema1.getFieldCount()
@@ -346,10 +342,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         # create a schemaMapper to map schema1 into schema2
         self.schemaMapper = afwTable.SchemaMapper(self.schema1)
-        if self.tableVersion == 0: 
-            separator = "."
-        else: 
-            separator =  "_"
+        separator =  "_"
         count = 0
         for item in self.schema1:
             count = count + 1
