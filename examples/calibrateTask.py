@@ -34,11 +34,10 @@ import lsst.afw.geom               as afwGeom
 import lsst.afw.table              as afwTable
 import lsst.afw.image              as afwImage
 import lsst.afw.display.ds9        as ds9
-import lsst.meas.algorithms        as measAlg
+from lsst.meas.astrom import AstrometryTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
-from lsst.pipe.tasks.astrometry import AstrometryTask
 
-np.seed(1)
+np.random.seed(1)
 
 def loadData(pixelScale=1.0):
     """Prepare the data we need to run the example"""
@@ -73,7 +72,7 @@ class MyAstrometryTask(AstrometryTask):
     def __init__(self, *args, **kwargs):
         super(MyAstrometryTask, self).__init__(*args, **kwargs)
 
-    def run(self, exposure, sources):
+    def run(self, exposure, sourceCat):
         """My run method that totally fakes the astrometric solution"""
 
         filterName = exposure.getFilter().getName()
@@ -87,7 +86,7 @@ class MyAstrometryTask(AstrometryTask):
         schema.addField(afwTable.Field[float]("photometric", "I am a reference star"))
         refCat = afwTable.SimpleCatalog(schema)
 
-        for s in sources:
+        for s in sourceCat:
             m = refCat.addNew()
             flux = 1e-3*s.getPsfFlux()*np.random.normal(1.0, 2e-2)
             m.set(filterName, flux)
@@ -100,7 +99,7 @@ class MyAstrometryTask(AstrometryTask):
         #
         matches = []
         md = dafBase.PropertyList()
-        for m, s in zip(refCat, sources):
+        for m, s in zip(refCat, sourceCat):
             matches.append(afwTable.ReferenceMatch(m, s, 0.0))
 
         return pipeBase.Struct(

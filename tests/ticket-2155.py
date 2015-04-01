@@ -25,10 +25,9 @@ import unittest
 import os
 import eups
 
-from lsst.meas.algorithms import *
+import lsst.meas.algorithms as measAlg
+from lsst.meas.astrom import ANetAstrometryTask, ANetAstrometryConfig
 from lsst.meas.base import SingleFrameMeasurementTask, SingleFrameMeasurementConfig
-import lsst.pipe.tasks as pipeTasks
-import lsst.pipe.tasks.astrometry as pipeTasksAstrom
 import lsst.utils.tests as utilsTests
 import lsst.afw.detection as afwDetection
 import lsst.afw.image   as afwImage
@@ -65,18 +64,18 @@ class TestForceWcs(unittest.TestCase):
         schema = afwTable.SourceTable.makeMinimalSchema()
         idFactory = afwTable.IdFactory.makeSimple()
 
-        dconf = SourceDetectionConfig()
+        dconf = measAlg.SourceDetectionConfig()
         dconf.reEstimateBackground = False
         dconf.includeThresholdMultiplier = 5.
 
         mconf = SingleFrameMeasurementConfig()
 
-        aconf = pipeTasksAstrom.AstrometryConfig()
+        aconf = ANetAstrometryConfig()
         aconf.forceKnownWcs = True
 
-        det = SourceDetectionTask(schema=schema, config=dconf)
+        det = measAlg.SourceDetectionTask(schema=schema, config=dconf)
         meas = SingleFrameMeasurementTask(schema, config=mconf)
-        astrom = pipeTasksAstrom.AstrometryTask(schema, config=aconf, name='astrom')
+        astrom = ANetAstrometryTask(schema, config=aconf, name='astrom')
 
         astrom.log.setThreshold(pexLog.Log.DEBUG)
 
@@ -90,7 +89,7 @@ class TestForceWcs(unittest.TestCase):
 
         for dosip in [False, True]:
             aconf.solver.calculateSip = dosip
-            ast = astrom.run(exposure, sources)
+            ast = astrom.run(sourceCat=sources, exposure=exposure)
             outwcs = exposure.getWcs()
             outstr = outwcs.getFitsMetadata().toString()
             if dosip is False:
