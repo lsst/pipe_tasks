@@ -233,12 +233,17 @@ class RunTransformTestCase(utilsTests.TestCase):
 
         # Each source should have been measured & transformed appropriately.
         for measSrc, trSrc in zip(measSrcs, trSrcs):
-            # The TrivialMeasurement should be transformed
+            # The TrivialMeasurement should be transformed as defined above.
             self.assertEqual(trSrc[PLUGIN_NAME], measSrc[PLUGIN_NAME])
             self.assertEqual(trSrc[PLUGIN_NAME + "_transform"], -1.0 * measSrc[PLUGIN_NAME])
-            # The SdssCentroid should be copied (the default behaviour)
-            for field in measSrcs.schema.extract("base_SdssCentroid*").keys():
-                self.assertTrue(trSrc.get(field) == measSrc.get(field) or math.isnan(trSrc.get(field)))
+
+            # The SdssCentroid should be transformed to celestial coordinates.
+            # Checking that the full transformation has been done correctly is
+            # out of scope for this test case; we just ensure that there's
+            # plausible position in the transformed record.
+            trCoord = afwTable.CoordKey(trSrcs.schema["base_SdssCentroid"]).get(trSrc)
+            self.assertAlmostEqual(measSrc.getCoord().getLongitude(), trCoord.getLongitude())
+            self.assertAlmostEqual(measSrc.getCoord().getLatitude(), trCoord.getLatitude())
 
 
 def suite():
