@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
+import numpy
 
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
@@ -68,6 +69,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Perform PSF fitting?",
         default = True,
     )
+    doCurveOfGrowth = pexConfig.Field(
+        dtype = bool,
+        doc = "Measure and apply curve of growth?",
+        default = True,
+    )
     doMeasureApCorr = pexConfig.Field(
         dtype = bool,
         doc = "Compute aperture corrections?",
@@ -110,6 +116,10 @@ class CalibrateConfig(pexConfig.Config):
     measurement = pexConfig.ConfigurableField(
         target = measAlg.SourceMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
+    )
+    measureCurveOfGrowth = pexConfig.ConfigurableField(
+        target = measAlg.CurveOfGrowthMeasurementTask,
+        doc = "Curve of growth, for correcting apertures to infinity",
     )
     measureApCorr   = pexConfig.ConfigurableField(
         target = measAlg.MeasureApCorrTask,
@@ -174,6 +184,7 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("initialMeasurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("measurePsf", schema=self.schema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask("measureCurveOfGrowth", schema=self.schema)
         self.makeSubtask("measureApCorr", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
         self.makeSubtask("photocal", schema=self.schema)
@@ -300,10 +311,13 @@ class CalibrateTask(pipeBase.Task):
             # just for this purpose.
             apCorrApplyPriority = self.config.measurement.algorithms["correctfluxes"].priority
             self.measurement.run(exposure, sources, endPriority=apCorrApplyPriority)
+            if self.config.doCurveOfGrowth:
+                curveOfGrowth = self.applyCurveOfGrowth(sources)
             apCorrMap = self.measureApCorr.run(exposure.getBBox(afwImage.PARENT), sources)
             exposure.getInfo().setApCorrMap(apCorrMap)
             self.measurement.run(exposure, sources, beginPriority=apCorrApplyPriority)
         else:
+            curveOfGrowth = None
             apCorrMap = None
             self.measurement.run(exposure, sources)
 
@@ -357,6 +371,7 @@ class CalibrateTask(pipeBase.Task):
             sources = sources,
             matches = matches,
             matchMeta = matchMeta,
+            curveOfGrowth = curveOfGrowth,
             apCorrMap = apCorrMap,
             photocal = photocalRet,
         )
@@ -378,3 +393,41 @@ class CalibrateTask(pipeBase.Task):
         self.log.info("installInitialPsf fwhm=%.2f pixels; size=%d pixels" % (fwhm, size))
         psf = cls(size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)
+
+    def applyCurveOfGrowth(self, sources):
+        """Measure and apply the curve of growth to the source catalog
+
+        Returns the results from running measureCurveOfGrowth.
+        """
+        cogResults = self.measureCurveOfGrowth.run(sources)
+        cog = cogResults.curveOfGrowth
+
+        # Figure out which aperture corresponds to our calibration aperture
+        # This requires assuming a parameter name for the aperture;
+        # "radius" is used for the algorithms flux.sinc and flux.naive
+        calibAlg = self.config.measurement.slots.calibFlux
+        radius = self.config.measurement.algorithms[calibAlg].radius
+        apertures = numpy.array(self.config.measurement.algorithms["flux.aperture"].radii)
+        if len(numpy.where(apertures == radius)[0]) == 0:
+            raise RuntimeError(
+                "Calibration aperture (algorithm %s, radius %f) is not measured by flux.aperture (radii %s)" %
+                (calibAlg, radius, apertures))
+        calibIndex = numpy.where(apertures == radius)[0][0]
+        corrIndex = numpy.where(numpy.isfinite(cog.apertureFlux))[0][-1] # Biggest aperture with good correctn
+
+        ratio = cog.apertureFlux[calibIndex]/cog.apertureFlux[corrIndex]
+        variance = cog.apertureFluxErr[calibIndex]**2 + cog.apertureFluxErr[corrIndex]**2
+        self.log.info("Applying curve of growth to calibration flux %s (radius %.1f --> %.1f): %f +/- %f" %
+                      (calibAlg, radius, apertures[corrIndex], ratio, numpy.sqrt(variance)))
+
+        # Apply the correction to the calibration flux. The aperture correction will take care of everything
+        # that gets aperture-corrected.
+        sources[calibAlg][:] *= ratio
+        sources[calibAlg + ".err"][:] = numpy.sqrt(sources[calibAlg + ".err"]**2 + variance)
+
+        # Apply the correction to the multiple apertures so they're on the same scale too (they don't
+        # get aperture-corrected).
+        sources["flux.aperture"][:] *= ratio
+        sources["flux.aperture.err"][:] = numpy.sqrt(sources["flux.aperture.err"]**2 + variance)
+
+        return cogResults
