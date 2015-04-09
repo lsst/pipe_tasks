@@ -23,7 +23,6 @@ import math
 
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
-import lsst.afw.detection as afwDet
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
@@ -268,13 +267,11 @@ class CalibrateTask(pipeBase.Task):
                     self.log.warn("Failed to determine initial photometric zero-point: %s" % e)
 
             psfRet = self.measurePsf.run(exposure, sources, expId=expId, matches=matches)
-            cellSet = psfRet.cellSet
             psf = psfRet.psf
         elif exposure.hasPsf():
             psf = exposure.getPsf()
-            cellSet = None
         else:
-            psf, cellSet = None, None
+            psf = None
 
         # Wash, rinse, repeat with proper PSF
 
