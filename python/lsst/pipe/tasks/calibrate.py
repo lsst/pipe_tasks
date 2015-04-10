@@ -415,19 +415,18 @@ class CalibrateTask(pipeBase.Task):
         calibIndex = numpy.where(apertures == radius)[0][0]
         corrIndex = numpy.where(numpy.isfinite(cog.apertureFlux))[0][-1] # Biggest aperture with good correctn
 
-        ratio = cog.apertureFlux[calibIndex]/cog.apertureFlux[corrIndex]
-        variance = cog.apertureFluxErr[calibIndex]**2 + cog.apertureFluxErr[corrIndex]**2
+        ratio, ratioErr = cog.getRatio(calibIndex, corrIndex)
         self.log.info("Applying curve of growth to calibration flux %s (radius %.1f --> %.1f): %f +/- %f" %
-                      (calibAlg, radius, apertures[corrIndex], ratio, numpy.sqrt(variance)))
+                      (calibAlg, radius, apertures[corrIndex], ratio, ratioErr))
 
         # Apply the correction to the calibration flux. The aperture correction will take care of everything
         # that gets aperture-corrected.
         sources[calibAlg][:] *= ratio
-        sources[calibAlg + ".err"][:] = numpy.sqrt(sources[calibAlg + ".err"]**2 + variance)
+        sources[calibAlg + ".err"][:] = numpy.sqrt(sources[calibAlg + ".err"]**2 + ratioErr**2)
 
         # Apply the correction to the multiple apertures so they're on the same scale too (they don't
         # get aperture-corrected).
         sources["flux.aperture"][:] *= ratio
-        sources["flux.aperture.err"][:] = numpy.sqrt(sources["flux.aperture.err"]**2 + variance)
+        sources["flux.aperture.err"][:] = numpy.sqrt(sources["flux.aperture.err"]**2 + ratioErr**2)
 
         return cogResults
