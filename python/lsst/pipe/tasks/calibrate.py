@@ -420,13 +420,10 @@ class CalibrateTask(pipeBase.Task):
                       (calibAlg, radius, apertures[corrIndex], ratio, ratioErr))
 
         # Apply the correction to the calibration flux. The aperture correction will take care of everything
-        # that gets aperture-corrected.
+        # that gets aperture-corrected.  The other apertures don't need to be corrected - as long as we're
+        # using something corrected to a large radius to set the zero points, they'll automatically be
+        # correct.
         sources[calibAlg][:] *= ratio
         sources[calibAlg + ".err"][:] = numpy.sqrt(sources[calibAlg + ".err"]**2 + ratioErr**2)
-
-        # Apply the correction to the multiple apertures so they're on the same scale too (they don't
-        # get aperture-corrected).
-        sources["flux.aperture"][:] *= ratio
-        sources["flux.aperture.err"][:] = numpy.sqrt(sources["flux.aperture.err"]**2 + ratioErr**2)
 
         return cogResults
