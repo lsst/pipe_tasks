@@ -29,7 +29,7 @@ import lsst.meas.algorithms as measAlg
 import lsst.meas.base
 import lsst.pipe.base as pipeBase
 from lsst.meas.photocal import PhotoCalTask
-from lsst.meas.astrom import AstrometryTask
+from lsst.meas.astrom import ANetAstrometryTask
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
 
@@ -102,7 +102,7 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
     astrometry    = pexConfig.ConfigurableField(
-        target = AstrometryTask,
+        target = ANetAstrometryTask,
         doc = "fit WCS of exposure",
     )
     photocal      = pexConfig.ConfigurableField(
