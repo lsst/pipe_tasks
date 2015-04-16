@@ -457,6 +457,12 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         """Measure and deblend"""
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
         sources = self.readSources(patchRef)
+        # We sort Peaks by peak value at this stage, rather than immediately after merging them,
+        # because in the future we may record different peak values in different bands, and hence
+        # want to sort them differently in each band.  We'll have to modify this code at that point,
+        # passing a Key for the appropriate field to sortPeaks().
+        for record in sources:
+            record.getFootprint().sortPeaks()
         if self.config.doDeblend:
             self.deblend.run(exposure, sources, exposure.getPsf())
         self.measurement.run(exposure, sources)
