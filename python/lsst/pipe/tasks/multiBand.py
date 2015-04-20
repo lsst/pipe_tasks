@@ -334,6 +334,10 @@ class MergeDetectionsConfig(MergeSourcesConfig):
     minNewPeak = Field(dtype=float, default=1,
                        doc="Minimum distance from closest peak to create a new one (in arcsec).")
 
+    maxSamePeak = Field(dtype=float, default=0.3,
+                        doc="When adding new catalogs to the merge, all peaks less than this distance "
+                        " (in arcsec) to an existing peak will be flagged as detected in that catalog.")
+
 
 class MergeDetectionsTask(MergeSourcesTask):
     """Merge detections from multiple bands"""
@@ -368,6 +372,7 @@ class MergeDetectionsTask(MergeSourcesTask):
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         tractWcs = skyInfo.wcs
         peakDistance = self.config.minNewPeak / tractWcs.pixelScale().asArcseconds()
+        samePeakDistance = self.config.maxSamePeak / tractWcs.pixelScale().asArcseconds()
 
         # Put catalogs, filters in priority order
         orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
@@ -375,7 +380,8 @@ class MergeDetectionsTask(MergeSourcesTask):
                         if band in catalogs.keys()]
 
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
-                                                        self.schema, self.makeIdFactory(patchRef))
+                                                        self.schema, self.makeIdFactory(patchRef),
+                                                        samePeakDistance)
         copySlots(orderedCatalogs[0], mergedList)
         self.log.info("Merged to %d sources" % len(mergedList))
         return mergedList
