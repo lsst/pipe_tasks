@@ -137,6 +137,8 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             fpSets = detections.fpSets
             if fpSets.background:           
                 backgrounds.append(fpSets.background)
+        else:
+            sources = None
 
         if self.config.doDeblend:
             self.deblend.run(inputExposure, sources, inputExposure.getPsf())
