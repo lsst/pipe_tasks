@@ -313,6 +313,8 @@ class CalibrateTask(pipeBase.Task):
             self.measurement.run(exposure, sources, endPriority=apCorrApplyPriority)
             if self.config.doCurveOfGrowth:
                 curveOfGrowth = self.applyCurveOfGrowth(sources)
+            else:
+                curveOfGrowth = None
             apCorrMap = self.measureApCorr.run(exposure.getBBox(afwImage.PARENT), sources)
             exposure.getInfo().setApCorrMap(apCorrMap)
             self.measurement.run(exposure, sources, beginPriority=apCorrApplyPriority)
