@@ -66,17 +66,22 @@ class TransformTask(pipeBase.Task):
     ConfigClass = TransformConfig
     _DefaultName = "transform"
 
-    def __init__(self, measConfig, pluginRegistry, inputSchema, *args, **kwargs):
+    def __init__(self, measConfig, pluginRegistry, inputSchema, outputType, *args, **kwargs):
         """!Initialize TransformTask.
 
         @param[in] measConfig      Configuration for the measurement task which
                                    produced the measurments being transformed.
         @param[in] pluginRegistry  A PluginRegistry which maps plugin names to measurement algorithms.
         @param[in] inputSchema     The schema of the input catalog.
+        @param[in] outputType      The butler dataset type of the output catalog.
         @param[in] *args           Passed through to pipeBase.Task.__init__()
         @param[in] *kwargs         Passed through to pipeBase.Task.__init__()
         """
         pipeBase.Task.__init__(self, *args, **kwargs)
+
+        # This task can be used to generate multiple different output dataset types. We
+        # need to be able to specify the output type together with its schema.
+        self.outputType = outputType
 
         # Define a mapper and add the basic fields to be copied.
         self.mapper = afwTable.SchemaMapper(inputSchema)
@@ -85,7 +90,6 @@ class TransformTask(pipeBase.Task):
 
         # Build a list of all transforms that will be applied to the input. We
         # will iterate over this in run().
-
         self.transforms = []
         for name in measConfig.plugins.names:
             config = measConfig.plugins.get(name)
@@ -95,7 +99,7 @@ class TransformTask(pipeBase.Task):
     def getSchemaCatalogs(self):
         """!Return a dict containing an empty catalog representative of this task's output."""
         transformedSrc = afwTable.BaseCatalog(self.mapper.getOutputSchema())
-        return {'transformedSrc': transformedSrc}
+        return {self.outputType: transformedSrc}
 
     def run(self, inputCat, wcs, calib):
         """!Transform raw source measurements to calibrated quantities.
@@ -120,31 +124,21 @@ class TransformTask(pipeBase.Task):
 
 
 class RunTransformConfig(pexConfig.Config):
-    """!Configuration for RunTransformTask."""
+    """!Configuration for RunTransformTaskBase derivatives."""
     transform = pexConfig.ConfigurableField(
         doc="Subtask which performs transformations",
         target=TransformTask
     )
-    measConfig = pexConfig.Field(
+    inputConfigType = pexConfig.Field(
         dtype=str,
         doc="Dataset type of measurement operation configuration",
-        default="processCcd_config"
-    )
-    measType = pexConfig.ChoiceField(
-        dtype=str,
-        doc="Type of measurement operation performed",
-        default="SingleFrame",
-        allowed={
-            "SingleFrame": "Single frame measurement",
-            "Forced": "Forced measurement"
-        }
     )
 
 
-class RunTransformTask(pipeBase.CmdLineTask):
+class RunTransformTaskBase(pipeBase.CmdLineTask):
     """!Basic interface for TransformTask.
 
-    Provide a command-line task which can be used to run TransformTask.
+    Provide the skeleton of command-line task which can be used to run TransformTask.
 
     - Loads a plugin registry based on configuration;
     - Loads configuration for the measurement task which was applied from a repository;
@@ -152,38 +146,132 @@ class RunTransformTask(pipeBase.CmdLineTask):
     - For each input dataRef, reads the SourceCatalog, WCS and calibration from the
       repository and executes TransformTask.
 
-    This can be sub-tasked to support whatever dataset types or sources for
-    the WCS and calibration information are required.
+    This is not a fully-fledged command line task: it requires specialization to a particular
+    source type by defining the variables indicated below.
     """
-    ConfigClass = RunTransformConfig
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
-    _DefaultName = "transformMeasurement"
+    ConfigClass = RunTransformConfig
+
+    # Subclasses should provide appropriate definitions for the attributes named below.
+    # Properties can be used if apprpriate.
+    #
+    # Standard CmdLineTask attributes:
+    _DefaultName = None
+
+    # Boolean; True if the measurement operation was forced, otherwise False.
+    wasForced = None
+
+    # Butler dataset type of the source type to be transformed ("src", "forced_src", etc):
+    sourceType = None
+
+    # Butler dataset type of the calibration exposure to use when transforming ("calexp", etc):
+    calexpType = None
+
+    @property
+    def inputSchemaType(self):
+        """
+        The Butler dataset type for the schema of the input source catalog.
+
+        By default, we append `_schema` to the input source type. Subclasses may customise
+        if required.
+        """
+        return self.sourceType + "_schema"
+
+    @property
+    def outputType(self):
+        """
+        The Butler dataset type for the schema of the output catalog.
+
+        By default, we prepend `transformed_` to the input source type. Subclasses may
+        customise if required.
+        """
+        return 'transformed_' + self.sourceType
+
+    @property
+    def measurementConfig(self):
+        """
+        The configuration of the measurement operation used to generate the input catalog.
+
+        By default we look for `measurement` under the root configuration of the
+        generating task. Subclasses may customise this (e.g. to `calibration.measurement`)
+        if required.
+        """
+        return self.butler.get(self.config.inputConfigType).measurement.value
 
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
-        if self.config.measType == "SingleFrame":
-            pluginRegistry = measBase.sfm.SingleFramePlugin.registry
-        elif self.config.measType == "Forced":
+        if self.wasForced:
             pluginRegistry = measBase.forcedMeasurement.ForcedPlugin.registry
+        else:
+            pluginRegistry = measBase.sfm.SingleFramePlugin.registry
+
+        self.butler = kwargs['butler']
+
         self.makeSubtask('transform', pluginRegistry=pluginRegistry,
-                         measConfig=kwargs['butler'].get(self.config.measConfig).measurement.value,
-                         inputSchema=kwargs['butler'].get("src_schema").schema)
+                         measConfig=self.measurementConfig,
+                         inputSchema=self.butler.get(self.inputSchemaType).schema,
+                         outputType=self.outputType)
 
     @pipeBase.timeMethod
     def run(self, dataRef):
         """!Transform the source catalog referred to by dataRef.
 
-        The result is both returned and written as dataset type "transformedSrc"
-        to the provided dataRef.
+        The result is both returned and written as dataset type "transformed" + the input
+        source type to the provided dataRef.
 
-        @param[in] dataRef  Data reference for source catalog (src) &
-                            calibrated exposure (calexp).
+        @param[in] dataRef  Data reference for source catalog & calibrated exposure.
 
         @returns A BaseCatalog containing the transformed measurements.
         """
-        inputCat = dataRef.get('src')
-        wcs = dataRef.get('calexp').getWcs()
-        calib = dataRef.get('calexp').getCalib()
+        inputCat = dataRef.get(self.sourceType)
+        wcs = dataRef.get(self.calexpType).getWcs()
+        calib = dataRef.get(self.calexpType).getCalib()
         outputCat = self.transform.run(inputCat, wcs, calib)
-        dataRef.put(outputCat, "transformedSrc")
+        dataRef.put(outputCat, self.outputType)
         return outputCat
+
+
+class SrcTransformTask(RunTransformTaskBase):
+    """
+    Specialization of RunTransformTaskBase for use with 'src' measurements from e.g. processCcd.
+    """
+    _DefaultName = "transformSrcMeasurement"
+    wasForced = False
+    sourceType = 'src'
+    calexpType = 'calexp'
+
+
+class ForcedSrcTransformTask(RunTransformTaskBase):
+    """
+    Specialization of RunTransformTaskBase for use with 'forced_src' measurements from e.g. forcedPhotCcd.
+    """
+    _DefaultName = "transformForcedSrcMeasurement"
+    wasForced = True
+    sourceType = 'forced_src'
+    calexpType = 'calexp'
+
+
+class CoaddSrcTransformTask(RunTransformTaskBase):
+    """
+    Specialization of RunTransformTaskBase for use with measurements from processCoadd.
+    """
+    _DefaultName = "transformCoaddSrcMeasurement"
+    wasForced = False
+
+    @property
+    def coaddName(self):
+        return self.self.butler.get(self.config.inputConfigType).coaddName
+
+    @property
+    def sourceType(self):
+        return self.coaddName + "_src"
+
+    @property
+    def calexpType(self):
+        return self.coaddName + "_calexp"
+
+    def _getConfigName(self):
+        return "%s_transformCoaddSrcMeasurement_config" % (self.coaddName,)
+
+    def _getMetaDataName(self):
+        return "%s_transformCoaddSrcMeasurement_metadata" % (self.coaddName,)
