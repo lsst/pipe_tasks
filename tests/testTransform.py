@@ -201,8 +201,10 @@ class TransformTestCase(utilsTests.TestCase):
 def tempDirectory(*args, **kwargs):
     """A context manager which provides a temporary directory and automatically cleans up when done."""
     dirname = tempfile.mkdtemp(*args, **kwargs)
-    yield dirname
-    shutil.rmtree(dirname, ignore_errors=True)
+    try:
+        yield dirname
+    finally:
+        shutil.rmtree(dirname, ignore_errors=True)
 
 
 class RunTransformTestCase(utilsTests.TestCase):
