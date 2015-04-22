@@ -119,32 +119,18 @@ class TransformTask(pipeBase.Task):
         return outputCat
 
 
-class RunTransformConfig(pexConfig.Config):
-    """!Configuration for RunTransformTask."""
+class RunTransformConfigBase(object):
+    """!Configuration for RunTransformTaskBase derivatives."""
     transform = pexConfig.ConfigurableField(
         doc="Subtask which performs transformations",
         target=TransformTask
     )
-    measConfig = pexConfig.Field(
-        dtype=str,
-        doc="Dataset type of measurement operation configuration",
-        default="processCcd_config"
-    )
-    measType = pexConfig.ChoiceField(
-        dtype=str,
-        doc="Type of measurement operation performed",
-        default="SingleFrame",
-        allowed={
-            "SingleFrame": "Single frame measurement",
-            "Forced": "Forced measurement"
-        }
-    )
 
 
-class RunTransformTask(pipeBase.CmdLineTask):
+class RunTransformTaskBase(object):
     """!Basic interface for TransformTask.
 
-    Provide a command-line task which can be used to run TransformTask.
+    Provide the skeleton of command-line task which can be used to run TransformTask.
 
     - Loads a plugin registry based on configuration;
     - Loads configuration for the measurement task which was applied from a repository;
@@ -152,38 +138,85 @@ class RunTransformTask(pipeBase.CmdLineTask):
     - For each input dataRef, reads the SourceCatalog, WCS and calibration from the
       repository and executes TransformTask.
 
-    This can be sub-tasked to support whatever dataset types or sources for
-    the WCS and calibration information are required.
+    This is not a fully-fledged command line task: it requires specialization to a particular
+    source type.  That can be conveniently provided by makeTransformCmdLineTask.
     """
-    ConfigClass = RunTransformConfig
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
-    _DefaultName = "transformMeasurement"
 
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
-        if self.config.measType == "SingleFrame":
-            pluginRegistry = measBase.sfm.SingleFramePlugin.registry
-        elif self.config.measType == "Forced":
+        if self.config.wasForced:
             pluginRegistry = measBase.forcedMeasurement.ForcedPlugin.registry
+        else:
+            pluginRegistry = measBase.sfm.SingleFramePlugin.registry
         self.makeSubtask('transform', pluginRegistry=pluginRegistry,
                          measConfig=kwargs['butler'].get(self.config.measConfig).measurement.value,
-                         inputSchema=kwargs['butler'].get("src_schema").schema)
+                         inputSchema=kwargs['butler'].get(self.config.sourceType + "_schema").schema)
 
     @pipeBase.timeMethod
     def run(self, dataRef):
         """!Transform the source catalog referred to by dataRef.
 
-        The result is both returned and written as dataset type "transformedSrc"
-        to the provided dataRef.
+        The result is both returned and written as dataset type "transformed" + the input
+        source type to the provided dataRef.
 
-        @param[in] dataRef  Data reference for source catalog (src) &
-                            calibrated exposure (calexp).
+        @param[in] dataRef  Data reference for source catalog & calibrated exposure (calexp).
 
         @returns A BaseCatalog containing the transformed measurements.
         """
-        inputCat = dataRef.get('src')
-        wcs = dataRef.get('calexp').getWcs()
-        calib = dataRef.get('calexp').getCalib()
+        inputCat = dataRef.get(self.config.sourceType)
+        wcs = dataRef.get(self.config.calexpType).getWcs()
+        calib = dataRef.get(self.config.calexpType).getCalib()
         outputCat = self.transform.run(inputCat, wcs, calib)
-        dataRef.put(outputCat, "transformedSrc")
+        dataRef.put(outputCat, "transformed" + self.config.sourceType.capitalize())
         return outputCat
+
+
+def makeTransformCmdLineTask(sourceType, calexpType, measConfigType, outputType, wasForced):
+    """!Generate and return a specialization of RunTransformTaskBase.
+
+    RunTransformTaskBase provides a means of transforming arbitrary source types (src, forced_src,
+    deepCoadd_src, ...). However, a specialization is required for each type we wish to transform. Here, we
+    generate a specialization for the source type required.
+
+    @param[in] sourceType      Name of source type to transform (e.g src, forced_src, etc).
+    @param[in] calexpType      Name of exposure with calibration data (e.g. calexp, etc)
+    @param[in] measConfigType  Name of measurement task configuration (e.g. processCCd_config, etc)
+    @param[in] outputType      Name of output type to write (e.g. transformedSrc, etc)
+    @param[in] wasForced       Boolean indicating if source measurements were forced.
+
+    @returns A tuple of (Config, CmdLineTask) suitable for transforming sources of the given type.
+    """
+    sourceTypeField = pexConfig.Field(dtype=str, default=sourceType,
+                                      doc="Dataset type of source to transform")
+    calexpTypeField = pexConfig.Field(dtype=str, default=calexpType,
+                                      doc="Dataset type of calibration exposure")
+    measConfigField = pexConfig.Field(dtype=str, default="processCcd_config",
+                                      doc="Dataset type of measurement operation configuration")
+    outputTypeField = pexConfig.Field(dtype=str, default=outputType,
+                                      doc="Dataset type of output sources")
+    forcedField = pexConfig.Field(dtype=bool, default=wasForced, doc="Measurement operation was forced")
+
+    configClass = type("%sTransformConfig" % sourceType.capitalize(),
+                       (RunTransformConfigBase, pexConfig.Config),
+                       {"sourceType": sourceTypeField, "calexpType": calexpTypeField,
+                        "outputType": outputTypeField, "measConfig": measConfigField,
+                        "wasForced": forcedField})
+    taskClass = type("%sTransformTask" % (sourceType.capitalize(),),
+                     (RunTransformTaskBase, pipeBase.CmdLineTask),
+                     {"wasForced": wasForced, "ConfigClass": configClass,
+                      "_DefaultName": "transform%sMeasurement" % (sourceType.capitalize(),)})
+    return configClass, taskClass
+
+
+# Explicitly instantiate command line transformation types for common source types. Camera-specific
+# transformation tasks can be defined following this pattern in the appropriate obs_ package.
+SrcTransformConfig, SrcTransformTask = makeTransformCmdLineTask(
+                                                "src", "calexp", "processCcd_config", "transformedSrc", False)
+ForcedSrcTransformConfig, ForcedSrcTransformTask = makeTransformCmdLineTask(
+                                       "forced_src", "calexp", "forced_config", "transformedForced_src", True)
+DeepCoaddSrcTransformConfig, DeepCoaddSrcTransformTask = makeTransformCmdLineTask(
+           "deepCoadd_src", "deepCoadd_calexp", "deep_processCoadd_config", "transformedDeepCoadd_src", False)
+DeepCoaddForcedSrcTransformConfig, DeepCoaddForcedSrcTransformTask = makeTransformCmdLineTask(
+                                        "deepCoadd_forced_src", "deepCoadd_calexp", "deepCoadd_forced_config",
+                                                                      "transformedDeepCoadd_Forced_src", True)
