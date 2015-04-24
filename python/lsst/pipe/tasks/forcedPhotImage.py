@@ -197,7 +197,8 @@ class ForcedPhotImageTask(CmdLineTask):
         refWcs = self.references.getWcs(dataRef)
         exposure = self.getExposure(dataRef)
         if exposure:
-            references = list(self.fetchReferences(dataRef, exposure))
+            references = list(record for record in self.fetchReferences(dataRef, exposure)
+                              if record.getFootprint().getArea() > 0 and not record.getCentroidFlag())
             self.log.info("Performing forced measurement on %s" % dataRef.dataId)
             sources = self.generateSources(dataRef, references)
             self.attachFootprints(dataRef, sources, references=references, exposure=exposure, refWcs=refWcs)
