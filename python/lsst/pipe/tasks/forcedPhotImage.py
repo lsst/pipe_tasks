@@ -37,7 +37,7 @@ class ForcedPhotImageConfig(Config):
     measurement = ConfigurableField(target=SourceMeasurementTask, doc="measurement subtask")
     copyColumns = DictField(
         keytype=str, itemtype=str, doc="Mapping of reference columns to source columns",
-        default={"id": "object.id", "parent":"object.parent", "deblend.nchild": "object.deblend.nchild"}
+        default={"id": "id", "parent": "parent", "deblend.nchild": "deblend.nchild"}
         )
 
     def _getTweakCentroids(self):
