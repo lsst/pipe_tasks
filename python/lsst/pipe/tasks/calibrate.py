@@ -144,6 +144,9 @@ class CalibrateConfig(pexConfig.Config):
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
         self.detection.includeThresholdMultiplier = 10.0
+        # Because we don't deblend in CalibrateTask, we want to minimize merge detections caused by
+        # growing the footprints.
+        self.detection.returnOriginalFootprints = True
         self.initialMeasurement.prefix = "initial."
         self.initialMeasurement.algorithms.names -= ["correctfluxes"]
         initflags = [self.initialMeasurement.prefix+x
