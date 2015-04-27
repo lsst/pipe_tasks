@@ -428,7 +428,8 @@ class CalibrateTask(pipeBase.Task):
         # that gets aperture-corrected.  The other apertures don't need to be corrected - as long as we're
         # using something corrected to a large radius to set the zero points, they'll automatically be
         # correct.
-        sources[calibAlg][:] *= ratio
-        sources[calibAlg + ".err"][:] = numpy.sqrt(sources[calibAlg + ".err"]**2 + ratioErr**2)
+        relErr = sources[calibAlg + ".err"]/sources[calibAlg]
+        sources[calibAlg][:] /= ratio
+        sources[calibAlg + ".err"][:] = sources[calibAlg]*numpy.sqrt(relErr**2 + (ratioErr/ratio)**2)
 
         return cogResults
