@@ -197,9 +197,18 @@ class ForcedPhotImageTask(CmdLineTask):
         refWcs = self.references.getWcs(dataRef)
         exposure = self.getExposure(dataRef)
         if exposure:
-            references = list(record for record in self.fetchReferences(dataRef, exposure)
-                              if record.getFootprint().getArea() > 0 and not record.getCentroidFlag())
+            references = []
             self.log.info("Performing forced measurement on %s" % dataRef.dataId)
+            for record in self.fetchReferences(dataRef, exposure):
+                if record.getFootprint() is None or record.getFootprint().getArea() == 0:
+                    if record.getParent() != 0:
+                        self.log.warn("Skipping reference %s (child of %s) with bad Footprint" %
+                                      (record.getId(), record.getFootprint()))
+                    else:
+                        raise ValueError("Parent object %s with bad Footprint; cannot proceed" %
+                                         record.getId())
+                else:
+                    references.append(record)
             sources = self.generateSources(dataRef, references)
             self.attachFootprints(dataRef, sources, references=references, exposure=exposure, refWcs=refWcs)
             self.measurement.run(exposure, sources, references=references, refWcs=refWcs)
