@@ -1,6 +1,9 @@
+#!/usr/bin/env python
+
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
+from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
 from lsst.pipe.tasks.astrometry import AstrometryTask
@@ -308,7 +311,7 @@ class MergeDetectionsTask(MergeSourcesTask):
 class MeasureMergedCoaddSourcesConfig(Config):
     doDeblend = Field(dtype=bool, default=True, doc="Deblend sources?")
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
-    measurement = ConfigurableField(target=SourceMeasurementTask, doc="Source measurement")
+    measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
     astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
@@ -345,15 +348,15 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("astrometry", schema=self.schema)
 
         self.isPatchInnerKey = self.schema.addField(
-            "detect.is-patch-inner", type="Flag",
+            "detect_isPatchInner", type="Flag",
             doc="true if source is in the inner region of a coadd patch",
         )
         self.isTractInnerKey = self.schema.addField(
-            "detect.is-tract-inner", type="Flag",
+            "detect_isTractInner", type="Flag",
             doc="true if source is in the inner region of a coadd tract",
         )
         self.isPrimaryKey = self.schema.addField(
-            "detect.is-primary", type="Flag",
+            "detect_isPrimary", type="Flag",
             doc="true if source has no children and is in the inner region of a coadd patch " \
                 + "and is in the inner region of a coadd tract",
         )
@@ -396,7 +399,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
         # Test for the presence of the nchild key instead of checking config.doDeblend because sources
         # might be unpersisted with deblend info, even if deblending is not run again.
-        nChildKeyName = "deblend.nchild"
+        nChildKeyName = "deblend_nChild"
         try:
             nChildKey = self.schema.find(nChildKeyName).key
         except Exception:
@@ -459,5 +462,5 @@ class MergeMeasurementsTask(MergeSourcesTask):
     _DefaultName = "mergeMeas"
     inputDataset = "meas"
     outputDataset = "ref"
-    refColumn = "measurement.ref"
+    refColumn = "measurement_ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("ref")
