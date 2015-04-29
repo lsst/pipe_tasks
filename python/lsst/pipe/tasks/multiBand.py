@@ -6,7 +6,7 @@ from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
-from lsst.pipe.tasks.astrometry import AstrometryTask
+from lsst.meas.astrom.astrometry import AstrometryTask
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
