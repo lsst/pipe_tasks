@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -13,14 +13,13 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
-
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
@@ -37,7 +36,11 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         dtype = str,
         default = "deep",
     )
-    doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise")
+    doScaleVariance = pexConfig.Field(
+        doc = "Scale variance plane using empirical noise",
+        dtype=bool,
+        default=True,
+    )
 
     def setDefaults(self):
         ProcessImageTask.ConfigClass.setDefaults(self)
@@ -58,7 +61,6 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
 
 class ProcessCoaddTask(ProcessImageTask):
     """Process a Coadd image
-    
     """
     ConfigClass = ProcessCoaddConfig
     _DefaultName = "processCoadd"
@@ -96,14 +98,14 @@ class ProcessCoaddTask(ProcessImageTask):
         expBits = dataRef.get(self.config.coaddName + "CoaddId_bits")
         expId = long(dataRef.get(self.config.coaddName + "CoaddId"))
         return afwTable.IdFactory.makeSource(expId, 64 - expBits)
-        
+
     def getExposureId(self, dataRef):
         return long(dataRef.get(self.config.coaddName + "CoaddId"))
 
     @pipeBase.timeMethod
     def run(self, dataRef):
         """Process a coadd image
-        
+
         @param dataRef: butler data reference corresponding to coadd patch
         @return pipe_base Struct containing these fields:
         - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
@@ -115,7 +117,7 @@ class ProcessCoaddTask(ProcessImageTask):
 
         # initialize outputs
         coadd = None
-        
+
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=dataRef)
 
         coadd = dataRef.get(self.config.coaddName + "Coadd")
@@ -134,17 +136,16 @@ class ProcessCoaddTask(ProcessImageTask):
                 dataRef.put(result.sources, self.dataPrefix + 'src')
 
         return result
-    
+
     def setIsPrimaryFlag(self, sources, skyInfo):
         """Set is-primary and related flags on sources
-        
+
         @param[in,out] sources: a SourceTable
             - reads centroid fields and an nChild field
             - writes is-patch-inner, is-tract-inner and is-primary flags
         @param[in] skyInfo: a SkyInfo object as returned by getSkyInfo;
             reads skyMap, patchInfo, and tractInfo fields
-            
-        
+
         @raise RuntimeError if self.config.doDeblend and the nChild key is not found in the table
         """
         # Test for the presence of the nchild key instead of checking config.doDeblend because sources
@@ -173,7 +174,7 @@ class ProcessCoaddTask(ProcessImageTask):
             centroidPos = source.getCentroid()
             isPatchInner = innerFloatBBox.contains(centroidPos)
             source.setFlag(self.isPatchInnerKey, isPatchInner)
-            
+
             skyPos = source.getCoord()
             sourceInnerTractId = skyInfo.skyMap.findTract(skyPos).getId()
             isTractInner = sourceInnerTractId == tractId
@@ -193,7 +194,7 @@ class ProcessCoaddTask(ProcessImageTask):
         """Return the name of the config dataset
         """
         return "%s_processCoadd_config" % (self.config.coaddName,)
-    
+
     def _getMetadataName(self):
         """Return the name of the metadata dataset
         """

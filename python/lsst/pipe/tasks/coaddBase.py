@@ -1,7 +1,7 @@
 from __future__ import division, absolute_import
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -76,36 +76,36 @@ class CoaddTaskRunner(pipeBase.TaskRunner):
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.
-    
+
     Subclasses must specify _DefaultName
     """
     ConfigClass = CoaddBaseConfig
     RunnerClass = CoaddTaskRunner
-    
+
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
         self.makeSubtask("inputRecorder")
 
     def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
-        """Select exposures to coadd
-        
-        @param patchRef: data reference for sky map patch. Must include keys "tract", "patch",
-            plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] skyInfo: geometry for the patch; output from getSkyInfo
-        @return a list of science exposures to coadd, as butler data references
+        """!Select exposures to coadd
+
+        @param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
+                             plus the camera-specific filter key (e.g. "filter" or "band")
+        @param[in] skyInfo   geometry for the patch; output from getSkyInfo
+        @return    a list of science exposures to coadd, as butler data references
         """
         if skyInfo is None:
             skyInfo = self.getSkyInfo(patchRef)
         cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
         coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
         return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
-    
-    def getSkyInfo(self, patchRef):
-        """Return SkyMap, tract and patch
 
-        @param patchRef: data reference for sky map. Must include keys "tract" and "patch"
-        
+    def getSkyInfo(self, patchRef):
+        """!Return SkyMap, tract and patch
+
+        @param[in] patchRef  data reference for sky map. Must include keys "tract" and "patch"
+
         @return pipe_base Struct containing:
         - skyMap: sky map
         - tractInfo: information for chosen tract of sky map
@@ -116,11 +116,11 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
     def getCalExp(self, dataRef, bgSubtracted):
-        """Return one "calexp" calibrated exposure
+        """!Return one "calexp" calibrated exposure
 
-        @param dataRef: a sensor-level data reference
-        @param bgSubtracted: return calexp with background subtracted? If False
-            get the calexp's background background model and add it to the calexp.
+        @param[in] dataRef        a sensor-level data reference
+        @param[in] bgSubtracted   return calexp with background subtracted? If False get the
+                                  calexp's background background model and add it to the calexp.
         @return calibrated exposure
 
         If config.doApplyUberCal, meas_mosaic calibrations will be applied to
@@ -164,7 +164,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """Return the name of the config dataset
         """
         return "%s_%s_config" % (self.config.coaddName, self._DefaultName)
-    
+
     def _getMetadataName(self):
         """Return the name of the metadata dataset
         """
@@ -175,11 +175,11 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
     def writeCoaddOutput(self, dataRef, obj, suffix=None):
-        """Write a coadd product through the butler
+        """!Write a coadd product through the butler
 
-        @param dataRef: data reference for coadd
-        @param obj: coadd product to write
-        @param suffix: suffix to apply to coadd dataset name
+        @param[in]      dataRef  data reference for coadd
+        @param[in,out]  obj      coadd product to write
+        @param[in]      suffix   suffix to apply to coadd dataset name
         """
         objName = self.getCoaddDatasetName()
         if suffix is not None:
@@ -210,11 +210,11 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
             self.dataList.append(data)
 
 def getSkyInfo(coaddName, patchRef):
-    """Return SkyMap, tract and patch
+    """!Return SkyMap, tract and patch
 
-    @param coaddName: coadd name; typically one of deep or goodSeeing
-    @param patchRef: data reference for sky map. Must include keys "tract" and "patch"
-    
+    @param[in]  coaddName  coadd name; typically one of deep or goodSeeing
+    @param[in]  patchRef   data reference for sky map. Must include keys "tract" and "patch"
+
     @return pipe_base Struct containing:
     - skyMap: sky map
     - tractInfo: information for chosen tract of sky map
@@ -229,7 +229,7 @@ def getSkyInfo(coaddName, patchRef):
     # patch format is "xIndex,yIndex"
     patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
     patchInfo = tractInfo.getPatchInfo(patchIndex)
-    
+
     return pipeBase.Struct(
         skyMap = skyMap,
         tractInfo = tractInfo,
