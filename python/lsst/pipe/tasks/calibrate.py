@@ -186,7 +186,8 @@ class CalibrateTask(pipeBase.Task):
         self.makeSubtask("initialMeasurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("measurePsf", schema=self.schema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("measureCurveOfGrowth", schema=self.schema)
+        if self.config.doCurveOfGrowth:
+            self.makeSubtask("measureCurveOfGrowth", schema=self.schema)
         self.makeSubtask("measureApCorr", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
         self.makeSubtask("photocal", schema=self.schema)
