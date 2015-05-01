@@ -20,7 +20,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import math
-import numpy
 
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
@@ -315,7 +314,11 @@ class CalibrateTask(pipeBase.Task):
             apCorrApplyPriority = self.config.measurement.algorithms["correctfluxes"].priority
             self.measurement.run(exposure, sources, endPriority=apCorrApplyPriority)
             if self.config.doCurveOfGrowth:
-                curveOfGrowth = self.applyCurveOfGrowth(sources)
+                # By applying the curve of growth here, it will affect everything else it needs to (aperture
+                # corrections, zero point) without us modifying them directly.
+                curveOfGrowth = self.measureCurveOfGrowth.run(sources).curveOfGrowth
+                curveOfGrowth.apply(self.config.measurement, catalog=sources,
+                                    algorithms=[self.config.measurement.slots.calibFlux], log=self.log)
             else:
                 curveOfGrowth = None
             apCorrMap = self.measureApCorr.run(exposure.getBBox(afwImage.PARENT), sources)
@@ -398,38 +401,3 @@ class CalibrateTask(pipeBase.Task):
         self.log.info("installInitialPsf fwhm=%.2f pixels; size=%d pixels" % (fwhm, size))
         psf = cls(size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)
-
-    def applyCurveOfGrowth(self, sources):
-        """Measure and apply the curve of growth to the source catalog
-
-        Returns the results from running measureCurveOfGrowth.
-        """
-        cogResults = self.measureCurveOfGrowth.run(sources)
-        cog = cogResults.curveOfGrowth
-
-        # Figure out which aperture corresponds to our calibration aperture
-        # This requires assuming a parameter name for the aperture;
-        # "radius" is used for the algorithms flux.sinc and flux.naive
-        calibAlg = self.config.measurement.slots.calibFlux
-        radius = self.config.measurement.algorithms[calibAlg].radius
-        apertures = numpy.array(self.config.measurement.algorithms["flux.aperture"].radii)
-        if len(numpy.where(apertures == radius)[0]) == 0:
-            raise RuntimeError(
-                "Calibration aperture (algorithm %s, radius %f) is not measured by flux.aperture (radii %s)" %
-                (calibAlg, radius, apertures))
-        calibIndex = numpy.where(apertures == radius)[0][0]
-        corrIndex = numpy.where(numpy.isfinite(cog.apertureFlux))[0][-1] # Biggest aperture with good correctn
-
-        ratio, ratioErr = cog.getRatio(calibIndex, corrIndex)
-        self.log.info("Applying curve of growth to calibration flux %s (radius %.1f --> %.1f): %f +/- %f" %
-                      (calibAlg, radius, apertures[corrIndex], ratio, ratioErr))
-
-        # Apply the correction to the calibration flux. The aperture correction will take care of everything
-        # that gets aperture-corrected.  The other apertures don't need to be corrected - as long as we're
-        # using something corrected to a large radius to set the zero points, they'll automatically be
-        # correct.
-        relErr = sources[calibAlg + ".err"]/sources[calibAlg]
-        sources[calibAlg][:] /= ratio
-        sources[calibAlg + ".err"][:] = sources[calibAlg]*numpy.sqrt(relErr**2 + (ratioErr/ratio)**2)
-
-        return cogResults
