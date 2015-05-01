@@ -197,7 +197,7 @@ class ForcedPhotImageTask(CmdLineTask):
         refWcs = self.references.getWcs(dataRef)
         exposure = self.getExposure(dataRef)
         if exposure:
-            references = []
+            references = lsst.afw.table.SourceCatalog(self.references.schema)
             self.log.info("Performing forced measurement on %s" % dataRef.dataId)
             for record in self.fetchReferences(dataRef, exposure):
                 if record.getFootprint() is None or record.getFootprint().getArea() == 0:
@@ -209,6 +209,7 @@ class ForcedPhotImageTask(CmdLineTask):
                                          record.getId())
                 else:
                     references.append(record)
+            references.sort()   # need to ensure catalog is in ID order so find methods work
             sources = self.generateSources(dataRef, references)
             self.attachFootprints(dataRef, sources, references=references, exposure=exposure, refWcs=refWcs)
             self.measurement.run(exposure, sources, references=references, refWcs=refWcs)

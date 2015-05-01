@@ -119,16 +119,29 @@ class BaseReferencesTask(Task):
         @param[in] bbox        bounding box with which to filter reference sources (Box2I or Box2D)
         @param[in] wcs         afw.image.Wcs that defines the coordinate system of bbox
 
+        Instead of filtering sources directly via their positions, we filter based on the positions
+        of parent objects, then include or discard all children based on their parent's status.  This
+        is necessary to support ReplaceWithNoise in measurement, which requires all child sources have
+        their parent present.
+
         @return an iterable of filtered reference sources
 
         This is not a part of the required BaseReferencesTask interface; it's a convenience function
         used in implementing fetchInBox that may be of use to subclasses.
         """
         boxD = lsst.afw.geom.Box2D(bbox)
-        for source in sources:
-            pixel = wcs.skyToPixel(source.getCoord())
+        # We're passed an arbitrary iterable, but we need a catalog so we can iterate
+        # over parents and then children.
+        catalog = lsst.afw.table.SourceCatalog(self.schema)
+        catalog.extend(sources)
+        # Iterate over objects that have no parent.
+        for parent in catalog.getChildren(0):
+            pixel = wcs.skyToPixel(parent.getCoord())
             if boxD.contains(pixel):
-                yield source
+                yield parent
+                for child in catalog.getChildren(parent.getId()):
+                    yield child
+
 
 class CoaddSrcReferencesConfig(BaseReferencesTask.ConfigClass):
     coaddName = Field(
