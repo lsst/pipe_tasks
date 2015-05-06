@@ -71,7 +71,7 @@ class CalibrateConfig(pexConfig.Config):
     doCurveOfGrowth = pexConfig.Field(
         dtype = bool,
         doc = "Measure and apply curve of growth?",
-        default = True,
+        default = False,
     )
     doMeasureApCorr = pexConfig.Field(
         dtype = bool,
