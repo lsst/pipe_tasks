@@ -134,8 +134,10 @@ class BaseReferencesTask(Task):
         # over parents and then children.
         catalog = lsst.afw.table.SourceCatalog(self.schema)
         catalog.extend(sources)
+        catalog.sort(catalog.getParentKey())
         # Iterate over objects that have no parent.
         for parent in catalog.getChildren(0):
+            assert parent.getParent() == 0
             pixel = wcs.skyToPixel(parent.getCoord())
             if boxD.contains(pixel):
                 yield parent
