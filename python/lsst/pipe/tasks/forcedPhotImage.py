@@ -199,15 +199,16 @@ class ForcedPhotImageTask(CmdLineTask):
         if exposure:
             references = lsst.afw.table.SourceCatalog(self.references.schema)
             self.log.info("Performing forced measurement on %s" % dataRef.dataId)
+            badParents = set()
             for record in self.fetchReferences(dataRef, exposure):
                 if record.getFootprint() is None or record.getFootprint().getArea() == 0:
                     if record.getParent() != 0:
                         self.log.warn("Skipping reference %s (child of %s) with bad Footprint" %
-                                      (record.getId(), record.getFootprint()))
+                                      (record.getId(), record.getParent()))
                     else:
-                        raise ValueError("Parent object %s with bad Footprint; cannot proceed" %
-                                         record.getId())
-                else:
+                        self.log.warn("Skipping reference parent %s with bad Footprint" % (record.getId(),))
+                        badParents.add(record.getId())
+                elif record.getParent() not in badParents:
                     references.append(record)
             references.sort()   # need to ensure catalog is in ID order so find methods work
             sources = self.generateSources(dataRef, references)
