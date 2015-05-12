@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -13,12 +13,12 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import sys
 import traceback
@@ -77,7 +77,7 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
             return results
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
-    """Make a sky map in a repository
+    """!Make a sky map in a repository
 
     Making a sky map in a repository is a prerequisite for making a coadd,
     since the sky map is used as the pixelization for the coadd.
@@ -88,14 +88,14 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
-    
+
     @pipeBase.timeMethod
     def run(self, butler):
-        """Make a skymap, persist it (optionally) and log some information about it
-        
-        @param butler: data butler
-        @return a pipeBase Struct containing:
-        - skyMap: the constructed SkyMap
+        """!Make a skymap, persist it (optionally) and log some information about it
+
+        @param[in]   butler  data butler
+        @return      a pipeBase Struct containing:
+                     - skyMap: the constructed SkyMap
         """
         skyMap = self.config.skyMap.apply()
         self.logSkyMapInfo(skyMap)
@@ -106,9 +106,9 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         )
 
     def logSkyMapInfo(self, skyMap):
-        """Log information about a sky map
+        """!Log information about a sky map
 
-        @param[in] skyMap: sky map (an lsst.skyMap.SkyMap)
+        @param[in] skyMap  sky map (an lsst.skyMap.SkyMap)
         """
         self.log.info("sky map has %s tracts" % (len(skyMap),))
         for tractInfo in skyMap:
@@ -133,12 +133,12 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         No identifiers are added because none are used.
         """
         return pipeBase.ArgumentParser(name=cls._DefaultName)
-    
+
     def _getConfigName(self):
         """Return the name of the config dataset
         """
         return "%s_makeSkyMap_config" % (self.config.coaddName,)
-    
+
     def _getMetadataName(self):
         """Return the name of the metadata dataset
         """

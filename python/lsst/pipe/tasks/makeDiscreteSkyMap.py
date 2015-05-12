@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -13,18 +13,17 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import sys
 import traceback
 import lsst.geom
 
-import lsst.afw.coord as afwCoord
 import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
@@ -92,7 +91,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
             return results
 
 class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
-    """Make a DiscreteSkyMap in a repository, using the bounding box of a set calexps.
+    """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
 
     The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
     that we don't inherit from it, but it is a replacement, so we use the same config/metadata names.
@@ -103,15 +102,15 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
 
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
-    
+
     @pipeBase.timeMethod
     def run(self, butler, dataRefList):
-        """Make a skymap from the bounds of the given set of calexps.
-        
-        @param butler: data butler used to save the SkyMap
-        @param dataRefList: dataRefs of calexps used to determine the size and pointing of the SkyMap
-        @return a pipeBase Struct containing:
-        - skyMap: the constructed SkyMap
+        """!Make a skymap from the bounds of the given set of calexps.
+
+        @param[in]  butler        data butler used to save the SkyMap
+        @param[in]  dataRefList   dataRefs of calexps used to determine the size and pointing of the SkyMap
+        @return     a pipeBase Struct containing:
+                    - skyMap: the constructed SkyMap
         """
         self.log.info("Extracting bounding boxes of %d images" % len(dataRefList))
         points = []
