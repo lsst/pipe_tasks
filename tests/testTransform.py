@@ -53,11 +53,14 @@ import eups
 import lsst.afw.coord as afwCoord
 import lsst.afw.table as afwTable
 import lsst.meas.base as measBase
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
 import lsst.utils.tests as utilsTests
 
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
 from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask,
-                                                  RunTransformConfig, RunTransformTask)
+                                                  SrcTransformTask, SrcTransformConfig,
+                                                  makeTransformCmdLineTask)
 
 PLUGIN_NAME = "base_TrivialMeasurement"
 
@@ -198,8 +201,33 @@ class TransformTestCase(utilsTests.TestCase):
 def tempDirectory(*args, **kwargs):
     """A context manager which provides a temporary directory and automatically cleans up when done."""
     dirname = tempfile.mkdtemp(*args, **kwargs)
-    yield dirname
-    shutil.rmtree(dirname, ignore_errors=True)
+    try:
+        yield dirname
+    finally:
+        shutil.rmtree(dirname, ignore_errors=True)
+
+
+class MakeTransformTaskTestCase(utilsTests.TestCase):
+    """Demonstrate that makeTransformCmdLineTask produces plausible CmdLineTasks"""
+    def _checkTaskConstruction(self, srcType, calType, confType, outType, wasForced):
+        config, task = makeTransformCmdLineTask(srcType, calType, confType, outType, wasForced)
+        self.assertTrue(issubclass(config, pexConfig.Config))
+        self.assertTrue(issubclass(task, pipeBase.CmdLineTask))
+        self.assertEqual(task._DefaultName, "transform%sMeasurement" % (srcType.capitalize(),))
+        self.assertEqual(config.wasForced.dtype, bool)
+        self.assertEqual(config.wasForced.default, wasForced)
+        self.assertEqual(config.sourceType.default, srcType)
+        self.assertEqual(config.calexpType.default, calType)
+        self.assertEqual(config.measConfig.default, confType)
+        self.assertEqual(config.outputType.default, outType)
+
+    def testSingleFrame(self):
+        self._checkTaskConstruction("src", "calexp", "processCcd_config",
+        "transformedSrc", False)
+
+    def testForced(self):
+        self._checkTaskConstruction("forced_src", "calexp", "processCcd_config",
+                                    "transformedForced_src", True)
 
 
 class RunTransformTestCase(utilsTests.TestCase):
@@ -223,7 +251,15 @@ class RunTransformTestCase(utilsTests.TestCase):
         with tempDirectory() as tempDir:
             measResult = ProcessCcdTask.parseAndRun(args=[inputDir, "--output", tempDir, "--id", "visit=1"],
                                                     config=cfg, doReturnResults=True)
-            trResult = RunTransformTask.parseAndRun(args=[tempDir, "--id", "visit=1"], doReturnResults=True)
+            trResult = SrcTransformTask.parseAndRun(args=[tempDir, "--id", "visit=1"],
+                                                       doReturnResults=True)
+
+            # It should be possible to reprocess the data through a new transform task with exactly
+            # the same configuration without throwing. This check is useful since we are
+            # constructing the task on the fly, which could conceivably cause problems with
+            # configuration/metadata persistence.
+            trResult = SrcTransformTask.parseAndRun(args=[tempDir, "--id", "visit=1"],
+                                                       doReturnResults=True)
 
         measSrcs = measResult.resultList[0].result.sources
         trSrcs = trResult.resultList[0].result
@@ -250,6 +286,7 @@ def suite():
     utilsTests.init()
     suites = []
     suites += unittest.makeSuite(TransformTestCase)
+    suites += unittest.makeSuite(MakeTransformTaskTestCase)
     suites += unittest.makeSuite(RunTransformTestCase)
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)

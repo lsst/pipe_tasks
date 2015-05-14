@@ -20,5 +20,5 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from lsst.pipe.tasks.transformMeasurement import RunTransformTask
-RunTransformTask.parseAndRun()
+from lsst.pipe.tasks.transformMeasurement import SrcTransformTask
+SrcTransformTask.parseAndRun()
