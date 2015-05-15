@@ -375,6 +375,10 @@ class MergeDetectionsTask(MergeSourcesTask):
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
                                                         self.schema, self.makeIdFactory(patchRef),
                                                         samePeakDistance)
+
+        # Sort Peaks from brightest to faintest
+        for record in mergedList:
+            record.getFootprint().sortPeaks()
         self.log.info("Merged to %d sources" % len(mergedList))
         return mergedList
 
@@ -461,12 +465,6 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         """Measure and deblend"""
         exposure = patchRef.get(self.config.coaddName + "Coadd_calexp_det", immediate=True)
         sources = self.readSources(patchRef)
-        # We sort Peaks by peak value at this stage, rather than immediately after merging them,
-        # because in the future we may record different peak values in different bands, and hence
-        # want to sort them differently in each band.  We'll have to modify this code at that point,
-        # passing a Key for the appropriate field to sortPeaks().
-        for record in sources:
-            record.getFootprint().sortPeaks()
         if self.config.doDeblend:
             self.deblend.run(exposure, sources, exposure.getPsf())
         self.measurement.run(exposure, sources)
