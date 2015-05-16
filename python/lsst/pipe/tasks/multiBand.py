@@ -1,7 +1,7 @@
 import numpy
 
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
-from lsst.pex.config import Config, Field, ListField, ConfigurableField
+from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
@@ -330,6 +330,38 @@ class MergeSourcesTask(CmdLineTask):
         pass
 
 
+class CullPeaksConfig(Config):
+    """Configuration for culling garbage peaks after merging Footprints.
+
+    Peaks may also be culled after detection or during deblending; this configuration object
+    only deals with culling after merging Footprints.
+
+    These cuts are based on three quantities:
+     - nBands: the number of bands in which the peak was detected
+     - peakRank: the position of the peak within its family, sorted from brightest to faintest.
+     - peakRankNormalized: the peak rank divided by the total number of peaks in the family.
+
+    The formula that identifie peaks to cull is:
+
+      nBands < nBandsSufficient
+        AND (rank >= rankSufficient)
+        AND (rank >= rankConsider OR rank >= rankNormalizedConsider)
+
+    To disable peak culling, simply set nBandsSafe=1.
+    """
+
+    nBandsSufficient = RangeField(dtype=int, default=2, min=1,
+                                  doc="Always keep peaks detected in this many bands")
+    rankSufficient = RangeField(dtype=int, default=20, min=1,
+                                doc="Always keep this many peaks in each family")
+    rankConsidered = RangeField(dtype=int, default=30, min=1,
+                                doc=("Keep peaks with less than this rank that also match the "
+                                     "rankNormalizedConsidered condition."))
+    rankNormalizedConsidered = RangeField(dtype=float, default=0.7, min=0.0,
+                                          doc=("Keep peaks with less than this normalized rank that"
+                                               " also match the rankConsidered condition."))
+
+
 class MergeDetectionsConfig(MergeSourcesConfig):
     minNewPeak = Field(dtype=float, default=1,
                        doc="Minimum distance from closest peak to create a new one (in arcsec).")
@@ -337,6 +369,7 @@ class MergeDetectionsConfig(MergeSourcesConfig):
     maxSamePeak = Field(dtype=float, default=0.3,
                         doc="When adding new catalogs to the merge, all peaks less than this distance "
                         " (in arcsec) to an existing peak will be flagged as detected in that catalog.")
+    cullPeaks = ConfigField(dtype=CullPeaksConfig, doc="Configuration for how to cull peaks.")
 
 
 class MergeDetectionsTask(MergeSourcesTask):
@@ -387,7 +420,33 @@ class MergeDetectionsTask(MergeSourcesTask):
         for record in mergedList:
             record.getFootprint().sortPeaks()
         self.log.info("Merged to %d sources" % len(mergedList))
+        # Attempt to remove garbage peaks
+        self.cullPeaks(mergedList)
         return mergedList
+
+    def cullPeaks(self, catalog):
+        """Attempt to remove garbage peaks (mostly on the outskirts of large blends)"""
+        keys = [item.key for item in self.merged.getPeakSchema().extract("merge.peak.*").itervalues()]
+        totalPeaks = 0
+        culledPeaks = 0
+        for parentSource in catalog:
+            # Make a list copy so we can clear the attached PeakCatalog and append the ones we're keeping
+            # to it (which is easier than deleting as we iterate).
+            keptPeaks = parentSource.getFootprint().getPeaks()
+            oldPeaks = list(keptPeaks)
+            keptPeaks.clear()
+            familySize = len(oldPeaks)
+            totalPeaks += familySize
+            for rank, peak in enumerate(oldPeaks):
+                if ((rank < self.config.cullPeaks.rankSufficient) or
+                    (self.config.cullPeaks.nBandsSufficient > 1 and
+                     sum([peak.get(k) for k in keys]) >= self.config.cullPeaks.nBandsSufficient) or
+                    (rank < self.config.cullPeaks.rankConsidered and
+                     rank < self.config.cullPeaks.rankNormalizedConsidered * familySize)):
+                    keptPeaks.append(peak)
+                else:
+                    culledPeaks += 1
+        self.log.info("Culled %d of %d peaks" % (culledPeaks, totalPeaks))
 
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task."""
