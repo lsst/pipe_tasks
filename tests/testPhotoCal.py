@@ -27,7 +27,7 @@ import unittest
 
 import numpy as np
 
-import eups
+import sys
 import lsst.meas.astrom            as measAstrom
 import lsst.afw.geom               as afwGeom
 import lsst.afw.table              as afwTable
@@ -35,6 +35,12 @@ import lsst.afw.image              as afwImage
 import lsst.utils.tests            as utilsTests
 from lsst.pex.logging import Log
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
+
+try:
+    import eups
+except ImportError:
+    print "warning: import of eups failed; tests will be skipped"
+    sys.exit(0)
 
 class PhotoCalTest(unittest.TestCase):
 

@@ -26,12 +26,18 @@ import os
 
 import numpy as np
 
-import eups
 import lsst.utils
+import sys
 import lsst.afw.table              as afwTable
 import lsst.afw.image              as afwImage
 from lsst.meas.astrom import AstrometryTask
 from lsst.pipe.tasks.photoCal import PhotoCalTask
+
+try:
+    import eups
+except ImportError:
+    print "warning: import of eups failed; tests will be skipped"
+    sys.exit(0)
 
 def loadData():
     """Prepare the data we need to run the example"""

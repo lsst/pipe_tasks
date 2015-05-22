@@ -23,7 +23,7 @@
 import unittest
 
 import os
-import eups
+import sys
 
 import lsst.utils
 import lsst.meas.algorithms as measAlg
@@ -34,6 +34,12 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.image   as afwImage
 import lsst.afw.table   as afwTable
 import lsst.pex.logging as pexLog
+
+try:
+    import eups
+except ImportError:
+    print "warning: import of eups failed; tests will be skipped"
+    sys.exit(0)
 
 class TestForceWcs(unittest.TestCase):
     def setUp(self):
