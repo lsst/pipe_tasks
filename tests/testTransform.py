@@ -48,7 +48,7 @@ import shutil
 import tempfile
 import unittest
 
-import eups
+import lsst.utils
 
 import lsst.afw.coord as afwCoord
 import lsst.afw.table as afwTable
@@ -205,9 +205,7 @@ def tempDirectory(*args, **kwargs):
 
 class RunTransformTestCase(utilsTests.TestCase):
     def testInterface(self):
-        obsTestDir = eups.productDir("obs_test")
-        if obsTestDir is None:
-            raise RuntimeError("obs_test must be setup")
+        obsTestDir = lsst.utils.getPackageDir('obs_test')
         inputDir = os.path.join(obsTestDir, "data", "input")
 
         # Configure a ProcessCcd task such that it will return a minimal

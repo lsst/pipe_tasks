@@ -26,7 +26,7 @@ import os
 import sys
 import numpy as np
 
-import eups
+import lsst.utils
 import lsst.daf.base               as dafBase
 import lsst.afw.table              as afwTable
 import lsst.afw.image              as afwImage
@@ -40,11 +40,7 @@ def loadData():
     """Prepare the data we need to run the example"""
 
     # Load sample input from disk
-    mypath = eups.productDir("afwdata")
-    if not mypath:
-        print >> sys.stderr, "Please setup afwdata and try again"
-        sys.exit(1)
-
+    mypath = lsst.utils.getPackageDir('afwdata')
     imFile = os.path.join(mypath, "CFHT", "D4", "cal-53535-i-797722_small_1.fits")
 
     exposure = afwImage.ExposureF(imFile)

@@ -32,14 +32,12 @@ import unittest
 
 import numpy
 
-import eups
+import lsst.utils
 import lsst.afw.geom as afwGeom
 import lsst.utils.tests
 from lsst.pipe.tasks.processCcd import ProcessCcdTask
 
-obsTestDir = eups.productDir("obs_test")
-if obsTestDir is None:
-    raise RuntimeError("obs_test must be setup")
+obsTestDir = lsst.utils.getPackageDir('obs_test')
 InputDir = os.path.join(obsTestDir, "data", "input")
 
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):

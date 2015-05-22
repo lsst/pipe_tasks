@@ -25,6 +25,7 @@ import unittest
 import os
 import eups
 
+import lsst.utils
 import lsst.meas.algorithms as measAlg
 from lsst.meas.astrom import ANetAstrometryTask, ANetAstrometryConfig
 from lsst.meas.base import SingleFrameMeasurementTask, SingleFrameMeasurementConfig
@@ -43,7 +44,7 @@ class TestForceWcs(unittest.TestCase):
         # if not ok:
         #     raise ValueError("Failed to setup astrometry_net_data version '%s': %s" % (ver, reason))
         # print 'Setup astrometry_net_data', ver
-        mypath = eups.productDir("pipe_tasks")
+        mypath = lsst.utils.getPackageDir('pipe_tasks')
         datapath = os.path.join(mypath, 'tests', 'astrometry_net_data', 't2155')
         eupsObj = eups.Eups(root=datapath)
         ok, version, reason = eupsObj.setup('astrometry_net_data')
