@@ -46,13 +46,24 @@ class TransformConfig(pexConfig.Config):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page pipeTasks_TransformTask
-## \ref TransformTask "TransformTask"
-##      Task for transforming raw measurement outputs to calibrated quantities.
+## \page TransformTask
+## \ref TransformTask_ "TransformTask"
+## \copybrief TransformTask
 ## \}
 
 class TransformTask(pipeBase.Task):
-    """!Transform a SourceCatalog containing raw measurements to calibrated form.
+    """!
+    \anchor TransformTask_
+
+    \brief Transform a SourceCatalog containing raw measurements to calibrated form.
+
+    \section pipe_tasks_transform_Contents Contents
+
+     - \ref pipe_tasks_transform_purpose
+     - \ref pipe_tasks_transform_initialize
+     - \ref pipe_tasks_transform_invoke
+
+    \section pipe_tasks_transform_purpose Description
 
     Given a set of measurement algorithms with their associated configuration,
     the table of source measurements they have produced, and information about
@@ -62,6 +73,23 @@ class TransformTask(pipeBase.Task):
     Transformations are defined on a per-measurement-plugin basis. In
     addition, a configurable set of fields may be simply copied from the input
     to the output catalog.
+
+    This task operates on an input SourceCatalog and returns a BaseCatalog
+    containing the transformed results. It requires that the caller supply
+    information on the configuration of the measurement task which produced
+    the input data as well as the world coordinate system and calibration
+    under which the transformation will take place. It provides no
+    functionality for reading or writing data from a Butler: rather,
+    per-dataset-type command line tasks are provided to obtain the appropriate
+    information from a Butler (or elsewhere) and then delegate to this task.
+
+    \section pipe_tasks_transform_initialize Task initialization
+
+    \copydoc \_\_init\_\_
+
+    \section pipe_tasks_transform_invoke Task invocation
+
+    \copydoc run
     """
     ConfigClass = TransformConfig
     _DefaultName = "transform"
@@ -136,9 +164,19 @@ class RunTransformConfig(pexConfig.Config):
 
 
 class RunTransformTaskBase(pipeBase.CmdLineTask):
-    """!Basic interface for TransformTask.
+    """!
+    \anchor RunTransformTaskBase_
 
-    Provide the skeleton of command-line task which can be used to run TransformTask.
+    \brief Command line interface for TransformTask.
+
+    \section pipe_tasks_transform_Contents Contents
+
+     - \ref pipe_tasks_runtransform_purpose
+     - \ref pipe_tasks_runtransform_invoke
+
+    \section pipe_tasks_runtransform_purpose Description
+
+    Provides a command-line task which can be used to run TransformTask.
 
     - Loads a plugin registry based on configuration;
     - Loads configuration for the measurement task which was applied from a repository;
@@ -148,6 +186,10 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     This is not a fully-fledged command line task: it requires specialization to a particular
     source type by defining the variables indicated below.
+
+    \section pipe_tasks_runtransform_invoke Task invocation
+
+    \copydoc run
     """
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
     ConfigClass = RunTransformConfig
@@ -169,7 +211,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     @property
     def inputSchemaType(self):
-        """
+        """!
         The Butler dataset type for the schema of the input source catalog.
 
         By default, we append `_schema` to the input source type. Subclasses may customize
@@ -179,7 +221,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     @property
     def outputDataset(self):
-        """
+        """!
         The Butler dataset type for the schema of the output catalog.
 
         By default, we prepend `transformed_` to the input source type. Subclasses may
@@ -189,7 +231,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     @property
     def measurementConfig(self):
-        """
+        """!
         The configuration of the measurement operation used to generate the input catalog.
 
         By default we look for `measurement` under the root configuration of the
@@ -231,9 +273,21 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
         return outputCat
 
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page SrcTransformTask
+## \ref SrcTransformTask_ "SrcTransformTask"
+## \copybrief SrcTransformTask
+## \}
+
 class SrcTransformTask(RunTransformTaskBase):
-    """
-    Specialization of RunTransformTaskBase for use with 'src' measurements from e.g. processCcd.
+    """!
+    \anchor SrcTransformTask_
+
+    \brief Transform ``src`` measuremenents to calibrated form.
+
+    This is a specialization of \ref RunTransformTaskBase_ "RunTransformTaskBase" which
+    operates on ``src`` measurements. Refer to the parent documentation for details.
     """
     _DefaultName = "transformSrcMeasurement"
     wasForced = False
@@ -241,9 +295,21 @@ class SrcTransformTask(RunTransformTaskBase):
     calexpType = 'calexp'
 
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page ForcedSrcTransformTask
+## \ref ForcedSrcTransformTask_ "ForcedSrcTransformTask"
+## \copybrief ForcedSrcTransformTask
+## \}
+
 class ForcedSrcTransformTask(RunTransformTaskBase):
-    """
-    Specialization of RunTransformTaskBase for use with 'forced_src' measurements from e.g. forcedPhotCcd.
+    """!
+    \anchor ForcedSrcTransformTask_
+
+    \brief Transform ``forced_src`` measuremenents to calibrated form.
+
+    This is a specialization of \ref RunTransformTaskBase_ "RunTransformTaskBase" which
+    operates on ``forced_src`` measurements. Refer to the parent documentation for details.
     """
     _DefaultName = "transformForcedSrcMeasurement"
     wasForced = True
@@ -251,9 +317,21 @@ class ForcedSrcTransformTask(RunTransformTaskBase):
     calexpType = 'calexp'
 
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page CoaddSrcTransformTask
+## \ref CoaddSrcTransformTask_ "CoaddSrcTransformTask"
+## \copybrief CoaddSrcTransformTask
+## \}
+
 class CoaddSrcTransformTask(RunTransformTaskBase):
-    """
-    Specialization of RunTransformTaskBase for use with measurements from processCoadd.
+    """!
+    \anchor CoaddSrcTransformTask_
+
+    \brief Transform measuremenents made on coadds to calibrated form.
+
+    This is a specialization of \ref RunTransformTaskBase_ "RunTransformTaskBase"  which
+    operates on measurements made on coadds. Refer to the parent documentation for details.
     """
     _DefaultName = "transformCoaddSrcMeasurement"
     wasForced = False
