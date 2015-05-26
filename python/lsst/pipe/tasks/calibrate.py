@@ -28,8 +28,8 @@ import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 import lsst.meas.base
 import lsst.pipe.base as pipeBase
-from lsst.meas.photocal import PhotoCalTask
 from lsst.meas.astrom import ANetAstrometryTask
+from .photoCal import PhotoCalTask
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
 
