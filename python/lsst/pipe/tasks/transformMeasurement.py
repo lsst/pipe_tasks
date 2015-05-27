@@ -41,7 +41,7 @@ class TransformConfig(pexConfig.Config):
     copyFields = pexConfig.ListField(
         dtype=str,
         doc="Fields to copy from input to output catalog without transformation",
-        default=('id', 'coord')
+        default=('id', 'coord_ra', 'coord_dec')
     )
 
 ## \addtogroup LSST_task_documentation
