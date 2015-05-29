@@ -54,35 +54,53 @@ class PhotoCalConfig(pexConf.Config):
 
     magLimit = pexConf.Field(dtype=float, doc="Don't use objects fainter than this magnitude", default=22.0)
     doWriteOutput = pexConf.Field(
-        dtype=bool, default=True,
         doc= "Write a field name astrom_usedByPhotoCal to the schema",
-        )
+        dtype=bool,
+        default=True,
+    )
     fluxField = pexConf.Field(
-        dtype=str, default="base_PsfFlux_flux", optional=False,
         doc="Name of the source flux field to use.  The associated flag field\n"\
-            "('<name>.flags') will be implicitly included in badFlags.\n"
-        )
+            "('<name>.flags') will be implicitly included in badFlags.\n",
+        dtype=str,
+        default="base_PsfFlux_flux",
+    )
     applyColorTerms = pexConf.Field(
-        dtype=bool, default=True,
         doc= "Apply photometric colour terms (if available) to reference stars",
-        )
+        dtype=bool,
+        default=True,
+    )
     goodFlags = pexConf.ListField(
-        dtype=str, optional=False,
+        doc="List of source flag fields that must be set for a source to be used.",
+        dtype=str,
         default=[],
-        doc="List of source flag fields that must be set for a source to be used."
-        )
+    )
     badFlags = pexConf.ListField(
-        dtype=str, optional=False,
+        doc="List of source flag fields that will cause a source to be rejected when they are set.",
+        dtype=str,
         default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
             "base_PixelFlags_flag_saturated"], 
-        doc="List of source flag fields that will cause a source to be rejected when they are set."
-        )
-    sigmaMax = pexConf.Field(dtype=float, default=0.25, optional=True,
-                              doc="maximum sigma to use when clipping")
-    nSigma = pexConf.Field(dtype=float, default=3.0, optional=False, doc="clip at nSigma")
-    useMedian = pexConf.Field(dtype=bool, default=True,
-                              doc="use median instead of mean to compute zeropoint")
-    nIter = pexConf.Field(dtype=int, default=20, optional=False, doc="number of iterations")
+    )
+    sigmaMax = pexConf.Field(
+        doc="maximum sigma to use when clipping",
+        dtype=float,
+        default=0.25,
+        optional=True,
+    )
+    nSigma = pexConf.Field(
+        doc="clip at nSigma",
+        dtype=float,
+        default=3.0,
+    )
+    useMedian = pexConf.Field(
+        doc="use median instead of mean to compute zeropoint",
+        dtype=bool,
+        default=True,
+    )
+    nIter = pexConf.Field(
+        doc="number of iterations",
+        dtype=int,
+        default=20,
+    )
     colorterms = pexConf.ConfigField(
         doc="Library of reference catalog name: color term dict",
         dtype=ColortermLibraryConfig,
