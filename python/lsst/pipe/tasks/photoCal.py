@@ -27,13 +27,13 @@ import sys
 
 import numpy as np
 
-from .colorterms import Colorterm
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField
+from .colorterms import ColortermLibraryConfig
 
 __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
@@ -83,6 +83,17 @@ class PhotoCalConfig(pexConf.Config):
     useMedian = pexConf.Field(dtype=bool, default=True,
                               doc="use median instead of mean to compute zeropoint")
     nIter = pexConf.Field(dtype=int, default=20, optional=False, doc="number of iterations")
+    colorterms = pexConf.ConfigField(
+        doc="Library of reference catalog name: color term dict",
+        dtype=ColortermLibraryConfig,
+    )
+    refCatName = pexConf.Field(
+        doc="Name of reference catalog; used to identify color term dict in colorterms.",
+        dtype=str,
+        default="*",
+        optional=False,
+    )
+
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -401,7 +412,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             # this is an unpleasant hack; see DM-2308 requesting a better solution
             self.log.warn("Source catalog does not have flux uncertainties; using sqrt(flux).")
             srcFluxErrArr = np.sqrt(srcFluxArr)
-
+        
         # convert source flux from DN to an estimate of Jy
         JanskysPerABFlux = 3631.0
         srcFluxArr = srcFluxArr * JanskysPerABFlux
@@ -412,7 +423,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         refSchema = matches[0].first.schema
         if self.config.applyColorTerms:
-            ct = Colorterm.getColorterm(filterName)
+            ct = self.config.colorterms.getColorterm(
+                filterName=filterName, refCatName=self.config.refCatName, doRaise=True)
         else:
             ct = None
 
