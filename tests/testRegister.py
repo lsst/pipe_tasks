@@ -93,8 +93,8 @@ class RegisterTestCase(unittest.TestCase):
         inputExp = afwImage.makeExposure(inputImage, wcs)
 
         # Generate catalogues
-        schema = afwTable.SourceTable.makeMinimalSchema() 
-        centroidKey = afwTable.Point2DKey.addFields(schema, "center", "center", "piels")
+        schema = afwTable.SourceTable.makeMinimalSchema()
+        centroidKey = afwTable.Point2DKey.addFields(schema, "center", "center", "pixels")
 
         def newCatalog():
             catalog = afwTable.SourceCatalog(schema)
