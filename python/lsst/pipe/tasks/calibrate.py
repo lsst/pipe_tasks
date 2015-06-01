@@ -117,7 +117,7 @@ class CalibrateConfig(pexConfig.Config):
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
-        self.initialMeasurement.algorithms.names -= ["correctfluxes", "classification.extendedness"]
+        self.initialMeasurement.algorithms.names -= ["base_ClassificationExtendedness"]
         initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024
