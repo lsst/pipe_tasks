@@ -175,7 +175,6 @@ class TransformTestCase(utilsTests.TestCase):
             setattr(sfmConfig.slots, key, None)
         sfmTask = measBase.SingleFrameMeasurementTask(schema, config=sfmConfig)
         transformTask = TransformTask(measConfig=sfmConfig,
-                                      pluginRegistry=measBase.sfm.SingleFramePlugin.registry,
                                       inputSchema=sfmTask.schema, outputDataset="src")
         self._transformAndCheck(sfmConfig, sfmTask.schema, transformTask)
 
@@ -189,7 +188,6 @@ class TransformTestCase(utilsTests.TestCase):
         forcedTask = measBase.ForcedMeasurementTask(schema, config=forcedConfig)
         transformConfig = TransformConfig(copyFields=("objectId", "coord"))
         transformTask = TransformTask(measConfig=forcedConfig,
-                                      pluginRegistry=measBase.forcedMeasurement.ForcedPlugin.registry,
                                       inputSchema=forcedTask.schema, outputDataset="forced_src",
                                       config=transformConfig)
         self._transformAndCheck(forcedConfig, forcedTask.schema, transformTask)

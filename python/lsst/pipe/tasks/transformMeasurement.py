@@ -94,12 +94,11 @@ class TransformTask(pipeBase.Task):
     ConfigClass = TransformConfig
     _DefaultName = "transform"
 
-    def __init__(self, measConfig, pluginRegistry, inputSchema, outputDataset, *args, **kwargs):
+    def __init__(self, measConfig, inputSchema, outputDataset, *args, **kwargs):
         """!Initialize TransformTask.
 
         @param[in] measConfig      Configuration for the measurement task which
                                    produced the measurments being transformed.
-        @param[in] pluginRegistry  A PluginRegistry which maps plugin names to measurement algorithms.
         @param[in] inputSchema     The schema of the input catalog.
         @param[in] outputDataset   The butler dataset type of the output catalog.
         @param[in] *args           Passed through to pipeBase.Task.__init__()
@@ -121,7 +120,7 @@ class TransformTask(pipeBase.Task):
         self.transforms = []
         for name in measConfig.plugins.names:
             config = measConfig.plugins.get(name)
-            transformClass = pluginRegistry.get(name).PluginClass.getTransformClass()
+            transformClass = measConfig.plugins.registry.get(name).PluginClass.getTransformClass()
             self.transforms.append(transformClass(config, name, self.mapper))
 
     def getSchemaCatalogs(self):
@@ -200,9 +199,6 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
     # Standard CmdLineTask attributes:
     _DefaultName = None
 
-    # Boolean; True if the measurement operation was forced, otherwise False.
-    wasForced = None
-
     # Butler dataset type of the source type to be transformed ("src", "forced_src", etc):
     sourceType = None
 
@@ -242,15 +238,8 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
-        if self.wasForced:
-            pluginRegistry = measBase.forcedMeasurement.ForcedPlugin.registry
-        else:
-            pluginRegistry = measBase.sfm.SingleFramePlugin.registry
-
         self.butler = kwargs['butler']
-
-        self.makeSubtask('transform', pluginRegistry=pluginRegistry,
-                         measConfig=self.measurementConfig,
+        self.makeSubtask('transform', measConfig=self.measurementConfig,
                          inputSchema=self.butler.get(self.inputSchemaType).schema,
                          outputDataset=self.outputDataset)
 
@@ -290,7 +279,6 @@ class SrcTransformTask(RunTransformTaskBase):
     operates on ``src`` measurements. Refer to the parent documentation for details.
     """
     _DefaultName = "transformSrcMeasurement"
-    wasForced = False
     sourceType = 'src'
     calexpType = 'calexp'
 
@@ -312,7 +300,6 @@ class ForcedSrcTransformTask(RunTransformTaskBase):
     operates on ``forced_src`` measurements. Refer to the parent documentation for details.
     """
     _DefaultName = "transformForcedSrcMeasurement"
-    wasForced = True
     sourceType = 'forced_src'
     calexpType = 'calexp'
 
@@ -334,7 +321,6 @@ class CoaddSrcTransformTask(RunTransformTaskBase):
     operates on measurements made on coadds. Refer to the parent documentation for details.
     """
     _DefaultName = "transformCoaddSrcMeasurement"
-    wasForced = False
 
     @property
     def coaddName(self):
