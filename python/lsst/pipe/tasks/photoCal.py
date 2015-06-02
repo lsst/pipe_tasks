@@ -33,7 +33,7 @@ import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField
-from .colorterms import ColortermLibraryConfig
+from .colorterms import ColortermLibrary
 
 __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
@@ -103,7 +103,7 @@ class PhotoCalConfig(pexConf.Config):
     )
     colorterms = pexConf.ConfigField(
         doc="Library of reference catalog name: color term dict",
-        dtype=ColortermLibraryConfig,
+        dtype=ColortermLibrary,
     )
     refCatName = pexConf.Field(
         doc="Name of reference catalog; used to identify color term dict in colorterms.",
