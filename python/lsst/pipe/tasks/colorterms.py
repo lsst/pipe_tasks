@@ -27,7 +27,7 @@ import numpy as np
 from lsst.pex.config import Config, Field, ConfigDictField
 from lsst.afw.image import Filter
 
-__all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDictConfig", "ColortermLibraryConfig"]
+__all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
 
 class ColortermNotFoundError(LookupError):
     """Exception class indicating we couldn't find a colorterm
@@ -36,25 +36,26 @@ class ColortermNotFoundError(LookupError):
 
 
 class Colorterm(Config):
-    """!Configuration describing a Colorterm
-    
+    """!Colorterm correction for one pair of filters
+
     The transformed magnitude p' is given by
         p' = primary + c0 + c1*(primary - secondary) + c2*(primary - secondary)**2
+
+    To construct a Colorterm, use keyword arguments:
+    Colorterm(primary=primaryFilterName, secondary=secondaryFilterName, c0=c0value, c1=c1Coeff, c2=c2Coeff)
+    where c0-c2 are optional. For example (omitting c2):
+    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937)
+
+    This is subclass of Config. That is a bit of a hack to make it easy to store the data
+    in an appropriate obs_* package as a config override file. In the long term some other
+    means of persistence will be used, at which point the constructor can be simplified
+    to not require keyword arguments. (Fixing DM-2831 will also allow making a custom constructor).
     """
     primary = Field(dtype=str, doc="name of primary filter")
     secondary = Field(dtype=str, doc="name of secondary filter")
     c0 = Field(dtype=float, default=0.0, doc="Constant parameter")
     c1 = Field(dtype=float, default=0.0, doc="First-order parameter")
     c2 = Field(dtype=float, default=0.0, doc="Second-order parameter")
-
-    # the following is desired to allow positional data, but is impossible due to DM-2381
-    # def __init__(self, primary, secondary, c0=0.0, c1=0.0, c2=0.0):
-    #     """!Construct a Colorterm
-
-    #     This overrides the default constructor for improved error detection
-    #     and to allow positional arguments
-    #     """
-    #     Config.__init__(self, primary=primary, secondary=secondary, c0=c0, c1=c1, c2=c2)
 
     def transformSource(self, source):
         """!Transform the brightness of a source
@@ -66,11 +67,11 @@ class Colorterm(Config):
         return self.transformMags(source.get(self.primary), source.get(self.secondary))
 
     def transformMags(self, primary, secondary):
-        """!Transform primary and secondary magnitudes to a magnitude
-        
-        @param[in] primary  magnitude in primary filter
-        @param[in] secondary  magnitude in secondary filter
-        @return the transformed magnitude
+        """!Transform brightness
+
+        @param[in] primary  brightness in primary filter (magnitude)
+        @param[in] secondary  brightness in secondary filter (magnitude)
+        @return the transformed brightness (as a magnitude)
         """
         color = primary - secondary
         return primary + self.c0 + color*(self.c1 + color*self.c2)
@@ -79,52 +80,67 @@ class Colorterm(Config):
         return np.hypot((1 + self.c1)*primaryFluxErr, self.c1*secondaryFluxErr)
 
 
-class ColortermDictConfig(Config):
-    """!A config containing dict: a dict of filterName: Colorterm
+class ColortermDict(Config):
+    """!A mapping of filterName to Colorterm
 
-    Different reference catalogs may need different ColortermDictConfigs; see ColortermLibrary
+    Different reference catalogs may need different ColortermDicts; see ColortermLibrary
+
+    To construct a ColortermDict use keyword arguments:
+    ColortermDict(data=dataDict)
+    where dataDict is a Python dict of filterName: Colorterm
+    For example:
+    ColortermDict(data={
+        'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
+        'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+        'i':    Colorterm(primary="i", secondary="z", c0= 0.00130204, c1=-0.16922042, c2=-0.01374245),
+    })
+    The constructor will likely be simplified at some point.
+
+    This is subclass of Config. That is a bit of a hack to make it easy to store the data
+    in an appropriate obs_* package as a config override file. In the long term some other
+    means of persistence will be used, at which point the constructor can be made saner.
     """
-    dict = ConfigDictField(
-        doc="Mapping of filter name to Colorterm instance",
+    data = ConfigDictField(
+        doc="Mapping of filter name to Colorterm",
         keytype=str,
         itemtype=Colorterm,
         default={},
     )
 
-    # the following is desired to allow positional data and avoid DM-2382, but is impossible due to DM-2381
-    # def __init__(self, dict=None):
-    #     """!Construct a ColortermDictConfig
 
-    #     Overrides the default constructor for improved safety
-    #     and to allow the data to be a positional argument
-    #     """
-    #     if dict is None: # mutable objects should not be used as defaults
-    #         dict = {}
-    #     Config.__init__(self, dict=dict)
-
-
-class ColortermLibraryConfig(Config):
-    """!A config containing library: a dict of catalog name: ColortermDictConfig
+class ColortermLibrary(Config):
+    """!A mapping of catalog name to ColortermDict
 
     This is intended to support a particular camera with a variety of reference catalogs
+
+    To construct a ColortermLibrary, use keyword arguments:
+    ColortermLibrary(data=dataDict)
+    where dataDict is a Python dict of reference_catalog_name: ColortermDict.
+
+    For example:
+    ColortermLibrary(data = {
+        "hsc*": ColortermDict(data={
+            'g': Colorterm(primary="g", secondary="g"),
+            'r': Colorterm(primary="r", secondary="r"),
+            ...
+        }),
+        "sdss*": ColortermDict(data={
+            'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
+            'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+            ...
+        }),
+    })
+
+    This is subclass of Config. That is a bit of a hack to make it easy to store the data
+    in an appropriate obs_* package as a config override file. In the long term some other
+    means of persistence will be used, at which point the constructor can be made saner.
     """
-    library = ConfigDictField(
-        doc="Mapping of reference catalog name (or glob) to group of color terms",
+    data = ConfigDictField(
+        doc="Mapping of reference catalog name (or glob) to ColortermDict",
         keytype=str,
-        itemtype=ColortermDictConfig,
+        itemtype=ColortermDict,
         default={},
     )
-
-    # the following is desired to allow positional data and avoid DM-2382, but is impossible due to DM-2381
-    # def __init__(self, library=None):
-    #     """!Construct a ColortermLibraryConfig
-
-    #     Overrides the default constructor for improved safety
-    #     and to allow the data to be a positional argument
-    #     """
-    #     if library is None: # mutable objects should not be used as defaults
-    #         library = {}
-    #     Config.__init__(self, library=library)
 
     def getColorterm(self, filterName, refCatName, doRaise=True):
         """!Get the appropriate Colorterm from the library
@@ -142,23 +158,24 @@ class ColortermLibraryConfig(Config):
             if False then return a null Colorterm
         @return the appropriate Colorterm
 
-        @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true
+        @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true;
+        other exceptions may be raised for unexpected errors, regardless of the value of doRaise
         """
         try:
             trueRefCatName = None
-            ctDictConfig = self.library.get(refCatName)
+            ctDictConfig = self.data.get(refCatName)
             if ctDictConfig is None:
                 # try glob expression
-                matchList = [glob for glob in self.library if fnmatch.fnmatch(refCatName, glob)]
+                matchList = [glob for glob in self.data if fnmatch.fnmatch(refCatName, glob)]
                 if len(matchList) == 1:
                     trueRefCatName = matchList[0]
-                    ctDictConfig = self.library[trueRefCatName]
+                    ctDictConfig = self.data[trueRefCatName]
                 elif len(matchList) > 1:
-                    raise RuntimeError(
+                    raise ColortermNotFoundError(
                         "Multiple library globs match refCatName %r: %s" % (refCatName, matchList))
                 else:
-                    raise RuntimeError("No colorterm dict found with refCatName %r" % refCatName)
-            ctDict = ctDictConfig.dict
+                    raise ColortermNotFoundError("No colorterm dict found with refCatName %r" % refCatName)
+            ctDict = ctDictConfig.data
             if filterName not in ctDict:
                 # Perhaps it's an alias
                 filterName = Filter(Filter(filterName).getId()).getName()
@@ -168,7 +185,7 @@ class ColortermLibraryConfig(Config):
                         errMsg += " = catalog %r" % (trueRefCatName,)
                     raise ColortermNotFoundError(errMsg)
             return ctDict[filterName]
-        except Exception:
+        except ColortermNotFoundError:
             if doRaise:
                 raise
             else:

@@ -36,20 +36,20 @@ import unittest
 import pickle
 
 import lsst.utils.tests as utilsTests
-from lsst.pipe.tasks.colorterms import Colorterm, ColortermDictConfig, ColortermLibraryConfig
+from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 
 # From the last page of http://www.naoj.org/staff/nakata/suprime/illustration/colorterm_report_ver3.pdf
 # Transformation for griz band between SDSS and SC (estimated with GS83 SEDs)
-mitll = ColortermLibraryConfig(library={
-    "*": ColortermDictConfig(dict={
+mitll = ColortermLibrary(data={
+    "*": ColortermDict(data={
         "g": Colorterm(primary="g", secondary="r", c0=-0.00569, c1=-0.0427),
         "r": Colorterm(primary="r", secondary="g", c0=0.00261,  c1=0.0304),
         "i": Colorterm(primary="i", secondary="r", c0=0.00586,  c1=0.0827, c2=-0.0118),
         "z": Colorterm(primary="z", secondary="i", c0=0.000329, c1=0.0608, c2=0.0219),
     })
 })
-hamamatsu = ColortermLibraryConfig(library={
-    "*": ColortermDictConfig(dict={
+hamamatsu = ColortermLibrary(data={
+    "*": ColortermDict(data={
         "g": Colorterm(primary="g", secondary="r", c0=-0.00928, c1=-0.0824),
         "r": Colorterm(primary="r", secondary="i", c0=-0.00282, c1=-0.0498, c2=-0.0149),
         "i": Colorterm(primary="i", secondary="z", c0=0.00186,  c1=-0.140,  c2=-0.0196),
