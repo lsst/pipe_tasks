@@ -95,7 +95,6 @@ class PhotoCalTest(unittest.TestCase):
 
         config = PhotoCalConfig()
         config.doWriteOutput = False    # schema is fixed because we already loaded the data
-        config.applyColorTerms = False
         task = PhotoCalTask(config=config, schema=schema)
         pCal = task.run(exposure=self.exposure, matches=matches)
         print "Ref flux fields list =", pCal.arrays.refFluxFieldList
