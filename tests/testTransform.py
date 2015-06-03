@@ -57,7 +57,7 @@ import lsst.utils.tests as utilsTests
 
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
 from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask,
-                                                  RunTransformConfig, RunTransformTask)
+                                                  RunTransformConfig, SrcTransformTask)
 
 PLUGIN_NAME = "base_TrivialMeasurement"
 
@@ -175,8 +175,7 @@ class TransformTestCase(utilsTests.TestCase):
             setattr(sfmConfig.slots, key, None)
         sfmTask = measBase.SingleFrameMeasurementTask(schema, config=sfmConfig)
         transformTask = TransformTask(measConfig=sfmConfig,
-                                      pluginRegistry=measBase.sfm.SingleFramePlugin.registry,
-                                      inputSchema=sfmTask.schema)
+                                      inputSchema=sfmTask.schema, outputDataset="src")
         self._transformAndCheck(sfmConfig, sfmTask.schema, transformTask)
 
     def testForcedMeasurementTransform(self):
@@ -189,8 +188,8 @@ class TransformTestCase(utilsTests.TestCase):
         forcedTask = measBase.ForcedMeasurementTask(schema, config=forcedConfig)
         transformConfig = TransformConfig(copyFields=("objectId", "coord"))
         transformTask = TransformTask(measConfig=forcedConfig,
-                                      pluginRegistry=measBase.forcedMeasurement.ForcedPlugin.registry,
-                                      inputSchema=forcedTask.schema, config=transformConfig)
+                                      inputSchema=forcedTask.schema, outputDataset="forced_src",
+                                      config=transformConfig)
         self._transformAndCheck(forcedConfig, forcedTask.schema, transformTask)
 
 
@@ -198,8 +197,10 @@ class TransformTestCase(utilsTests.TestCase):
 def tempDirectory(*args, **kwargs):
     """A context manager which provides a temporary directory and automatically cleans up when done."""
     dirname = tempfile.mkdtemp(*args, **kwargs)
-    yield dirname
-    shutil.rmtree(dirname, ignore_errors=True)
+    try:
+        yield dirname
+    finally:
+        shutil.rmtree(dirname, ignore_errors=True)
 
 
 class RunTransformTestCase(utilsTests.TestCase):
@@ -223,7 +224,14 @@ class RunTransformTestCase(utilsTests.TestCase):
         with tempDirectory() as tempDir:
             measResult = ProcessCcdTask.parseAndRun(args=[inputDir, "--output", tempDir, "--id", "visit=1"],
                                                     config=cfg, doReturnResults=True)
-            trResult = RunTransformTask.parseAndRun(args=[tempDir, "--id", "visit=1"], doReturnResults=True)
+            trArgs = [tempDir, "--id", "visit=1", "-c", "inputConfigType=processCcd_config"]
+            trResult = SrcTransformTask.parseAndRun(args=trArgs, doReturnResults=True)
+
+            # It should be possible to reprocess the data through a new transform task with exactly
+            # the same configuration without throwing. This check is useful since we are
+            # constructing the task on the fly, which could conceivably cause problems with
+            # configuration/metadata persistence.
+            trResult = SrcTransformTask.parseAndRun(args=trArgs, doReturnResults=True)
 
         measSrcs = measResult.resultList[0].result.sources
         trSrcs = trResult.resultList[0].result
