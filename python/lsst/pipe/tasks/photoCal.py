@@ -27,13 +27,13 @@ import sys
 
 import numpy as np
 
-from .colorterms import Colorterm
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField
+from .colorterms import ColortermLibrary
 
 __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
@@ -54,35 +54,70 @@ class PhotoCalConfig(pexConf.Config):
 
     magLimit = pexConf.Field(dtype=float, doc="Don't use objects fainter than this magnitude", default=22.0)
     doWriteOutput = pexConf.Field(
-        dtype=bool, default=True,
         doc= "Write a field name astrom_usedByPhotoCal to the schema",
-        )
+        dtype=bool,
+        default=True,
+    )
     fluxField = pexConf.Field(
-        dtype=str, default="base_PsfFlux_flux", optional=False,
         doc="Name of the source flux field to use.  The associated flag field\n"\
-            "('<name>.flags') will be implicitly included in badFlags.\n"
-        )
+            "('<name>.flags') will be implicitly included in badFlags.\n",
+        dtype=str,
+        default="base_PsfFlux_flux",
+    )
     applyColorTerms = pexConf.Field(
-        dtype=bool, default=True,
-        doc= "Apply photometric colour terms (if available) to reference stars",
-        )
+        doc= "Apply photometric color terms to reference stars? One of: " + \
+            "None: apply if color term correction is available for this camera " + \
+            "(and fail if data is not available for the desired filter); " + \
+            "True: apply, and fail if color term data not available; " + \
+            "False: do not apply",
+        dtype=bool,
+        default=None,
+        optional=True,
+    )
     goodFlags = pexConf.ListField(
-        dtype=str, optional=False,
+        doc="List of source flag fields that must be set for a source to be used.",
+        dtype=str,
         default=[],
-        doc="List of source flag fields that must be set for a source to be used."
-        )
+    )
     badFlags = pexConf.ListField(
-        dtype=str, optional=False,
+        doc="List of source flag fields that will cause a source to be rejected when they are set.",
+        dtype=str,
         default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
             "base_PixelFlags_flag_saturated"], 
-        doc="List of source flag fields that will cause a source to be rejected when they are set."
-        )
-    sigmaMax = pexConf.Field(dtype=float, default=0.25, optional=True,
-                              doc="maximum sigma to use when clipping")
-    nSigma = pexConf.Field(dtype=float, default=3.0, optional=False, doc="clip at nSigma")
-    useMedian = pexConf.Field(dtype=bool, default=True,
-                              doc="use median instead of mean to compute zeropoint")
-    nIter = pexConf.Field(dtype=int, default=20, optional=False, doc="number of iterations")
+    )
+    sigmaMax = pexConf.Field(
+        doc="maximum sigma to use when clipping",
+        dtype=float,
+        default=0.25,
+        optional=True,
+    )
+    nSigma = pexConf.Field(
+        doc="clip at nSigma",
+        dtype=float,
+        default=3.0,
+    )
+    useMedian = pexConf.Field(
+        doc="use median instead of mean to compute zeropoint",
+        dtype=bool,
+        default=True,
+    )
+    nIter = pexConf.Field(
+        doc="number of iterations",
+        dtype=int,
+        default=20,
+    )
+    colorterms = pexConf.ConfigField(
+        doc="Library of reference catalog name: color term dict",
+        dtype=ColortermLibrary,
+    )
+    refCatName = pexConf.Field(
+        doc="Name of reference catalog; used to identify color term dict in colorterms." + \
+            " Ignored if not applying color terms",
+        dtype=str,
+        default="*",
+        optional=False,
+    )
+
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -401,7 +436,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             # this is an unpleasant hack; see DM-2308 requesting a better solution
             self.log.warn("Source catalog does not have flux uncertainties; using sqrt(flux).")
             srcFluxErrArr = np.sqrt(srcFluxArr)
-
+        
         # convert source flux from DN to an estimate of Jy
         JanskysPerABFlux = 3631.0
         srcFluxArr = srcFluxArr * JanskysPerABFlux
@@ -409,14 +444,25 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         if not matches:
             raise RuntimeError("No reference stars are available")
-
         refSchema = matches[0].first.schema
-        if self.config.applyColorTerms:
-            ct = Colorterm.getColorterm(filterName)
+
+        applyColorTerms = self.config.applyColorTerms
+        applyCTReason = "config.applyColorTerms is %s" % (self.config.applyColorTerms,)
+        if self.config.applyColorTerms is None:
+            # apply color terms if color term data is available
+            applyColorTerms = len(self.config.colorterms.data) > 0
+            applyCTReason += " and data %s available" % ("is" if applyColorTerms else "is not")
+
+        if applyColorTerms:
+            self.log.info("Applying color terms for filterName=%r, config.refCatName=%s because %s" %
+                (filterName, self.config.refCatName, applyCTReason))
+            ct = self.config.colorterms.getColorterm(
+                filterName=filterName, refCatName=self.config.refCatName, doRaise=True)
         else:
+            self.log.info("Not applying color terms because %s" % (applyCTReason,))
             ct = None
 
-        if ct:                          # we have a colour term to worry about
+        if ct:                          # we have a color term to worry about
             fluxFieldList = [getRefFluxField(refSchema, filt) for filt in (ct.primary, ct.secondary)]
             missingFluxFieldList = []
             for fluxField in fluxFieldList:
@@ -450,7 +496,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             refFluxArrList.append(refFluxArr)
             refFluxErrArrList.append(refFluxErrArr)
 
-        if ct:                          # we have a colour term to worry about
+        if ct:                          # we have a color term to worry about
             refMagArr1 = np.array([abMagFromFlux(rf1) for rf1 in refFluxArrList[0]]) # primary
             refMagArr2 = np.array([abMagFromFlux(rf2) for rf2 in refFluxArrList[1]]) # secondary
 
@@ -501,7 +547,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
          - Must include a field \c photometric; True for objects which should be considered as
             photometric standards
          - Must include a field \c flux; the flux used to impose a magnitude limit and also to calibrate
-            the data to (unless a colour term is specified, in which case ColorTerm.primary is used;
+            the data to (unless a color term is specified, in which case ColorTerm.primary is used;
             See https://jira.lsstcorp.org/browse/DM-933)
          - May include a field \c stargal; if present, True means that the object is a star
          - May include a field \c var; if present, True means that the object is variable

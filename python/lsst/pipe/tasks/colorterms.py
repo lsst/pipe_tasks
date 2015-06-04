@@ -19,130 +19,174 @@
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+
+import fnmatch
+
 import numpy as np
 
-class Colorterm(object):
-    """!A class to describe colour terms between photometric bands
+from lsst.pex.config import Config, Field, ConfigDictField
+from lsst.afw.image import Filter
+
+__all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
+
+class ColortermNotFoundError(LookupError):
+    """Exception class indicating we couldn't find a colorterm
     """
-    _colorterms = {}                    # cached dictionary of dictionaries of Colorterms for devices
-    _activeColorterms = None            # The set of Colorterms that are currently in use
+    pass
 
-    def __init__(self, primary, secondary, c0, c1=0.0, c2=0.0):
-        """!Construct a Colorterm
 
-        The transformed magnitude p' is given by
+class Colorterm(Config):
+    """!Colorterm correction for one pair of filters
+
+    The transformed magnitude p' is given by
         p' = primary + c0 + c1*(primary - secondary) + c2*(primary - secondary)**2
+
+    To construct a Colorterm, use keyword arguments:
+    Colorterm(primary=primaryFilterName, secondary=secondaryFilterName, c0=c0value, c1=c1Coeff, c2=c2Coeff)
+    where c0-c2 are optional. For example (omitting c2):
+    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937)
+
+    This is subclass of Config. That is a bit of a hack to make it easy to store the data
+    in an appropriate obs_* package as a config override file. In the long term some other
+    means of persistence will be used, at which point the constructor can be simplified
+    to not require keyword arguments. (Fixing DM-2831 will also allow making a custom constructor).
+    """
+    primary = Field(dtype=str, doc="name of primary filter")
+    secondary = Field(dtype=str, doc="name of secondary filter")
+    c0 = Field(dtype=float, default=0.0, doc="Constant parameter")
+    c1 = Field(dtype=float, default=0.0, doc="First-order parameter")
+    c2 = Field(dtype=float, default=0.0, doc="Second-order parameter")
+
+    def transformSource(self, source):
+        """!Transform the brightness of a source
+
+        @param[in] source  source whose brightness is to be converted; must support get(filterName)
+                    (e.g. source.get("r")) method, as do afw::table::Source and dicts.
+        @return the transformed source magnitude
         """
-        self.primary = primary
-        self.secondary = secondary
-        self.c0 = c0
-        self.c1 = c1
-        self.c2 = c2
+        return self.transformMags(source.get(self.primary), source.get(self.secondary))
 
-    def __str__(self):
-        return "%s %s [%g %g %g]" % (self.primary, self.secondary, self.c0, self.c1, self.c2)
+    def transformMags(self, primary, secondary):
+        """!Transform brightness
 
-    @staticmethod
-    def setColorterms(colorterms, device=None):
-        """!Replace or update the cached Colorterms dict
-
-        @param[in,out] colorterms  a dict of device: Colorterm
-        @param[in] device  device name, or None;
-            if device is None then colorterms replaces the internal catched dict,
-            else the internal cached dict is updated with device: colorterms[device]
+        @param[in] primary  brightness in primary filter (magnitude)
+        @param[in] secondary  brightness in secondary filter (magnitude)
+        @return the transformed brightness (as a magnitude)
         """
-        if device:
-            Colorterm._colorterms[device] = colorterms[device]
-        else:
-            Colorterm._colorterms = colorterms
+        color = primary - secondary
+        return primary + self.c0 + color*(self.c1 + color*self.c2)
 
-        Colorterm.setActiveDevice(device, allowRaise=False)
+    def propagateFluxErrors(self, primaryFluxErr, secondaryFluxErr):
+        return np.hypot((1 + self.c1)*primaryFluxErr, self.c1*secondaryFluxErr)
 
-    @staticmethod
-    def setActiveDevice(device, allowRaise=True):
-        """!Set or clear the default colour terms
 
-        @param[in] device  device name, or None to clear
-        @param[in] allowRaise  controls handling an unknown, non-None device:
-            if true raise RuntimeError, else clear the default colorterms
+class ColortermDict(Config):
+    """!A mapping of filterName to Colorterm
+
+    Different reference catalogs may need different ColortermDicts; see ColortermLibrary
+
+    To construct a ColortermDict use keyword arguments:
+    ColortermDict(data=dataDict)
+    where dataDict is a Python dict of filterName: Colorterm
+    For example:
+    ColortermDict(data={
+        'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
+        'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+        'i':    Colorterm(primary="i", secondary="z", c0= 0.00130204, c1=-0.16922042, c2=-0.01374245),
+    })
+    The constructor will likely be simplified at some point.
+
+    This is subclass of Config. That is a bit of a hack to make it easy to store the data
+    in an appropriate obs_* package as a config override file. In the long term some other
+    means of persistence will be used, at which point the constructor can be made saner.
+    """
+    data = ConfigDictField(
+        doc="Mapping of filter name to Colorterm",
+        keytype=str,
+        itemtype=Colorterm,
+        default={},
+    )
+
+
+class ColortermLibrary(Config):
+    """!A mapping of catalog name to ColortermDict
+
+    This is intended to support a particular camera with a variety of reference catalogs
+
+    To construct a ColortermLibrary, use keyword arguments:
+    ColortermLibrary(data=dataDict)
+    where dataDict is a Python dict of reference_catalog_name: ColortermDict.
+
+    For example:
+    ColortermLibrary(data = {
+        "hsc*": ColortermDict(data={
+            'g': Colorterm(primary="g", secondary="g"),
+            'r': Colorterm(primary="r", secondary="r"),
+            ...
+        }),
+        "sdss*": ColortermDict(data={
+            'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
+            'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+            ...
+        }),
+    })
+
+    This is subclass of Config. That is a bit of a hack to make it easy to store the data
+    in an appropriate obs_* package as a config override file. In the long term some other
+    means of persistence will be used, at which point the constructor can be made saner.
+    """
+    data = ConfigDictField(
+        doc="Mapping of reference catalog name (or glob) to ColortermDict",
+        keytype=str,
+        itemtype=ColortermDict,
+        default={},
+    )
+
+    def getColorterm(self, filterName, refCatName, doRaise=True):
+        """!Get the appropriate Colorterm from the library
+
+        We use the group of color terms in the library that matches the refCatName.
+        If the refCatName exactly matches an entry in the library, that
+        group is used; otherwise if the refCatName matches a single glob (shell syntax,
+        e.g., "sdss-*" will match "sdss-dr8"), then that is used.  If there is no
+        exact match and no unique match to the globs, we raise an exception.
+
+        @param filterName  name of filter
+        @param refCatName  reference catalog name or glob expression; if a glob expression then
+            there must be exactly one match in the library
+        @param[in] doRaise  if True then raise ColortermNotFoundError if no suitable Colorterm found;
+            if False then return a null Colorterm
+        @return the appropriate Colorterm
+
+        @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true;
+        other exceptions may be raised for unexpected errors, regardless of the value of doRaise
         """
-        if device is None:
-            Colorterm._activeColorterms = None
-
-        else:
-            try:
-                Colorterm._activeColorterms = Colorterm._colorterms[device]
-            except KeyError:
-                if allowRaise:
-                    raise RuntimeError("No colour terms are available for %s" % device)
-
-                Colorterm._activeColorterms = None
-
-    @staticmethod
-    def getColorterm(band):
-        """!Return the Colorterm for the specified band (or None if unknown)
-        """
-        return Colorterm._activeColorterms.get(band) if Colorterm._activeColorterms else None
-
-    @staticmethod
-    def transformSource(band, source, reverse=False, colorterms=None):
-        """!Transform the magnitudes in *source* to the specified *band* and return it.
-
-        The *source* must support a get(band) (e.g. source.get("r")) method, as do afw::Source and dicts.
-        Use the colorterms (or the cached set if colorterms is None); if no set is available,
-        return the *band* flux.
-        If reverse is True, return the inverse transformed magnitude
-
-        @warning reverse is not yet implemented
-        """
-        if not colorterms:
-            colorterms = Colorterm._activeColorterms
-
-        if not colorterms:
-            return source.get(band)
-
-        ct = colorterms[band]
-        
-        return Colorterm.transformMags(band, source.get(ct.primary), source.get(ct.secondary),
-                                       reverse, colorterms)
-
-    @staticmethod
-    def transformMags(band, primary, secondary, reverse=False, colorterms=None):
-        """!Transform the magnitudes *primary* and *secondary* to the specified *band* and return it.
-
-        Use the colorterms (or the cached set if colorterms is None); if no set is available,
-        return the *band* flux.
-        If reverse is True, return the inverse transformed magnitude
-
-        @warning reverse is not yet implemented
-        """
-        if not colorterms:
-            colorterms = Colorterm._activeColorterms
-
-        if not colorterms:
-            return primary
-
-        ct = colorterms[band]
-        
-        p = primary
-        s = secondary
-
-        if reverse:
-            raise NotImplemented("reverse photometric transformations are not implemented")
-        else:
-            return p + ct.c0 + (p - s)*(ct.c1 + (p - s)*ct.c2)
-
-    @staticmethod
-    def propagateFluxErrors(band, primaryFluxErr, secondaryFluxErr, reverse=False, colorterms=None):
-        """!Transform flux errors
-        """
-        if not colorterms:
-            colorterms = Colorterm._activeColorterms
-
-        if not colorterms:
-            return primaryFluxErr
-
-        ct = colorterms[band]
-
-        return np.hypot((1 + ct.c1)*primaryFluxErr, ct.c1*secondaryFluxErr)
-        
+        try:
+            trueRefCatName = None
+            ctDictConfig = self.data.get(refCatName)
+            if ctDictConfig is None:
+                # try glob expression
+                matchList = [glob for glob in self.data if fnmatch.fnmatch(refCatName, glob)]
+                if len(matchList) == 1:
+                    trueRefCatName = matchList[0]
+                    ctDictConfig = self.data[trueRefCatName]
+                elif len(matchList) > 1:
+                    raise ColortermNotFoundError(
+                        "Multiple library globs match refCatName %r: %s" % (refCatName, matchList))
+                else:
+                    raise ColortermNotFoundError("No colorterm dict found with refCatName %r" % refCatName)
+            ctDict = ctDictConfig.data
+            if filterName not in ctDict:
+                # Perhaps it's an alias
+                filterName = Filter(Filter(filterName).getId()).getName()
+                if filterName not in ctDict:
+                    errMsg = "No colorterm found for filter %r with refCatName %r" % (filterName, refCatName)
+                    if trueRefCatName is not None:
+                        errMsg += " = catalog %r" % (trueRefCatName,)
+                    raise ColortermNotFoundError(errMsg)
+            return ctDict[filterName]
+        except ColortermNotFoundError:
+            if doRaise:
+                raise
+            else:
+                return Colorterm(filterName, filterName)
