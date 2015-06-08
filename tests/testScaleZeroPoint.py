@@ -32,7 +32,6 @@ import sys
 
 import numpy
 
-import eups
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.image.utils as imageUtils

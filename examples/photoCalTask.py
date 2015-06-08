@@ -26,17 +26,24 @@ import os
 
 import numpy as np
 
-import eups
+import lsst.utils
+import sys
 import lsst.afw.table              as afwTable
 import lsst.afw.image              as afwImage
 from lsst.meas.astrom import AstrometryTask
 from lsst.pipe.tasks.photoCal import PhotoCalTask
 
+try:
+    import eups
+except ImportError:
+    print "warning: import of eups failed; tests will be skipped"
+    sys.exit(0)
+
 def loadData():
     """Prepare the data we need to run the example"""
     
     # Load sample input from disk
-    mypath = eups.productDir("meas_astrom")
+    mypath = lsst.utils.getPackageDir('meas_astrom')
 
     # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
     exposure = afwImage.ExposureF(os.path.join(mypath, "tests", "v695833-e0-c000-a00.sci.fits"))

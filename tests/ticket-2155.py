@@ -23,8 +23,9 @@
 import unittest
 
 import os
-import eups
+import sys
 
+import lsst.utils
 import lsst.meas.algorithms as measAlg
 from lsst.meas.astrom import ANetAstrometryTask, ANetAstrometryConfig
 from lsst.meas.base import SingleFrameMeasurementTask, SingleFrameMeasurementConfig
@@ -33,6 +34,12 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.image   as afwImage
 import lsst.afw.table   as afwTable
 import lsst.pex.logging as pexLog
+
+try:
+    import eups
+except ImportError:
+    print "warning: import of eups failed; tests will be skipped"
+    sys.exit(0)
 
 class TestForceWcs(unittest.TestCase):
     def setUp(self):
@@ -43,7 +50,7 @@ class TestForceWcs(unittest.TestCase):
         # if not ok:
         #     raise ValueError("Failed to setup astrometry_net_data version '%s': %s" % (ver, reason))
         # print 'Setup astrometry_net_data', ver
-        mypath = eups.productDir("pipe_tasks")
+        mypath = lsst.utils.getPackageDir('pipe_tasks')
         datapath = os.path.join(mypath, 'tests', 'astrometry_net_data', 't2155')
         eupsObj = eups.Eups(root=datapath)
         ok, version, reason = eupsObj.setup('astrometry_net_data')

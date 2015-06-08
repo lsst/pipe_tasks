@@ -23,20 +23,14 @@
 import os
 import sys
 
-from eups import productDir
+import lsst.utils
 from lsst.afw.image import MaskedImageF
 from lsst.pipe.tasks.exampleStatsTasks import ExampleSimpleStatsTask, ExampleSigmaClippedStatsTask
 
 # Parse command-line arguments. If the user supplies an image, use it;
 # otherwise use one from the afwdata package (or complain if afwdata is not setup).
 if len(sys.argv) < 2:
-    afwDataDir = productDir("afwdata")
-    if not afwDataDir:
-        print """Usage: exampleSigmaClippedStatsTask.py [fitsImage]
-fitsImage is a path to a masked image or exposure
-To use the default fitsImage you must have afwdata setup
-"""
-        sys.exit(1)
+    afwDataDir = lsst.utils.getPackageDir('afwdata')
     maskedImagePath = os.path.join(afwDataDir, "data", "med.fits")
 else:
     maskedImagePath = sys.argv[1]
