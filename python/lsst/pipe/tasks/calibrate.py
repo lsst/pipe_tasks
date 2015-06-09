@@ -25,6 +25,7 @@ import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
 import lsst.meas.algorithms as measAlg
 import lsst.meas.base
 import lsst.pipe.base as pipeBase
@@ -73,6 +74,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Perform PSF fitting?",
         default = True,
     )
+    doMeasureApCorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Compute aperture corrections?",
+        default = True,
+    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -101,6 +107,10 @@ class CalibrateConfig(pexConfig.Config):
         target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
+    measureApCorr   = pexConfig.ConfigurableField(
+        target = measAlg.MeasureApCorrTask,
+        doc = "subtask to measure aperture corrections"
+    )
     astrometry    = pexConfig.ConfigurableField(
         target = ANetAstrometryTask,
         doc = "fit WCS of exposure",
@@ -121,6 +131,23 @@ class CalibrateConfig(pexConfig.Config):
         initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024
+        #
+        # Don't measure the elliptical aperture fluxes when calibrating
+        #
+        aperture_elliptical = "flux.aperture.elliptical"
+        if aperture_elliptical in self.measurement.value.algorithms.names:
+            self.measurement.value.algorithms.names -= (aperture_elliptical,)
+        #
+        # Stop flux.gaussian recomputing the Gaussian's weights (as shape.sdss already did that)
+        #
+        try:
+            self.initialMeasurement.algorithms['flux.gaussian'].fixed = True
+            self.measurement.algorithms['flux.gaussian'].fixed = True
+            self.initialMeasurement.algorithms['flux.gaussian'].centroid = \
+                'initial.shape.sdss.centroid'
+            self.initialMeasurement.algorithms['flux.gaussian'].shape = 'initial.shape.sdss'
+        except pexConfig.FieldValidationError: # "flux.gaussian" isn't there
+            pass
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -341,6 +368,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
         self.makeSubtask("measurePsf", schema=self.schema1)
+        self.makeSubtask("measureApCorr", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema1)
         self.makeSubtask("photocal", schema=self.schema1)
 
@@ -356,7 +384,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 name = "initial" + separator + name 
             self.schemaMapper.addMapping(item.key, name)
 
-        # measurements fo the second measurement step done with a second schema
+        # measurements for the second measurement step done with a second schema
         schema = self.schemaMapper.editOutputSchema()
         self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
 
@@ -377,16 +405,18 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     def run(self, exposure, defects=None, idFactory=None):
         """!Run the calibration task on an exposure
 
-        \param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
-        \param[in]      defects    List of defects on exposure
-        \param[in]      idFactory  afw.table.IdFactory to use for source catalog.
-        \return a pipeBase.Struct with fields:
+        @param[in,out]  exposure   Exposure to calibrate; measured Psf, Wcs, ApCorr, Calib, etc. will
+                                   be installed there as well
+        @param[in]      defects    List of defects on exposure
+        @param[in]      idFactory  afw.table.IdFactory to use for source catalog.
+        @return a pipeBase.Struct with fields:
         - exposure: Repaired exposure
         - backgrounds: A list of background models applied in the calibration phase
         - psf: Point spread function
         - sources: Sources used in calibration
         - matches: Astrometric matches
         - matchMeta: Metadata for astrometric matches
+        - apCorrMap: Map of aperture corrections
         - photocal: Output of photocal subtask
 
         It is moderately important to provide a decent initial guess for the seeing if you want to
@@ -462,6 +492,16 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
             self.display('PSF_background', exposure=exposure)
 
+        # Because we want to both compute the aperture corrections and apply them - and we do the latter
+        # as a source measurement plugin ("CorrectFluxes"), we have to sandwich the aperture correction
+        # measurement in between two source measurement passes, using the priority range arguments added
+        # just for this purpose.
+        apCorrApplyPriority = self.config.measurement.algorithms["correctfluxes"].priority
+        self.measurement.run(exposure, sources1, endPriority=apCorrApplyPriority)
+        apCorrMap = self.measureApCorr.run(exposure.getBBox(afwImage.PARENT), sources1)
+        exposure.getInfo().setApCorrMap(apCorrMap)
+        self.measurement.run(exposure, sources1, beginPriority=apCorrApplyPriority)
+
         # make a second table with which to do the second measurement
         # the schemaMapper will copy the footprints and ids, which is all we need.
         table2 = afwTable.SourceTable.make(self.schema, idFactory)
@@ -472,12 +512,11 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         sources.extend(sources1, self.schemaMapper)
         self.measurement.run(exposure, sources)
 
+        matches, matchMeta = None, None
         if self.config.doAstrometry:
             astromRet = self.astrometry.run(exposure, sources)
             matches = astromRet.matches
             matchMeta = astromRet.matchMeta
-        else:
-            matches, matchMeta = None, None
 
         if self.config.doPhotoCal:
             assert(matches is not None)
@@ -514,6 +553,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             sources = sources,
             matches = matches,
             matchMeta = matchMeta,
+            apCorrMap = apCorrMap,
             photocal = photocalRet,
         )
 
