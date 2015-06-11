@@ -76,7 +76,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
         # Create an instance of ProcessCoaddTask to measure on the coadd
         # There's no noise in these images, so we set a direct-value threshold,
-        # and since we already have a perfect Wcs/Psf, we don't calibrate.
+        # and the background weighting (when using Approximate) to False, and
+        # since we already have a perfect Wcs/Psf, we don't calibrate.
         processConfig = ProcessCoaddTask.ConfigClass()
         processConfig.measurement.retarget(lsst.meas.base.SingleFrameMeasurementTask)
         processConfig.measurement.slots.shape = "base_SdssShape"
@@ -84,6 +85,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         processConfig.detection.thresholdType = "value"
         processConfig.detection.thresholdValue = 0.01
         processConfig.doWriteSourceMatches = False
+        processConfig.detection.background.weighting = False
         self.processTask = ProcessCoaddTask(config=processConfig)
 
         if REUSE_DATAREPO and os.path.exists(os.path.join(DATAREPO_ROOT, "_mapper")):
