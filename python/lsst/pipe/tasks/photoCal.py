@@ -500,8 +500,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             refMagArr1 = np.array([abMagFromFlux(rf1) for rf1 in refFluxArrList[0]]) # primary
             refMagArr2 = np.array([abMagFromFlux(rf2) for rf2 in refFluxArrList[1]]) # secondary
 
-            refMagArr = ct.transformMags(filterName, refMagArr1, refMagArr2)
-            refFluxErrArr = ct.propagateFluxErrors(filterName, refFluxErrArrList[0], refFluxErrArrList[1])
+            refMagArr = ct.transformMags(refMagArr1, refMagArr2)
+            refFluxErrArr = ct.propagateFluxErrors(refFluxErrArrList[0], refFluxErrArrList[1])
         else:
             refMagArr = np.array([abMagFromFlux(rf) for rf in refFluxArrList[0]])
 
