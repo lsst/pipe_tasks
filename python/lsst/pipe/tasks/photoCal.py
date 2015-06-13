@@ -66,9 +66,11 @@ class PhotoCalConfig(pexConf.Config):
     )
     applyColorTerms = pexConf.Field(
         doc= "Apply photometric color terms to reference stars? One of: " + \
-            "None: apply if color term correction is available for this camera " + \
-            "(and fail if data is not available for the desired filter); " + \
-            "True: apply, and fail if color term data not available; " + \
+            "None: apply if colorterms is not and photoCatName are not None; " + \
+            "fail if color term data is not available for the specified ref catalog and filter. " + \
+            "True: apply colorterms; fail if colorterms or photoCatName are None " + \
+            " or color term data is not available for the specified reference catalog and filter. " + \
+            "or the specified ; " + \
             "False: do not apply",
         dtype=bool,
         default=None,
@@ -107,15 +109,14 @@ class PhotoCalConfig(pexConf.Config):
         default=20,
     )
     colorterms = pexConf.ConfigField(
-        doc="Library of reference catalog name: color term dict",
+        doc="Library of photometric reference catalog name: color term dict",
         dtype=ColortermLibrary,
     )
-    refCatName = pexConf.Field(
-        doc="Name of reference catalog; used to identify color term dict in colorterms." + \
-            " Ignored if not applying color terms",
+    photoCatName = pexConf.Field(
+        doc="Name of photometric reference catalog; used to select a color term dict in colorterms." + \
+            " see also applyColorTerms",
         dtype=str,
-        default="*",
-        optional=False,
+        optional=True,
     )
 
 
@@ -449,15 +450,18 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         applyColorTerms = self.config.applyColorTerms
         applyCTReason = "config.applyColorTerms is %s" % (self.config.applyColorTerms,)
         if self.config.applyColorTerms is None:
-            # apply color terms if color term data is available
-            applyColorTerms = len(self.config.colorterms.data) > 0
-            applyCTReason += " and data %s available" % ("is" if applyColorTerms else "is not")
+            # apply color terms if color term data is available and photoCatName specified
+            ctDataAvail = len(self.config.colorterms.data) > 0
+            photoCatSpecified = self.config.photoCatName is not None
+            applyCTReason += " and data %s available" % ("is" if ctDataAvail else "is not")
+            applyCTReason += " and photoRefCat %s None" % ("is not" if photoCatSpecified else "is")
+            applyColorTerms = ctDataAvail and photoCatSpecified
 
         if applyColorTerms:
-            self.log.info("Applying color terms for filterName=%r, config.refCatName=%s because %s" %
-                (filterName, self.config.refCatName, applyCTReason))
+            self.log.info("Applying color terms for filterName=%r, config.photoCatName=%s because %s" %
+                (filterName, self.config.photoCatName, applyCTReason))
             ct = self.config.colorterms.getColorterm(
-                filterName=filterName, refCatName=self.config.refCatName, doRaise=True)
+                filterName=filterName, photoCatName=self.config.photoCatName, doRaise=True)
         else:
             self.log.info("Not applying color terms because %s" % (applyCTReason,))
             ct = None
@@ -500,8 +504,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             refMagArr1 = np.array([abMagFromFlux(rf1) for rf1 in refFluxArrList[0]]) # primary
             refMagArr2 = np.array([abMagFromFlux(rf2) for rf2 in refFluxArrList[1]]) # secondary
 
-            refMagArr = ct.transformMags(filterName, refMagArr1, refMagArr2)
-            refFluxErrArr = ct.propagateFluxErrors(filterName, refFluxErrArrList[0], refFluxErrArrList[1])
+            refMagArr = ct.transformMags(refMagArr1, refMagArr2)
+            refFluxErrArr = ct.propagateFluxErrors(refFluxErrArrList[0], refFluxErrArrList[1])
         else:
             refMagArr = np.array([abMagFromFlux(rf) for rf in refFluxArrList[0]])
 

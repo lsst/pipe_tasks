@@ -36,20 +36,12 @@ import unittest
 import pickle
 
 import lsst.utils.tests as utilsTests
-from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
+from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary, ColortermNotFoundError
 
 # From the last page of http://www.naoj.org/staff/nakata/suprime/illustration/colorterm_report_ver3.pdf
 # Transformation for griz band between SDSS and SC (estimated with GS83 SEDs)
-mitll = ColortermLibrary(data={
-    "*": ColortermDict(data={
-        "g": Colorterm(primary="g", secondary="r", c0=-0.00569, c1=-0.0427),
-        "r": Colorterm(primary="r", secondary="g", c0=0.00261,  c1=0.0304),
-        "i": Colorterm(primary="i", secondary="r", c0=0.00586,  c1=0.0827, c2=-0.0118),
-        "z": Colorterm(primary="z", secondary="i", c0=0.000329, c1=0.0608, c2=0.0219),
-    })
-})
 hamamatsu = ColortermLibrary(data={
-    "*": ColortermDict(data={
+    "ham*": ColortermDict(data={
         "g": Colorterm(primary="g", secondary="r", c0=-0.00928, c1=-0.0824),
         "r": Colorterm(primary="r", secondary="i", c0=-0.00282, c1=-0.0498, c2=-0.0149),
         "i": Colorterm(primary="i", secondary="z", c0=0.00186,  c1=-0.140,  c2=-0.0196),
@@ -72,15 +64,40 @@ class ColortermTestCase(unittest.TestCase):
     def testTransformSource(self):
         """Check if we can use colour terms"""
 
-        ct = self.colorterms.getColorterm("g", refCatName="foo")
+        ct = self.colorterms.getColorterm("g", photoCatName="ham")
 
         for s in self.sources:
             self.assertEqual(ct.transformSource(s), s["true_g"])
 
+    def testLibraryAccess(self):
+        """Test ColortermLibrary.getColorterm"""
+        ctg = self.colorterms.getColorterm("g", photoCatName="ham") # exact match
+        self.assertEqual(ctg.primary, "g")
+        self.assertEqual(ctg.secondary, "r")
+        self.assertAlmostEqual(ctg.c0, -0.00928)
+        self.assertAlmostEqual(ctg.c1, -0.0824)
+        self.assertAlmostEqual(ctg.c2, 0)
+
+        ctr = self.colorterms.getColorterm("r", photoCatName="hambone") # glob should expand
+        self.assertEqual(ctr.primary, "r")
+        self.assertEqual(ctr.secondary, "i")
+        self.assertAlmostEqual(ctr.c0, -0.00282)
+        self.assertAlmostEqual(ctr.c1, -0.0498)
+        self.assertAlmostEqual(ctr.c2, -0.0149)
+
+        # bad filter name
+        self.assertRaises(ColortermNotFoundError, self.colorterms.getColorterm, "x", photoCatName="ham")
+
+        # bad catalog name: not in library
+        self.assertRaises(ColortermNotFoundError, self.colorterms.getColorterm, "r", photoCatName="eggs")
+        
+        # bad catalog name: glob expression
+        self.assertRaises(ColortermNotFoundError, self.colorterms.getColorterm, "r", photoCatName="ha*")
+
     def testTransformMags(self):
         """Check if we can use colour terms via transformMags"""
 
-        ct = self.colorterms.getColorterm("g", refCatName="bar")
+        ct = self.colorterms.getColorterm("g", photoCatName="ham")
 
         for s in self.sources:
             self.assertEqual(ct.transformMags(s[ct.primary], s[ct.secondary]), s["true_g"])
