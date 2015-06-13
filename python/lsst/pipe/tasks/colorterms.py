@@ -109,13 +109,13 @@ class ColortermDict(Config):
 
 
 class ColortermLibrary(Config):
-    """!A mapping of catalog name to ColortermDict
+    """!A mapping of photometric reference catalog name or glob to ColortermDict
 
-    This is intended to support a particular camera with a variety of reference catalogs
+    This allows photometric calibration using a variety of reference catalogs.
 
     To construct a ColortermLibrary, use keyword arguments:
     ColortermLibrary(data=dataDict)
-    where dataDict is a Python dict of reference_catalog_name: ColortermDict.
+    where dataDict is a Python dict of catalog_name_or_glob: ColortermDict
 
     For example:
     ColortermLibrary(data = {
@@ -152,10 +152,11 @@ class ColortermLibrary(Config):
         exact match and no unique match to the globs, we raise an exception.
 
         @param filterName  name of filter
-        @param refCatName  reference catalog name or glob expression; if a glob expression then
-            there must be exactly one match in the library
+        @param refCatName  name of photometric reference catalog from which to retrieve the data.
+            This argument is not glob-expanded (but the catalog names in the library are,
+            if no exact match is found).
         @param[in] doRaise  if True then raise ColortermNotFoundError if no suitable Colorterm found;
-            if False then return a null Colorterm
+            if False then return a null Colorterm with filterName as the primary and secondary filter
         @return the appropriate Colorterm
 
         @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true;
@@ -166,7 +167,8 @@ class ColortermLibrary(Config):
             ctDictConfig = self.data.get(refCatName)
             if ctDictConfig is None:
                 # try glob expression
-                matchList = [glob for glob in self.data if fnmatch.fnmatch(refCatName, glob)]
+                matchList = [libRefNameGlob for libRefNameGlob in self.data
+                    if fnmatch.fnmatch(refCatName, libRefNameGlob)]
                 if len(matchList) == 1:
                     trueRefCatName = matchList[0]
                     ctDictConfig = self.data[trueRefCatName]
