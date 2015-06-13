@@ -527,6 +527,12 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         sources = self.readSources(patchRef)
         if self.config.doDeblend:
             self.deblend.run(exposure, sources, exposure.getPsf())
+
+            bigKey = sources.schema["deblend.parent-too-big"].asKey()
+            numBig = sum((s.get(bigKey) for s in sources)) # catalog is non-contiguous so can't extract column
+            if numBig > 0:
+                self.log.warn("Patch %s contains %d large footprints that were not deblended" %
+                              (patchRef.dataId, numBig))
         self.measurement.run(exposure, sources)
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
