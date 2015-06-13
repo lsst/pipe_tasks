@@ -24,6 +24,7 @@ import fnmatch
 
 import numpy as np
 
+import lsst.pex.exceptions as pexExcept
 from lsst.pex.config import Config, Field, ConfigDictField
 from lsst.afw.image import Filter
 
@@ -142,17 +143,17 @@ class ColortermLibrary(Config):
         default={},
     )
 
-    def getColorterm(self, filterName, refCatName, doRaise=True):
+    def getColorterm(self, filterName, photoCatName, doRaise=True):
         """!Get the appropriate Colorterm from the library
 
-        We use the group of color terms in the library that matches the refCatName.
-        If the refCatName exactly matches an entry in the library, that
-        group is used; otherwise if the refCatName matches a single glob (shell syntax,
-        e.g., "sdss-*" will match "sdss-dr8"), then that is used.  If there is no
-        exact match and no unique match to the globs, we raise an exception.
+        Use dict of color terms in the library that matches the photoCatName.
+        If the photoCatName exactly matches an entry in the library, that
+        dict is used; otherwise if the photoCatName matches a single glob (shell syntax,
+        e.g., "sdss-*" will match "sdss-dr8"), then that is used. If there is no
+        exact match and no unique match to the globs, raise an exception.
 
         @param filterName  name of filter
-        @param refCatName  name of photometric reference catalog from which to retrieve the data.
+        @param photoCatName  name of photometric reference catalog from which to retrieve the data.
             This argument is not glob-expanded (but the catalog names in the library are,
             if no exact match is found).
         @param[in] doRaise  if True then raise ColortermNotFoundError if no suitable Colorterm found;
@@ -164,25 +165,28 @@ class ColortermLibrary(Config):
         """
         try:
             trueRefCatName = None
-            ctDictConfig = self.data.get(refCatName)
+            ctDictConfig = self.data.get(photoCatName)
             if ctDictConfig is None:
                 # try glob expression
                 matchList = [libRefNameGlob for libRefNameGlob in self.data
-                    if fnmatch.fnmatch(refCatName, libRefNameGlob)]
+                    if fnmatch.fnmatch(photoCatName, libRefNameGlob)]
                 if len(matchList) == 1:
                     trueRefCatName = matchList[0]
                     ctDictConfig = self.data[trueRefCatName]
                 elif len(matchList) > 1:
                     raise ColortermNotFoundError(
-                        "Multiple library globs match refCatName %r: %s" % (refCatName, matchList))
+                        "Multiple library globs match photoCatName %r: %s" % (photoCatName, matchList))
                 else:
-                    raise ColortermNotFoundError("No colorterm dict found with refCatName %r" % refCatName)
+                    raise ColortermNotFoundError("No colorterm dict found with photoCatName %r" % photoCatName)
             ctDict = ctDictConfig.data
             if filterName not in ctDict:
                 # Perhaps it's an alias
-                filterName = Filter(Filter(filterName).getId()).getName()
+                try:
+                    filterName = Filter(Filter(filterName).getId()).getName()
+                except pexExcept.NotFoundError:
+                    pass # this will be handled shortly
                 if filterName not in ctDict:
-                    errMsg = "No colorterm found for filter %r with refCatName %r" % (filterName, refCatName)
+                    errMsg = "No colorterm found for filter %r with photoCatName %r" % (filterName, photoCatName)
                     if trueRefCatName is not None:
                         errMsg += " = catalog %r" % (trueRefCatName,)
                     raise ColortermNotFoundError(errMsg)
