@@ -484,7 +484,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             try:
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
-                raise
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
