@@ -129,7 +129,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         if self.config.doScaleVariance:
             self.scaleVariance(exposure.getMaskedImage())
         results = self.runDetection(exposure, self.makeIdFactory(patchRef))
-        self.write(results, patchRef)
+        self.write(exposure, results, patchRef)
 
     def scaleVariance(self, maskedImage):
         """Scale the variance in a maskedImage
@@ -165,16 +165,17 @@ class DetectCoaddSourcesTask(CmdLineTask):
             backgrounds.append(fpSets.background)
         return Struct(sources=sources, backgrounds=backgrounds)
 
-    def write(self, results, patchRef):
-        """Write out results from runDetection
+    def write(self, exposure, results, patchRef):
+        """!Write out results from runDetection
 
-        results: Struct returned from runDetection
-        patchRef: data reference for patch
+        @param exposure: Exposure to write out
+        @param results: Struct returned from runDetection
+        @param patchRef: data reference for patch
         """
         coaddName = self.config.coaddName + "Coadd"
-        patchRef.put(results.backgrounds, coaddName + "_calexpBackground")
+        patchRef.put(results.backgrounds, coaddName + "_calexp_detBackground")
         patchRef.put(results.sources, coaddName + "_det")
-
+        patchRef.put(exposure, coaddName + "_calexp_det")
 
 ##############################################################################################################
 
@@ -447,7 +448,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
     def run(self, patchRef):
         """Measure and deblend"""
-        exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
+        exposure = patchRef.get(self.config.coaddName + "Coadd_calexp_det", immediate=True)
         sources = self.readSources(patchRef)
         if self.config.doDeblend:
             self.deblend.run(exposure, sources, exposure.getPsf())
