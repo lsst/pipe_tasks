@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008-2013 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -18,7 +18,7 @@
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
 """
@@ -76,7 +76,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
         # Create an instance of ProcessCoaddTask to measure on the coadd
         # There's no noise in these images, so we set a direct-value threshold,
-        # and since we already have a perfect Wcs/Psf, we don't calibrate.
+        # and the background weighting (when using Approximate) to False, and
+        # since we already have a perfect Wcs/Psf, we don't calibrate.
         processConfig = ProcessCoaddTask.ConfigClass()
         processConfig.measurement.retarget(lsst.meas.base.SingleFrameMeasurementTask)
         processConfig.measurement.slots.shape = "base_SdssShape"
@@ -84,6 +85,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         processConfig.detection.thresholdType = "value"
         processConfig.detection.thresholdValue = 0.01
         processConfig.doWriteSourceMatches = False
+        processConfig.detection.background.weighting = False
         self.processTask = ProcessCoaddTask(config=processConfig)
 
         if REUSE_DATAREPO and os.path.exists(os.path.join(DATAREPO_ROOT, "_mapper")):
