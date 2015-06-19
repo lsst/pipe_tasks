@@ -186,7 +186,7 @@ CalibrateTask delegates most of its work to a set of sub-Tasks:
 before the %measurePsf step and again after the PSF has been measured.
 <DT> detection \ref SourceDetectionTask_ "SourceDetectionTask"
 <DD> Initial (high-threshold) detection phase for calibration
-<DT> initialMeasurement \ref SourceMeasurementTask_ "SourceMeasurementTask"
+<DT> initialMeasurement \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
 <DD> Make the initial measurements used to feed PSF determination and aperture correction determination
 <DT> astrometry \ref AstrometryTask_ "AstrometryTask"
 <DD> Solve the astrometry.  May be disabled by setting CalibrateTaskConfig.doAstrometry to be False.
@@ -195,7 +195,7 @@ This task is called twice;  once before the %measurePsf step and again after the
 <DD> Estimate the PSF.  May be disabled by setting CalibrateTaskConfig.doPsf to be False.  If requested
 the astrometry is solved before this is called, so if you disable the astrometry the %measurePsf
 task won't have access to objects positions.
-<DT> measurement \ref SourceMeasurementTask_ "SourceMeasurementTask"
+<DT> measurement \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
 <DD> Post-PSF-determination measurements used to feed other calibrations
 <DT> photocal \ref PhotoCalTask_ "PhotoCalTask"
 <DD> Solve for the photometric zeropoint.
