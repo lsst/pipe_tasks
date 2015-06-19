@@ -73,6 +73,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Perform PSF fitting?",
         default = True,
     )
+    doMeasureApCorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Compute aperture corrections?",
+        default = True,
+    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -100,6 +105,10 @@ class CalibrateConfig(pexConfig.Config):
     measurement = pexConfig.ConfigurableField(
         target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
+    )
+    measureApCorr   = pexConfig.ConfigurableField(
+        target = lsst.meas.base.MeasureApCorrTask,
+        doc = "subtask to measure aperture corrections"
     )
     astrometry    = pexConfig.ConfigurableField(
         target = ANetAstrometryTask,
@@ -341,6 +350,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
         self.makeSubtask("measurePsf", schema=self.schema1)
+        self.makeSubtask("measureApCorr", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema1)
         self.makeSubtask("photocal", schema=self.schema1)
 
@@ -461,6 +471,20 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 backgrounds.append(bg)
 
             self.display('PSF_background', exposure=exposure)
+
+        if self.config.doMeasureApCorr:
+            # Because we want to both compute the aperture corrections and apply them
+            # we have to sandwich the aperture correction
+            # measurement in between two source measurement passes, using the priority range arguments added
+            # just for this purpose.
+            apCorrApplyPriority = self.config.measurement.algorithms["correctfluxes"].priority
+            self.measurement.run(exposure, sources1, endPriority=apCorrApplyPriority)
+            apCorrMap = self.measureApCorr.run(exposure.getBBox(), sources1).apCorrMap
+            exposure.getInfo().setApCorrMap(apCorrMap)
+            self.measurement.run(exposure, sources1, beginPriority=apCorrApplyPriority)
+        else:
+            apCorrMap = None
+            self.measurement.run(exposure, sources1)
 
         # make a second table with which to do the second measurement
         # the schemaMapper will copy the footprints and ids, which is all we need.
