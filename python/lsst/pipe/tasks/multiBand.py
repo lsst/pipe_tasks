@@ -8,7 +8,7 @@ from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
-from lsst.meas.astrom.astrometry import AstrometryTask
+from lsst.meas.astrom import ANetAstrometryTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
@@ -391,7 +391,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
     measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
-    astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
+    astrometry = ConfigurableField(target=ANetAstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
 
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
