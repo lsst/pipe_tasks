@@ -60,16 +60,6 @@ def _makeMakeIdFactory(datasetName):
         return afwTable.IdFactory.makeSource(expId, 64 - expBits)
     return makeIdFactory
 
-
-def copySlots(oldCat, newCat):
-    """Copy table slots definitions from one catalog to another"""
-    for name in ("Centroid", "Shape", "ApFlux", "ModelFlux", "PsfFlux", "InstFlux", "CalibFlux"):
-        meas = getattr(oldCat.table, "get" + name + "Key")()
-        err = getattr(oldCat.table, "get" + name + "ErrKey")()
-        flag = getattr(oldCat.table, "get" + name + "FlagKey")()
-        getattr(newCat.table, "define" + name)(meas, err, flag)
-
-
 def getShortFilterName(name):
     """Given a longer, camera-specific filter name (e.g. "HSC-I") return its shorthand name ("i").
     """
@@ -380,7 +370,6 @@ class MergeDetectionsTask(MergeSourcesTask):
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
                                                         self.schema, self.makeIdFactory(patchRef),
                                                         samePeakDistance)
-        copySlots(orderedCatalogs[0], mergedList)
         self.log.info("Merged to %d sources" % len(mergedList))
         return mergedList
 
@@ -628,8 +617,6 @@ class MergeMeasurementsTask(MergeSourcesTask):
             else: # if we didn't break (i.e. didn't find any record with right flag set)
                 raise ValueError("Error in inputs to MergeCoaddMeasurements: no valid reference for %s" %
                                  inputRecord.getId())
-
-        copySlots(orderedCatalogs[0], mergedCatalog)
 
         # more checking for sane inputs, since zip silently iterates over the smallest sequence
         for inputCatalog in orderedCatalogs:
