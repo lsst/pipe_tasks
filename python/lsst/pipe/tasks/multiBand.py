@@ -342,7 +342,7 @@ class MergeDetectionsTask(MergeSourcesTask):
     _DefaultName = "mergeCoaddDetections"
     inputDataset = "det"
     outputDataset = "mergeDet"
-    refColumn = "detection.ref"
+    refColumn = "detection_ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("mergeDet")
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
@@ -578,12 +578,12 @@ class MergeMeasurementsTask(MergeSourcesTask):
         for band in self.config.priorityList:
             short = getShortFilterName(band)
             outputKey = self.schemaMapper.editOutputSchema().addField(
-                "merge.measurement.%s" % short,
+                "merge_measurement_%s" % short,
                 type="Flag",
                 doc="Flag field set if the measurements here are from the %s filter" % band
             )
-            peakKey = inputSchema.find("merge.peak.%s" % short).key
-            footprintKey = inputSchema.find("merge.footprint.%s" % short).key
+            peakKey = inputSchema.find("merge_peak_%s" % short).key
+            footprintKey = inputSchema.find("merge_footprint_%s" % short).key
             self.flagKeys[band] = Struct(peak=peakKey, footprint=footprintKey, output=outputKey)
         self.schema = self.schemaMapper.getOutputSchema()
 
@@ -591,9 +591,9 @@ class MergeMeasurementsTask(MergeSourcesTask):
         """Merge measurement catalogs to create a single reference catalog for forced photometry
 
         For parent sources, we choose the first band in config.priorityList for which the
-        merge.footprint flag for that band is is True.
+        merge_footprint flag for that band is is True.
 
-        For child sources, the logic is the same, except that we use the merge.peak flags.
+        For child sources, the logic is the same, except that we use the merge_peak flags.
         """
         # Put catalogs, filters in priority order
         orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
