@@ -229,14 +229,14 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     def matchSources(self, exposure, sources):
         """Match the sources to the reference object loaded by the calibrate task"""
         try:
-            astrometer = self.calibrate.astrometry.astrometer
-            if astrometer is None:
-                raise AttributeError("No astrometer")
+            solver = self.calibrate.astrometry.solver
+            if solver is None:
+                raise AttributeError("No astrometry solver")
         except AttributeError:
-            self.log.warn("Failed to find an astrometer in calibrate's astronomy task")
+            self.log.warn("Failed to find a solver in calibrate's astronomy task")
             return None, None
 
-        astromRet = astrometer.useKnownWcs(sources, exposure=exposure)
+        astromRet = solver.useKnownWcs(sources, exposure=exposure)
         # N.b. yes, this is what useKnownWcs calls the returned values
         return astromRet.matches, astromRet.matchMetadata
 
