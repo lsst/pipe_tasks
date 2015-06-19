@@ -390,7 +390,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     doDeblend = Field(dtype=bool, default=True, doc="Deblend sources?")
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
     measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
-    doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
+    doMatchSources = Field(dtype=bool, default=False, doc="Match sources to reference catalog?")
     astrometry = ConfigurableField(target=ANetAstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
 
