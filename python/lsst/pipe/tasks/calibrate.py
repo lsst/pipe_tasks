@@ -78,6 +78,11 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Compute aperture corrections?",
         default = True,
     )
+    doApplyApCorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Apply aperture corrections? Ignored if doMeasureApCorr is False",
+        default = True,
+    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -109,6 +114,10 @@ class CalibrateConfig(pexConfig.Config):
     measureApCorr   = pexConfig.ConfigurableField(
         target = lsst.meas.base.MeasureApCorrTask,
         doc = "subtask to measure aperture corrections"
+    )
+    applyApCorr   = pexConfig.ConfigurableField(
+        target = lsst.meas.base.ApplyApCorrTask,
+        doc = "subtask to apply aperture corrections"
     )
     astrometry    = pexConfig.ConfigurableField(
         target = ANetAstrometryTask,
@@ -350,7 +359,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
         self.makeSubtask("measurePsf", schema=self.schema1)
-        self.makeSubtask("measureApCorr", schema=self.schema)
+        self.makeSubtask("measureApCorr", schema=self.schema1)
+        self.makeSubtask("applyApCorr", schema=self.schema1)
         self.makeSubtask("astrometry", schema=self.schema1)
         self.makeSubtask("photocal", schema=self.schema1)
 
@@ -472,20 +482,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
             self.display('PSF_background', exposure=exposure)
 
-        if self.config.doMeasureApCorr:
-            # Because we want to both compute the aperture corrections and apply them
-            # we have to sandwich the aperture correction
-            # measurement in between two source measurement passes, using the priority range arguments added
-            # just for this purpose.
-            apCorrApplyPriority = self.config.measurement.algorithms["correctfluxes"].priority
-            self.measurement.run(exposure, sources1, endPriority=apCorrApplyPriority)
-            apCorrMap = self.measureApCorr.run(exposure.getBBox(), sources1).apCorrMap
-            exposure.getInfo().setApCorrMap(apCorrMap)
-            self.measurement.run(exposure, sources1, beginPriority=apCorrApplyPriority)
-        else:
-            apCorrMap = None
-            self.measurement.run(exposure, sources1)
-
         # make a second table with which to do the second measurement
         # the schemaMapper will copy the footprints and ids, which is all we need.
         table2 = afwTable.SourceTable.make(self.schema, idFactory)
@@ -494,7 +490,20 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # transfer to a second table -- note that the slots do not have to be reset here
         # as long as measurement.run follows immediately
         sources.extend(sources1, self.schemaMapper)
-        self.measurement.run(exposure, sources)
+
+        if self.config.doMeasureApCorr:
+            # Run measurement through all flux measurements (all have the same execution order),
+            # then apply aperture corrections, then run the rest of the measurements
+            apCorrOrder = lsst.meas.base.BasePlugin.APCORR_ORDER
+            self.measurement.run(exposure, sources, endOrder=apCorrOrder)
+            apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sources).apCorrMap
+            exposure.getInfo().setApCorrMap(apCorrMap)
+            if self.config.doApplyApCorr:
+                self.applyApCorr.run(catalog=sources, apCorrMap=apCorrMap)
+            self.measurement.run(exposure, sources, beginOrder=apCorrOrder)
+        else:
+            apCorrMap = None
+            self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
             astromRet = self.astrometry.run(exposure, sources)
