@@ -2,12 +2,13 @@
 
 import numpy
 
+from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
+from lsst.pipe.tasks.coaddBase import getSkyInfo
 from lsst.meas.astrom import ANetAstrometryTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
