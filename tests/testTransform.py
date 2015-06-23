@@ -186,7 +186,7 @@ class TransformTestCase(utilsTests.TestCase):
         for key in forcedConfig.slots.keys():
             setattr(forcedConfig.slots, key, None)
         forcedTask = measBase.ForcedMeasurementTask(schema, config=forcedConfig)
-        transformConfig = TransformConfig(copyFields=("objectId", "coord"))
+        transformConfig = TransformConfig(copyFields=("objectId", "coord_ra", "coord_dec"))
         transformTask = TransformTask(measConfig=forcedConfig,
                                       inputSchema=forcedTask.schema, outputDataset="forced_src",
                                       config=transformConfig)

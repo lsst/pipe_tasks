@@ -82,7 +82,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         self.schema = lsst.afw.table.ExposureTable.makeMinimalSchema()
         self.ccdKey = self.schema.addField("ccd", type=int, doc="CCD number")
         self.visitKey = self.schema.addField("visit", type=int, doc="visit number")
-        self.pointingKey = self.schema.addField("pointing", type="Coord", doc="center of visit")
+        self.pointingKey = lsst.afw.table.CoordKey.addFields(self.schema, "pointing", "center of visit")
         self.rng = numpy.random.RandomState(self.config.seed)
 
     def run(self, butler, n, tractInfo, camera, catalog=None):
@@ -106,7 +106,7 @@ class MockObservationTask(lsst.pipe.base.Task):
                 record = catalog.addNew()
                 record.setI(self.ccdKey, detector.getId())
                 record.setI(self.visitKey, visit)
-                record.setCoord(self.pointingKey, position)
+                record.set(self.pointingKey, position)
                 record.setWcs(self.buildWcs(position, pa, detector))
                 record.setCalib(calib)
                 record.setPsf(self.buildPsf(detector))

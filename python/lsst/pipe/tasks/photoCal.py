@@ -262,12 +262,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         self.scatterPlot = None
         self.fig = None
         if self.config.doWriteOutput:
-            if schema.getVersion() == 0:
-                self.outputField = schema.addField("classification.photometric", type="Flag",
-                                          doc="set if source was used in photometric calibration")
-            else:
-                self.outputField = schema.addField("photocal_photometricStandard", type="Flag",
-                                          doc="set if source was used in photometric calibration")
+            self.outputField = schema.addField("photocal_photometricStandard", type="Flag",
+                                      doc="set if source was used in photometric calibration")
         else:
             self.outputField = None
 
@@ -282,17 +278,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         fluxField = self.config.fluxField
         goodFlags = [schema.find(name).key for name in self.config.goodFlags]
-        if schema.getVersion() == 0:
-            if fluxField == 'base_PsfFlux_flux': fluxField = "flux.psf"
-            flux = schema.find(fluxField).key
-            fluxErr = schema.find(fluxField + ".err").key
-            version0BadFlags=["flags.pixel.edge", "flags.pixel.interpolated.any",
-                "flags.pixel.saturated.any"]
-            badFlags = [schema.find(name).key for name in version0BadFlags]
-        else:
-            flux = schema.find(self.config.fluxField).key
-            fluxErr = schema.find(self.config.fluxField + "Sigma").key
-            badFlags = [schema.find(name).key for name in self.config.badFlags]
+        flux = schema.find(self.config.fluxField).key
+        fluxErr = schema.find(self.config.fluxField + "Sigma").key
+        badFlags = [schema.find(name).key for name in self.config.badFlags]
 
         return pipeBase.Struct(flux=flux, fluxErr=fluxErr, goodFlags=goodFlags, badFlags=badFlags)
 

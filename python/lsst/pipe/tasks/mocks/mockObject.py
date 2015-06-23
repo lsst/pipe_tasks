@@ -54,8 +54,8 @@ class MockObjectTask(lsst.pipe.base.Task):
     def __init__(self, **kwds):
         lsst.pipe.base.Task.__init__(self, **kwds)
         self.schema = lsst.afw.table.SimpleTable.makeMinimalSchema()
-        self.center = self.schema.addField("center", type=lsst.afw.geom.Point2D,
-                                           doc="center position in tract WCS")
+        self.center = lsst.afw.table.Point2DKey.addFields(self.schema, "center",
+                                           "center position in tract WCS", "pixels")
         self.magKey = self.schema.addField("mag", type=float, doc="exact true magnitude")
         self.rng = numpy.random.RandomState(self.config.seed)
 
@@ -75,7 +75,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         for coord, center in self.makePositions(tractInfo):
             record = catalog.addNew()
             record.setCoord(coord)
-            record.setPointD(self.center, center)
+            record.set(self.center, center)
             self.defineObject(record)
         return catalog
 

@@ -94,8 +94,7 @@ class RegisterTestCase(unittest.TestCase):
 
         # Generate catalogues
         schema = afwTable.SourceTable.makeMinimalSchema()
-        schema.setVersion(0)   
-        centroidKey = schema.addField("center", type="PointD")
+        centroidKey = afwTable.Point2DKey.addFields(schema, "center", "center", "pixels")
 
         def newCatalog():
             catalog = afwTable.SourceCatalog(schema)
@@ -152,8 +151,8 @@ class RegisterTestCase(unittest.TestCase):
                 # The values are not quite zero because the "image" is undersampled, so we get ringing.
                 self.assertTrue((alignedArray[yTemplate+dy,xTemplate+dx] < 0.1).all())
 
-        xAligned = numpy.array([x for i,x in enumerate(outData.warpedSources["center.x"]) if i not in bad])
-        yAligned = numpy.array([y for i,y in enumerate(outData.warpedSources["center.y"]) if i not in bad])
+        xAligned = numpy.array([x for i,x in enumerate(outData.warpedSources["center_x"]) if i not in bad])
+        yAligned = numpy.array([y for i,y in enumerate(outData.warpedSources["center_y"]) if i not in bad])
         self.assertAlmostEqual((xAligned - xTemplate).mean(), 0, 8)
         self.assertAlmostEqual((xAligned - xTemplate).std(), 0, 8)
         self.assertAlmostEqual((yAligned - yTemplate).mean(), 0, 8)
