@@ -148,13 +148,14 @@ class MockObservationTask(lsst.pipe.base.Task):
         @param[in] pa: position angle (an lsst.afw.geom.Angle)
         @param[in] detector: detector information (an lsst.afw.cameraGeom.Detector)
         """
-        crval = position.getPosition(lsst.afw.geom.degrees)
+        crval = position
         pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
         cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) *
               lsst.afw.geom.LinearTransform.makeRotation(pa))
         fpCtr = detector.makeCameraPoint(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE)
         crpix = detector.transform(fpCtr, PIXELS).getPoint()
-        wcs = lsst.afw.image.Wcs(crval, crpix, cd.getMatrix())
+
+        wcs = lsst.afw.image.makeWcs(crval, crpix, *cd.getMatrix().flatten())
         return wcs
 
     def buildCalib(self):
