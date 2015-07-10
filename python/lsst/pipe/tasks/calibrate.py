@@ -132,6 +132,8 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.doApplyApCorr and not self.doMeasureApCorr:
+            raise ValueError("Cannot set doApplyApCorr True unless doMeasureApCorr is also True")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
