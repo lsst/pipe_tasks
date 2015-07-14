@@ -195,10 +195,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                                                inputData.backgroundInfoList)
 
         if self.config.doInterp:
-            self.interpImage.interpolateOnePlane(
-                maskedImage = coaddExp.getMaskedImage(),
-                planeName = "NO_DATA",
-            )
+            self.interpImage.interpolateOnePlane(maskedImage=coaddExp.getMaskedImage(), planeName="NO_DATA")
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
