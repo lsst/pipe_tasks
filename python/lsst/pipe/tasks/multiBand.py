@@ -237,7 +237,6 @@ class MergeSourcesTask(CmdLineTask):
     * _DefaultName: name of Task
     * inputDataset: name of dataset to read
     * outputDataset: name of dataset to write
-    * refColumn: name of column to add
     * getSchemaCatalogs to the output of _makeGetSchemaCatalogs(outputDataset)
 
     In addition, sub-classes must implement the mergeCatalogs method.
@@ -247,7 +246,6 @@ class MergeSourcesTask(CmdLineTask):
     RunnerClass = MergeSourcesRunner
     inputDataset = None
     outputDataset = None
-    refColumn = None
     getSchemaCatalogs = None
 
     @classmethod
@@ -378,7 +376,6 @@ class MergeDetectionsTask(MergeSourcesTask):
     _DefaultName = "mergeCoaddDetections"
     inputDataset = "det"
     outputDataset = "mergeDet"
-    refColumn = "detection.ref"
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
     def __init__(self, butler=None, schema=None, **kwargs):
@@ -587,7 +584,6 @@ class MergeMeasurementsTask(MergeSourcesTask):
     _DefaultName = "mergeCoaddMeasurements"
     inputDataset = "meas"
     outputDataset = "ref"
-    refColumn = "measurement.ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("ref")
 
     def __init__(self, butler=None, schema=None, **kwargs):
