@@ -58,14 +58,14 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     inputRecorder = pexConfig.ConfigurableField(
         doc = "Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
-        target = CoaddInputRecorderTask,
+        target = CoaddInputRecorderTask
     )
     doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc = "Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype = bool,
         doc = "Apply meas_mosaic ubercal results to input calexps?",
-        default = False,
+        default = False
     )
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
