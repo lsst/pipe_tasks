@@ -73,6 +73,16 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Perform PSF fitting?",
         default = True,
     )
+    doMeasureApCorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Compute aperture corrections?",
+        default = True,
+    )
+    doApplyApCorr = pexConfig.Field(
+        dtype = bool,
+        doc = "Apply aperture corrections? Ignored if doMeasureApCorr is False",
+        default = True,
+    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -101,6 +111,14 @@ class CalibrateConfig(pexConfig.Config):
         target = lsst.meas.base.SingleFrameMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
+    measureApCorr   = pexConfig.ConfigurableField(
+        target = lsst.meas.base.MeasureApCorrTask,
+        doc = "subtask to measure aperture corrections"
+    )
+    applyApCorr   = pexConfig.ConfigurableField(
+        target = lsst.meas.base.ApplyApCorrTask,
+        doc = "subtask to apply aperture corrections"
+    )
     astrometry    = pexConfig.ConfigurableField(
         target = ANetAstrometryTask,
         doc = "fit WCS of exposure",
@@ -114,6 +132,8 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.doApplyApCorr and not self.doMeasureApCorr:
+            raise ValueError("Cannot set doApplyApCorr True unless doMeasureApCorr is also True")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
@@ -168,7 +188,7 @@ CalibrateTask delegates most of its work to a set of sub-Tasks:
 before the %measurePsf step and again after the PSF has been measured.
 <DT> detection \ref SourceDetectionTask_ "SourceDetectionTask"
 <DD> Initial (high-threshold) detection phase for calibration
-<DT> initialMeasurement \ref SourceMeasurementTask_ "SourceMeasurementTask"
+<DT> initialMeasurement \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
 <DD> Make the initial measurements used to feed PSF determination and aperture correction determination
 <DT> astrometry \ref AstrometryTask_ "AstrometryTask"
 <DD> Solve the astrometry.  May be disabled by setting CalibrateTaskConfig.doAstrometry to be False.
@@ -177,7 +197,7 @@ This task is called twice;  once before the %measurePsf step and again after the
 <DD> Estimate the PSF.  May be disabled by setting CalibrateTaskConfig.doPsf to be False.  If requested
 the astrometry is solved before this is called, so if you disable the astrometry the %measurePsf
 task won't have access to objects positions.
-<DT> measurement \ref SourceMeasurementTask_ "SourceMeasurementTask"
+<DT> measurement \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
 <DD> Post-PSF-determination measurements used to feed other calibrations
 <DT> photocal \ref PhotoCalTask_ "PhotoCalTask"
 <DD> Solve for the photometric zeropoint.
@@ -341,6 +361,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
         self.makeSubtask("measurePsf", schema=self.schema1)
+        self.makeSubtask("measureApCorr", schema=self.schema1)
+        self.makeSubtask("applyApCorr", schema=self.schema1)
         self.makeSubtask("astrometry", schema=self.schema1)
         self.makeSubtask("photocal", schema=self.schema1)
 
@@ -470,7 +492,20 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # transfer to a second table -- note that the slots do not have to be reset here
         # as long as measurement.run follows immediately
         sources.extend(sources1, self.schemaMapper)
-        self.measurement.run(exposure, sources)
+
+        if self.config.doMeasureApCorr:
+            # Run measurement through all flux measurements (all have the same execution order),
+            # then apply aperture corrections, then run the rest of the measurements
+            apCorrOrder = lsst.meas.base.BasePlugin.APCORR_ORDER
+            self.measurement.run(exposure, sources, endOrder=apCorrOrder)
+            apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sources).apCorrMap
+            exposure.getInfo().setApCorrMap(apCorrMap)
+            if self.config.doApplyApCorr:
+                self.applyApCorr.run(catalog=sources, apCorrMap=apCorrMap)
+            self.measurement.run(exposure, sources, beginOrder=apCorrOrder)
+        else:
+            apCorrMap = None
+            self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
             astromRet = self.astrometry.run(exposure, sources)
