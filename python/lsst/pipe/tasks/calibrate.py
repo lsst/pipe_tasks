@@ -360,8 +360,11 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         beginInitial = self.schema1.getFieldCount()
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
-        self.makeSubtask("astrometry", schema=self.schema1)
         self.makeSubtask("measurePsf", schema=self.schema1)
+        self.makeSubtask("measureApCorr", schema=self.schema1)
+        self.makeSubtask("applyApCorr", schema=self.schema1)
+        self.makeSubtask("astrometry", schema=self.schema1)
+        self.makeSubtask("photocal", schema=self.schema1)
 
         # create a schemaMapper to map schema1 into schema2
         self.schemaMapper = afwTable.SchemaMapper(self.schema1)
@@ -375,12 +378,9 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 name = "initial" + separator + name 
             self.schemaMapper.addMapping(item.key, name)
 
-        # measurements for the second measurement step done with a second schema
+        # measurements fo the second measurement step done with a second schema
         schema = self.schemaMapper.editOutputSchema()
         self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
-        self.makeSubtask("measureApCorr", schema=self.schema1)
-        self.makeSubtask("applyApCorr", schema=schema)
-        self.makeSubtask("photocal", schema=schema)
 
         # the final schema is the same as the schemaMapper output
         self.schema = self.schemaMapper.getOutputSchema()
