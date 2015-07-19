@@ -78,11 +78,6 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Compute aperture corrections?",
         default = True,
     )
-    doApplyApCorr = pexConfig.Field(
-        dtype = bool,
-        doc = "Apply aperture corrections? Ignored if doMeasureApCorr is False",
-        default = True,
-    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -115,10 +110,6 @@ class CalibrateConfig(pexConfig.Config):
         target = lsst.meas.base.MeasureApCorrTask,
         doc = "subtask to measure aperture corrections"
     )
-    applyApCorr   = pexConfig.ConfigurableField(
-        target = lsst.meas.base.ApplyApCorrTask,
-        doc = "subtask to apply aperture corrections"
-    )
     astrometry    = pexConfig.ConfigurableField(
         target = ANetAstrometryTask,
         doc = "fit WCS of exposure",
@@ -135,12 +126,15 @@ class CalibrateConfig(pexConfig.Config):
         if self.doMeasureApCorr and self.measureApCorr.inputFilterFlag == "calib_psfUsed" and not self.doPsf:
             raise ValueError("Cannot measure aperture correction with inputFilterFlag=calib_psfUsed"
                 " unless doPsf is also True")
-        if self.doApplyApCorr and not self.doMeasureApCorr:
-            raise ValueError("Cannot set doApplyApCorr True unless doMeasureApCorr is also True")
+        if self.measurement.doApplyApCorr.startswith("yes") and not self.doMeasureApCorr:
+            raise ValueError("Cannot set measurement.doApplyApCorr to 'yes...'"
+                " unless doMeasureApCorr is True")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.algorithms.names -= ["base_ClassificationExtendedness"]
+        self.initialMeasurement.doApplyApCorr = "no" # no aperture correction data yet
+        self.measurement.doApplyApCorr = "yes"
         initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024
@@ -386,7 +380,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         # the following subtasks are only run on the final schema, and may require it
         self.makeSubtask("measureApCorr", schema=schema)
-        self.makeSubtask("applyApCorr", schema=schema)
         self.makeSubtask("photocal", schema=schema)
 
         # the final schema is the same as the schemaMapper output
@@ -507,11 +500,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             self.measurement.run(exposure, sources, endOrder=apCorrOrder)
             apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sources).apCorrMap
             exposure.getInfo().setApCorrMap(apCorrMap)
-            if self.config.doApplyApCorr:
-                self.applyApCorr.run(catalog=sources, apCorrMap=apCorrMap)
             self.measurement.run(exposure, sources, beginOrder=apCorrOrder)
         else:
-            apCorrMap = None
             self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:

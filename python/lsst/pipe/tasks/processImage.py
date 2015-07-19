@@ -75,10 +75,17 @@ class ProcessImageConfig(pexConfig.Config):
             if ("skycoord" not in self.measurement.algorithms.names
                 and "base_SkyCoord" not in self.measurement.algorithms.names):
                 raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
+            if self.measurement.doApplyApCorr.startswith("yes") and not self.doCalibrate:
+                raise ValueError("Cannot apply aperture correction in the final measurement"
+                    " without calibration.")
+            if self.measurement.doApplyApCorr.startswith("yes") and not self.calibrate.doMeasureApCorr:
+                raise ValueError("Cannot apply aperture correction in the final measurement"
+                    " without measuring it in calibration.")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
-            raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
+            raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources)"
+                " without doWriteSources")
 
 class ProcessImageTask(pipeBase.CmdLineTask):
     """An abstract base class for tasks do simple calibration, detection, deblending, and measurement
