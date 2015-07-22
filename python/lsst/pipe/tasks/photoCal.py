@@ -62,7 +62,7 @@ class PhotoCalConfig(pexConf.Config):
         doc="Name of the source flux field to use.  The associated flag field\n"\
             "('<name>.flags') will be implicitly included in badFlags.\n",
         dtype=str,
-        default="base_PsfFlux_flux",
+        default="slot_CalibFlux_flux",
     )
     applyColorTerms = pexConf.Field(
         doc= "Apply photometric color terms to reference stars? One of: " + \

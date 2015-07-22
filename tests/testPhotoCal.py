@@ -100,6 +100,11 @@ class PhotoCalTest(unittest.TestCase):
         schema = matches[0].second.schema
 
         config = PhotoCalConfig()
+
+        # The test and associated data have been prepared on the basis that we
+        # use the PsfFlux to perform photometry.
+        config.fluxField = "base_PsfFlux_flux"
+
         config.doWriteOutput = False    # schema is fixed because we already loaded the data
         task = PhotoCalTask(config=config, schema=schema)
         pCal = task.run(exposure=self.exposure, matches=matches)

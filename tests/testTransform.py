@@ -217,6 +217,7 @@ class RunTransformTestCase(utilsTests.TestCase):
         cfg.measurement.value.slots.apFlux = None
         cfg.measurement.value.slots.instFlux = None
         cfg.measurement.value.slots.modelFlux = None
+        cfg.measurement.value.slots.calibFlux = None
 
         # Process the test data with ProcessCcd then perform a transform.
         with tempDirectory() as tempDir:
