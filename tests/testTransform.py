@@ -116,7 +116,7 @@ class TrivialMeasurementBase(object):
         measRecord.set(self.key, 1.0)
 
 
-@measBase.base.register(PLUGIN_NAME)
+@measBase.register(PLUGIN_NAME)
 class SFTrivialMeasurement(TrivialMeasurementBase, measBase.sfm.SingleFramePlugin):
     """Single frame version of the trivial measurement"""
     def __init__(self, config, name, schema, metadata):
@@ -124,7 +124,7 @@ class SFTrivialMeasurement(TrivialMeasurementBase, measBase.sfm.SingleFramePlugi
         self.key = schema.addField(name, type="D", doc="dummy field")
 
 
-@measBase.base.register(PLUGIN_NAME)
+@measBase.register(PLUGIN_NAME)
 class ForcedTrivialMeasurement(TrivialMeasurementBase, measBase.forcedMeasurement.ForcedPlugin):
     """Forced frame version of the trivial measurement"""
     def __init__(self, config, name, schemaMapper, metadata):
