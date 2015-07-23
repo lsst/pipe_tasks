@@ -810,8 +810,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         dmag = dmag[good]
         dmagErr = dmagErr[good]
+        zp, weightSum = np.average(dmag, weights=1/dmagErr**2, returned=True)
+        sigma = np.sqrt(1.0/weightSum)
         return pipeBase.Struct(
-            zp = np.average(dmag, weights=dmagErr),
-            sigma = np.std(dmag, ddof=1),
+            zp = zp,
+            sigma = sigma,
             ngood = len(dmag),
         )
