@@ -429,11 +429,17 @@ class AssembleCoaddTask(CoaddBaseTask):
         bbox = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(1,1))
         first = True
         coaddInputs = coaddExposure.getInfo().getCoaddInputs()
-        for tempExpRef, weight in zip(tempExpRefList, weightList):
+        tempExpList = []
+        for tempExpRef in tempExpRefList:
             tempExp = tempExpRef.get(tempExpName + "_sub", bbox=bbox, imageOrigin="LOCAL", immediate=True)
             if first:
                 coaddExposure.setFilter(tempExp.getFilter())
                 first = False
+            tempExpList.append(tempExp)
+            numCcds += len(tempExp.getInfo().getCoaddInputs().ccds)
+        coaddInputs.ccds.reserve(numCcds)
+        coaddInputs.visits.reserve(len(tempExpList))
+        for tempExp, weight in zip(tempExpList, weightList):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
         if self.config.doPsfMatch:
