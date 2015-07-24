@@ -132,6 +132,9 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.doMeasureApCorr and self.measureApCorr.inputFilterFlag == "calib_psfUsed" and not self.doPsf:
+            raise ValueError("Cannot measure aperture correction with inputFilterFlag=calib_psfUsed"
+                " unless doPsf is also True")
         if self.doApplyApCorr and not self.doMeasureApCorr:
             raise ValueError("Cannot set doApplyApCorr True unless doMeasureApCorr is also True")
 
