@@ -16,3 +16,4 @@ python/lsst/pipe/tasks/version.py
 tests/.tests
 ups/*.cfgc
 testCoaddInputs-data
+_build.*
