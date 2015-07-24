@@ -35,28 +35,12 @@ import lsst.afw.image   as afwImage
 import lsst.afw.table   as afwTable
 import lsst.pex.logging as pexLog
 
-try:
-    import eups
-except ImportError:
-    print "warning: import of eups failed; tests will be skipped"
-    sys.exit(0)
+import testFindAstrometryNetDataDir as helper
+
 
 class TestForceWcs(unittest.TestCase):
     def setUp(self):
-        eupsObj = eups.Eups()
-        #ver = 'imsim-2011-08-01-0'
-        # ver = 'sdss-2012-05-01-0'
-        # ok, version, reason = eupsObj.setup('astrometry_net_data', versionName=ver)
-        # if not ok:
-        #     raise ValueError("Failed to setup astrometry_net_data version '%s': %s" % (ver, reason))
-        # print 'Setup astrometry_net_data', ver
-        mypath = lsst.utils.getPackageDir('pipe_tasks')
-        datapath = os.path.join(mypath, 'tests', 'astrometry_net_data', 't2155')
-        eupsObj = eups.Eups(root=datapath)
-        ok, version, reason = eupsObj.setup('astrometry_net_data')
-        if not ok:
-            raise ValueError("Need local version of astrometry_net_data (from path: %s): %s" %
-                             (datapath, reason))
+        helper.setupAstrometryNetDataDir('t2155')
 
     def test1(self):
         #exposure = afwImage.ExposureF('mini-v85408556-fr-R23-S11.fits')
