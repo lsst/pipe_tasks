@@ -33,11 +33,6 @@ import lsst.afw.image              as afwImage
 from lsst.meas.astrom import AstrometryTask
 from lsst.pipe.tasks.photoCal import PhotoCalTask
 
-try:
-    import eups
-except ImportError:
-    print "warning: import of eups failed; tests will be skipped"
-    sys.exit(0)
 
 def loadData():
     """Prepare the data we need to run the example"""
@@ -63,11 +58,11 @@ def loadData():
 
     # Set up local astrometry_net_data
     datapath = os.path.join(mypath, 'tests', 'astrometry_net_data', 'photocal')
-    eupsObj = eups.Eups(root=datapath)
-    ok, version, reason = eupsObj.setup('astrometry_net_data')
-    if not ok:
-        raise ValueError("Need photocal version of astrometry_net_data (from path: %s): %s" %
-                         (datapath, reason))
+    if not os.path.exists(datapath):
+        raise ValueError("Need photocal version of astrometry_net_data (from path: %s)" %
+                         datapath)
+    os.environ['ASTROMETRY_NET_DATA_DIR'] = datapath
+
     #
     # Read sources
     #
