@@ -36,11 +36,8 @@ import lsst.utils.tests            as utilsTests
 from lsst.pex.logging import Log
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 
-try:
-    import eups
-except ImportError:
-    print "warning: import of eups failed; tests will be skipped"
-    sys.exit(0)
+import testFindAstrometryNetDataDir as helper
+
 
 class PhotoCalTest(unittest.TestCase):
 
@@ -57,12 +54,7 @@ class PhotoCalTest(unittest.TestCase):
         self.exposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
 
         # Set up local astrometry_net_data
-        datapath = os.path.join(testDir, 'astrometry_net_data', 'photocal')
-        eupsObj = eups.Eups(root=datapath)
-        ok, version, reason = eupsObj.setup('astrometry_net_data')
-        if not ok:
-            raise ValueError("Need photocal version of astrometry_net_data (from path: %s): %s" %
-                             (datapath, reason))
+        helper.setupAstrometryNetDataDir('photocal', rootDir=testDir)
 
     def tearDown(self):
         del self.srcCat
