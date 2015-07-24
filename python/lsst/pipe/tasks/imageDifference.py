@@ -33,8 +33,9 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, \
+from lsst.meas.algorithms import SourceDetectionTask, \
     starSelectorRegistry, PsfAttributes, SingleGaussianPsf
+from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig
@@ -105,7 +106,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
     )
     measurement = pexConfig.ConfigurableField(
-        target=SourceMeasurementTask,
+        target=SingleFrameMeasurementTask,
         doc="Final source measurement on low-threshold detections; dipole fitting NOT enabled",
     )
     controlStepSize = pexConfig.Field(
