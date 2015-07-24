@@ -430,6 +430,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         first = True
         coaddInputs = coaddExposure.getInfo().getCoaddInputs()
         tempExpList = []
+        numCcds = 0
         for tempExpRef in tempExpRefList:
             tempExp = tempExpRef.get(tempExpName + "_sub", bbox=bbox, imageOrigin="LOCAL", immediate=True)
             if first:

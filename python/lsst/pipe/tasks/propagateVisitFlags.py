@@ -81,8 +81,10 @@ class PropagateVisitFlagsTask(Task):
             return
 
         flags = self._keys.keys()
-        visits = ccdInputs.get("visit") # Array of visit number for each input
-        ccds = ccdInputs.get("ccd") # Array of CCD number for each input
+        visitKey = ccdInputs.schema.find("visit").key
+        ccdKey = ccdInputs.schema.find("ccd").key
+        visits = numpy.array([ccdData.get(visitKey) for ccdData in ccdInputs]) # Visit number for each input
+        ccds = numpy.array([ccdData.get(ccdKey) for ccdData in ccdInputs]) # CCD number for each input
         radius = self.config.matchRadius*afwGeom.arcseconds
 
         self.log.info("Propagating flags %s from inputs" % (flags,))
