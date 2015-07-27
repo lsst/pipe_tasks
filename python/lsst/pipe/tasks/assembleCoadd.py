@@ -116,7 +116,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                "would have contributed exceeds this value."),
         default = {"SAT": 0.1},
     )
-    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["CROSSTALK"],\
+    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["CROSSTALK", "NOT_DEBLENDED"],\
                                  doc="Mask planes to remove before coadding")
 
     def setDefaults(self):
