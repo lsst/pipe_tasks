@@ -26,8 +26,8 @@ import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
-import lsst.meas.base
 import lsst.pipe.base as pipeBase
+from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask, MeasureApCorrTask
 from lsst.meas.astrom import ANetAstrometryTask
 from .photoCal import PhotoCalTask
 from .repair import RepairTask
@@ -78,11 +78,6 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Compute aperture corrections?",
         default = True,
     )
-    doApplyApCorr = pexConfig.Field(
-        dtype = bool,
-        doc = "Apply aperture corrections? Ignored if doMeasureApCorr is False",
-        default = True,
-    )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         doc = "Compute astrometric solution?",
@@ -97,33 +92,35 @@ class CalibrateConfig(pexConfig.Config):
         dtype = measAlg.estimateBackground.ConfigClass,
         doc = "Background estimation configuration"
         )
-    repair       = pexConfig.ConfigurableField(target = RepairTask, doc = "")
-    detection    = pexConfig.ConfigurableField(
+    repair = pexConfig.ConfigurableField(
+        target = RepairTask,
+        doc = "Interpolate over defects and cosmic rays",
+    )
+    detection = pexConfig.ConfigurableField(
         target = measAlg.SourceDetectionTask,
         doc = "Initial (high-threshold) detection phase for calibration",
     )
     initialMeasurement = pexConfig.ConfigurableField(
-        target = lsst.meas.base.SingleFrameMeasurementTask,
+        target = SingleFrameMeasurementTask,
         doc = "Initial measurements used to feed PSF determination and aperture correction determination",
     )
-    measurePsf   = pexConfig.ConfigurableField(target = MeasurePsfTask, doc = "")
+    measurePsf = pexConfig.ConfigurableField(
+        target = MeasurePsfTask,
+        doc = "Measure PSF",
+    )
     measurement = pexConfig.ConfigurableField(
-        target = lsst.meas.base.SingleFrameMeasurementTask,
+        target = SingleFrameMeasurementTask,
         doc = "Post-PSF-determination measurements used to feed other calibrations",
     )
-    measureApCorr   = pexConfig.ConfigurableField(
-        target = lsst.meas.base.MeasureApCorrTask,
+    measureApCorr = pexConfig.ConfigurableField(
+        target = MeasureApCorrTask,
         doc = "subtask to measure aperture corrections"
     )
-    applyApCorr   = pexConfig.ConfigurableField(
-        target = lsst.meas.base.ApplyApCorrTask,
-        doc = "subtask to apply aperture corrections"
-    )
-    astrometry    = pexConfig.ConfigurableField(
+    astrometry = pexConfig.ConfigurableField(
         target = ANetAstrometryTask,
         doc = "fit WCS of exposure",
     )
-    photocal      = pexConfig.ConfigurableField(
+    photocal = pexConfig.ConfigurableField(
         target = PhotoCalTask,
         doc = "peform photometric calibration",
     )
@@ -135,12 +132,15 @@ class CalibrateConfig(pexConfig.Config):
         if self.doMeasureApCorr and self.measureApCorr.inputFilterFlag == "calib_psfUsed" and not self.doPsf:
             raise ValueError("Cannot measure aperture correction with inputFilterFlag=calib_psfUsed"
                 " unless doPsf is also True")
-        if self.doApplyApCorr and not self.doMeasureApCorr:
-            raise ValueError("Cannot set doApplyApCorr True unless doMeasureApCorr is also True")
+        if self.measurement.doApplyApCorr.startswith("yes") and not self.doMeasureApCorr:
+            raise ValueError("Cannot set measurement.doApplyApCorr to 'yes...'"
+                " unless doMeasureApCorr is True")
 
     def setDefaults(self):
         self.detection.includeThresholdMultiplier = 10.0
         self.initialMeasurement.algorithms.names -= ["base_ClassificationExtendedness"]
+        self.initialMeasurement.doApplyApCorr = "no" # no aperture correction data yet
+        self.measurement.doApplyApCorr = "yes"
         initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
         self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
         self.background.binSize = 1024
@@ -364,11 +364,11 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
         endInitial = self.schema1.getFieldCount()
 
-        # the following subtasks are run on both schema1 and the final schema
+        # create subtasks that are run with schema1 (and possibly also the final schema)
         self.makeSubtask("measurePsf", schema=self.schema1)
         self.makeSubtask("astrometry", schema=self.schema1)
 
-        # create a schemaMapper to map schema1 into schema2
+        # create a schemaMapper to map schema1 into the final schema
         self.schemaMapper = afwTable.SchemaMapper(self.schema1)
         separator =  "_"
         count = 0
@@ -376,17 +376,14 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             count = count + 1
             field = item.getField()
             name = field.getName()
-            if count > beginInitial and count <= endInitial: 
-                name = "initial" + separator + name 
+            if count > beginInitial and count <= endInitial:
+                name = "initial" + separator + name
             self.schemaMapper.addMapping(item.key, name)
 
-        # measurements fo the second measurement step done with a second schema
+        # create subtasks that are run only with the final schema
         schema = self.schemaMapper.editOutputSchema()
         self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
-
-        # the following subtasks are only run on the final schema, and may require it
         self.makeSubtask("measureApCorr", schema=schema)
-        self.makeSubtask("applyApCorr", schema=schema)
         self.makeSubtask("photocal", schema=schema)
 
         # the final schema is the same as the schemaMapper output
@@ -436,19 +433,18 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         keepCRs = True                  # At least until we know the PSF
         self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
         self.display('repair', exposure=exposure)
+
         if self.config.doBackground:
             with self.timer("background"):
                 bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
                 backgrounds.append(bg)
             self.display('background', exposure=exposure)
 
-        # Make both tables from the same detRet, since detRet can only be run once
+        # Make both tables from the same detRet, since detection can only be run once
         table1 = afwTable.SourceTable.make(self.schema1, idFactory)
         table1.setMetadata(self.algMetadata)
         detRet = self.detection.makeSourceCatalog(table1, exposure)
         sources1 = detRet.sources
-
-
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
 
@@ -503,15 +499,11 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         if self.config.doMeasureApCorr:
             # Run measurement through all flux measurements (all have the same execution order),
             # then apply aperture corrections, then run the rest of the measurements
-            apCorrOrder = lsst.meas.base.BasePlugin.APCORR_ORDER
-            self.measurement.run(exposure, sources, endOrder=apCorrOrder)
+            self.measurement.run(exposure, sources, endOrder=BasePlugin.APCORR_ORDER)
             apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sources).apCorrMap
             exposure.getInfo().setApCorrMap(apCorrMap)
-            if self.config.doApplyApCorr:
-                self.applyApCorr.run(catalog=sources, apCorrMap=apCorrMap)
-            self.measurement.run(exposure, sources, beginOrder=apCorrOrder)
+            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER)
         else:
-            apCorrMap = None
             self.measurement.run(exposure, sources)
 
         if self.config.doAstrometry:
@@ -548,6 +540,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         else:
             photocalRet = None
         self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
+
         return pipeBase.Struct(
             exposure = exposure,
             backgrounds = backgrounds,

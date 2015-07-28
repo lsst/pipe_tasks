@@ -21,7 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
-import lsst.pex.exceptions as pexExceptions
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
@@ -30,7 +29,6 @@ import lsst.afw.table as afwTable
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
 class ProcessImageConfig(pexConfig.Config):
@@ -75,10 +73,17 @@ class ProcessImageConfig(pexConfig.Config):
             if ("skycoord" not in self.measurement.algorithms.names
                 and "base_SkyCoord" not in self.measurement.algorithms.names):
                 raise ValueError("If you run source measurement you must let it run the skycoord algorithm.")
+            if self.measurement.doApplyApCorr.startswith("yes") and not self.doCalibrate:
+                raise ValueError("Cannot apply aperture correction in the final measurement"
+                    " without calibration.")
+            if self.measurement.doApplyApCorr.startswith("yes") and not self.calibrate.doMeasureApCorr:
+                raise ValueError("Cannot apply aperture correction in the final measurement"
+                    " without measuring it in calibration.")
         if self.doDeblend and not self.doDetection:
             raise ValueError("Cannot run source deblending without source detection.")
         if self.doWriteHeavyFootprintsInSources and not self.doWriteSources:
-            raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources) without doWriteSources")
+            raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources)"
+                " without doWriteSources")
 
 class ProcessImageTask(pipeBase.CmdLineTask):
     """An abstract base class for tasks do simple calibration, detection, deblending, and measurement
