@@ -85,6 +85,9 @@ class ProcessImageConfig(pexConfig.Config):
             raise ValueError("Cannot write HeavyFootprints (doWriteHeavyFootprintsInSources)"
                 " without doWriteSources")
 
+    def setDefaults(self):
+        self.measurement.doApplyApCorr = "yes"
+
 class ProcessImageTask(pipeBase.CmdLineTask):
     """An abstract base class for tasks do simple calibration, detection, deblending, and measurement
     on individual images.

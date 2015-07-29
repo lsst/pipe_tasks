@@ -57,6 +57,9 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         self.detection.returnOriginalFootprints = False
         self.doWriteSourceMatches = True
         self.measurement.doReplaceWithNoise = True
+        # coadds do not yet have ap corr data; once they do, delete the following to enable the
+        # ProcessImageConfig default of yes; meanwhile the warning may help remind us
+        self.measurement.doApplyApCorr = "noButWarn"
         self.doDeblend = True
         self.deblend.maxNumberOfPeaks = 20
 
