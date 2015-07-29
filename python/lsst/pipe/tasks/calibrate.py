@@ -450,7 +450,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         # do the initial measurement.  This is normally done for star selection, but do it 
         # even if the psf is not going to be calculated for consistency
-        self.initialMeasurement.measure(exposure, sources1)
+        self.initialMeasurement.run(exposure, sources1, allowApCorr=False)
 
         if self.config.doPsf:
             if self.config.doAstrometry:
