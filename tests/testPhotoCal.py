@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -11,14 +11,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -27,7 +27,6 @@ import unittest
 
 import numpy as np
 
-import sys
 import lsst.meas.astrom            as measAstrom
 import lsst.afw.geom               as afwGeom
 import lsst.afw.table              as afwTable
@@ -47,11 +46,11 @@ class PhotoCalTest(unittest.TestCase):
 
     def setUp(self):
         self.conf = measAstrom.AstrometryConfig()
-        
+
         # Load sample input from disk
         testDir=os.path.dirname(__file__)
         self.srcCat = afwTable.SourceCatalog.readFits(os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
-        
+
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
         self.bbox = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(2048, 4612))
@@ -64,7 +63,7 @@ class PhotoCalTest(unittest.TestCase):
         del self.srcCat
         del self.conf
         del self.exposure
-        
+
     def getAstrometrySolution(self, loglvl = Log.INFO):
         astromConfig = measAstrom.AstrometryTask.ConfigClass()
         astrom = measAstrom.AstrometryTask(config=astromConfig)
@@ -152,7 +151,7 @@ class PhotoCalTest(unittest.TestCase):
         #
         self.assertLess(np.median(np.abs(fitdiff)), 0.04)
         self.assertLess(np.mean(np.abs(fitdiff)), 0.06)
-            
+
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 def suite():

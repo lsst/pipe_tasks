@@ -85,7 +85,7 @@ class PhotoCalConfig(pexConf.Config):
         doc="List of source flag fields that will cause a source to be rejected when they are set.",
         dtype=str,
         default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
-            "base_PixelFlags_flag_saturated"], 
+            "base_PixelFlags_flag_saturated"],
     )
     sigmaMax = pexConf.Field(
         doc="maximum sigma to use when clipping",
@@ -276,7 +276,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         - goodFlags: a list of keys for field names in self.config.goodFlags
         - badFlags: a list of keys for field names in self.config.badFlags
         """
-        fluxField = self.config.fluxField
         goodFlags = [schema.find(name).key for name in self.config.goodFlags]
         flux = schema.find(self.config.fluxField).key
         fluxErr = schema.find(self.config.fluxField + "Sigma").key
@@ -425,7 +424,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             # this is an unpleasant hack; see DM-2308 requesting a better solution
             self.log.warn("Source catalog does not have flux uncertainties; using sqrt(flux).")
             srcFluxErrArr = np.sqrt(srcFluxArr)
-        
+
         # convert source flux from DN to an estimate of Jy
         JanskysPerABFlux = 3631.0
         srcFluxArr = srcFluxArr * JanskysPerABFlux
@@ -601,7 +600,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         # Fit for zeropoint.  We can run the code more than once, so as to
         # give good stars that got clipped by a bad first guess a second
         # chance.
-        # FIXME: these should be config values
 
         calib = Calib()
         zp = None                           # initial guess
@@ -626,7 +624,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
         """!Flux calibration code, returning (ZeroPoint, Distribution Width, Number of stars)
 
-        We perform nIter iterations of a simple sigma-clipping algorithm with a a couple of twists:
+        We perform nIter iterations of a simple sigma-clipping algorithm with a couple of twists:
         1.  We use the median/interquartile range to estimate the position to clip around, and the
         "sigma" to use.
         2.  We never allow sigma to go _above_ a critical value sigmaMax --- if we do, a sufficiently
@@ -648,7 +646,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             dmagErr = np.ones(len(dmag))
 
         # need to remove nan elements to avoid errors in stats calculation with numpy
-        ind_noNan = np.array([ i for i in range(len(dmag)) if (not np.isnan(dmag[i]) and not np.isnan(dmagErr[i])) ])
+        ind_noNan = np.array([i for i in range(len(dmag))
+                              if (not np.isnan(dmag[i]) and not np.isnan(dmagErr[i])) ])
         dmag = dmag[ind_noNan]
         dmagErr = dmagErr[ind_noNan]
 
