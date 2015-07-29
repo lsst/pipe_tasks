@@ -88,11 +88,14 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype=bool,
         default=True
     )
+
     astrometer = pexConfig.ConfigurableField(
         target = measAstrom.AstrometryTask,
         doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
-    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
+    #sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
+    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="secondMoment")
+
     subtract = pexConfig.ConfigurableField(
         target=ImagePsfMatchTask,
         doc="Warp and PSF match template to exposure, then subtract",
@@ -141,7 +144,7 @@ class ImageDifferenceConfig(pexConfig.Config):
 
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
-        self.sourceSelector.name = "diacatalog"
+        self.sourceSelector.name = "secondMoment"
         self.sourceSelector["secondMoment"].clumpNSigma = 2.0
         # defaults are OK for catalog and diacatalog
 
@@ -325,6 +328,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
                 matches = astromRet.matches
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
+
+                # DiacatalogSourceSelector has method: selectSources
+                # SecondMomentSourceSelector has method selectStars
+                # These should be made to have the same API
+                kernelSources = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
                 random.shuffle(kernelSources, random.random)
                 controlSources = kernelSources[::self.config.controlStepSize]
                 kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
