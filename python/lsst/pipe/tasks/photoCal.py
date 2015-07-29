@@ -118,6 +118,12 @@ class PhotoCalConfig(pexConf.Config):
         dtype=str,
         optional=True,
     )
+    magErrFloor = pexConf.RangeField(
+        doc="Additional magnitude uncertainty to be added in quadrature with measurement errors.",
+        dtype=float,
+        default=0.0,
+        min=0.0
+    )
 
 
 ## \addtogroup LSST_task_documentation
@@ -412,7 +418,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         \param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
 
         \return Struct containing srcMag, refMag, srcMagErr, refMagErr, and magErr numpy arrays
-        where magErr is an error in the magnitude; the error in srcMag - refMag.
+        where magErr is an error in the magnitude; the error in srcMag - refMag
+        If nonzero, config.magErrFloor will be added to magErr *only* (not srcMagErr or refMagErr), as
+        magErr is what is later used to determine the zero point.
         Struct also contains refFluxFieldList: a list of field names of the reference catalog used for fluxes
         (1 or 2 strings)
         \note These magnitude arrays are the \em inputs to the photometric calibration, some may have been
@@ -501,6 +509,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         # Fitting with error bars in both axes is hard
         # for now ignore reference flux error, but ticket DM-2308 is a request for a better solution
         magErrArr = np.array([abMagErrFromFluxErr(fe, sf) for fe, sf in izip(srcFluxErrArr, srcFluxArr)])
+        if self.config.magErrFloor != 0.0:
+            magErrArr = (magErrArr**2 + self.config.magErrFloor**2)**0.5
 
         srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in izip(srcFluxErrArr, srcFluxArr)])
         refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in izip(refFluxErrArr, refFluxArr)])
