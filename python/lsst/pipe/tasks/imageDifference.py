@@ -126,7 +126,15 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=RegisterTask,
         doc="Task to enable image-to-image image registration (warping)",
     )
-
+    refObjLoader = pexConfig.ConfigurableField(
+        target = measAstrom.LoadAstrometryNetObjectsTask,
+        doc = "reference object loader",
+    )
+    kernelSourcesFromRef = pexConfig.Field(
+        doc="Select sources to measure kernel from reference catalog if True, template if false",
+        dtype=bool,
+        default=False
+    )
     templateBorderSize = pexConfig.Field(dtype=int, default=10,
         doc="Number of pixels to grow the requested template image to account for warping")
 
@@ -182,6 +190,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doUseRegister:
             self.makeSubtask("register")
+            self.makeSubtask("refObjLoader")
 
         if self.config.doSelectSources:
             self.sourceSelector = self.config.sourceSelector.apply()
@@ -325,9 +334,17 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     kcQa = KernelCandidateQa(nparam)
                     selectSources = kcQa.addToSchema(selectSources)
 
-                astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
-                matches = astromRet.matches
-                kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
+                if self.config.kernelSourcesFromRef :
+                    #YA: option to get stars from reference catalog or star selector task
+                    loadRes = self.refObjLoader.loadPixelBox(bbox = exposure.getBBox(),
+                                                         wcs = exposure.getWcs(),
+                                                         filterName = exposure.getFilter().getName(),
+                                                         calib = exposure.getCalib(),
+                                                        )
+                    matches = afwTable.matchRaDec(loadRes.refCat, selectSources, 1.0*afwGeom.arcseconds, False)
+                else: #match with template
+                    matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds, False)
+
 
                 # DiacatalogSourceSelector has method: selectSources
                 # SecondMomentSourceSelector has method selectStars
@@ -370,11 +387,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         idFactory=idFactory
                     )
 
+
                 # Third step: we need to fit the relative astrometry.
                 #
-                wcsResults = self.fitAstrometry(templateSources, templateExposure, selectSources)
+                wcsResults = self.register.run(templateSources, templateExposure.getWcs(),
+                                               templateExposure.getBBox(), selectSources)
                 warpedExp = self.register.warpExposure(templateExposure, wcsResults.wcs,
-                                            exposure.getWcs(), exposure.getBBox())
+                                                       exposure.getWcs(), exposure.getBBox())
                 templateExposure = warpedExp
 
                 # Create debugging outputs on the astrometric
@@ -585,6 +604,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             sources=diaSources,
         )
 
+<<<<<<< HEAD
     def fitAstrometry(self, templateSources, templateExposure, selectSources):
         """Fit the relative astrometry between templateSources and selectSources
 
@@ -595,6 +615,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         results = self.register.run(templateSources, templateSources.getWcs(),
                                     templateExposure.getBBox(), selectSources)
         return results
+=======
+>>>>>>> Update ImageDifferenceTask for new AstrometryTask
 
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
         import lsstDebug
