@@ -68,17 +68,24 @@ class SetPrimaryFlagsTask(Task):
         # set inner flags for each source and set primary flags for sources with no children
         # (or all sources if deblend info not available)
         innerFloatBBox = Box2D(patchInfo.getInnerBBox())
+
+        # When the centroider fails, we can still fall back to the peak, but we don't trust
+        # that quite as much - so we use a slightly smaller box for the patch comparison.
+        # That's trickier for the tract comparison, so we just use the peak without extra
+        # care there.
+        shrunkInnerFloatBBox = Box2D(innerFloatBBox)
+        shrunkInnerFloatBBox.grow(-1)
+
         tractId = tractInfo.getId()
         for source in sources:
-            if source.getCentroidFlag():
-                # centroid unknown, so leave the inner and primary flags False
-                continue
-
             centroidPos = source.getCentroid()
             if numpy.any(numpy.isnan(centroidPos)):
                 continue
-
-            isPatchInner = innerFloatBBox.contains(centroidPos)
+            if source.getCentroidFlag():
+                # Use a slightly smaller box to guard against bad centroids (see above)
+                isPatchInner = shrunkInnerFloatBBox.contains(centroidPos)
+            else:
+                isPatchInner = innerFloatBBox.contains(centroidPos)
             source.setFlag(self.isPatchInnerKey, isPatchInner)
 
             skyPos = source.getCoord()
