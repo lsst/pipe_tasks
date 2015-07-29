@@ -130,10 +130,8 @@ class PhotoCalTest(unittest.TestCase):
         log.logdebug('zeropoint: %g' % zp)
         fitdiff = pCal.arrays.srcMag + zp - pCal.arrays.refMag
         log.logdebug('number of sources used in fit: %i' % len(fitdiff))
-        log.logdebug('median diff: %g' % np.median(fitdiff))
-        log.logdebug('mean diff: %g' % np.mean(fitdiff))
+        log.logdebug('rms diff: %g' % np.mean(fitdiff**2)**0.5)
         log.logdebug('median abs(diff): %g' % np.median(np.abs(fitdiff)))
-        log.logdebug('mean abs(diff): %g' % np.mean(np.abs(fitdiff)))
 
         # zeropoint: 31.3145
         # number of sources used in fit: 65
@@ -145,12 +143,10 @@ class PhotoCalTest(unittest.TestCase):
         self.assertLess(abs(zp - 31.3145), 0.05)
 
         self.assertGreater(len(fitdiff), 50)
-        # These are kind of arbitrary
-        self.assertLess(abs(np.median(fitdiff)), 0.02)
-        self.assertLess(abs(np.mean(fitdiff)), 0.004)
-        #
-        self.assertLess(np.median(np.abs(fitdiff)), 0.04)
-        self.assertLess(np.mean(np.abs(fitdiff)), 0.06)
+        # Tolerances are somewhat arbitrary; they're set simply to avoid regressions, and
+        # are not based on we'd expect to get given the data quality.
+        self.assertLess(np.mean(fitdiff**2)**0.5, 0.07)    # rms difference
+        self.assertLess(np.median(np.abs(fitdiff)), 0.06)  # median absolution difference
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
