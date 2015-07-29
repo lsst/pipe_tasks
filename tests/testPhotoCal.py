@@ -38,6 +38,10 @@ from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 
 import testFindAstrometryNetDataDir as helper
 
+# Quiet down meas_astrom logging, so we can see PhotoCal logs better
+Log(Log.getDefaultLog(), "meas.astrom.astrometry_net", Log.WARN)
+Log(Log.getDefaultLog(), "meas.astrom.sip", Log.WARN)
+Log(Log.getDefaultLog(), "astrometricSolver", Log.WARN)
 
 class PhotoCalTest(unittest.TestCase):
 
@@ -86,7 +90,7 @@ class PhotoCalTest(unittest.TestCase):
 
         logLevel = Log.DEBUG
         log = Log(Log.getDefaultLog(),
-                  'meas.astrom',
+                  'testPhotoCal',
                   logLevel)
 
         schema = matches[0].second.schema
@@ -117,7 +121,7 @@ class PhotoCalTest(unittest.TestCase):
             diff.append(instMag - refMag)
         diff = np.array(diff)
 
-        self.assertTrue(len(diff) > 50)
+        self.assertGreater(len(diff), 50)
         log.info('%i magnitude differences; mean difference %g; mean abs diff %g' %
                  (len(diff), np.mean(diff), np.mean(np.abs(diff))))
         self.assertLess(np.mean(diff), 0.6)
@@ -139,15 +143,15 @@ class PhotoCalTest(unittest.TestCase):
         # median abs(diff): 0.0368904
         # mean abs(diff): 0.0516589
 
-        self.assertTrue(abs(zp - 31.3145) < 0.05)
+        self.assertLess(abs(zp - 31.3145), 0.05)
 
-        self.assertTrue(len(fitdiff) > 50)
+        self.assertGreater(len(fitdiff), 50)
         # These are kind of arbitrary
-        self.assertTrue(abs(np.median(fitdiff)) < 0.02)
-        self.assertTrue(abs(np.mean(fitdiff)) < 0.004)
+        self.assertLess(abs(np.median(fitdiff)), 0.02)
+        self.assertLess(abs(np.mean(fitdiff)), 0.004)
         #
-        self.assertTrue(np.median(np.abs(fitdiff)) < 0.04)
-        self.assertTrue(np.mean(np.abs(fitdiff)) < 0.06)
+        self.assertLess(np.median(np.abs(fitdiff)), 0.04)
+        self.assertLess(np.mean(np.abs(fitdiff)), 0.06)
             
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
