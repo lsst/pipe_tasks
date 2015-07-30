@@ -168,13 +168,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             return
         self.log.info("Coadding %d exposures" % len(calExpRefList))
 
-        butler = dataRef.getButler()
-        groupData = groupPatchExposures(dataRef, calExpRefList, self.getCoaddDatasetName(),
-                                        self.getTempExpDatasetName())
-        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(), g, groupData.keys) for
-                          g in groupData.groups.keys()]
+        tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
         inputData = self.prepareInputs(tempExpRefList)
-        tempExpRefList = inputData.tempExpRefList
         self.log.info("Found %d %s" % (len(inputData.tempExpRefList), self.getTempExpDatasetName()))
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
@@ -204,6 +199,19 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         return pipeBase.Struct(coaddExposure=coaddExp)
 
+    def getTempExpRefList(self, patchRef, calExpRefList):
+        """Generate list of coaddTempExp data references
+
+        @param patchRef: Data reference for patch
+        @param calExpRefList: List of data references for input calexps
+        @return List of coaddTempExp data references
+        """
+        butler = patchRef.getButler()
+        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
+                                        self.getTempExpDatasetName())
+        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(), g, groupData.keys) for
+                          g in groupData.groups.keys()]
+        return tempExpRefList
 
     def getBackgroundReferenceScaler(self, dataRef):
         """Construct an image scaler for the background reference frame
