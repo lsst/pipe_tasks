@@ -87,6 +87,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype=bool,
         default=True
     )
+    astrometer = pexConfig.ConfigurableField(
+        target = measAstrom.AstrometryTask,
+        doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
+    )
     sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
     subtract = pexConfig.ConfigurableField(
         target=ImagePsfMatchTask,
@@ -177,6 +181,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doSelectSources:
             self.sourceSelector = self.config.sourceSelector.apply()
+            self.astrometer = self.makeSubtask("astrometer")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
@@ -316,8 +321,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     kcQa = KernelCandidateQa(nparam)
                     selectSources = kcQa.addToSchema(selectSources)
 
-                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
-                astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
+                astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
                 matches = astromRet.matches
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
                 random.shuffle(kernelSources, random.random)
@@ -507,8 +511,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     srcMatchDict = {}
 
                 # Create key,val pair where key=diaSourceId and val=refId
-                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(catalogMatchDist=matchRadAsec))
-                astromRet = astrometer.useKnownWcs(diaSources, exposure=exposure)
+                refAstromConfig = measAstrom.AstrometryConfig()
+                refAstromConfig.matcher.maxMatchDistArcSec = matchRadAsec
+                refAstrometer = measAstrom.AstrometryTask(refAstromConfig)
+                astromRet = refAstrometer.run(exposure=exposure, sourceCat=diaSources)
                 refMatches = astromRet.matches
                 if refMatches is None:
                     self.log.warn("No diaSource matches with reference catalog")
