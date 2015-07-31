@@ -569,7 +569,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         exposure: exposure with Wcs
         sources: source catalog
         """
-        result = self.astrometry.astrometer.useKnownWcs(sources, exposure=exposure)
+        result = self.astrometry.loadAndMatch(exposure=exposure, sourceCat=sources)
         if result.matches:
             matches = afwTable.packMatches(result.matches)
             matches.table.setMetadata(result.matchMetadata)
