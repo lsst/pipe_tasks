@@ -411,8 +411,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         - backgrounds: A list of background models applied in the calibration phase
         - psf: Point spread function
         - sources: Sources used in calibration
-        - matches: Astrometric matches
-        - matchMeta: Metadata for astrometric matches
+        - matches: A list of reference object/source matches (an lsst.afw.table.ReferenceMatchVector)
+        - matchMeta: Metadata about the field (an lsst.daf.base.PropertyList)
         - photocal: Output of photocal subtask
 
         It is moderately important to provide a decent initial guess for the seeing if you want to
