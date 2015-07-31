@@ -235,17 +235,19 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         )
 
     def matchSources(self, exposure, sources):
-        """Match the sources to the reference object loaded by the calibrate task"""
+        """Match the sources to the reference object loaded by the calibrate task
+
+        Return two items:
+        - matches  list of reference object/source matches (an lsst.afw.table.ReferenceMatchVector)
+        - matchMeta  metadata about the field (an lsst.daf.base.PropertyList)
+        """
         try:
-            solver = self.calibrate.astrometry.solver
-            if solver is None:
-                raise AttributeError("No astrometry solver")
-        except AttributeError:
-            self.log.warn("Failed to find a solver in calibrate's astronomy task")
+            astrometer = self.calibrate.astrometry
+        except Exception:
+            self.log.warn("Failed to find an astrometry solver in the calibrate task")
             return None, None
 
-        astromRet = solver.useKnownWcs(sources, exposure=exposure)
-        # N.b. yes, this is what useKnownWcs calls the returned values
+        astromRet = astrometer.loadAndMatch(exposure=exposure, sourceCat=sources)
         return astromRet.matches, astromRet.matchMetadata
 
     def propagateCalibFlags(self, icSources, sources, matchRadius=1):
