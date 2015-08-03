@@ -67,9 +67,12 @@ class CoaddTempExpInputRecorder(object):
     Should generally be created by calling CoaddInputRecorderTask.makeCoaddTempExp().
     """
 
-    def __init__(self, task, visitId):
+    def __init__(self, task, visitId, num=0):
         self.task = task
         self.coaddInputs = self.task.makeCoaddInputs()
+        self.coaddInputs.visits.reserve(1)
+        if num > 0:
+            self.coaddInputs.ccds.reserve(num)
         self.visitRecord = self.coaddInputs.visits.addNew()
         self.visitRecord.setId(visitId)
 
@@ -157,13 +160,13 @@ class CoaddInputRecorderTask(pipeBase.Task):
             self.ccdWeightKey = self.ccdSchema.addField("weight", type=float,
                                                         doc="Weight for this visit in the coadd")
 
-    def makeCoaddTempExpRecorder(self, visitId):
+    def makeCoaddTempExpRecorder(self, visitId, num=0):
         """Return a CoaddTempExpInputRecorder instance to help with saving a CoaddTempExp's inputs.
 
         The visitId may be any number that is unique for each CoaddTempExp that goes into a coadd,
         but ideally should be something more meaningful that can be used to reconstruct a data ID.
         """
-        return CoaddTempExpInputRecorder(self, visitId)
+        return CoaddTempExpInputRecorder(self, visitId, num=num)
 
     def makeCoaddInputs(self):
         """Create a CoaddInputs object with schemas defined by the task configuration"""

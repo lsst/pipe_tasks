@@ -143,7 +143,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             produce the CoaddPsf
         @return warped exposure, or None if no pixels overlap
         """
-        inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId)
+        inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId, len(calexpRefList))
         coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         coaddTempExp.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.inf)
         totGoodPix = 0
