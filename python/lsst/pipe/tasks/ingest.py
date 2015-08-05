@@ -7,6 +7,7 @@ except ImportError:
     # try external pysqlite package; deprecated
     import sqlite as sqlite3
 from fnmatch import fnmatch
+from glob import glob
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
@@ -420,9 +421,10 @@ class IngestTask(Task):
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
+        filenameList = sum([glob(filename) for filename in args.files], [])
         context = self.register.openRegistry(args.butler, create=args.create, dryrun=args.dryrun)
         with context as registry:
-            for infile in args.files:
+            for infile in filenameList:
                 if self.isBadFile(infile, args.badFile):
                     self.log.info("Skipping declared bad file %s" % infile)
                     continue
