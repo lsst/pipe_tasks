@@ -99,6 +99,8 @@ class CoaddTempExpInputRecorder(object):
             record.setPsf(calExp.getPsf())
             record.setWcs(calExp.getWcs())
             record.setBBox(calExp.getBBox())
+            if self.task.config.saveCcdWeights:
+                record.setD(self.task.ccdWeightKey, 1.0) # No weighting or overlap when warping
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.

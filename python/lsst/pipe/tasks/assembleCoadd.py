@@ -105,11 +105,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
-    badMaskPlanes = pexConfig.ListField(
-        dtype = str,
-        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("NO_DATA",),
-    )
     maskPropagationThresholds = pexConfig.DictField(
         keytype = str,
         itemtype = float,
@@ -118,6 +113,10 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                "would have contributed exceeds this value."),
         default = {"SAT": 0.1},
     )
+
+    def setDefaults(self):
+        CoaddBaseTask.ConfigClass.setDefaults(self)
+        self.badMaskPlanes = ["NO_DATA", "BAD", "CR",]
 
 
 class AssembleCoaddTask(CoaddBaseTask):
@@ -138,26 +137,29 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         The coadd is computed as a mean with optional outlier rejection.
 
-        assembleCoaddTask only works on the dataset type 'coaddTempExp', which are 'coadd temp exposures'.
-        Each coaddTempExp is the size of a patch and contains data for one run, visit or
-        (for a non-mosaic camera it will contain data for a single exposure).
+        AssumeCoaddTask performs coaddition of "coadd temporary exposures" ("coaddTempExps").  Each
+        coaddTempExp is the size of a patch and contains data for one run, visit or (for a non-mosaic camera)
+        exposure. The coaddTempExps to coadd are selected from the provided selectDataList based on their
+        overlap with the patch specified by dataRef.
 
-        coaddTempExps, by default, will have backgrounds in them and will require
-        config.doMatchBackgrounds = True. However, makeCoaddTempExp.py can optionally create background-
-        subtracted coaddTempExps which can be coadded here by setting
-        config.doMatchBackgrounds = False.
+        By default, coaddTempExps contain backgrounds and hence require config.doMatchBackgrounds=True.
+        Background-subtracted coaddTempExps can be coadded by setting config.doMatchBackgrounds=False.
 
-        @param dataRef: data reference for a coadd patch (of dataType 'Coadd') OR a data reference
-        for a coadd temp exposure (of dataType 'Coadd_tempExp') which serves as the reference visit
-        if config.doMatchBackgrounds true and config.autoReference false)
-        If supplying a coadd patch: Must include keys "tract", "patch",
-            plus the camera-specific filter key (e.g. "filter")
-        Used to access the following data products (depending on the config):
-        - [in] self.config.coaddName + "Coadd_tempExp"
-        - [out] self.config.coaddName + "Coadd"
+        When background matching is enabled, the task may be configured to automatically select a reference
+        exposure (config.autoReference=True). If this is not done, then we require that the input dataRef
+        provides access to a coaddTempExp (dataset type coaddName + 'Coadd_tempExp') which is used as the
+        reference exposure.
+
+        @param dataRef: Data reference defining the patch for coaddition and the reference coaddTempExp
+                        (if config.autoReference=False). Used to access the following data products:
+                        - [in] self.config.coaddName + "Coadd_skyMap"
+                        - [in] self.config.coaddName + "Coadd_tempExp" (optionally)
+                        - [out] self.config.coaddName + "Coadd"
+        @param selectDataList[in]: List of data references to coaddTempExp. Data to be coadded will be
+                                   selected from this list based on overlap with the patch defined by dataRef.
 
         @return: a pipeBase.Struct with fields:
-        - coaddExposure: coadd exposure
+                 - coaddExposure: coadded exposure
         """
         skyInfo = self.getSkyInfo(dataRef)
         calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
@@ -166,13 +168,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             return
         self.log.info("Coadding %d exposures" % len(calExpRefList))
 
-        butler = dataRef.getButler()
-        groupData = groupPatchExposures(dataRef, calExpRefList, self.getCoaddDatasetName(),
-                                        self.getTempExpDatasetName())
-        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(), g, groupData.keys) for
-                          g in groupData.groups.keys()]
+        tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
         inputData = self.prepareInputs(tempExpRefList)
-        tempExpRefList = inputData.tempExpRefList
         self.log.info("Found %d %s" % (len(inputData.tempExpRefList), self.getTempExpDatasetName()))
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
@@ -192,16 +189,29 @@ class AssembleCoaddTask(CoaddBaseTask):
                                                inputData.backgroundInfoList)
 
         if self.config.doInterp:
-            self.interpImage.interpolateOnePlane(
-                maskedImage = coaddExp.getMaskedImage(),
-                planeName = "NO_DATA",
-            )
+            self.interpImage.interpolateOnePlane(maskedImage=coaddExp.getMaskedImage(), planeName="NO_DATA")
+            # The variance must be positive; work around for DM-3201.
+            varArray = coaddExp.getMaskedImage().getVariance().getArray()
+            varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
 
         return pipeBase.Struct(coaddExposure=coaddExp)
 
+    def getTempExpRefList(self, patchRef, calExpRefList):
+        """Generate list of coaddTempExp data references
+
+        @param patchRef: Data reference for patch
+        @param calExpRefList: List of data references for input calexps
+        @return List of coaddTempExp data references
+        """
+        butler = patchRef.getButler()
+        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
+                                        self.getTempExpDatasetName())
+        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(), g, groupData.keys) for
+                          g in groupData.groups.keys()]
+        return tempExpRefList
 
     def getBackgroundReferenceScaler(self, dataRef):
         """Construct an image scaler for the background reference frame
@@ -380,6 +390,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self.getBadPixelMask())
         statsCtrl.setNanSafe(True)
+        statsCtrl.setWeighted(True)
         statsCtrl.setCalcErrorFromInputVariance(True)
         for plane, threshold in self.config.maskPropagationThresholds.items():
             bit = afwImage.MaskU.getMaskPlane(plane)
@@ -453,7 +464,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         @param statsFlags: Statistic for coadd
         @param statsCtrl: Statistics control object for coadd
         """
-        self.log.info("Computing coadd over %s" % bbox)
+        self.log.logdebug("Computing coadd over %s" % bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
         coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)

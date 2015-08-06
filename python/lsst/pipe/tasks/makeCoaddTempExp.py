@@ -27,6 +27,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
+from lsst.meas.algorithms import CoaddPsf
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -114,9 +115,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 visitId = long(tempExpRef.dataId["visit"])
             except (KeyError, ValueError):
                 visitId = i
-            inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId)
 
-            exp = self.createTempExp(calexpRefList, skyInfo, inputRecorder)
+            exp = self.createTempExp(calexpRefList, skyInfo, visitId)
             if exp is not None:
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
@@ -125,7 +125,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
         return dataRefList
 
-    def createTempExp(self, calexpRefList, skyInfo, inputRecorder):
+    def createTempExp(self, calexpRefList, skyInfo, visitId=0):
         """Create a tempExp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
@@ -139,10 +139,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             overlap the patch of interest
         @param skyInfo: Struct from CoaddBaseTask.getSkyInfo() with geometric
             information about the patch
-        @param inputRecorder: CoaddTempExpInputRecorder that builds a catalog
-            of calexps that went into this tempExp.
+        @param visitId: integer identifier for visit, for the table that will
+            produce the CoaddPsf
         @return warped exposure, or None if no pixels overlap
         """
+        inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId)
         coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         coaddTempExp.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.inf)
         totGoodPix = 0
@@ -157,9 +158,18 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 ccdId = calExpInd
             numGoodPix = 0
             try:
+                # We augment the dataRef here with the tract, which is harmless for loading things
+                # like calexps that don't need the tract, and necessary for meas_mosaic outputs,
+                # which do.
+                calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
+                                                                  tract=skyInfo.tractInfo.getId())
                 calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
                 exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                     maxBBox=skyInfo.bbox).exposure
+                if didSetMetadata:
+                    mimg = exposure.getMaskedImage()
+                    mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])
+                    del mimg
                 numGoodPix = coaddUtils.copyGoodPixels(
                     coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                 totGoodPix += numGoodPix
@@ -175,6 +185,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             inputRecorder.addCalExp(calExp, ccdId, numGoodPix)
 
         inputRecorder.finish(coaddTempExp, totGoodPix)
+        if totGoodPix > 0 and didSetMetadata:
+            coaddTempExp.setPsf(modelPsf if self.config.doPsfMatch else
+                                CoaddPsf(inputRecorder.coaddInputs.ccds, skyInfo.wcs))
 
         self.log.info("coaddTempExp has %d good pixels (%.1f%%)" %
                       (totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea()))
