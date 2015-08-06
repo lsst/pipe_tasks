@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -11,14 +11,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -27,7 +27,6 @@ import unittest
 
 import numpy as np
 
-import sys
 import lsst.meas.astrom            as measAstrom
 import lsst.afw.geom               as afwGeom
 import lsst.afw.table              as afwTable
@@ -38,16 +37,20 @@ from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 
 import testFindAstrometryNetDataDir as helper
 
+# Quiet down meas_astrom logging, so we can see PhotoCal logs better
+Log(Log.getDefaultLog(), "meas.astrom.astrometry_net", Log.WARN)
+Log(Log.getDefaultLog(), "meas.astrom.sip", Log.WARN)
+Log(Log.getDefaultLog(), "astrometricSolver", Log.WARN)
 
 class PhotoCalTest(unittest.TestCase):
 
     def setUp(self):
         self.conf = measAstrom.AstrometryConfig()
-        
+
         # Load sample input from disk
         testDir=os.path.dirname(__file__)
         self.srcCat = afwTable.SourceCatalog.readFits(os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
-        
+
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
         self.bbox = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(2048, 4612))
@@ -60,7 +63,7 @@ class PhotoCalTest(unittest.TestCase):
         del self.srcCat
         del self.conf
         del self.exposure
-        
+
     def getAstrometrySolution(self, loglvl = Log.INFO):
         astromConfig = measAstrom.AstrometryTask.ConfigClass()
         astrom = measAstrom.AstrometryTask(config=astromConfig)
@@ -86,7 +89,7 @@ class PhotoCalTest(unittest.TestCase):
 
         logLevel = Log.DEBUG
         log = Log(Log.getDefaultLog(),
-                  'meas.astrom',
+                  'testPhotoCal',
                   logLevel)
 
         schema = matches[0].second.schema
@@ -117,7 +120,7 @@ class PhotoCalTest(unittest.TestCase):
             diff.append(instMag - refMag)
         diff = np.array(diff)
 
-        self.assertTrue(len(diff) > 50)
+        self.assertGreater(len(diff), 50)
         log.info('%i magnitude differences; mean difference %g; mean abs diff %g' %
                  (len(diff), np.mean(diff), np.mean(np.abs(diff))))
         self.assertLess(np.mean(diff), 0.6)
@@ -127,10 +130,8 @@ class PhotoCalTest(unittest.TestCase):
         log.logdebug('zeropoint: %g' % zp)
         fitdiff = pCal.arrays.srcMag + zp - pCal.arrays.refMag
         log.logdebug('number of sources used in fit: %i' % len(fitdiff))
-        log.logdebug('median diff: %g' % np.median(fitdiff))
-        log.logdebug('mean diff: %g' % np.mean(fitdiff))
+        log.logdebug('rms diff: %g' % np.mean(fitdiff**2)**0.5)
         log.logdebug('median abs(diff): %g' % np.median(np.abs(fitdiff)))
-        log.logdebug('mean abs(diff): %g' % np.mean(np.abs(fitdiff)))
 
         # zeropoint: 31.3145
         # number of sources used in fit: 65
@@ -139,16 +140,14 @@ class PhotoCalTest(unittest.TestCase):
         # median abs(diff): 0.0368904
         # mean abs(diff): 0.0516589
 
-        self.assertTrue(abs(zp - 31.3145) < 0.05)
+        self.assertLess(abs(zp - 31.3145), 0.05)
 
-        self.assertTrue(len(fitdiff) > 50)
-        # These are kind of arbitrary
-        self.assertTrue(abs(np.median(fitdiff)) < 0.02)
-        self.assertTrue(abs(np.mean(fitdiff)) < 0.004)
-        #
-        self.assertTrue(np.median(np.abs(fitdiff)) < 0.04)
-        self.assertTrue(np.mean(np.abs(fitdiff)) < 0.06)
-            
+        self.assertGreater(len(fitdiff), 50)
+        # Tolerances are somewhat arbitrary; they're set simply to avoid regressions, and
+        # are not based on we'd expect to get given the data quality.
+        self.assertLess(np.mean(fitdiff**2)**0.5, 0.07)    # rms difference
+        self.assertLess(np.median(np.abs(fitdiff)), 0.06)  # median absolution difference
+
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 def suite():

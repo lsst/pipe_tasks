@@ -85,7 +85,7 @@ class PhotoCalConfig(pexConf.Config):
         doc="List of source flag fields that will cause a source to be rejected when they are set.",
         dtype=str,
         default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
-            "base_PixelFlags_flag_saturated"], 
+            "base_PixelFlags_flag_saturated"],
     )
     sigmaMax = pexConf.Field(
         doc="maximum sigma to use when clipping",
@@ -117,6 +117,12 @@ class PhotoCalConfig(pexConf.Config):
             " see also applyColorTerms",
         dtype=str,
         optional=True,
+    )
+    magErrFloor = pexConf.RangeField(
+        doc="Additional magnitude uncertainty to be added in quadrature with measurement errors.",
+        dtype=float,
+        default=0.0,
+        min=0.0
     )
 
 
@@ -276,7 +282,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         - goodFlags: a list of keys for field names in self.config.goodFlags
         - badFlags: a list of keys for field names in self.config.badFlags
         """
-        fluxField = self.config.fluxField
         goodFlags = [schema.find(name).key for name in self.config.goodFlags]
         flux = schema.find(self.config.fluxField).key
         fluxErr = schema.find(self.config.fluxField + "Sigma").key
@@ -413,7 +418,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         \param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
 
         \return Struct containing srcMag, refMag, srcMagErr, refMagErr, and magErr numpy arrays
-        where magErr is an error in the magnitude; the error in srcMag - refMag.
+        where magErr is an error in the magnitude; the error in srcMag - refMag
+        If nonzero, config.magErrFloor will be added to magErr *only* (not srcMagErr or refMagErr), as
+        magErr is what is later used to determine the zero point.
         Struct also contains refFluxFieldList: a list of field names of the reference catalog used for fluxes
         (1 or 2 strings)
         \note These magnitude arrays are the \em inputs to the photometric calibration, some may have been
@@ -425,7 +432,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             # this is an unpleasant hack; see DM-2308 requesting a better solution
             self.log.warn("Source catalog does not have flux uncertainties; using sqrt(flux).")
             srcFluxErrArr = np.sqrt(srcFluxArr)
-        
+
         # convert source flux from DN to an estimate of Jy
         JanskysPerABFlux = 3631.0
         srcFluxArr = srcFluxArr * JanskysPerABFlux
@@ -502,6 +509,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         # Fitting with error bars in both axes is hard
         # for now ignore reference flux error, but ticket DM-2308 is a request for a better solution
         magErrArr = np.array([abMagErrFromFluxErr(fe, sf) for fe, sf in izip(srcFluxErrArr, srcFluxArr)])
+        if self.config.magErrFloor != 0.0:
+            magErrArr = (magErrArr**2 + self.config.magErrFloor**2)**0.5
 
         srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in izip(srcFluxErrArr, srcFluxArr)])
         refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in izip(refFluxErrArr, refFluxArr)])
@@ -601,7 +610,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         # Fit for zeropoint.  We can run the code more than once, so as to
         # give good stars that got clipped by a bad first guess a second
         # chance.
-        # FIXME: these should be config values
 
         calib = Calib()
         zp = None                           # initial guess
@@ -626,7 +634,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
         """!Flux calibration code, returning (ZeroPoint, Distribution Width, Number of stars)
 
-        We perform nIter iterations of a simple sigma-clipping algorithm with a a couple of twists:
+        We perform nIter iterations of a simple sigma-clipping algorithm with a couple of twists:
         1.  We use the median/interquartile range to estimate the position to clip around, and the
         "sigma" to use.
         2.  We never allow sigma to go _above_ a critical value sigmaMax --- if we do, a sufficiently
@@ -648,7 +656,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             dmagErr = np.ones(len(dmag))
 
         # need to remove nan elements to avoid errors in stats calculation with numpy
-        ind_noNan = np.array([ i for i in range(len(dmag)) if (not np.isnan(dmag[i]) and not np.isnan(dmagErr[i])) ])
+        ind_noNan = np.array([i for i in range(len(dmag))
+                              if (not np.isnan(dmag[i]) and not np.isnan(dmagErr[i])) ])
         dmag = dmag[ind_noNan]
         dmagErr = dmagErr[ind_noNan]
 
@@ -811,8 +820,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         dmag = dmag[good]
         dmagErr = dmagErr[good]
+        zp, weightSum = np.average(dmag, weights=1/dmagErr**2, returned=True)
+        sigma = np.sqrt(1.0/weightSum)
         return pipeBase.Struct(
-            zp = np.average(dmag, weights=dmagErr),
-            sigma = np.std(dmag, ddof=1),
+            zp = zp,
+            sigma = sigma,
             ngood = len(dmag),
         )
