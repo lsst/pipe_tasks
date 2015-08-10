@@ -190,7 +190,7 @@ class RegistryContext(object):
     to be used while we add to this new registry.  Finally,
     the new registry is moved into the right place.
     """
-    def __init__(self, registryName, createTableFunc=None, permissions):
+    def __init__(self, registryName, createTableFunc, forceCreateTables, permissions):
         """Construct a context manager
 
         @param registryName: Name of registry file
@@ -202,15 +202,15 @@ class RegistryContext(object):
                                                 dir=os.path.dirname(self.registryName))
         self.updateName = updateName
         os.close(updateFd)
-        makeTable = True
-        if os.path.exists(registryName) and createTableFunc is None:
+        haveTable = False
+        if os.path.exists(registryName):
             assertCanCopy(registryName, updateName)
             os.chmod(updateName, os.stat(registryName).st_mode)
             shutil.copyfile(registryName, updateName)
-            makeTable = False
+            haveTable = True
 
         self.conn = sqlite3.connect(self.updateName)
-        if makeTable:
+        if not haveTable or forceCreateTables:
             createTableFunc(self.conn)
         os.chmod(self.updateName, self.permissions)
 
@@ -248,7 +248,7 @@ class RegisterTask(Task):
                 yield
             return fakeContext
         registryName = os.path.join(butler.mapper.root, "registry.sqlite3")
-        context = RegistryContext(registryName, self.createTable if create else None, self.config.permissions)
+        context = RegistryContext(registryName, self.createTable, create, self.config.permissions)
         return context
 
     def createTable(self, conn):
