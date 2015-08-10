@@ -189,7 +189,7 @@ class RegistryContext(object):
     to be used while we add to this new registry.  Finally,
     the new registry is moved into the right place.
     """
-    def __init__(self, registryName, createTableFunc=None, permissions=664):
+    def __init__(self, registryName, createTableFunc=None, permissions):
         """Construct a context manager
 
         @param registryName: Name of registry file
