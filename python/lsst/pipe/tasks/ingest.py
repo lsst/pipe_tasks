@@ -198,15 +198,16 @@ class RegistryContext(object):
         """
         self.registryName = registryName
         self.permissions = permissions
-        updateFd, updateName = tempfile.mkstemp(prefix=registryName,
-                                                dir=os.path.dirname(self.registryName))
-        self.updateName = updateName
-        os.close(updateFd)
+
+        updateFile = tempfile.NamedTemporaryFile(prefix=registryName, dir=os.path.dirname(self.registryName),
+                                                 delete=False)
+        self.updateName = updateFile.name
+
         haveTable = False
         if os.path.exists(registryName):
-            assertCanCopy(registryName, updateName)
-            os.chmod(updateName, os.stat(registryName).st_mode)
-            shutil.copyfile(registryName, updateName)
+            assertCanCopy(registryName, self.updateName)
+            os.chmod(self.updateName, os.stat(registryName).st_mode)
+            shutil.copyfile(registryName, self.updateName)
             haveTable = True
 
         self.conn = sqlite3.connect(self.updateName)
