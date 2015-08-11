@@ -37,6 +37,7 @@ import re
 import lsst.daf.persistence
 import lsst.afw.cameraGeom
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
+import lsst.afw.image.utils as afwImageUtils
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
 
@@ -119,6 +120,10 @@ class SourceCatalogPersistenceType(SimpleCatalogPersistenceType):
 class ExposureCatalogPersistenceType(CatalogPersistenceType):
     python = "lsst.afw.table.ExposureCatalog"
     cpp = "ExposureCatalog"
+
+class PeakCatalogPersistenceType(CatalogPersistenceType):
+    python = "lsst.afw.detection.PeakCatalog"
+    cpp = "PeakCatalog"
 
 class SimpleMapping(object):
     """Mapping object used to implement SimpleMapper, similar in intent to lsst.daf.peristence.Mapping.
@@ -235,16 +240,32 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         ccdExposureId_bits = SimpleMapping(BypassPersistenceType),
         deepCoaddId = SkyMapping(BypassPersistenceType),
         deepCoaddId_bits = SimpleMapping(BypassPersistenceType),
+        deepMergedCoaddId = SkyMapping(BypassPersistenceType),
+        deepMergedCoaddId_bits = SimpleMapping(BypassPersistenceType),
         deepCoadd_skyMap = SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
         deepCoadd = SkyMapping(ExposurePersistenceType),
-        deepCoadd_calexp = SkyMapping(ExposurePersistenceType),
-        deepCoadd_calexpBackground = SkyMapping(CatalogPersistenceType),
+        deepCoadd_calexp_det = SkyMapping(ExposurePersistenceType),
+        deepCoadd_calexp_detBackground = SkyMapping(CatalogPersistenceType),
         deepCoadd_icSrc = SkyMapping(SourceCatalogPersistenceType),
         deepCoadd_icSrc_schema = SimpleMapping(SourceCatalogPersistenceType,
                                                template="{dataset}{ext}", keys={}),
         deepCoadd_src = SkyMapping(SourceCatalogPersistenceType),
         deepCoadd_src_schema = SimpleMapping(SourceCatalogPersistenceType,
                                              template="{dataset}{ext}", keys={}),
+        deepCoadd_peak_schema = SimpleMapping(PeakCatalogPersistenceType,
+                                             template="{dataset}{ext}", keys={}),
+        deepCoadd_ref = SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_ref_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                             template="{dataset}{ext}", keys={}),
+        deepCoadd_det = SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_det_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                             template="{dataset}{ext}", keys={}),
+        deepCoadd_mergeDet = SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_mergeDet_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                             template="{dataset}{ext}", keys={}),
+        deepCoadd_meas = SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_meas_schema = SimpleMapping(SourceCatalogPersistenceType,
+                                          template="{dataset}{ext}", keys={}),
         deepCoadd_forced_src = SkyMapping(SourceCatalogPersistenceType),
         deepCoadd_forced_src_schema = SimpleMapping(SourceCatalogPersistenceType,
                                                     template="{dataset}{ext}", keys={}),
@@ -262,6 +283,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         super(SimpleMapper, self).__init__()
         self.root = root
         self.camera = makeSimpleCamera(nX=1, nY=2, sizeX=400, sizeY=200, gapX=2, gapY=2)
+        afwImageUtils.defineFilter('r', 619.42)
         self.update()
 
     def getDefaultLevel(self): return "ccd"
@@ -341,6 +363,12 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         return self._computeCoaddId(dataId)
 
     def bypass_deepCoaddId_bits(self, datasetType, pythonType, location, dataId):
+        return 1 + 7 + 13*2 + 3
+
+    def bypass_deepMergedCoaddId(self, datasetType, pythonType, location, dataId):
+        return self._computeCoaddId(dataId)
+
+    def bypass_deepMergedCoaddId_bits(self, datasetType, pythonType, location, dataId):
         return 1 + 7 + 13*2 + 3
 
 def makeSimpleCamera(
