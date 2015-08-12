@@ -66,12 +66,11 @@ class PhotoCalConfig(pexConf.Config):
     )
     applyColorTerms = pexConf.Field(
         doc= "Apply photometric color terms to reference stars? One of: " + \
-            "None: apply if colorterms is not and photoCatName are not None; " + \
+            "None: apply if colorterms and photoCatName are not None; " + \
             "fail if color term data is not available for the specified ref catalog and filter. " + \
-            "True: apply colorterms; fail if colorterms or photoCatName are None " + \
-            " or color term data is not available for the specified reference catalog and filter. " + \
-            "or the specified ; " + \
-            "False: do not apply",
+            "True: always apply colorterms; fail if color term data is not available for the " + \
+            "specified reference catalog and filter. " + \
+            "False: do not apply.",
         dtype=bool,
         default=None,
         optional=True,
@@ -124,6 +123,13 @@ class PhotoCalConfig(pexConf.Config):
         default=0.0,
         min=0.0
     )
+
+    def validate(self):
+        pexConf.Config.validate(self)
+        if self.applyColorTerms and self.photoCatName is None:
+            raise RuntimeError("applyColorTerms=True requires photoCatName is non-None")
+        if self.applyColorTerms and len(self.colorterms.data) == 0:
+            raise RuntimeError("applyColorTerms=True requires colorterms be provided")
 
 
 ## \addtogroup LSST_task_documentation
