@@ -242,12 +242,12 @@ class ProcessImageTask(pipeBase.CmdLineTask):
         - matchMeta  metadata about the field (an lsst.daf.base.PropertyList)
         """
         try:
-            astrometer = self.calibrate.astrometry
+            astrometry = self.calibrate.astrometry
         except Exception:
             self.log.warn("Failed to find an astrometry solver in the calibrate task")
             return None, None
 
-        astromRet = astrometer.loadAndMatch(exposure=exposure, sourceCat=sources)
+        astromRet = astrometry.loadAndMatch(exposure=exposure, sourceCat=sources)
         return astromRet.matches, astromRet.matchMetadata
 
     def propagateCalibFlags(self, icSources, sources, matchRadius=1):
