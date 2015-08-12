@@ -80,7 +80,7 @@ class PhotoCalTest(unittest.TestCase):
     def testGetSolution(self):
         res = self.getAstrometrySolution(loglvl=Log.DEBUG)
         self.assertTrue(res is not None)
-        self.assertTrue(len(res.matches) > 50)
+        self.assertGreater(len(res.matches), 50)
 
     def test1(self):
         res = self.getAstrometrySolution()
