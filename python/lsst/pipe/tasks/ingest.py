@@ -1,10 +1,13 @@
 import os
 import shutil
+import tempfile
 try:
     import sqlite3
 except ImportError:
     # try external pysqlite package; deprecated
     import sqlite as sqlite3
+from fnmatch import fnmatch
+from glob import glob
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
@@ -17,9 +20,12 @@ class IngestArgumentParser(ArgumentParser):
         super(IngestArgumentParser, self).__init__(*args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true", default=False,
                           help="Don't perform any action?")
-        self.add_argument("--mode", choices=["move", "copy", "link", "skip"], default="move",
+        self.add_argument("--mode", choices=["move", "copy", "link", "skip"], default="link",
                           help="Mode of delivering the files to their destination")
         self.add_argument("--create", action="store_true", help="Create new registry (clobber old)?")
+        self.add_id_argument("--badId", "raw", "Data identifier for bad data", doMakeDataRefList=False)
+        self.add_argument("--badFile", nargs="*", default=[],
+                          help="Names of bad files (no path; wildcards allowed)")
         self.add_argument("files", nargs="+", help="Names of file")
 
 class ParseConfig(Config):
@@ -28,6 +34,8 @@ class ParseConfig(Config):
                             doc="Translation table for property --> header")
     translators = DictField(keytype=str, itemtype=str, default={},
                             doc="Properties and name of translator method")
+    defaults = DictField(keytype=str, itemtype=str, default={},
+                         doc="Default values if header is not present")
     hdu = Field(dtype=int, default=0, doc="HDU to read for metadata")
     extnames = ListField(dtype=str, default=[], doc="Extension names to search for")
 
@@ -100,6 +108,10 @@ class ParseTask(Task):
                 if isinstance(value, basestring):
                     value = value.strip()
                 info[p] = value
+            elif p in self.config.defaults:
+                info[p] = self.config.defaults[p]
+            else:
+                self.log.warn("Unable to find value for %s (derived from %s)" % (p, h))
         for p, t in self.config.translators.iteritems():
             func = getattr(self, t)
             try:
@@ -169,30 +181,76 @@ class RegisterConfig(Config):
     visit = ListField(dtype=str, default=["visit", "object", "date", "filter"],
                       doc="List of columns for raw_visit table")
     ignore = Field(dtype=bool, default=False, doc="Ignore duplicates in the table?")
+    permissions = Field(dtype=int, default=0664, doc="Permissions mode for registry") # octal 664 = rw-rw-r--
+
+class RegistryContext(object):
+    """Context manager to provide a registry
+
+    An existing registry is copied, so that it may continue
+    to be used while we add to this new registry.  Finally,
+    the new registry is moved into the right place.
+    """
+    def __init__(self, registryName, createTableFunc, forceCreateTables, permissions):
+        """Construct a context manager
+
+        @param registryName: Name of registry file
+        @param createTableFunc: Function to create tables
+        """
+        self.registryName = registryName
+        self.permissions = permissions
+
+        updateFile = tempfile.NamedTemporaryFile(prefix=registryName, dir=os.path.dirname(self.registryName),
+                                                 delete=False)
+        self.updateName = updateFile.name
+
+        haveTable = False
+        if os.path.exists(registryName):
+            assertCanCopy(registryName, self.updateName)
+            os.chmod(self.updateName, os.stat(registryName).st_mode)
+            shutil.copyfile(registryName, self.updateName)
+            haveTable = True
+
+        self.conn = sqlite3.connect(self.updateName)
+        if not haveTable or forceCreateTables:
+            createTableFunc(self.conn)
+        os.chmod(self.updateName, self.permissions)
+
+    def __enter__(self):
+        """Provide the 'as' value"""
+        return self.conn
+
+    def __exit__(self, excType, excValue, traceback):
+        self.conn.commit()
+        self.conn.close()
+        if excType is None:
+            assertCanCopy(self.updateName, self.registryName)
+            if os.path.exists(self.registryName):
+                os.unlink(self.registryName)
+            os.rename(self.updateName, self.registryName)
+            os.chmod(self.registryName, self.permissions)
+        return False # Don't suppress any exceptions
 
 class RegisterTask(Task):
     """Task that will generate the registry for the Mapper"""
     ConfigClass = RegisterConfig
 
-    def openRegistry(self, butler, create=False):
+    def openRegistry(self, butler, create=False, dryrun=False):
         """Open the registry and return the connection handle.
 
         @param butler  Data butler, from which the registry file is determined
         @param create  Clobber any existing registry and create a new one?
+        @param dryrun  Don't do anything permanent?
         @return Database connection
         """
-        mapper = butler.mapper
-        registryName = os.path.join(mapper.root, "registry.sqlite3")
-        if create and os.path.exists(registryName):
-            os.unlink(registryName)
-            makeTable = True
-        else:
-            makeTable = not os.path.exists(registryName)
-
-        conn = sqlite3.connect(registryName)
-        if makeTable:
-            self.createTable(conn)
-        return conn
+        if dryrun:
+            from contextlib import contextmanager
+            @contextmanager
+            def fakeContext():
+                yield
+            return fakeContext
+        registryName = os.path.join(butler.mapper.root, "registry.sqlite3")
+        context = RegistryContext(registryName, self.createTable, create, self.config.permissions)
+        return context
 
     def createTable(self, conn):
         """Create the registry tables
@@ -217,7 +275,7 @@ class RegisterTask(Task):
 
         conn.commit()
 
-    def check(self, conn, filename, info):
+    def check(self, conn, info):
         """Check for the presence of a row already
 
         Not sure this is required, given the 'ignore' configuration option.
@@ -231,7 +289,6 @@ class RegisterTask(Task):
 
         cursor.execute(sql, values)
         if cursor.fetchone()[0] > 0:
-            print "File %s is already in the registry" % filename
             return True
         return False
 
@@ -272,6 +329,8 @@ class IngestConfig(Config):
     """Configuration for IngestTask"""
     parse = ConfigurableField(target=ParseTask, doc="File parsing")
     register = ConfigurableField(target=RegisterTask, doc="Registry entry")
+    allowError = Field(dtype=bool, default=False, doc="Allow error in ingestion?")
+    clobber = Field(dtype=bool, default=False, doc="Clobber existing file?")
 
 class IngestTask(Task):
     """Task that will ingest images into the data repository"""
@@ -310,7 +369,14 @@ class IngestTask(Task):
         try:
             outdir = os.path.dirname(outfile)
             if not os.path.isdir(outdir):
-                os.makedirs(outdir)
+                try:
+                    os.makedirs(outdir)
+                except:
+                    # Silently ignore mkdir failures due to race conditions
+                    if not os.path.isdir(outdir):
+                        raise
+            if self.config.clobber and os.path.lexists(outfile):
+                os.unlink(outfile)
             if mode == "copy":
                 assertCanCopy(infile, outfile)
                 shutil.copyfile(infile, outfile)
@@ -324,23 +390,58 @@ class IngestTask(Task):
             print "%s --<%s>--> %s" % (infile, mode, outfile)
         except Exception, e:
             self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
+            if not self.config.allowError:
+                raise
             return False
         return True
 
+    def isBadFile(self, filename, badFileList):
+        """Return whether the file qualifies as bad
+
+        We match against the list of bad file patterns.
+        """
+        filename = os.path.basename(filename)
+        if not badFileList:
+            return False
+        for badFile in badFileList:
+            if fnmatch(filename, badFile):
+                return True
+        return False
+
+    def isBadId(self, info, badIdList):
+        """Return whether the file information qualifies as bad
+
+        We match against the list of bad data identifiers.
+        """
+        if not badIdList:
+            return False
+        for badId in badIdList:
+            if all(info[key] == value for key, value in badId.iteritems()):
+                return True
+        return False
+
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
-        registry = self.register.openRegistry(args.butler, create=args.create) if not args.dryrun else None
-        for infile in args.files:
-            fileInfo, hduInfoList = self.parse.getInfo(infile)
-            outfile = os.path.join(args.butler, self.parse.getDestination(args.butler, fileInfo, infile))
-            ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
-            if not ingested:
-                continue
-            for info in hduInfoList:
-                self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
-        self.register.addVisits(registry, dryrun=args.dryrun)
-        if not args.dryrun:
-            registry.commit()
+        filenameList = sum([glob(filename) for filename in args.files], [])
+        context = self.register.openRegistry(args.butler, create=args.create, dryrun=args.dryrun)
+        with context as registry:
+            for infile in filenameList:
+                if self.isBadFile(infile, args.badFile):
+                    self.log.info("Skipping declared bad file %s" % infile)
+                    continue
+                fileInfo, hduInfoList = self.parse.getInfo(infile)
+                if self.isBadId(fileInfo, args.badId.idList):
+                    self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
+                    continue
+                if self.register.check(registry, fileInfo):
+                    self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
+                outfile = self.parse.getDestination(args.butler, fileInfo, infile)
+                ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
+                if not ingested:
+                    continue
+                for info in hduInfoList:
+                    self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+            self.register.addVisits(registry, dryrun=args.dryrun)
 
 def assertCanCopy(fromPath, toPath):
     """Can I copy a file?  Raise an exception is space constraints not met.
