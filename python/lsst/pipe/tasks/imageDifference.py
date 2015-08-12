@@ -87,6 +87,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype=bool,
         default=True
     )
+    astrometer = pexConfig.ConfigurableField(
+        target = measAstrom.AstrometryTask,
+        doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
+    )
     sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
     subtract = pexConfig.ConfigurableField(
         target=ImagePsfMatchTask,
@@ -177,6 +181,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doSelectSources:
             self.sourceSelector = self.config.sourceSelector.apply()
+            self.astrometer = self.makeSubtask("astrometer")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
@@ -316,8 +321,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     kcQa = KernelCandidateQa(nparam)
                     selectSources = kcQa.addToSchema(selectSources)
 
-                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig())
-                astromRet = astrometer.useKnownWcs(selectSources, exposure=exposure)
+                astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
                 matches = astromRet.matches
                 kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
                 random.shuffle(kernelSources, random.random)
@@ -507,8 +511,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     srcMatchDict = {}
 
                 # Create key,val pair where key=diaSourceId and val=refId
-                astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(catalogMatchDist=matchRadAsec))
-                astromRet = astrometer.useKnownWcs(diaSources, exposure=exposure)
+                refAstromConfig = measAstrom.AstrometryConfig()
+                refAstromConfig.matcher.maxMatchDistArcSec = matchRadAsec
+                refAstrometer = measAstrom.AstrometryTask(refAstromConfig)
+                astromRet = refAstrometer.run(exposure=exposure, sourceCat=diaSources)
                 refMatches = astromRet.matches
                 if refMatches is None:
                     self.log.warn("No diaSource matches with reference catalog")
@@ -570,19 +576,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             sources=diaSources,
         )
 
-    # One problem is that the SIP fits are w.r.t. CRPIX,
-    # and these coadd patches have the CRPIX of the entire
-    # tract, i.e. off the image.  This causes
-    # register.fitWcs to fail.  A workaround for now is to
-    # re-fit the Wcs which returns with a CRPIX that is on
-    # the image, and *then* to fit for the relative Wcs.
-    #
     def fitAstrometry(self, templateSources, templateExposure, selectSources):
-        """Fit the relative astrometry between templateSources and selectSources"""
-        sipOrder = self.config.templateSipOrder
-        astrometer = measAstrom.Astrometry(measAstrom.MeasAstromConfig(sipOrder=sipOrder))
-        newWcs = astrometer.determineWcs(templateSources, templateExposure).getWcs()
-        results = self.register.run(templateSources, newWcs,
+        """Fit the relative astrometry between templateSources and selectSources
+
+        @todo remove this method. It originally fit a new WCS to the template before calling register.run
+        because our TAN-SIP fitter behaved badly for points far from CRPIX, but that's been fixed.
+        It remains because a subtask overrides it.
+        """
+        results = self.register.run(templateSources, templateSources.getWcs(),
                                     templateExposure.getBBox(), selectSources)
         return results
 

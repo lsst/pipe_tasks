@@ -54,7 +54,11 @@ class PhotoCalTest(unittest.TestCase):
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
         self.bbox = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(2048, 4612))
-        self.exposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
+        smallExposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
+        self.exposure = afwImage.ExposureF(self.bbox)
+        self.exposure.setWcs(smallExposure.getWcs())
+        self.exposure.setFilter(smallExposure.getFilter())
+        self.exposure.setCalib(smallExposure.getCalib())
 
         # Set up local astrometry_net_data
         helper.setupAstrometryNetDataDir('photocal', rootDir=testDir)
@@ -70,16 +74,13 @@ class PhotoCalTest(unittest.TestCase):
         # use solve instead of run because the exposure has the wrong bbox
         return astrom.solve(
             sourceCat = self.srcCat,
-            bbox = self.bbox,
-            initWcs = self.exposure.getWcs(),
-            filterName = self.exposure.getFilter().getName(),
-            calib = self.exposure.getCalib(),
+            exposure = self.exposure,
         )
 
     def testGetSolution(self):
         res = self.getAstrometrySolution(loglvl=Log.DEBUG)
         self.assertTrue(res is not None)
-        self.assertTrue(len(res.matches) > 50)
+        self.assertGreater(len(res.matches), 50)
 
     def test1(self):
         res = self.getAstrometrySolution()
