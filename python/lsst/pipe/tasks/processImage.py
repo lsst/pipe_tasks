@@ -248,7 +248,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             return None, None
 
         astromRet = astrometry.loadAndMatch(exposure=exposure, sourceCat=sources)
-        return astromRet.matches, astromRet.matchMetadata
+        return astromRet.matches, astromRet.matchMeta
 
     def propagateCalibFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
