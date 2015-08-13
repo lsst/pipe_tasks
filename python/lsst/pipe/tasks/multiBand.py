@@ -601,7 +601,7 @@ class MergeMeasurementsTask(MergeSourcesTask):
         """
         MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
         inputSchema = self.getInputSchema(butler=butler, schema=schema)
-        self.schemaMapper = afwTable.SchemaMapper(inputSchema)
+        self.schemaMapper = afwTable.SchemaMapper(inputSchema, True)
         self.schemaMapper.addMinimalSchema(inputSchema, True)
         self.flagKeys = {}
         for band in self.config.priorityList:

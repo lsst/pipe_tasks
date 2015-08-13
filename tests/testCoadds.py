@@ -62,6 +62,9 @@ except ImportError:
     sys.exit(0)
 
 from lsst.pipe.tasks.processCoadd import ProcessCoaddTask
+from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTask,
+                                       MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
+
 
 REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
 CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
@@ -74,19 +77,15 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         # Create a task that creates simulated images and builds a coadd from them
         self.mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
 
-        # Create an instance of ProcessCoaddTask to measure on the coadd
+        # Create an instance of DetectCoaddSourcesTask to measure on the coadd.
         # There's no noise in these images, so we set a direct-value threshold,
-        # and the background weighting (when using Approximate) to False, and
-        # since we already have a perfect Wcs/Psf, we don't calibrate.
-        processConfig = ProcessCoaddTask.ConfigClass()
-        processConfig.measurement.retarget(lsst.meas.base.SingleFrameMeasurementTask)
-        processConfig.measurement.slots.shape = "base_SdssShape"
-        processConfig.doCalibrate = False
-        processConfig.detection.thresholdType = "value"
-        processConfig.detection.thresholdValue = 0.01
-        processConfig.doWriteSourceMatches = False
-        processConfig.detection.background.weighting = False
-        self.processTask = ProcessCoaddTask(config=processConfig)
+        # and the background weighting (when using Approximate) to False
+
+        detectConfig = DetectCoaddSourcesTask.ConfigClass()
+        detectConfig.detection.thresholdType = "value"
+        detectConfig.detection.thresholdValue = 0.01
+        detectConfig.detection.background.weighting = False
+        self.detectTask = DetectCoaddSourcesTask(config=detectConfig)
 
         if REUSE_DATAREPO and os.path.exists(os.path.join(DATAREPO_ROOT, "_mapper")):
             self.butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)
@@ -96,13 +95,34 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             self.mocksTask.buildAllInputs(self.butler)
             self.mocksTask.buildCoadd(self.butler)
             self.mocksTask.buildMockCoadd(self.butler)
-            self.processTask.writeSchemas(self.butler)
+            self.detectTask.writeSchemas(self.butler)
+            # Now run the seperate multiband tasks on the Coadd to make the reference
+            # catalog for the forced photometry tests.
+            self.runTaskOnPatches(self.detectTask)
+
+            mergeDetConfig = MergeDetectionsTask.ConfigClass()
+            mergeDetConfig.priorityList = ['r', ]
+            mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=self.butler)
+            mergeDetTask.writeSchemas(self.butler)
+            self.runTaskOnPatchList(mergeDetTask)
+
+            measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
+            measMergedConfig.measurement.slots.shape = "base_SdssShape"
+            measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
+            measMergedTask.writeSchemas(self.butler)
+            self.runTaskOnPatches(measMergedTask)
+
+            mergeMeasConfig = MergeMeasurementsTask.ConfigClass()
+            mergeMeasConfig.priorityList = ['r', ]
+            mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=self.butler)
+            mergeMeasTask.writeSchemas(self.butler)
+            self.runTaskOnPatchList(mergeMeasTask)
 
     def tearDown(self):
         if CLEANUP_DATAREPO and not REUSE_DATAREPO:
             shutil.rmtree(DATAREPO_ROOT)
         del self.mocksTask
-        del self.processTask
+        del self.detectTask
         del self.butler
 
     def runTaskOnPatches(self, task, tract=0):
@@ -110,6 +130,12 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         tractInfo = skyMap[tract]
         for dataRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
             task.run(dataRef)
+
+    def runTaskOnPatchList(self, task, tract=0):
+        skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
+        tractInfo = skyMap[tract]
+        for dataRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+            task.run([dataRef])
 
     def runTaskOnCcds(self, task, tract=0):
         catalog = self.butler.get("observations", tract=tract, immediate=True)
@@ -276,14 +302,13 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                    "first try running the test again)")
 
     def testForcedPhotCoaddTask(self):
-        self.runTaskOnPatches(self.processTask)
         config = lsst.meas.base.ForcedPhotCoaddConfig()
         config.references.filter = 'r'
         task = lsst.meas.base.ForcedPhotCoaddTask(config=config, butler=self.butler)
+        task.writeSchemas(self.butler)
         self.runTaskOnPatches(task)
 
     def testForcedPhotCcdTask(self):
-        self.runTaskOnPatches(self.processTask)
         config = lsst.meas.base.ForcedPhotCcdConfig()
         config.references.filter = 'r'
         task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=self.butler)
