@@ -102,21 +102,21 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
             mergeDetConfig = MergeDetectionsTask.ConfigClass()
             mergeDetConfig.priorityList = ['r', ]
-            self.mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=self.butler)
-            self.mergeDetTask.writeSchemas(self.butler)
-            self.runTaskOnPatchList(self.mergeDetTask)
+            mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=self.butler)
+            mergeDetTask.writeSchemas(self.butler)
+            self.runTaskOnPatchList(mergeDetTask)
 
             measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
             measMergedConfig.measurement.slots.shape = "base_SdssShape"
-            self.measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
-            self.measMergedTask.writeSchemas(self.butler)
-            self.runTaskOnPatches(self.measMergedTask)
+            measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
+            measMergedTask.writeSchemas(self.butler)
+            self.runTaskOnPatches(measMergedTask)
 
             mergeMeasConfig = MergeMeasurementsTask.ConfigClass()
             mergeMeasConfig.priorityList = ['r', ]
-            self.mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=self.butler)
-            self.mergeMeasTask.writeSchemas(self.butler)
-            self.runTaskOnPatchList(self.mergeMeasTask)
+            mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=self.butler)
+            mergeMeasTask.writeSchemas(self.butler)
+            self.runTaskOnPatchList(mergeMeasTask)
 
     def tearDown(self):
         if CLEANUP_DATAREPO and not REUSE_DATAREPO:
