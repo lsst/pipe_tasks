@@ -604,20 +604,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             sources=diaSources,
         )
 
-<<<<<<< HEAD
-    def fitAstrometry(self, templateSources, templateExposure, selectSources):
-        """Fit the relative astrometry between templateSources and selectSources
-
-        @todo remove this method. It originally fit a new WCS to the template before calling register.run
-        because our TAN-SIP fitter behaved badly for points far from CRPIX, but that's been fixed.
-        It remains because a subtask overrides it.
-        """
-        results = self.register.run(templateSources, templateSources.getWcs(),
-                                    templateExposure.getBBox(), selectSources)
-        return results
-=======
->>>>>>> Update ImageDifferenceTask for new AstrometryTask
-
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
         import lsstDebug
         import lsst.afw.display.ds9 as ds9
