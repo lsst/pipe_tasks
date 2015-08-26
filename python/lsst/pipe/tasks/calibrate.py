@@ -518,12 +518,12 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             try:
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
-                self.log.warn("Failed to determine photometric zero-point: %s" % e)
+                self.log.warn("Failed to determine photometric zero-point: %s", e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
 
             if photocalRet:
-                self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
+                self.log.info("Photometric zero-point: %f", photocalRet.calib.getMagnitude(1.0))
                 exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
                 metadata = exposure.getMetadata()
                 # convert to (mag/sec/adu) for metadata
@@ -569,6 +569,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         fwhm = self.config.initialPsf.fwhm/pixelScale
         size = self.config.initialPsf.size
-        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
+        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels", fwhm, size)
         psf = cls(size, size, fwhm/(2*math.sqrt(2*math.log(2))))
         exposure.setPsf(psf)

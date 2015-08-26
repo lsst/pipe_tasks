@@ -118,7 +118,7 @@ class BaseSelectImagesTask(pipeBase.Task):
                 if ccdVal in inValues:
                     newExposureInfoList.append(info)
                 else:
-                    self.log.info("De-selecting exposure %s: not in selectDataList" % info.dataId)
+                    self.log.info("De-selecting exposure %s: not in selectDataList", info.dataId)
             exposureInfoList = newExposureInfoList
 
         if makeDataRefList:
@@ -198,12 +198,12 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 imageCorners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
             except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
                 # Protecting ourselves from awful Wcs solutions in input images
-                self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
                 continue
 
             imagePoly = convexHull([coord.getVector() for coord in imageCorners])
             if patchPoly.intersects(imagePoly): # "intersects" also covers "contains" or "is contained by"
-                self.log.info("Selecting calexp %s" % dataRef.dataId)
+                self.log.info("Selecting calexp %s", dataRef.dataId)
                 dataRefList.append(dataRef)
                 exposureInfoList.append(BaseExposureInfo(dataRef.dataId, imageCorners))
 

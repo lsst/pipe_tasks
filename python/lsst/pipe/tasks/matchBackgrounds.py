@@ -220,7 +220,7 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         debugIdKeyList = tuple(set(expKeyList) - set(['tract','patch']))
 
-        self.log.info("Matching %d Exposures" % (numExp))
+        self.log.info("Matching %d Exposures", numExp)
 
         backgroundInfoList = []
         for ind, (toMatchRef, imageScaler) in enumerate(zip(expRefList, imageScalerList)):
@@ -233,7 +233,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                     diffImVar = None,
                 )
             else:
-                self.log.info("Matching background of %s to %s" % (toMatchRef.dataId, refExpDataRef.dataId))
+                self.log.info("Matching background of %s to %s", toMatchRef.dataId, refExpDataRef.dataId)
                 try:
                     toMatchExposure = toMatchRef.get(expDatasetType, immediate=True)
                     if imageScaler is not None:
@@ -247,7 +247,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                     )
                     backgroundInfoStruct.isReference = False
                 except Exception, e:
-                    self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
+                    self.log.warn("Failed to fit background %s: %s", toMatchRef.dataId, e)
                     backgroundInfoStruct = pipeBase.Struct(
                         isReference = False,
                         backgroundModel = None,
@@ -414,14 +414,14 @@ class MatchBackgroundsTask(pipeBase.Task):
                 if self.config.undersampleStyle == "THROW_EXCEPTION":
                     raise ValueError("Image does not cover enough of ref image for order and binsize")
                 elif self.config.undersampleStyle == "REDUCE_INTERP_ORDER":
-                    self.log.warn("Reducing order to %d"%(minNumberGridPoints - 1))
+                    self.log.warn("Reducing order to %d", minNumberGridPoints - 1)
                     order = minNumberGridPoints - 1
                 elif self.config.undersampleStyle == "INCREASE_NXNYSAMPLE":
                     newBinSize = (minNumberGridPoints*self.config.binSize)// (self.config.order +1)
                     bctrl.setNxSample(newBinSize)
                     bctrl.setNySample(newBinSize)
                     bkgd = afwMath.makeBackground(diffMI, bctrl) #do over
-                    self.log.warn("Decreasing binsize to %d"%(newBinSize))
+                    self.log.warn("Decreasing binsize to %d", newBinSize)
 
             #If there is no variance in any image pixels, do not weight bins by inverse variance
             isUniformImageDiff = not numpy.any(bgdZ > self.config.gridStdevEpsilon)
@@ -463,7 +463,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             try:
                 self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
             except Exception, e:
-                self.log.warn('Debug plot not generated: %s'%(e))
+                self.log.warn('Debug plot not generated: %s', e)
 
         meanVar = afwMath.makeStatistics(diffMI.getVariance(),diffMI.getMask(),
                                          afwMath.MEANCLIP, self.sctrl).getValue()

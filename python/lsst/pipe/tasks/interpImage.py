@@ -49,7 +49,7 @@ class InterpImageTask(pipeBase.Task):
         @param[in] planeName: mask plane over which to interpolate
         @param[in] fwhmPixels: FWHM of core star (pixels); if None then the default is used
         """
-        self.log.info("Interpolate over %s pixels" % (planeName,))
+        self.log.info("Interpolate over %s pixels", planeName)
         psfModel = self.config.modelPsf.apply(fwhm=fwhmPixels)
 
         nanDefectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)

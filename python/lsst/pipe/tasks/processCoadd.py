@@ -95,7 +95,7 @@ class ProcessCoaddTask(ProcessImageTask):
         dstats = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.VARIANCECLIP, ctrl).getValue(afwMath.VARIANCECLIP)
         vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue(afwMath.MEANCLIP)
         vrat   = dstats / vstats
-        self.log.info("Renormalising variance by %f" % (vrat))
+        self.log.info("Renormalising variance by %f", vrat)
         var   *= vrat
 
     def makeIdFactory(self, dataRef):
@@ -117,7 +117,7 @@ class ProcessCoaddTask(ProcessImageTask):
         - calib: object returned by calibration process if config.doCalibrate, else None
         - sources: detected source if config.doDetection, else None
         """
-        self.log.info("Processing %s" % (dataRef.dataId))
+        self.log.info("Processing %s", dataRef.dataId)
 
         # initialize outputs
         coadd = None

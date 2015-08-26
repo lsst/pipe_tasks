@@ -71,7 +71,7 @@ class ProcessCcdTask(ProcessImageTask):
         - calib: object returned by calibration process if config.doCalibrate, else None
         - sources: detected source if config.doPhotometry, else None
         """
-        self.log.info("Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s", sensorRef.dataId)
 
         # initialize outputs
         postIsrExposure = None

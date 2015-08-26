@@ -91,14 +91,14 @@ class ResourceInfo(object):
             if not startList:
                 if not endList:
                     continue
-                self.log.warn("%s: %s not set; skipping" % (self, startName))
+                self.log.warn("%s: %s not set; skipping", self, startName)
                 continue
             if not endList:
-                self.log.warn("%s: %s not set; skipping" % (self, endName))
+                self.log.warn("%s: %s not set; skipping", self, endName)
                 continue
             if len(startList) != len(endList):
-                self.log.warn("%s: len(%s) = %d != %d = len(%s); skipping" % \
-                    (self, startName, len(startList), endName, len(endList)))
+                self.log.warn("%s: len(%s) = %d != %d = len(%s); skipping",
+                    self, startName, len(startList), endName, len(endList))
                 continue
         
             deltaList = numpy.array([e - s for s, e in itertools.izip(startList, endList)])

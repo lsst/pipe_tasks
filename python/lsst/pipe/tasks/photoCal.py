@@ -315,14 +315,14 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         \throws ValueError There are no valid matches.
         """
 
-        self.log.logdebug("Number of input matches: %d" % (len(matches)))
+        self.log.debug("Number of input matches: %d", len(matches))
         if len(matches) == 0:
             raise ValueError("No input matches")
 
         # Only use stars for which the flags indicate the photometry is good.
         afterFlagCutInd = [i for i, m in enumerate(matches) if checkSourceFlags(m.second, sourceKeys)]
         afterFlagCut = [matches[i] for i in afterFlagCutInd]
-        self.log.logdebug("Number of matches after source flag cuts: %d" % (len(afterFlagCut)))
+        self.log.debug("Number of matches after source flag cuts: %d", len(afterFlagCut))
 
         if len(afterFlagCut) != len(matches):
             if frame is not None:
@@ -372,7 +372,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
                 matches = afterRefCut
 
-        self.log.logdebug("Number of matches after reference catalog cuts: %d" % (len(matches)))
+        self.log.debug("Number of matches after reference catalog cuts: %d", len(matches))
         if len(matches) == 0:
             raise RuntimeError("No sources remain in match list after reference catalog cuts.")
         fluxName = getRefFluxField(refSchema, filterName)
@@ -397,7 +397,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
             matches = afterMagCut
 
-        self.log.logdebug("Number of matches after magnitude limit cuts: %d" % (len(matches)))
+        self.log.debug("Number of matches after magnitude limit cuts: %d", len(matches))
 
         if len(matches) == 0:
             raise RuntimeError("No sources remaining in match list after magnitude limit cuts.")
@@ -459,12 +459,12 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             applyColorTerms = ctDataAvail and photoCatSpecified
 
         if applyColorTerms:
-            self.log.info("Applying color terms for filterName=%r, config.photoCatName=%s because %s" %
-                (filterName, self.config.photoCatName, applyCTReason))
+            self.log.info("Applying color terms for filterName=%r, config.photoCatName=%s because %s",
+                filterName, self.config.photoCatName, applyCTReason)
             ct = self.config.colorterms.getColorterm(
                 filterName=filterName, photoCatName=self.config.photoCatName, doRaise=True)
         else:
-            self.log.info("Not applying color terms because %s" % (applyCTReason,))
+            self.log.info("Not applying color terms because %s", applyCTReason)
             ct = None
 
         if ct:                          # we have a color term to worry about
@@ -477,7 +477,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     missingFluxFieldList.append(fluxField)
 
             if missingFluxFieldList:
-                self.log.warn("Source catalog does not have fluxes for %s; ignoring color terms" %
+                self.log.warn("Source catalog does not have fluxes for %s; ignoring color terms",
                               " ".join(missingFluxFieldList))
                 ct = None
 
@@ -494,8 +494,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 refFluxErrArr = np.array([m.first.get(fluxErrKey) for m in matches])
             except KeyError:
                 # Reference catalogue may not have flux uncertainties; HACK
-                self.log.warn("Reference catalog does not have flux uncertainties for %s; using sqrt(flux)."
-                              % fluxField)
+                self.log.warn("Reference catalog does not have flux uncertainties for %s; using sqrt(flux).",
+                              fluxField)
                 refFluxErrArr = np.sqrt(refFluxArr)
 
             refFluxArrList.append(refFluxArr)
@@ -621,7 +621,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         zp = None                           # initial guess
         r = self.getZeroPoint(arrays.srcMag, arrays.refMag, arrays.magErr, zp0=zp)
         zp = r.zp
-        self.log.info("Magnitude zero point: %f +/- %f from %d stars" % (r.zp, r.sigma, r.ngood))
+        self.log.info("Magnitude zero point: %f +/- %f from %d stars", r.zp, r.sigma, r.ngood)
 
         flux0 = 10**(0.4*r.zp) # Flux of mag=0 star
         flux0err = 0.4*math.log(10)*flux0*r.sigma # Error in flux0
@@ -719,8 +719,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     if sigmaMax is None:
                         sigmaMax = 2*sig   # upper bound on st. dev. for clipping. multiplier is a heuristic
 
-                    self.log.logdebug("Photo calibration histogram: center = %.2f, sig = %.2f"
-                                      % (center, sig))
+                    self.log.debug("Photo calibration histogram: center = %.2f, sig = %.2f", center, sig)
 
                 else:
                     if sigmaMax is None:
@@ -809,7 +808,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     center = np.average(dmag, weights=dmagErr)
                     msg += " on first iteration; using average of all calibration stars"
 
-                self.log.log(self.log.WARN, msg)
+                self.log.warn(msg)
 
                 return pipeBase.Struct(
                     zp = center,

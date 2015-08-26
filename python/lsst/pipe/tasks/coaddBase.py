@@ -184,7 +184,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         objName = self.getCoaddDatasetName()
         if suffix is not None:
             objName += "_" + suffix
-        self.log.info("Persisting %s" % objName)
+        self.log.info("Persisting %s", objName)
         dataRef.put(obj, objName)
 
 class SelectDataIdContainer(pipeBase.DataIdContainer):
@@ -205,7 +205,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
                 wcs = afwImage.makeWcs(md)
                 data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
             except FitsError as e:
-                namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
+                namespace.log.warn("Unable to construct Wcs from %s", ref.dataId)
                 continue
             self.dataList.append(data)
 

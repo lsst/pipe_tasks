@@ -215,7 +215,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
                 dataRef.put(sources, self.dataPrefix + 'src', flags=sourceWriteFlags)
             
         if self.config.doMeasurement and self.config.doWriteSourceMatches:
-            self.log.info("Matching src to reference catalogue" % (dataRef.dataId))
+            self.log.info("Matching src to reference catalogue", dataRef.dataId)
             srcMatches, srcMatchMeta = self.matchSources(calExposure, sources)
 
             normalizedSrcMatches = afwTable.packMatches(srcMatches)

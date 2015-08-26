@@ -203,7 +203,7 @@ class RepairTask(pipeBase.Task):
         mi = exposure.getMaskedImage()
         fallbackValue = afwMath.makeStatistics(mi, afwMath.MEANCLIP).getValue()
         measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
-        self.log.info("Interpolated over %d defects." % len(defects))
+        self.log.info("Interpolated over %d defects.", len(defects))
 
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
@@ -258,5 +258,5 @@ class RepairTask(pipeBase.Task):
                     for cr in crs:
                         displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
-        self.log.info("Identified %s cosmic rays." % (num,))
+        self.log.info("Identified %s cosmic rays.", num)
 

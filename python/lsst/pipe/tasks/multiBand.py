@@ -159,7 +159,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         dstats = afwMath.makeStatistics(maskedImage, afwMath.VARIANCECLIP, ctrl).getValue()
         vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue()
         vrat   = dstats / vstats
-        self.log.info("Renormalising variance by %f" % (vrat))
+        self.log.info("Renormalising variance by %f", vrat)
         var   *= vrat
 
     def runDetection(self, exposure, idFactory):
@@ -311,7 +311,7 @@ class MergeSourcesTask(CmdLineTask):
         """
         filterName = patchRef.dataId["filter"]
         catalog = patchRef.get(self.config.coaddName + "Coadd_" + self.inputDataset, immediate=True)
-        self.log.info("Read %d sources for filter %s: %s" % (len(catalog), filterName, patchRef.dataId))
+        self.log.info("Read %d sources for filter %s: %s", len(catalog), filterName, patchRef.dataId)
         return filterName, catalog
 
     def mergeCatalogs(self, catalogs, patchRef):
@@ -334,7 +334,7 @@ class MergeSourcesTask(CmdLineTask):
         # it's confusing to see it in the log message, even if the butler simply ignores it.
         mergeDataId = patchRef.dataId.copy()
         del mergeDataId["filter"]
-        self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
+        self.log.info("Wrote merged catalog: %s", mergeDataId)
 
     def writeMetadata(self, dataRefList):
         """No metadata to write, and not sure how to write it for a list of dataRefs"""
@@ -396,7 +396,7 @@ class MergeDetectionsTask(MergeSourcesTask):
         # Sort Peaks from brightest to faintest
         for record in mergedList:
             record.getFootprint().sortPeaks()
-        self.log.info("Merged to %d sources" % len(mergedList))
+        self.log.info("Merged to %d sources", len(mergedList))
         return mergedList
 
     def getSchemaCatalogs(self):
@@ -501,7 +501,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         so we can measure in-place.
         """
         merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
-        self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
+        self.log.info("Read %d detections: %s", len(merged), dataRef.dataId)
         idFactory = self.makeIdFactory(dataRef)
         for s in merged:
             idFactory.notify(s.getId())
@@ -578,7 +578,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     def write(self, dataRef, sources):
         """Write the source catalog"""
         dataRef.put(sources, self.config.coaddName + "Coadd_meas")
-        self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
+        self.log.info("Wrote %d sources: %s", len(sources), dataRef.dataId)
 
 
 ##############################################################################################################

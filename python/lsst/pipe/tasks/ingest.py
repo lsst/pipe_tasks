@@ -67,7 +67,7 @@ class ParseTask(Task):
             try:
                 md = afwImage.readMetadata(filename, extnum)
             except:
-                self.log.warn("Error reading %s extensions %s" % (filename, extnames))
+                self.log.warn("Error reading %s extensions %s", filename, extnames)
                 break
             ext = self.getExtensionName(md)
             if ext in extnames:
@@ -111,7 +111,7 @@ class ParseTask(Task):
             elif p in self.config.defaults:
                 info[p] = self.config.defaults[p]
             else:
-                self.log.warn("Unable to find value for %s (derived from %s)" % (p, h))
+                self.log.warn("Unable to find value for %s (derived from %s)", p, h)
         for p, t in self.config.translators.iteritems():
             func = getattr(self, t)
             try:
@@ -364,7 +364,7 @@ class IngestTask(Task):
         if mode == "skip":
             return True
         if dryrun:
-            self.log.info("Would %s from %s to %s" % (mode, infile, outfile))
+            self.log.info("Would %s from %s to %s", mode, infile, outfile)
             return True
         try:
             outdir = os.path.dirname(outfile)
@@ -389,7 +389,7 @@ class IngestTask(Task):
                 raise AssertionError("Unknown mode: %s" % mode)
             print "%s --<%s>--> %s" % (infile, mode, outfile)
         except Exception, e:
-            self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
+            self.log.warn("Failed to %s %s to %s: %s", mode, infile, outfile, e)
             if not self.config.allowError:
                 raise
             return False
@@ -431,10 +431,10 @@ class IngestTask(Task):
                     continue
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
                 if self.isBadId(fileInfo, args.badId.idList):
-                    self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
+                    self.log.info("Skipping declared bad file %s: %s", infile, fileInfo)
                     continue
                 if self.register.check(registry, fileInfo):
-                    self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
+                    self.log.warn("%s: already ingested: %s", infile, fileInfo)
                 outfile = self.parse.getDestination(args.butler, fileInfo, infile)
                 ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
                 if not ingested:

@@ -166,11 +166,11 @@ class AssembleCoaddTask(CoaddBaseTask):
         if len(calExpRefList) == 0:
             self.log.warn("No exposures to coadd")
             return
-        self.log.info("Coadding %d exposures" % len(calExpRefList))
+        self.log.info("Coadding %d exposures", len(calExpRefList))
 
         tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
         inputData = self.prepareInputs(tempExpRefList)
-        self.log.info("Found %d %s" % (len(inputData.tempExpRefList), self.getTempExpDatasetName()))
+        self.log.info("Found %d %s", len(inputData.tempExpRefList), self.getTempExpDatasetName())
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
@@ -265,7 +265,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         tempExpName = self.getTempExpDatasetName()
         for tempExpRef in refList:
             if not tempExpRef.datasetExists(tempExpName):
-                self.log.warn("Could not find %s %s; skipping it" % (tempExpName, tempExpRef.dataId))
+                self.log.warn("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
                 continue
 
             tempExp = tempExpRef.get(tempExpName, immediate=True)
@@ -277,16 +277,16 @@ class AssembleCoaddTask(CoaddBaseTask):
             try:
                 imageScaler.scaleMaskedImage(maskedImage)
             except Exception, e:
-                self.log.warn("Scaling failed for %s (skipping it): %s" % (tempExpRef.dataId, e))
+                self.log.warn("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
                 continue
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                 afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             if not numpy.isfinite(weight):
-                self.log.warn("Non-finite weight for %s: skipping" % (tempExpRef.dataId,))
+                self.log.warn("Non-finite weight for %s: skipping", tempExpRef.dataId,)
                 continue
-            self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
+            self.log.info("Weight of %s %s = %0.3f", tempExpName, tempExpRef.dataId, weight)
 
             del maskedImage
             del tempExp
@@ -324,7 +324,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                 expDatasetType = self.getTempExpDatasetName(),
             ).backgroundInfoList
         except Exception, e:
-            self.log.fatal("Cannot match backgrounds: %s" % (e))
+            self.log.fatal("Cannot match backgrounds: %s", e)
             raise pipeBase.TaskError("Background matching failed.")
 
         newWeightList = []
@@ -339,27 +339,27 @@ class AssembleCoaddTask(CoaddBaseTask):
                 # skip exposure if it has no backgroundModel
                 # or if fit was bad
                 if (bgInfo.backgroundModel is None):
-                    self.log.info("No background offset model available for %s: skipping"%(
-                        tempExpRef.dataId))
+                    self.log.info("No background offset model available for %s: skipping",
+                        tempExpRef.dataId)
                     continue
                 try:
                     varianceRatio =  bgInfo.matchedMSE / bgInfo.diffImVar
                 except Exception, e:
-                    self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping" %
-                                  (e, tempExpRef.dataId,))
+                    self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping",
+                                  e, tempExpRef.dataId)
                     continue
                 if not numpy.isfinite(varianceRatio):
-                    self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" %
-                                  (bgInfo.matchedMSE, bgInfo.diffImVar,
-                                   tempExpRef.dataId,))
+                    self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping",
+                                   bgInfo.matchedMSE, bgInfo.diffImVar,
+                                   tempExpRef.dataId)
                     continue
                 elif (varianceRatio > self.config.maxMatchResidualRatio):
-                    self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
-                            varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
+                    self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping",
+                            varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId)
                     continue
                 elif ( bgInfo.fitRMS > self.config.maxMatchResidualRMS):
-                    self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping" % (
-                            bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId,))
+                    self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping",
+                            bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId)
                     continue
             newWeightList.append(1 / (1 / weight + bgInfo.fitRMS**2))
             newTempExpRefList.append(tempExpRef)
@@ -383,7 +383,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         @return coadded exposure
         """
         tempExpName = self.getTempExpDatasetName()
-        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
+        self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
 
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
@@ -416,7 +416,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                 self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
                                        weightList, bgInfoList, statsFlags, statsCtrl)
             except Exception, e:
-                self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
+                self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
@@ -467,7 +467,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         @param statsFlags: Statistic for coadd
         @param statsCtrl: Statistics control object for coadd
         """
-        self.log.logdebug("Computing coadd over %s" % bbox)
+        self.log.debug("Computing coadd over %s", bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
         coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)

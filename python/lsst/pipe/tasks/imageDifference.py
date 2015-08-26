@@ -230,7 +230,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - subtractRes: results of subtraction task; None if subtraction not run
         - sources: detected and possibly measured sources; None if detection not run
         """
-        self.log.info("Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s", sensorRef.dataId)
 
         # initialize outputs and some intermediate products
         subtractedExposure = None
@@ -345,8 +345,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     varSources  = varSelector.selectSources(exposure, selectSources, matches=matches)
                     controlSources.extend(varSources)
 
-                self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" 
-                              % (len(kernelSources), len(selectSources), len(controlSources)))
+                self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)",
+                              (len(kernelSources), len(selectSources), len(controlSources)))
             allresids = {}
             if self.config.doUseRegister:
                 self.log.info("Registering images")
@@ -403,18 +403,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     rms2Lat   = IqrToSigma*(numpy.percentile(dlat[idx2],75)-numpy.percentile(dlat[idx2],25))
                     rms3Long  = IqrToSigma*(numpy.percentile(dlong[idx3],75)-numpy.percentile(dlong[idx3],25))
                     rms3Lat   = IqrToSigma*(numpy.percentile(dlat[idx3],75)-numpy.percentile(dlat[idx3],25))
-                    self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx1]), 
+                    self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f", numpy.median(dlong[idx1]), 
                                                                                   rms1Long,
                                                                                   numpy.median(dlat[idx1]), 
-                                                                                  rms1Lat))
-                    self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx2]), 
+                                                                                  rms1Lat)
+                    self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f", numpy.median(dlong[idx2]), 
                                                                                    rms2Long,
                                                                                    numpy.median(dlat[idx2]), 
-                                                                                   rms2Lat))
-                    self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx3]), 
+                                                                                   rms2Lat)
+                    self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f", numpy.median(dlong[idx3]), 
                                                                                  rms3Long,
                                                                                  numpy.median(dlat[idx3]), 
-                                                                                 rms3Lat))
+                                                                                 rms3Lat)
 
                     self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
                     self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))
@@ -482,7 +482,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                             self.config.growFootprint, False)
                 diaSources = afwTable.SourceCatalog(table)
                 fpSet.makeSources(diaSources)
-                self.log.info("Merging detections into %d sources" % (len(diaSources)))
+                self.log.info("Merging detections into %d sources", len(diaSources))
             else:
                 diaSources = results.sources
 
@@ -672,13 +672,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         expBoxD.grow(self.config.templateBorderSize)
         ctrSkyPos = expWcs.pixelToSky(expBoxD.getCenter())
         tractInfo = skyMap.findTract(ctrSkyPos)
-        self.log.info("Using skyMap tract %s" % (tractInfo.getId(),))
+        self.log.info("Using skyMap tract %s", tractInfo.getId(),)
         skyCorners = [expWcs.pixelToSky(pixPos) for pixPos in expBoxD.getCorners()]
         patchList = tractInfo.findPatchList(skyCorners)
 
         if not patchList:
             raise RuntimeError("No suitable tract found")
-        self.log.info("Assembling %s coadd patches" % (len(patchList),))
+        self.log.info("Assembling %s coadd patches", len(patchList),)
 
         # compute coadd bbox
         coaddWcs = tractInfo.getWcs()

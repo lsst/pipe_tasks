@@ -110,7 +110,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
 
         @param[in] skyMap  sky map (an lsst.skyMap.SkyMap)
         """
-        self.log.info("sky map has %s tracts" % (len(skyMap),))
+        self.log.info("sky map has %s tracts", len(skyMap))
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
             posBox = afwGeom.Box2D(tractInfo.getBBox())
@@ -122,9 +122,9 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
             )
             skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
-            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
-                (tractInfo.getId(), ", ".join(posStrList), \
-                tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
+            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches", \
+                tractInfo.getId(), ", ".join(posStrList), \
+                tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1])
 
     @classmethod
     def _makeArgumentParser(cls):

@@ -112,11 +112,11 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         @return     a pipeBase Struct containing:
                     - skyMap: the constructed SkyMap
         """
-        self.log.info("Extracting bounding boxes of %d images" % len(dataRefList))
+        self.log.info("Extracting bounding boxes of %d images", len(dataRefList))
         points = []
         for dataRef in dataRefList:
             if not dataRef.datasetExists("calexp"):
-                self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
+                self.log.warn("CalExp for %s does not exist: ignoring", dataRef.dataId)
                 continue
             md = dataRef.get("calexp_md", immediate=True)
             wcs = afwImage.makeWcs(md)
@@ -165,9 +165,9 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             )
             skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
-            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
-                (tractInfo.getId(), ", ".join(posStrList), \
-                tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
+            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches",
+                tractInfo.getId(), ", ".join(posStrList),
+                tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1])
         if self.config.doWrite:
             butler.put(skyMap, datasetName)
         return pipeBase.Struct(

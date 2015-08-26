@@ -88,7 +88,7 @@ class RegisterTask(Task):
         """
         matches = afwTable.matchRaDec(templateSources, inputSources,
                                       self.config.matchRadius*afwGeom.arcseconds)
-        self.log.info("Matching within %.1f arcsec: %d matches" % (self.config.matchRadius, len(matches)))
+        self.log.info("Matching within %.1f arcsec: %d matches", self.config.matchRadius, len(matches))
         self.metadata.set("MATCH_NUM", len(matches))
         if len(matches) == 0:
             raise RuntimeError("Unable to match source catalogs")
@@ -109,8 +109,7 @@ class RegisterTask(Task):
         inCentroidKey = copyMatches[0].second.getTable().getCentroidKey()
         for i in range(self.config.sipIter):
             sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
-            self.log.logdebug("Registration WCS RMS iteration %d: %f pixels" %
-                              (i, sipFit.getScatterInPixels()))
+            self.log.debug("Registration WCS RMS iteration %d: %f pixels", i, sipFit.getScatterInPixels())
             wcs = sipFit.getNewWcs()
             dr = [m.first.get(refCoordKey).angularSeparation(
                     wcs.pixelToSky(m.second.get(inCentroidKey))).asArcseconds() for
@@ -118,17 +117,17 @@ class RegisterTask(Task):
             dr = numpy.array(dr)
             rms = math.sqrt((dr*dr).mean()) # RMS from zero
             rms = max(rms, 1.0e-9) # Don't believe any RMS smaller than this
-            self.log.logdebug("Registration iteration %d: rms=%f" % (i, rms))
+            self.log.debug("Registration iteration %d: rms=%f", i, rms)
             good = numpy.where(dr < self.config.sipRej*rms)[0]
             numBad = len(copyMatches) - len(good)
-            self.log.logdebug("Registration iteration %d: rejected %d" % (i, numBad))
+            self.log.debug("Registration iteration %d: rejected %d", i, numBad)
             if numBad == 0:
                 break
             copyMatches = type(matches)(copyMatches[i] for i in good)
 
         sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
-        self.log.info("Registration WCS: final WCS RMS=%f pixels from %d matches" % 
-                      (sipFit.getScatterInPixels(), len(copyMatches)))
+        self.log.info("Registration WCS: final WCS RMS=%f pixels from %d matches",
+                      sipFit.getScatterInPixels(), len(copyMatches))
         self.metadata.set("SIP_RMS", sipFit.getScatterInPixels())
         self.metadata.set("SIP_GOOD", len(copyMatches))
         self.metadata.set("SIP_REJECTED", len(matches) - len(copyMatches))

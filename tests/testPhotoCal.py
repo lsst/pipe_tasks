@@ -128,11 +128,11 @@ class PhotoCalTest(unittest.TestCase):
 
         # Differences of matched objects that were used in the fit.
         zp = pCal.calib.getMagnitude(1.)
-        log.logdebug('zeropoint: %g' % zp)
+        log.debug('zeropoint: %g' % zp)
         fitdiff = pCal.arrays.srcMag + zp - pCal.arrays.refMag
-        log.logdebug('number of sources used in fit: %i' % len(fitdiff))
-        log.logdebug('rms diff: %g' % np.mean(fitdiff**2)**0.5)
-        log.logdebug('median abs(diff): %g' % np.median(np.abs(fitdiff)))
+        log.debug('number of sources used in fit: %i' % len(fitdiff))
+        log.debug('rms diff: %g' % np.mean(fitdiff**2)**0.5)
+        log.debug('median abs(diff): %g' % np.median(np.abs(fitdiff)))
 
         # zeropoint: 31.3145
         # number of sources used in fit: 65
