@@ -75,8 +75,19 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
         return True
 
     def __call__(self, args):
+        """
+        @param args     Arguments for Task.run()
+
+        @return:
+        - None if self.doReturnResults false
+        - A pipe_base Struct containing these fields if self.doReturnResults true:
+            - dataRef: the provided data reference
+            - metadata: task metadata after execution of run
+            - result: result returned by task run, or None if the task fails
+        """
         butler, dataRefList = args
         task = self.TaskClass(config=self.config, log=self.log)
+        result = None # in case the task fails
         if self.doRaise:
             result = task.run(butler, dataRefList)
         else:
@@ -87,8 +98,13 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
         task.writeMetadata(butler)
+
         if self.doReturnResults:
-            return results
+            return pipeBase.Struct(
+                dataRefList = dataRefList,
+                metadata = task.metadata,
+                result = result,
+            )
 
 class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
     """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
