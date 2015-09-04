@@ -28,7 +28,7 @@ import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask, MeasureApCorrTask
-from lsst.meas.astrom import ANetAstrometryTask
+from lsst.meas.astrom import AstrometryTask
 from .photoCal import PhotoCalTask
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
@@ -117,7 +117,7 @@ class CalibrateConfig(pexConfig.Config):
         doc = "subtask to measure aperture corrections"
     )
     astrometry = pexConfig.ConfigurableField(
-        target = ANetAstrometryTask,
+        target = AstrometryTask,
         doc = "fit WCS of exposure",
     )
     photocal = pexConfig.ConfigurableField(
