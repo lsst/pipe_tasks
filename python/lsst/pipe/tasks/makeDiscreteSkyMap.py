@@ -97,7 +97,8 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
-        task.writeMetadata(butler)
+        for dataRef in dataRefList:
+            task.writeMetadata(dataRef)
 
         if self.doReturnResults:
             return pipeBase.Struct(
