@@ -197,7 +197,9 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         return "%s_makeDiscreteSkyMap_config" % (self.config.coaddName,)
 
     def _getMetadataName(self):
-        """Return the name of the metadata dataset
+        """Return None to disable saving metadata
+
+        The metadata is not interesting, and by not saving it we can eliminate a dataset type.
         """
-        return "%s_makeDiscreteSkyMap_metadata" % (self.config.coaddName,)
+        return None
 
