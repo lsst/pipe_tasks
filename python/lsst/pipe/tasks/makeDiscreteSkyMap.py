@@ -62,17 +62,15 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
         self.skyMap.tractOverlap = 0.0
 
 class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
-    """Want to run on all the dataRefs at once, not one at a time."""
+    """Run a task with all dataRefs at once, rather than one dataRef at a time.
+
+    Call the run method of the task using two positional arguments:
+    - butler: data butler
+    - dataRefList: list of all dataRefs,
+    """
     @staticmethod
     def getTargetList(parsedCmd):
         return [(parsedCmd.butler, parsedCmd.id.refList)]
-
-    def precall(self, parsedCmd):
-        # We overload to disable writing/checking of schemas and configs.
-        # There's only one SkyMap per rerun anyway, so the config is redundant,
-        # and checking it means we can't overwrite or append to one once we've
-        # written it.
-        return True
 
     def __call__(self, args):
         """
@@ -192,9 +190,12 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         )
 
     def _getConfigName(self):
-        """Return the name of the config dataset
+        """Return None to disable saving config
+
+        There's only one SkyMap per repository, so the config is redundant, and checking it means we can't
+        easily overwrite or append to an existing repository.
         """
-        return "%s_makeDiscreteSkyMap_config" % (self.config.coaddName,)
+        return None
 
     def _getMetadataName(self):
         """Return None to disable saving metadata
