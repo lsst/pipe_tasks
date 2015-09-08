@@ -62,21 +62,30 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
         self.skyMap.tractOverlap = 0.0
 
 class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
-    """Want to run on all the dataRefs at once, not one at a time."""
+    """Run a task with all dataRefs at once, rather than one dataRef at a time.
+
+    Call the run method of the task using two positional arguments:
+    - butler: data butler
+    - dataRefList: list of all dataRefs,
+    """
     @staticmethod
     def getTargetList(parsedCmd):
         return [(parsedCmd.butler, parsedCmd.id.refList)]
 
-    def precall(self, parsedCmd):
-        # We overload to disable writing/checking of schemas and configs.
-        # There's only one SkyMap per rerun anyway, so the config is redundant,
-        # and checking it means we can't overwrite or append to one once we've
-        # written it.
-        return True
-
     def __call__(self, args):
+        """
+        @param args     Arguments for Task.run()
+
+        @return:
+        - None if self.doReturnResults false
+        - A pipe_base Struct containing these fields if self.doReturnResults true:
+            - dataRef: the provided data reference
+            - metadata: task metadata after execution of run
+            - result: result returned by task run, or None if the task fails
+        """
         butler, dataRefList = args
         task = self.TaskClass(config=self.config, log=self.log)
+        result = None # in case the task fails
         if self.doRaise:
             result = task.run(butler, dataRefList)
         else:
@@ -86,9 +95,15 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
-        task.writeMetadata(butler)
+        for dataRef in dataRefList:
+            task.writeMetadata(dataRef)
+
         if self.doReturnResults:
-            return results
+            return pipeBase.Struct(
+                dataRefList = dataRefList,
+                metadata = task.metadata,
+                result = result,
+            )
 
 class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
     """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
@@ -175,12 +190,17 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         )
 
     def _getConfigName(self):
-        """Return the name of the config dataset
+        """Return None to disable saving config
+
+        There's only one SkyMap per repository, so the config is redundant, and checking it means we can't
+        easily overwrite or append to an existing repository.
         """
-        return "%s_makeDiscreteSkyMap_config" % (self.config.coaddName,)
+        return None
 
     def _getMetadataName(self):
-        """Return the name of the metadata dataset
+        """Return None to disable saving metadata
+
+        The metadata is not interesting, and by not saving it we can eliminate a dataset type.
         """
-        return "%s_makeDiscreteSkyMap_metadata" % (self.config.coaddName,)
+        return None
 
