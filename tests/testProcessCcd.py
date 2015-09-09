@@ -68,11 +68,11 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             calexpBackground = butler.get("calexpBackground", dataId)
             self.assertGreaterEqual(len(calexpBackground), 1)
             bg0Arr = calexpBackground.getImage().getArray()
-            self.assertAlmostEqual(bg0Arr.mean(dtype=numpy.float64), 325.4484, places=1)
-            self.assertLess(bg0Arr.std(dtype=numpy.float64), 1.0) # 0.40578011 as of 2014-11
+            self.assertAlmostEqual(bg0Arr.mean(dtype=numpy.float64), 327.6174, places=1)
+            self.assertLess(bg0Arr.std(dtype=numpy.float64), 1.0) # 0.40092 as of 2015-09
 
             icSrc = butler.get("icSrc", dataId)
-            self.assertGreater(len(icSrc), 20) # 28 as of 2014-11
+            self.assertGreater(len(icSrc), 20) # 28 as of 2015-09
 
             for exposure in (
                 butler.get("calexp", dataId),
@@ -84,19 +84,20 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 maskArr = maskedImage.getMask().getArray()
                 self.assertGreater(numpy.sum(maskArr == 0, dtype=numpy.float64), 1900000) # most pixels are good
                 imageArr = maskedImage.getImage().getArray()
-                self.assertAlmostEqual(imageArr.mean(dtype=numpy.float64),   1.9073, places=1)
-                self.assertAlmostEqual(imageArr.std(dtype=numpy.float64),  145.8494, places=1)
+
+                self.assertAlmostEqual(imageArr.mean(dtype=numpy.float64),   1.7041, places=1)
+                self.assertAlmostEqual(imageArr.std(dtype=numpy.float64),  163.6629, places=1)
                 varArr = maskedImage.getVariance().getArray()
-                self.assertAlmostEqual(varArr.mean(dtype=numpy.float64), 246.1445, places=1)
-                self.assertAlmostEqual(varArr.std(dtype=numpy.float64),  104.8250, places=1)
+                self.assertAlmostEqual(varArr.mean(dtype=numpy.float64), 212.5416, places=1)
+                self.assertAlmostEqual(varArr.std(dtype=numpy.float64),  121.2508, places=1)
 
                 psfShape = exposure.getPsf().computeShape()
-                self.assertAlmostEqual(psfShape.getIxx(), 2.8800, places=1)
-                self.assertAlmostEqual(psfShape.getIyy(), 2.2986, places=1)
-                self.assertAlmostEqual(psfShape.getIxy(), 0.1880, places=1)
+                self.assertAlmostEqual(psfShape.getIxx(), 2.7088, places=1)
+                self.assertAlmostEqual(psfShape.getIyy(), 2.3372, places=1)
+                self.assertAlmostEqual(psfShape.getIxy(), 0.6669, places=1)
 
             sources = butler.get("src", dataId)
-            self.assertGreater(len(sources), 100) # 167 as of 2014-11
+            self.assertGreater(len(sources), 100) # 167 as of 2015-09
 
         finally:
             shutil.rmtree(outPath)
