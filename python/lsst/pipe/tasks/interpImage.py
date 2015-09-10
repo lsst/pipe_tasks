@@ -1,7 +1,7 @@
 from __future__ import division, absolute_import
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -13,12 +13,12 @@ from __future__ import division, absolute_import
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
@@ -35,7 +35,7 @@ class InterpImageConfig(pexConfig.Config):
 
     useFallbackValueAtEdge = pexConfig.Field(
         dtype = bool,
-        doc = "Smoothly taper (on the PSF scale) to the fallback value at the edge of the image?",
+        doc = "Smoothly taper to the fallback value at the edge of the image?",
         default = True,
     )
 
@@ -47,16 +47,16 @@ class InterpImageTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, maskedImage, planeName, fwhmPixels=None, fallbackValue=None):
-        """Interpolate in place over the pixels in a maskedImage which are marked bad by a mask plane
+        """!Interpolate in place over the pixels in a maskedImage which are marked bad by a mask plane
 
         Note that the interpolation code in meas_algorithms currently
         doesn't use the input PSF (though it's a required argument),
         so it's not important to set the input PSF parameters exactly.
 
-        @param[in,out] maskedImage: MaskedImage over which to interpolate over edge pixels
-        @param[in] planeName: mask plane over which to interpolate
-        @param[in] fwhmPixels: FWHM of core star (pixels); if None then the default is used
-        @param[in] fallbackValue Pixel value to use when all else fails (if None, use median)
+        \param[in,out] maskedImage   MaskedImage over which to interpolate over edge pixels
+        \param[in]     planeName     mask plane over which to interpolate
+        \param[in]     fwhmPixels    FWHM of core star (pixels); if None then the default is used
+        \param[in]     fallbackValue Pixel value to use when all else fails (if None, use median)
         """
         self.log.info("Interpolate over %s pixels" % (planeName,))
         psfModel = self.config.modelPsf.apply(fwhm=fwhmPixels)
