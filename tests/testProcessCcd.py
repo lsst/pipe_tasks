@@ -68,38 +68,84 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             result = runResult.result
 
             calexpBackground = butler.get("calexpBackground", dataId)
-            self.assertGreaterEqual(len(calexpBackground), 1)
             bg0Arr = calexpBackground.getImage().getArray()
-            self.assertAlmostEqual(bg0Arr.mean(dtype=numpy.float64), 327.6174, places=1)
-            self.assertLess(bg0Arr.std(dtype=numpy.float64), 1.0) # 0.40092 as of 2015-09
+            bgMean = bg0Arr.mean(dtype=numpy.float64)
+            bgStdDev = bg0Arr.std(dtype=numpy.float64)
 
             icSrc = butler.get("icSrc", dataId)
-            self.assertGreater(len(icSrc), 20) # 28 as of 2015-09
+            sources = butler.get("src", dataId)
 
-            for exposure in (
+            # the following makes pyflakes linter happy and the code more robust
+            oldImMean = None
+            oldImStdDev = None
+            oldVarMean = None
+            oldVarStdDev = None
+            oldPsfIxx = None
+            oldPsfIyy = None
+            oldPsfIxy = None
+
+            for i, exposure in enumerate((
                 butler.get("calexp", dataId),
                 result.exposure,
-            ):
+            )):
                 self.assertEqual(exposure.getBBox(),
                     afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
                 maskedImage = exposure.getMaskedImage()
                 maskArr = maskedImage.getMask().getArray()
-                self.assertGreater(numpy.sum(maskArr == 0, dtype=numpy.float64), 1900000) # most pixels are good
-                imageArr = maskedImage.getImage().getArray()
+                numGoodPix = numpy.sum(maskArr == 0)
 
-                self.assertAlmostEqual(imageArr.mean(dtype=numpy.float64),   1.7041, places=1)
-                self.assertAlmostEqual(imageArr.std(dtype=numpy.float64),  163.6629, places=1)
+                imageArr = maskedImage.getImage().getArray()
+                imMean = imageArr.mean(dtype=numpy.float64)
+                imStdDev = imageArr.std(dtype=numpy.float64)
                 varArr = maskedImage.getVariance().getArray()
-                self.assertAlmostEqual(varArr.mean(dtype=numpy.float64), 212.5416, places=1)
-                self.assertAlmostEqual(varArr.std(dtype=numpy.float64),  121.2508, places=1)
+                varMean = varArr.mean(dtype=numpy.float64)
+                varStdDev = varArr.std(dtype=numpy.float64)
 
                 psfShape = exposure.getPsf().computeShape()
-                self.assertAlmostEqual(psfShape.getIxx(), 2.7088, delta=0.2)
-                self.assertAlmostEqual(psfShape.getIyy(), 2.3372, delta=0.2)
-                self.assertAlmostEqual(psfShape.getIxy(), 0.6669, delta=0.2)
+                psfIxx = psfShape.getIxx()
+                psfIyy = psfShape.getIyy()
+                psfIxy = psfShape.getIxy()
 
-            sources = butler.get("src", dataId)
-            self.assertGreater(len(sources), 100) # 167 as of 2015-09
+                if i == 0:
+                    print("\nMeasured results:")
+                    print("background mean = %r, stdDev = %r" % (bgMean, bgStdDev))
+                    print("len(icSrc) :", len(icSrc))
+                    print("len(sources) =", len(sources))
+
+                    print("numGoodPix =", numGoodPix)
+                    print("image mean = %r, stdDev = %r" % (imMean, imStdDev))
+                    print("variance mean = %r, stdDev = %r" % (varMean, varStdDev))
+                    print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
+
+                    self.assertAlmostEqual(bgMean, 327.61695151065607, places=7)
+                    self.assertAlmostEqual(bgStdDev, 0.40081096398879795, places=7)
+                    self.assertEqual(len(icSrc), 28)
+                    self.assertEqual(len(sources), 169)
+                    self.assertEqual(numGoodPix, 1953514)
+
+                    self.assertAlmostEqual(imMean,      1.7045581411166495, places=7)
+                    self.assertAlmostEqual(imStdDev,  163.66290334994014, places=7)
+                    self.assertAlmostEqual(varMean,   212.5416436210289, places=7)
+                    self.assertAlmostEqual(varStdDev, 121.25084470503148, places=7)
+                    self.assertAlmostEqual(psfIxx, 2.790601924907123, places=7)
+                    self.assertAlmostEqual(psfIyy, 2.1989110429762513, places=7)
+                    self.assertAlmostEqual(psfIxy,  0.16599586021207952, places=7)
+                else:
+                    self.assertEqual(imMean, oldImMean)
+                    self.assertEqual(imStdDev, oldImStdDev)
+                    self.assertEqual(varMean, oldVarMean)
+                    self.assertEqual(varStdDev, oldVarStdDev)
+                    self.assertEqual(psfIxx, oldPsfIxx)
+                    self.assertEqual(psfIyy, oldPsfIyy)
+                    self.assertEqual(psfIxy, oldPsfIxy)
+
+                oldImMean = imMean
+                oldImStdDev = imStdDev
+                oldVarMean = varMean
+                oldVarStdDev = varStdDev
+                oldPsfIxx = psfIxx
+                oldPsfIyy = psfIyy
+                oldPsfIxy = psfIxy
 
         finally:
             if OutputName is None:
