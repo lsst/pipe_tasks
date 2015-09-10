@@ -92,9 +92,9 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 self.assertAlmostEqual(varArr.std(dtype=numpy.float64),  121.2508, places=1)
 
                 psfShape = exposure.getPsf().computeShape()
-                self.assertAlmostEqual(psfShape.getIxx(), 2.7088, places=1)
-                self.assertAlmostEqual(psfShape.getIyy(), 2.3372, places=1)
-                self.assertAlmostEqual(psfShape.getIxy(), 0.6669, places=1)
+                self.assertAlmostEqual(psfShape.getIxx(), 2.7088, delta=0.2)
+                self.assertAlmostEqual(psfShape.getIyy(), 2.3372, delta=0.2)
+                self.assertAlmostEqual(psfShape.getIxy(), 0.6669, delta=0.2)
 
             sources = butler.get("src", dataId)
             self.assertGreater(len(sources), 100) # 167 as of 2015-09
