@@ -40,6 +40,8 @@ from lsst.pipe.tasks.processCcd import ProcessCcdTask
 obsTestDir = lsst.utils.getPackageDir('obs_test')
 InputDir = os.path.join(obsTestDir, "data", "input")
 
+OutputName = None # specify a name (as a string) to save the output repository
+
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
     def testProcessCcd(self):
         """test ProcessCcdTask
@@ -48,7 +50,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         comparisons are intentionally loose, so as to allow evolution of the sub-tasks over time
         without breaking this test.
         """
-        outPath = tempfile.mkdtemp()
+        outPath = tempfile.mkdtemp() if OutputName is None else OutputName
         try:
             dataId = dict(visit=1)
             dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
@@ -100,7 +102,10 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             self.assertGreater(len(sources), 100) # 167 as of 2015-09
 
         finally:
-            shutil.rmtree(outPath)
+            if OutputName is None:
+                shutil.rmtree(outPath)
+            else:
+                print("testProcessCcd.py's output data saved to %r" % (OutputName,))
 
 
 def suite():
