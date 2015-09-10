@@ -40,6 +40,7 @@ from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnaly
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig
 import lsst.ip.diffim.diffimTools as diffimTools
+import lsst.ip.diffim as ipDiffim
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 IqrToSigma = 0.741
@@ -93,8 +94,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = measAstrom.AstrometryTask,
         doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
-    #sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
-    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="secondMoment")
+    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
 
     subtract = pexConfig.ConfigurableField(
         target=ImagePsfMatchTask,
@@ -152,7 +152,7 @@ class ImageDifferenceConfig(pexConfig.Config):
 
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
-        self.sourceSelector.name = "secondMoment"
+        self.sourceSelector.name = "diacatalog"
         self.sourceSelector["secondMoment"].clumpNSigma = 2.0
         # defaults are OK for catalog and diacatalog
 
@@ -165,8 +165,14 @@ class ImageDifferenceConfig(pexConfig.Config):
         # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
         # To change that you must modify algorithms.names in the task's applyOverrides method,
         # after the user has set doPreConvolved.
+
+        self.measurement.algorithms.names.add('ip_diffim_NaiveDipoleCentroid')
+        self.measurement.algorithms.names.add('ip_diffim_NaiveDipoleFlux')
+        self.measurement.algorithms.names.add('ip_diffim_PsfDipoleFlux')
+        #Turn this on when dipole measurement gets merged
+        #self.measurement.algorithms.names.add('ip_diffim_ClassificationDipole')
+
         self.measurement.algorithms.names.add('base_PeakLikelihoodFlux')
-        self.dipoleMeasurement.algorithms.names.add('base_PeakLikelihoodFlux')
 
         # For shuffling the control sample
         random.seed(self.controlRandomSeed)
@@ -200,11 +206,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            self.makeSubtask("dipoleMeasurement", schema=self.schema, algMetadata=self.algMetadata)
-            self.makeSubtask("measurement", schema=afwTable.SourceTable.makeMinimalSchema(),
+            self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
-            self.schema.addField(self.dipoleMeasurement._ClassificationFlag, "F",
-                                 "probability of being a dipole")
 
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
@@ -462,13 +465,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # PSF match template exposure to exposure,
             # then return the difference
 
+
             #Return warped template...  Construct sourceKernelCand list after subtract
             self.log.info("Subtracting images")
             subtractRes = self.subtract.subtractExposures(
                 templateExposure=templateExposure,
                 scienceExposure=exposure,
-                scienceFwhmPix=scienceSigmaPost * FwhmPerSigma,
-                templateFwhmPix=templateSigma * FwhmPerSigma,
                 candidateList=kernelSources,
                 convolveTemplate=self.config.convolveTemplate,
                 doWarping=not self.config.doUseRegister
@@ -515,12 +517,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 diaSources = results.sources
 
             if self.config.doMeasurement:
-                if len(diaSources) < self.config.maxDiaSourcesToMeasure:
-                    self.log.info("Running diaSource dipole measurement")
-                    self.dipoleMeasurement.run(subtractedExposure, diaSources)
-                else:
-                    self.log.info("Running diaSource measurement")
-                    self.measurement.run(subtractedExposure, diaSources)
+                self.log.info("Running diaSource measurement")
+                self.measurement.run(diaSources, subtractedExposure)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
@@ -597,7 +595,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doWriteSubtractedExp:
             sensorRef.put(subtractedExposure, subtractedExposureName)
 
-        self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
+        #YA: To do, clean up the runDebug method. Only call if __debug__ True.
+        if False:
+            self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
         return pipeBase.Struct(
             subtractedExposure=subtractedExposure,
             subtractRes=subtractRes,
