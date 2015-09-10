@@ -1,6 +1,6 @@
 # 
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 # 
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -17,7 +17,7 @@
 # 
 # You should have received a copy of the LSST License Statement and 
 # the GNU General Public License along with this program.  If not, 
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
 import lsst.afw.image
@@ -47,7 +47,7 @@ class MockCoaddConfig(lsst.pex.config.Config):
         )
     coaddName = lsst.pex.config.Field(
         doc = "Coadd name used as a prefix for other datasets",
-        dtype = str, 
+        dtype = str,
         optional = False,
         default = "deep"
         )
@@ -136,7 +136,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
 
     def buildTruthCatalog(self, butler=None, skyMap=None, tract=0):
         """Create and save (if butler is not None) a truth catalog containing all the mock objects.
-        
+
         Must be run after buildSkyMap.
 
         Most of the work is delegated to the mockObject subtask.

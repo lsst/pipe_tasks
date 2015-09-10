@@ -1,6 +1,6 @@
 # 
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 # 
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -17,7 +17,7 @@
 # 
 # You should have received a copy of the LSST License Statement and 
 # the GNU General Public License along with this program.  If not, 
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
@@ -107,7 +107,7 @@ class RepairTask(pipeBase.Task):
         </DL>
       <DT> \c displayCR
       <DD> If True, display the exposure on ds9's frame 1 and overlay bounding boxes around detects CRs.
-    </DL>  
+    </DL>
     \section pipe_tasks_repair_Example A complete example of using RepairTask
 
     This code is in runRepair.py in the examples directory, and can be run as \em e.g.
@@ -137,7 +137,8 @@ class RepairTask(pipeBase.Task):
     \skip addDefects
     \until push_back
 
-    Finally, the exposure can be repaired.  Create an instance of the task and run it.  The exposure is modified in place.
+    Finally, the exposure can be repaired.  Create an instance of the task and run it.  The exposure
+    is modified in place.
     \skip RepairTask
     \until repair.run
 
@@ -166,9 +167,11 @@ class RepairTask(pipeBase.Task):
     def run(self, exposure, defects=None, keepCRs=None):
         """!Repair an Exposure's defects and cosmic rays
 
-        \param[in, out] exposure lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.  Modified in place.
-        \param[in] defects  an lsst.meas.algorithms.DefectListT object.  If None, do no defect correction.
-        \param[in] keepCRs  don't interpolate over the CR pixels (defer to RepairConfig if None)
+        \param[in, out] exposure  lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.
+                                  Modified in place.
+        \param[in]      defects   an lsst.meas.algorithms.DefectListT object.  If None, do no
+                                  defect correction.
+        \param[in]      keepCRs   don't interpolate over the CR pixels (defer to RepairConfig if None)
 
         \throws AssertionError with the following strings:
 
@@ -196,8 +199,8 @@ class RepairTask(pipeBase.Task):
     def interpolate(self, exposure, defects, useFallbackValueAtEdge=False):
         """Interpolate over defects
 
-        @param[in,out] exposure Exposure to process
-        @param defects Defect list
+        \param[in,out] exposure  Exposure to process
+        \param[in]     defects   Defect list
         """
         assert exposure, "No exposure provided"
         assert defects is not None, "No defects provided"
@@ -213,8 +216,8 @@ class RepairTask(pipeBase.Task):
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
 
-        @param[in,out] exposure Exposure to process
-        @param keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
+        \param[in,out] exposure Exposure to process
+        \param[in]     keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display
@@ -244,7 +247,7 @@ class RepairTask(pipeBase.Task):
                 import lsst.afw.display.ds9 as ds9
                 ds9.mtv(exposure, title="Failed CR")
             raise
-            
+
         num = 0
         if crs is not None:
             mask = mi.getMask()
@@ -258,7 +261,7 @@ class RepairTask(pipeBase.Task):
 
                 ds9.incrDefaultFrame()
                 ds9.mtv(exposure, title="Post-CR")
-                
+
                 with ds9.Buffering():
                     for cr in crs:
                         displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
