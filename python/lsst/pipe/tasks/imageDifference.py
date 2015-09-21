@@ -123,6 +123,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=RegisterTask,
         doc="Task to enable image-to-image image registration (warping)",
     )
+    kernelSourcesFromRef = pexConfig.Field(
+        doc="Select sources to measure kernel from reference catalog if True, template if false",
+        dtype=bool,
+        default=False
+    )
     templateSipOrder = pexConfig.Field(dtype=int, default=2,
         doc="Sip Order for fitting the Template Wcs (default is too high, overfitting)")
 
@@ -138,8 +143,18 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.sourceSelector["secondMoment"].clumpNSigma = 2.0
         # defaults are OK for catalog and diacatalog
 
+        self.subtract.kernel.name = "AL"
+        self.subtract.kernel.active.fitForBackground = True
+        self.subtract.kernel.active.spatialKernelOrder = 1
+        self.subtract.kernel.active.spatialBgOrder = 0
+        self.doPreConvolve = False
+        self.doMatchSources = False
+        self.doAddMetrics = False
+        self.doUseRegister = False
+
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
+        self.detection.thresholdValue = 5.5
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
 
@@ -324,8 +339,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     kcQa = KernelCandidateQa(nparam)
                     selectSources = kcQa.addToSchema(selectSources)
 
-                astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
-                matches = astromRet.matches
+                if self.config.kernelSourcesFromRef:
+                    # match exposure sources to reference catalog
+                    astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
+                    matches = astromRet.matches
+                elif templateSources:
+                    # match exposure sources to template sources
+                    matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds,
+                                                  False)
+                else:
+                    raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False," +
+                                       "but template sources not available. Cannot match science " +
+                                       "sources with template sources. Run process* on data from " +
+                                       "which templates are built.")
 
                 if hasattr(self.sourceSelector, 'selectStars'):
                     kernelSources = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
