@@ -28,7 +28,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
-import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
@@ -40,6 +39,7 @@ from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnaly
     KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig, \
     GetCoaddAsTemplateTask, GetCalexpAsTemplateTask
 import lsst.ip.diffim.diffimTools as diffimTools
+import lsst.ip.diffim.utils as diUtils
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 IqrToSigma = 0.741
@@ -134,7 +134,7 @@ class ImageDifferenceConfig(pexConfig.Config):
 
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
-        self.sourceSelector.name = "diacatalog"
+        self.sourceSelector.name = "secondMoment"
         self.sourceSelector["secondMoment"].clumpNSigma = 2.0
         # defaults are OK for catalog and diacatalog
 
@@ -147,7 +147,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
         # To change that you must modify algorithms.names in the task's applyOverrides method,
         # after the user has set doPreConvolved.
-        self.measurement.algorithms.names.add("flux.peakLikelihood")
+        self.measurement.algorithms.names.add('base_PeakLikelihoodFlux')
 
         # For shuffling the control sample
         random.seed(self.controlRandomSeed)
@@ -183,7 +183,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doSelectSources:
             self.sourceSelector = self.config.sourceSelector.apply()
-            self.astrometer = self.makeSubtask("astrometer")
+            self.makeSubtask("astrometer")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
@@ -326,7 +326,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
                 matches = astromRet.matches
-                kernelSources = self.sourceSelector.selectSources(exposure, selectSources, matches=matches)
+
+                if hasattr(self.sourceSelector, 'selectStars'):
+                    kernelSources = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
+                elif hasattr(self.sourceSelector, 'selectSources'):
+                    kernelSources = self.sourceSelector.selectSources(exposure, selectSources,
+                                                                      matches=matches)
+                else:
+                    raise RuntimeError("sourceSelector: %s has no selectStars() or selectSources() method." %
+                                       (type(self.sourceSelector)))
+
                 random.shuffle(kernelSources, random.random)
                 controlSources = kernelSources[::self.config.controlStepSize]
                 kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
@@ -442,8 +451,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             subtractRes = self.subtract.subtractExposures(
                 templateExposure=templateExposure,
                 scienceExposure=exposure,
-                scienceFwhmPix=scienceSigmaPost * FwhmPerSigma,
-                templateFwhmPix=templateSigma * FwhmPerSigma,
                 candidateList=kernelSources,
                 convolveTemplate=self.config.convolveTemplate,
                 doWarping=not self.config.doUseRegister
@@ -582,22 +589,25 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         because our TAN-SIP fitter behaved badly for points far from CRPIX, but that's been fixed.
         It remains because a subtask overrides it.
         """
-        results = self.register.run(templateSources, templateSources.getWcs(),
+        results = self.register.run(templateSources, templateExposure.getWcs(),
                                     templateExposure.getBBox(), selectSources)
         return results
 
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
+        """@todo Test and update for current debug display and slot names
+        """
         import lsstDebug
-        import lsst.afw.display.ds9 as ds9
         display = lsstDebug.Info(__name__).display
         showSubtracted = lsstDebug.Info(__name__).showSubtracted
         showPixelResiduals = lsstDebug.Info(__name__).showPixelResiduals
         showDiaSources = lsstDebug.Info(__name__).showDiaSources
         showDipoles = lsstDebug.Info(__name__).showDipoles
         maskTransparency = lsstDebug.Info(__name__).maskTransparency
-        if not maskTransparency:
-            maskTransparency = 0
-        ds9.setMaskTransparency(maskTransparency)
+        if display:
+            import lsst.afw.display.ds9 as ds9
+            if not maskTransparency:
+                maskTransparency = 0
+            ds9.setMaskTransparency(maskTransparency)
 
         if display and showSubtracted:
             ds9.mtv(subtractRes.subtractedExposure, frame=lsstDebug.frame, title="Subtracted image")
@@ -619,7 +629,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             lsstDebug.frame += 1
 
         if display and showPixelResiduals and selectSources:
-            import lsst.ip.diffim.utils as diUtils
             nonKernelSources = []
             for source in selectSources:
                 if not source in kernelSources:
@@ -644,7 +653,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        self.subtract.config.kernel.active.detectionConfig,
                                        origVariance=True)
         if display and showDiaSources:
-            import lsst.ip.diffim.utils as diUtils
             flagChecker   = SourceFlagChecker(diaSources)
             isFlagged     = [flagChecker(x) for x in diaSources]
             isDipole      = [x.get("classification.dipole") for x in diaSources]
