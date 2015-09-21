@@ -33,7 +33,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask, \
+from lsst.meas.algorithms import SourceDetectionTask, \
     starSelectorRegistry, PsfAttributes, SingleGaussianPsf
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
@@ -100,13 +100,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=SourceDetectionTask,
         doc="Low-threshold detection for final measurement",
     )
-    dipoleMeasurement = pexConfig.ConfigurableField(
+    measurement = pexConfig.ConfigurableField(
         target=DipoleMeasurementTask,
         doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
     )
-    measurement = pexConfig.ConfigurableField(
-        target=SourceMeasurementTask,
-        doc="Final source measurement on low-threshold detections; dipole fitting NOT enabled",
     )
     controlStepSize = pexConfig.Field(
         doc="What step size (every Nth one) to select a control sample from the kernelSources",
@@ -135,9 +132,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     diaSourceMatchRadius = pexConfig.Field(dtype=float, default=0.5,
         doc="Match radius (in arcseconds) for DiaSource to Source association")
 
-    maxDiaSourcesToMeasure = pexConfig.Field(dtype=int, default=200,
-        doc="Do not measure more than this many sources with dipoleMeasurement, use measurement") 
-
     def setDefaults(self):
         # Set default source selector and configure defaults for that one and some common alternatives
         self.sourceSelector.name = "diacatalog"
@@ -154,7 +148,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         # To change that you must modify algorithms.names in the task's applyOverrides method,
         # after the user has set doPreConvolved.
         self.measurement.algorithms.names.add("flux.peakLikelihood")
-        self.dipoleMeasurement.algorithms.names.add("flux.peakLikelihood")
 
         # For shuffling the control sample
         random.seed(self.controlRandomSeed)
@@ -187,10 +180,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            self.makeSubtask("dipoleMeasurement", schema=self.schema, algMetadata=self.algMetadata)
-            self.makeSubtask("measurement", schema=afwTable.SourceTable.makeMinimalSchema(),
+            self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
-            self.schema.addField(self.dipoleMeasurement._ClassificationFlag, "F",
+            self.schema.addField(self.measurement._ClassificationFlag, "F",
                                  "probability of being a dipole")
 
         if self.config.doMatchSources:
@@ -487,12 +479,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 diaSources = results.sources
 
             if self.config.doMeasurement:
-                if len(diaSources) < self.config.maxDiaSourcesToMeasure:
-                    self.log.info("Running diaSource dipole measurement")
-                    self.dipoleMeasurement.run(subtractedExposure, diaSources)
-                else:
-                    self.log.info("Running diaSource measurement")
-                    self.measurement.run(subtractedExposure, diaSources)
+                self.log.info("Running diaSource measurement")
+                self.measurement.run(diaSources, subtractedExposure)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
