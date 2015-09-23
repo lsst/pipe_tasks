@@ -247,7 +247,7 @@ class RegisterTask(Task):
             @contextmanager
             def fakeContext():
                 yield
-            return fakeContext
+            return fakeContext()
         registryName = os.path.join(butler.mapper.root, "registry.sqlite3")
         context = RegistryContext(registryName, self.createTable, create, self.config.permissions)
         return context
