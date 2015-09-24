@@ -234,12 +234,13 @@ class RegisterTask(Task):
     """Task that will generate the registry for the Mapper"""
     ConfigClass = RegisterConfig
 
-    def openRegistry(self, butler, create=False, dryrun=False):
+    def openRegistry(self, butler, create=False, dryrun=False, name="registry.sqlite3"):
         """Open the registry and return the connection handle.
 
         @param butler  Data butler, from which the registry file is determined
         @param create  Clobber any existing registry and create a new one?
         @param dryrun  Don't do anything permanent?
+        @param name    Filename of the registry
         @return Database connection
         """
         if dryrun:
@@ -248,26 +249,29 @@ class RegisterTask(Task):
             def fakeContext():
                 yield
             return fakeContext()
-        registryName = os.path.join(butler.mapper.root, "registry.sqlite3")
+        registryName = os.path.join(butler.mapper.root, name)
         context = RegistryContext(registryName, self.createTable, create, self.config.permissions)
         return context
 
-    def createTable(self, conn):
+    def createTable(self, conn, table=None):
         """Create the registry tables
 
         One table (typically 'raw') contains information on all files, and the
         other (typically 'raw_visit') contains information on all visits.
 
         @param conn    Database connection
+        @param table   Name of table to create in database
         """
-        cmd = "create table %s (id integer primary key autoincrement, " % self.config.table
+        if table is None:
+            table = self.config.table
+        cmd = "create table %s (id integer primary key autoincrement, " % table
         cmd += ",".join([("%s %s" % (col, colType)) for col,colType in self.config.columns.items()])
         if len(self.config.unique) > 0:
             cmd += ", unique(" + ",".join(self.config.unique) + ")"
         cmd += ")"
         conn.execute(cmd)
 
-        cmd = "create table %s_visit (" % self.config.table
+        cmd = "create table %s_visit (" % table
         cmd += ",".join([("%s %s" % (col, self.config.columns[col])) for col in self.config.visit])
         cmd += ", unique(" + ",".join(set(self.config.visit).intersection(set(self.config.unique))) + ")"
         cmd += ")"
@@ -275,15 +279,17 @@ class RegisterTask(Task):
 
         conn.commit()
 
-    def check(self, conn, info):
+    def check(self, conn, info, table=None):
         """Check for the presence of a row already
 
         Not sure this is required, given the 'ignore' configuration option.
         """
+        if table is None:
+            table = self.config.table
         if self.config.ignore or len(self.config.unique) == 0:
             return False # Our entry could already be there, but we don't care
         cursor = conn.cursor()
-        sql = "SELECT COUNT(*) FROM %s WHERE " % self.config.table
+        sql = "SELECT COUNT(*) FROM %s WHERE " % table
         sql += " AND ".join(["%s=?" % col for col in self.config.unique])
         values = [info[col] for col in self.config.unique]
 
@@ -292,16 +298,19 @@ class RegisterTask(Task):
             return True
         return False
 
-    def addRow(self, conn, info, dryrun=False, create=False):
+    def addRow(self, conn, info, dryrun=False, create=False, table=None):
         """Add a row to the file table (typically 'raw').
 
         @param conn    Database connection
         @param info    File properties to add to database
+        @param table   Name of table in database
         """
+        if table is None:
+            table = self.config.table
         sql = "INSERT"
         if self.config.ignore:
             sql += " OR IGNORE"
-        sql += " INTO %s VALUES (NULL" % self.config.table
+        sql += " INTO %s VALUES (NULL" % table
         sql += ", ?" * len(self.config.columns)
         sql += ")"
         values = [info[col] for col in self.config.columns]
@@ -310,15 +319,18 @@ class RegisterTask(Task):
         else:
             conn.execute(sql, values)
 
-    def addVisits(self, conn, dryrun=False):
+    def addVisits(self, conn, dryrun=False, table=None):
         """Generate the visits table (typically 'raw_visits') from the
         file table (typically 'raw').
 
         @param conn    Database connection
+        @param table   Name of table in database
         """
-        sql = "INSERT OR IGNORE INTO %s_visit SELECT DISTINCT " % self.config.table
+        if table is None:
+            table = self.config.table
+        sql = "INSERT OR IGNORE INTO %s_visit SELECT DISTINCT " % table
         sql += ",".join(self.config.visit)
-        sql += " FROM %s" % self.config.table
+        sql += " FROM %s" % table
         if dryrun:
             print "Would execute: %s" % sql
         else:
@@ -347,7 +359,7 @@ class IngestTask(Task):
     def parseAndRun(cls):
         """Parse the command-line arguments and run the Task"""
         config = cls.ConfigClass()
-        parser = cls.ArgumentParser("ingest")
+        parser = cls.ArgumentParser(name=cls._DefaultName)
         args = parser.parse_args(config)
         task = cls(config=args.config)
         task.run(args)
