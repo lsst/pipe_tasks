@@ -206,9 +206,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
-            self.schema.addField(self.measurement._ClassificationFlag, "F",
-                                 "probability of being a dipole")
-
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
