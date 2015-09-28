@@ -173,6 +173,10 @@ class ImageDifferenceConfig(pexConfig.Config):
             raise ValueError("Cannot run source measurement without source detection.")
         if self.doMerge and not self.doDetection:
             raise ValueError("Cannot run source merging without source detection.")
+        if self.doUseRegister and not self.doSelectSources:
+            raise ValueError("doUseRegister=True and doSelectSources=False. " +
+                             "Cannot run RegisterTask without selecting sources.")
+
 
 class ImageDifferenceTaskRunner(pipeBase.TaskRunner):
     @staticmethod
