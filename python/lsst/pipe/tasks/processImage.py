@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -12,12 +12,12 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -34,8 +34,10 @@ class ProcessImageConfig(pexConfig.Config):
     ## NOTE, default this to False until it is fully vetted; #2138
     doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
-    persistBackgroundModel = pexConfig.Field(dtype=bool, default=True, doc = "If True persist background model with background subtracted calexp.  \
-        If False persist calexp with the background included.")
+    persistBackgroundModel = pexConfig.Field(dtype=bool, default=True,
+                                             doc = "If True persist background model with background" +
+                                             " subtracted calexp.  If False persist calexp with the" +
+                                             " background included.")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
     doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False,
                                            doc = "Compute and write src to reference matches?")
@@ -116,7 +118,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
     @pipeBase.timeMethod
     def process(self, dataRef, inputExposure, idFactory=None, backgrounds=None, enableWriteSources=True):
         """Process an Image
-        
+
         @param dataRef: data reference that corresponds to the input image
         @param inputExposure: exposure to process
         @param idFactory: afw.table.IdFactory to use for source catalog
@@ -142,7 +144,7 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             detections = self.detection.run(table, inputExposure)
             sources = detections.sources
             fpSets = detections.fpSets
-            if fpSets.background:           
+            if fpSets.background:
                 backgrounds.append(fpSets.background)
 
         if self.config.doDeblend:

@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -17,7 +17,7 @@
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import math
 
@@ -370,7 +370,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # the calibrate Source Catalog is divided into two catalogs to allow measurement to be run twice
         # schema1 contains everything except what is added by the second measurement task.
         # Before the second measurement task is run, self.schemaMapper transforms the sources into
-        # the final output schema, at the same time renaming the measurement fields to "initial_" 
+        # the final output schema, at the same time renaming the measurement fields to "initial_"
         if schema is None:
             schema = afwTable.SourceTable.makeMinimalSchema()
         self.schema1 = schema
@@ -587,7 +587,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         """!Initialise the calibration procedure by setting the PSF to a configuration-defined guess.
 
         \param[in,out] exposure Exposure to process; fake PSF will be installed here.
-        \throws AssertionError If exposure or exposure.getWcs() are None
+        \throws AssertionError if exposure is None
         """
         assert exposure, "No exposure provided"
 
