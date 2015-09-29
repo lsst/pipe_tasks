@@ -92,7 +92,8 @@ class ProcessCoaddTask(ProcessImageTask):
         ctrl.setAndMask(~0x0)
         var    = exposure.getMaskedImage().getVariance()
         mask   = exposure.getMaskedImage().getMask()
-        dstats = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.VARIANCECLIP, ctrl).getValue(afwMath.VARIANCECLIP)
+        dstats = afwMath.makeStatistics(exposure.getMaskedImage(),
+                                        afwMath.VARIANCECLIP, ctrl).getValue(afwMath.VARIANCECLIP)
         vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue(afwMath.MEANCLIP)
         vrat   = dstats / vstats
         self.log.info("Renormalising variance by %f" % (vrat))

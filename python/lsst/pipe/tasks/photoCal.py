@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -18,7 +18,7 @@ from __future__ import absolute_import, division
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 # \package lsst.pipe.tasks.
 from itertools import izip
@@ -40,8 +40,8 @@ __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 def checkSourceFlags(source, sourceKeys):
     """!Return True if the given source has all good flags set and none of the bad flags set.
 
-    \param[in] source    SourceRecord object to process.
-    \param[in] sourceKeys      Struct of source catalog keys, as returned by PhotCalTask.getSourceKeys()
+    \param[in] source      SourceRecord object to process.
+    \param[in] sourceKeys  Struct of source catalog keys, as returned by PhotCalTask.getSourceKeys()
     """
     for k in sourceKeys.goodFlags:
         if not source.get(k): return False
@@ -301,7 +301,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                                starGal=starGal)
 
     def isUnresolved(self, source, starGalKey=None):
-        """Return whether the provided source is unresolved or not
+        """!Return whether the provided source is unresolved or not
 
         This particular implementation is designed to work with the
         base_ClassificationExtendedness_value=0.0 or 1.0 scheme.  Because
@@ -318,7 +318,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
     @pipeBase.timeMethod
     def selectUnresolved(self, matches, keys):
-        """Select matches that appear to be unresolved in our data
+        """!Select matches that appear to be unresolved in our data
 
         The selection of matches that are unresolved in the reference catalog
         is done as part of selectMatches.

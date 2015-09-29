@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -12,12 +12,12 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 from .processImage import ProcessImageTask
 from lsst.ip.isr import IsrTask
@@ -30,15 +30,30 @@ import lsst.pipe.base as pipeBase
 
 class ProcessCcdConfig(ProcessImageTask.ConfigClass):
     """Config for ProcessCcd"""
-    doIsr = pexConfig.Field(dtype=bool, default=True, doc = "Perform ISR?")
+    doIsr = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc = "Perform ISR?"
+    )
     isr = pexConfig.ConfigurableField(
         target = IsrTask,
         doc = "Instrumental Signature Removal",
     )
-    doCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Perform calibration?")
-    doWriteCalibrate = pexConfig.Field(dtype=bool, default=True, doc = "Write calibration results?")
-    doWriteCalibrateMatches = pexConfig.Field(dtype=bool, default=True,
-                                              doc = "Write icSrc to reference matches?")
+    doCalibrate = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc = "Perform calibration?"
+    )
+    doWriteCalibrate = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc = "Write calibration results?"
+    )
+    doWriteCalibrateMatches = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc = "Write icSrc to reference matches?"
+    )
     calibrate = pexConfig.ConfigurableField(
         target = CalibrateTask,
         doc = "Calibration (inc. high-threshold detection and measurement)",
@@ -46,7 +61,7 @@ class ProcessCcdConfig(ProcessImageTask.ConfigClass):
 
 class ProcessCcdTask(ProcessImageTask):
     """Process a CCD
-    
+
     Available steps include:
     - instrument signature removal (ISR)
     - calibrate
@@ -75,7 +90,7 @@ class ProcessCcdTask(ProcessImageTask):
     def makeIdFactory(self, sensorRef):
         expBits = sensorRef.get("ccdExposureId_bits")
         expId = self.getExposureId(sensorRef)
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)        
+        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
     def getExposureId(self, dataRef):
         return long(dataRef.get("ccdExposureId", immediate=True))
@@ -86,7 +101,7 @@ class ProcessCcdTask(ProcessImageTask):
     @pipeBase.timeMethod
     def run(self, sensorRef):
         """Process one CCD
-        
+
         @param sensorRef: sensor-level butler data reference
         @return pipe_base Struct containing these fields:
         - postIsrExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
@@ -99,12 +114,12 @@ class ProcessCcdTask(ProcessImageTask):
 
         # initialize outputs
         postIsrExposure = None
-        
+
         if self.config.doIsr:
             postIsrExposure = self.isr.runDataRef(sensorRef).exposure
         elif self.config.doCalibrate:
             postIsrExposure = sensorRef.get(self.dataPrefix + "postISRCCD")
-        
+
         # initialize outputs
         idFactory = None
         calib = None
