@@ -67,18 +67,19 @@ which merely calls the task's `parseAndRun` method. `parseAndRun` does the follo
 - Constructs the task.
 - Calls the task's `run` method once for each data item to process.
 
-The runner script for \ref exampleCmdLineTask.ExampleCmdLineTask "ExampleCmdLineTask" is
-`examples/exampleCmdLineTask.py`:
+`examples/exampleCmdLineTask.py`, the runner script for \ref exampleCmdLineTask.ExampleCmdLineTask "ExampleCmdLineTask", is typical:
+
 \dontinclude exampleCmdLineTask.py
+\until env
 \skip from lsst.pipe
 \until parseAndRun
 
-For mosts command-line tasks you should put the run script into your package's `bin/` directory,
+For most command-line tasks you should put the run script into your package's `bin/` directory,
 so that it is on your `$PATH` when you setup your package with eups. We did not want the run script
 for ExampleCmdLineTask to be quite so accessible, so we placed it in the `examples/` directory
 instead of `bin/`.
 
-Don't forget to and your run script executable using `chmod +x`.
+Remember to make your run script executable using `chmod +x`.
 
 \section pipeTasks_writeCmdLineTask_readWriteData Reading and Writing Data
 
