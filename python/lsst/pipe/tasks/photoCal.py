@@ -287,13 +287,51 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         - fluxErr
         - goodFlags: a list of keys for field names in self.config.goodFlags
         - badFlags: a list of keys for field names in self.config.badFlags
+        - starGal: key for star/galaxy classification
         """
         goodFlags = [schema.find(name).key for name in self.config.goodFlags]
         flux = schema.find(self.config.fluxField).key
         fluxErr = schema.find(self.config.fluxField + "Sigma").key
         badFlags = [schema.find(name).key for name in self.config.badFlags]
+        try:
+            starGal = schema.find("base_ClassificationExtendedness_value").key
+        except KeyError:
+            starGal = None
+        return pipeBase.Struct(flux=flux, fluxErr=fluxErr, goodFlags=goodFlags, badFlags=badFlags,
+                               starGal=starGal)
 
-        return pipeBase.Struct(flux=flux, fluxErr=fluxErr, goodFlags=goodFlags, badFlags=badFlags)
+    def isUnresolved(self, source, starGalKey=None):
+        """Return whether the provided source is unresolved or not
+
+        This particular implementation is designed to work with the
+        base_ClassificationExtendedness_value=0.0 or 1.0 scheme.  Because
+        of the diversity of star/galaxy classification outputs (binary
+        decision vs probabilities; signs), it's difficult to make this
+        configurable without using code.  This method should therefore
+        be overridden to use the appropriate classification output.
+
+        \param[in] source      Source to test
+        \param[in] starGalKey  Struct of schema keys for source
+        \return    boolean value for starGalKey (True indicates Unresolved)
+        """
+        return source.get(starGalKey) < 0.5 if starGalKey is not None else True
+
+    @pipeBase.timeMethod
+    def selectUnresolved(self, matches, keys):
+        """Select matches that appear to be unresolved in our data
+
+        The selection of matches that are unresolved in the reference catalog
+        is done as part of selectMatches.
+
+        \param[in] matches  Matches from which to select
+        \param[in] keys     Struct of schema keys for source
+        \return    ReferenceMatchVector with stars only
+        """
+        result = afwTable.ReferenceMatchVector()
+        for m in matches:
+            if self.isUnresolved(m.second, keys.starGal):
+                result.append(m)
+        return result
 
     @pipeBase.timeMethod
     def selectMatches(self, matches, sourceKeys, filterName, frame=None):
@@ -531,16 +569,17 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         )
 
     @pipeBase.timeMethod
-    def run(self, exposure, matches):
+    def run(self, exposure, matches, doSelectUnresolved=True):
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.
 
-        \param[in]  exposure   Exposure upon which the sources in the matches were detected.
-        \param[in]  matches    Input lsst.afw.table.ReferenceMatchVector
+        \param[in]  exposure  Exposure upon which the sources in the matches were detected.
+        \param[in]  matches   Input lsst.afw.table.ReferenceMatchVector
         (\em i.e. a list of lsst.afw.table.Match with
         \c first being of type lsst.afw.table.SimpleRecord and \c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
         (will not be modified  except to set the outputField if requested.).
+        \param[in]  doSelectUnresolved  Attempt to select only unresolved sources from input catalog?
 
         \return Struct of:
          - calib -------  \link lsst::afw::image::Calib\endlink object containing the zero point
@@ -600,6 +639,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         filterName = exposure.getFilter().getName()
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
+        if doSelectUnresolved:
+            matches = self.selectUnresolved(matches, sourceKeys)
         matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,
             frame=frame)
         arrays = self.extractMagArrays(matches=matches, filterName=filterName, sourceKeys=sourceKeys)
@@ -611,7 +652,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 matches[0].second.getSchema().find(self.outputField)
             except:
                 raise RuntimeError("sources' schema does not contain the used-in-calibration flag \"%s\"" %
-                                   self.config.outputField)
+                                   self.outputField)
 
         # Fit for zeropoint.  We can run the code more than once, so as to
         # give good stars that got clipped by a bad first guess a second
