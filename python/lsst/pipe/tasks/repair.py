@@ -25,8 +25,6 @@ import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 
-import lsstDebug
-
 class RepairConfig(pexConfig.Config):
     doInterpolate = pexConfig.Field(
         dtype = bool,

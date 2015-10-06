@@ -23,12 +23,6 @@
 
 Use this as a base task for creating graphs and reports for a set of data.
 """
-import collections
-import itertools
-import re
-
-import numpy
-
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
