@@ -25,8 +25,6 @@ import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 
-import lsstDebug
-
 class RepairConfig(pexConfig.Config):
     doInterpolate = pexConfig.Field(
         dtype = bool,
@@ -234,7 +232,7 @@ class RepairTask(pipeBase.Task):
             keepCRs = self.config.cosmicray.keepCRs
         try:
             crs = measAlg.findCosmicRays(mi, psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
-        except Exception, e:
+        except Exception:
             if display:
                 import lsst.afw.display.ds9 as ds9
                 ds9.mtv(exposure, title="Failed CR")

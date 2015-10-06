@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -24,12 +23,6 @@
 
 Use this as a base task for creating graphs and reports for a set of data.
 """
-import collections
-import itertools
-import re
-
-import numpy
-
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
