@@ -69,6 +69,12 @@ Some important details of configurations:
 The configuration class is specified as ExampleSigmaClippedStatsTask class variable `ConfigClass`,
 as described in \ref pipeTasks_writeTask_classVariables.
 
+Here is the config for \ref exampleCmdLineTask.ExampleCmdLineTask "ExampleCmdLineTask", a task that calls one subtask named "stats"; notice the \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField":
+\dontinclude tasks/exampleCmdLineTask.py
+\skip class ExampleCmdLineConfig
+\until doFail
+\until )
+
 \section pipeTasks_writeTask_classVariables Class Variables
 
 Tasks require several class variables to function:
