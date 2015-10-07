@@ -44,7 +44,8 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
     """
     badMaskPlanes = pexConfig.ListField(
         dtype = str,
-        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
+        doc = "Mask planes that, if set, indicate the associated pixel should " \
+              "not be included when the calculating statistics.",
         default = ("EDGE",),
     )
     numSigmaClip = pexConfig.Field(
