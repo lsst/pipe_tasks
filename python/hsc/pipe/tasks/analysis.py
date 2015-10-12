@@ -1,17 +1,25 @@
 #!/usr/bin/env python
 
+import os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy
+from eups import Eups
+eups = Eups()
 
-from lsst.pex.config import Config, Field, ConfigField
+from contextlib import contextmanager
+
+from lsst.pex.config import Config, Field, ConfigField, ListField
 from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner
 from hsc.pipe.tasks.stack import TractDataIdContainer
+from lsst.meas.astrom import Astrometry, MeasAstromConfig
 from lsst.meas.photocal.colorterms import ColortermLibraryConfig
 
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
+import lsst.afw.coord as afwCoord
+import lsst.afw.image as afwImage
 
 class AllLabeller(object):
     labels = {'all': 0}
@@ -271,9 +279,30 @@ def concatenateCatalogs(catalogList):
         catalog.extend(cat, True)
     return catalog
 
+def joinMatches(matches, first="first.", second="second."):
+    mapperList = afwTable.SchemaMapper.join(afwTable.SchemaVector([matches[0].first.schema,
+                                                                   matches[0].second.schema]),
+                                            [first, second])
+    schema = mapperList[0].getOutputSchema()
+    distanceKey = schema.addField("distance", type="Angle", doc="Distance between %s and %s" % (first, second))
+    catalog = afwTable.BaseCatalog(schema)
+    catalog.reserve(len(matches))
+    for mm in matches:
+        row = catalog.addNew()
+        row.assign(mm.first, mapperList[0])
+        row.assign(mm.second, mapperList[1])
+        row.set(distanceKey, mm.distance*afwGeom.radians)
+    return catalog
 
 
-
+@contextmanager
+def andCatalog(version):
+    current = eups.findSetupVersion("astrometry_net_data")[0]
+    eups.setup("astrometry_net_data", version, noRecursion=True)
+    try:
+        yield
+    finally:
+        eups.setup("astrometry_net_data", current, noRecursion=True)
 
 class CoaddAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
@@ -282,12 +311,17 @@ class CoaddAnalysisConfig(Config):
     magThreshold = Field(dtype=float, default=21.0, doc="General magnitude threshold to apply")
     magThresholdMatches = Field(dtype=float, default=19.0, doc="Magnitude threshold to apply for matches")
     magMaxPlot = Field(dtype=float, default=30.0, doc="Maximum magnitude to plot")
-    matchesMaxDistance = Field(dtype=float, default=0.1, doc="Maximum plotting distance for matches")
-
+    matchesMaxDistance = Field(dtype=float, default=0.3, doc="Maximum plotting distance for matches")
+    externalCatalogs = ListField(dtype=str, default=["sdss-dr9-fink-v5b"],
+                                 doc="Additional external catalogs for matching")
+    astrometry = ConfigField(dtype=MeasAstromConfig, doc="Configuration for astrometric reference")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
+
+    def setDefaults(self):
+        self.astrometry.load(os.path.join(os.environ["OBS_SUBARU_DIR"], "config", "hsc", "filterMap.py"))
 
 
 class CoaddAnalysisRunner(TaskRunner):
@@ -315,7 +349,9 @@ class CoaddAnalysisTask(CmdLineTask):
         return parser
 
     def run(self, patchRefList, filenamePrefix, cosmos=None):
-        if self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos:
+        filterName = patchRefList[0].dataId["filter"]
+        if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
+            self.config.externalCatalogs):
             catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
         if self.config.doMags:
             self.plotMags(catalog, filenamePrefix)
@@ -328,7 +364,12 @@ class CoaddAnalysisTask(CmdLineTask):
             self.plotOverlaps(overlaps, filenamePrefix)
         if self.config.doMatches:
             matches = self.readCatalogs(patchRefList, "deepCoadd_srcMatchFull")
-            self.plotMatches(matches, patchRefList[0].dataId["filter"], filenamePrefix)
+            self.plotMatches(matches, filterName, filenamePrefix)
+
+        for cat in self.config.externalCatalogs:
+            with andCatalog(cat):
+                matches = self.matchCatalog(catalog, filterName)
+                self.plotMatches(matches, filterName, filenamePrefix + cat + "_")
 
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
@@ -352,18 +393,7 @@ class CoaddAnalysisTask(CmdLineTask):
 
     def overlaps(self, catalog):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
-        mapperList = afwTable.SchemaMapper.join(afwTable.SchemaVector([catalog.schema, catalog.schema]),
-                                                ["first.", "second."])
-        schema = mapperList[0].getOutputSchema()
-        distanceKey = schema.addField("distance", type="Angle", doc="Distance between first and second")
-        overlaps = afwTable.BaseCatalog(schema)
-        overlaps.reserve(len(matches))
-        for mm in matches:
-            row = overlaps.addNew()
-            row.assign(mm.first, mapperList[0])
-            row.assign(mm.second, mapperList[1])
-            row.set(distanceKey, mm.distance*afwGeom.radians)
-        return overlaps
+        return joinMatches(matches, "first.", "second.")
 
     def plotOverlaps(self, overlaps, filenamePrefix):
         for col in ["flux.psf", "flux.sinc", "flux.kron", "cmodel.flux"]:
@@ -406,10 +436,22 @@ class CoaddAnalysisTask(CmdLineTask):
                  magThreshold=self.config.magThreshold, magMaxPlot=self.config.magMaxPlot,
                  labeller=labeller).plotAll(filenamePrefix + "cosmos", self.log)
 
+    def matchCatalog(self, catalog, filterName):
+        astrometry = Astrometry(self.config.astrometry)
+        average = sum((afwGeom.Extent3D(src.getCoord().getVector()) for src in catalog),
+                      afwGeom.Extent3D(0, 0, 0))/len(catalog)
+        center = afwCoord.IcrsCoord(afwGeom.Point3D(average))
+        radius = max(center.angularSeparation(src.getCoord()) for src in catalog)
+        filterName = afwImage.Filter(afwImage.Filter(filterName).getId()).getName() # Get primary name
+        refs = astrometry.getReferenceSources(center.getLongitude(), center.getLatitude(), radius, filterName)
+        matches = afwTable.matchRaDec(refs, catalog, self.config.matchRadius*afwGeom.arcseconds)
+        return joinMatches(matches, "ref.", "src.")
+
     def _getConfigName(self):
         return None
     def _getMetadataName(self):
         return None
     def _getEupsVersionsName(self):
         return None
+
 
