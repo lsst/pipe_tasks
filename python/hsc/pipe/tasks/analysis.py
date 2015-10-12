@@ -249,7 +249,7 @@ def concatenateCatalogs(catalogList):
     return catalog
 
 
-class AnalysisConfig(Config):
+class CoaddAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
     matchRadius = Field(dtype=float, default=0.5, doc="Matching radius (arcseconds)")
     colorterms = ConfigField(dtype=ColortermLibraryConfig, doc="Library of color terms")
@@ -262,7 +262,7 @@ class AnalysisConfig(Config):
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
 
-class AnalysisRunner(TaskRunner):
+class CoaddAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
         kwargs["filenamePrefix"] = parsedCmd.prefix
@@ -270,10 +270,10 @@ class AnalysisRunner(TaskRunner):
         return [(patchRefList, kwargs)]
 
 
-class AnalysisTask(CmdLineTask):
+class CoaddAnalysisTask(CmdLineTask):
     _DefaultName = "analysis"
-    ConfigClass = AnalysisConfig
-    RunnerClass = AnalysisRunner
+    ConfigClass = CoaddAnalysisConfig
+    RunnerClass = CoaddAnalysisRunner
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -377,6 +377,3 @@ class AnalysisTask(CmdLineTask):
     def _getEupsVersionsName(self):
         return None
 
-
-if __name__ == "__main__":
-    AnalysisTask.parseAndRun()
