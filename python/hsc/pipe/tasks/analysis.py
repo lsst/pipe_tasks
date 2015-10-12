@@ -36,6 +36,29 @@ class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
 class MatchesStarGalaxyLabeller(StarGalaxyLabeller):
     _column = 'src.classification.extendedness'
 
+class CosmosLabeller(StarGalaxyLabeller):
+    """Do star/galaxy classification using Alexie Leauthaud's Cosmos catalog"""
+    def __init__(self, filename, radius):
+        original = afwTable.BaseCatalog.readFits(filename)
+        good = (original["CLEAN"] == 1) & (original["MU.CLASS"] == 2)
+        num = good.sum()
+        cosmos = afwTable.SimpleCatalog(afwTable.SimpleTable.makeMinimalSchema())
+        cosmos.reserve(num)
+        for ii in range(num):
+            cosmos.addNew()
+        cosmos["id"][:] = original["NUMBER"][good]
+        cosmos["coord.ra"][:] = original["ALPHA.J2000"][good]*(1.0*afwGeom.degrees).asRadians()
+        cosmos["coord.dec"][:] = original["DELTA.J2000"][good]*(1.0*afwGeom.degrees).asRadians()
+        self.cosmos = cosmos
+        self.radius = radius
+
+    def __call__(self, catalog):
+        # A kdTree would be better, but this is all we have right now
+        matches = afwTable.matchRaDec(self.cosmos, catalog, self.radius)
+        good = set(mm.second.getId() for mm in matches)
+        return numpy.array([0 if ii in good else 1 for ii in catalog["id"]])
+
+
 class Data(Struct):
     def __init__(self, catalog, quantity, mag, selection, color, plot=True):
         Struct.__init__(self, catalog=catalog[selection], quantity=quantity[selection], mag=mag[selection],
@@ -83,7 +106,7 @@ class Analysis(object):
         fig, axes = plt.subplots(1, 1)
         magMax = self.magMaxPlot
         for name, data in self.data.iteritems():
-            axes.scatter(data.mag, data.quantity, s=2, marker='o', lw=0, c=data.color, label=name, alpha=0.5)
+            axes.scatter(data.mag, data.quantity, s=2, marker='o', lw=0, c=data.color, label=name, alpha=0.3)
             magMax = min(self.magMaxPlot, data.mag.max())
         axes.set_xlabel("Mag from %s" % self.fluxColumn)
         axes.set_ylabel(self.quantityName)
@@ -249,6 +272,9 @@ def concatenateCatalogs(catalogList):
     return catalog
 
 
+
+
+
 class CoaddAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
     matchRadius = Field(dtype=float, default=0.5, doc="Matching radius (arcseconds)")
@@ -257,15 +283,18 @@ class CoaddAnalysisConfig(Config):
     magThresholdMatches = Field(dtype=float, default=19.0, doc="Magnitude threshold to apply for matches")
     magMaxPlot = Field(dtype=float, default=30.0, doc="Maximum magnitude to plot")
     matchesMaxDistance = Field(dtype=float, default=0.1, doc="Maximum plotting distance for matches")
+
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
 
+
 class CoaddAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
         kwargs["filenamePrefix"] = parsedCmd.prefix
+        kwargs["cosmos"] = parsedCmd.cosmos
         patchRefList = sum(parsedCmd.id.refList, [])
         return [(patchRefList, kwargs)]
 
@@ -279,18 +308,21 @@ class CoaddAnalysisTask(CmdLineTask):
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
         parser.add_argument("--prefix", default="", help="Prefix for filenames")
+        parser.add_argument("--cosmos", default=None, help="Filename for Leauthaud Cosmos catalog")
         parser.add_id_argument("--id", "deepCoadd_meas",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=HSC-X",
                                ContainerClass=TractDataIdContainer)
         return parser
 
-    def run(self, patchRefList, filenamePrefix):
-        if self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps:
+    def run(self, patchRefList, filenamePrefix, cosmos=None):
+        if self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos:
             catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
         if self.config.doMags:
             self.plotMags(catalog, filenamePrefix)
         if self.config.doStarGalaxy:
             self.plotStarGal(catalog, filenamePrefix)
+        if cosmos:
+            self.plotCosmos(catalog, filenamePrefix, cosmos)
         if self.config.doOverlaps:
             overlaps = self.overlaps(catalog)
             self.plotOverlaps(overlaps, filenamePrefix)
@@ -368,7 +400,11 @@ class CoaddAnalysisTask(CmdLineTask):
                  magMaxPlot=self.config.magMaxPlot, labeller=MatchesStarGalaxyLabeller()
                  ).plotAll(filenamePrefix + "matches_dec", self.log)
 
-
+    def plotCosmos(self, catalog, filenamePrefix, cosmos):
+        labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
+        Analysis(catalog, deconvMom, "Deconvolved moments", qMin=-1.0, qMax=6.0,
+                 magThreshold=self.config.magThreshold, magMaxPlot=self.config.magMaxPlot,
+                 labeller=labeller).plotAll(filenamePrefix + "cosmos", self.log)
 
     def _getConfigName(self):
         return None
