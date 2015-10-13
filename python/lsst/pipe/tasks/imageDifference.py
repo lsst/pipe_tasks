@@ -718,8 +718,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         return parser
 
 class Winter2013ImageDifferenceConfig(ImageDifferenceConfig):
-    winter2013TemplateId = pexConfig.Field(dtype=int, default=88868666,
-        doc="88868666 for sparse data; 22222200 (g) and 11111100 (i) for dense data") 
     winter2013WcsShift = pexConfig.Field(dtype=float, default=0.0,
         doc="Shift stars going into RegisterTask by this amount")
     winter2013WcsRms = pexConfig.Field(dtype=float, default=0.0,
@@ -728,10 +726,17 @@ class Winter2013ImageDifferenceConfig(ImageDifferenceConfig):
     def setDefaults(self):
         ImageDifferenceConfig.setDefaults(self)
         self.getTemplate.retarget(GetCalexpAsTemplateTask)
-        self.getTemplate.visit = self.winter2013TemplateId
 
 
 class Winter2013ImageDifferenceTask(ImageDifferenceTask):
+    """!Image difference Task used in the Winter 2013 data challege.
+    Enables testing the effects of registration shifts and scatter.
+
+    For use with winter 2013 simulated images:
+    Use --templateId visit=88868666 for sparse data
+        --templateId visit=22222200 for dense data (g)
+        --templateId visit=11111100 for dense data (i)
+    """
     ConfigClass = Winter2013ImageDifferenceConfig
     _DefaultName = "winter2013ImageDifference"
 
