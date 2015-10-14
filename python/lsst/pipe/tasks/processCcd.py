@@ -74,9 +74,9 @@ class ProcessCcdTask(ProcessImageTask):
 
     def __init__(self, **kwargs):
         ProcessImageTask.__init__(self, **kwargs)
-        self.makeSubtask("isr")
+        if self.config.doIsr :
+            self.makeSubtask("isr")
         self.makeSubtask("calibrate")
-
         # Setup our schema by starting with fields we want to propagate from icSrc.
         calibSchema = self.calibrate.schema
         self.schemaMapper = afwTable.SchemaMapper(calibSchema, self.schema)
@@ -98,6 +98,22 @@ class ProcessCcdTask(ProcessImageTask):
     def getAstrometer(self):
         return self.calibrate.astrometry
 
+    def setPostIsrExposure(self, sensorRef):
+        """Load the post instrument signature removal image
+
+        \param[in]  sensorRef        sensor-level butler data reference
+
+        \return     postIsrExposure  exposure to be passed to processCcdExposure
+        """
+        # initialize postIsrExposure exposure
+        postIsrExposure = None
+        if self.config.doIsr:
+            postIsrExposure = self.isr.runDataRef(sensorRef).exposure
+        elif self.config.doCalibrate:
+            postIsrExposure = sensorRef.get(self.dataPrefix + "postISRCCD")
+
+        return postIsrExposure
+
     @pipeBase.timeMethod
     def run(self, sensorRef):
         """Process one CCD
@@ -112,13 +128,8 @@ class ProcessCcdTask(ProcessImageTask):
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
-        # initialize outputs
-        postIsrExposure = None
-
-        if self.config.doIsr:
-            postIsrExposure = self.isr.runDataRef(sensorRef).exposure
-        elif self.config.doCalibrate:
-            postIsrExposure = sensorRef.get(self.dataPrefix + "postISRCCD")
+        # initialize postIsrExposure exposure
+        postIsrExposure = self.setPostIsrExposure(sensorRef)
 
         # initialize outputs
         idFactory = None
@@ -174,7 +185,6 @@ class ProcessCcdTask(ProcessImageTask):
             calib = calib,
             **result.getDict()
         )
-
 
     def propagateCalibFlags(self, icSources, sources, matchRadius=1):
         """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
