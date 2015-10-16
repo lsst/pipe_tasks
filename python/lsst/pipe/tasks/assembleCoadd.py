@@ -493,7 +493,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             coaddSubregion = afwMath.statisticsStack(
                 maskedImageList, statsFlags, statsCtrl, weightList)
 
-        coaddView <<= coaddSubregion
+        coaddView[:] = coaddSubregion
 
 
     def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):
