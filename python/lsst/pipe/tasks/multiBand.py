@@ -459,6 +459,10 @@ class MeasureMergedCoaddSourcesConfig(Config):
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
     measurement = ConfigurableField(target=SourceMeasurementTask, doc="Source measurement")
     setPrimaryFlags = ConfigurableField(target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch")
+    doPropagateFlags = Field(
+        dtype=bool, default=True,
+        doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)"
+    )
     propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
     astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
@@ -517,8 +521,9 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
             self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
-        self.makeSubtask("propagateFlags", schema=self.schema)
         self.makeSubtask("astrometry", schema=self.schema)
+        if self.config.doPropagateFlags:
+            self.makeSubtask("propagateFlags", schema=self.schema)
 
     def run(self, patchRef):
         """Measure and deblend"""
@@ -536,8 +541,9 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
                                  includeDeblend=self.config.doDeblend)
-        self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
-                                exposure.getWcs())
+        if self.config.doPropagateFlags:
+            self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
+                                    exposure.getWcs())
         if self.config.doMatchSources:
             self.writeMatches(patchRef, exposure, sources)
         self.write(patchRef, sources)
