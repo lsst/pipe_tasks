@@ -523,7 +523,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         self.makeSubtask("propagateFlags", schema=self.schema)
-        self.makeSubtask("astrometry", schema=self.schema)
+        if self.config.doMatchSources:
+            self.makeSubtask("astrometry", schema=self.schema)
 
     def run(self, patchRef):
         """Measure and deblend"""
