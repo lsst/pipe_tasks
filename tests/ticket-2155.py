@@ -33,6 +33,8 @@ import lsst.afw.image   as afwImage
 import lsst.afw.table   as afwTable
 import lsst.pex.logging as pexLog
 
+display = False
+
 class TestForceWcs(unittest.TestCase):
     def setUp(self):
         eupsObj = eups.Eups()
@@ -97,6 +99,24 @@ class TestForceWcs(unittest.TestCase):
             print 'outwcs:', outstr
             print len(ast.matches), 'matches'
             self.assertTrue(len(ast.matches) > 10)
+
+            if display:
+                import lsst.afw.display.ds9 as ds9
+                ds9.mtv(exposure, frame=1)
+                x0, y0 = exposure.getXY0()
+                with ds9.Buffering():
+                    for ss in astrom.astrometer.getReferenceSourcesForWcs(inwcs, exposure.getDimensions(), "r",
+                                                                          x0=x0, y0=y0):
+                        xy = inwcs.skyToPixel(ss.getCoord())
+                        ds9.dot("+", xy[0] - x0, xy[1] - y0, ctype='red', frame=1)
+                    for ss in sources:
+                        xy = ss.getCentroid()
+                        ds9.dot("x", xy[0] - x0, xy[1] - y0, ctype='red', frame=1)
+                    for mm in ast.matches:
+                        xy = mm.second.getCentroid()
+                        ds9.dot('o', xy[0] - x0, xy[1] - y0, ctype='blue', frame=1)
+                import pdb;pdb.set_trace() # Pause for inspection
+
         #exposure.writeFits('out-2155.fits')
 
 def suite():
