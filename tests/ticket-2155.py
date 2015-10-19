@@ -98,7 +98,6 @@ class TestForceWcs(unittest.TestCase):
             print 'inwcs:', instr
             print 'outwcs:', outstr
             print len(ast.matches), 'matches'
-            self.assertTrue(len(ast.matches) > 10)
 
             if display:
                 import lsst.afw.display.ds9 as ds9
@@ -116,6 +115,8 @@ class TestForceWcs(unittest.TestCase):
                         xy = mm.second.getCentroid()
                         ds9.dot('o', xy[0] - x0, xy[1] - y0, ctype='blue', frame=1)
                 import pdb;pdb.set_trace() # Pause for inspection
+
+            self.assertTrue(len(ast.matches) >= 10)
 
         #exposure.writeFits('out-2155.fits')
 
