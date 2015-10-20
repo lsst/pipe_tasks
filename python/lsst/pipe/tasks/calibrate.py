@@ -309,6 +309,7 @@ The first thing to do is define my own task:
 Then we need our own \c run method.  First unpack the filtername and wcs
 \skip run
 \until wcs
+
 Then build a "reference catalog" by shamelessly copying the catalog of detected sources
 \skip schema
 \until get("photometric")
@@ -316,6 +317,7 @@ Then build a "reference catalog" by shamelessly copying the catalog of detected 
 Then "match" by zipping up the two catalogs,
 \skip matches
 \until append
+
 and finally return the desired results.
 \skip return
 \until )
