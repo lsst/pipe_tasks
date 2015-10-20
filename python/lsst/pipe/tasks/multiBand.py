@@ -131,6 +131,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
         results = self.runDetection(exposure, self.makeIdFactory(patchRef))
         self.write(results, patchRef)
+        patchRef.put(exposure, self.config.coaddName + "Coadd_calexp")
         return results
 
     def scaleVariance(self, maskedImage):
@@ -490,7 +491,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2 filter=r",
+        parser.add_id_argument("--id", "deepCoadd_calexp",
+                               help="data ID, e.g. --id tract=12345 patch=1,2 filter=r",
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
@@ -528,7 +530,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
     def run(self, patchRef):
         """Measure and deblend"""
-        exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
+        exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
         sources = self.readSources(patchRef)
         if self.config.doDeblend:
             self.deblend.run(exposure, sources, exposure.getPsf())
