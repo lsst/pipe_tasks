@@ -312,8 +312,6 @@ Then we need our own \c run method.  First unpack the filtername and wcs
 Then build a "reference catalog" by shamelessly copying the catalog of detected sources
 \skip schema
 \until get("photometric")
-(you need to set "flux" as well as \c filterName due to a bug in the photometric calibration code;
-<A HREF=https://jira.lsstcorp.org/browse/DM-933>DM-933</A>).
 
 Then "match" by zipping up the two catalogs,
 \skip matches
