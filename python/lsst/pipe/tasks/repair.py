@@ -24,17 +24,13 @@ import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
-from lsst.pipe.tasks.interpImage import InterpImageConfig
+from lsst.pipe.tasks.interpImage import InterpImageTask
 
 class RepairConfig(pexConfig.Config):
     doInterpolate = pexConfig.Field(
         dtype = bool,
         doc = "Interpolate over defects? (ignored unless you provide a list of defects)",
         default = True,
-    )
-    interp = pexConfig.ConfigField(
-        dtype = InterpImageConfig,
-        doc = "Options for interpolating",
     )
     doCosmicRay = pexConfig.Field(
         dtype = bool,
@@ -45,6 +41,15 @@ class RepairConfig(pexConfig.Config):
         dtype = measAlg.FindCosmicRaysConfig,
         doc = "Options for finding and masking cosmic rays",
     )
+    interp = pexConfig.ConfigurableField(
+        target = InterpImageTask,
+        doc = "Interpolate over bad image pixels",
+    )
+
+    def setDefaults(self):
+        self.interp.useFallbackValueAtEdge = True
+        self.interp.fallbackValueType = "MEANCLIP"
+        self.interp.negativeFallbackAllowed = True
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -163,6 +168,11 @@ class RepairTask(pipeBase.Task):
     """
     ConfigClass = RepairConfig
 
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
+        if self.config.doInterpolate:
+            self.makeSubtask("interp")
+
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, keepCRs=None):
         """!Repair an Exposure's defects and cosmic rays
@@ -188,30 +198,12 @@ class RepairTask(pipeBase.Task):
 
         self.display('repair.before', exposure=exposure)
         if defects is not None and self.config.doInterpolate:
-            self.interpolate(exposure, defects,
-                             useFallbackValueAtEdge=self.config.interp.useFallbackValueAtEdge)
+            self.interp.run(exposure, defects=defects)
 
         if self.config.doCosmicRay:
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
         self.display('repair.after', exposure=exposure)
-
-    def interpolate(self, exposure, defects, useFallbackValueAtEdge=False):
-        """Interpolate over defects
-
-        \param[in,out] exposure  Exposure to process
-        \param[in]     defects   Defect list
-        """
-        assert exposure, "No exposure provided"
-        assert defects is not None, "No defects provided"
-        psf = exposure.getPsf()
-        assert psf, "No psf provided"
-
-        mi = exposure.getMaskedImage()
-        fallbackValue = afwMath.makeStatistics(mi, afwMath.MEANCLIP).getValue()
-        measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue, useFallbackValueAtEdge)
-
-        self.log.info("Interpolated over %d defects." % len(defects))
 
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
