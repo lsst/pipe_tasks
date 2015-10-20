@@ -67,7 +67,7 @@ class ForcedPhotCoaddTask(ForcedPhotImageTask):
         self.dataPrefix = self.config.coaddName + "Coadd_"
 
     def getExposure(self, dataRef):
-        name = self.config.coaddName + "Coadd"
+        name = self.config.coaddName + "Coadd_calexp"
         return dataRef.get(name) if dataRef.datasetExists(name) else None
 
     def makeIdFactory(self, dataRef):
@@ -115,7 +115,7 @@ class ForcedPhotCoaddTask(ForcedPhotImageTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = lsst.pipe.base.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
+        parser.add_id_argument("--id", "deepCoadd_calexp", help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
