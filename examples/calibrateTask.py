@@ -87,7 +87,7 @@ class MyAstrometryTask(AstrometryTask):
             flux = 1e-3*s.getPsfFlux()*np.random.normal(1.0, 2e-2)
             m.set(filterName, flux)
             m.set("flux", flux)
-            m.set("coord", wcs.pixelToSky(s.getCentroid()))
+            m.setCoord(wcs.pixelToSky(s.getCentroid()))
 
         refCat.get("photometric")[:] = True
         #
