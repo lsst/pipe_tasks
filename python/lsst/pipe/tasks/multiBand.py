@@ -114,6 +114,9 @@ class DetectCoaddSourcesConfig(Config):
         Config.setDefaults(self)
         self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
+        # Coadds are made from background-subtracted CCDs, so background subtraction should be very basic
+        self.detection.background.useApprox = False
+        self.detection.background.binSize = 4096
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
 
 ## \addtogroup LSST_task_documentation
@@ -154,8 +157,9 @@ class DetectCoaddSourcesTask(CmdLineTask):
         deepCoadd{tract,patch,filter}: ExposureF
       \par Outputs:
         deepCoadd_det{tract,patch,filter}: SourceCatalog (only parent Footprints)
-        \n deepCoadd_calexp_det{tract,patch,filter}: Variance scaled input exposure (ExposureF)
-        \n deepCoadd_calexp_detBackground{tract,patch,filter}: BackgroundList
+        \n deepCoadd_calexp{tract,patch,filter}: Variance scaled, background-subtracted input
+                                                 exposure (ExposureF)
+        \n deepCoadd_calexp_background{tract,patch,filter}: BackgroundList
       \par Data Unit:
         tract, patch, filter
 
@@ -288,9 +292,9 @@ class DetectCoaddSourcesTask(CmdLineTask):
         \param[in] patchRef: data reference for patch
         """
         coaddName = self.config.coaddName + "Coadd"
-        patchRef.put(results.backgrounds, coaddName + "_calexp_detBackground")
+        patchRef.put(results.backgrounds, coaddName + "_calexp_background")
         patchRef.put(results.sources, coaddName + "_det")
-        patchRef.put(exposure, coaddName + "_calexp_det")
+        patchRef.put(exposure, coaddName + "_calexp")
 
 ##############################################################################################################
 
@@ -890,7 +894,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
       \par Inputs:
         deepCoadd_mergeDet{tract,patch}: SourceCatalog
-        \n deepCoadd_calexp_det{tract,patch,filter}: ExposureF
+        \n deepCoadd_calexp{tract,patch,filter}: ExposureF
       \par Outputs:
         deepCoadd_meas{tract,patch,filter}: SourceCatalog
       \par Data Unit:
@@ -975,7 +979,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2 filter=r",
+        parser.add_id_argument("--id", "deepCoadd_calexp",
+                               help="data ID, e.g. --id tract=12345 patch=1,2 filter=r",
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
@@ -1022,7 +1027,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         from individual visits. Optionally match the sources to a reference catalog and write the matches.
         Finally, write the deblended sources and measurements out.
         """
-        exposure = patchRef.get(self.config.coaddName + "Coadd_calexp_det", immediate=True)
+        exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
         sources = self.readSources(patchRef)
         if self.config.doDeblend:
             self.deblend.run(exposure, sources, exposure.getPsf())
