@@ -25,10 +25,10 @@
 Tests for bad pixel interpolation task
 
 Run with:
-   python interpolate.py
+   python testInterpImageTask.py
 or
    python
-   >>> import interpolate; interpolate.run()
+   >>> import testInterpImageTask; testInterpImageTask.run()
 """
 
 import unittest
