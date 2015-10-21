@@ -67,6 +67,11 @@ def addDefects(exp, nBadCols=10):
         subIm = afwImage.ImageF(img, bbox)
         subIm.set(1e7)
         defectList.push_back(measAlg.Defect(bbox))
+    # set a 15 pixel box of defects at the upper left corner to demonstrate fallbackValue
+    bbox = afwGeom.Box2I(afwGeom.PointI(0, ysize-15), afwGeom.ExtentI(15, 15))
+    subIm = afwImage.ImageF(img, bbox)
+    subIm.set(1e7)
+    defectList.push_back(measAlg.Defect(bbox))
     return defectList
 
 def runRepair(exp, defectList):
