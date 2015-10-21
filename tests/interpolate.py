@@ -31,13 +31,13 @@ or
    >>> import interpolate; interpolate.run()
 """
 
-import os
 import unittest
 import numpy as np
 import lsst.utils.tests as tests
 import lsst.afw.image as afwImage
 import lsst.afw.display.ds9 as ds9
-import lsst.meas.algorithms as measAlg
+import lsst.ip.isr as ipIsr
+import lsst.pex.config as pexConfig
 from lsst.pipe.tasks.interpImage import InterpImageTask
 
 try:
@@ -49,58 +49,91 @@ class interpolationTestCase(unittest.TestCase):
     """A test case for interpolation"""
     def setUp(self):
         self.FWHM = 5
-        self.psf = measAlg.DoubleGaussianPsf(15, 15, self.FWHM/(2*np.sqrt(2*np.log(2))))
-
-    def tearDown(self):
-        del self.psf
 
     def testEdge(self):
         """Test that we can interpolate to the edge"""
 
-        for useFallbackValueAtEdge in (True, False):
+        mi = afwImage.MaskedImageF(80, 30)
+        ima = mi.getImage().getArray()
+        #
+        # We'll set the BAD bit in pixels we wish to interpolate over
+        #
+        pixelPlane = "BAD"
+        badBit = afwImage.MaskU.getPlaneBitMask(pixelPlane)
+        #
+        # Set bad columns near left and right sides of image
+        #
+        nBadCol = 10
+        mi.set((0, 0x0, 0))
+
+        np.random.seed(666)
+        ima[:] = np.random.uniform(-1, 1, ima.shape)
+
+        mi[0:nBadCol, :] = (10, badBit, 0) # Bad left edge
+        mi[-nBadCol:, :] = (10, badBit, 0) # With another bad set of columns next to bad left edge
+        mi[nBadCol+1:nBadCol+4, 0:10] = (100, badBit, 0) # Bad right edge
+        mi[-nBadCol-4:-nBadCol-1, 0:10] = (100, badBit, 0) # more bad of columns next to bad right edge
+
+        defectList = ipIsr.getDefectListFromMask(mi, pixelPlane, growFootprints=0)
+
+        if display:
+            ds9.mtv(mi, frame=0)
+
+        def validateInterp(miInterp, useFallbackValueAtEdge, fallbackValue):
+            imaInterp = miInterp.getImage().getArray()
+            if display:
+                ds9.mtv(miInterp, frame=1)
+            self.assertGreater(np.min(imaInterp), min(-2, 2*fallbackValue))
+            self.assertGreater(max(2, 2*fallbackValue), np.max(imaInterp))
+            val0 = np.mean(miInterp.getImage()[1, :].getArray())
+            if useFallbackValueAtEdge:
+                self.assertAlmostEqual(val0, fallbackValue, 6)
+            else:
+                self.assertNotEqual(val0, 0)
+
+        for useFallbackValueAtEdge in (False, True):
+            miInterp = mi.clone()
             config = InterpImageTask.ConfigClass()
             config.useFallbackValueAtEdge = useFallbackValueAtEdge
             interpTask = InterpImageTask(config)
 
-            mi = afwImage.MaskedImageF(80, 30)
-            ima = mi.getImage().getArray()
-            #
-            # We'll set the BAD bit in pixels we wish to interpolate over
-            #
-            pixelPlane = "BAD"
-            badBit = afwImage.MaskU.getPlaneBitMask(pixelPlane)
-            #
-            # Set bad columns near left and right sides of image
-            #
-            nBadCol = 10
-            mi.set((0, 0x0, 0))
-
-            np.random.seed(666)
-            ima[:] = np.random.uniform(-1, 1, ima.shape)
-            #
-            mi[0:nBadCol, :] = (10, badBit, 0) # Bad left edge
-            mi[-nBadCol:, :] = (10, badBit, 0) # With another bad set of columns next to bad left edge
-            mi[nBadCol+1:nBadCol+4, 0:10] = (100, badBit, 0) # Bad right edge
-            mi[-nBadCol-4:-nBadCol-1, 0:10] = (100, badBit, 0) # more bad of columns next to bad right edge
-
-            if display:
-                ds9.mtv(mi, frame=0)
-            #
-            # Time to interpolate
-            #
-            interpTask.run(mi, pixelPlane, self.psf, fallbackValue=0)
-
-            if display:
-                ds9.mtv(mi, frame=1)
-
-            self.assertGreater(np.min(ima), -2)
-            self.assertGreater(2, np.max(ima))
-
-            val0 = np.mean(mi.getImage()[1, :].getArray())
             if useFallbackValueAtEdge:
-                self.assertEqual(val0, 0)
+                config.fallbackUserValue = -1.0
+                # choiceField fallbackValueType cannot be None if useFallbackValueAtEdge is True
+                config.fallbackValueType = None
+                self.assertRaises(NotImplementedError, interpTask._setFallbackValue, miInterp)
+                # make sure an invalid fallbackValueType raises a pexConfig.FieldValidationError
+                self.assertRaises(pexConfig.FieldValidationError, config.fallbackValueType, "NOTUSED")
+                # make sure ValueError is raised if both a planeName and defects list are provided
+                self.assertRaises(ValueError, interpTask.run, miInterp, defects=defectList,
+                                  planeName=pixelPlane, fwhmPixels=self.FWHM)
+
+                for fallbackValueType in ("USER", "MEAN", "MEDIAN", "MEANCLIP"):
+                    for negativeFallbackAllowed in (True, False):
+                        config.negativeFallbackAllowed = negativeFallbackAllowed
+                        config.fallbackValueType = fallbackValueType
+                        # Should raise if negative not allowed, but USER supplied negative value
+                        if not negativeFallbackAllowed and fallbackValueType == "USER":
+                            self.assertRaises(ValueError, config.validate)
+
+                        interpTask = InterpImageTask(config)
+                        fallbackValue = interpTask._setFallbackValue(mi)
+                        #
+                        # Time to interpolate
+                        #
+                        miInterp = mi.clone()
+                        interpTask.run(miInterp, planeName=pixelPlane, fwhmPixels=self.FWHM)
+                        validateInterp(miInterp, useFallbackValueAtEdge, fallbackValue)
+                        miInterp = mi.clone()
+                        interpTask.run(miInterp, defects=defectList)
+                        validateInterp(miInterp, useFallbackValueAtEdge, fallbackValue)
             else:
-                self.assertNotEqual(val0, 0)
+                #
+                # Time to interpolate
+                #
+                miInterp = mi.clone()
+                interpTask.run(miInterp, planeName=pixelPlane, fwhmPixels=self.FWHM)
+                validateInterp(miInterp, useFallbackValueAtEdge, 0)
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
