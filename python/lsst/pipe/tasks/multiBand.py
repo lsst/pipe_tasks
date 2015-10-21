@@ -477,6 +477,8 @@ class MeasureMergedCoaddSourcesConfig(Config):
         self.deblend.propagateAllPeaks = True
         self.astrometry.forceKnownWcs=True
         self.astrometry.solver.calculateSip=False
+        self.measurement.doBlendedness = True
+
 
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
     """Measure sources using the merged catalog of detections
