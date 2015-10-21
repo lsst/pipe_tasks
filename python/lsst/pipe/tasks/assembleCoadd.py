@@ -470,7 +470,6 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.log.logdebug("Computing coadd over %s" % bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
-        coaddView = afwImage.MaskedImageF(coaddMaskedImage, bbox, afwImage.PARENT, False)
         maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
         for tempExpRef, imageScaler, bgInfo in zip(tempExpRefList, imageScalerList, bgInfoList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
@@ -493,7 +492,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             coaddSubregion = afwMath.statisticsStack(
                 maskedImageList, statsFlags, statsCtrl, weightList)
 
-        coaddView[:] = coaddSubregion
+        coaddMaskedImage.assign(coaddSubregion, bbox)
 
 
     def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):
