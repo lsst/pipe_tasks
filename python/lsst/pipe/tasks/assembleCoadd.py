@@ -137,7 +137,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         The coadd is computed as a mean with optional outlier rejection.
 
-        AssumeCoaddTask performs coaddition of "coadd temporary exposures" ("coaddTempExps").  Each
+        AssembleCoaddTask performs coaddition of "coadd temporary exposures" ("coaddTempExps").  Each
         coaddTempExp is the size of a patch and contains data for one run, visit or (for a non-mosaic camera)
         exposure. The coaddTempExps to coadd are selected from the provided selectDataList based on their
         overlap with the patch specified by dataRef.
