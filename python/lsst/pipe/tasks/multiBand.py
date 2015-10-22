@@ -93,6 +93,9 @@ class DetectCoaddSourcesConfig(Config):
         Config.setDefaults(self)
         self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
+        # Coadds are made from background-subtracted CCDs, so background subtraction should be very basic
+        self.detection.background.useApprox = False
+        self.detection.background.binSize = 4096
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
 
 
