@@ -61,14 +61,15 @@ except ImportError:
     print "meas_base could not be imported; skipping this test"
     sys.exit(0)
 
-from lsst.pipe.tasks.processCoadd import ProcessCoaddTask
 from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTask,
                                        MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
 
-
-REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
-CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
-DATAREPO_ROOT = "testCoadds-data"
+try:
+    REUSE_DATAREPO
+except NameError:              # Only set variables on initial import
+    REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
+    CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
+    DATAREPO_ROOT = "testCoadds-data"
 
 class CoaddsTestCase(lsst.utils.tests.TestCase):
 
@@ -323,10 +324,19 @@ def suite():
 
 def run(shouldExit=False):
     status = lsst.utils.tests.run(suite(), False)
-    if CLEANUP_DATAREPO and os.path.exists(DATAREPO_ROOT):
-        shutil.rmtree(DATAREPO_ROOT)
-    if shouldExit:
-        sys.exit(status)
+    if os.path.exists(DATAREPO_ROOT):
+        if CLEANUP_DATAREPO:
+            if status == 0:
+                shutil.rmtree(DATAREPO_ROOT)
+            else:
+                # Do not delete the DATAREPO_ROOT if the test failed to allow for forensics
+                print >> sys.stderr, "Tests failed; not cleaning up %s" % os.path.abspath(DATAREPO_ROOT)
+        else:
+            print >> sys.stderr, "CLEANUP_DATAREPO is False; not cleaning up %s" % \
+                os.path.abspath(DATAREPO_ROOT)
+        if shouldExit:
+            sys.exit(status)
+
     return status
 
 if __name__ == "__main__":
