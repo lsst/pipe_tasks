@@ -61,13 +61,12 @@ except ImportError:
     print "meas_base could not be imported; skipping this test"
     sys.exit(0)
 
-from lsst.pipe.tasks.processCoadd import ProcessCoaddTask
 from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTask,
                                        MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
 
 try:
     REUSE_DATAREPO
-except NameError:                       # only set variables on initial import
+except NameError:              # Only set variables on initial import
     REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
     CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
     DATAREPO_ROOT = "testCoadds-data"
@@ -330,6 +329,7 @@ def run(shouldExit=False):
             if status == 0:
                 shutil.rmtree(DATAREPO_ROOT)
             else:
+                # Do not delete the DATAREPO_ROOT if the test failed to allow for forensics
                 print >> sys.stderr, "Tests failed; not cleaning up %s" % os.path.abspath(DATAREPO_ROOT)
         else:
             print >> sys.stderr, "CLEANUP_DATAREPO is False; not cleaning up %s" % \
