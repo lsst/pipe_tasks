@@ -1,6 +1,6 @@
 # 
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 # 
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -17,13 +17,14 @@
 # 
 # You should have received a copy of the LSST License Statement and 
 # the GNU General Public License along with this program.  If not, 
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
+from lsst.pipe.tasks.interpImage import InterpImageTask
 
 class RepairConfig(pexConfig.Config):
     doInterpolate = pexConfig.Field(
@@ -40,6 +41,15 @@ class RepairConfig(pexConfig.Config):
         dtype = measAlg.FindCosmicRaysConfig,
         doc = "Options for finding and masking cosmic rays",
     )
+    interp = pexConfig.ConfigurableField(
+        target = InterpImageTask,
+        doc = "Interpolate over bad image pixels",
+    )
+
+    def setDefaults(self):
+        self.interp.useFallbackValueAtEdge = True
+        self.interp.fallbackValueType = "MEANCLIP"
+        self.interp.negativeFallbackAllowed = True
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -102,7 +112,7 @@ class RepairTask(pipeBase.Task):
         </DL>
       <DT> \c displayCR
       <DD> If True, display the exposure on ds9's frame 1 and overlay bounding boxes around detects CRs.
-    </DL>  
+    </DL>
     \section pipe_tasks_repair_Example A complete example of using RepairTask
 
     This code is in runRepair.py in the examples directory, and can be run as \em e.g.
@@ -132,7 +142,8 @@ class RepairTask(pipeBase.Task):
     \skip addDefects
     \until push_back
 
-    Finally, the exposure can be repaired.  Create an instance of the task and run it.  The exposure is modified in place.
+    Finally, the exposure can be repaired.  Create an instance of the task and run it.  The exposure
+    is modified in place.
     \skip RepairTask
     \until repair.run
 
@@ -157,13 +168,20 @@ class RepairTask(pipeBase.Task):
     """
     ConfigClass = RepairConfig
 
+    def __init__(self, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
+        if self.config.doInterpolate:
+            self.makeSubtask("interp")
+
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, keepCRs=None):
         """!Repair an Exposure's defects and cosmic rays
 
-        \param[in, out] exposure lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.  Modified in place.
-        \param[in] defects  an lsst.meas.algorithms.DefectListT object.  If None, do no defect correction.
-        \param[in] keepCRs  don't interpolate over the CR pixels (defer to RepairConfig if None)
+        \param[in, out] exposure  lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.
+                                  Modified in place.
+        \param[in]      defects   an lsst.meas.algorithms.DefectListT object.  If None, do no
+                                  defect correction.
+        \param[in]      keepCRs   don't interpolate over the CR pixels (defer to RepairConfig if None)
 
         \throws AssertionError with the following strings:
 
@@ -180,34 +198,18 @@ class RepairTask(pipeBase.Task):
 
         self.display('repair.before', exposure=exposure)
         if defects is not None and self.config.doInterpolate:
-            self.interpolate(exposure, defects)
+            self.interp.run(exposure, defects=defects)
 
         if self.config.doCosmicRay:
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
         self.display('repair.after', exposure=exposure)
 
-    def interpolate(self, exposure, defects):
-        """Interpolate over defects
-
-        @param[in,out] exposure Exposure to process
-        @param defects Defect list
-        """
-        assert exposure, "No exposure provided"
-        assert defects is not None, "No defects provided"
-        psf = exposure.getPsf()
-        assert psf, "No psf provided"
-
-        mi = exposure.getMaskedImage()
-        fallbackValue = afwMath.makeStatistics(mi, afwMath.MEANCLIP).getValue()
-        measAlg.interpolateOverDefects(mi, psf, defects, fallbackValue)
-        self.log.info("Interpolated over %d defects." % len(defects))
-
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
 
-        @param[in,out] exposure Exposure to process
-        @param keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
+        \param[in,out] exposure Exposure to process
+        \param[in]     keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display
@@ -237,7 +239,7 @@ class RepairTask(pipeBase.Task):
                 import lsst.afw.display.ds9 as ds9
                 ds9.mtv(exposure, title="Failed CR")
             raise
-            
+
         num = 0
         if crs is not None:
             mask = mi.getMask()
@@ -251,7 +253,7 @@ class RepairTask(pipeBase.Task):
 
                 ds9.incrDefaultFrame()
                 ds9.mtv(exposure, title="Post-CR")
-                
+
                 with ds9.Buffering():
                     for cr in crs:
                         displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
