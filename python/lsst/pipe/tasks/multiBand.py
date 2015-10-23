@@ -583,7 +583,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         if result.matches:
             matches = afwTable.packMatches(result.matches)
             matches.table.setMetadata(result.matchMetadata)
-            dataRef.put(matches, self.config.coaddName + "Coadd_srcMatch")
+            dataRef.put(matches, self.config.coaddName + "Coadd_measMatch")
+        return result
 
     def write(self, dataRef, sources):
         """Write the source catalog"""
