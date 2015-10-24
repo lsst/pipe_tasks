@@ -22,6 +22,8 @@
 #
 import numpy
 import lsst.pex.config as pexConfig
+import lsst.pex.exceptions as pexExceptions
+import lsst.afw.detection as afwDetect
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -118,11 +120,22 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                "would have contributed exceeds this value."),
         default = {"SAT": 0.1},
     )
+    #
+    # N.b. These configuration options only set the bitplane config.brightObjectMaskName
+    # To make this useful you *must* also configure the flags.pixel algorithm, for example
+    # by adding 
+    #   root.measurement.algorithms["flags.pixel"].center.append("BRIGHT_MASK")
+    #   root.measurement.algorithms["flags.pixel"].any.append("BRIGHT_MASK")
+    # to your measureCoaddSources.py config overrides
+    #
+    doMaskBrightObjects = pexConfig.Field(dtype=bool, default=True,
+                                          doc="Set mask and flag bits for bright objects?")
+    brightObjectMaskName = pexConfig.Field(dtype=str, default="BRIGHT_OBJECT",
+                                           doc="Name of mask bit used for bright objects")
 
     def setDefaults(self):
         super(AssembleCoaddConfig, self).setDefaults()
         self.badMaskPlanes = ["NO_DATA", "BAD", "CR",]
-
 
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadd from a set of coaddTempExp
@@ -135,6 +148,15 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.makeSubtask("interpImage")
         self.makeSubtask("matchBackgrounds")
         self.makeSubtask("scaleZeroPoint")
+
+        if self.config.doMaskBrightObjects:
+            mask = afwImage.MaskU()
+            try:
+                self.brightObjectBitmask = 1 << mask.addMaskPlane(self.config.brightObjectMaskName)
+            except pexExceptions.LsstCppException:
+                raise RuntimeError("Unable to define mask plane for bright objects; planes used are %s" %
+                                   mask.getMaskPlaneDict().keys())
+            del mask
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
@@ -197,6 +219,16 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         if self.config.doInterp:
             self.interpImage.interpolateOnePlane(coaddExp.getMaskedImage(), "NO_DATA", psf=coaddExp.getPsf())
+
+        if self.config.doMaskBrightObjects:
+            try:
+                brightObjectMasks = dataRef.get("brightObjectMask", immediate=True)
+            except Exception as e:
+                self.log.warn("Unable to read brightObjectMasks; skipping: %s" % e)
+                brightObjectMasks = None
+
+            if brightObjectMasks:
+                self.setBrightObjectMasks(coaddExp, dataRef.dataId, brightObjectMasks)
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
@@ -514,6 +546,35 @@ class AssembleCoaddTask(CoaddBaseTask):
                                    backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
                 metadata.addDouble("CTExp_SDQA2_%d" % (ind),
                                    backgroundInfo.fitRMS)
+
+    def setBrightObjectMasks(self, exposure, dataId, brightObjectMasks):
+        """Set the bright object masks
+
+        exposure:          Exposure under consideration
+        brightObjectMasks: afwTable of bright objects to mask
+        """
+        #
+        # Check the metadata specifying the tract/patch/filter
+        #
+        md = brightObjectMasks.table.getMetadata()
+        for k in dataId:
+            if not md.exists(k):
+                self.log.warn("Expected to see %s in metadata" % k)
+            else:
+                if md.get(k) != dataId[k]:
+                    self.log.warn("Expected to see %s == %s in metadata, saw %s" % (k, md.get(k), dataId[k]))
+
+        mask = exposure.getMaskedImage().getMask()
+        wcs = exposure.getWcs()
+        plateScale = wcs.pixelScale().asArcseconds()
+
+        for rec in brightObjectMasks:
+            center = afwGeom.PointI(wcs.skyToPixel(rec.get("coord")))
+            radius = rec["radius"].asArcseconds()/plateScale   # convert to pixels
+
+            foot = afwDetect.Footprint(center, radius, exposure.getBBox())
+            afwDetect.setMaskFromFootprint(mask, foot, self.brightObjectBitmask)
+
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
