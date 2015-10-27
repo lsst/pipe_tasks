@@ -32,14 +32,14 @@ from lsst.meas.astrom import AstrometryTask
 class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
     """Config for ProcessCoadd"""
     coaddName = pexConfig.Field(
-        doc = "coadd name: typically one of deep or goodSeeing",
         dtype = str,
         default = "deep",
+        doc = "coadd name: typically one of deep or goodSeeing",
     )
     doScaleVariance = pexConfig.Field(
+        dtype = bool,
+        default = True,
         doc = "Scale variance plane using empirical noise",
-        dtype=bool,
-        default=True,
     )
     astrometry = pexConfig.ConfigurableField(
         target = AstrometryTask,
@@ -90,14 +90,14 @@ class ProcessCoaddTask(ProcessImageTask):
     def scaleVariance(self, exposure):
         ctrl = afwMath.StatisticsControl()
         ctrl.setAndMask(~0x0)
-        var    = exposure.getMaskedImage().getVariance()
-        mask   = exposure.getMaskedImage().getMask()
+        var = exposure.getMaskedImage().getVariance()
+        mask = exposure.getMaskedImage().getMask()
         dstats = afwMath.makeStatistics(exposure.getMaskedImage(),
                                         afwMath.VARIANCECLIP, ctrl).getValue(afwMath.VARIANCECLIP)
         vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue(afwMath.MEANCLIP)
-        vrat   = dstats / vstats
+        vrat = dstats/vstats
         self.log.info("Renormalising variance by %f" % (vrat))
-        var   *= vrat
+        var *= vrat
 
     def makeIdFactory(self, dataRef):
         expBits = dataRef.get(self.config.coaddName + "CoaddId_bits")

@@ -31,28 +31,28 @@ import lsst.pipe.base as pipeBase
 class ProcessCcdConfig(ProcessImageTask.ConfigClass):
     """Config for ProcessCcd"""
     doIsr = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc = "Perform ISR?"
+        dtype = bool,
+        default = True,
+        doc = "Perform ISR?",
     )
     isr = pexConfig.ConfigurableField(
         target = IsrTask,
         doc = "Instrumental Signature Removal",
     )
     doCalibrate = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc = "Perform calibration?"
+        dtype = bool,
+        default = True,
+        doc = "Perform calibration?",
     )
     doWriteCalibrate = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc = "Write calibration results?"
+        dtype = bool,
+        default = True,
+        doc = "Write calibration results?",
     )
     doWriteCalibrateMatches = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc = "Write icSrc to reference matches?"
+        dtype = bool,
+        default = True,
+        doc = "Write icSrc to reference matches?",
     )
     calibrate = pexConfig.ConfigurableField(
         target = CalibrateTask,

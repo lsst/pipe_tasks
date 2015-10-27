@@ -62,46 +62,49 @@ class InitialPsfConfig(pexConfig.Config):
     )
 
 class CalibrateConfig(pexConfig.Config):
-    initialPsf = pexConfig.ConfigField(dtype=InitialPsfConfig, doc=InitialPsfConfig.__doc__)
+    initialPsf = pexConfig.ConfigField(
+        dtype = InitialPsfConfig,
+        doc = InitialPsfConfig.__doc__,
+    )
     doBackground = pexConfig.Field(
         dtype = bool,
-        doc = "Subtract background (after computing it, if not supplied)?",
         default = True,
+        doc = "Subtract background (after computing it, if not supplied)?",
     )
     doPsf = pexConfig.Field(
         dtype = bool,
-        doc = "Perform PSF fitting?",
         default = True,
+        doc = "Perform PSF fitting?",
     )
     doMeasureApCorr = pexConfig.Field(
         dtype = bool,
-        doc = "Compute aperture corrections?",
         default = True,
+        doc = "Compute aperture corrections?",
     )
     doAstrometry = pexConfig.Field(
         dtype = bool,
-        doc = "Compute astrometric solution?",
         default = True,
+        doc = "Compute astrometric solution?",
     )
     doPhotoCal = pexConfig.Field(
         dtype = bool,
-        doc = "Compute photometric zeropoint?",
         default = True,
+        doc = "Compute photometric zeropoint?",
     )
     requireAstrometry = pexConfig.Field(
         dtype = bool,
-        doc = "Require astrometry to succeed, if activated?",
         default = False,
-        )
+        doc = "Require astrometry to succeed, if activated?",
+    )
     requirePhotoCal = pexConfig.Field(
         dtype = bool,
-        doc = "Require photometric calibration to succeed?",
         default = False,
-        )
+        doc = "Require photometric calibration to succeed?",
+    )
     background = pexConfig.ConfigField(
         dtype = measAlg.estimateBackground.ConfigClass,
-        doc = "Background estimation configuration"
-        )
+        doc = "Background estimation configuration",
+    )
     repair = pexConfig.ConfigurableField(
         target = RepairTask,
         doc = "Interpolate over defects and cosmic rays",
@@ -124,7 +127,7 @@ class CalibrateConfig(pexConfig.Config):
     )
     measureApCorr = pexConfig.ConfigurableField(
         target = MeasureApCorrTask,
-        doc = "subtask to measure aperture corrections"
+        doc = "subtask to measure aperture corrections",
     )
     astrometry = pexConfig.ConfigurableField(
         target = AstrometryTask,

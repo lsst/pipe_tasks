@@ -30,19 +30,42 @@ from lsst.meas.deblender import SourceDeblendTask
 
 class ProcessImageConfig(pexConfig.Config):
     """Config for ProcessImage"""
-    doDetection = pexConfig.Field(dtype=bool, default=True, doc = "Detect sources?")
-    ## NOTE, default this to False until it is fully vetted; #2138
-    doDeblend = pexConfig.Field(dtype=bool, default=False, doc = "Deblend sources?")
-    doMeasurement = pexConfig.Field(dtype=bool, default=True, doc = "Measure sources?")
-    persistBackgroundModel = pexConfig.Field(dtype=bool, default=True,
-                                             doc = "If True persist background model with background" +
-                                             " subtracted calexp.  If False persist calexp with the" +
-                                             " background included.")
-    doWriteSources = pexConfig.Field(dtype=bool, default=True, doc = "Write sources?")
-    doWriteSourceMatches = pexConfig.Field(dtype=bool, default=False,
-                                           doc = "Compute and write src to reference matches?")
-    doWriteHeavyFootprintsInSources = pexConfig.Field(dtype=bool, default=False,
-                                                      doc = "Include HeavyFootprint data in source table?")
+    doDetection = pexConfig.Field(
+        dtype = bool,
+        default = True,
+        doc = "Detect sources?",
+    )
+    doDeblend = pexConfig.Field(
+        dtype = bool,
+        default = False,    ## NOTE, default this to False until it is fully vetted; #2138
+        doc = "Deblend sources?",
+    )
+    doMeasurement = pexConfig.Field(
+        dtype = bool,
+        default = True,
+        doc = "Measure sources?",
+    )
+    persistBackgroundModel = pexConfig.Field(
+        dtype = bool,
+        default = True,
+        doc = ("If True persist background model with background subtracted calexp.  "
+               "If False persist calexp with the background included."),
+    )
+    doWriteSources = pexConfig.Field(
+        dtype = bool,
+        default = True,
+        doc = "Write sources?",
+    )
+    doWriteSourceMatches = pexConfig.Field(
+        dtype = bool,
+        default = False,
+        doc = "Compute and write src to reference matches?",
+    )
+    doWriteHeavyFootprintsInSources = pexConfig.Field(
+        dtype = bool,
+        default = False,
+        doc = "Include HeavyFootprint data in source table?",
+    )
     detection = pexConfig.ConfigurableField(
         target = SourceDetectionTask,
         doc = "Low-threshold detection for final measurement",
