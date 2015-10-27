@@ -21,7 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from __future__ import print_function
-import lsst.pex.logging as pexLog
 from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask, SafeClipAssembleCoaddTask
 import sys
 import argparse
