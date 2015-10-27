@@ -51,77 +51,81 @@ def checkSourceFlags(source, sourceKeys):
     return True
 
 class PhotoCalConfig(pexConf.Config):
-
-    magLimit = pexConf.Field(dtype=float, doc="Don't use objects fainter than this magnitude", default=22.0)
+    """Config for PhotoCal"""
+    magLimit = pexConf.Field(
+        dtype = float,
+        default = 22.0,
+        doc = "Don't use objects fainter than this magnitude",
+    )
     doWriteOutput = pexConf.Field(
-        doc= "Write a field name astrom_usedByPhotoCal to the schema",
-        dtype=bool,
-        default=True,
+        dtype = bool,
+        default = True,
+        doc = "Write a field name astrom_usedByPhotoCal to the schema",
     )
     fluxField = pexConf.Field(
-        doc="Name of the source flux field to use.  The associated flag field\n"\
-            "('<name>.flags') will be implicitly included in badFlags.\n",
-        dtype=str,
-        default="slot_CalibFlux_flux",
+        dtype = str,
+        default = "slot_CalibFlux_flux",
+        doc = ("Name of the source flux field to use.  The associated flag field\n"
+               "('<name>_flags') will be implicitly included in badFlags."),
     )
     applyColorTerms = pexConf.Field(
-        doc= "Apply photometric color terms to reference stars? One of: " + \
-            "None: apply if colorterms and photoCatName are not None; " + \
-            "fail if color term data is not available for the specified ref catalog and filter. " + \
-            "True: always apply colorterms; fail if color term data is not available for the " + \
-            "specified reference catalog and filter. " + \
-            "False: do not apply.",
-        dtype=bool,
-        default=None,
-        optional=True,
+        dtype = bool,
+        default = None,
+        doc = ("Apply photometric color terms to reference stars? One of:\n"
+               "None: apply if colorterms and photoCatName are not None;\n"
+               "      fail if color term data is not available for the specified ref catalog and filter.\n"
+               "True: always apply colorterms; fail if color term data is not available for the\n"
+               "      specified reference catalog and filter.\n"
+               "False: do not apply."),
+        optional = True,
     )
     goodFlags = pexConf.ListField(
-        doc="List of source flag fields that must be set for a source to be used.",
-        dtype=str,
-        default=[],
+        dtype = str,
+        default = [],
+        doc = "List of source flag fields that must be set for a source to be used.",
     )
     badFlags = pexConf.ListField(
-        doc="List of source flag fields that will cause a source to be rejected when they are set.",
-        dtype=str,
-        default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
-            "base_PixelFlags_flag_saturated"],
+        dtype = str,
+        default = ["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
+                   "base_PixelFlags_flag_saturated"],
+        doc = "List of source flag fields that will cause a source to be rejected when they are set.",
     )
     sigmaMax = pexConf.Field(
-        doc="maximum sigma to use when clipping",
-        dtype=float,
-        default=0.25,
-        optional=True,
+        dtype = float,
+        default = 0.25,
+        doc = "maximum sigma to use when clipping",
+        optional = True,
     )
     nSigma = pexConf.Field(
-        doc="clip at nSigma",
-        dtype=float,
-        default=3.0,
+        dtype = float,
+        default = 3.0,
+        doc = "clip at nSigma",
     )
     useMedian = pexConf.Field(
-        doc="use median instead of mean to compute zeropoint",
-        dtype=bool,
-        default=True,
+        dtype = bool,
+        default = True,
+        doc = "use median instead of mean to compute zeropoint",
     )
     nIter = pexConf.Field(
-        doc="number of iterations",
-        dtype=int,
-        default=20,
+        dtype = int,
+        default = 20,
+        doc = "number of iterations",
     )
     colorterms = pexConf.ConfigField(
-        doc="Library of photometric reference catalog name: color term dict",
-        dtype=ColortermLibrary,
+        dtype = ColortermLibrary,
+        doc = "Library of photometric reference catalog name: color term dict",
     )
     photoCatName = pexConf.Field(
-        doc="Name of photometric reference catalog; used to select a color term dict in colorterms." + \
-            " see also applyColorTerms",
-        dtype=str,
-        optional=True,
+        dtype = str,
+        optional = True,
+        doc = ("Name of photometric reference catalog; used to select a color term dict in colorterms."
+               " see also applyColorTerms"),
     )
     magErrFloor = pexConf.RangeField(
-        doc="Additional magnitude uncertainty to be added in quadrature with measurement errors.",
-        dtype=float,
-        default=0.0,
-        min=0.0
+        dtype = float,
+        default = 0.0,
+        doc = "Additional magnitude uncertainty to be added in quadrature with measurement errors.",
+        min = 0.0,
     )
 
     def validate(self):
