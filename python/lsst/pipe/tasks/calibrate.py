@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -17,7 +17,7 @@
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import math
 
@@ -62,36 +62,49 @@ class InitialPsfConfig(pexConfig.Config):
     )
 
 class CalibrateConfig(pexConfig.Config):
-    initialPsf = pexConfig.ConfigField(dtype=InitialPsfConfig, doc=InitialPsfConfig.__doc__)
+    initialPsf = pexConfig.ConfigField(
+        dtype = InitialPsfConfig,
+        doc = InitialPsfConfig.__doc__,
+    )
     doBackground = pexConfig.Field(
         dtype = bool,
-        doc = "Subtract background (after computing it, if not supplied)?",
         default = True,
+        doc = "Subtract background (after computing it, if not supplied)?",
     )
     doPsf = pexConfig.Field(
         dtype = bool,
-        doc = "Perform PSF fitting?",
         default = True,
+        doc = "Perform PSF fitting?",
     )
     doMeasureApCorr = pexConfig.Field(
         dtype = bool,
-        doc = "Compute aperture corrections?",
         default = True,
+        doc = "Compute aperture corrections?",
     )
     doAstrometry = pexConfig.Field(
         dtype = bool,
-        doc = "Compute astrometric solution?",
         default = True,
+        doc = "Compute astrometric solution?",
     )
     doPhotoCal = pexConfig.Field(
         dtype = bool,
-        doc = "Compute photometric zeropoint?",
         default = True,
+        doc = "Compute photometric zeropoint?",
+    )
+    requireAstrometry = pexConfig.Field(
+        dtype = bool,
+        default = False,
+        doc = "Require astrometry to succeed, if activated?",
+    )
+    requirePhotoCal = pexConfig.Field(
+        dtype = bool,
+        default = False,
+        doc = "Require photometric calibration to succeed?",
     )
     background = pexConfig.ConfigField(
         dtype = measAlg.estimateBackground.ConfigClass,
-        doc = "Background estimation configuration"
-        )
+        doc = "Background estimation configuration",
+    )
     repair = pexConfig.ConfigurableField(
         target = RepairTask,
         doc = "Interpolate over defects and cosmic rays",
@@ -114,7 +127,7 @@ class CalibrateConfig(pexConfig.Config):
     )
     measureApCorr = pexConfig.ConfigurableField(
         target = MeasureApCorrTask,
-        doc = "subtask to measure aperture corrections"
+        doc = "subtask to measure aperture corrections",
     )
     astrometry = pexConfig.ConfigurableField(
         target = AstrometryTask,
@@ -129,6 +142,10 @@ class CalibrateConfig(pexConfig.Config):
         pexConfig.Config.validate(self)
         if self.doPhotoCal and not self.doAstrometry:
             raise ValueError("Cannot do photometric calibration without doing astrometric matching")
+        if self.requireAstrometry and not self.doAstrometry:
+            raise ValueError("Astrometric solution required, but not activated")
+        if self.requirePhotoCal and not self.doPhotoCal:
+            raise ValueError("Photometric calibration required, but not activated")
         if self.doMeasureApCorr and self.measureApCorr.inputFilterFlag == "calib_psfUsed" and not self.doPsf:
             raise ValueError("Cannot measure aperture correction with inputFilterFlag=calib_psfUsed"
                 " unless doPsf is also True")
@@ -344,19 +361,22 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, **kwargs):
+    def __init__(self, schema=None, **kwargs):
         """!
         Create the calibration task
 
-        \param **kwargs keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
+        \param[in] schema    input SourceTable schema
+        \param     **kwargs  keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
         pipeBase.Task.__init__(self, **kwargs)
 
         # the calibrate Source Catalog is divided into two catalogs to allow measurement to be run twice
         # schema1 contains everything except what is added by the second measurement task.
         # Before the second measurement task is run, self.schemaMapper transforms the sources into
-        # the final output schema, at the same time renaming the measurement fields to "initial_" 
-        self.schema1 = afwTable.SourceTable.makeMinimalSchema()
+        # the final output schema, at the same time renaming the measurement fields to "initial_"
+        if schema is None:
+            schema = afwTable.SourceTable.makeMinimalSchema()
+        self.schema1 = schema
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("repair")
         self.makeSubtask("detection", schema=self.schema1)
@@ -385,7 +405,6 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
         self.makeSubtask("measureApCorr", schema=schema)
         self.makeSubtask("photocal", schema=schema)
-
         # the final schema is the same as the schemaMapper output
         self.schema = self.schemaMapper.getOutputSchema()
 
@@ -453,13 +472,22 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         self.initialMeasurement.run(exposure, sources1, allowApCorr=False)
 
         if self.config.doPsf:
+            matches = None
             if self.config.doAstrometry:
-                astromRet = self.astrometry.run(exposure, sources1)
-                matches = astromRet.matches
-            else:
                 # If doAstrometry is False, we force the Star Selector to either make them itself
                 # or hope it doesn't need them.
-                matches = None
+                origWcs = exposure.getWcs()
+                try:
+                    astromRet = self.astrometry.run(exposure, sources1)
+                    matches = astromRet.matches
+                except RuntimeError as e:
+                    if self.config.requireAstrometry:
+                        raise
+                    self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
+                finally:
+                    # Restore original Wcs: we're going to repeat the astrometry later, and if it succeeded
+                    # this time, running it again with the same basic setup means it should succeed again.
+                    exposure.setWcs(origWcs)
             psfRet = self.measurePsf.run(exposure, sources1, matches=matches)
             psf = psfRet.psf
         elif exposure.hasPsf():
@@ -506,18 +534,25 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         else:
             self.measurement.run(exposure, sources)
 
+        matches, matchMeta = None, None
         if self.config.doAstrometry:
-            astromRet = self.astrometry.run(exposure, sources)
-            matches = astromRet.matches
-            matchMeta = astromRet.matchMeta
-        else:
-            matches, matchMeta = None, None
+            try:
+                astromRet = self.astrometry.run(exposure, sources)
+                matches = astromRet.matches
+                matchMeta = astromRet.matchMeta
+            except RuntimeError as e:
+                if self.config.requireAstrometry:
+                    raise
+                self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
 
         if self.config.doPhotoCal:
-            assert(matches is not None)
             try:
+                if not matches:
+                    raise RuntimeError("No matches available")
                 photocalRet = self.photocal.run(exposure, matches)
             except Exception, e:
+                if self.config.requirePhotoCal:
+                    raise
                 self.log.warn("Failed to determine photometric zero-point: %s" % e)
                 photocalRet = None
                 self.metadata.set('MAGZERO', float("NaN"))
@@ -555,7 +590,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         """!Initialise the calibration procedure by setting the PSF to a configuration-defined guess.
 
         \param[in,out] exposure Exposure to process; fake PSF will be installed here.
-        \throws AssertionError If exposure or exposure.getWcs() are None
+        \throws AssertionError if exposure is None
         """
         assert exposure, "No exposure provided"
 

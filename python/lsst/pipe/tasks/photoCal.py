@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -18,7 +18,7 @@ from __future__ import absolute_import, division
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 # \package lsst.pipe.tasks.
 from itertools import izip
@@ -40,8 +40,8 @@ __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 def checkSourceFlags(source, sourceKeys):
     """!Return True if the given source has all good flags set and none of the bad flags set.
 
-    \param[in] source    SourceRecord object to process.
-    \param[in] sourceKeys      Struct of source catalog keys, as returned by PhotCalTask.getSourceKeys()
+    \param[in] source      SourceRecord object to process.
+    \param[in] sourceKeys  Struct of source catalog keys, as returned by PhotCalTask.getSourceKeys()
     """
     for k in sourceKeys.goodFlags:
         if not source.get(k): return False
@@ -51,77 +51,81 @@ def checkSourceFlags(source, sourceKeys):
     return True
 
 class PhotoCalConfig(pexConf.Config):
-
-    magLimit = pexConf.Field(dtype=float, doc="Don't use objects fainter than this magnitude", default=22.0)
+    """Config for PhotoCal"""
+    magLimit = pexConf.Field(
+        dtype = float,
+        default = 22.0,
+        doc = "Don't use objects fainter than this magnitude",
+    )
     doWriteOutput = pexConf.Field(
-        doc= "Write a field name astrom_usedByPhotoCal to the schema",
-        dtype=bool,
-        default=True,
+        dtype = bool,
+        default = True,
+        doc = "Write a field name astrom_usedByPhotoCal to the schema",
     )
     fluxField = pexConf.Field(
-        doc="Name of the source flux field to use.  The associated flag field\n"\
-            "('<name>.flags') will be implicitly included in badFlags.\n",
-        dtype=str,
-        default="slot_CalibFlux_flux",
+        dtype = str,
+        default = "slot_CalibFlux_flux",
+        doc = ("Name of the source flux field to use.  The associated flag field\n"
+               "('<name>_flags') will be implicitly included in badFlags."),
     )
     applyColorTerms = pexConf.Field(
-        doc= "Apply photometric color terms to reference stars? One of: " + \
-            "None: apply if colorterms and photoCatName are not None; " + \
-            "fail if color term data is not available for the specified ref catalog and filter. " + \
-            "True: always apply colorterms; fail if color term data is not available for the " + \
-            "specified reference catalog and filter. " + \
-            "False: do not apply.",
-        dtype=bool,
-        default=None,
-        optional=True,
+        dtype = bool,
+        default = None,
+        doc = ("Apply photometric color terms to reference stars? One of:\n"
+               "None: apply if colorterms and photoCatName are not None;\n"
+               "      fail if color term data is not available for the specified ref catalog and filter.\n"
+               "True: always apply colorterms; fail if color term data is not available for the\n"
+               "      specified reference catalog and filter.\n"
+               "False: do not apply."),
+        optional = True,
     )
     goodFlags = pexConf.ListField(
-        doc="List of source flag fields that must be set for a source to be used.",
-        dtype=str,
-        default=[],
+        dtype = str,
+        default = [],
+        doc = "List of source flag fields that must be set for a source to be used.",
     )
     badFlags = pexConf.ListField(
-        doc="List of source flag fields that will cause a source to be rejected when they are set.",
-        dtype=str,
-        default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
-            "base_PixelFlags_flag_saturated"],
+        dtype = str,
+        default = ["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
+                   "base_PixelFlags_flag_saturated"],
+        doc = "List of source flag fields that will cause a source to be rejected when they are set.",
     )
     sigmaMax = pexConf.Field(
-        doc="maximum sigma to use when clipping",
-        dtype=float,
-        default=0.25,
-        optional=True,
+        dtype = float,
+        default = 0.25,
+        doc = "maximum sigma to use when clipping",
+        optional = True,
     )
     nSigma = pexConf.Field(
-        doc="clip at nSigma",
-        dtype=float,
-        default=3.0,
+        dtype = float,
+        default = 3.0,
+        doc = "clip at nSigma",
     )
     useMedian = pexConf.Field(
-        doc="use median instead of mean to compute zeropoint",
-        dtype=bool,
-        default=True,
+        dtype = bool,
+        default = True,
+        doc = "use median instead of mean to compute zeropoint",
     )
     nIter = pexConf.Field(
-        doc="number of iterations",
-        dtype=int,
-        default=20,
+        dtype = int,
+        default = 20,
+        doc = "number of iterations",
     )
     colorterms = pexConf.ConfigField(
-        doc="Library of photometric reference catalog name: color term dict",
-        dtype=ColortermLibrary,
+        dtype = ColortermLibrary,
+        doc = "Library of photometric reference catalog name: color term dict",
     )
     photoCatName = pexConf.Field(
-        doc="Name of photometric reference catalog; used to select a color term dict in colorterms." + \
-            " see also applyColorTerms",
-        dtype=str,
-        optional=True,
+        dtype = str,
+        optional = True,
+        doc = ("Name of photometric reference catalog; used to select a color term dict in colorterms."
+               " see also applyColorTerms"),
     )
     magErrFloor = pexConf.RangeField(
-        doc="Additional magnitude uncertainty to be added in quadrature with measurement errors.",
-        dtype=float,
-        default=0.0,
-        min=0.0
+        dtype = float,
+        default = 0.0,
+        doc = "Additional magnitude uncertainty to be added in quadrature with measurement errors.",
+        min = 0.0,
     )
 
     def validate(self):
@@ -287,13 +291,51 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         - fluxErr
         - goodFlags: a list of keys for field names in self.config.goodFlags
         - badFlags: a list of keys for field names in self.config.badFlags
+        - starGal: key for star/galaxy classification
         """
         goodFlags = [schema.find(name).key for name in self.config.goodFlags]
         flux = schema.find(self.config.fluxField).key
         fluxErr = schema.find(self.config.fluxField + "Sigma").key
         badFlags = [schema.find(name).key for name in self.config.badFlags]
+        try:
+            starGal = schema.find("base_ClassificationExtendedness_value").key
+        except KeyError:
+            starGal = None
+        return pipeBase.Struct(flux=flux, fluxErr=fluxErr, goodFlags=goodFlags, badFlags=badFlags,
+                               starGal=starGal)
 
-        return pipeBase.Struct(flux=flux, fluxErr=fluxErr, goodFlags=goodFlags, badFlags=badFlags)
+    def isUnresolved(self, source, starGalKey=None):
+        """!Return whether the provided source is unresolved or not
+
+        This particular implementation is designed to work with the
+        base_ClassificationExtendedness_value=0.0 or 1.0 scheme.  Because
+        of the diversity of star/galaxy classification outputs (binary
+        decision vs probabilities; signs), it's difficult to make this
+        configurable without using code.  This method should therefore
+        be overridden to use the appropriate classification output.
+
+        \param[in] source      Source to test
+        \param[in] starGalKey  Struct of schema keys for source
+        \return    boolean value for starGalKey (True indicates Unresolved)
+        """
+        return source.get(starGalKey) < 0.5 if starGalKey is not None else True
+
+    @pipeBase.timeMethod
+    def selectUnresolved(self, matches, keys):
+        """!Select matches that appear to be unresolved in our data
+
+        The selection of matches that are unresolved in the reference catalog
+        is done as part of selectMatches.
+
+        \param[in] matches  Matches from which to select
+        \param[in] keys     Struct of schema keys for source
+        \return    ReferenceMatchVector with stars only
+        """
+        result = afwTable.ReferenceMatchVector()
+        for m in matches:
+            if self.isUnresolved(m.second, keys.starGal):
+                result.append(m)
+        return result
 
     @pipeBase.timeMethod
     def selectMatches(self, matches, sourceKeys, filterName, frame=None):
@@ -531,16 +573,17 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         )
 
     @pipeBase.timeMethod
-    def run(self, exposure, matches):
+    def run(self, exposure, matches, doSelectUnresolved=True):
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.
 
-        \param[in]  exposure   Exposure upon which the sources in the matches were detected.
-        \param[in]  matches    Input lsst.afw.table.ReferenceMatchVector
+        \param[in]  exposure  Exposure upon which the sources in the matches were detected.
+        \param[in]  matches   Input lsst.afw.table.ReferenceMatchVector
         (\em i.e. a list of lsst.afw.table.Match with
         \c first being of type lsst.afw.table.SimpleRecord and \c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
         (will not be modified  except to set the outputField if requested.).
+        \param[in]  doSelectUnresolved  Attempt to select only unresolved sources from input catalog?
 
         \return Struct of:
          - calib -------  \link lsst::afw::image::Calib\endlink object containing the zero point
@@ -600,6 +643,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         filterName = exposure.getFilter().getName()
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
+        if doSelectUnresolved:
+            matches = self.selectUnresolved(matches, sourceKeys)
         matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,
             frame=frame)
         arrays = self.extractMagArrays(matches=matches, filterName=filterName, sourceKeys=sourceKeys)
@@ -611,7 +656,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 matches[0].second.getSchema().find(self.outputField)
             except:
                 raise RuntimeError("sources' schema does not contain the used-in-calibration flag \"%s\"" %
-                                   self.config.outputField)
+                                   self.outputField)
 
         # Fit for zeropoint.  We can run the code more than once, so as to
         # give good stars that got clipped by a bad first guess a second
