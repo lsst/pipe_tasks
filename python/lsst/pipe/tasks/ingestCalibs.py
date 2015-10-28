@@ -125,6 +125,11 @@ class IngestCalibsArgumentParser(ArgumentParser):
                           default=False, help="Don't perform any action?")
         self.add_argument("--create", action="store_true", help="Create new registry?")
         self.add_argument("--validity", type=int, help="Calibration validity period (days)")
+        self.add_argument("--calibType", type=str, default=None,
+                          choices=[None, "bias", "dark", "flat", "fringe", "defect"],
+                          help="Type of the calibration data to be ingested;" +
+                               " if omitted, the type is determined from" +
+                               " the file header information")
         self.add_argument("files", nargs="+", help="Names of file")
 
 
@@ -145,7 +150,10 @@ class IngestCalibsTask(IngestTask):
         with self.register.openRegistry(args.butler, create=args.create, dryrun=args.dryrun) as registry:
             for infile in args.files:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
-                calibType = self.parse.getCalibType(infile)
+                if args.calibType is None:
+                    calibType = self.parse.getCalibType(infile)
+                else:
+                    calibType = args.calibType
                 if calibType not in self.register.config.tables:
                     self.log.warn("Skipped adding %s of observation type %s to registry" %
                                   (infile, calibType))
