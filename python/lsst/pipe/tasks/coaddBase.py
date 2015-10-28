@@ -22,6 +22,7 @@
 #
 import math
 import argparse
+import numpy
 
 import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
@@ -329,3 +330,30 @@ def getSkyInfo(coaddName, patchRef):
         wcs = tractInfo.getWcs(),
         bbox = patchInfo.getOuterBBox(),
     )
+
+def scaleVariance(maskedImage, maskVal=~0x0, log=None):
+    """Scale the variance in a maskedImage
+
+    The variance plane in a convolved or warped image (or a coadd derived
+    from warped images) does not accurately reflect the noise properties of
+    the image because variance has been lost to covariance. This function
+    attempts to correct for this by scaling the variance plane to match
+    the observed variance in the image. This is not perfect (because we're
+    not tracking the covariance) but it's simple and is often good enough.
+
+    @param maskedImage  MaskedImage to operate on; variance will be scaled
+    @param maskVal  Mask values of pixels to ignore
+    @param log  Log for reporting the renormalization factor; or None
+    @return renormalisation factor
+    """
+    variance = maskedImage.getVariance()
+    sigNoise = maskedImage.getImage().getArray()/numpy.sqrt(variance.getArray())
+    good = (maskedImage.getMask().getArray() & maskVal) == 0
+    # Robust measurement of stdev
+    q1, q3 = numpy.percentile(sigNoise[good], (25, 75))
+    stdev = 0.74*(q3 - q1)
+    ratio = stdev**2
+    if log:
+        log.info("Renormalizing variance by %f" % (ratio,))
+    variance *= ratio
+    return ratio

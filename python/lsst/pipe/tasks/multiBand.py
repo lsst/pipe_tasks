@@ -4,7 +4,7 @@ from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, Butl
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import SourceDetectionTask, SourceMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer
+from lsst.pipe.tasks.coaddBase import getSkyInfo, ExistingCoaddDataIdContainer, scaleVariance
 from lsst.pipe.tasks.astrometry import AstrometryTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
@@ -136,21 +136,6 @@ class DetectCoaddSourcesTask(CmdLineTask):
         patchRef.put(exposure, self.config.coaddName + "Coadd_calexp")
         return results
 
-    def scaleVariance(self, maskedImage):
-        """Scale the variance in a maskedImage
-
-        Scales the variance plane to match the measured variance.
-        """
-        ctrl = afwMath.StatisticsControl()
-        ctrl.setAndMask(~0x0)
-        var    = maskedImage.getVariance()
-        mask   = maskedImage.getMask()
-        dstats = afwMath.makeStatistics(maskedImage, afwMath.VARIANCECLIP, ctrl).getValue()
-        vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue()
-        vrat   = dstats / vstats
-        self.log.info("Renormalising variance by %f" % (vrat))
-        var   *= vrat
-
     def runDetection(self, exposure, idFactory):
         """Run detection on an exposure
 
@@ -162,7 +147,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
                         )
         """
         if self.config.doScaleVariance:
-            self.scaleVariance(exposure.getMaskedImage())
+            scaleVariance(exposure.getMaskedImage(), log=self.log)
         backgrounds = afwMath.BackgroundList()
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.makeSourceCatalog(table, exposure)
