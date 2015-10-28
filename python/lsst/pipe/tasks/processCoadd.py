@@ -22,10 +22,9 @@
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
-import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.coadd.utils import CoaddDataIdContainer
-from .coaddBase import getSkyInfo
+from .coaddBase import getSkyInfo, scaleVariance
 from .processImage import ProcessImageTask
 from lsst.meas.astrom import AstrometryTask
 
@@ -91,19 +90,6 @@ class ProcessCoaddTask(ProcessImageTask):
         if self.config.doWriteSourceMatches:
             self.makeSubtask("astrometry", schema=self.schema)
 
-    @pipeBase.timeMethod
-    def scaleVariance(self, exposure):
-        ctrl = afwMath.StatisticsControl()
-        ctrl.setAndMask(~0x0)
-        var = exposure.getMaskedImage().getVariance()
-        mask = exposure.getMaskedImage().getMask()
-        dstats = afwMath.makeStatistics(exposure.getMaskedImage(),
-                                        afwMath.VARIANCECLIP, ctrl).getValue(afwMath.VARIANCECLIP)
-        vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue(afwMath.MEANCLIP)
-        vrat = dstats/vstats
-        self.log.info("Renormalising variance by %f" % (vrat))
-        var *= vrat
-
     def makeIdFactory(self, dataRef):
         expBits = dataRef.get(self.config.coaddName + "CoaddId_bits")
         expId = long(dataRef.get(self.config.coaddName + "CoaddId"))
@@ -131,7 +117,7 @@ class ProcessCoaddTask(ProcessImageTask):
 
         coadd = dataRef.get(self.config.coaddName + "Coadd")
         if self.config.doScaleVariance:
-            self.scaleVariance(coadd)
+            scaleVariance(coadd.getMaskedImage(), log=self.log)
 
         # delegate most of the work to ProcessImageTask
         result = self.process(dataRef, coadd, enableWriteSources=False)

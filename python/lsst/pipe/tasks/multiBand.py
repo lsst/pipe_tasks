@@ -28,7 +28,7 @@ from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeFi
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.pipe.tasks.coaddBase import getSkyInfo
+from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
 from lsst.meas.astrom import ANetAstrometryTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
@@ -142,25 +142,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
     def run(self, patchRef):
         """Run detection on a coadd"""
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
-        if self.config.doScaleVariance:
-            self.scaleVariance(exposure.getMaskedImage())
         results = self.runDetection(exposure, self.makeIdFactory(patchRef))
         self.write(exposure, results, patchRef)
-
-    def scaleVariance(self, maskedImage):
-        """Scale the variance in a maskedImage
-
-        Scales the variance plane to match the measured variance.
-        """
-        ctrl = afwMath.StatisticsControl()
-        ctrl.setAndMask(~0x0)
-        var    = maskedImage.getVariance()
-        mask   = maskedImage.getMask()
-        dstats = afwMath.makeStatistics(maskedImage, afwMath.VARIANCECLIP, ctrl).getValue()
-        vstats = afwMath.makeStatistics(var, mask, afwMath.MEANCLIP, ctrl).getValue()
-        vrat   = dstats / vstats
-        self.log.info("Renormalising variance by %f" % (vrat))
-        var   *= vrat
 
     def runDetection(self, exposure, idFactory):
         """Run detection on an exposure
@@ -172,6 +155,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
                         backgrounds: list of backgrounds
                         )
         """
+        if self.config.doScaleVariance:
+            scaleVariance(exposure.getMaskedImage(), log=self.log)
         backgrounds = afwMath.BackgroundList()
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.makeSourceCatalog(table, exposure)
