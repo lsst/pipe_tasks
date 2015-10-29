@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy
 from eups import Eups
 eups = Eups()
+import functools
 
 from contextlib import contextmanager
 from collections import defaultdict
@@ -387,8 +388,7 @@ class CoaddAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
         kwargs["cosmos"] = parsedCmd.cosmos
-        patchRefList = sum(parsedCmd.id.refList, [])
-        return [(patchRefList, kwargs)]
+        return [(refList, kwargs) for refList in parsedCmd.id.refList]
 
 
 class CoaddAnalysisTask(CmdLineTask):
@@ -593,21 +593,31 @@ class ColorAnalysisConfig(Config):
 class ColorAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
-        refs = defaultdict(list)
+        FilterRefsDict = functools.partial(defaultdict, list) # Dict for filter-->dataRefs
+        tractFilterRefs = defaultdict(FilterRefsDict) # tract-->filter-->dataRefs
         for patchRef in sum(parsedCmd.id.refList, []):
             if patchRef.datasetExists("deepCoadd_forced_src"):
-                refs[patchRef.dataId["filter"]].append(patchRef)
+                tract = patchRef.dataId["tract"]
+                filterName = patchRef.dataId["filter"]
+                tractFilterRefs[tract][filterName].append(patchRef)
 
-        # Find tract,patch with full colour coverage
-        getTractPatch = lambda patchRef: (patchRef.dataId["tract"], patchRef.dataId["patch"])
-        tractPatch = [set(getTractPatch(patchRef) for patchRef in patchRefList) for
-                      patchRefList in refs.itervalues()]
-        if len(tractPatch) == 0:
-            raise TaskError("No input data found.")
-        keep = set.intersection(*tractPatch)
-        refs = {ff: [patchRef for patchRef in refs[ff] if getTractPatch(patchRef) in keep] for ff in refs}
+        # Find tract,patch with full colour coverage (makes combining catalogs easier)
+        bad = []
+        for tract in tractFilterRefs:
+            filterRefs = tractFilterRefs[tract]
+            patchesForFilters = [set(patchRef.dataId["patch"] for patchRef in patchRefList) for
+                                 patchRefList in filterRefs.itervalues()]
+            if len(patchesForFilters) == 0:
+                parsedCmd.log.warn("No input data found for tract %d" % tract)
+                bad.append(tract)
+                continue
+            keep = set.intersection(*patchesForFilters) # Patches with full colour coverage
+            tractFilterRefs[tract] = {ff: [patchRef for patchRef in filterRefs[ff] if
+                                           patchRef.dataId["patch"] in keep] for ff in filterRefs}
+        for tract in bad:
+            del tractFilterRefs[tract]
 
-        return [(refs, kwargs)]
+        return [(filterRefs, kwargs) for filterRefs in tractFilterRefs.itervalues()]
 
 class ColorAnalysisTask(CmdLineTask):
     ConfigClass = ColorAnalysisConfig
