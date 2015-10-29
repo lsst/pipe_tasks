@@ -380,8 +380,10 @@ class CoaddAnalysisConfig(Config):
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
 
-    def setDefaults(self):
-        self.astrometry.load(os.path.join(os.environ["OBS_SUBARU_DIR"], "config", "hsc", "filterMap.py"))
+    def saveToStream(self, outfile, root="root"):
+        """Required for loading colorterms from a Config outside the 'lsst' namespace"""
+        print >> outfile, "import lsst.meas.photocal.colorterms"
+        return Config.saveToStream(self, outfile, root)
 
 
 class CoaddAnalysisRunner(TaskRunner):
@@ -392,7 +394,7 @@ class CoaddAnalysisRunner(TaskRunner):
 
 
 class CoaddAnalysisTask(CmdLineTask):
-    _DefaultName = "analysis"
+    _DefaultName = "coaddAnalysis"
     ConfigClass = CoaddAnalysisConfig
     RunnerClass = CoaddAnalysisRunner
 
@@ -861,7 +863,7 @@ class VisitAnalysisRunner(TaskRunner):
         return [(refs, kwargs) for refs in visits.itervalues()]
 
 class VisitAnalysisTask(CoaddAnalysisTask):
-    _DefaultName = "analysis"
+    _DefaultName = "visitAnalysis"
     ConfigClass = CoaddAnalysisConfig
     RunnerClass = VisitAnalysisRunner
 
@@ -892,10 +894,17 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 self.plotMatches(matches, filterName, filenamer.copy(description=cat))
 
     def readCatalogs(self, dataRefList, dataset):
-        catList = [self.calibrateSourceCatalog(dataRef, dataRef.get(dataset, immediate=True,
-                                                                    flags=afwTable.SOURCE_IO_NO_FOOTPRINTS),
-                                               zp=self.config.analysis.zp)
-                   for dataRef in dataRefList if dataRef.datasetExists(dataset)]
+        catList = []
+        for dataRef in dataRefList:
+            if not dataRef.datasetExists(dataset):
+                continue
+            catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            try:
+                calibrated = self.calibrateSourceCatalog(dataRef, catalog, zp=self.config.analysis.zp)
+            except Exception as e:
+                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
+                continue
+            catList.append(calibrated)
         return concatenateCatalogs(catList)
 
     def calibrateSourceCatalog(self, dataRef, catalog, zp=27.0):
@@ -930,7 +939,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 src.append(mm.second)
             matches[0].second.table.defineCentroid(schema["centroid.sdss"].asKey())
             src.table.defineCentroid(schema["centroid.sdss"].asKey())
-            src = self.calibrateSourceCatalog(dataRef, src, zp=self.config.analysisMatches.zp)
+            try:
+                src = self.calibrateSourceCatalog(dataRef, src, zp=self.config.analysisMatches.zp)
+            except Exception as e:
+                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
+                continue
             for mm, ss in zip(matches, src):
                 mm.second = ss
             catalog = matchesToCatalog(matches, catalog.getTable().getMetadata())
