@@ -165,7 +165,7 @@ class ForcedPhotImageTask(CmdLineTask):
         @param dataRef  Data reference from butler
         @param sources  SourceCatalog to save
         """
-        dataRef.put(sources, self.dataPrefix + "forced_src")
+        dataRef.put(sources, self.dataPrefix + "forced_src", flags=lsst.afw.table.SOURCE_IO_NO_FOOTPRINTS)
 
     def generateSources(self, dataRef, references):
         """Generate sources to be measured, copying any fields in self.config.copyColumns
