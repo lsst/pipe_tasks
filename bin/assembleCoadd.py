@@ -20,7 +20,46 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import lsst.pex.logging as pexLog
-from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
+from __future__ import print_function
+from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask, SafeClipAssembleCoaddTask
+import sys
+import argparse
 
-AssembleCoaddTask.parseAndRun()
+parser = argparse.ArgumentParser(add_help=False)
+parser.add_argument('--legacyCoadd', action='store_true', default=False)
+parser.add_argument('-h','--help', action='store_true',default=False)
+result, extra = parser.parse_known_args(sys.argv)
+
+legacy_message = '''
+Meta Arguments:
+  --legacyCoadd         An option to run with the original assembleCoadd task which will
+                        not attempt to do any safe clipping.  If run, the config option
+                        'config.measurement.plugins["base_PixelFlags"].masksFpAnywhere = [] 
+                        must be set.
+'''
+
+if result.help:
+    print(legacy_message)
+    # As AssembleCoaddTask and SafeClipAssembleCoaddTask may have different help messages,
+    # The appropriate one should be printed
+    if result.legacyCoadd:
+        AssembleCoaddTask.parseAndRun(args=['--help']+extra[1:])
+    else:
+        SafeClipAssembleCoaddTask.parseAndRun(args=['--help']+extra[1:])
+
+# If no arguments are passed the default help message will be triggered in the argument parser.
+# In order to ensure the  additional information is printed, zero argument lengths should trigger
+# the message to be printed.
+if len(extra) == 0:
+    print(legacy_message)
+
+if result.legacyCoadd:
+    legacy_message = '''
+    Remember, If you use the legacy adder you must set
+    config.measurement.plugins['base_PixelFlags'].any = []
+    so that pixel flags will not look for a non existent mask plane
+    '''
+    print(legacy_message)
+    AssembleCoaddTask.parseAndRun(args=extra[1:])
+else:
+    SafeClipAssembleCoaddTask.parseAndRun(args=extra[1:])

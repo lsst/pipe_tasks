@@ -478,6 +478,9 @@ class MeasureMergedCoaddSourcesConfig(Config):
     def setDefaults(self):
         Config.setDefaults(self)
         self.deblend.propagateAllPeaks = True
+        # The following line must be set if clipped pixel flags are to be added to the output table
+        # The clipped mask plane is added by running SafeClipAssembleCoaddTask
+        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED']
 
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
     """Measure sources using the merged catalog of detections
