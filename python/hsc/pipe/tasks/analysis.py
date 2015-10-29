@@ -11,8 +11,9 @@ eups = Eups()
 from contextlib import contextmanager
 from collections import defaultdict
 
+from lsst.daf.persistence.butler import safeMakeDir
 from lsst.pex.config import Config, Field, ConfigField, ListField, DictField, ConfigDictField
-from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner
+from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner, TaskError
 from lsst.pipe.tasks.dataIds import PerTractCcdDataIdContainer
 from hsc.pipe.tasks.stack import TractDataIdContainer
 from hsc.pipe.base.matches import matchesToCatalog, matchesFromCatalog
@@ -71,6 +72,21 @@ class CosmosLabeller(StarGalaxyLabeller):
         good = set(mm.second.getId() for mm in matches)
         return numpy.array([0 if ii in good else 1 for ii in catalog["id"]])
 
+class Filenamer(object):
+    """Callable that provides a filename given a style"""
+    def __init__(self, butler, dataset, dataId):
+        self.butler = butler
+        self.dataset = dataset
+        self.dataId = dataId
+    def copy(self, **kwargs):
+        """Return a copy with updated dataId"""
+        dataId = self.dataId.copy()
+        dataId.update(kwargs)
+        return Filenamer(self.butler, self.dataset, dataId)
+    def __call__(self, style):
+        filename = self.butler.get(self.dataset + "_filename", self.dataId, style=style)[0]
+        safeMakeDir(os.path.dirname(filename))
+        return filename
 
 class Data(Struct):
     def __init__(self, catalog, quantity, mag, selection, color, plot=True):
@@ -207,15 +223,15 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotAll(self, prefix, log, forcedMean=None):
+    def plotAll(self, filenamer, log, forcedMean=None):
         """Make all plots"""
-        self.plotAgainstMag(prefix + "_psfMag.png")
-        self.plotHistogram(prefix + "_hist.png")
-        self.plotSkyPosition(prefix + "_sky.png")
-        self.plotRaDec(prefix + "_radec.png")
-        self.stats(log, prefix, forcedMean=forcedMean)
+        self.plotAgainstMag(filenamer("psfMag"))
+        self.plotHistogram(filenamer("hist"))
+        self.plotSkyPosition(filenamer("sky"))
+        self.plotRaDec(filenamer("radec"))
+        self.stats(log, forcedMean=forcedMean)
 
-    def stats(self, log, title, forcedMean=None):
+    def stats(self, log, forcedMean=None):
         """Calculate statistics on quantity"""
         stats = {}
         for name, data in self.data.iteritems():
@@ -230,7 +246,8 @@ class Analysis(object):
             stdev = numpy.sqrt(((data.quantity[good].astype(numpy.float64) - mean)**2).mean())
             stats[name] = Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev,
                                 forcedMean=forcedMean)
-        log.info("Statistics for %s: %s" % (title, stats))
+        log.info("Statistics for %s: %s" % (self.quantityName, stats))
+
 
 class CcdAnalysis(Analysis):
     def plotCcd(self, prefix, centroid="centroid.sdss", cmap=plt.cm.brg):
@@ -369,7 +386,6 @@ class CoaddAnalysisConfig(Config):
 class CoaddAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
-        kwargs["filenamePrefix"] = parsedCmd.prefix
         kwargs["cosmos"] = parsedCmd.cosmos
         patchRefList = sum(parsedCmd.id.refList, [])
         return [(patchRefList, kwargs)]
@@ -383,93 +399,95 @@ class CoaddAnalysisTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_argument("--prefix", default="", help="Prefix for filenames")
         parser.add_argument("--cosmos", default=None, help="Filename for Leauthaud Cosmos catalog")
         parser.add_id_argument("--id", "deepCoadd_src",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=HSC-X",
                                ContainerClass=TractDataIdContainer)
         return parser
 
-    def run(self, patchRefList, filenamePrefix, cosmos=None):
+    def run(self, patchRefList, cosmos=None):
         filterName = patchRefList[0].dataId["filter"]
+        filenamer = Filenamer(patchRefList[0].getButler(), "plotCoadd", patchRefList[0].dataId)
         if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
             self.config.externalCatalogs):
             catalog = self.readCatalogs(patchRefList, "deepCoadd_src")
         if self.config.doMags:
-            self.plotMags(catalog, filenamePrefix)
+            self.plotMags(catalog, filenamer)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamePrefix)
+            self.plotStarGal(catalog, filenamer)
         if cosmos:
-            self.plotCosmos(catalog, filenamePrefix, cosmos)
+            self.plotCosmos(catalog, filenamer, cosmos)
         if self.config.doOverlaps:
             overlaps = self.overlaps(catalog)
-            self.plotOverlaps(overlaps, filenamePrefix)
+            self.plotOverlaps(overlaps, filenamer)
         if self.config.doMatches:
             matches = self.readCatalogs(patchRefList, "deepCoadd_srcMatchFull")
-            self.plotMatches(matches, filterName, filenamePrefix)
+            self.plotMatches(matches, filterName, filenamer)
 
         for cat in self.config.externalCatalogs:
             with andCatalog(cat):
                 matches = self.matchCatalog(catalog, filterName)
-                self.plotMatches(matches, filterName, filenamePrefix + cat + "_")
+                self.plotMatches(matches, filterName, filenamer.copy(description=cat))
 
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
                    patchRef in patchRefList if patchRef.datasetExists(dataset)]
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamePrefix):
+    def plotMags(self, catalog, filenamer):
         for col in ["flux.sinc", "flux.kron", "cmodel.flux"]:
             if col in catalog.schema:
                 Analysis(catalog, MagDiff(col, "flux.psf"), "Mag(%s) - PSFMag" % col, self.config.analysis,
                          flags=[col + ".flags"], labeller=StarGalaxyLabeller()
-                         ).plotAll(filenamePrefix + "mag_" + col, self.log)
+                         ).plotAll(filenamer.copy(description="mag_" + col), self.log)
 
-    def plotStarGal(self, catalog, filenamePrefix):
+    def plotStarGal(self, catalog, filenamer):
         Analysis(catalog, deconvMomStarGal, "pStar", self.config.analysis, qMin=0.0, qMax=1.0,
-                 ).plotAll(filenamePrefix + "pStar", self.log)
+                 ).plotAll(filenamer.copy(description="pStar"), self.log)
         Analysis(catalog, deconvMom, "Deconvolved moments", self.config.analysis, qMin=-1.0, qMax=6.0,
-                 labeller=StarGalaxyLabeller()).plotAll(filenamePrefix + "deconvMom", self.log)
+                 labeller=StarGalaxyLabeller()).plotAll(filenamer.copy(description="deconvMom"), self.log)
 
     def overlaps(self, catalog):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
         return joinMatches(matches, "first.", "second.")
 
-    def plotOverlaps(self, overlaps, filenamePrefix):
+    def plotOverlaps(self, overlaps, filenamer):
         for col in ["flux.psf", "flux.sinc", "flux.kron", "cmodel.flux"]:
             if "first." + col in overlaps.schema:
                 Analysis(overlaps, MagDiff("first." + col, "second." + col),
                          "Overlap mag difference (%s)" % col, self.config.analysis, prefix="first.",
                          flags=[col + ".flags"], labeller=OverlapsStarGalaxyLabeller()
-                         ).plotAll(filenamePrefix + "overlap_" + col, self.log)
+                         ).plotAll(filenamer.copy(description="overlap_" + col), self.log)
 
         Analysis(overlaps, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                  "Distance (arcsec)", self.config.analysis, prefix="first.", qMin=0.0, qMax=0.15,
-                 labeller=OverlapsStarGalaxyLabeller()).plotAll(filenamePrefix + "overlap_distance", self.log,
-                                                                forcedMean=0.0)
+                 labeller=OverlapsStarGalaxyLabeller(),
+                 ).plotAll(filenamer.copy(description="overlap_distance"), self.log, forcedMean=0.0)
 
-    def plotMatches(self, matches, filterName, filenamePrefix):
+    def plotMatches(self, matches, filterName, filenamer):
         ct = self.config.colorterms.selectColorTerm(filterName)
         Analysis(matches, MagDiffMatches("flux.psf", ct), "MagPsf - ref", self.config.analysisMatches,
                  prefix="src.", labeller=MatchesStarGalaxyLabeller(),
-                 ).plotAll(filenamePrefix + "matches_mag", self.log)
+                 ).plotAll(filenamer.copy(description="matches_mag"), self.log)
         Analysis(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                  "Distance (arcsec)", self.config.analysisMatches, prefix="src.",
                  qMin=0.0, qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller()
-                 ).plotAll(filenamePrefix + "matches_distance", self.log, forcedMean=0.0)
+                 ).plotAll(filenamer.copy(description="matches_distance"), self.log, forcedMean=0.0)
         Analysis(matches, AstrometryDiff("src.coord.ra", "ref.coord.ra", "ref.coord.dec"),
                  "dRA*cos(Dec) (arcsec)", self.config.analysisMatches, prefix="src.",
                  qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
-                 labeller=MatchesStarGalaxyLabeller()).plotAll(filenamePrefix + "matches_ra", self.log)
+                 labeller=MatchesStarGalaxyLabeller()
+                 ).plotAll(filenamer.copy(description="matches_ra"), self.log)
         Analysis(matches, AstrometryDiff("src.coord.dec", "ref.coord.dec"),
                  "dDec (arcsec)", self.config.analysisMatches, prefix="src.",
                  qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
-                 labeller=MatchesStarGalaxyLabeller()).plotAll(filenamePrefix + "matches_dec", self.log)
+                 labeller=MatchesStarGalaxyLabeller(),
+                 ).plotAll(filenamer.copy(description="matches_dec"), self.log)
 
-    def plotCosmos(self, catalog, filenamePrefix, cosmos):
+    def plotCosmos(self, catalog, filenamer, cosmos):
         labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
         Analysis(catalog, deconvMom, "Deconvolved moments", self.config.analysis, qMin=-1.0, qMax=6.0,
-                 labeller=labeller).plotAll(filenamePrefix + "cosmos", self.log)
+                 labeller=labeller).plotAll(filenamer.copy(description="cosmos"), self.log)
 
     def matchCatalog(self, catalog, filterName):
         astrometry = Astrometry(self.config.astrometry)
@@ -525,6 +543,15 @@ ivezicTransforms = {
                                        {"HSC-R": 0.895, "HSC-I": -0.448, "HSC-Z": -0.447, "": -0.600}),
     }
 
+straightTransforms = {
+    "g": ColorTransform.fromValues("HSC-G", True, {"HSC-G": 1.0}),
+    "r": ColorTransform.fromValues("HSC-R", True, {"HSC-R": 1.0}),
+    "i": ColorTransform.fromValues("HSC-I", True, {"HSC-I": 1.0}),
+    "z": ColorTransform.fromValues("HSC-Z", True, {"HSC-Z": 1.0}),
+    "y": ColorTransform.fromValues("HSC-Y", True, {"HSC-Y": 1.0}),
+    "n921": ColorTransform.fromValues("NB0921", True, {"NB0921": 1.0}),
+}
+
 class NumStarLabeller(object):
     labels = {'star': 0, 'maybe': 1, 'notStar': 2}
     plot = ["star"]
@@ -550,6 +577,9 @@ class ColorValueInRange(object):
 
 class ColorAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
+    flags = ListField(dtype=str, doc="Flags of objects to ignore",
+                      default=["centroid.sdss.flags", "flags.pixel.saturated.center",
+                               "flags.pixel.interpolated.center", "flux.psf.flags"])
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     transforms = ConfigDictField(keytype=str, itemtype=ColorTransform, default={},
                                  doc="Color transformations to analyse")
@@ -558,12 +588,11 @@ class ColorAnalysisConfig(Config):
     def setDefaults(self):
         Config.setDefaults(self)
         self.transforms = ivezicTransforms
+        self.analysis.flags = [] # We remove bad source ourself
 
 class ColorAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
-        kwargs["filenamePrefix"] = parsedCmd.prefix
-
         refs = defaultdict(list)
         for patchRef in sum(parsedCmd.id.refList, []):
             if patchRef.datasetExists("deepCoadd_forced_src"):
@@ -573,6 +602,8 @@ class ColorAnalysisRunner(TaskRunner):
         getTractPatch = lambda patchRef: (patchRef.dataId["tract"], patchRef.dataId["patch"])
         tractPatch = [set(getTractPatch(patchRef) for patchRef in patchRefList) for
                       patchRefList in refs.itervalues()]
+        if len(tractPatch) == 0:
+            raise TaskError("No input data found.")
         keep = set.intersection(*tractPatch)
         refs = {ff: [patchRef for patchRef in refs[ff] if getTractPatch(patchRef) in keep] for ff in refs}
 
@@ -587,25 +618,30 @@ class ColorAnalysisTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_argument("--prefix", default="", help="Prefix for filenames")
         parser.add_id_argument("--id", "deepCoadd_forced_src",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=HSC-X",
                                ContainerClass=TractDataIdContainer)
         return parser
 
-    def run(self, patchRefsByFilter, filenamePrefix):
+    def run(self, patchRefsByFilter):
+        for patchRefList in patchRefsByFilter.itervalues():
+            patchRef = patchRefList[0]
+            butler = patchRef.getButler()
+            dataId = patchRef.dataId
+            break
+        filenamer = Filenamer(butler, "plotColor", dataId)
         catalogsByFilter = {ff: self.readCatalogs(patchRefList, "deepCoadd_forced_src") for
                             ff, patchRefList in patchRefsByFilter.iteritems()}
-        catalog = self.transformCatalogs(catalogsByFilter)
-        self.plotColors(catalog, filenamePrefix, NumStarLabeller(len(catalogsByFilter)))
-        self.plotColorColor(catalogsByFilter, filenamePrefix)
+        catalog = self.transformCatalogs(catalogsByFilter, self.config.transforms)
+        self.plotColors(catalog, filenamer, NumStarLabeller(len(catalogsByFilter)))
+        self.plotColorColor(catalogsByFilter, filenamer.copy(description="fit"))
 
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
                    patchRef in patchRefList if patchRef.datasetExists(dataset)]
         return concatenateCatalogs(catList)
 
-    def transformCatalogs(self, catalogs):
+    def transformCatalogs(self, catalogs, transforms):
         template = catalogs.values()[0]
         num = len(template)
         assert all(len(cat) == num for cat in catalogs.itervalues())
@@ -613,11 +649,11 @@ class ColorAnalysisTask(CmdLineTask):
         mapper = afwTable.SchemaMapper(template.schema)
         mapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema())
         schema = mapper.getOutputSchema()
-        for col in self.config.transforms:
-            schema.addField(col, float, self.config.transforms[col].description)
+        for col in transforms:
+            schema.addField(col, float, transforms[col].description)
         schema.addField("numStarFlags", int, "Number of times source was flagged as star")
         badKey = schema.addField("bad", "Flag", "Is this a bad source?")
-        schema.addField(self.config.fluxColumn, float, "Flux from filter " + self.config.fluxFilter)
+        schema.addField(self.config.analysis.fluxColumn, float, "Flux from filter " + self.config.fluxFilter)
 
         # Copy basics (id, RA, Dec)
         new = afwTable.SourceCatalog(schema)
@@ -625,13 +661,14 @@ class ColorAnalysisTask(CmdLineTask):
         new.extend(template, mapper)
 
         # Set transformed colors
-        for col, transform in self.config.transforms.iteritems():
+        for col, transform in transforms.iteritems():
             value = numpy.ones(num)*transform.coeffs[""] if "" in transform.coeffs else numpy.zeros(num)
             for ff, coeff in transform.coeffs.iteritems():
                 if ff == "": # Constant: already done
                     continue
                 cat = catalogs[ff]
-                value += -2.5*numpy.log10(cat[self.config.fluxColumn])*coeff
+                mag = self.config.analysis.zp - 2.5*numpy.log10(cat[self.config.analysis.fluxColumn])
+                value += mag*coeff
             new[col][:] = value
 
         # Flag bad values
@@ -649,24 +686,23 @@ class ColorAnalysisTask(CmdLineTask):
             numStarFlags += numpy.where(cat["classification.extendedness"] < 0.5, 1, 0)
         new["numStarFlags"][:] = numStarFlags
 
-        new[self.config.fluxColumn][:] = catalogs[self.config.fluxFilter][self.config.fluxColumn]
+        fluxColumn = self.config.analysis.fluxColumn
+        new[fluxColumn][:] = catalogs[self.config.fluxFilter][fluxColumn]
 
         return new
 
-    def plotColors(self, catalog, filenamePrefix, labeller):
+    def plotColors(self, catalog, filenamer, labeller):
         for col, transform in self.config.transforms.iteritems():
             if not transform.plot:
                 continue
             Analysis(catalog, ColorValueInRange(col, transform.requireGreater, transform.requireLess), col,
                      self.config.analysis, flags=["bad"], labeller=labeller, qMin=-0.2, qMax=0.2,
-                     ).plotAll(filenamePrefix + "color_" + col, self.log)
+                     ).plotAll(filenamer.copy(description="color_" + col), self.log)
 
-    def plotColorColor(self, catalogs, filenamePrefix):
+    def plotColorColor(self, catalogs, filenamer):
         num = len(catalogs.values()[0])
         zp = self.config.analysis.zp
-        getMags = lambda filterName: (zp - 2.5*numpy.log10(catalogs[filterName]["flux.psf"]) if
-                                      filterName in catalogs else numpy.ones(num)*numpy.nan)
-        mags = {ff: getMags("HSC-" + ff.upper()) for ff in "grizy"}
+        mags = {ff: zp - 2.5*numpy.log10(catalogs[ff][self.config.analysis.fluxColumn]) for ff in catalogs}
 
         bad = numpy.zeros(num, dtype=bool)
         for cat in catalogs.itervalues():
@@ -675,7 +711,7 @@ class ColorAnalysisTask(CmdLineTask):
 
         bright = numpy.ones(num, dtype=bool)
         for mm in mags.itervalues():
-            bright &= mm < self.config.magThreshold
+            bright &= mm < self.config.analysis.magThreshold
 
         numStarFlags = numpy.zeros(num)
         for cat in catalogs.itervalues():
@@ -683,14 +719,35 @@ class ColorAnalysisTask(CmdLineTask):
 
         good = (numStarFlags == len(catalogs)) & numpy.logical_not(bad) & bright
 
+        combined = self.transformCatalogs(catalogs, straightTransforms)[good].copy(True)
+        filters = set(catalogs.keys())
         color = lambda c1, c2: (mags[c1] - mags[c2])[good]
-        colorColorPlot(filenamePrefix + "gri.png", color("g", "r"), color("r", "i"), "g-r", "r-i",
-                       (-0.5, 2.0), (-0.5, 2.0), order=3, xFitRange=(0.3, 1.1)) # Lower branch; upper is noisy
-        colorColorPlot(filenamePrefix + "riz.png", color("r", "i"), color("i", "z"), "r-i", "i-z",
-                       (-0.5, 2.0), (-0.4, 0.8), order=3)
-        colorColorPlot(filenamePrefix + "izy.png", color("i", "z"), color("z", "y"), "i-z", "z-y",
-                       (-0.4, 0.8), (-0.3, 0.5), order=3)
-
+        if filters.issuperset(set(("HSC-G", "HSC-R", "HSC-I"))):
+            # Lower branch only; upper branch is noisy due to astrophysics
+            poly = colorColorPlot(filenamer("gri"), color("HSC-G", "HSC-R"), color("HSC-R", "HSC-I"),
+                                  "g-r", "r-i", (-0.5, 2.0), (-0.5, 2.0), order=3, xFitRange=(0.3, 1.1))
+            Analysis(combined, ColorColorDistance("g", "r", "i", poly, 0.3, 1.1), "griPerp",
+                     self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
+                     ).plotAll(filenamer.copy(description="gri"), self.log)
+        if filters.issuperset(set(("HSC-R", "HSC-I", "HSC-Z"))):
+            poly = colorColorPlot(filenamer("riz"), color("HSC-R", "HSC-I"), color("HSC-I", "HSC-Z"),
+                                  "r-i", "i-z", (-0.5, 2.0), (-0.4, 0.8), order=3)
+            Analysis(combined, ColorColorDistance("r", "i", "z", poly), "rizPerp",
+                     self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
+                     ).plotAll(filenamer.copy(description="riz"), self.log)
+        if filters.issuperset(set(("HSC-I", "HSC-Z", "HSC-Y"))):
+            poly = colorColorPlot(filenamer("izy"), color("HSC-I", "HSC-Z"), color("HSC-Z", "HSC-Y"),
+                                  "i-z", "z-y", (-0.4, 0.8), (-0.3, 0.5), order=3)
+            Analysis(combined, ColorColorDistance("i", "z", "y", poly), "izyPerp",
+                     self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
+                     ).plotAll(filenamer.copy(description="izy"), self.log)
+        if filters.issuperset(set(("HSC-Z", "NB0921", "HSC-Y"))):
+            poly = colorColorPlot(filenamer("z9y"), color("HSC-Z", "NB0921"), color("NB0921", "HSC-Y"),
+                                  "z-n921", "n921-y", (-0.2, 0.2), (-0.1, 0.2), order=2,
+                                  xFitRange=(-0.05, 0.15))
+            Analysis(combined, ColorColorDistance("z", "n921", "y", poly), "z9yPerp",
+                     self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
+                     ).plotAll(filenamer.copy(description="z9y"), self.log)
 
     def _getConfigName(self):
         return None
@@ -757,11 +814,37 @@ def colorColorPlot(filename, xx, yy, xLabel, yLabel, xRange=None, yRange=None, o
     fig.savefig(filename)
     plt.close(fig)
 
+    return poly
+
+class ColorColorDistance(object):
+    """Functor to calculate distance from stellar locus in color-color plot"""
+    def __init__(self, band1, band2, band3, poly, xMin=None, xMax=None):
+        self.band1 = band1
+        self.band2 = band2
+        self.band3 = band3
+        self.poly = poly
+        self.xMin = xMin
+        self.xMax = xMax
+    def __call__(self, catalog):
+        xx = catalog[self.band1] - catalog[self.band2]
+        yy = catalog[self.band2] - catalog[self.band3]
+        polyDeriv = numpy.polyder(self.poly)
+        calculateDistance2 = lambda x1, y1, x2: (x2 - x1)**2 + (self.poly(x2) - y1)**2
+        distance2 = numpy.ones_like(xx)*numpy.nan
+        for i, (x, y) in enumerate(zip(xx, yy)):
+            if (not numpy.isfinite(x) or not numpy.isfinite(y) or (self.xMin is not None and x < self.xMin) or
+                (self.xMax is not None and x > self.xMax)):
+                distance2[i] = numpy.nan
+                continue
+            roots = numpy.roots(numpy.poly1d((1, -x)) + (self.poly - y)*polyDeriv)
+            distance2[i] = min(calculateDistance2(x, y, numpy.real(rr)) for
+                               rr in roots if numpy.real(rr) == rr)
+        return numpy.sqrt(distance2)*numpy.where(yy >= self.poly(xx), 1.0, -1.0)
+
 
 class VisitAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
-        kwargs["filenamePrefix"] = parsedCmd.prefix
         visits = defaultdict(list)
         for ref in parsedCmd.id.refList:
             visits[ref.dataId["visit"]].append(ref)
@@ -775,28 +858,28 @@ class VisitAnalysisTask(CoaddAnalysisTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_argument("--prefix", default="", help="Prefix for filenames")
         parser.add_id_argument("--id", "src", help="data ID, e.g. --id tract=0 visit=12345 ccd=6",
                                ContainerClass=PerTractCcdDataIdContainer)
         return parser
 
-    def run(self, dataRefList, filenamePrefix):
+    def run(self, dataRefList):
         filterName = dataRefList[0].dataId["filter"]
+        filenamer = Filenamer(dataRefList[0].getButler(), "plotVisit", dataRefList[0].dataId)
         if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
             self.config.externalCatalogs):
             catalog = self.readCatalogs(dataRefList, "src")
         if self.config.doMags:
-            self.plotMags(catalog, filenamePrefix)
+            self.plotMags(catalog, filenamer)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamePrefix)
+            self.plotStarGal(catalog, filenamer)
         if self.config.doMatches:
             matches = self.readMatches(dataRefList, "srcMatchFull")
-            self.plotMatches(matches, filterName, filenamePrefix)
+            self.plotMatches(matches, filterName, filenamer)
 
         for cat in self.config.externalCatalogs:
             with andCatalog(cat):
                 matches = self.matchCatalog(catalog, filterName)
-                self.plotMatches(matches, filterName, filenamePrefix + cat + "_")
+                self.plotMatches(matches, filterName, filenamer.copy(description=cat))
 
     def readCatalogs(self, dataRefList, dataset):
         catList = [self.calibrateSourceCatalog(dataRef, dataRef.get(dataset, immediate=True,
