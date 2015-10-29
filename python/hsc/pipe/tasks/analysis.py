@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy
+numpy.seterr(overflow="ignore", invalid="ignore")
 from eups import Eups
 eups = Eups()
 import functools
@@ -75,17 +76,12 @@ class CosmosLabeller(StarGalaxyLabeller):
 
 class Filenamer(object):
     """Callable that provides a filename given a style"""
-    def __init__(self, butler, dataset, dataId):
+    def __init__(self, butler, dataset, dataId={}):
         self.butler = butler
         self.dataset = dataset
         self.dataId = dataId
-    def copy(self, **kwargs):
-        """Return a copy with updated dataId"""
-        dataId = self.dataId.copy()
-        dataId.update(kwargs)
-        return Filenamer(self.butler, self.dataset, dataId)
-    def __call__(self, style):
-        filename = self.butler.get(self.dataset + "_filename", self.dataId, style=style)[0]
+    def __call__(self, dataId, **kwargs):
+        filename = self.butler.get(self.dataset + "_filename", self.dataId, **kwargs)[0]
         safeMakeDir(os.path.dirname(filename))
         return filename
 
@@ -114,11 +110,12 @@ class AnalysisConfig(Config):
 class Analysis(object):
     """Centralised base for plotting"""
 
-    def __init__(self, catalog, func, quantityName, config, qMin=-0.2, qMax=0.2, prefix="",
+    def __init__(self, catalog, func, quantityName, shortName, config, qMin=-0.2, qMax=0.2, prefix="",
                  flags=[], labeller=AllLabeller()):
         self.catalog = catalog
         self.func = func
         self.quantityName = quantityName
+        self.shortName = shortName
         self.config = config
         self.qMin = qMin
         self.qMax = qMax
@@ -224,15 +221,19 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotAll(self, filenamer, log, forcedMean=None):
+    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None):
         """Make all plots"""
-        self.plotAgainstMag(filenamer("psfMag"))
-        self.plotHistogram(filenamer("hist"))
-        self.plotSkyPosition(filenamer("sky"))
-        self.plotRaDec(filenamer("radec"))
-        self.stats(log, forcedMean=forcedMean)
+        self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"))
+        self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"))
+        self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"))
+        self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"))
+        stats = self.stats(forcedMean=forcedMean)
+        log.info("Statistics for %s: %s" % (self.quantityName, stats))
+        if enforcer:
+            enforcer(stats, dataId, log, self.quantityName)
+        return stats
 
-    def stats(self, log, forcedMean=None):
+    def stats(self, forcedMean=None):
         """Calculate statistics on quantity"""
         stats = {}
         for name, data in self.data.iteritems():
@@ -247,7 +248,34 @@ class Analysis(object):
             stdev = numpy.sqrt(((data.quantity[good].astype(numpy.float64) - mean)**2).mean())
             stats[name] = Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev,
                                 forcedMean=forcedMean)
-        log.info("Statistics for %s: %s" % (self.quantityName, stats))
+        return stats
+
+
+class Enforcer(object):
+    """Functor for enforcing limits on statistics"""
+    def __init__(self, requireGreater={}, requireLess={}, doRaise=False):
+        self.requireGreater = requireGreater
+        self.requireLess = requireLess
+        self.doRaise = doRaise
+    def __call__(self, stats, dataId, log, description):
+        for label in self.requireGreater:
+            for ss in self.requireGreater[label]:
+                value = getattr(stats[label], ss)
+                if value <= self.requireGreater[label][ss]:
+                    text = ("%s %s = %f exceeds minimum limit of %f: %s" %
+                            (description, ss, value, self.requireGreater[label][ss], dataId))
+                    log.warn(text)
+                    if self.doRaise:
+                        raise AssertionError(text)
+        for label in self.requireLess:
+            for ss in self.requireLess[label]:
+                value = getattr(stats[label], ss)
+                if value >= self.requireLess[label][ss]:
+                    text = ("%s %s = %f exceeds maximum limit of %f: %s" %
+                            (description, ss, value, self.requireLess[label][ss], dataId))
+                    log.warn(text)
+                    if self.doRaise:
+                        raise AssertionError(text)
 
 
 class CcdAnalysis(Analysis):
@@ -408,88 +436,95 @@ class CoaddAnalysisTask(CmdLineTask):
         return parser
 
     def run(self, patchRefList, cosmos=None):
-        filterName = patchRefList[0].dataId["filter"]
+        dataId = patchRefList[0].dataId
+        filterName = dataId["filter"]
         filenamer = Filenamer(patchRefList[0].getButler(), "plotCoadd", patchRefList[0].dataId)
         if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
             self.config.externalCatalogs):
             catalog = self.readCatalogs(patchRefList, "deepCoadd_src")
         if self.config.doMags:
-            self.plotMags(catalog, filenamer)
+            self.plotMags(catalog, filenamer, dataId)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamer)
+            self.plotStarGal(catalog, filenamer, dataId)
         if cosmos:
-            self.plotCosmos(catalog, filenamer, cosmos)
+            self.plotCosmos(catalog, filenamer, cosmos, dataId)
         if self.config.doOverlaps:
             overlaps = self.overlaps(catalog)
-            self.plotOverlaps(overlaps, filenamer)
+            self.plotOverlaps(overlaps, filenamer, dataId)
         if self.config.doMatches:
             matches = self.readCatalogs(patchRefList, "deepCoadd_srcMatchFull")
-            self.plotMatches(matches, filterName, filenamer)
+            self.plotMatches(matches, filterName, filenamer, dataId)
 
         for cat in self.config.externalCatalogs:
             with andCatalog(cat):
                 matches = self.matchCatalog(catalog, filterName)
-                self.plotMatches(matches, filterName, filenamer.copy(description=cat))
+                self.plotMatches(matches, filterName, filenamer, dataId, cat)
 
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
                    patchRef in patchRefList if patchRef.datasetExists(dataset)]
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer):
+    def plotMags(self, catalog, filenamer, dataId):
+        enforcer = Enforcer(requireLess={'star': {'stdev': 0.02}})
         for col in ["flux.sinc", "flux.kron", "cmodel.flux"]:
             if col in catalog.schema:
-                Analysis(catalog, MagDiff(col, "flux.psf"), "Mag(%s) - PSFMag" % col, self.config.analysis,
-                         flags=[col + ".flags"], labeller=StarGalaxyLabeller()
-                         ).plotAll(filenamer.copy(description="mag_" + col), self.log)
+                Analysis(catalog, MagDiff(col, "flux.psf"), "Mag(%s) - PSFMag" % col, "mag_" + col,
+                         self.config.analysis, flags=[col + ".flags"], labeller=StarGalaxyLabeller(),
+                         ).plotAll(dataId, filenamer, self.log, enforcer)
 
-    def plotStarGal(self, catalog, filenamer):
-        Analysis(catalog, deconvMomStarGal, "pStar", self.config.analysis, qMin=0.0, qMax=1.0,
-                 ).plotAll(filenamer.copy(description="pStar"), self.log)
-        Analysis(catalog, deconvMom, "Deconvolved moments", self.config.analysis, qMin=-1.0, qMax=6.0,
-                 labeller=StarGalaxyLabeller()).plotAll(filenamer.copy(description="deconvMom"), self.log)
+    def plotStarGal(self, catalog, filenamer, dataId):
+        Analysis(catalog, deconvMomStarGal, "pStar", "pStar", self.config.analysis, qMin=0.0, qMax=1.0,
+                 ).plotAll(dataId, filenamer, self.log)
+        Analysis(catalog, deconvMom, "Deconvolved moments", "deconvMom", self.config.analysis,
+                 qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
+                 ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.2}}))
 
     def overlaps(self, catalog):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
         return joinMatches(matches, "first.", "second.")
 
-    def plotOverlaps(self, overlaps, filenamer):
+    def plotOverlaps(self, overlaps, filenamer, dataId):
+        magEnforcer = Enforcer(requireLess={'star': {'stdev': 0.003}})
         for col in ["flux.psf", "flux.sinc", "flux.kron", "cmodel.flux"]:
             if "first." + col in overlaps.schema:
                 Analysis(overlaps, MagDiff("first." + col, "second." + col),
-                         "Overlap mag difference (%s)" % col, self.config.analysis, prefix="first.",
-                         flags=[col + ".flags"], labeller=OverlapsStarGalaxyLabeller()
-                         ).plotAll(filenamer.copy(description="overlap_" + col), self.log)
+                         "Overlap mag difference (%s)" % col, "overlap_" + col, self.config.analysis,
+                         prefix="first.", flags=[col + ".flags"], labeller=OverlapsStarGalaxyLabeller(),
+                         ).plotAll(dataId, filenamer, self.log, magEnforcer)
 
+        distEnforcer = Enforcer(requireLess={'star': {'stdev': 0.005}})
         Analysis(overlaps, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
-                 "Distance (arcsec)", self.config.analysis, prefix="first.", qMin=0.0, qMax=0.15,
-                 labeller=OverlapsStarGalaxyLabeller(),
-                 ).plotAll(filenamer.copy(description="overlap_distance"), self.log, forcedMean=0.0)
+                 "Distance (arcsec)", "overlap_distance", self.config.analysis, prefix="first.",
+                 qMin=0.0, qMax=0.15, labeller=OverlapsStarGalaxyLabeller(),
+                 ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0)
 
-    def plotMatches(self, matches, filterName, filenamer):
+    def plotMatches(self, matches, filterName, filenamer, dataId, description="matches"):
         ct = self.config.colorterms.selectColorTerm(filterName)
-        Analysis(matches, MagDiffMatches("flux.psf", ct), "MagPsf - ref", self.config.analysisMatches,
-                 prefix="src.", labeller=MatchesStarGalaxyLabeller(),
-                 ).plotAll(filenamer.copy(description="matches_mag"), self.log)
+        Analysis(matches, MagDiffMatches("flux.psf", ct), "MagPsf - ref", description + "_mag",
+                 self.config.analysisMatches, prefix="src.", labeller=MatchesStarGalaxyLabeller(),
+                 ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.030}}))
         Analysis(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
-                 "Distance (arcsec)", self.config.analysisMatches, prefix="src.",
+                 "Distance (arcsec)", description + "_distance", self.config.analysisMatches, prefix="src.",
                  qMin=0.0, qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller()
-                 ).plotAll(filenamer.copy(description="matches_distance"), self.log, forcedMean=0.0)
+                 ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.050}}),
+                           forcedMean=0.0)
         Analysis(matches, AstrometryDiff("src.coord.ra", "ref.coord.ra", "ref.coord.dec"),
-                 "dRA*cos(Dec) (arcsec)", self.config.analysisMatches, prefix="src.",
-                 qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
-                 labeller=MatchesStarGalaxyLabeller()
-                 ).plotAll(filenamer.copy(description="matches_ra"), self.log)
-        Analysis(matches, AstrometryDiff("src.coord.dec", "ref.coord.dec"),
-                 "dDec (arcsec)", self.config.analysisMatches, prefix="src.",
+                 "dRA*cos(Dec) (arcsec)", description + "_ra", self.config.analysisMatches, prefix="src.",
                  qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
                  labeller=MatchesStarGalaxyLabeller(),
-                 ).plotAll(filenamer.copy(description="matches_dec"), self.log)
+                 ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.050}}))
+        Analysis(matches, AstrometryDiff("src.coord.dec", "ref.coord.dec"),
+                 "dDec (arcsec)", description + "_dec", self.config.analysisMatches, prefix="src.",
+                 qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
+                 labeller=MatchesStarGalaxyLabeller(),
+                 ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.050}}))
 
-    def plotCosmos(self, catalog, filenamer, cosmos):
+    def plotCosmos(self, catalog, filenamer, cosmos, dataId):
         labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
-        Analysis(catalog, deconvMom, "Deconvolved moments", self.config.analysis, qMin=-1.0, qMax=6.0,
-                 labeller=labeller).plotAll(filenamer.copy(description="cosmos"), self.log)
+        Analysis(catalog, deconvMom, "Deconvolved moments", "cosmos", self.config.analysis,
+                 qMin=-1.0, qMax=6.0, labeller=labeller,
+                 ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.2}}))
 
     def matchCatalog(self, catalog, filterName):
         astrometry = Astrometry(self.config.astrometry)
@@ -645,8 +680,8 @@ class ColorAnalysisTask(CmdLineTask):
         catalogsByFilter = {ff: self.readCatalogs(patchRefList, "deepCoadd_forced_src") for
                             ff, patchRefList in patchRefsByFilter.iteritems()}
         catalog = self.transformCatalogs(catalogsByFilter, self.config.transforms)
-        self.plotColors(catalog, filenamer, NumStarLabeller(len(catalogsByFilter)))
-        self.plotColorColor(catalogsByFilter, filenamer.copy(description="fit"))
+        self.plotColors(catalog, filenamer, NumStarLabeller(len(catalogsByFilter)), dataId)
+        self.plotColorColor(catalogsByFilter, filenamer, dataId)
 
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
@@ -703,15 +738,15 @@ class ColorAnalysisTask(CmdLineTask):
 
         return new
 
-    def plotColors(self, catalog, filenamer, labeller):
+    def plotColors(self, catalog, filenamer, labeller, dataId):
         for col, transform in self.config.transforms.iteritems():
             if not transform.plot:
                 continue
             Analysis(catalog, ColorValueInRange(col, transform.requireGreater, transform.requireLess), col,
-                     self.config.analysis, flags=["bad"], labeller=labeller, qMin=-0.2, qMax=0.2,
-                     ).plotAll(filenamer.copy(description="color_" + col), self.log)
+                     "color_" + col, self.config.analysis, flags=["bad"], labeller=labeller,
+                     qMin=-0.2, qMax=0.2,).plotAll(dataId, filenamer, self.log)
 
-    def plotColorColor(self, catalogs, filenamer):
+    def plotColorColor(self, catalogs, filenamer, dataId):
         num = len(catalogs.values()[0])
         zp = self.config.analysis.zp
         mags = {ff: zp - 2.5*numpy.log10(catalogs[ff][self.config.analysis.fluxColumn]) for ff in catalogs}
@@ -738,28 +773,28 @@ class ColorAnalysisTask(CmdLineTask):
             # Lower branch only; upper branch is noisy due to astrophysics
             poly = colorColorPlot(filenamer("gri"), color("HSC-G", "HSC-R"), color("HSC-R", "HSC-I"),
                                   "g-r", "r-i", (-0.5, 2.0), (-0.5, 2.0), order=3, xFitRange=(0.3, 1.1))
-            Analysis(combined, ColorColorDistance("g", "r", "i", poly, 0.3, 1.1), "griPerp",
+            Analysis(combined, ColorColorDistance("g", "r", "i", poly, 0.3, 1.1), "griPerp", "gri",
                      self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
-                     ).plotAll(filenamer.copy(description="gri"), self.log)
+                     ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.05}}))
         if filters.issuperset(set(("HSC-R", "HSC-I", "HSC-Z"))):
             poly = colorColorPlot(filenamer("riz"), color("HSC-R", "HSC-I"), color("HSC-I", "HSC-Z"),
                                   "r-i", "i-z", (-0.5, 2.0), (-0.4, 0.8), order=3)
-            Analysis(combined, ColorColorDistance("r", "i", "z", poly), "rizPerp",
+            Analysis(combined, ColorColorDistance("r", "i", "z", poly), "rizPerp", "riz",
                      self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
-                     ).plotAll(filenamer.copy(description="riz"), self.log)
+                     ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.02}}))
         if filters.issuperset(set(("HSC-I", "HSC-Z", "HSC-Y"))):
             poly = colorColorPlot(filenamer("izy"), color("HSC-I", "HSC-Z"), color("HSC-Z", "HSC-Y"),
                                   "i-z", "z-y", (-0.4, 0.8), (-0.3, 0.5), order=3)
-            Analysis(combined, ColorColorDistance("i", "z", "y", poly), "izyPerp",
+            Analysis(combined, ColorColorDistance("i", "z", "y", poly), "izyPerp", "izy",
                      self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
-                     ).plotAll(filenamer.copy(description="izy"), self.log)
+                     ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.02}}))
         if filters.issuperset(set(("HSC-Z", "NB0921", "HSC-Y"))):
             poly = colorColorPlot(filenamer("z9y"), color("HSC-Z", "NB0921"), color("NB0921", "HSC-Y"),
                                   "z-n921", "n921-y", (-0.2, 0.2), (-0.1, 0.2), order=2,
                                   xFitRange=(-0.05, 0.15))
-            Analysis(combined, ColorColorDistance("z", "n921", "y", poly), "z9yPerp",
+            Analysis(combined, ColorColorDistance("z", "n921", "y", poly), "z9yPerp", "z9y",
                      self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
-                     ).plotAll(filenamer.copy(description="z9y"), self.log)
+                     ).plotAll(dataId, filenamer, self.log, Enforcer(requireLess={'star': {'stdev': 0.02}}))
 
     def _getConfigName(self):
         return None
@@ -875,23 +910,24 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         return parser
 
     def run(self, dataRefList):
-        filterName = dataRefList[0].dataId["filter"]
+        dataId = dataRefList[0].dataId
+        filterName = dataId["filter"]
         filenamer = Filenamer(dataRefList[0].getButler(), "plotVisit", dataRefList[0].dataId)
         if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
             self.config.externalCatalogs):
             catalog = self.readCatalogs(dataRefList, "src")
         if self.config.doMags:
-            self.plotMags(catalog, filenamer)
+            self.plotMags(catalog, filenamer, dataId)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamer)
+            self.plotStarGal(catalog, filenamer, dataId)
         if self.config.doMatches:
             matches = self.readMatches(dataRefList, "srcMatchFull")
-            self.plotMatches(matches, filterName, filenamer)
+            self.plotMatches(matches, filterName, filenamer, dataId)
 
         for cat in self.config.externalCatalogs:
             with andCatalog(cat):
                 matches = self.matchCatalog(catalog, filterName)
-                self.plotMatches(matches, filterName, filenamer.copy(description=cat))
+                self.plotMatches(matches, filterName, filenamer, dataId, cat)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
