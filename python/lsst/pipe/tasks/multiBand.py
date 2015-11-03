@@ -363,7 +363,7 @@ class MergeDetectionsConfig(MergeSourcesConfig):
                           "(N.b. should be in MergeMeasurementsConfig.pseudoFilterList)")
     skySourceRadius = Field(dtype=float, default=8,
                             doc="Radius, in pixels, of sky objects")
-    nSkySourcesPerPatch = Field(dtype=int, default=0,
+    nSkySourcesPerPatch = Field(dtype=int, default=100,
                                 doc="Try to add this many sky objects to the mergeDet list, which will\n"
                                 "then be measured along with the detected objects in sourceMeasurementTask")
     nTrialSkySourcesPerPatch = Field(dtype=int, default=None, optional=True,
