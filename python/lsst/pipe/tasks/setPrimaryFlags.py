@@ -22,13 +22,15 @@
 #
 
 import numpy
-from lsst.pex.config import Config, Field
+from lsst.pex.config import Config, Field, ListField
 from lsst.pipe.base import Task
 from lsst.afw.geom import Box2D
 
 class SetPrimaryFlagsConfig(Config):
     nChildKeyName = Field(dtype=str, default="deblend.nchild",
                           doc="Name of field in schema with number of deblended children")
+    pseudoFilterList = ListField(dtype=str, default=['sky'],
+                                 doc="Names of filters which should never be primary")
 
 class SetPrimaryFlagsTask(Task):
     ConfigClass = SetPrimaryFlagsConfig
@@ -47,7 +49,8 @@ class SetPrimaryFlagsTask(Task):
         self.isPrimaryKey = self.schema.addField(
             "detect.is-primary", type="Flag",
             doc="true if source has no children and is in the inner region of a coadd patch " \
-                + "and is in the inner region of a coadd tract",
+                + "and is in the inner region of a coadd tract "
+                  "and is not \"detected\" in a pseudo-filter (see config.pseudoFilterList)",
         )
 
     def run(self, sources, skyMap, tractInfo, patchInfo, includeDeblend=True):
@@ -76,6 +79,13 @@ class SetPrimaryFlagsTask(Task):
         shrunkInnerFloatBBox = Box2D(innerFloatBBox)
         shrunkInnerFloatBBox.grow(-1)
 
+        pseudoFilterKeys = []
+        for filt in self.config.pseudoFilterList:
+            try:
+                pseudoFilterKeys.append(self.schema.find("merge.peak.%s" % filt).getKey())
+            except Exception as e:
+                self.log.warn("merge.peak is not set for pseudo-filter %s" % filt)
+
         tractId = tractInfo.getId()
         for source in sources:
             centroidPos = source.getCentroid()
@@ -94,5 +104,11 @@ class SetPrimaryFlagsTask(Task):
             source.setFlag(self.isTractInnerKey, isTractInner)
 
             if nChildKey is None or source.get(nChildKey) == 0:
-                source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner)
+                for pseudoFilterKey in pseudoFilterKeys:
+                    if source.get(pseudoFilterKey):
+                        isPseudo = True
+                        break
+                else:
+                    isPseudo = False
 
+                source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner and not isPseudo)

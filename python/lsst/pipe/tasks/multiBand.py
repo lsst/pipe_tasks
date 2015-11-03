@@ -10,6 +10,7 @@ from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
+import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDetect
 from lsst.daf.base import PropertyList
@@ -357,6 +358,21 @@ class MergeDetectionsConfig(MergeSourcesConfig):
                         " (in arcsec) to an existing peak will be flagged as detected in that catalog.")
     cullPeaks = ConfigField(dtype=CullPeaksConfig, doc="Configuration for how to cull peaks.")
 
+    skyFilterName = Field(dtype=str, default="sky",
+                          doc="Name of `filter' used to label sky objects (e.g. flag merge.peak.sky is set)\n"
+                          "(N.b. should be in MergeMeasurementsConfig.pseudoFilterList)")
+    skySourceRadius = Field(dtype=float, default=8,
+                            doc="Radius, in pixels, of sky objects")
+    nSkySourcesPerPatch = Field(dtype=int, default=0,
+                                doc="Try to add this many sky objects to the mergeDet list, which will\n"
+                                "then be measured along with the detected objects in sourceMeasurementTask")
+    nTrialSkySourcesPerPatch = Field(dtype=int, default=None, optional=True,
+                                doc="Maximum number of trial sky object positions\n"
+                                     "(default: nSkySourcesPerPatch*nTrialSkySourcesPerPatchMultiplier)")
+    nTrialSkySourcesPerPatchMultiplier = Field(dtype=int, default=5,
+                                               doc="Set nTrialSkySourcesPerPatch to\n"
+                                               "    nSkySourcesPerPatch*nTrialSkySourcesPerPatchMultiplier\n"
+                                               "if nTrialSkySourcesPerPatch is None")
 
 class MergeDetectionsTask(MergeSourcesTask):
     """Merge detections from multiple bands"""
@@ -377,10 +393,11 @@ class MergeDetectionsTask(MergeSourcesTask):
         """
         MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
         self.schema = self.getInputSchema(butler=butler, schema=schema)
-        self.merged = afwDetect.FootprintMergeList(
-            self.schema,
-            [getShortFilterName(name) for name in self.config.priorityList]
-        )
+
+        filterNames = [getShortFilterName(name) for name in self.config.priorityList]
+        if self.config.nSkySourcesPerPatch > 0:
+            filterNames += [self.config.skyFilterName]
+        self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
 
     def mergeCatalogs(self, catalogs, patchRef):
         """Merge multiple catalogs
@@ -401,6 +418,21 @@ class MergeDetectionsTask(MergeSourcesTask):
                                                         self.schema, self.makeIdFactory(patchRef),
                                                         samePeakDistance)
         copySlots(orderedCatalogs[0], mergedList)
+        #
+        # Add extra sources that correspond to blank sky
+        #
+        skySourceFootprints = self.getSkySourceFootprints(mergedList, skyInfo)
+        if skySourceFootprints:
+            key = mergedList.schema.find("merge.footprint.%s" % self.config.skyFilterName).key
+
+            for foot in skySourceFootprints:
+                s = mergedList.addNew()
+                s.setFootprint(foot)
+                s.set(key, True)
+
+            self.log.info("Added %d sky sources (%.0f%% of requested)" % (
+                len(skySourceFootprints), 100*len(skySourceFootprints)/float(self.config.nSkySourcesPerPatch)))
+
         # Sort Peaks from brightest to faintest
         for record in mergedList:
             record.getFootprint().sortPeaks()
@@ -439,6 +471,57 @@ class MergeDetectionsTask(MergeSourcesTask):
         peak = afwDetect.PeakCatalog(self.merged.getPeakSchema())
         return {self.config.coaddName + "Coadd_mergeDet": mergeDet,
                 self.config.coaddName + "Coadd_peak": peak}
+
+    def getSkySourceFootprints(self, mergedList, skyInfo):
+        """!Return a list of Footprints of sky objects which don't overlap with anything in mergedList
+
+        \param mergedList  The merged Footprints from all the input bands
+        \param skyInfo     A description of the patch
+        """
+
+        if self.config.nSkySourcesPerPatch <= 0:
+            return []
+
+        skySourceRadius = self.config.skySourceRadius
+        nSkySourcesPerPatch = self.config.nSkySourcesPerPatch
+        nTrialSkySourcesPerPatch = self.config.nTrialSkySourcesPerPatch
+        if nTrialSkySourcesPerPatch is None:
+            nTrialSkySourcesPerPatch = self.config.nTrialSkySourcesPerPatchMultiplier*nSkySourcesPerPatch
+        #
+        # We are going to find circular Footprints that don't intersect any pre-existing Footprints,
+        # and the easiest way to do this is to generate a Mask containing all the detected pixels (as
+        # merged by this task).
+        #
+        patchBBox = skyInfo.patchInfo.getOuterBBox()
+        mask = afwImage.MaskU(patchBBox)
+        DETECTED = mask.getPlaneBitMask("DETECTED")
+        for s in mergedList:
+            afwDetect.setMaskFromFootprint(mask, s.getFootprint(), DETECTED)
+
+        xmin, ymin = patchBBox.getMin()
+        xmax, ymax = patchBBox.getMax()
+        # Avoid objects partially off the image
+        xmin += skySourceRadius + 1
+        ymin += skySourceRadius + 1
+        xmax -= skySourceRadius + 1
+        ymax -= skySourceRadius + 1
+
+        skySourceFootprints = []
+        for i in range(nTrialSkySourcesPerPatch):
+            if len(skySourceFootprints) == nSkySourcesPerPatch:
+                break
+
+            x = int(numpy.random.uniform(xmin, xmax))
+            y = int(numpy.random.uniform(ymin, ymax))
+            foot = afwDetect.Footprint(afwGeom.PointI(x, y), skySourceRadius, patchBBox)
+            foot.setPeakSchema(self.merged.getPeakSchema())
+
+            if not foot.overlapsMask(mask):
+                foot.addPeak(x, y, 0)
+                foot.getPeaks()[0].set("merge.peak.%s" % self.config.skyFilterName, True)
+                skySourceFootprints.append(foot)
+
+        return skySourceFootprints
 
 ##############################################################################################################
 
@@ -580,9 +663,15 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
 ##############################################################################################################
 
+class MergeMeasurementsConfig(MergeSourcesConfig):
+    pseudoFilterList = ListField(dtype=str, default=['sky'],
+                                 doc="Names of filters which may have no associated detection\n"
+                                     "(N.b. should include MergeDetectionsConfig.skyFilterName)")
+
 class MergeMeasurementsTask(MergeSourcesTask):
     """Measure measurements from multiple bands"""
     _DefaultName = "mergeCoaddMeasurements"
+    ConfigClass = MergeMeasurementsConfig
     inputDataset = "meas"
     outputDataset = "ref"
     getSchemaCatalogs = _makeGetSchemaCatalogs("ref")
@@ -613,6 +702,13 @@ class MergeMeasurementsTask(MergeSourcesTask):
             self.flagKeys[band] = Struct(peak=peakKey, footprint=footprintKey, output=outputKey)
         self.schema = self.schemaMapper.getOutputSchema()
 
+        self.pseudoFilterKeys = []
+        for filt in self.config.pseudoFilterList:
+            try:
+                self.pseudoFilterKeys.append(self.schema.find("merge.peak.%s" % filt).getKey())
+            except Exception as e:
+                self.log.warn("merge.peak is not set for pseudo-filter %s" % filt)
+
     def mergeCatalogs(self, catalogs, patchRef):
         """Merge measurement catalogs to create a single reference catalog for forced photometry
 
@@ -641,13 +737,28 @@ class MergeMeasurementsTask(MergeSourcesTask):
                 bestParent = (inputRecord.getParent() == 0 and inputRecord.get(flagKeys.footprint))
                 bestChild = (inputRecord.getParent() != 0 and inputRecord.get(flagKeys.peak))
                 if bestParent or bestChild:
-                    outputRecord = mergedCatalog.addNew()
-                    outputRecord.assign(inputRecord, self.schemaMapper)
-                    outputRecord.set(flagKeys.output, True)
                     break
-            else: # if we didn't break (i.e. didn't find any record with right flag set)
-                raise ValueError("Error in inputs to MergeCoaddMeasurements: no valid reference for %s" %
-                                 inputRecord.getId())
+            else: # if we didn't break (i.e. didn't find any record with a flag set in the right band)
+                msg = "No valid detection band for ID %s in MergeCoaddMeasurements" % \
+                      inputRecord.getId()
+
+                hasPseudoFilter = False
+                for pseudoFilterKey in self.pseudoFilterKeys:
+                    for inputRecord, flagKeys in zip(orderedRecords, orderedKeys):
+                        if inputRecord.get(pseudoFilterKey):
+                            self.log.logdebug(msg + "; using first")
+                            hasPseudoFilter = True
+                            break
+
+                    if hasPseudoFilter:
+                        break
+                else:
+                    raise ValueError(msg)
+
+            outputRecord = mergedCatalog.addNew()
+            outputRecord.assign(inputRecord, self.schemaMapper)
+            if flagKeys:
+                outputRecord.set(flagKeys.output, True)
 
         copySlots(orderedCatalogs[0], mergedCatalog)
 
