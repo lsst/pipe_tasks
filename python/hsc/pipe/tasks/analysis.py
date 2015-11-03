@@ -400,25 +400,44 @@ class CoaddAnalysisConfig(Config):
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     analysisMatches = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options for matches")
     matchesMaxDistance = Field(dtype=float, default=0.3, doc="Maximum plotting distance for matches")
-    externalCatalogs = ListField(dtype=str, default=["sdss-dr9-fink-v5b"],
-                                 doc="Additional external catalogs for matching")
+    externalCatalogs = ConfigDictField(keytype=str, itemtype=MeasAstromConfig,
+                                       doc="Additional external catalogs for matching")
     astrometry = ConfigField(dtype=MeasAstromConfig, doc="Configuration for astrometric reference")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
+    onlyReadStars = Field(dtype=bool, default=False, doc="Only read stars (to save memory)?")
 
     def saveToStream(self, outfile, root="root"):
         """Required for loading colorterms from a Config outside the 'lsst' namespace"""
         print >> outfile, "import lsst.meas.photocal.colorterms"
         return Config.saveToStream(self, outfile, root)
 
+    def setDefaults(self):
+        Config.setDefaults(self)
+        astrom = MeasAstromConfig()
+        astrom.filterMap["y"] = "z"
+        astrom.filterMap["N921"] = "z"
+        self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
+
 
 class CoaddAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
         kwargs["cosmos"] = parsedCmd.cosmos
-        return [(refList, kwargs) for refList in parsedCmd.id.refList]
+
+        # Partition all inputs by tract,filter
+        FilterRefsDict = functools.partial(defaultdict, list) # Dict for filter-->dataRefs
+        tractFilterRefs = defaultdict(FilterRefsDict) # tract-->filter-->dataRefs
+        for patchRef in sum(parsedCmd.id.refList, []):
+            if patchRef.datasetExists("deepCoadd_meas"):
+                tract = patchRef.dataId["tract"]
+                filterName = patchRef.dataId["filter"]
+                tractFilterRefs[tract][filterName].append(patchRef)
+
+        return [(tractFilterRefs[tract][filterName], kwargs) for tract in tractFilterRefs for
+                filterName in tractFilterRefs[tract]]
 
 
 class CoaddAnalysisTask(CmdLineTask):
