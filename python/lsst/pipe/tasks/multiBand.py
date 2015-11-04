@@ -667,6 +667,19 @@ class MergeMeasurementsConfig(MergeSourcesConfig):
     pseudoFilterList = ListField(dtype=str, default=['sky'],
                                  doc="Names of filters which may have no associated detection\n"
                                      "(N.b. should include MergeDetectionsConfig.skyFilterName)")
+    snName = Field(dtype=str, default="flux.psf",
+                       doc="Name of flux measurement for calculating the S/N when choosing the "
+                           "reference band.")
+    minSN = Field(dtype=float, default=10.,
+                  doc="If the S/N from the priority band is below this value (and the S/N "
+                      "is larger than minSNDiff compared to the priority band), use the band with "
+                      "the largest S/N as the reference band."
+                  )
+    minSNDiff = Field(dtype=float, default=3.,
+                  doc="If the difference in S/N between another band and the priority band is larger "
+                      "than this value (and the S/N in the priority band is less than minSN) "
+                      "use the band with the largest S/N as the reference band"
+                  )
 
 class MergeMeasurementsTask(MergeSourcesTask):
     """Measure measurements from multiple bands"""
@@ -689,6 +702,8 @@ class MergeMeasurementsTask(MergeSourcesTask):
         inputSchema = self.getInputSchema(butler=butler, schema=schema)
         self.schemaMapper = afwTable.SchemaMapper(inputSchema)
         self.schemaMapper.addMinimalSchema(inputSchema, True)
+        self.fluxKey = inputSchema.find(self.config.snName).key
+        self.fluxErrKey = inputSchema.find(self.config.snName + ".err").key
         self.flagKeys = {}
         for band in self.config.priorityList:
             short = getShortFilterName(band)
@@ -732,33 +747,64 @@ class MergeMeasurementsTask(MergeSourcesTask):
         # This first zip iterates over all the catalogs simultaneously, yielding a sequence of one
         # record for each band, in order.
         for n, orderedRecords in enumerate(zip(*orderedCatalogs)):
-            # Now we iterate over those record-band pairs, until we find the one with the right flag set.
+            # Now we iterate over those record-band pairs, keeping track of the priority and largest S/N band
+            maxSNRecord = None
+            maxSNFlagKeys = None
+            maxSN = -1.
+            priorityRecord = None
+            priorityFlagKeys = None
+            prioritySN = -1.
+            hasPseudoFilter = False
+
             for inputRecord, flagKeys in zip(orderedRecords, orderedKeys):
-                bestParent = (inputRecord.getParent() == 0 and inputRecord.get(flagKeys.footprint))
-                bestChild = (inputRecord.getParent() != 0 and inputRecord.get(flagKeys.peak))
-                if bestParent or bestChild:
-                    break
-            else: # if we didn't break (i.e. didn't find any record with a flag set in the right band)
-                msg = "No valid detection band for ID %s in MergeCoaddMeasurements" % \
-                      inputRecord.getId()
+                parent = (inputRecord.getParent() == 0 and inputRecord.get(flagKeys.footprint))
+                child = (inputRecord.getParent() != 0 and inputRecord.get(flagKeys.peak))
 
-                hasPseudoFilter = False
-                for pseudoFilterKey in self.pseudoFilterKeys:
-                    for inputRecord, flagKeys in zip(orderedRecords, orderedKeys):
+                if not (parent or child):
+                    for pseudoFilterKey in self.pseudoFilterKeys:
                         if inputRecord.get(pseudoFilterKey):
-                            self.log.logdebug(msg + "; using first")
                             hasPseudoFilter = True
+                            priorityRecord = inputRecord
+                            priorityFlagKeys = flagKeys
                             break
-
                     if hasPseudoFilter:
                         break
-                else:
-                    raise ValueError(msg)
 
-            outputRecord = mergedCatalog.addNew()
-            outputRecord.assign(inputRecord, self.schemaMapper)
-            if flagKeys:
-                outputRecord.set(flagKeys.output, True)
+                sn = inputRecord.get(self.fluxKey)/inputRecord.get(self.fluxErrKey)
+                if numpy.isnan(sn) or sn < 0.:
+                    sn = 0
+                if (parent or child) and priorityRecord is None:
+                    priorityRecord = inputRecord
+                    priorityFlagKeys = flagKeys
+                    prioritySN = sn
+                if sn > maxSN:
+                    maxSNRecord = inputRecord
+                    maxSNFlagKeys = flagKeys
+                    maxSN = sn
+
+            # If the priority band has S/N below the minimum S/N threshold and the largest S/N is larger
+            # than the minimum S/N difference threshold, use that one as the reference band.  For pseudo
+            # filter objects we choose the first band in the priority list.
+            bestRecord = None
+            bestFlagKeys = None
+            if hasPseudoFilter:
+                bestRecord = priorityRecord
+                bestFlagKeys = priorityFlagKeys
+            if (prioritySN < self.config.minSN and (maxSN - prioritySN) > self.config.minSNDiff and
+                maxSNRecord is not None):
+                bestRecord = maxSNRecord
+                bestFlagKeys = maxSNFlagKeys
+            elif priorityRecord is not None:
+                bestRecord = priorityRecord
+                bestFlagKeys = priorityFlagKeys
+
+            if bestRecord is not None and bestFlagKeys is not None:
+                outputRecord = mergedCatalog.addNew()
+                outputRecord.assign(bestRecord, self.schemaMapper)
+                outputRecord.set(bestFlagKeys.output, True)
+            else: # if we didn't find any records
+                raise ValueError("Error in inputs to MergeCoaddMeasurements: no valid reference for %s" %
+                                 inputRecord.getId())
 
         copySlots(orderedCatalogs[0], mergedCatalog)
 
