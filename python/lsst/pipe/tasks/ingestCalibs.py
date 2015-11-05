@@ -1,5 +1,6 @@
 import collections
 import datetime
+import itertools
 import sqlite3
 import lsst.afw.image as afwImage
 from lsst.pex.config import Config, ListField, ConfigurableField
@@ -73,10 +74,17 @@ class CalibsRegisterTask(RegisterTask):
             cursor.execute(sql)
             rows = cursor.fetchall()
             for row in rows:
-                self.resolveOverlaps(conn, table, str(row["filter"]), row["ccdnum"])
+                self.fixSubsetValidity(conn, table, str(row["filter"]), row["ccdnum"])
 
-    def resolveOverlaps(self, conn, table, filterName, ccdnum):
-        """Fix overlaps of validity ranges among selected rows in the registry
+    def fixSubsetValidity(self, conn, table, filterName, ccdnum):
+        """Update the validity ranges among selected rows in the registry.
+
+        For defects, the products are valid from their start date until
+        they are superseded by subsequent defect data.
+        For other calibration products, the validity ranges are checked and
+        if there are overlaps, a midpoint is used to fix the overlaps,
+        so that the calibration data with whose date is nearest the date
+        of the observation is used.
 
         @param conn: Database connection
         @param table: Name of table to be selected
@@ -98,14 +106,19 @@ class CalibsRegisterTask(RegisterTask):
                           " ccdnum=%s because of missing calibration dates" %
                           (table, filterName, ccdnum))
             return
-        numDates = len(dates)
-        midpoints = [t1 + (t2 - t1)//2 for t1, t2 in zip(dates[:numDates-1], dates[1:])]
-        for i, (date, midpoint) in enumerate(zip(dates[:numDates-1], midpoints)):
-            if valids[date][1] > midpoint:
-                nextDate = dates[i + 1]
-                valids[nextDate][0] = midpoint + datetime.timedelta(1)
-                valids[date][1] = midpoint
-        del midpoints
+        if table == "defect":
+            for thisDate, nextDate in itertools.izip(dates[:-1], dates[1:]):
+                valids[thisDate][0] = thisDate
+                valids[thisDate][1] = nextDate - datetime.timedelta(1)
+            valids[dates[-1]][1] = _convertToDate("2037-12-31")  # End of UNIX time
+        else:
+            midpoints = [t1 + (t2 - t1)//2 for t1, t2 in itertools.izip(dates[:-1], dates[1:])]
+            for i, (date, midpoint) in enumerate(itertools.izip(dates[:-1], midpoints)):
+                if valids[date][1] > midpoint:
+                    nextDate = dates[i + 1]
+                    valids[nextDate][0] = midpoint + datetime.timedelta(1)
+                    valids[date][1] = midpoint
+            del midpoints
         del dates
         for row in rows:
             calibDate = _convertToDate(row["calibDate"])
@@ -125,6 +138,11 @@ class IngestCalibsArgumentParser(ArgumentParser):
                           default=False, help="Don't perform any action?")
         self.add_argument("--create", action="store_true", help="Create new registry?")
         self.add_argument("--validity", type=int, help="Calibration validity period (days)")
+        self.add_argument("--calibType", type=str, default=None,
+                          choices=[None, "bias", "dark", "flat", "fringe", "defect"],
+                          help="Type of the calibration data to be ingested;" +
+                               " if omitted, the type is determined from" +
+                               " the file header information")
         self.add_argument("files", nargs="+", help="Names of file")
 
 
@@ -145,7 +163,10 @@ class IngestCalibsTask(IngestTask):
         with self.register.openRegistry(args.butler, create=args.create, dryrun=args.dryrun) as registry:
             for infile in args.files:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
-                calibType = self.parse.getCalibType(infile)
+                if args.calibType is None:
+                    calibType = self.parse.getCalibType(infile)
+                else:
+                    calibType = args.calibType
                 if calibType not in self.register.config.tables:
                     self.log.warn("Skipped adding %s of observation type %s to registry" %
                                   (infile, calibType))
@@ -164,6 +185,6 @@ class IngestCalibsTask(IngestTask):
                     self.register.addRow(registry, info, dryrun=args.dryrun,
                                          create=args.create, table=calibType)
             if args.dryrun:
-                self.log.info("Would update validity ranges to resolve overlaps")
+                self.log.info("Would update validity ranges")
             else:
                 self.register.updateValidityRanges(registry)
