@@ -27,7 +27,6 @@ import numpy
 
 import lsst.utils.tests as utilsTests
 import lsst.afw.image as afwImage
-import lsst.afw.image.testUtils as afwTestUtils
 import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 from lsst.coadd.utils import setCoaddEdgeBits
@@ -81,7 +80,7 @@ def simpleAdd(exp0, exp1, badPixelMask):
     return expRes
     
 
-class SnapCombineTestCase(unittest.TestCase):
+class SnapCombineTestCase(utilsTests.TestCase):
     """A test case for SnapCombineTask."""
     def testAddition(self):
         """Test addition with bad pixels
@@ -100,9 +99,7 @@ class SnapCombineTestCase(unittest.TestCase):
         
         predExp = simpleAdd(snap0, snap1, badPixelMask)
         predMi = predExp.getMaskedImage()
-        errMsg = afwTestUtils.maskedImagesDiffer(resMi.getArrays(), predMi.getArrays())
-        if errMsg:
-            self.fail(errMsg)
+        self.assertMaskedImagesNearlyEqual(resMi, predMi)
     
     def testAdditionAllGood(self):
         """Test the case where all pixels are valid
@@ -119,9 +116,7 @@ class SnapCombineTestCase(unittest.TestCase):
 
         predMi = snap0.getMaskedImage().Factory(snap0.getMaskedImage(), True)
         predMi += snap1.getMaskedImage()
-        errMsg = afwTestUtils.maskedImagesDiffer(resMi.getArrays(), predMi.getArrays())
-        if errMsg:
-            self.fail(errMsg)
+        self.assertMaskedImagesNearlyEqual(resMi, predMi)
     
     def testMetadata(self):
         """Test more advanced metadata handling
