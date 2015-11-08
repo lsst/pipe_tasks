@@ -27,8 +27,6 @@ import numpy
 
 import lsst.utils.tests as utilsTests
 import lsst.afw.image as afwImage
-import lsst.afw.coord as afwCoord
-import lsst.afw.geom as afwGeom
 from lsst.coadd.utils import setCoaddEdgeBits
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
 
