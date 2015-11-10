@@ -2,7 +2,7 @@
 
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2008-2015 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -77,17 +77,15 @@ class MyAstrometryTask(AstrometryTask):
         # Fake a reference catalogue by copying fluxes from the list of Sources
         #
         schema = afwTable.SimpleTable.makeMinimalSchema()
-        schema.addField(afwTable.Field[float](filterName, "Flux in appropriate band"))
-        schema.addField(afwTable.Field[float]("flux", "Reference flux"))
+        schema.addField(afwTable.Field[float]("{}_flux".format(filterName), "Reference flux"))
         schema.addField(afwTable.Field[float]("photometric", "I am a reference star"))
         refCat = afwTable.SimpleCatalog(schema)
 
         for s in sourceCat:
             m = refCat.addNew()
             flux = 1e-3*s.getPsfFlux()*np.random.normal(1.0, 2e-2)
-            m.set(filterName, flux)
-            m.set("flux", flux)
-            m.set("coord", wcs.pixelToSky(s.getCentroid()))
+            m.set("{}_flux".format(filterName), flux)
+            m.setCoord(wcs.pixelToSky(s.getCentroid()))
 
         refCat.get("photometric")[:] = True
         #
@@ -128,7 +126,7 @@ def run(display=False):
         with ds9.Buffering():
             for s in sources:
                 xy = s.getCentroid()
-                ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags.negative") else ds9.GREEN, frame=frame)
+                ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags_negative") else ds9.GREEN, frame=frame)
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
