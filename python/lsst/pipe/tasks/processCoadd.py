@@ -61,6 +61,7 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         self.deblend.maxNumberOfPeaks = 20
         self.astrometry.forceKnownWcs = True
 
+        self.measurement.plugins.names |= ['base_InputCount']
         # The following line must be set if clipped pixel flags are to be added to the output table
         # The clipped mask plane is added by running SafeClipAssembleCoaddTask
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED']
