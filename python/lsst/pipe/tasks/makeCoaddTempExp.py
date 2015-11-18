@@ -54,7 +54,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     bgSubtracted = pexConfig.Field(
         doc = "Work with a background subtracted calexp?",
         dtype = bool,
-        default = False,
+        default = True,
     )
 
 
