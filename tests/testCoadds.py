@@ -109,6 +109,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
             measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
             measMergedConfig.measurement.slots.shape = "base_SdssShape"
+            measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
             measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
             measMergedTask.writeSchemas(self.butler)
             self.runTaskOnPatches(measMergedTask)
