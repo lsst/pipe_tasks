@@ -16,7 +16,8 @@ python/lsst/pipe/tasks/version.py
 tests/.tests
 ups/*.cfgc
 testCoaddInputs-data
-_build.*bin/assembleCoadd.py
+_build.*
+bin/assembleCoadd.py
 bin/detectCoaddSources.py
 bin/dumpTaskMetadata.py
 bin/imageDifference.py
