@@ -414,17 +414,21 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         icSrc to src by ProcessCcdTask.
         """
         if self.config.doPsf:
-            return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+            if self.measurePsf.config.reserveFraction > 0:
+                return (self.measurePsf.candidateKey, self.measurePsf.usedKey, self.measurePsf.reservedKey)
+            else:
+                return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
         else:
             return ()
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None, idFactory=None):
+    def run(self, exposure, defects=None, idFactory=None, expId=0):
         """!Run the calibration task on an exposure
 
         \param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
         \param[in]      defects    List of defects on exposure
         \param[in]      idFactory  afw.table.IdFactory to use for source catalog.
+        \param[in]      expId      Exposure id used for random number generation.
         \return a pipeBase.Struct with fields:
         - exposure: Repaired exposure
         - backgrounds: A list of background models applied in the calibration phase
@@ -488,7 +492,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                     # Restore original Wcs: we're going to repeat the astrometry later, and if it succeeded
                     # this time, running it again with the same basic setup means it should succeed again.
                     exposure.setWcs(origWcs)
-            psfRet = self.measurePsf.run(exposure, sources1, matches=matches)
+            psfRet = self.measurePsf.run(exposure, sources1, expId=expId, matches=matches)
             psf = psfRet.psf
         elif exposure.hasPsf():
             psf = exposure.getPsf()
