@@ -713,7 +713,10 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         """Assemble the coadd for a region
 
         Identify clipped regions by detecting objects on the difference between unclipped and clipped coadd
-        and then flag these regions on the individual vists so they are ignored in the coaddition process
+        and then flag these regions on the individual visits so they are ignored in the coaddition process.
+        
+        N.b. *args and **kwargs are passed but ignored in order to match the call signature expected by the
+        parent task.
 
         @param skyInfo: Patch geometry information, from getSkyInfo
         @param tempExpRefList: List of data reference to tempExp
