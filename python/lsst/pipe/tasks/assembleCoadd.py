@@ -705,11 +705,11 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     _DefaultName = "safeClipAssembleCoadd"
 
     def __init__(self, *args, **kwargs):
-        SafeClipAssembleCoaddTask.__init__(self, *args, **kwargs)
+        AssembleCoaddTask.__init__(self, *args, **kwargs)
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList):
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList, *args, **kwargs):
         """Assemble the coadd for a region
 
         Identify clipped regions by detecting objects on the difference between unclipped and clipped coadd
