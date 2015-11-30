@@ -45,9 +45,12 @@ class StarGalaxyLabeller(object):
 
 class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
     labels = {'star': 0, 'galaxy': 1, 'split': 2}
+    def __init__(self, first="first.", second="second."):
+        self._first = first
+        self._second = second
     def __call__(self, catalog):
-        first = numpy.where(catalog["first." + self._column] < 0.5, 0, 1)
-        second = numpy.where(catalog["second." + self._column] < 0.5, 0, 1)
+        first = numpy.where(catalog[self._first + self._column] < 0.5, 0, 1)
+        second = numpy.where(catalog[self._second + self._column] < 0.5, 0, 1)
         return numpy.where(first == second, first, 2)
 
 class MatchesStarGalaxyLabeller(StarGalaxyLabeller):
@@ -754,6 +757,20 @@ class ColorValueInRange(object):
             good &= catalog[col] < value
         return numpy.where(good, catalog[self.column], numpy.nan)
 
+def GalaxyColor(object):
+    """Functor to produce difference between galaxy color calculated by different algorithms"""
+    def __init__(self, alg1, alg2, prefix1, prefix2):
+        self.alg1 = alg1
+        self.alg2 = alg2
+        self.prefix1 = prefix1
+        self.prefix2 = prefix2
+    def __call__(self, catalog):
+        color1 = -2.5*numpy.log10(catalog[self.prefix1 + self.alg1]/catalog[self.prefix2 + self.alg1])
+        color2 = -2.5*numpy.log10(catalog[self.prefix1 + self.alg2]/catalog[self.prefix2 + self.alg2])
+        return color1 - color2
+
+
+
 class ColorAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
     flags = ListField(dtype=str, doc="Flags of objects to ignore",
@@ -822,9 +839,10 @@ class ColorAnalysisTask(CmdLineTask):
         filenamer = Filenamer(butler, "plotColor", dataId)
         catalogsByFilter = {ff: self.readCatalogs(patchRefList, "deepCoadd_forced_src") for
                             ff, patchRefList in patchRefsByFilter.iteritems()}
-        catalog = self.transformCatalogs(catalogsByFilter, self.config.transforms)
-        self.plotColors(catalog, filenamer, NumStarLabeller(len(catalogsByFilter)), dataId)
-        self.plotColorColor(catalogsByFilter, filenamer, dataId)
+        self.plotGalaxyColors(catalogsByFilter)
+#        catalog = self.transformCatalogs(catalogsByFilter, self.config.transforms)
+#        self.plotStarColors(catalog, filenamer, NumStarLabeller(len(catalogsByFilter)), dataId)
+#        self.plotStarColorColor(catalogsByFilter, filenamer, dataId)
 
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
@@ -884,7 +902,29 @@ class ColorAnalysisTask(CmdLineTask):
 
         return new
 
-    def plotColors(self, catalog, filenamer, labeller, dataId):
+    def plotGalaxyColors(self, catalogs):
+        filters = set(catalogs.keys())
+        if filters.issuperset(set(("HSC-G", "HSC-I"))):
+            gg = catalogs["HSC-G"]
+            ii = catalogs["HSC-I"]
+            assert len(gg) == len(ii)
+            mapperList = afwTable.SchemaMapper.join(afwTable.SchemaVector([gg.schema, ii.schema]),
+                                                    ["g.", "i."])
+            catalog = afwTable.BaseCatalog(mapperList[0].getOutputSchema())
+            catalog.reserve(len(gg))
+            for gRow, iRow in zip(gg, ii):
+                row = catalog.addNew()
+                row.assign(gRow, mapperList[0])
+                row.assign(iRow, mapperList[1])
+
+            self.AnalysisClass(catalog, GalaxyColor("cmodel.flux", "flux.sinc", "g.", "i."),
+                               "(g-i)_cmodel - (g-i)_sinc", "galaxy-TEST", self.config.analysis,
+                               flags=["cmodel.flux.flags", "flux.sinc.flags"],
+                               labeller=OverlapsStarGalaxyLabeller("g.", "r."),
+                               qMin=-0.5, qMax=0.5,).plotAll(dataId, filenamer, self.log)
+
+
+    def plotStarColors(self, catalog, filenamer, labeller, dataId):
         for col, transform in self.config.transforms.iteritems():
             if not transform.plot or col not in catalog:
                 continue
@@ -893,7 +933,7 @@ class ColorAnalysisTask(CmdLineTask):
                                col, "color_" + col, self.config.analysis, flags=["bad"], labeller=labeller,
                                qMin=-0.2, qMax=0.2,).plotAll(dataId, filenamer, self.log)
 
-    def plotColorColor(self, catalogs, filenamer, dataId):
+    def plotStarColorColor(self, catalogs, filenamer, dataId):
         num = len(catalogs.values()[0])
         zp = self.config.analysis.zp
         mags = {ff: zp - 2.5*numpy.log10(catalogs[ff][self.config.analysis.fluxColumn]) for ff in catalogs}
