@@ -277,11 +277,11 @@ class AstrometryTask(pipeBase.Task):
                 if not isinstance(e.message, LengthErrorException):
                     raise
                 self.log.warn("Unable to fit SIP: %s" % e)
-
-            self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
-                          (scatter.asArcseconds(), "with" if wcs.hasDistortion() else "without",
-                           len(matches), numRejected))
-            exposure.setWcs(wcs)
+            else:
+                self.log.info("Astrometric scatter: %f arcsec (%s non-linear terms, %d matches, %d rejected)" %
+                              (scatter.asArcseconds(), "with" if wcs.hasDistortion() else "without",
+                               len(matches), numRejected))
+                exposure.setWcs(wcs)
 
             # Apply WCS to sources
             for index, source in enumerate(sources):
