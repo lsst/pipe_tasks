@@ -27,6 +27,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from .fakes import BaseFakeSourcesTask
 
 class ProcessCcdConfig(ProcessImageTask.ConfigClass):
     """Config for ProcessCcd"""
@@ -54,9 +55,18 @@ class ProcessCcdConfig(ProcessImageTask.ConfigClass):
         default = True,
         doc = "Write icSrc to reference matches?",
     )
+    doFakes = pexConfig.Field(
+        dtype = bool,
+        default = False,
+        doc = "Run fake sources injection task",
+    )
     calibrate = pexConfig.ConfigurableField(
         target = CalibrateTask,
         doc = "Calibration (inc. high-threshold detection and measurement)",
+    )
+    fakes = pexConfig.ConfigurableField(
+        target = BaseFakeSourcesTask,
+        doc = "Injection of fake sources for test purposes (must be retargeted)"
     )
 
 class ProcessCcdTask(ProcessImageTask):
@@ -77,6 +87,11 @@ class ProcessCcdTask(ProcessImageTask):
         if self.config.doIsr :
             self.makeSubtask("isr")
         self.makeSubtask("calibrate")
+        # Only create a subtask for fakes if configuration option is set
+        # Additionally fakes must be retargeted to a child of BaseFakeSourcesTask
+        if self.config.doFakes:
+            self.makeSubtask("fakes")
+
         # Setup our schema by starting with fields we want to propagate from icSrc.
         calibSchema = self.calibrate.schema
         self.schemaMapper = afwTable.SchemaMapper(calibSchema, self.schema)
@@ -159,6 +174,10 @@ class ProcessCcdTask(ProcessImageTask):
             calExposure = sensorRef.get("calexp", immediate=True)
         else:
             raise RuntimeError("No calibrated exposure available for processing")
+
+        # add fake sources to exposure (if enabled)
+        if self.config.doFakes:
+            self.fakes.run(calExposure, background=backgrounds)
 
         # delegate most of the work to ProcessImageTask
         result = self.process(sensorRef, calExposure, idFactory=idFactory)
