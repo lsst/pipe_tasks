@@ -1,3 +1,3 @@
 #!/usr/bin/env python
-from hsc.pipe.tasks.analysis import VisitAnalysisTask
+from lsst.pipe.tasks.analysis import VisitAnalysisTask
 VisitAnalysisTask.parseAndRun()
