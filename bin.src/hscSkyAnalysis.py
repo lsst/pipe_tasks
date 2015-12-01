@@ -1,3 +1,3 @@
 #!/usr/bin/env python
-from hsc.pipe.tasks.analysis import SkyAnalysisTask
+from lsst.pipe.tasks.analysis import SkyAnalysisTask
 SkyAnalysisTask.parseAndRun()
