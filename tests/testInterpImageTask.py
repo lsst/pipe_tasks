@@ -85,7 +85,7 @@ class interpolationTestCase(unittest.TestCase):
                 ds9.mtv(miInterp, frame=1)
             self.assertGreater(np.min(imaInterp), min(-2, 2*fallbackValue))
             self.assertGreater(max(2, 2*fallbackValue), np.max(imaInterp))
-            val0 = np.mean(miInterp.getImage()[1, :].getArray())
+            val0 = np.mean(miInterp.getImage()[1, :].getArray(), dtype=float)
             if useFallbackValueAtEdge:
                 self.assertAlmostEqual(val0, fallbackValue, 6)
             else:
