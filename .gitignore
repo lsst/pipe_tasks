@@ -24,6 +24,11 @@ bin/calibrate.py
 bin/characterizeImage.py
 bin/detectCoaddSources.py
 bin/dumpTaskMetadata.py
+bin/hscCoaddAnalysis.py
+bin/hscColorAnalysis.py
+bin/hscCompareAnalysis.py
+bin/hscSkyAnalysis.py
+bin/hscVisitAnalysis.py
 bin/imageDifference.py
 bin/imageDifferenceWinter2013.py
 bin/ingestCalibs.py
