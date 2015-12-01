@@ -13,17 +13,17 @@ import functools
 from contextlib import contextmanager
 from collections import defaultdict
 
-from lsst.daf.persistence.butler import Butler, safeMakeDir
+from lsst.daf.persistence.butler import Butler
+from lsst.daf.persistence.safeFileIo import safeMakeDir
 from lsst.pex.config import Config, Field, ConfigField, ListField, DictField, ConfigDictField
 from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner, TaskError
-from lsst.pipe.tasks.dataIds import PerTractCcdDataIdContainer
-from hsc.pipe.tasks.stack import TractDataIdContainer
-from hsc.pipe.base.matches import matchesToCatalog, matchesFromCatalog
-from hsc.pipe.base.butler import getDataRef
-from lsst.meas.astrom import Astrometry, MeasAstromConfig
-from lsst.meas.photocal.colorterms import ColortermLibraryConfig
-from lsst.meas.mosaic.updateExposure import (applyMosaicResultsCatalog, applyCalib, getFluxFitParams,
-                                             getFluxKeys, getMosaicResults)
+from lsst.meas.base.dataIds import PerTractCcdDataIdContainer
+from lsst.coadd.utils import TractDataIdContainer
+from lsst.afw.table.catalogMatches import matchesToCatalog, matchesFromCatalog
+from lsst.meas.astrom import AstrometryTask, AstrometryConfig
+from lsst.pipe.tasks.colorterms import ColortermLibrary
+# from lsst.meas.mosaic.updateExposure import (applyMosaicResultsCatalog, applyCalib, getFluxFitParams,
+#                                             getFluxKeys, getMosaicResults)
 
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
@@ -39,13 +39,13 @@ class AllLabeller(object):
 class StarGalaxyLabeller(object):
     labels = {'star': 0, 'galaxy': 1}
     plot = ["star"]
-    _column = 'classification.extendedness'
+    _column = 'base_ClassificationExtendedness_value'
     def __call__(self, catalog):
         return numpy.where(catalog[self._column] < 0.5, 0, 1)
 
 class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
     labels = {'star': 0, 'galaxy': 1, 'split': 2}
-    def __init__(self, first="first.", second="second."):
+    def __init__(self, first="first_", second="second_"):
         self._first = first
         self._second = second
     def __call__(self, catalog):
@@ -54,7 +54,7 @@ class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
         return numpy.where(first == second, first, 2)
 
 class MatchesStarGalaxyLabeller(StarGalaxyLabeller):
-    _column = 'src.classification.extendedness'
+    _column = 'src_base_ClassificationExtendedness_value'
 
 class CosmosLabeller(StarGalaxyLabeller):
     """Do star/galaxy classification using Alexie Leauthaud's Cosmos catalog"""
@@ -67,8 +67,8 @@ class CosmosLabeller(StarGalaxyLabeller):
         for ii in range(num):
             cosmos.addNew()
         cosmos["id"][:] = original["NUMBER"][good]
-        cosmos["coord.ra"][:] = original["ALPHA.J2000"][good]*(1.0*afwGeom.degrees).asRadians()
-        cosmos["coord.dec"][:] = original["DELTA.J2000"][good]*(1.0*afwGeom.degrees).asRadians()
+        cosmos["coord_ra"][:] = original["ALPHA.J2000"][good]*(1.0*afwGeom.degrees).asRadians()
+        cosmos["coord_dec"][:] = original["DELTA.J2000"][good]*(1.0*afwGeom.degrees).asRadians()
         self.cosmos = cosmos
         self.radius = radius
 
@@ -103,13 +103,13 @@ colorList = ["blue", "red", "green", "black", "yellow", "cyan", "magenta", ]
 
 class AnalysisConfig(Config):
     flags = ListField(dtype=str, doc="Flags of objects to ignore",
-                      default=["centroid.sdss.flags", "flags.pixel.saturated.center",
-                               "flags.pixel.interpolated.center", "flux.psf.flags"])
+                      default=["base_SdssCentroid_flag", "base_PixelFlags_flag_saturatedCenter",
+                               "base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag"])
     clip = Field(dtype=float, default=4.0, doc="Rejection threshold (stdev)")
     magThreshold = Field(dtype=float, default=21.0, doc="Magnitude threshold to apply")
     magPlotMin = Field(dtype=float, default=16.0, doc="Minimum magnitude to plot")
     magPlotMax = Field(dtype=float, default=28.0, doc="Maximum magnitude to plot")
-    fluxColumn = Field(dtype=str, default="flux.psf", doc="Column to use for flux/magnitude plotting")
+    fluxColumn = Field(dtype=str, default="base_PsfFlux_flux", doc="Column to use for flux/magnitude plotting")
     zp = Field(dtype=float, default=27.0, doc="Magnitude zero point to apply")
 
 class Analysis(object):
@@ -187,8 +187,8 @@ class Analysis(object):
 
     def plotSkyPosition(self, filename, cmap=plt.cm.brg):
         """Plot quantity as a function of position"""
-        ra = numpy.rad2deg(self.catalog[self.prefix + "coord.ra"])
-        dec = numpy.rad2deg(self.catalog[self.prefix + "coord.dec"])
+        ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
+        dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 numpy.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(1, 1)
@@ -213,8 +213,8 @@ class Analysis(object):
     def plotRaDec(self, filename):
         """Plot quantity as a function of RA, Dec"""
 
-        ra = numpy.rad2deg(self.catalog[self.prefix + "coord.ra"])
-        dec = numpy.rad2deg(self.catalog[self.prefix + "coord.dec"])
+        ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
+        dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
         good = (self.mag < self.config.magThreshold if self.config.magThreshold is not None else
                 numpy.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(2, 1)
@@ -330,10 +330,10 @@ class CcdAnalysis(Analysis):
         self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"))
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean)
 
-    def plotCcd(self, filename, centroid="centroid.sdss", cmap=plt.cm.hsv, idBits=32, visitMultiplier=200):
+    def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.hsv, idBits=32, visitMultiplier=200):
         """Plot quantity as a function of CCD x,y"""
-        xx = self.catalog[self.prefix + centroid + ".x"]
-        yy = self.catalog[self.prefix + centroid + ".y"]
+        xx = self.catalog[self.prefix + centroid + "_x"]
+        yy = self.catalog[self.prefix + centroid + "_y"]
         ccd = (self.catalog[self.prefix + "id"] >> idBits) % visitMultiplier
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 numpy.ones(len(self.mag), dtype=bool))
@@ -371,8 +371,8 @@ class CcdAnalysis(Analysis):
 
     def plotFocalPlane(self, filename, cmap=plt.cm.brg):
         """Plot quantity colormaped on the focal plane"""
-        xx = self.catalog[self.prefix + "focalplane.x"]
-        yy = self.catalog[self.prefix + "focalplane.y"]
+        xx = self.catalog[self.prefix + "base_FocalPlane_x"]
+        yy = self.catalog[self.prefix + "base_FocalPlane_y"]
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 numpy.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(1, 1)
@@ -411,10 +411,10 @@ class MagDiffMatches(object):
         self.colorterm = colorterm
         self.zp = zp
     def __call__(self, catalog):
-        ref1 = -2.5*numpy.log10(catalog.get("ref." + self.colorterm.primary))
-        ref2 = -2.5*numpy.log10(catalog.get("ref." + self.colorterm.secondary))
+        ref1 = -2.5*numpy.log10(catalog.get("ref_" + self.colorterm.primary + "_flux"))
+        ref2 = -2.5*numpy.log10(catalog.get("ref_" + self.colorterm.secondary + "_flux"))
         ref = self.colorterm.transformMags(ref1, ref2)
-        src = self.zp - 2.5*numpy.log10(catalog.get("src." + self.column))
+        src = self.zp - 2.5*numpy.log10(catalog.get("src_" + self.column))
         return src - ref
 
 class AstrometryDiff(object):
@@ -431,21 +431,23 @@ class AstrometryDiff(object):
 
 def deconvMom(catalog):
     """Calculate deconvolved moments"""
-    if "shape.hsm.moments" in catalog.schema:
-        hsm = catalog["shape.hsm.moments.xx"] + catalog["shape.hsm.moments.yy"]
+    if "ext_shapeHSM_HsmMoments" in catalog.schema:
+        hsm = catalog["ext_shapeHSM_HsmMoments_xx"] + catalog["ext_shapeHSM_HsmMoments_yy"]
     else:
         hsm = numpy.ones(len(catalog))*numpy.nan
-    sdss = catalog["shape.sdss.xx"] + catalog["shape.sdss.yy"]
-    if "shape.hsm.psfMoments" in catalog.schema:
-        psf = catalog["shape.hsm.psfMoments.xx"] + catalog["shape.hsm.psfMoments.yy"]
+    sdss = catalog["base_SdssShape_xx"] + catalog["base_SdssShape_yy"]
+    if "ext_shapeHSM_HsmPsfMoments" in catalog.schema:
+        psf = catalog["ext_shapeHSM_HsmPsfMoments_xx"] + catalog["ext_shapeHSM_HsmPsfMoments_yy"]
     else:
-        psf = catalog["shape.sdss.psf.xx"] + catalog["shape.sdss.psf.yy"]
+        # LSST does not have shape.sdss.psf.  Could instead add base_PsfShape to catalog using
+        # exposure.getPsf().computeShape(s.getCentroid()).getIxx()
+        raise TaskError("No psf shape parameter found in catalog")
     return numpy.where(numpy.isfinite(hsm), hsm, sdss) - psf
 
 def deconvMomStarGal(catalog):
     """Calculate P(star) from deconvolved moments"""
     rTrace = deconvMom(catalog)
-    snr = catalog["flux.psf"]/catalog["flux.psf.err"]
+    snr = catalog["base_PsfFlux_flux"]/catalog["base_PsfFlux_fluxSigma"]
     poly = (-4.2759879274 + 0.0713088756641*snr + 0.16352932561*rTrace - 4.54656639596e-05*snr*snr -
             0.0482134274008*snr*rTrace + 4.41366874902e-13*rTrace*rTrace + 7.58973714641e-09*snr*snr*snr +
             1.51008430135e-05*snr*snr*rTrace + 4.38493363998e-14*snr*rTrace*rTrace +
@@ -462,7 +464,7 @@ def concatenateCatalogs(catalogList):
         catalog.extend(cat, True)
     return catalog
 
-def joinMatches(matches, first="first.", second="second."):
+def joinMatches(matches, first="first_", second="second_"):
     mapperList = afwTable.SchemaMapper.join(afwTable.SchemaVector([matches[0].first.schema,
                                                                    matches[0].second.schema]),
                                             [first, second])
@@ -490,13 +492,15 @@ def andCatalog(version):
 class CoaddAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
     matchRadius = Field(dtype=float, default=0.5, doc="Matching radius (arcseconds)")
-    colorterms = ConfigField(dtype=ColortermLibraryConfig, doc="Library of color terms")
+    colorterms = ConfigField(dtype=ColortermLibrary, doc="Library of color terms")
+    photoCatName = Field(dtype=str, default="sdss", doc="Name of photometric reference catalog; "
+                         "used to select a color term dict in colorterms.""Name for coadd")
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     analysisMatches = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options for matches")
     matchesMaxDistance = Field(dtype=float, default=0.15, doc="Maximum plotting distance for matches")
-    externalCatalogs = ConfigDictField(keytype=str, itemtype=MeasAstromConfig, default={},
+    externalCatalogs = ConfigDictField(keytype=str, itemtype=AstrometryConfig, default={},
                                        doc="Additional external catalogs for matching")
-    astrometry = ConfigField(dtype=MeasAstromConfig, doc="Configuration for astrometric reference")
+    astrometry = ConfigField(dtype=AstrometryConfig, doc="Configuration for astrometric reference")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
@@ -511,10 +515,10 @@ class CoaddAnalysisConfig(Config):
 
     def setDefaults(self):
         Config.setDefaults(self)
-        astrom = MeasAstromConfig()
-        astrom.filterMap["y"] = "z"
-        astrom.filterMap["N921"] = "z"
-#        self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
+        astrom = AstrometryConfig()
+        astrom.refObjLoader.filterMap["y"] = "z"
+        astrom.refObjLoader.filterMap["N921"] = "z"
+        # self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
         self.analysisMatches.magThreshold = 19.0 # External catalogs like PS1 and SDSS used smaller telescopes
 
 
@@ -559,7 +563,7 @@ class CoaddAnalysisTask(CmdLineTask):
         if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or
             self.config.doForced or cosmos or self.config.externalCatalogs):
 ###            catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
-###            catalog = catalog[catalog["deblend.nchild"] == 0].copy(True) # Don't care about blended objects
+###            catalog = catalog[catalog["deblend_nChild"] == 0].copy(True) # Don't care about blended objects
             catalog = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId)
@@ -587,16 +591,17 @@ class CoaddAnalysisTask(CmdLineTask):
                    patchRef in patchRefList if patchRef.datasetExists(dataset)]
         if len(catList) == 0:
             raise TaskError("No catalogs read: %s" % ([patchRef.dataId for patchRef in patchRefList]))
-        if self.config.onlyReadStars and "classification.extendedness" in catList[0].schema:
-            catList = [cat[cat["classification.extendedness"] < 0.5].copy(True) for cat in catList]
+        if self.config.onlyReadStars and "base_ClassificationExtendedness_value" in catList[0].schema:
+            catList = [cat[cat["base_ClassificationExtendedness_value"] < 0.5].copy(True) for cat in catList]
         return concatenateCatalogs(catList)
 
     def plotMags(self, catalog, filenamer, dataId):
         enforcer = Enforcer(requireLess={'star': {'stdev': 0.02}})
-        for col in ["flux.sinc", "flux.kron", "cmodel.flux"]:
-            if col in catalog.schema:
-                self.AnalysisClass(catalog, MagDiff(col, "flux.psf"), "Mag(%s) - PSFMag" % col, "mag_" + col,
-                                   self.config.analysis, flags=[col + ".flags"], labeller=StarGalaxyLabeller(),
+        for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+            if col + "_flux" in catalog.schema:
+                self.AnalysisClass(catalog, MagDiff(col + "_flux", "base_PsfFlux_flux"), "Mag(%s) - PSFMag"
+                                   % col, "mag_" + col,
+                                   self.config.analysis, flags=[col + "_flag"], labeller=StarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, enforcer)
 
     def plotStarGal(self, catalog, filenamer, dataId):
@@ -610,9 +615,10 @@ class CoaddAnalysisTask(CmdLineTask):
     def plotForced(self, unforced, forced, filenamer, dataId):
         catalog = joinMatches(afwTable.matchRaDec(unforced, forced,
                                                   self.config.matchRadius*afwGeom.arcseconds),
-                              "unforced.", "forced.")
+                              "unforced_", "forced_")
         catalog.writeFits(dataId["filter"] + ".fits")
-        for col in ["flux.psf", "flux.sinc", "flux.kron", "cmodel.flux", "cmodel.exp.flux", "cmodel.dev.flux"]:
+        for col in ["base_PsfFlux", "base_GaussianFlux", "slot_CalibFlux", "ext_photometryKron_KronFlux",
+                    "modelfit_Cmodel", "modelfit_Cmodel_exp_flux", "modelfit_Cmodel_dev_flux"]:
             if "forced." + col in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff("unforced." + col, "forced." + col),
                                    "Forced mag difference (%s)" % col, "forced_" + col, self.config.analysis,
@@ -622,45 +628,47 @@ class CoaddAnalysisTask(CmdLineTask):
 
     def overlaps(self, catalog):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
-        return joinMatches(matches, "first.", "second.")
+        return joinMatches(matches, "first_", "second_")
 
     def plotOverlaps(self, overlaps, filenamer, dataId):
         magEnforcer = Enforcer(requireLess={'star': {'stdev': 0.003}})
-        for col in ["flux.psf", "flux.sinc", "flux.kron", "cmodel.flux"]:
-            if "first." + col in overlaps.schema:
-                self.AnalysisClass(overlaps, MagDiff("first." + col, "second." + col),
-                                   "Overlap mag difference (%s)" % col, "overlap_" + col, self.config.analysis,
-                                   prefix="first.", flags=[col + ".flags"],
+        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+            if "first_" + col + "_flux" in overlaps.schema:
+                self.AnalysisClass(overlaps, MagDiff("first_" + col + "_flux", "second_" + col + "_flux"),
+                                   "Overlap mag difference (%s)" % col, "overlap_" + col,
+                                   self.config.analysis,
+                                   prefix="first_", flags=[col + "_flag"],
                                    labeller=OverlapsStarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, magEnforcer)
 
         distEnforcer = Enforcer(requireLess={'star': {'stdev': 0.005}})
         self.AnalysisClass(overlaps, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
-                           "Distance (arcsec)", "overlap_distance", self.config.analysis, prefix="first.",
+                           "Distance (arcsec)", "overlap_distance", self.config.analysis, prefix="first_",
                            qMin=0.0, qMax=0.15, labeller=OverlapsStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0)
 
     def plotMatches(self, matches, filterName, filenamer, dataId, description="matches"):
-        ct = self.config.colorterms.selectColorTerm(filterName)
-        self.AnalysisClass(matches, MagDiffMatches("flux.psf", ct), "MagPsf - ref", description + "_mag",
-                           self.config.analysisMatches, prefix="src.", labeller=MatchesStarGalaxyLabeller(),
+        ct = self.config.colorterms.getColorterm(filterName, self.config.photoCatName)
+        self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=self.zp), "MagPsf - ref",
+                           description + "_mag",
+                           self.config.analysisMatches, prefix="src_", labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={'star': {'stdev': 0.030}}))
         self.AnalysisClass(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", description + "_distance", self.config.analysisMatches,
-                           prefix="src.", qMin=0.0, qMax=self.config.matchesMaxDistance,
+                           prefix="src_", qMin=0.0, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={'star': {'stdev': 0.050}}),
                                      forcedMean=0.0)
-        self.AnalysisClass(matches, AstrometryDiff("src.coord.ra", "ref.coord.ra", "ref.coord.dec"),
+        self.AnalysisClass(matches, AstrometryDiff("src_coord_ra", "ref_coord_ra", "ref_coord_dec"),
                            "dRA*cos(Dec) (arcsec)", description + "_ra", self.config.analysisMatches,
-                           prefix="src.", qMin=-self.config.matchesMaxDistance,
+                           prefix="src_", qMin=-self.config.matchesMaxDistance,
                            qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={'star': {'stdev': 0.050}}))
-        self.AnalysisClass(matches, AstrometryDiff("src.coord.dec", "ref.coord.dec"),
-                           "dDec (arcsec)", description + "_dec", self.config.analysisMatches, prefix="src.",
+        self.AnalysisClass(matches, AstrometryDiff("src_coord_dec", "ref_coord_dec"),
+                           "dDec (arcsec)", description + "_dec", self.config.analysisMatches, prefix="src_",
                            qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
@@ -673,16 +681,16 @@ class CoaddAnalysisTask(CmdLineTask):
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={'star': {'stdev': 0.2}}))
 
-    def matchCatalog(self, catalog, filterName, measAstromConfig):
-        astrometry = Astrometry(measAstromConfig)
+    def matchCatalog(self, catalog, filterName, astrometryConfig):
+        astrometry = AstrometryTask(astrometryConfig)
         average = sum((afwGeom.Extent3D(src.getCoord().getVector()) for src in catalog),
                       afwGeom.Extent3D(0, 0, 0))/len(catalog)
         center = afwCoord.IcrsCoord(afwGeom.Point3D(average))
         radius = max(center.angularSeparation(src.getCoord()) for src in catalog)
         filterName = afwImage.Filter(afwImage.Filter(filterName).getId()).getName() # Get primary name
-        refs = astrometry.getReferenceSources(center.getLongitude(), center.getLatitude(), radius, filterName)
+        refs = astrometry.refObjLoader.loadSkyCircle(center, radius, filterName).refCat
         matches = afwTable.matchRaDec(refs, catalog, self.config.matchRadius*afwGeom.arcseconds)
-        return joinMatches(matches, "ref.", "src.")
+        return joinMatches(matches, "ref_", "src_")
 
     def _getConfigName(self):
         return None
@@ -800,8 +808,8 @@ class GalaxyColor(object):
 class ColorAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
     flags = ListField(dtype=str, doc="Flags of objects to ignore",
-                      default=["centroid.sdss.flags", "flags.pixel.saturated.center",
-                               "flags.pixel.interpolated.center", "flux.psf.flags"])
+                      default=["base_SdssCentroid_flag", "base_PixelFlags_flag_saturatedCenter",
+                               "base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag"])
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     transforms = ConfigDictField(keytype=str, itemtype=ColorTransform, default={},
                                  doc="Color transformations to analyse")
@@ -920,7 +928,7 @@ class ColorAnalysisTask(CmdLineTask):
         # Star/galaxy
         numStarFlags = numpy.zeros(num)
         for cat in catalogs.itervalues():
-            numStarFlags += numpy.where(cat["classification.extendedness"] < 0.5, 1, 0)
+            numStarFlags += numpy.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
         new["numStarFlags"][:] = numStarFlags
 
         fluxColumn = self.config.analysis.fluxColumn
@@ -935,7 +943,7 @@ class ColorAnalysisTask(CmdLineTask):
             ii = catalogs["HSC-I"]
             assert len(gg) == len(ii)
             mapperList = afwTable.SchemaMapper.join(afwTable.SchemaVector([gg.schema, ii.schema]),
-                                                    ["g.", "i."])
+                                                    ["g_", "i_"])
             catalog = afwTable.BaseCatalog(mapperList[0].getOutputSchema())
             catalog.reserve(len(gg))
             for gRow, iRow in zip(gg, ii):
@@ -944,10 +952,10 @@ class ColorAnalysisTask(CmdLineTask):
                 row.assign(iRow, mapperList[1])
 
             catalog.writeFits("gi.fits")
-            self.AnalysisClass(catalog, GalaxyColor("cmodel.flux", "flux.sinc", "g.", "i."),
-                               "(g-i)_cmodel - (g-i)_sinc", "galaxy-TEST", self.config.analysis,
-                               flags=["cmodel.flux.flags", "flux.sinc.flags"], prefix="i.",
-                               labeller=OverlapsStarGalaxyLabeller("g.", "i."),
+            self.AnalysisClass(catalog, GalaxyColor("modelfit_CModel_flux", "slot_CalibFlux_flux", "g_", "i_"),
+                               "(g-i)_cmodel - (g-i)_CalibFlux", "galaxy-TEST", self.config.analysis,
+                               flags=["modelfit_CModel_flag", "slot_CalibFlux_flag"], prefix="i_",
+                               labeller=OverlapsStarGalaxyLabeller("g_", "i_"),
                                qMin=-0.5, qMax=0.5,).plotAll(dataId, filenamer, self.log)
 
 
@@ -976,7 +984,7 @@ class ColorAnalysisTask(CmdLineTask):
 
         numStarFlags = numpy.zeros(num)
         for cat in catalogs.itervalues():
-            numStarFlags += numpy.where(cat["classification.extendedness"] < 0.5, 1, 0)
+            numStarFlags += numpy.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
 
         good = (numStarFlags == len(catalogs)) & numpy.logical_not(bad) & bright
 
@@ -1193,24 +1201,30 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         for dataRef in dataRefList:
             if not dataRef.datasetExists(dataset):
                 continue
+            butler = dataRef.getButler()
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             # Extract source catalog for calibration
             matches = matchesFromCatalog(catalog)
             if len(matches) == 0:
                 self.log.warn("No matches for %s" % (dataRef.dataId,))
                 continue
+            self.log.info("len(matches) = %d" % len(matches))
+
             schema = matches[0].second.schema
             src = afwTable.SourceCatalog(schema)
             src.reserve(len(catalog))
             for mm in matches:
                 src.append(mm.second)
-            matches[0].second.table.defineCentroid(schema["centroid.sdss"].asKey())
-            src.table.defineCentroid(schema["centroid.sdss"].asKey())
+            matches[0].second.table.defineCentroid("base_SdssCentroid")
+            src.table.defineCentroid("base_SdssCentroid")
             try:
                 src = self.calibrateSourceCatalog(dataRef, src, zp=self.config.analysisMatches.zp)
             except Exception as e:
-#                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                continue
+                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
+                metadata = butler.get("calexp_md", dataRef.dataId)
+                self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+                self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
+
             for mm, ss in zip(matches, src):
                 mm.second = ss
             catalog = matchesToCatalog(matches, catalog.getTable().getMetadata())
@@ -1308,26 +1322,27 @@ class CompareAnalysisTask(CmdLineTask):
 
     def matchCatalogs(self, catalog1, catalog2):
         matches = afwTable.matchRaDec(catalog1, catalog2, self.config.matchRadius*afwGeom.arcseconds)
-        return joinMatches(matches, "first.", "second.")
+        return joinMatches(matches, "first_", "second_")
 
     def plotMags(self, catalog, filenamer, dataId):
         enforcer = None # Enforcer(requireLess={'star': {'stdev': 0.02}})
-        for col in ["flux.psf", "flux.sinc", "flux.kron", "cmodel.flux"]:
-            if "first." + col in catalog.schema and "second." + col in catalog.schema:
-                Analysis(catalog, MagDiff("first." + col, "second." + col),
+        # for col in ["base_PsfFlux_flux", "flux.sinc", "flux.kron", "cmodel.flux"]:
+        for col in ["base_PsfFlux_flux", "base_GaussianFlux_flux", "ext_photometryKron_KronFlux_flux"]: #, "modelfit_Cmodel-flux"]:
+            if "first_" + col in catalog.schema and "second_" + col in catalog.schema:
+                Analysis(catalog, MagDiff("first_" + col, "second_" + col),
                          "Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
-                         prefix="first.", flags=[col + ".flags"], errFunc=MagDiffErr(col),
+                         prefix="first_", flags=[col + "_flag"], errFunc=MagDiffErr(col),
                          labeller=OverlapsStarGalaxyLabeller(),
                          ).plotAll(dataId, filenamer, self.log, enforcer)
 
     def plotCentroids(self, catalog, filenamer, dataId):
         distEnforcer = None # Enforcer(requireLess={'star': {'stdev': 0.005}})
         Analysis(catalog, CentroidDiff("x"), "x offset (arcsec)", "diff_x", self.config.analysis,
-                 prefix="first.", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
+                 prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
                  labeller=OverlapsStarGalaxyLabeller(),
                  ).plotAll(dataId, filenamer, self.log, distEnforcer)
         Analysis(catalog, CentroidDiff("y"), "y offset (arcsec)", "diff_y", self.config.analysis,
-                 prefix="first.", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("y"),
+                 prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("y"),
                  labeller=OverlapsStarGalaxyLabeller(),
                  ).plotAll(dataId, filenamer, self.log, distEnforcer)
 
@@ -1348,30 +1363,30 @@ class MagDiffErr(object):
         self.calib.setFluxMag0(10.0**(0.4*zp))
         self.calib.setThrowOnNegativeFlux(False)
     def __call__(self, catalog):
-        mag1, err1 = self.calib.getMagnitude(catalog["first." + self.column],
-                                             catalog["first." + self.column + ".err"])
-        mag2, err2 = self.calib.getMagnitude(catalog["second." + self.column],
-                                             catalog["second." + self.column + ".err"])
+        mag1, err1 = self.calib.getMagnitude(catalog["first_" + self.column],
+                                             catalog["first_" + self.column + "Sigma"])
+        mag2, err2 = self.calib.getMagnitude(catalog["second_" + self.column],
+                                             catalog["second_" + self.column + "Sigma"])
         return numpy.sqrt(err1**2 + err2**2)
 
 class CentroidDiff(object):
     """Functor to calculate difference in astrometry"""
-    def __init__(self, component, first="first.", second="second.", centroid="centroid.sdss"):
+    def __init__(self, component, first="first_", second="second_", centroid="base_SdssCentroid"):
         self.component = component
         self.first = first
         self.second = second
         self.centroid = centroid
 
     def __call__(self, catalog):
-        first = self.first + self.centroid + "." + self.component
-        second = self.second + self.centroid + "." + self.component
+        first = self.first + self.centroid + "_" + self.component
+        second = self.second + self.centroid + "_" + self.component
         return catalog[first] - catalog[second]
 
 class CentroidDiffErr(CentroidDiff):
     """Functor to calculate difference error for astrometry"""
     def __call__(self, catalog):
-        first = self.first + self.centroid + ".err"
-        second = self.second + self.centroid + ".err"
+        first = self.first + self.centroid + "Sigma"
+        second = self.second + self.centroid + "Sigma"
 
         subkeys1 = catalog.schema[first].asKey().subkeys
         subkeys2 = catalog.schema[second].asKey().subkeys
