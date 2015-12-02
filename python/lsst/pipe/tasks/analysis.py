@@ -20,7 +20,7 @@ from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner, Task
 from lsst.coadd.utils import TractDataIdContainer
 from lsst.meas.base.forcedPhotCcd import PerTractCcdDataIdContainer
 from lsst.afw.table.catalogMatches import matchesToCatalog, matchesFromCatalog
-from lsst.meas.astrom import AstrometryTask, AstrometryConfig
+from lsst.meas.astrom import AstrometryTask, AstrometryConfig, LoadAstrometryNetObjectsTask
 from lsst.pipe.tasks.colorterms import ColortermLibrary
 # from lsst.meas.mosaic.updateExposure import (applyMosaicResultsCatalog, applyCalib, getFluxFitParams,
 #                                             getFluxKeys, getMosaicResults)
@@ -1151,7 +1151,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         if self.config.doStarGalaxy:
             self.plotStarGal(catalog, filenamer, dataId)
         if self.config.doMatches:
-            matches = self.readMatches(dataRefList, "srcMatchFull")
+            matches = self.readSrcMatches(dataRefList, "src")
             self.plotMatches(matches, filterName, filenamer, dataId)
 
         for cat in self.config.externalCatalogs:
@@ -1167,11 +1167,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             try:
                 calibrated = self.calibrateSourceCatalog(dataRef, catalog, zp=self.config.analysis.zp)
+                catList.append(calibrated)
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
+                catList.append(catalog)
                 continue
-
-            catList.append(calibrated)
 
         if len(catList) == 0:
             raise TaskError("No catalogs read: %s" % ([dataRef.dataId for dataRef in dataRefList]))
@@ -1195,15 +1195,21 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog[key][:] *= factor
         return catalog
 
-    def readMatches(self, dataRefList, dataset):
+    def readSrcMatches(self, dataRefList, dataset):
         catList = []
         for dataRef in dataRefList:
             if not dataRef.datasetExists(dataset):
                 continue
             butler = dataRef.getButler()
+            # Generate unnormalized match list (from normalized persisted one) with joinMatchListWithCatalog
+            # (which requires a refObjLoader to be initialized).
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
-            # Extract source catalog for calibration
-            matches = matchesFromCatalog(catalog)
+            sources = butler.get(dataset, dataRef.dataId, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            packedMatches = butler.get(dataset + "Match", dataRef.dataId)
+            refObjLoaderConfig = LoadAstrometryNetObjectsTask.ConfigClass()
+            refObjLoader = LoadAstrometryNetObjectsTask(refObjLoaderConfig)
+            matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
+
             if len(matches) == 0:
                 self.log.warn("No matches for %s" % (dataRef.dataId,))
                 continue
@@ -1233,7 +1239,6 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             raise TaskError("No matches read: %s" % ([dataRef.dataId for dataRef in dataRefList]))
 
         return concatenateCatalogs(catList)
-
 
 ###class CompareAnalysis(Analysis):
 ###    def __init__(self, catalog, func, errFunc, quantityName, shortName, config, qMin=-0.2, qMax=0.2, prefix="",
