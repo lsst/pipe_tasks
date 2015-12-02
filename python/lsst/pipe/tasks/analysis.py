@@ -20,12 +20,12 @@ from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner, Task
 from lsst.meas.base.dataIds import PerTractCcdDataIdContainer
 from lsst.coadd.utils import TractDataIdContainer
 from lsst.afw.table.catalogMatches import matchesToCatalog, matchesFromCatalog
-# from hsc.pipe.base.butler import getDataRef
-from lsst.meas.astrom import AstrometryTask, AstrometryConfig
+from lsst.meas.astrom import AstrometryTask, AstrometryConfig, LoadAstrometryNetObjectsTask
 from lsst.pipe.tasks.colorterms import ColortermLibrary
 # from lsst.meas.mosaic.updateExposure import (applyMosaicResultsCatalog, applyCalib, getFluxFitParams,
 #                                             getFluxKeys, getMosaicResults)
 
+import lsst.meas.astrom as measAstrom
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 import lsst.afw.coord as afwCoord
@@ -489,9 +489,9 @@ class CoaddAnalysisConfig(Config):
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     analysisMatches = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options for matches")
     matchesMaxDistance = Field(dtype=float, default=0.15, doc="Maximum plotting distance for matches")
-    externalCatalogs = ConfigDictField(keytype=str, itemtype=AstrometryConfig,
+    externalCatalogs = ConfigDictField(keytype=str, itemtype=measAstrom.AstrometryConfig,
                                        doc="Additional external catalogs for matching")
-    astrometry = ConfigField(dtype=AstrometryConfig, doc="Configuration for astrometric reference")
+    astrometry = ConfigField(dtype=measAstrom.AstrometryConfig, doc="Configuration for astrometric reference")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
@@ -505,7 +505,7 @@ class CoaddAnalysisConfig(Config):
 
     def setDefaults(self):
         Config.setDefaults(self)
-        astrom = AstrometryConfig()
+        astrom = measAstrom.AstrometryConfig()
         astrom.refObjLoader.filterMap["y"] = "z"
         astrom.refObjLoader.filterMap["N921"] = "z"
         self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
@@ -654,7 +654,7 @@ class CoaddAnalysisTask(CmdLineTask):
                                      Enforcer(requireLess={'star': {'stdev': 0.2}}))
 
     def matchCatalog(self, catalog, filterName, astrometryConfig):
-        astrometry = AstrometryTask(astrometryConfig)
+        astrometry = measAstrom.AstrometryTask(astrometryConfig)
         average = sum((afwGeom.Extent3D(src.getCoord().getVector()) for src in catalog),
                       afwGeom.Extent3D(0, 0, 0))/len(catalog)
         center = afwCoord.IcrsCoord(afwGeom.Point3D(average))
@@ -1123,7 +1123,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         if self.config.doStarGalaxy:
             self.plotStarGal(catalog, filenamer, dataId)
         if self.config.doMatches:
-            matches = self.readMatches(dataRefList, "srcMatchFull")
+            matches = self.readSrcMatches(dataRefList, "src")
             self.plotMatches(matches, filterName, filenamer, dataId)
 
         for cat in self.config.externalCatalogs:
@@ -1139,11 +1139,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             try:
                 calibrated = self.calibrateSourceCatalog(dataRef, catalog, zp=self.config.analysis.zp)
+                catList.append(calibrated)
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
+                catList.append(catalog)
                 continue
-
-            catList.append(calibrated)
 
         if len(catList) == 0:
             raise TaskError("No catalogs read: %s" % ([dataRef.dataId for dataRef in dataRefList]))
@@ -1167,15 +1167,29 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog[key][:] *= factor
         return catalog
 
-    def readMatches(self, dataRefList, dataset):
+    def readSrcMatches(self, dataRefList, dataset):
         catList = []
         for dataRef in dataRefList:
             if not dataRef.datasetExists(dataset):
                 continue
             butler = dataRef.getButler()
-            catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
-            # Extract source catalog for calibration
-            matches = matchesFromCatalog(catalog)
+            if dataRef.datasetExists(dataset + "MatchFull"):
+                # if unnormalized match list was persisted, read it
+                catalog = dataRef.get(dataset + "MatchFull", immediate=True,
+                                      flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+                # Extract source catalog for calibration
+                matches = matchesFromCatalog(catalog)
+            else:
+                # if unnormalized match list was NOT persisted, generate it with measAstrom's readMatches
+                catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+                sources = butler.get(dataset, dataRef.dataId, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+                packedMatches = butler.get(dataset + "Match", dataRef.dataId)
+                refObjLoaderConfig = LoadAstrometryNetObjectsTask.ConfigClass()
+                refObjLoader = LoadAstrometryNetObjectsTask(refObjLoaderConfig)
+                matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
+                # LSST reads in a_net catalogs with flux in "Janskys", so must convert back to DN
+                matches = matchJanskyToDn(matches)
+
             if len(matches) == 0:
                 self.log.warn("No matches for %s" % (dataRef.dataId,))
                 continue
@@ -1186,8 +1200,8 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             src.reserve(len(catalog))
             for mm in matches:
                 src.append(mm.second)
-            matches[0].second.table.defineCentroid(schema["base_SdssCentroid"].asKey())
-            src.table.defineCentroid(schema["base_SdssCentroid"].asKey())
+            matches[0].second.table.defineCentroid("base_SdssCentroid")
+            src.table.defineCentroid("base_SdssCentroid")
             try:
                 src = self.calibrateSourceCatalog(dataRef, src, zp=self.config.analysisMatches.zp)
             except Exception as e:
@@ -1195,6 +1209,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 metadata = butler.get("calexp_md", dataRef.dataId)
                 self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
                 self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
+
             for mm, ss in zip(matches, src):
                 mm.second = ss
             catalog = matchesToCatalog(matches, catalog.getTable().getMetadata())
@@ -1204,7 +1219,6 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             raise TaskError("No matches read: %s" % ([dataRef.dataId for dataRef in dataRefList]))
 
         return concatenateCatalogs(catList)
-
 
 ###class CompareAnalysis(Analysis):
 ###    def __init__(self, catalog, func, errFunc, quantityName, shortName, config, qMin=-0.2, qMax=0.2, prefix="",
