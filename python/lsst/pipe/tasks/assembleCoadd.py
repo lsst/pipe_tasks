@@ -124,8 +124,8 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     # N.b. These configuration options only set the bitplane config.brightObjectMaskName
     # To make this useful you *must* also configure the flags.pixel algorithm, for example
     # by adding 
-    #   root.measurement.algorithms["flags.pixel"].center.append("BRIGHT_MASK")
-    #   root.measurement.algorithms["flags.pixel"].any.append("BRIGHT_MASK")
+    #   root.measurement.algorithms["flags.pixel"].center.append("BRIGHT_OBJECT")
+    #   root.measurement.algorithms["flags.pixel"].any.append("BRIGHT_OBJECT")
     # to your measureCoaddSources.py config overrides
     #
     doMaskBrightObjects = pexConfig.Field(dtype=bool, default=True,
