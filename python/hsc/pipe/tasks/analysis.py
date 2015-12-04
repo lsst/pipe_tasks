@@ -265,6 +265,8 @@ class Analysis(object):
 
     def calculateStats(self, quantity, selection, forcedMean=None):
         total = selection.sum() # Total number we're considering
+        if total == 0:
+            return Stats(num=0, total=0, mean=numpy.nan, stdev=numpy.nan, forcedMean=forcedMean)
         quartiles = numpy.percentile(quantity[selection], [25, 50, 75])
         assert len(quartiles) == 3
         median = quartiles[1]
@@ -429,9 +431,15 @@ class AstrometryDiff(object):
 
 def deconvMom(catalog):
     """Calculate deconvolved moments"""
-    hsm = catalog["shape.hsm.moments.xx"] + catalog["shape.hsm.moments.yy"]
+    if "shape.hsm.moments" in catalog.schema:
+        hsm = catalog["shape.hsm.moments.xx"] + catalog["shape.hsm.moments.yy"]
+    else:
+        hsm = numpy.ones(len(catalog))*numpy.nan
     sdss = catalog["shape.sdss.xx"] + catalog["shape.sdss.yy"]
-    psf = catalog["shape.hsm.psfMoments.xx"] + catalog["shape.hsm.psfMoments.yy"]
+    if "shape.hsm.psfMoments" in catalog.schema:
+        psf = catalog["shape.hsm.psfMoments.xx"] + catalog["shape.hsm.psfMoments.yy"]
+    else:
+        psf = catalog["shape.sdss.psf.xx"] + catalog["shape.sdss.psf.yy"]
     return numpy.where(numpy.isfinite(hsm), hsm, sdss) - psf
 
 def deconvMomStarGal(catalog):
@@ -486,13 +494,14 @@ class CoaddAnalysisConfig(Config):
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     analysisMatches = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options for matches")
     matchesMaxDistance = Field(dtype=float, default=0.15, doc="Maximum plotting distance for matches")
-    externalCatalogs = ConfigDictField(keytype=str, itemtype=MeasAstromConfig,
+    externalCatalogs = ConfigDictField(keytype=str, itemtype=MeasAstromConfig, default={},
                                        doc="Additional external catalogs for matching")
     astrometry = ConfigField(dtype=MeasAstromConfig, doc="Configuration for astrometric reference")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
+    doForced = Field(dtype=bool, default=True, doc="Plot difference between forced and unforced?")
     onlyReadStars = Field(dtype=bool, default=False, doc="Only read stars (to save memory)?")
 
     def saveToStream(self, outfile, root="root"):
@@ -505,7 +514,7 @@ class CoaddAnalysisConfig(Config):
         astrom = MeasAstromConfig()
         astrom.filterMap["y"] = "z"
         astrom.filterMap["N921"] = "z"
-        self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
+#        self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
         self.analysisMatches.magThreshold = 19.0 # External catalogs like PS1 and SDSS used smaller telescopes
 
 
@@ -547,16 +556,20 @@ class CoaddAnalysisTask(CmdLineTask):
         dataId = patchRefList[0].dataId
         filterName = dataId["filter"]
         filenamer = Filenamer(patchRefList[0].getButler(), self.outputDataset, patchRefList[0].dataId)
-        if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
-            self.config.externalCatalogs):
-            catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
-            catalog = catalog[catalog["deblend.nchild"] == 0].copy(True) # Don't care about blended objects
+        if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or
+            self.config.doForced or cosmos or self.config.externalCatalogs):
+###            catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
+###            catalog = catalog[catalog["deblend.nchild"] == 0].copy(True) # Don't care about blended objects
+            catalog = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doStarGalaxy:
             self.plotStarGal(catalog, filenamer, dataId)
         if cosmos:
             self.plotCosmos(catalog, filenamer, cosmos, dataId)
+        if self.config.doForced:
+            forced = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
+            self.plotForced(catalog, forced, filenamer, dataId)
         if self.config.doOverlaps:
             overlaps = self.overlaps(catalog)
             self.plotOverlaps(overlaps, filenamer, dataId)
@@ -593,6 +606,19 @@ class CoaddAnalysisTask(CmdLineTask):
                            qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={'star': {'stdev': 0.2}}))
+
+    def plotForced(self, unforced, forced, filenamer, dataId):
+        catalog = joinMatches(afwTable.matchRaDec(unforced, forced,
+                                                  self.config.matchRadius*afwGeom.arcseconds),
+                              "unforced.", "forced.")
+        catalog.writeFits(dataId["filter"] + ".fits")
+        for col in ["flux.psf", "flux.sinc", "flux.kron", "cmodel.flux", "cmodel.exp.flux", "cmodel.dev.flux"]:
+            if "forced." + col in catalog.schema:
+                self.AnalysisClass(catalog, MagDiff("unforced." + col, "forced." + col),
+                                   "Forced mag difference (%s)" % col, "forced_" + col, self.config.analysis,
+                                   prefix="unforced.", flags=[col + ".flags"],
+                                   labeller=OverlapsStarGalaxyLabeller("forced.", "unforced."),
+                                   ).plotAll(dataId, filenamer, self.log)
 
     def overlaps(self, catalog):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
@@ -757,7 +783,7 @@ class ColorValueInRange(object):
             good &= catalog[col] < value
         return numpy.where(good, catalog[self.column], numpy.nan)
 
-def GalaxyColor(object):
+class GalaxyColor(object):
     """Functor to produce difference between galaxy color calculated by different algorithms"""
     def __init__(self, alg1, alg2, prefix1, prefix2):
         self.alg1 = alg1
@@ -839,10 +865,10 @@ class ColorAnalysisTask(CmdLineTask):
         filenamer = Filenamer(butler, "plotColor", dataId)
         catalogsByFilter = {ff: self.readCatalogs(patchRefList, "deepCoadd_forced_src") for
                             ff, patchRefList in patchRefsByFilter.iteritems()}
-        self.plotGalaxyColors(catalogsByFilter)
-#        catalog = self.transformCatalogs(catalogsByFilter, self.config.transforms)
-#        self.plotStarColors(catalog, filenamer, NumStarLabeller(len(catalogsByFilter)), dataId)
-#        self.plotStarColorColor(catalogsByFilter, filenamer, dataId)
+#        self.plotGalaxyColors(catalogsByFilter, filenamer, dataId)
+        catalog = self.transformCatalogs(catalogsByFilter, self.config.transforms)
+        self.plotStarColors(catalog, filenamer, NumStarLabeller(len(catalogsByFilter)), dataId)
+        self.plotStarColorColor(catalogsByFilter, filenamer, dataId)
 
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
@@ -902,7 +928,7 @@ class ColorAnalysisTask(CmdLineTask):
 
         return new
 
-    def plotGalaxyColors(self, catalogs):
+    def plotGalaxyColors(self, catalogs, filenamer, dataId):
         filters = set(catalogs.keys())
         if filters.issuperset(set(("HSC-G", "HSC-I"))):
             gg = catalogs["HSC-G"]
@@ -917,10 +943,11 @@ class ColorAnalysisTask(CmdLineTask):
                 row.assign(gRow, mapperList[0])
                 row.assign(iRow, mapperList[1])
 
+            catalog.writeFits("gi.fits")
             self.AnalysisClass(catalog, GalaxyColor("cmodel.flux", "flux.sinc", "g.", "i."),
                                "(g-i)_cmodel - (g-i)_sinc", "galaxy-TEST", self.config.analysis,
-                               flags=["cmodel.flux.flags", "flux.sinc.flags"],
-                               labeller=OverlapsStarGalaxyLabeller("g.", "r."),
+                               flags=["cmodel.flux.flags", "flux.sinc.flags"], prefix="i.",
+                               labeller=OverlapsStarGalaxyLabeller("g.", "i."),
                                qMin=-0.5, qMax=0.5,).plotAll(dataId, filenamer, self.log)
 
 
