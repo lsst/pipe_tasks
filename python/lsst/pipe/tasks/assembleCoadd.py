@@ -124,8 +124,8 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     # N.b. These configuration options only set the bitplane config.brightObjectMaskName
     # To make this useful you *must* also configure the flags.pixel algorithm, for example
     # by adding 
-    #   root.measurement.algorithms["flags.pixel"].center.append("BRIGHT_MASK")
-    #   root.measurement.algorithms["flags.pixel"].any.append("BRIGHT_MASK")
+    #   root.measurement.algorithms["flags.pixel"].center.append("BRIGHT_OBJECT")
+    #   root.measurement.algorithms["flags.pixel"].any.append("BRIGHT_OBJECT")
     # to your measureCoaddSources.py config overrides
     #
     doMaskBrightObjects = pexConfig.Field(dtype=bool, default=True,
@@ -221,14 +221,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.interpImage.interpolateOnePlane(coaddExp.getMaskedImage(), "NO_DATA", psf=coaddExp.getPsf())
 
         if self.config.doMaskBrightObjects:
-            try:
-                brightObjectMasks = dataRef.get("brightObjectMask", immediate=True)
-            except Exception as e:
-                self.log.warn("Unable to read brightObjectMasks; skipping: %s" % e)
-                brightObjectMasks = None
-
-            if brightObjectMasks:
-                self.setBrightObjectMasks(coaddExp, dataRef.dataId, brightObjectMasks)
+            brightObjectMasks = self.readBrightObjectMasks(dataRef)
+            self.setBrightObjectMasks(coaddExp, dataRef.dataId, brightObjectMasks)
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
@@ -547,15 +541,28 @@ class AssembleCoaddTask(CoaddBaseTask):
                 metadata.addDouble("CTExp_SDQA2_%d" % (ind),
                                    backgroundInfo.fitRMS)
 
+    def readBrightObjectMasks(self, dataRef):
+        """Returns None on failure"""
+        try:
+            return dataRef.get("brightObjectMask", immediate=True)
+        except Exception as e:
+            self.log.warn("Unable to read brightObjectMask for %s: %s" % (dataRef.dataId, e))
+            return None
+
     def setBrightObjectMasks(self, exposure, dataId, brightObjectMasks):
         """Set the bright object masks
 
         exposure:          Exposure under consideration
+        dataId:            Data identifier dict for patch
         brightObjectMasks: afwTable of bright objects to mask
         """
         #
         # Check the metadata specifying the tract/patch/filter
         #
+        if brightObjectMasks is None:
+            self.log.warn("Unable to apply bright object mask: none supplied")
+            return
+        self.log.info("Applying %d bright object masks to %s" % (len(brightObjectMasks), dataId))
         md = brightObjectMasks.table.getMetadata()
         for k in dataId:
             if not md.exists(k):
