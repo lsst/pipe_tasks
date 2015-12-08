@@ -597,6 +597,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         if brightObjectMasks is None:
             self.log.warn("Unable to apply bright object mask: none supplied")
             return
+        self.log.info("Applying %d bright object masks to %s" % (len(brightObjectMasks), dataId))
         md = brightObjectMasks.table.getMetadata()
         for k in dataId:
             if not md.exists(k):
