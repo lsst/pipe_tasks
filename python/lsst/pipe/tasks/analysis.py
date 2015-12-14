@@ -100,6 +100,10 @@ class Stats(Struct):
     def __init__(self, num, total, mean, stdev, forcedMean):
         Struct.__init__(self, num=num, total=total, mean=mean, stdev=stdev, forcedMean=forcedMean)
 
+    def __repr__(self):
+        return "Stats(mean={0.mean:.4f}; stdev={0.stdev:.4f}; num={0.num:d}; total={0.total:d}; " \
+            "forcedMean={0.forcedMean:})".format(self)
+
 colorList = ["blue", "red", "green", "black", "yellow", "cyan", "magenta", ]
 
 class AnalysisConfig(Config):
@@ -125,6 +129,8 @@ class Analysis(object):
         self.config = config
         self.qMin = qMin
         self.qMax = qMax
+        if labeller.labels.has_key("galaxy"):
+            self.qMin, self.qMax = 4.0*qMin, 4.0*qMax
         self.prefix = prefix
         self.flags = flags
         self.errFunc = errFunc
@@ -147,13 +153,18 @@ class Analysis(object):
     def plotAgainstMag(self, filename):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
+        plt.axhline(0, linestyle='--', color='0.6')
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
             axes.scatter(data.mag, data.quantity, s=2, marker='o', lw=0, c=data.color, label=name, alpha=0.3)
-            magMin = max(magMin, data.mag.min())
-            magMax = min(magMax, data.mag.max())
+            if name == "galaxy":
+                magMin = max(min(magMin, data.mag.min()), self.config.magPlotMin)
+                magMax = min(max(magMax, data.mag.max()), self.config.magPlotMax)
+            else:
+                magMin = max(magMin, data.mag.min())
+                magMax = min(magMax, data.mag.max())
         axes.set_xlabel("Mag from %s" % self.config.fluxColumn)
         axes.set_ylabel(self.quantityName)
         axes.set_ylim(self.qMin, self.qMax)
@@ -165,6 +176,7 @@ class Analysis(object):
     def plotHistogram(self, filename, numBins=50):
         """Plot histogram of quantity"""
         fig, axes = plt.subplots(1, 1)
+        axes.axvline(0, linestyle='--', color='0.6')
         numMax = 0
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
@@ -186,13 +198,17 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotSkyPosition(self, filename, cmap=plt.cm.brg):
+    def plotSkyPosition(self, filename, cmap=plt.cm.Spectral):
         """Plot quantity as a function of position"""
         ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
         dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 numpy.ones(len(self.mag), dtype=bool))
-        fig, axes = plt.subplots(1, 1)
+        if self.data.has_key("galaxy"):
+            vmin, vmax = 0.5*self.qMin, 0.5*self.qMax
+        else:
+            vmin, vmax = self.qMin, self.qMax
+        fig, axes = plt.subplots(1, 1, subplot_kw=dict(axisbg='0.7'))
         for name, data in self.data.iteritems():
             if not data.plot:
                 continue
@@ -200,14 +216,14 @@ class Analysis(object):
                 continue
             selection = data.selection & good
             axes.scatter(ra[selection], dec[selection], s=2, marker='o', lw=0,
-                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=self.qMin, vmax=self.qMax)
+                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=vmin, vmax=vmax)
         axes.set_xlabel("RA (deg)")
         axes.set_ylabel("Dec (deg)")
 
-        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=self.qMin, vmax=self.qMax))
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         cb = plt.colorbar(mappable)
-        cb.set_label(self.quantityName, rotation=270)
+        cb.set_label(self.quantityName, rotation=270, labelpad=15)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -219,6 +235,8 @@ class Analysis(object):
         good = (self.mag < self.config.magThreshold if self.config.magThreshold is not None else
                 numpy.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(2, 1)
+        axes[0].axhline(0, linestyle='--', color='0.6')
+        axes[1].axhline(0, linestyle='--', color='0.6')
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
@@ -227,10 +245,9 @@ class Analysis(object):
             axes[0].scatter(ra[selection], data.quantity[good[data.selection]], label=name, **kwargs)
             axes[1].scatter(dec[selection], data.quantity[good[data.selection]], **kwargs)
 
-        axes[0].set_xlabel("RA (deg)")
-        axes[0].set_ylabel(self.quantityName)
+        axes[0].set_xlabel("RA (deg)", labelpad=-1)
         axes[1].set_xlabel("Dec (deg)")
-        axes[1].set_ylabel(self.quantityName)
+        fig.text(0.02, 0.5, self.quantityName, ha='center', va='center', rotation='vertical')
 
         axes[0].set_ylim(self.qMin, self.qMax)
         axes[1].set_ylim(self.qMin, self.qMax)
@@ -329,14 +346,21 @@ class CcdAnalysis(Analysis):
         self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"))
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean)
 
-    def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.hsv, idBits=32, visitMultiplier=200):
+    def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.nipy_spectral, idBits=32,
+                visitMultiplier=200):
         """Plot quantity as a function of CCD x,y"""
         xx = self.catalog[self.prefix + centroid + "_x"]
         yy = self.catalog[self.prefix + centroid + "_y"]
         ccd = (self.catalog[self.prefix + "id"] >> idBits) % visitMultiplier
+        vmin, vmax = ccd.min(), ccd.max()
+        if vmin == vmax:
+            vmin, vmax = vmin - 2, vmax + 2
+            print "Only one CCD (%d) to analyze: setting vmin (%d), vmax (%d)" % (ccd.min(), vmin, vmax)
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 numpy.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(2, 1)
+        axes[0].axhline(0, linestyle='--', color='0.6')
+        axes[1].axhline(0, linestyle='--', color='0.6')
         for name, data in self.data.iteritems():
             if not data.plot:
                 continue
@@ -344,37 +368,39 @@ class CcdAnalysis(Analysis):
                 continue
             selection = data.selection & good
             quantity = data.quantity[good[data.selection]]
-            kwargs = {'s': 2, 'marker': 'o', 'lw': 0, 'alpha': 0.5, 'cmap': cmap}
+            kwargs = {'s': 2, 'marker': 'o', 'lw': 0, 'alpha': 0.5, 'cmap': cmap, 'vmin':vmin, 'vmax':vmax}
             axes[0].scatter(xx[selection], quantity, c=ccd[selection], **kwargs)
             axes[1].scatter(yy[selection], quantity, c=ccd[selection], **kwargs)
 
-        axes[0].set_xlabel("x_ccd")
-        axes[0].set_ylabel(self.quantityName)
+        axes[0].set_xlabel("x_ccd", labelpad=-1)
         axes[1].set_xlabel("y_ccd")
-        axes[1].set_ylabel(self.quantityName)
-
+        fig.text(0.02, 0.5, self.quantityName, ha='center', va='center', rotation='vertical')
         axes[0].set_xlim(-100, 2150)
         axes[1].set_xlim(-100, 4300)
         axes[0].set_ylim(self.qMin, self.qMax)
         axes[1].set_ylim(self.qMin, self.qMax)
 
-        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=ccd.min(), vmax=ccd.max()))
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         fig.subplots_adjust(right=0.8)
-        cax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+        cax = fig.add_axes([0.83, 0.15, 0.04, 0.7])
         cb = fig.colorbar(mappable, cax=cax)
-        cb.set_label("CCD index", rotation=270)
+        cb.set_label("CCD index", rotation=270, labelpad=15)
 
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotFocalPlane(self, filename, cmap=plt.cm.brg):
+    def plotFocalPlane(self, filename, cmap=plt.cm.Spectral):
         """Plot quantity colormaped on the focal plane"""
         xx = self.catalog[self.prefix + "base_FocalPlane_x"]
         yy = self.catalog[self.prefix + "base_FocalPlane_y"]
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 numpy.ones(len(self.mag), dtype=bool))
-        fig, axes = plt.subplots(1, 1)
+        if self.data.has_key("galaxy"):
+            vmin, vmax = 0.5*self.qMin, 0.5*self.qMax
+        else:
+            vmin, vmax = self.qMin, self.qMax
+        fig, axes = plt.subplots(1, 1, subplot_kw=dict(axisbg='0.7'))
         for name, data in self.data.iteritems():
             if not data.plot:
                 continue
@@ -382,14 +408,14 @@ class CcdAnalysis(Analysis):
                 continue
             selection = data.selection & good
             axes.scatter(xx[selection], yy[selection], s=2, marker='o', lw=0,
-                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=self.qMin, vmax=self.qMax)
+                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=vmin, vmax=vmax)
         axes.set_xlabel("x_fpa (pixels)")
         axes.set_ylabel("y_fpa (pixels)")
 
-        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=self.qMin, vmax=self.qMax))
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         cb = plt.colorbar(mappable)
-        cb.set_label(self.quantityName, rotation=270)
+        cb.set_label(self.quantityName, rotation=270, labelpad=15)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -557,7 +583,10 @@ class CoaddAnalysisTask(CmdLineTask):
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamer, dataId)
+            if "second_" + "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
+                self.plotStarGal(catalog, filenamer, dataId)
+            else:
+                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if cosmos:
             self.plotCosmos(catalog, filenamer, cosmos, dataId)
         if self.config.doOverlaps:
@@ -1121,7 +1150,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamer, dataId)
+            if "second_" + "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
+                self.plotStarGal(catalog, filenamer, dataId)
+            else:
+                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if self.config.doMatches:
             matches = self.readSrcMatches(dataRefList, "src")
             self.plotMatches(matches, filterName, filenamer, dataId)
