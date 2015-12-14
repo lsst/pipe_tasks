@@ -17,8 +17,8 @@ from lsst.daf.persistence.butler import Butler
 from lsst.daf.persistence.safeFileIo import safeMakeDir
 from lsst.pex.config import Config, Field, ConfigField, ListField, DictField, ConfigDictField
 from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner, TaskError
-from lsst.meas.base.dataIds import PerTractCcdDataIdContainer
 from lsst.coadd.utils import TractDataIdContainer
+from lsst.meas.base.forcedPhotCcd import PerTractCcdDataIdContainer
 from lsst.afw.table.catalogMatches import matchesToCatalog, matchesFromCatalog
 from lsst.meas.astrom import AstrometryTask, AstrometryConfig
 from lsst.pipe.tasks.colorterms import ColortermLibrary
@@ -1134,8 +1134,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "src", help="data ID, e.g. --id tract=0 visit=12345 ccd=6",
-                               ContainerClass=PerTractCcdDataIdContainer)
+        parser.add_id_argument("--id", "src", help="data ID, e.g. --id visit=12345 ccd=6^8..11")
         return parser
 
     def run(self, dataRefList):
