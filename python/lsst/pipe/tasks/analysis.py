@@ -478,6 +478,14 @@ def joinMatches(matches, first="first_", second="second_"):
         row.set(distanceKey, mm.distance*afwGeom.radians)
     return catalog
 
+def matchJanskyToDn(matches):
+    # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
+    JANSKYS_PER_AB_FLUX = 3631.0
+    for m in matches:
+        for k in m.first.schema.getNames():
+            if "_flux" in k:
+                m.first[k] /= JANSKYS_PER_AB_FLUX
+    return matches
 
 @contextmanager
 def andCatalog(version):
@@ -689,6 +697,7 @@ class CoaddAnalysisTask(CmdLineTask):
         filterName = afwImage.Filter(afwImage.Filter(filterName).getId()).getName() # Get primary name
         refs = astrometry.refObjLoader.loadSkyCircle(center, radius, filterName).refCat
         matches = afwTable.matchRaDec(refs, catalog, self.config.matchRadius*afwGeom.arcseconds)
+        matches = matchJanskyToDn(matches)
         return joinMatches(matches, "ref_", "src_")
 
     def _getConfigName(self):
@@ -1208,6 +1217,8 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             refObjLoaderConfig = LoadAstrometryNetObjectsTask.ConfigClass()
             refObjLoader = LoadAstrometryNetObjectsTask(refObjLoaderConfig)
             matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
+            # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
+            matches = matchJanskyToDn(matches)
 
             if len(matches) == 0:
                 self.log.warn("No matches for %s" % (dataRef.dataId,))
