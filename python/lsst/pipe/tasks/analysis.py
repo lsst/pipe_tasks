@@ -1164,9 +1164,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             self.plotMatches(matches, filterName, filenamer, dataId)
 
         for cat in self.config.externalCatalogs:
-            with andCatalog(cat):
-                matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
-                self.plotMatches(matches, filterName, filenamer, dataId, cat)
+            if self.config.photoCatName not in cat:
+                with andCatalog(cat):
+                    matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
+                    self.plotMatches(matches, filterName, filenamer, dataId, cat)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
@@ -1341,8 +1342,7 @@ class CompareAnalysisTask(CmdLineTask):
 
     def plotMags(self, catalog, filenamer, dataId):
         enforcer = None # Enforcer(requireLess={'star': {'stdev': 0.02}})
-        # for col in ["base_PsfFlux_flux", "flux.sinc", "flux.kron", "cmodel.flux"]:
-        for col in ["base_PsfFlux_flux", "base_GaussianFlux_flux", "ext_photometryKron_KronFlux_flux"]: #, "modelfit_Cmodel-flux"]:
+        for col in ["base_PsfFlux_flux", "base_GaussianFlux_flux", "ext_photometryKron_KronFlux_flux", "modelfit_Cmodel_flux"]:
             if "first_" + col in catalog.schema and "second_" + col in catalog.schema:
                 Analysis(catalog, MagDiff("first_" + col, "second_" + col),
                          "Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
