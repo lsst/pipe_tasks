@@ -1189,9 +1189,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             self.plotMatches(matches, filterName, filenamer, dataId)
 
         for cat in self.config.externalCatalogs:
-            with andCatalog(cat):
-                matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
-                self.plotMatches(matches, filterName, filenamer, dataId, cat)
+            if self.config.photoCatName not in cat :
+                with andCatalog(cat):
+                    matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
+                    self.plotMatches(matches, filterName, filenamer, dataId, cat)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
