@@ -143,7 +143,20 @@ class Analysis(object):
                                 colorList[value], self.quantityError, name in labeller.plot) for
                      name, value in labeller.labels.iteritems()}
 
-    def plotAgainstMag(self, filename):
+    @staticmethod
+    def annotateAxes(axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
+                     ha="left", va="top", color="blue"):
+        axes.annotate(dataSet+" (N = {0.num:d}):".format(stats[dataSet]), xy=(x0, y0),
+                      xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
+        axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
+                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+        axes.annotate("stdev = {0.stdev:.4f}".format(stats[dataSet]), xy=(x0, y0-2*yOff),
+                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+        axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
+                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+
+
+    def plotAgainstMag(self, filename, stats=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
@@ -157,11 +170,13 @@ class Analysis(object):
         axes.set_ylabel(self.quantityName)
         axes.set_ylim(self.qMin, self.qMax)
         axes.set_xlim(magMin, magMax)
+        if stats is not None:
+            self.annotateAxes(axes, stats, "star", self.config.magThreshold)
         axes.legend()
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotHistogram(self, filename, numBins=50):
+    def plotHistogram(self, filename, numBins=50, stats=None):
         """Plot histogram of quantity"""
         fig, axes = plt.subplots(1, 1)
         numMax = 0
@@ -181,11 +196,16 @@ class Analysis(object):
         axes.set_xlabel(self.quantityName)
         axes.set_ylabel("Number")
         axes.set_yscale('log', nonposy='clip')
+        x0, y0 = 0.03, 0.96
+        if self.qMin == 0.0 :
+            x0, y0 = 0.75, 0.81
+        if stats is not None:
+            self.annotateAxes(axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0)
         axes.legend()
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotSkyPosition(self, filename, cmap=plt.cm.brg):
+    def plotSkyPosition(self, filename, cmap=plt.cm.brg, stats=None):
         """Plot quantity as a function of position"""
         ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
         dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
@@ -210,7 +230,7 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotRaDec(self, filename):
+    def plotRaDec(self, filename, stats=None):
         """Plot quantity as a function of RA, Dec"""
 
         ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
@@ -235,16 +255,19 @@ class Analysis(object):
         axes[1].set_ylim(self.qMin, self.qMax)
 
         axes[0].legend()
+        if stats is not None:
+            self.annotateAxes(axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
+            self.annotateAxes(axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
         fig.savefig(filename)
         plt.close(fig)
 
     def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None):
         """Make all plots"""
-        self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"))
-        self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"))
-        self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"))
-        self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"))
         stats = self.stats(forcedMean=forcedMean)
+        self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats)
+        self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats)
+        self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats)
+        self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"), stats=stats)
         log.info("Statistics from %s of %s: %s" % (dataId, self.quantityName, stats))
         if enforcer:
             enforcer(stats, dataId, log, self.quantityName)
@@ -326,11 +349,13 @@ class Enforcer(object):
 
 class CcdAnalysis(Analysis):
     def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None):
-        self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"))
-        self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"))
+        stats = self.stats(forcedMean=forcedMean)
+        self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats)
+        self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats)
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean)
 
-    def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.hsv, idBits=32, visitMultiplier=200):
+    def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.hsv, idBits=32,
+                visitMultiplier=200, stats=None):
         """Plot quantity as a function of CCD x,y"""
         xx = self.catalog[self.prefix + centroid + "_x"]
         yy = self.catalog[self.prefix + centroid + "_y"]
@@ -353,7 +378,9 @@ class CcdAnalysis(Analysis):
         axes[0].set_ylabel(self.quantityName)
         axes[1].set_xlabel("y_ccd")
         axes[1].set_ylabel(self.quantityName)
-
+        if stats is not None:
+            self.annotateAxes(axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
+            self.annotateAxes(axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
         axes[0].set_xlim(-100, 2150)
         axes[1].set_xlim(-100, 4300)
         axes[0].set_ylim(self.qMin, self.qMax)
@@ -369,7 +396,7 @@ class CcdAnalysis(Analysis):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotFocalPlane(self, filename, cmap=plt.cm.brg):
+    def plotFocalPlane(self, filename, cmap=plt.cm.brg, stats=None):
         """Plot quantity colormaped on the focal plane"""
         xx = self.catalog[self.prefix + "base_FocalPlane_x"]
         yy = self.catalog[self.prefix + "base_FocalPlane_y"]
