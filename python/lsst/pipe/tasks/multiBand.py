@@ -100,6 +100,8 @@ class DetectCoaddSourcesConfig(Config):
     doScaleVariance = Field(dtype=bool, default=True, doc="Scale variance plane using empirical noise?")
     detection = ConfigurableField(target=SourceDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    mask = ListField(dtype=str, default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
+                     doc="Mask planes for pixels to ignore when scaling variance")
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -156,7 +158,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
                         )
         """
         if self.config.doScaleVariance:
-            scaleVariance(exposure.getMaskedImage(), log=self.log)
+            scaleVariance(exposure.getMaskedImage(), self.config.mask, log=self.log)
         backgrounds = afwMath.BackgroundList()
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.makeSourceCatalog(table, exposure)
