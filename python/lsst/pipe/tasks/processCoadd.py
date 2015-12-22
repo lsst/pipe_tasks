@@ -42,6 +42,8 @@ class ProcessCoaddConfig(ProcessImageTask.ConfigClass):
         default = "deep",
     )
     doScaleVariance = pexConfig.Field(dtype=bool, default=True, doc = "Scale variance plane using empirical noise")
+    mask = pexConfig.ListField(dtype=str, default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
+                               doc="Mask planes for pixels to reject")
     astrometry = pexConfig.ConfigurableField(
         target = AstrometryTask,
         doc = "Astrometric matching, for matching sources to reference",
@@ -105,7 +107,7 @@ class ProcessCoaddTask(ProcessImageTask):
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=dataRef)
         coadd = dataRef.get(self.config.coaddName + "Coadd")
         if self.config.doScaleVariance:
-            scaleVariance(coadd.getMaskedImage(), log=self.log)
+            scaleVariance(coadd.getMaskedImage(), self.config.mask, log=self.log)
 
         # delegate most of the work to ProcessImageTask
         result = self.process(dataRef, coadd, enableWriteSources=False)
