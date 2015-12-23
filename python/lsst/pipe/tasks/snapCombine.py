@@ -34,7 +34,34 @@ from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.meas.algorithms as measAlg
 
 from .repair import RepairTask
-from .calibrate import InitialPsfConfig
+
+class InitialPsfConfig(pexConfig.Config):
+    """!Describes the initial PSF used for detection and measurement before we do PSF determination."""
+
+    model = pexConfig.ChoiceField(
+        dtype = str,
+        doc = "PSF model type",
+        default = "SingleGaussian",
+        allowed = {
+            "SingleGaussian": "Single Gaussian model",
+            "DoubleGaussian": "Double Gaussian model",
+        },
+    )
+    pixelScale = pexConfig.Field(
+        dtype = float,
+        doc = "Pixel size (arcsec).  Only needed if no Wcs is provided",
+        default = 0.25,
+    )
+    fwhm = pexConfig.Field(
+        dtype = float,
+        doc = "FWHM of PSF model (arcsec)",
+        default = 1.0,
+    )
+    size = pexConfig.Field(
+        dtype = int,
+        doc = "Size of PSF model (pixels)",
+        default = 15,
+    )
 
 class SnapCombineConfig(pexConfig.Config):
     doRepair = pexConfig.Field(
