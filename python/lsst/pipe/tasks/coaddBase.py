@@ -330,7 +330,7 @@ def getSkyInfo(coaddName, patchRef):
         bbox = patchInfo.getOuterBBox(),
     )
 
-def scaleVariance(maskedImage, maskVal=~0x0, log=None):
+def scaleVariance(maskedImage, maskPlanes, log=None):
     """Scale the variance in a maskedImage
 
     The variance plane in a convolved or warped image (or a coadd derived
@@ -341,12 +341,13 @@ def scaleVariance(maskedImage, maskVal=~0x0, log=None):
     not tracking the covariance) but it's simple and is often good enough.
 
     @param maskedImage  MaskedImage to operate on; variance will be scaled
-    @param maskVal  Mask values of pixels to ignore
+    @param maskPlanes  List of mask planes for pixels to reject
     @param log  Log for reporting the renormalization factor; or None
     @return renormalisation factor
     """
     variance = maskedImage.getVariance()
     sigNoise = maskedImage.getImage().getArray()/numpy.sqrt(variance.getArray())
+    maskVal = maskedImage.getMask().getPlaneBitMask(maskPlanes)
     good = (maskedImage.getMask().getArray() & maskVal) == 0
     # Robust measurement of stdev
     q1, q3 = numpy.percentile(sigNoise[good], (25, 75))
