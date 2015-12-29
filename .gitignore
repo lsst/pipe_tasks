@@ -23,6 +23,7 @@ bin/dumpTaskMetadata.py
 bin/hscCoaddAnalysis.py
 bin/hscColorAnalysis.py
 bin/hscCompareAnalysis.py
+bin/hscCompareVisitAnalysis.py
 bin/hscSkyAnalysis.py
 bin/hscVisitAnalysis.py
 bin/imageDifference.py
