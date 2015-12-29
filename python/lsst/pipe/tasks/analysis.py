@@ -1334,20 +1334,24 @@ class CompareAnalysisTask(CmdLineTask):
     def readCatalogs(self, patchRefList, dataset):
         catList = [patchRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS) for
                    patchRef in patchRefList if patchRef.datasetExists(dataset)]
+        if len(catList) == 0:
+            raise TaskError("No catalogs read: %s" % ([patchRefList[0].dataId for dataRef in patchRefList]))
         return concatenateCatalogs(catList)
 
     def matchCatalogs(self, catalog1, catalog2):
         matches = afwTable.matchRaDec(catalog1, catalog2, self.config.matchRadius*afwGeom.arcseconds)
+        if len(matches) == 0:
+            raise TaskError("No matches found")
         return joinMatches(matches, "first_", "second_")
 
     def plotMags(self, catalog, filenamer, dataId):
         enforcer = None # Enforcer(requireLess={'star': {'stdev': 0.02}})
-        for col in ["base_PsfFlux_flux", "base_GaussianFlux_flux", "ext_photometryKron_KronFlux_flux", "modelfit_Cmodel_flux"]:
-            if "first_" + col in catalog.schema and "second_" + col in catalog.schema:
-                Analysis(catalog, MagDiff("first_" + col, "second_" + col),
+        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+            if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
+                Analysis(catalog, MagDiff("first_" + col + "_flux", "second_" + col + "_flux"),
                          "Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
-                         prefix="first_", flags=[col + "_flag"], errFunc=MagDiffErr(col),
-                         labeller=OverlapsStarGalaxyLabeller(),
+                         prefix="first_", qMin=-0.01, qMax=0.01, flags=[col + "_flag"],
+                         errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
                          ).plotAll(dataId, filenamer, self.log, enforcer)
 
     def plotCentroids(self, catalog, filenamer, dataId):
@@ -1367,6 +1371,53 @@ class CompareAnalysisTask(CmdLineTask):
         return None
     def _getEupsVersionsName(self):
         return None
+
+
+class CompareVisitAnalysisRunner(TaskRunner):
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        parentDir = parsedCmd.input
+        while os.path.exists(os.path.join(parentDir, "_parent")):
+            parentDir = os.path.realpath(os.path.join(parentDir, "_parent"))
+        butler2 = Butler(root=os.path.join(parentDir, "rerun", parsedCmd.rerun2), calibRoot=parsedCmd.calib)
+        idParser = parsedCmd.id.__class__(parsedCmd.id.level)
+        idParser.idList = parsedCmd.id.idList
+        idParser.datasetType = parsedCmd.id.datasetType
+        butler = parsedCmd.butler
+        parsedCmd.butler = butler2
+        idParser.makeDataRefList(parsedCmd)
+        parsedCmd.butler = butler
+
+        visits1 = defaultdict(list)
+        visits2 = defaultdict(list)
+        for ref1, ref2 in zip(parsedCmd.id.refList, idParser.refList):
+            visits1[ref1.dataId["visit"]].append(ref1)
+            visits2[ref2.dataId["visit"]].append(ref2)
+        return [(refs1, dict(dataRefList2=refs2, **kwargs)) for
+                refs1, refs2 in zip(visits1.itervalues(), visits2.itervalues())]
+
+class CompareVisitAnalysisTask(CompareAnalysisTask):
+    _DefaultName = "compareVisitAnalysis"
+    ConfigClass = CompareAnalysisConfig
+    RunnerClass = CompareVisitAnalysisRunner
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_argument("--rerun2", required=True, help="Second rerun, for comparison")
+        parser.add_id_argument("--id", datasetType="src", help="data ID, e.g. --id visit=12345 ccd=49")
+        return parser
+
+    def run(self, dataRefList1, dataRefList2):
+        dataId = dataRefList1[0].dataId
+        filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
+        catalog1 = self.readCatalogs(dataRefList1, "src")
+        catalog2 = self.readCatalogs(dataRefList2, "src")
+        catalog = self.matchCatalogs(catalog1, catalog2)
+        if self.config.doMags:
+            self.plotMags(catalog, filenamer, dataId)
+        if self.config.doCentroids:
+            self.plotCentroids(catalog, filenamer, dataId)
 
 
 class MagDiffErr(object):
@@ -1400,14 +1451,13 @@ class CentroidDiff(object):
 class CentroidDiffErr(CentroidDiff):
     """Functor to calculate difference error for astrometry"""
     def __call__(self, catalog):
-        first = self.first + self.centroid + "Sigma"
-        second = self.second + self.centroid + "Sigma"
+        firstx = self.first + self.centroid + "_xSigma"
+        firsty = self.first + self.centroid + "_ySigma"
+        secondx = self.second + self.centroid + "_xSigma"
+        secondy = self.second + self.centroid + "_ySigma"
 
-        subkeys1 = catalog.schema[first].asKey().subkeys
-        subkeys2 = catalog.schema[second].asKey().subkeys
-
-        # subkeys are xx, xy, yy
-        # Ignoring xy because it's not set
-        menu = {'x': 0, 'y': 2}
+        subkeys1 = [catalog.schema[firstx].asKey(), catalog.schema[firsty].asKey()]
+        subkeys2 = [catalog.schema[secondx].asKey(), catalog.schema[secondy].asKey()]
+        menu = {'x': 0, 'y': 1}
 
         return numpy.hypot(catalog[subkeys1[menu[self.component]]], catalog[subkeys2[menu[self.component]]])
