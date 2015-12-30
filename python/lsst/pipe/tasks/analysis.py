@@ -1288,6 +1288,8 @@ class CompareAnalysisConfig(Config):
     doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     sysErrMags = Field(dtype=float, default=0.015, doc="Systematic error in magnitudes")
     sysErrCentroids = Field(dtype=float, default=0.15, doc="Systematic error in centroids (pixels)")
+    srcSchemaMap = DictField(keytype=str, itemtype=str, default=None,
+                             doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
 
 class CompareAnalysisRunner(TaskRunner):
     @staticmethod
@@ -1414,6 +1416,11 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         catalog1 = self.readCatalogs(dataRefList1, "src")
         catalog2 = self.readCatalogs(dataRefList2, "src")
         catalog = self.matchCatalogs(catalog1, catalog2)
+        # Set an alias map for differing src naming conventions of different stacks (if any)
+        if self.config.srcSchemaMap is not None:
+            aliasMap = catalog.schema.getAliasMap()
+            for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                aliasMap.set("second_" + lsstName, "second_" + otherName)
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doCentroids:
