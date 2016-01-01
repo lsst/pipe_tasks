@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import re
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -111,7 +112,7 @@ class AnalysisConfig(Config):
                       default=["base_SdssCentroid_flag", "base_PixelFlags_flag_saturatedCenter",
                                "base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag"])
     clip = Field(dtype=float, default=4.0, doc="Rejection threshold (stdev)")
-    magThreshold = Field(dtype=float, default=21.0, doc="Magnitude threshold to apply")
+    magThreshold = Field(dtype=float, default=24.0, doc="Magnitude threshold to apply")
     magPlotMin = Field(dtype=float, default=16.0, doc="Minimum magnitude to plot")
     magPlotMax = Field(dtype=float, default=28.0, doc="Maximum magnitude to plot")
     fluxColumn = Field(dtype=str, default="base_PsfFlux_flux", doc="Column to use for flux/magnitude plotting")
@@ -137,7 +138,8 @@ class Analysis(object):
 
         self.quantity = func(catalog)
         self.quantityError = errFunc(catalog) if errFunc is not None else None
-        self.mag = self.config.zp - 2.5*numpy.log10(catalog[prefix + self.config.fluxColumn])
+        # self.mag = self.config/zp - 2.5*numpy.log10(catalog[prefix + self.config.fluxColumn])
+        self.mag = -2.5*numpy.log10(catalog[prefix + self.config.fluxColumn])
 
         self.good = numpy.isfinite(self.quantity) & numpy.isfinite(self.mag)
         if errFunc is not None:
@@ -693,7 +695,7 @@ class CoaddAnalysisTask(CmdLineTask):
 
     def plotMatches(self, matches, filterName, filenamer, dataId, description="matches"):
         ct = self.config.colorterms.getColorterm(filterName, self.config.photoCatName)
-        self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=self.zp), "MagPsf - ref",
+        self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0), "MagPsf - ref",
                            description + "_mag",
                            self.config.analysisMatches, prefix="src_", labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
@@ -1213,12 +1215,16 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             if not dataRef.datasetExists(dataset):
                 continue
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            butler = dataRef.getButler()
+            metadata = butler.get("calexp_md", dataRef.dataId)
+            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
             try:
-                calibrated = self.calibrateSourceCatalog(dataRef, catalog, zp=self.config.analysis.zp)
+                calibrated = self.calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
                 catList.append(calibrated)
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                catList.append(catalog)
+                calibrated = self.calibrateSourceCatalog(dataRef, catalog, self.zp)
+                catList.append(calibrated)
                 continue
 
         if len(catList) == 0:
@@ -1226,7 +1232,20 @@ class VisitAnalysisTask(CoaddAnalysisTask):
 
         return concatenateCatalogs(catList)
 
-    def calibrateSourceCatalog(self, dataRef, catalog, zp=27.0):
+
+    @staticmethod
+    def getFluxKeys(schema):
+        """Retrieve the flux and flux error keys from a schema
+        Both are returned as dicts indexed on the flux name (e.g. "flux.psf" or "cmodel.flux").
+        """
+        schemaKeys = dict((s.field.getName(), s.key) for s in schema)
+        fluxKeys = dict((name, key) for name, key in schemaKeys.items() if
+                        re.search(r"^(\w+_flux)$", name))
+        errKeys = dict((name, schemaKeys[name + "Sigma"]) for name in fluxKeys.keys() if
+                       name + "Sigma" in schemaKeys)
+        return fluxKeys, errKeys
+
+    def calibrateSourceCatalogMosaic(self, dataRef, catalog, zp=27.0):
         """Calibrate catalog with meas_mosaic results
 
         Requires a SourceCatalog input.
@@ -1236,11 +1255,24 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         ffp = result.ffp
         factor = 10.0**(0.4*zp)/ffp.calib.getFluxMag0()[0]
         # Convert to constant zero point, as for the coadds
-        fluxKeys, errKeys = getFluxKeys(catalog.schema)
+        fluxKeys, errKeys = self.getFluxKeys(catalog.schema)
         for key in fluxKeys.values() + errKeys.values():
             if len(catalog[key].shape) > 1:
                 continue
             catalog[key][:] *= factor
+        return catalog
+
+    def calibrateSourceCatalog(self, dataRef, catalog, zp):
+        """Calibrate catalog in the case of no meas_mosaic results using FLUXMAG0 as zp
+
+        Requires a SourceCatalog input.
+        """
+        factor = 10.0**(0.4*zp)
+        # Convert to constant zero point, as for the coadds
+        fluxKeys, errKeys = self.getFluxKeys(catalog.schema)
+        for key in fluxKeys.values() + errKeys.values():
+            for src in catalog:
+                src[key] /= factor
         return catalog
 
     def readSrcMatches(self, dataRefList, dataset):
@@ -1249,6 +1281,8 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             if not dataRef.datasetExists(dataset):
                 continue
             butler = dataRef.getButler()
+            metadata = butler.get("calexp_md", dataRef.dataId)
+            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
             if dataRef.datasetExists(dataset + "MatchFull"):
                 # if unnormalized match list was persisted, read it
                 catalog = dataRef.get(dataset + "MatchFull", immediate=True,
@@ -1279,12 +1313,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             matches[0].second.table.defineCentroid("base_SdssCentroid")
             src.table.defineCentroid("base_SdssCentroid")
             try:
-                src = self.calibrateSourceCatalog(dataRef, src, zp=self.config.analysisMatches.zp)
+                src = self.calibrateSourceCatalogMosaic(dataRef, src, zp=self.config.analysisMatches.zp)
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                metadata = butler.get("calexp_md", dataRef.dataId)
-                self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
                 self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
+                src = self.calibrateSourceCatalog(dataRef, src, self.zp)
 
             for mm, ss in zip(matches, src):
                 mm.second = ss
@@ -1390,16 +1423,6 @@ class CompareAnalysisTask(CmdLineTask):
             raise TaskError("No matches found")
         return joinMatches(matches, "first_", "second_")
 
-    def plotMags(self, catalog, filenamer, dataId):
-        enforcer = None # Enforcer(requireLess={'star': {'stdev': 0.02}})
-        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
-            if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
-                Analysis(catalog, MagDiff("first_" + col + "_flux", "second_" + col + "_flux"),
-                         "Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
-                         prefix="first_", qMin=-0.01, qMax=0.01, flags=[col + "_flag"],
-                         errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
-                         ).plotAll(dataId, filenamer, self.log, enforcer)
-
     def plotCentroids(self, catalog, filenamer, dataId):
         distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
         Analysis(catalog, CentroidDiff("x"), "x offset (arcsec)", "diff_x", self.config.analysis,
@@ -1470,6 +1493,42 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         if self.config.doCentroids:
             self.plotCentroids(catalog, filenamer, dataId)
 
+    def readCatalogs(self, dataRefList, dataset):
+        catList = []
+        for dataRef in dataRefList:
+            if not dataRef.datasetExists(dataset):
+                continue
+            srcCat = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            schemaMapper = afwTable.SchemaMapper(srcCat.schema, True)
+            schemaMapper.addMinimalSchema(srcCat.schema)
+            schema = schemaMapper.getOutputSchema()
+            butler = dataRef.getButler()
+            metadata = butler.get("calexp_md", dataRef.dataId)
+            fluxMag0 = metadata.get("FLUXMAG0")
+            self.log.info("fluxMag0 = %.4f for dataId = %s " % (fluxMag0, dataRef.dataId))
+            fluxMag0Key = schema.addField("fluxMag0", type=float, doc="FLUXMAG0 from calexp_md header")
+            catalog = afwTable.SourceCatalog(schema)
+            catalog.reserve(len(srcCat))
+            for src in srcCat:
+                row = catalog.addNew()
+                row.assign(src, schemaMapper)
+                row.set(fluxMag0Key, fluxMag0)
+            catList.append(catalog)
+
+        if len(catList) == 0:
+            raise TaskError("No catalogs read: %s" % ([patchRefList[0].dataId for dataRef in patchRefList]))
+        return concatenateCatalogs(catList)
+
+    def plotMags(self, catalog, filenamer, dataId):
+        enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
+        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+            if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
+                Analysis(catalog, MagDiffCompare(col + "_flux"),
+                         "Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
+                         prefix="first_", qMin=-0.01, qMax=0.01, flags=[col + "_flag"],
+                         errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
+                         ).plotAll(dataId, filenamer, self.log, enforcer)
+
 
 class MagDiffErr(object):
     """Functor to calculate magnitude difference error"""
@@ -1480,8 +1539,13 @@ class MagDiffErr(object):
         self.calib.setFluxMag0(10.0**(0.4*zp))
         self.calib.setThrowOnNegativeFlux(False)
     def __call__(self, catalog):
+        # Use measured zp if we have it in the schema
+        if "first_fluxMag0" in catalog.schema:
+            self.calib.setFluxMag0(catalog[0]["first_fluxMag0"])
         mag1, err1 = self.calib.getMagnitude(catalog["first_" + self.column],
                                              catalog["first_" + self.column + "Sigma"])
+        if "second_fluxMag0" in catalog.schema:
+            self.calib.setFluxMag0(catalog[0]["second_fluxMag0"])
         mag2, err2 = self.calib.getMagnitude(catalog["second_" + self.column],
                                              catalog["second_" + self.column + "Sigma"])
         return numpy.sqrt(err1**2 + err2**2)
