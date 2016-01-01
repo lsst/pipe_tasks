@@ -96,8 +96,9 @@ class Data(Struct):
                         error=error[selection] if error is not None else None)
 
 class Stats(Struct):
-    def __init__(self, num, total, mean, stdev, forcedMean):
-        Struct.__init__(self, num=num, total=total, mean=mean, stdev=stdev, forcedMean=forcedMean)
+    def __init__(self, num, total, mean, stdev, forcedMean, median, clip):
+        Struct.__init__(self, num=num, total=total, mean=mean, stdev=stdev, forcedMean=forcedMean,
+                        median=median, clip=clip)
 
     def __repr__(self):
         return "Stats(mean={0.mean:.4f}; stdev={0.stdev:.4f}; num={0.num:d}; total={0.total:d}; " \
@@ -150,23 +151,31 @@ class Analysis(object):
                      name, value in labeller.labels.iteritems()}
 
     @staticmethod
-    def annotateAxes(axes, stats, dataSet, x0=0.03, y0=0.96, yOff=0.04, ha="left", va="top", color="blue"):
-        axes.annotate(dataSet+" (N = {0.num:d}):".format(stats[dataSet]), xy=(x0, y0),
-                      xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
+    def annotateAxes(plt, axes, stats, dataSet, x0=0.03, y0=0.96, yOff=0.04, ha="left", va="top",
+                     color="blue"):
+        axes.annotate(dataSet+" (N = {0.num:d} of Ntot = {0.total:d}):".format(stats[dataSet]),
+                      xy=(x0, y0),xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
                       xycoords='axes fraction', ha=ha, va=va, fontsize=10)
         axes.annotate("stdev = {0.stdev:.4f}".format(stats[dataSet]), xy=(x0, y0-2*yOff),
-                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+                      xycoords="axes fraction", ha=ha, va=va, fontsize=10)
+        l1 = plt.axhline(stats[dataSet].median, linestyle="dotted", color="0.8", label="median")
+        l2 = plt.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8",
+                         label="clip")
+        l3 = plt.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
+        plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
 
     def plotAgainstMag(self, filename, stats=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         plt.axhline(0, linestyle='--', color='0.6')
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
+        dataPoints = []
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
-            axes.scatter(data.mag, data.quantity, s=2, marker='o', lw=0, c=data.color, label=name, alpha=0.3)
+            dataPoints.append(axes.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
+                                           c=data.color, label=name, alpha=0.3))
             if name == "galaxy":
                 magMin = max(min(magMin, data.mag.min()), self.config.magPlotMin)
                 magMax = min(max(magMax, data.mag.max()), self.config.magPlotMax)
@@ -178,8 +187,10 @@ class Analysis(object):
         axes.set_ylim(self.qMin, self.qMax)
         axes.set_xlim(magMin, magMax)
         if stats is not None:
-            self.annotateAxes(axes, stats, "star")
-        axes.legend()
+            self.annotateAxes(plt, axes, stats, "star")
+        axes.legend(handles=dataPoints, loc=1, fontsize=8)
+        fig.text(0.5, 0.95, "magThreshold = "+str(self.config.magThreshold), ha="center", va="center",
+                 fontsize=12)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -208,7 +219,7 @@ class Analysis(object):
         if self.qMin == 0.0 :
             x0, y0 = 0.75, 0.81
         if stats is not None:
-            self.annotateAxes(axes, stats, "star", x0=x0, y0=y0)
+            self.annotateAxes(plt, axes, stats, "star", x0=x0, y0=y0)
         axes.legend()
         fig.savefig(filename)
         plt.close(fig)
@@ -269,7 +280,7 @@ class Analysis(object):
 
         axes[0].legend()
         if stats is not None:
-            self.annotateAxes(axes[0], stats, "star", x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[0], stats, "star", x0=0.03, yOff=0.07)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -308,7 +319,8 @@ class Analysis(object):
         actualMean = quantity[good].mean()
         mean = actualMean if forcedMean is None else forcedMean
         stdev = numpy.sqrt(((quantity[good].astype(numpy.float64) - mean)**2).mean())
-        return Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev, forcedMean=forcedMean)
+        return Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev, forcedMean=forcedMean,
+                     median=median, clip=clip)
 
     def calculateSysError(self, quantity, error, selection, forcedMean=None, tol=1.0e-3):
         import scipy.optimize
@@ -394,7 +406,7 @@ class CcdAnalysis(Analysis):
         axes[1].set_xlabel("y_ccd")
         fig.text(0.02, 0.5, self.quantityName, ha='center', va='center', rotation='vertical')
         if stats is not None:
-            self.annotateAxes(axes[0], stats, "star", x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[0], stats, "star", x0=0.03, yOff=0.07)
         axes[0].set_xlim(-100, 2150)
         axes[1].set_xlim(-100, 4300)
         axes[0].set_ylim(self.qMin, self.qMax)
