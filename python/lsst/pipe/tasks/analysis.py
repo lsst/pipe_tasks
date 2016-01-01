@@ -183,7 +183,7 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotHistogram(self, filename, numBins=50, stats=None):
+    def plotHistogram(self, filename, numBins=51, stats=None):
         """Plot histogram of quantity"""
         fig, axes = plt.subplots(1, 1)
         numMax = 0
@@ -193,7 +193,8 @@ class Analysis(object):
             good = numpy.isfinite(data.quantity)
             if self.config.magThreshold is not None:
                 good &= data.mag < self.config.magThreshold
-            if good.sum() == 0:
+            nValid = numpy.abs(data.quantity[good]) <= self.qMax # need to have datapoints lying within range
+            if good.sum() == 0 or nValid.sum() == 0:
                 continue
             num, _, _ = axes.hist(data.quantity[good], numBins, range=(self.qMin, self.qMax), normed=False,
                                   color=data.color, label=name, histtype="step")
