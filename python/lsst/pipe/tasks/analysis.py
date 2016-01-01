@@ -525,6 +525,15 @@ def matchJanskyToDn(matches):
                 m.first[k] /= JANSKYS_PER_AB_FLUX
     return matches
 
+def checkHscStack(metadata):
+    """Check to see if data were processed with the HSC stack
+    """
+    try:
+        hscPipe = metadata.get("HSCPIPE_VERSION")
+    except:
+        hscPipe = None
+    return hscPipe
+
 @contextmanager
 def andCatalog(version):
     current = eups.findSetupVersion("astrometry_net_data")[0]
@@ -552,6 +561,8 @@ class CoaddAnalysisConfig(Config):
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
     doForced = Field(dtype=bool, default=True, doc="Plot difference between forced and unforced?")
     onlyReadStars = Field(dtype=bool, default=False, doc="Only read stars (to save memory)?")
+    srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
+                             doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
 
     def saveToStream(self, outfile, root="root"):
         """Required for loading colorterms from a Config outside the 'lsst' namespace"""
@@ -1192,6 +1203,15 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
             self.config.externalCatalogs):
             catalog = self.readCatalogs(dataRefList, "src")
+
+        # Check metadata to see if stack used was HSC
+        butler = dataRefList[0].getButler()
+        metadata = butler.get("calexp_md", dataRefList[0].dataId)
+        # Set an alias map for differing src naming conventions of different stacks (if any)
+        if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
+            aliasMap = catalog.schema.getAliasMap()
+            for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                aliasMap.set(lsstName, otherName)
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doStarGalaxy:
@@ -1264,6 +1284,13 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 continue
             self.log.info("len(matches) = %d" % len(matches))
 
+            # Set the aliap map for the matches sources (i.e. the .second attribute schema for each match)
+            if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
+                for mm in matches:
+                    aliasMap = mm.second.schema.getAliasMap()
+                    for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                        aliasMap.set(lsstName, otherName)
+
             schema = matches[0].second.schema
             src = afwTable.SourceCatalog(schema)
             src.reserve(len(catalog))
@@ -1282,6 +1309,12 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             for mm, ss in zip(matches, src):
                 mm.second = ss
             catalog = matchesToCatalog(matches, catalog.getTable().getMetadata())
+            # Need to set the aliap map for the matched catalog sources
+            if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
+                aliasMap = catalog.schema.getAliasMap()
+                for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                    aliasMap.set("src_" + lsstName, "src_" + otherName)
+
             catList.append(catalog)
 
         if len(catList) == 0:
@@ -1325,7 +1358,7 @@ class CompareAnalysisConfig(Config):
     doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     sysErrMags = Field(dtype=float, default=0.015, doc="Systematic error in magnitudes")
     sysErrCentroids = Field(dtype=float, default=0.15, doc="Systematic error in centroids (pixels)")
-    srcSchemaMap = DictField(keytype=str, itemtype=str, default=None,
+    srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
                              doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
 
 class CompareAnalysisRunner(TaskRunner):
@@ -1452,9 +1485,17 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
         catalog1 = self.readCatalogs(dataRefList1, "src")
         catalog2 = self.readCatalogs(dataRefList2, "src")
+        self.log.info("\nNumber of sources in catalogs: first = {0:d} and second = {1:d}".format(
+                len(catalog1), len(catalog2)))
         catalog = self.matchCatalogs(catalog1, catalog2)
+        self.log.info("Number of matches (maxDist = {0:.3f} arcsec) = {1:d}".format(
+                self.config.matchRadius, len(catalog)))
+
+        # Check metadata to see if stack used was HSC
+        butler2 = dataRefList2[0].getButler()
+        metadata2 = butler2.get("calexp_md", dataRefList2[0].dataId)
         # Set an alias map for differing src naming conventions of different stacks (if any)
-        if self.config.srcSchemaMap is not None:
+        if self.config.srcSchemaMap is not None and checkHscStack(metadata2) is not None:
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set("second_" + lsstName, "second_" + otherName)
