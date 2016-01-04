@@ -1,6 +1,6 @@
 # 
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011 LSST Corporation.
+# Copyright 2008-2016 AURA/LSST.
 # 
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -95,7 +95,43 @@ class SnapCombineConfig(pexConfig.Config):
         if self.detection.thresholdPolarity != "both":
             raise ValueError("detection.thresholdPolarity must be 'both' for SnapCombineTask")
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page SnapCombineTask
+## \ref SnapCombineTask_ "SnapCombineTask"
+## \copybrief SnapCombineTask
+## \}
+
 class SnapCombineTask(pipeBase.Task):
+    """!
+    \anchor SnapCombineTask_
+
+    \brief Combine snaps.
+
+    \section pipe_tasks_snapcombine_Contents Contents
+
+     - \ref pipe_tasks_snapcombine_Debug
+
+    \section pipe_tasks_snapcombine_Debug Debug variables
+
+    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
+    flag \c -d to import \b debug.py from your \c PYTHONPATH; see <a
+    href="http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html">
+    Using lsstDebug to control debugging output</a> for more about \b debug.py files.
+
+    The available variables in SnapCombineTask are:
+    <DL>
+      <DT> \c display
+      <DD> A dictionary containing debug point names as keys with frame number as value. Valid keys are:
+        <DL>
+          <DT> repair0
+          <DD> Display the first snap after repairing.
+          <DT> repair1
+          <DD> Display the second snap after repairing.
+        </DL>
+      </DD>
+    </DL>
+    """
     ConfigClass = SnapCombineConfig
     _DefaultName = "snapCombine"
 
