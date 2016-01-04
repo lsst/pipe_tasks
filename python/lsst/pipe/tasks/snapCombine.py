@@ -25,6 +25,8 @@ import lsst.daf.base as dafBase
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.pipe.base as pipeBase
+from lsstDebug import getDebugFrame
+from lsst.afw.display import getDisplay
 from lsst.coadd.utils import addToCoadd, setCoaddEdgeBits
 from lsst.ip.diffim import SnapPsfMatchTask
 from lsst.meas.algorithms import SourceDetectionTask
@@ -128,8 +130,13 @@ class SnapCombineTask(pipeBase.Task):
             snap1.setPsf(psf)
             self.repair.run(snap0, defects=defects, keepCRs=False)
             self.repair.run(snap1, defects=defects, keepCRs=False)
-            self.display('repair0', exposure=snap0)
-            self.display('repair1', exposure=snap1)
+
+            repair0frame = getDebugFrame(self._display, "repair0")
+            if repair0frame:
+                getDisplay(repair0frame).mtv(snap0)
+            repair1frame = getDebugFrame(self._display, "repair1")
+            if repair1frame:
+                getDisplay(repair1frame).mtv(snap1)
 
         if self.config.doDiffIm:
             if self.config.doPsfMatch:
