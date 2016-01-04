@@ -1,6 +1,6 @@
 # 
 # LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
+# Copyright 2008-2016 AURA/LSST.
 # 
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -24,6 +24,8 @@ import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
+from lsstDebug import getDebugFrame
+from lsst.afw.display import getDisplay
 from lsst.pipe.tasks.interpImage import InterpImageTask
 
 class RepairConfig(pexConfig.Config):
@@ -196,14 +198,19 @@ class RepairTask(pipeBase.Task):
         psf = exposure.getPsf()
         assert psf, "No PSF provided"
 
-        self.display('repair.before', exposure=exposure)
+        frame = getDebugFrame(self._display, "repair.before")
+        if frame:
+            getDisplay(frame).mtv(exposure)
+
         if defects is not None and self.config.doInterpolate:
             self.interp.run(exposure, defects=defects)
 
         if self.config.doCosmicRay:
             self.cosmicRay(exposure, keepCRs=keepCRs)
 
-        self.display('repair.after', exposure=exposure)
+        frame = getDebugFrame(self._display, "repair.after")
+        if frame:
+            getDisplay(frame).mtv(exposure)
 
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
