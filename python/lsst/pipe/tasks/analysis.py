@@ -571,6 +571,18 @@ class MagDiffMatches(object):
         src = self.zp - 2.5*numpy.log10(catalog.get("src_" + self.column))
         return src - ref
 
+class MagDiffCompare(object):
+    """Functor to calculate magnitude difference between two entries in comparison catalogs
+
+    Takes zeropoint measurements for each catalog into account.
+    """
+    def __init__(self, column):
+        self.column = column
+    def __call__(self, catalog):
+        src1 = -2.5*numpy.log10(catalog["first_" + self.column])
+        src2 = -2.5*numpy.log10(catalog["second_" + self.column])
+        return src1 - src2
+
 class AstrometryDiff(object):
     """Functor to calculate difference between astrometry"""
     def __init__(self, first, second, declination=None):
