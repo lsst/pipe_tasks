@@ -112,8 +112,8 @@ class AnalysisConfig(Config):
                       default=["base_SdssCentroid_flag", "base_PixelFlags_flag_saturatedCenter",
                                "base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag"])
     clip = Field(dtype=float, default=4.0, doc="Rejection threshold (stdev)")
-    magThreshold = Field(dtype=float, default=24.0, doc="Magnitude threshold to apply")
-    magPlotMin = Field(dtype=float, default=16.0, doc="Minimum magnitude to plot")
+    magThreshold = Field(dtype=float, default=21.0, doc="Magnitude threshold to apply")
+    magPlotMin = Field(dtype=float, default=15.5, doc="Minimum magnitude to plot")
     magPlotMax = Field(dtype=float, default=28.0, doc="Maximum magnitude to plot")
     fluxColumn = Field(dtype=str, default="base_PsfFlux_flux", doc="Column to use for flux/magnitude plotting")
     zp = Field(dtype=float, default=27.0, doc="Magnitude zero point to apply")
@@ -540,6 +540,54 @@ def joinMatches(matches, first="first_", second="second_"):
         row.assign(mm.first, mapperList[0])
         row.assign(mm.second, mapperList[1])
         row.set(distanceKey, mm.distance*afwGeom.radians)
+    return catalog
+
+def getFluxKeys(schema):
+    """Retrieve the flux and flux error keys from a schema
+    Both are returned as dicts indexed on the flux name (e.g. "flux.psf" or "cmodel.flux").
+    """
+    schemaKeys = dict((s.field.getName(), s.key) for s in schema)
+    fluxKeys = dict((name, key) for name, key in schemaKeys.items() if
+                    re.search(r"^(\w+_flux)$", name) and key.getTypeString() != "Flag")
+    errKeys = dict((name, schemaKeys[name + "Sigma"]) for name in fluxKeys.keys() if
+                   name + "Sigma" in schemaKeys)
+    if len(fluxKeys) == 0: # The schema is likely the HSC format
+        fluxKeys = dict((name, key) for name, key in schemaKeys.items() if
+                        re.search(r"^(flux\_\w+|\w+\_flux)$", name) and name + "_err" in schemaKeys)
+        errKeys = dict((name, schemaKeys[name + "_err"]) for name in fluxKeys.keys() if
+                       name + "_err" in schemaKeys)
+    if len(fluxKeys) == 0:
+        raise TaskError("No flux keys found")
+    return fluxKeys, errKeys
+
+def calibrateSourceCatalogMosaic(dataRef, catalog, zp=27.0):
+    """Calibrate catalog with meas_mosaic results
+
+    Requires a SourceCatalog input.
+    """
+    result = applyMosaicResultsCatalog(dataRef, catalog, False)
+    catalog = result.catalog
+    ffp = result.ffp
+    factor = 10.0**(0.4*zp)/ffp.calib.getFluxMag0()[0]
+    # Convert to constant zero point, as for the coadds
+    fluxKeys, errKeys = getFluxKeys(catalog.schema)
+    for key in fluxKeys.values() + errKeys.values():
+        if len(catalog[key].shape) > 1:
+            continue
+        catalog[key][:] *= factor
+    return catalog
+
+def calibrateSourceCatalog(dataRef, catalog, zp):
+    """Calibrate catalog in the case of no meas_mosaic results using FLUXMAG0 as zp
+
+    Requires a SourceCatalog and zeropoint as input.
+    """
+    factor = 10.0**(0.4*zp)
+    # Convert to constant zero point, as for the coadds
+    fluxKeys, errKeys = getFluxKeys(catalog.schema)
+    for key in fluxKeys.values() + errKeys.values():
+        for src in catalog:
+            src[key] /= factor
     return catalog
 
 def matchJanskyToDn(matches):
@@ -1250,61 +1298,17 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             metadata = butler.get("calexp_md", dataRef.dataId)
             self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
             try:
-                calibrated = self.calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
+                calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
                 catList.append(calibrated)
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                calibrated = self.calibrateSourceCatalog(dataRef, catalog, self.zp)
+                calibrated = calibrateSourceCatalog(dataRef, catalog, self.zp)
                 catList.append(calibrated)
-                continue
 
         if len(catList) == 0:
             raise TaskError("No catalogs read: %s" % ([dataRef.dataId for dataRef in dataRefList]))
 
         return concatenateCatalogs(catList)
-
-
-    @staticmethod
-    def getFluxKeys(schema):
-        """Retrieve the flux and flux error keys from a schema
-        Both are returned as dicts indexed on the flux name (e.g. "flux.psf" or "cmodel.flux").
-        """
-        schemaKeys = dict((s.field.getName(), s.key) for s in schema)
-        fluxKeys = dict((name, key) for name, key in schemaKeys.items() if
-                        re.search(r"^(\w+_flux)$", name))
-        errKeys = dict((name, schemaKeys[name + "Sigma"]) for name in fluxKeys.keys() if
-                       name + "Sigma" in schemaKeys)
-        return fluxKeys, errKeys
-
-    def calibrateSourceCatalogMosaic(self, dataRef, catalog, zp=27.0):
-        """Calibrate catalog with meas_mosaic results
-
-        Requires a SourceCatalog input.
-        """
-        result = applyMosaicResultsCatalog(dataRef, catalog, False)
-        catalog = result.catalog
-        ffp = result.ffp
-        factor = 10.0**(0.4*zp)/ffp.calib.getFluxMag0()[0]
-        # Convert to constant zero point, as for the coadds
-        fluxKeys, errKeys = self.getFluxKeys(catalog.schema)
-        for key in fluxKeys.values() + errKeys.values():
-            if len(catalog[key].shape) > 1:
-                continue
-            catalog[key][:] *= factor
-        return catalog
-
-    def calibrateSourceCatalog(self, dataRef, catalog, zp):
-        """Calibrate catalog in the case of no meas_mosaic results using FLUXMAG0 as zp
-
-        Requires a SourceCatalog input.
-        """
-        factor = 10.0**(0.4*zp)
-        # Convert to constant zero point, as for the coadds
-        fluxKeys, errKeys = self.getFluxKeys(catalog.schema)
-        for key in fluxKeys.values() + errKeys.values():
-            for src in catalog:
-                src[key] /= factor
-        return catalog
 
     def readSrcMatches(self, dataRefList, dataset):
         catList = []
@@ -1344,11 +1348,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             matches[0].second.table.defineCentroid("base_SdssCentroid")
             src.table.defineCentroid("base_SdssCentroid")
             try:
-                src = self.calibrateSourceCatalogMosaic(dataRef, src, zp=self.config.analysisMatches.zp)
+                src = calibrateSourceCatalogMosaic(dataRef, src, zp=self.config.analysisMatches.zp)
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
                 self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
-                src = self.calibrateSourceCatalog(dataRef, src, self.zp)
+                src = calibrateSourceCatalog(dataRef, src, self.zp)
 
             for mm, ss in zip(matches, src):
                 mm.second = ss
@@ -1535,24 +1539,22 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             if not dataRef.datasetExists(dataset):
                 continue
             srcCat = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
-            schemaMapper = afwTable.SchemaMapper(srcCat.schema, True)
-            schemaMapper.addMinimalSchema(srcCat.schema)
-            schema = schemaMapper.getOutputSchema()
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-            fluxMag0 = metadata.get("FLUXMAG0")
-            self.log.info("fluxMag0 = %.4f for dataId = %s " % (fluxMag0, dataRef.dataId))
-            fluxMag0Key = schema.addField("fluxMag0", type=float, doc="FLUXMAG0 from calexp_md header")
-            catalog = afwTable.SourceCatalog(schema)
-            catalog.reserve(len(srcCat))
-            for src in srcCat:
-                row = catalog.addNew()
-                row.assign(src, schemaMapper)
-                row.set(fluxMag0Key, fluxMag0)
-            catList.append(catalog)
+
+            # Scale fluxes to measured zeropoint
+            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+            try:
+                calibrated = calibrateSourceCatalogMosaic(dataRef, srcCat, zp=self.config.analysis.zp)
+                catList.append(calibrated)
+            except Exception as e:
+                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
+                self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
+                calibrated = calibrateSourceCatalog(dataRef, srcCat, self.zp)
+                catList.append(calibrated)
 
         if len(catList) == 0:
-            raise TaskError("No catalogs read: %s" % ([patchRefList[0].dataId for dataRef in patchRefList]))
+            raise TaskError("No catalogs read: %s" % ([dataRefList[0].dataId for dataRef in dataRefList]))
         return concatenateCatalogs(catList)
 
     def plotMags(self, catalog, filenamer, dataId):
@@ -1576,12 +1578,8 @@ class MagDiffErr(object):
         self.calib.setThrowOnNegativeFlux(False)
     def __call__(self, catalog):
         # Use measured zp if we have it in the schema
-        if "first_fluxMag0" in catalog.schema:
-            self.calib.setFluxMag0(catalog[0]["first_fluxMag0"])
         mag1, err1 = self.calib.getMagnitude(catalog["first_" + self.column],
                                              catalog["first_" + self.column + "Sigma"])
-        if "second_fluxMag0" in catalog.schema:
-            self.calib.setFluxMag0(catalog[0]["second_fluxMag0"])
         mag2, err2 = self.calib.getMagnitude(catalog["second_" + self.column],
                                              catalog["second_" + self.column + "Sigma"])
         return numpy.sqrt(err1**2 + err2**2)
