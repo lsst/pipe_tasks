@@ -182,22 +182,15 @@ class Analysis(object):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         plt.axhline(0, linestyle="--", color="0.4")
-        # if self.config.magThreshold is not None:
-        #     vline = plt.axvline(self.config.magThreshold, linestyle="dotted", color="0.6", label="Thresh")
-        #     plt.gca().add_artist(axes.legend(handles=[vline], loc=4, fontsize=8))
+
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
+        magMax = max(self.config.magThreshold+1.0, min(magMax, self.data["star"].mag.max()))
         dataPoints = []
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
             dataPoints.append(axes.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
                                            c=data.color, label=name, alpha=0.3))
-            if name == "galaxy":
-                magMin = max(min(magMin, data.mag.min()), self.config.magPlotMin)
-                magMax = min(max(magMax, data.mag.max()), self.config.magPlotMax)
-            else:
-                magMin = max(magMin, data.mag.min())
-                magMax = min(magMax, data.mag.max())
         axes.set_xlabel("Mag from %s" % self.config.fluxColumn)
         axes.set_ylabel(self.quantityName)
         axes.set_ylim(self.qMin, self.qMax)
@@ -435,7 +428,8 @@ class Analysis(object):
                 answer = numpy.sqrt(result.x[0])
         else:
             answer = numpy.sqrt(scipy.optimize.newton(function, 0.0, tol=tol))
-        print function(answer**2), function((answer+0.001)**2), function((answer-0.001)**2)
+        print "calculateSysError: ", function(answer**2), function((answer+0.001)**2), \
+            function((answer-0.001)**2)
         return answer
 
 
@@ -1457,7 +1451,6 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 aliasMap = catalog.schema.getAliasMap()
                 for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                     aliasMap.set("src_" + lsstName, "src_" + otherName)
-
             catList.append(catalog)
 
         if len(catList) == 0:
