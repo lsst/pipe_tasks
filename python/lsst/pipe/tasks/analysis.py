@@ -1412,22 +1412,15 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
             self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
-            if dataRef.datasetExists(dataset + "MatchFull"):
-                # if unnormalized match list was persisted, read it
-                catalog = dataRef.get(dataset + "MatchFull", immediate=True,
-                                      flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
-                # Extract source catalog for calibration
-                matches = matchesFromCatalog(catalog)
-            else:
-                # if unnormalized match list was NOT persisted, generate it with measAstrom's readMatches
-                catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
-                sources = butler.get(dataset, dataRef.dataId, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
-                packedMatches = butler.get(dataset + "Match", dataRef.dataId)
-                refObjLoaderConfig = LoadAstrometryNetObjectsTask.ConfigClass()
-                refObjLoader = LoadAstrometryNetObjectsTask(refObjLoaderConfig)
-                matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
-                # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
-                matches = matchJanskyToDn(matches)
+            # generate unnormalized match with measAstrom's joinMatchListWithCatalog
+            catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            sources = butler.get(dataset, dataRef.dataId, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            packedMatches = butler.get(dataset + "Match", dataRef.dataId)
+            refObjLoaderConfig = LoadAstrometryNetObjectsTask.ConfigClass()
+            refObjLoader = LoadAstrometryNetObjectsTask(refObjLoaderConfig)
+            matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
+            # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
+            matches = matchJanskyToDn(matches)
 
             if len(matches) == 0:
                 self.log.warn("No matches for %s" % (dataRef.dataId,))
