@@ -5,6 +5,7 @@ import re
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import NullFormatter
 import numpy
 numpy.seterr(all="ignore")
 from eups import Eups
@@ -148,7 +149,7 @@ class Analysis(object):
 
     @staticmethod
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
-                     ha="left", va="top", color="blue"):
+                     ha="left", va="top", color="blue", isHist=False):
         axes.annotate(dataSet+" (N = {0.num:d} of Ntot = {0.total:d}):".format(stats[dataSet]),
                       xy=(x0, y0), xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="blue")
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
@@ -157,11 +158,16 @@ class Analysis(object):
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
-        l1 = plt.axhline(stats[dataSet].median, linestyle="dotted", color="0.8", label="median")
-        l2 = plt.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8",
-                         label="clip")
-        l3 = plt.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
-        plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
+        if isHist:
+            l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.7")
+            l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7")
+            l3 = axes.axvline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
+        else:
+            l1 = axes.axhline(stats[dataSet].median, linestyle="dotted", color="0.7", label="median")
+            l2 = axes.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7",
+                              label="clip")
+            l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
+            plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
 
     def plotAgainstMag(self, filename, stats=None):
         """Plot quantity against magnitude"""
@@ -180,10 +186,78 @@ class Analysis(object):
         if stats is not None:
             self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold)
         axes.legend(handles=dataPoints, loc=1, fontsize=8)
-        fig.text(0.5, 0.95, "magThreshold = "+str(self.config.magThreshold), ha="center", va="center",
-                 fontsize=12)
         fig.savefig(filename)
         plt.close(fig)
+
+    def plotAgainstMagAndHist(self, filename, stats=None):
+        """Plot quantity against magnitude with side histogram"""
+        nullfmt = NullFormatter()   # no labels for histograms
+
+        # definitions for the axes
+        left, width = 0.1, 0.65
+        bottom, height = 0.1, 0.65
+        bottom_h = left_h = left + width + 0.02
+        rect_scatter = [left, bottom, width, height]
+        rect_histx = [left, bottom_h, width, 0.2]
+        rect_histy = [left_h, bottom, 0.2, height]
+
+        # start with a rectangular Figure
+        plt.figure(1)
+
+        axScatter = plt.axes(rect_scatter)
+        axScatter.axhline(0, linestyle="--", color="0.4")
+        axScatter.axvline(self.config.magThreshold, linestyle="--", color="0.4")
+        axHistx = plt.axes(rect_histx)
+        axHisty = plt.axes(rect_histy)
+
+        # no labels
+        axHistx.xaxis.set_major_formatter(nullfmt)
+        axHisty.yaxis.set_major_formatter(nullfmt)
+
+        magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
+        magMax = max(self.config.magThreshold+1.0, min(magMax, self.data["star"].mag.max()))
+
+        axScatter.set_xlim(magMin, magMax)
+        axScatter.set_ylim(self.qMin, self.qMax)
+
+        xBinwidth = 0.1
+        xBins = numpy.arange(magMin + 0.5*xBinwidth, magMax + 0.5*xBinwidth, xBinwidth)
+        yBinwidth = 0.02
+        yBins = numpy.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.5*yBinwidth, yBinwidth)
+        axHistx.set_xlim(axScatter.get_xlim())
+        axHisty.set_ylim(axScatter.get_ylim())
+        axHistx.set_yscale("log", nonposy="clip")
+        axHisty.set_xscale("log", nonposy="clip")
+
+        dataPoints = []
+        for name, data in self.data.iteritems():
+            if len(data.mag) == 0:
+                continue
+            alpha = min(0.75, max(0.25, 0.2*numpy.log10(len(data.mag))))
+            # draw mean and stdev at intervals (defined by xBins)
+            if name == "star" :
+                numHist, dataHist = numpy.histogram(data.mag, bins=len(xBins))
+                syHist, dataHist = numpy.histogram(data.mag, bins=len(xBins), weights=data.quantity)
+                syHist2, datahist = numpy.histogram(data.mag, bins=len(xBins), weights=data.quantity**2)
+                meanHist = syHist/numHist
+                stdHist = numpy.sqrt(syHist2/numHist - meanHist*meanHist)
+                axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist,
+                                   fmt=data.color[0]+"-", alpha=0.3)
+            dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
+                                           c=data.color, label=name, alpha=0.5))
+            if stats is not None and name == "star" :
+                dataUsed = data.quantity[stats[name].dataUsed]
+                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation='horizontal')
+            axHistx.hist(data.mag, bins=xBins, color=data.color, alpha=0.3)
+            axHisty.hist(data.quantity, bins=yBins, color=data.color, orientation='horizontal', alpha=0.3)
+        axScatter.set_xlabel("Mag from %s" % self.config.fluxColumn)
+        axScatter.set_ylabel(self.quantityName)
+
+        if stats is not None:
+             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold)
+        axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
+        plt.savefig(filename)
+        plt.close()
 
     def plotHistogram(self, filename, numBins=51, stats=None):
         """Plot histogram of quantity"""
@@ -210,7 +284,7 @@ class Analysis(object):
         if self.qMin == 0.0 :
             x0, y0 = 0.75, 0.81
         if stats is not None:
-            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0)
+            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0, isHist=True)
         axes.legend()
         fig.savefig(filename)
         plt.close(fig)
@@ -274,6 +348,8 @@ class Analysis(object):
     def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None):
         """Make all plots"""
         stats = self.stats(forcedMean=forcedMean)
+        self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
+                                   stats=stats)
         self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats)
         self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats)
         self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats)
