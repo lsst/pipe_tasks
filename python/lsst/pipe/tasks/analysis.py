@@ -153,19 +153,26 @@ class Analysis(object):
                      name, value in labeller.labels.iteritems()}
 
     @staticmethod
-    def annotateAxes(plt, axes, stats, dataSet, x0=0.03, y0=0.96, yOff=0.04, ha="left", va="top",
-                     color="blue"):
-        axes.annotate(dataSet+" (N = {0.num:d} of Ntot = {0.total:d}):".format(stats[dataSet]),
+    def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
+                     ha="left", va="top", color="blue", isHist=False):
+        axes.annotate(dataSet+r" (N = {0.num:d} of N_tot = {0.total:d}):".format(stats[dataSet]),
                       xy=(x0, y0),xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
                       xycoords='axes fraction', ha=ha, va=va, fontsize=10)
         axes.annotate("stdev = {0.stdev:.4f}".format(stats[dataSet]), xy=(x0, y0-2*yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
-        l1 = plt.axhline(stats[dataSet].median, linestyle="dotted", color="0.8", label="median")
-        l2 = plt.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8",
-                         label="clip")
-        l3 = plt.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
-        plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
+        axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
+                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+        if isHist:
+            l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.8")
+            l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8")
+            l3 = axes.axvline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
+        else:
+            l1 = axes.axhline(stats[dataSet].median, linestyle="dotted", color="0.8", label="median")
+            l2 = axes.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8",
+                              label="clip")
+            l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
+            plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
 
     def plotAgainstMag(self, filename, stats=None):
         """Plot quantity against magnitude"""
@@ -192,7 +199,7 @@ class Analysis(object):
         axes.set_ylim(self.qMin, self.qMax)
         axes.set_xlim(magMin, magMax)
         if stats is not None:
-            self.annotateAxes(plt, axes, stats, "star")
+            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold)
         axes.legend(handles=dataPoints, loc=1, fontsize=8)
         fig.text(0.5, 0.95, "magThreshold = "+str(self.config.magThreshold), ha="center", va="center",
                  fontsize=12)
@@ -225,7 +232,7 @@ class Analysis(object):
         if self.qMin == 0.0 :
             x0, y0 = 0.75, 0.81
         if stats is not None:
-            self.annotateAxes(plt, axes, stats, "star", x0=x0, y0=y0)
+            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0, isHist=True)
         axes.legend()
         fig.savefig(filename)
         plt.close(fig)
@@ -286,7 +293,8 @@ class Analysis(object):
 
         axes[0].legend()
         if stats is not None:
-            self.annotateAxes(plt, axes[0], stats, "star", x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -412,7 +420,8 @@ class CcdAnalysis(Analysis):
         axes[1].set_xlabel("y_ccd")
         fig.text(0.02, 0.5, self.quantityName, ha="center", va="center", rotation="vertical")
         if stats is not None:
-            self.annotateAxes(plt, axes[0], stats, "star", x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
         axes[0].set_xlim(-100, 2150)
         axes[1].set_xlim(-100, 4300)
         axes[0].set_ylim(self.qMin, self.qMax)
