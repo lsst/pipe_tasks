@@ -97,9 +97,9 @@ class Data(Struct):
                         error=error[selection] if error is not None else None)
 
 class Stats(Struct):
-    def __init__(self, num, total, mean, stdev, forcedMean, median, clip):
-        Struct.__init__(self, num=num, total=total, mean=mean, stdev=stdev, forcedMean=forcedMean,
-                        median=median, clip=clip)
+    def __init__(self, dataUsed, num, total, mean, stdev, forcedMean, median, clip):
+        Struct.__init__(self, dataUsed=dataUsed, num=num, total=total, mean=mean, stdev=stdev,
+                        forcedMean=forcedMean, median=median, clip=clip)
 
     def __repr__(self):
         return "Stats(mean={0.mean:.4f}; stdev={0.stdev:.4f}; num={0.num:d}; total={0.total:d}; " \
@@ -333,8 +333,8 @@ class Analysis(object):
         actualMean = quantity[good].mean()
         mean = actualMean if forcedMean is None else forcedMean
         stdev = numpy.sqrt(((quantity[good].astype(numpy.float64) - mean)**2).mean())
-        return Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev, forcedMean=forcedMean,
-                     median=median, clip=clip)
+        return Stats(dataUsed=good, num=good.sum(), total=total, mean=actualMean, stdev=stdev,
+                     forcedMean=forcedMean, median=median, clip=clip)
 
     def calculateSysError(self, quantity, error, selection, forcedMean=None, tol=1.0e-3):
         import scipy.optimize
