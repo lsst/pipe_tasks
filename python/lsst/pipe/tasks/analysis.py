@@ -149,8 +149,8 @@ class Analysis(object):
 
     @staticmethod
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
-                     ha="left", va="top", color="blue", isHist=False):
-        axes.annotate(dataSet+" (N = {0.num:d} of Ntot = {0.total:d}):".format(stats[dataSet]),
+                     ha="left", va="top", color="blue", isHist=False, hscRun=None):
+        axes.annotate(dataSet+r" (N = {0.num:d} of Ntot = {0.total:d}):".format(stats[dataSet]),
                       xy=(x0, y0), xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="blue")
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
@@ -158,6 +158,9 @@ class Analysis(object):
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
+        if hscRun is not None:
+            axes.annotate("HSC stack run: {0:s}".format(hscRun), xy=(x0, y0-4*yOff),
+                           xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="#800080")
         if isHist:
             l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.7")
             l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7")
@@ -169,7 +172,7 @@ class Analysis(object):
             l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
             plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
 
-    def plotAgainstMag(self, filename, stats=None):
+    def plotAgainstMag(self, filename, stats=None, hscRun=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
@@ -184,12 +187,12 @@ class Analysis(object):
         axes.set_ylim(self.qMin, self.qMax)
         axes.set_xlim(magMin, magMax)
         if stats is not None:
-            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold)
+            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, hscRun=hscRun)
         axes.legend(handles=dataPoints, loc=1, fontsize=8)
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotAgainstMagAndHist(self, filename, stats=None):
+    def plotAgainstMagAndHist(self, filename, stats=None, hscRun=None):
         """Plot quantity against magnitude with side histogram"""
         nullfmt = NullFormatter()   # no labels for histograms
 
@@ -254,12 +257,12 @@ class Analysis(object):
         axScatter.set_ylabel(self.quantityName)
 
         if stats is not None:
-             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold)
+             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun)
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
         plt.savefig(filename)
         plt.close()
 
-    def plotHistogram(self, filename, numBins=51, stats=None):
+    def plotHistogram(self, filename, numBins=51, stats=None, hscRun=None):
         """Plot histogram of quantity"""
         fig, axes = plt.subplots(1, 1)
         numMax = 0
@@ -282,14 +285,15 @@ class Analysis(object):
         axes.set_yscale("log", nonposy="clip")
         x0, y0 = 0.03, 0.96
         if self.qMin == 0.0 :
-            x0, y0 = 0.75, 0.81
+            x0, y0 = 0.68, 0.81
         if stats is not None:
-            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0, isHist=True)
+            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0,
+                              isHist=True, hscRun=hscRun)
         axes.legend()
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotSkyPosition(self, filename, cmap=plt.cm.brg, stats=None):
+    def plotSkyPosition(self, filename, cmap=plt.cm.brg, stats=None, hscRun=None):
         """Plot quantity as a function of position"""
         ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
         dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
@@ -311,10 +315,12 @@ class Analysis(object):
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         cb = plt.colorbar(mappable)
         cb.set_label(self.quantityName, rotation=270)
+        if hscRun is not None:
+            axes.set_title("HSC stack run: " + hscRun, color="#800080")
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotRaDec(self, filename, stats=None):
+    def plotRaDec(self, filename, stats=None, hscRun=None):
         """Plot quantity as a function of RA, Dec"""
 
         ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
@@ -340,20 +346,26 @@ class Analysis(object):
 
         axes[0].legend()
         if stats is not None:
-            self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
-            self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
+                              hscRun=hscRun)
+            self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
+                              hscRun=hscRun)
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None):
+    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, hscRun=None):
         """Make all plots"""
         stats = self.stats(forcedMean=forcedMean)
         self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
-                                   stats=stats)
-        self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats)
-        self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats)
-        self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats)
-        self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"), stats=stats)
+                                   stats=stats, hscRun=hscRun)
+        self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
+                            hscRun=hscRun)
+        self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats,
+                           hscRun=hscRun)
+        self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats,
+                             hscRun=hscRun)
+        self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"), stats=stats,
+                       hscRun=hscRun)
         log.info("Statistics from %s of %s: %s" % (dataId, self.quantityName, stats))
         if enforcer:
             enforcer(stats, dataId, log, self.quantityName)
@@ -436,14 +448,17 @@ class Enforcer(object):
 
 
 class CcdAnalysis(Analysis):
-    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None):
+    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, hscRun=None):
         stats = self.stats(forcedMean=forcedMean)
-        self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats)
-        self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats)
-        return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean)
+        self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats,
+                     hscRun=hscRun)
+        self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
+                            hscRun=hscRun)
+        return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean,
+                                hscRun=hscRun)
 
     def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.hsv, idBits=32,
-                visitMultiplier=200, stats=None):
+                visitMultiplier=200, stats=None, hscRun=None):
         """Plot quantity as a function of CCD x,y"""
         xx = self.catalog[self.prefix + centroid + "_x"]
         yy = self.catalog[self.prefix + centroid + "_y"]
@@ -467,8 +482,10 @@ class CcdAnalysis(Analysis):
         axes[1].set_xlabel("y_ccd")
         axes[1].set_ylabel(self.quantityName)
         if stats is not None:
-            self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
-            self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07)
+            self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
+                              hscRun=hscRun)
+            self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
+                              hscRun=hscRun)
         axes[0].set_xlim(-100, 2150)
         axes[1].set_xlim(-100, 4300)
         axes[0].set_ylim(self.qMin, self.qMax)
@@ -484,7 +501,7 @@ class CcdAnalysis(Analysis):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotFocalPlane(self, filename, cmap=plt.cm.brg, stats=None):
+    def plotFocalPlane(self, filename, cmap=plt.cm.brg, stats=None, hscRun=None):
         """Plot quantity colormaped on the focal plane"""
         xx = self.catalog[self.prefix + "base_FocalPlane_x"]
         yy = self.catalog[self.prefix + "base_FocalPlane_y"]
@@ -506,9 +523,10 @@ class CcdAnalysis(Analysis):
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         cb = plt.colorbar(mappable)
         cb.set_label(self.quantityName, rotation=270)
+        if hscRun is not None:
+            axes.set_title("HSC stack run: " + hscRun, color="#800080")
         fig.savefig(filename)
         plt.close(fig)
-
 
 
 class MagDiff(object):
@@ -787,22 +805,22 @@ class CoaddAnalysisTask(CmdLineTask):
             catList = [cat[cat["base_ClassificationExtendedness_value"] < 0.5].copy(True) for cat in catList]
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer, dataId):
+    def plotMags(self, catalog, filenamer, dataId, hscRun=None):
         enforcer = Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if col + "_flux" in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff(col + "_flux", "base_PsfFlux_flux"), "Mag(%s) - PSFMag"
-                                   % col, "mag_" + col,
-                                   self.config.analysis, flags=[col + "_flag"], labeller=StarGalaxyLabeller(),
-                                   ).plotAll(dataId, filenamer, self.log, enforcer)
+                                   % col, "mag_" + col, self.config.analysis,
+                                   flags=[col + "_flag"], labeller=StarGalaxyLabeller(),
+                                   ).plotAll(dataId, filenamer, self.log, enforcer, hscRun=hscRun)
 
-    def plotStarGal(self, catalog, filenamer, dataId):
+    def plotStarGal(self, catalog, filenamer, dataId, hscRun=None):
         self.AnalysisClass(catalog, deconvMomStarGal, "pStar", "pStar", self.config.analysis,
                            qMin=0.0, qMax=1.0, ).plotAll(dataId, filenamer, self.log)
         self.AnalysisClass(catalog, deconvMom, "Deconvolved moments", "deconvMom", self.config.analysis,
                            qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.2}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.2}}), hscRun=hscRun)
 
     def plotForced(self, unforced, forced, filenamer, dataId):
         catalog = joinMatches(afwTable.matchRaDec(unforced, forced,
@@ -831,40 +849,40 @@ class CoaddAnalysisTask(CmdLineTask):
                                    self.config.analysis,
                                    prefix="first_", flags=[col + "_flag"],
                                    labeller=OverlapsStarGalaxyLabeller(),
-                                   ).plotAll(dataId, filenamer, self.log, magEnforcer)
+                                   ).plotAll(dataId, filenamer, self.log, magEnforcer, hscRun=hscRun)
 
         distEnforcer = Enforcer(requireLess={"star": {"stdev": 0.005}})
         self.AnalysisClass(overlaps, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", "overlap_distance", self.config.analysis, prefix="first_",
                            qMin=0.0, qMax=0.15, labeller=OverlapsStarGalaxyLabeller(),
-                           ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0)
+                           ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0, hscRun=hscRun)
 
-    def plotMatches(self, matches, filterName, filenamer, dataId, description="matches"):
+    def plotMatches(self, matches, filterName, filenamer, dataId, description="matches", hscRun=None):
         ct = self.config.colorterms.getColorterm(filterName, self.config.photoCatName)
         self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0), "MagPsf - ref",
-                           description + "_mag",
-                           self.config.analysisMatches, prefix="src_", labeller=MatchesStarGalaxyLabeller(),
+                           description + "_mag", self.config.analysisMatches,
+                           prefix="src_", qMin=-0.05, qMax=0.05, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.030}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.030}}), hscRun=hscRun)
         self.AnalysisClass(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", description + "_distance", self.config.analysisMatches,
                            prefix="src_", qMin=0.0, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}),
-                                     forcedMean=0.0)
+                                     forcedMean=0.0, hscRun=hscRun)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_ra", "ref_coord_ra", "ref_coord_dec"),
                            "dRA*cos(Dec) (arcsec)", description + "_ra", self.config.analysisMatches,
                            prefix="src_", qMin=-self.config.matchesMaxDistance,
                            qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.050}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.050}}), hscRun=hscRun)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_dec", "ref_coord_dec"),
                            "dDec (arcsec)", description + "_dec", self.config.analysisMatches, prefix="src_",
                            qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.050}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.050}}), hscRun=hscRun)
 
     def plotCosmos(self, catalog, filenamer, cosmos, dataId):
         labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
@@ -1344,23 +1362,24 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         butler = dataRefList[0].getButler()
         metadata = butler.get("calexp_md", dataRefList[0].dataId)
         # Set an alias map for differing src naming conventions of different stacks (if any)
-        if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
+        hscRun = checkHscStack(metadata)
+        if self.config.srcSchemaMap is not None and hscRun is not None:
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set(lsstName, otherName)
         if self.config.doMags:
-            self.plotMags(catalog, filenamer, dataId)
+            self.plotMags(catalog, filenamer, dataId, hscRun=hscRun)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamer, dataId)
+            self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun)
         if self.config.doMatches:
             matches = self.readSrcMatches(dataRefList, "src")
-            self.plotMatches(matches, filterName, filenamer, dataId)
+            self.plotMatches(matches, filterName, filenamer, dataId, hscRun=hscRun)
 
         for cat in self.config.externalCatalogs:
             if self.config.photoCatName not in cat:
                 with andCatalog(cat):
                     matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
-                    self.plotMatches(matches, filterName, filenamer, dataId, cat)
+                    self.plotMatches(matches, filterName, filenamer, dataId, cat, hscRun=hscRun)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
@@ -1539,7 +1558,7 @@ class CompareAnalysisTask(CmdLineTask):
             raise TaskError("No matches found")
         return joinMatches(matches, "first_", "second_")
 
-    def plotCentroids(self, catalog, filenamer, dataId):
+    def plotCentroids(self, catalog, filenamer, dataId, hscRun=None):
         distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
         Analysis(catalog, CentroidDiff("x"), "x offset (arcsec)", "diff_x", self.config.analysis,
                  prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
