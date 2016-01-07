@@ -156,7 +156,8 @@ class Analysis(object):
     @staticmethod
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
                      ha="left", va="top", color="blue", isHist=False, hscRun=None):
-        axes.annotate(dataSet+r" (N = {0.num:d} of N_tot = {0.total:d}):".format(stats[dataSet]),
+        axes.annotate(dataSet+r" (N = {0.num:d} of N(mag>{1:.1f}) = {0.total:d}):".format(stats[dataSet],
+                                                                                          magThreshold),
                       xy=(x0, y0),xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
                       xycoords='axes fraction', ha=ha, va=va, fontsize=10)
@@ -245,7 +246,7 @@ class Analysis(object):
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
-            alpha = min(0.75, max(0.25, 0.2*numpy.log10(len(data.mag))))
+            alpha = min(0.75, max(0.25, 1.0 - 0.2*numpy.log10(len(data.mag))))
             # draw mean and stdev at intervals (defined by xBins)
             if name == "star" :
                 numHist, dataHist = numpy.histogram(data.mag, bins=len(xBins))
@@ -253,21 +254,24 @@ class Analysis(object):
                 syHist2, datahist = numpy.histogram(data.mag, bins=len(xBins), weights=data.quantity**2)
                 meanHist = syHist/numHist
                 stdHist = numpy.sqrt(syHist2/numHist - meanHist*meanHist)
-                axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist,
-                                   fmt=data.color[0]+"-", alpha=0.3)
+                axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist, fmt="k-")
             dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
-                                           c=data.color, label=name, alpha=0.5))
+                                           c=data.color, label=name, alpha=alpha))
             if stats is not None and name == "star" :
                 dataUsed = data.quantity[stats[name].dataUsed]
-                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation='horizontal')
-            axHistx.hist(data.mag, bins=xBins, color=data.color, alpha=0.3)
-            axHisty.hist(data.quantity, bins=yBins, color=data.color, orientation='horizontal', alpha=0.3)
+                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation='horizontal',
+                             label="used in Stats")
+            axHistx.hist(data.mag, bins=xBins, color=data.color, alpha=0.3, label=name)
+            axHisty.hist(data.quantity, bins=yBins, color=data.color, orientation='horizontal', alpha=0.3,
+                         label=name)
         axScatter.set_xlabel("Mag from %s" % self.config.fluxColumn)
         axScatter.set_ylabel(self.quantityName)
 
         if stats is not None:
              self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun)
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
+        axHistx.legend(fontsize=7, loc=2)
+        axHisty.legend(fontsize=7)
         plt.savefig(filename)
         plt.close()
 
