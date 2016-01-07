@@ -1486,6 +1486,14 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             sources = butler.get(dataset, dataRef.dataId, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             packedMatches = butler.get(dataset + "Match", dataRef.dataId)
+            # The reference object loader grows the bbox by the config parameter pixelMargin.  This
+            # is set to 50 by default but is not reflected by the radius parameter set in the
+            # metadata, so some matches may reside outside the circle searched within this radius
+            # Thus, increase the radius set in the metadata fed into joinMatchListWithCatalog() to
+            # accommodate.
+            matchmeta = packedMatches.table.getMetadata()
+            rad = matchmeta.getDouble("RADIUS")
+            matchmeta.setDouble("RADIUS", rad*1.05, "field radius in degrees, approximate, padded")
             refObjLoaderConfig = LoadAstrometryNetObjectsTask.ConfigClass()
             refObjLoader = LoadAstrometryNetObjectsTask(refObjLoaderConfig)
             matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
