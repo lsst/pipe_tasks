@@ -405,6 +405,8 @@ class Analysis(object):
 
     def calculateStats(self, quantity, selection, forcedMean=None):
         total = selection.sum() # Total number we're considering
+        if len(quantity[selection]) == 0:
+            return None
         quartiles = numpy.percentile(quantity[selection], [25, 50, 75])
         assert len(quartiles) == 3
         median = quartiles[1]
