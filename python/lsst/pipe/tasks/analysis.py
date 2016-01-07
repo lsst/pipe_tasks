@@ -629,6 +629,7 @@ def concatenateCatalogs(catalogList):
     return catalog
 
 def joinMatches(matches, first="first_", second="second_"):
+    """Convert a match list into a single catalog"""
     mapperList = afwTable.SchemaMapper.join(afwTable.SchemaVector([matches[0].first.schema,
                                                                    matches[0].second.schema]),
                                             [first, second])
@@ -1465,7 +1466,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             for mm, ss in zip(matches, src):
                 mm.second = ss
             catalog = matchesToCatalog(matches, catalog.getTable().getMetadata())
-            # Need to set the aliap map for the matched catalog sources
+            # Need to set the alias map for the matched catalog sources
             if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
                 aliasMap = catalog.schema.getAliasMap()
                 for lsstName, otherName in self.config.srcSchemaMap.iteritems():
