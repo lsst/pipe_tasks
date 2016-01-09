@@ -27,7 +27,6 @@ import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.afw.table as afwTable
 
 class MeasurePsfConfig(pexConfig.Config):
     starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
@@ -389,12 +388,12 @@ def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
                 if chi2 < 1e100:
                     chi2 = "%.1f" % chi2
                 else:
-                    chi2 = numpy.nan
+                    chi2 = float("nan")
 
                 stamps.append((im, "%d%s" %
                                (maUtils.splitId(cand.getSource().getId(), True)["objId"], chi2),
                                cand.getStatus()))
-            except Exception, e:
+            except Exception:
                 continue
 
     mos = displayUtils.Mosaic()
@@ -425,7 +424,7 @@ def plotResiduals(exposure, cellSet, showBadCandidates=False, normalizeResiduals
                                       showBadCandidates=showBadCandidates,
                                       variance=True)
             frame += 1
-        except Exception as e:
+        except Exception:
             if not showBadCandidates:
                 showBadCandidates = True
                 continue
