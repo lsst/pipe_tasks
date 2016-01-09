@@ -11,7 +11,7 @@ from glob import glob
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
-from lsst.pipe.base import Task, Struct, ArgumentParser
+from lsst.pipe.base import Task, ArgumentParser
 import lsst.afw.image as afwImage
 
 class IngestArgumentParser(ArgumentParser):
