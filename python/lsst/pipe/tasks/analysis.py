@@ -156,21 +156,21 @@ class Analysis(object):
     @staticmethod
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
                      ha="left", va="top", color="blue", isHist=False, hscRun=None, matchRadius=None):
-        axes.annotate(dataSet+r" (N = {0.num:d} of N(mag>{1:.1f}) = {0.total:d}):".format(stats[dataSet],
+        axes.annotate(dataSet+r" (N = {0.num:d} of N[mag>{1:.1f}] = {0.total:d}):".format(stats[dataSet],
                                                                                           magThreshold),
                       xy=(x0, y0),xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
                       xycoords='axes fraction', ha=ha, va=va, fontsize=10)
         axes.annotate("stdev = {0.stdev:.4f}".format(stats[dataSet]), xy=(x0, y0-2*yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
-        axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
-                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
-        if hscRun is not None:
-            axes.annotate("HSC stack run: {0:s}".format(hscRun), xy=(x0, y0-4*yOff),
-                           xycoords='axes fraction', ha=ha, va=va, fontsize=10, color="#800080")
+        yOffMult = 3
         if matchRadius is not None:
-            axes.annotate("Match radius = {0:.2f}\"".format(matchRadius), xy=(x0, y0-5*yOff),
+            axes.annotate("Match radius = {0:.2f}\"".format(matchRadius), xy=(x0, y0-yOffMult*yOff),
                            xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+            yOffMult += 1
+        if hscRun is not None:
+            axes.annotate("HSC stack run: {0:s}".format(hscRun), xy=(x0, y0-yOffMult*yOff),
+                           xycoords='axes fraction', ha=ha, va=va, fontsize=10, color="#800080")
         if isHist:
             l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.7")
             l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7")
@@ -255,6 +255,8 @@ class Analysis(object):
             alpha = min(0.75, max(0.25, 1.0 - 0.2*np.log10(len(data.mag))))
             # draw mean and stdev at intervals (defined by xBins)
             if name == "star" :
+                axScatter.fill_between(data.mag, axScatter.get_ylim()[0], axScatter.get_ylim()[1],
+                                       where=data.mag>self.config.magThreshold, facecolor="0.87")
                 numHist, dataHist = np.histogram(data.mag, bins=len(xBins))
                 syHist, dataHist = np.histogram(data.mag, bins=len(xBins), weights=data.quantity)
                 syHist2, datahist = np.histogram(data.mag, bins=len(xBins), weights=data.quantity**2)
