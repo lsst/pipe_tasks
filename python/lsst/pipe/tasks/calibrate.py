@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
+# Copyright 2008-2016 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -27,8 +27,10 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
+from lsstDebug import getDebugFrame
+from lsst.afw.display import getDisplay
 from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask, MeasureApCorrTask
-from lsst.meas.astrom import AstrometryTask
+from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from .photoCal import PhotoCalTask
 from .repair import RepairTask
 from .measurePsf import MeasurePsfTask
@@ -455,13 +457,17 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         backgrounds = afwMath.BackgroundList()
         keepCRs = True                  # At least until we know the PSF
         self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
-        self.display('repair', exposure=exposure)
+        frame = getDebugFrame(self._display, "repair")
+        if frame:
+            getDisplay(frame).mtv(exposure)
 
         if self.config.doBackground:
             with self.timer("background"):
                 bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
                 backgrounds.append(bg)
-            self.display('background', exposure=exposure)
+            frame = getDebugFrame(self._display, "background")
+            if frame:
+                getDisplay(frame).mtv(exposure)
 
         # Make both tables from the same detRet, since detection can only be run once
         table1 = afwTable.SourceTable.make(self.schema1, idFactory)
@@ -503,7 +509,9 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
 
         if self.config.doPsf:
             self.repair.run(exposure, defects=defects, keepCRs=None)
-            self.display('PSF_repair', exposure=exposure)
+            frame = getDebugFrame(self._display, "PSF_repair")
+            if frame:
+                getDisplay(frame).mtv(exposure)
 
         if self.config.doBackground:
             # Background estimation ignores (by default) pixels with the
@@ -517,7 +525,9 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 self.log.info("Fit and subtracted background")
                 backgrounds.append(bg)
 
-            self.display('PSF_background', exposure=exposure)
+            frame = getDebugFrame(self._display, "PSF_background")
+            if frame:
+                getDisplay(frame).mtv(exposure)
 
         # make a second table with which to do the second measurement
         # the schemaMapper will copy the footprints and ids, which is all we need.
@@ -578,7 +588,10 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                 metadata.set('COLORTERM3', 0.0)
         else:
             photocalRet = None
-        self.display('calibrate', exposure=exposure, sources=sources, matches=matches)
+
+        frame = getDebugFrame(self._display, "calibrate")
+        if frame:
+            displayAstrometry(sourceCat=sources, exposure=exposure, matches=matches, frame=frame, pause=False)
 
         return pipeBase.Struct(
             exposure = exposure,
