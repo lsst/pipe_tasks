@@ -6,8 +6,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import NullFormatter
-import numpy
-numpy.seterr(all="ignore")
+import numpy as np
+np.seterr(all="ignore")
 from eups import Eups
 eups = Eups()
 import functools
@@ -36,14 +36,14 @@ class AllLabeller(object):
     labels = {'all': 0}
     plot = ["all"]
     def __call__(self, catalog):
-        return numpy.zeros(len(catalog))
+        return np.zeros(len(catalog))
 
 class StarGalaxyLabeller(object):
     labels = {'star': 0, 'galaxy': 1}
     plot = ["star"]
     _column = 'base_ClassificationExtendedness_value'
     def __call__(self, catalog):
-        return numpy.where(catalog[self._column] < 0.5, 0, 1)
+        return np.where(catalog[self._column] < 0.5, 0, 1)
 
 class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
     labels = {'star': 0, 'galaxy': 1, 'split': 2}
@@ -51,9 +51,9 @@ class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
         self._first = first
         self._second = second
     def __call__(self, catalog):
-        first = numpy.where(catalog[self._first + self._column] < 0.5, 0, 1)
-        second = numpy.where(catalog[self._second + self._column] < 0.5, 0, 1)
-        return numpy.where(first == second, first, 2)
+        first = np.where(catalog[self._first + self._column] < 0.5, 0, 1)
+        second = np.where(catalog[self._second + self._column] < 0.5, 0, 1)
+        return np.where(first == second, first, 2)
 
 class MatchesStarGalaxyLabeller(StarGalaxyLabeller):
     _column = 'src_base_ClassificationExtendedness_value'
@@ -78,7 +78,7 @@ class CosmosLabeller(StarGalaxyLabeller):
         # A kdTree would be better, but this is all we have right now
         matches = afwTable.matchRaDec(self.cosmos, catalog, self.radius)
         good = set(mm.second.getId() for mm in matches)
-        return numpy.array([0 if ii in good else 1 for ii in catalog["id"]])
+        return np.array([0 if ii in good else 1 for ii in catalog["id"]])
 
 class Filenamer(object):
     """Callable that provides a filename given a style"""
@@ -139,12 +139,12 @@ class Analysis(object):
 
         self.quantity = func(catalog)
         self.quantityError = errFunc(catalog) if errFunc is not None else None
-        # self.mag = self.config/zp - 2.5*numpy.log10(catalog[prefix + self.config.fluxColumn])
-        self.mag = -2.5*numpy.log10(catalog[prefix + self.config.fluxColumn])
+        # self.mag = self.config/zp - 2.5*np.log10(catalog[prefix + self.config.fluxColumn])
+        self.mag = -2.5*np.log10(catalog[prefix + self.config.fluxColumn])
 
-        self.good = numpy.isfinite(self.quantity) & numpy.isfinite(self.mag)
+        self.good = np.isfinite(self.quantity) & np.isfinite(self.mag)
         if errFunc is not None:
-            self.good &= numpy.isfinite(self.quantityError)
+            self.good &= np.isfinite(self.quantityError)
         for ff in list(config.flags) + flags:
             self.good &= ~catalog[prefix + ff]
 
@@ -232,11 +232,10 @@ class Analysis(object):
 
         axScatter.set_xlim(magMin, magMax)
         axScatter.set_ylim(self.qMin, self.qMax)
-
         xBinwidth = 0.1
-        xBins = numpy.arange(magMin + 0.5*xBinwidth, magMax + 0.5*xBinwidth, xBinwidth)
+        xBins = np.arange(magMin + 0.5*xBinwidth, magMax + 0.5*xBinwidth, xBinwidth)
         yBinwidth = 0.02
-        yBins = numpy.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.5*yBinwidth, yBinwidth)
+        yBins = np.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.5*yBinwidth, yBinwidth)
         axHistx.set_xlim(axScatter.get_xlim())
         axHisty.set_ylim(axScatter.get_ylim())
         axHistx.set_yscale("log", nonposy="clip")
@@ -246,14 +245,14 @@ class Analysis(object):
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
-            alpha = min(0.75, max(0.25, 1.0 - 0.2*numpy.log10(len(data.mag))))
+            alpha = min(0.75, max(0.25, 1.0 - 0.2*np.log10(len(data.mag))))
             # draw mean and stdev at intervals (defined by xBins)
             if name == "star" :
-                numHist, dataHist = numpy.histogram(data.mag, bins=len(xBins))
-                syHist, dataHist = numpy.histogram(data.mag, bins=len(xBins), weights=data.quantity)
-                syHist2, datahist = numpy.histogram(data.mag, bins=len(xBins), weights=data.quantity**2)
+                numHist, dataHist = np.histogram(data.mag, bins=len(xBins))
+                syHist, dataHist = np.histogram(data.mag, bins=len(xBins), weights=data.quantity)
+                syHist2, datahist = np.histogram(data.mag, bins=len(xBins), weights=data.quantity**2)
                 meanHist = syHist/numHist
-                stdHist = numpy.sqrt(syHist2/numHist - meanHist*meanHist)
+                stdHist = np.sqrt(syHist2/numHist - meanHist*meanHist)
                 axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist, fmt="k-")
             dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
                                            c=data.color, label=name, alpha=alpha))
@@ -283,10 +282,10 @@ class Analysis(object):
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
-            good = numpy.isfinite(data.quantity)
+            good = np.isfinite(data.quantity)
             if self.config.magThreshold is not None:
                 good &= data.mag < self.config.magThreshold
-            nValid = numpy.abs(data.quantity[good]) <= self.qMax # need to have datapoints lying within range
+            nValid = np.abs(data.quantity[good]) <= self.qMax # need to have datapoints lying within range
             if good.sum() == 0 or nValid.sum() == 0:
                 continue
             num, _, _ = axes.hist(data.quantity[good], numBins, range=(self.qMin, self.qMax), normed=False,
@@ -309,10 +308,10 @@ class Analysis(object):
 
     def plotSkyPosition(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None):
         """Plot quantity as a function of position"""
-        ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
-        dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
+        ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
+        dec = np.rad2deg(self.catalog[self.prefix + "coord_dec"])
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
-                numpy.ones(len(self.mag), dtype=bool))
+                np.ones(len(self.mag), dtype=bool))
         if self.data.has_key("galaxy"):
             vmin, vmax = 0.5*self.qMin, 0.5*self.qMax
         else:
@@ -341,10 +340,10 @@ class Analysis(object):
     def plotRaDec(self, filename, stats=None, hscRun=None):
         """Plot quantity as a function of RA, Dec"""
 
-        ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
-        dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
+        ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
+        dec = np.rad2deg(self.catalog[self.prefix + "coord_dec"])
         good = (self.mag < self.config.magThreshold if self.config.magThreshold is not None else
-                numpy.ones(len(self.mag), dtype=bool))
+                np.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(2, 1)
         axes[0].axhline(0, linestyle="--", color="0.6")
         axes[1].axhline(0, linestyle="--", color="0.6")
@@ -407,21 +406,21 @@ class Analysis(object):
         total = selection.sum() # Total number we're considering
         if len(quantity[selection]) == 0:
             return None
-        quartiles = numpy.percentile(quantity[selection], [25, 50, 75])
+        quartiles = np.percentile(quantity[selection], [25, 50, 75])
         assert len(quartiles) == 3
         median = quartiles[1]
         clip = self.config.clip*0.74*(quartiles[2] - quartiles[0])
-        good = selection & numpy.logical_not(numpy.abs(quantity - median) > clip)
+        good = selection & np.logical_not(np.abs(quantity - median) > clip)
         actualMean = quantity[good].mean()
         mean = actualMean if forcedMean is None else forcedMean
-        stdev = numpy.sqrt(((quantity[good].astype(numpy.float64) - mean)**2).mean())
+        stdev = np.sqrt(((quantity[good].astype(np.float64) - mean)**2).mean())
         return Stats(dataUsed=good, num=good.sum(), total=total, mean=actualMean, stdev=stdev,
                      forcedMean=forcedMean, median=median, clip=clip)
 
     def calculateSysError(self, quantity, error, selection, forcedMean=None, tol=1.0e-3):
         import scipy.optimize
         def function(sysErr2):
-            sigNoise = quantity/numpy.sqrt(error**2 + sysErr2)
+            sigNoise = quantity/np.sqrt(error**2 + sysErr2)
             stats = self.calculateStats(sigNoise, selection, forcedMean=forcedMean)
             return stats.stdev - 1.0
 
@@ -429,11 +428,11 @@ class Analysis(object):
             result = scipy.optimize.root(function, 0.0, tol=tol)
             if not result.success:
                 print "Warning: sysErr calculation failed: %s" % result.message
-                answer = numpy.nan
+                answer = np.nan
             else:
-                answer = numpy.sqrt(result.x[0])
+                answer = np.sqrt(result.x[0])
         else:
-            answer = numpy.sqrt(scipy.optimize.newton(function, 0.0, tol=tol))
+            answer = np.sqrt(scipy.optimize.newton(function, 0.0, tol=tol))
         print "calculateSysError: ", function(answer**2), function((answer+0.001)**2), \
             function((answer-0.001)**2)
         return answer
@@ -487,7 +486,7 @@ class CcdAnalysis(Analysis):
             vmin, vmax = vmin - 2, vmax + 2
             print "Only one CCD (%d) to analyze: setting vmin (%d), vmax (%d)" % (ccd.min(), vmin, vmax)
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
-                numpy.ones(len(self.mag), dtype=bool))
+                np.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(2, 1)
         axes[0].axhline(0, linestyle="--", color="0.6")
         axes[1].axhline(0, linestyle="--", color="0.6")
@@ -529,7 +528,7 @@ class CcdAnalysis(Analysis):
         xx = self.catalog[self.prefix + "base_FocalPlane_x"]
         yy = self.catalog[self.prefix + "base_FocalPlane_y"]
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
-                numpy.ones(len(self.mag), dtype=bool))
+                np.ones(len(self.mag), dtype=bool))
         if self.data.has_key("galaxy"):
             vmin, vmax = 0.5*self.qMin, 0.5*self.qMax
         else:
@@ -562,7 +561,7 @@ class MagDiff(object):
         self.col1 = col1
         self.col2 = col2
     def __call__(self, catalog):
-        return -2.5*numpy.log10(catalog[self.col1]/catalog[self.col2])
+        return -2.5*np.log10(catalog[self.col1]/catalog[self.col2])
 
 class MagDiffMatches(object):
     """Functor to calculate magnitude difference for match catalog"""
@@ -571,10 +570,10 @@ class MagDiffMatches(object):
         self.colorterm = colorterm
         self.zp = zp
     def __call__(self, catalog):
-        ref1 = -2.5*numpy.log10(catalog.get("ref_" + self.colorterm.primary + "_flux"))
-        ref2 = -2.5*numpy.log10(catalog.get("ref_" + self.colorterm.secondary + "_flux"))
+        ref1 = -2.5*np.log10(catalog.get("ref_" + self.colorterm.primary + "_flux"))
+        ref2 = -2.5*np.log10(catalog.get("ref_" + self.colorterm.secondary + "_flux"))
         ref = self.colorterm.transformMags(ref1, ref2)
-        src = self.zp - 2.5*numpy.log10(catalog.get("src_" + self.column))
+        src = self.zp - 2.5*np.log10(catalog.get("src_" + self.column))
         return src - ref
 
 class MagDiffCompare(object):
@@ -585,8 +584,8 @@ class MagDiffCompare(object):
     def __init__(self, column):
         self.column = column
     def __call__(self, catalog):
-        src1 = -2.5*numpy.log10(catalog["first_" + self.column])
-        src2 = -2.5*numpy.log10(catalog["second_" + self.column])
+        src1 = -2.5*np.log10(catalog["first_" + self.column])
+        src2 = -2.5*np.log10(catalog["second_" + self.column])
         return src1 - src2
 
 class AstrometryDiff(object):
@@ -598,7 +597,7 @@ class AstrometryDiff(object):
     def __call__(self, catalog):
         first = catalog[self.first]
         second = catalog[self.second]
-        cosDec = numpy.cos(catalog[self.declination]) if self.declination is not None else 1.0
+        cosDec = np.cos(catalog[self.declination]) if self.declination is not None else 1.0
         return (first - second)*cosDec*(1.0*afwGeom.radians).asArcseconds()
 
 def deconvMom(catalog):
@@ -606,7 +605,7 @@ def deconvMom(catalog):
     hsm = catalog["ext_shapeHSM_HsmMoments_xx"] + catalog["ext_shapeHSM_HsmMoments_yy"]
     sdss = catalog["base_SdssShape_xx"] + catalog["base_SdssShape_yy"]
     psf = catalog["ext_shapeHSM_HsmPsfMoments_xx"] + catalog["ext_shapeHSM_HsmPsfMoments_yy"]
-    return numpy.where(numpy.isfinite(hsm), hsm, sdss) - psf
+    return np.where(np.isfinite(hsm), hsm, sdss) - psf
 
 def deconvMomStarGal(catalog):
     """Calculate P(star) from deconvolved moments"""
@@ -616,7 +615,7 @@ def deconvMomStarGal(catalog):
             0.0482134274008*snr*rTrace + 4.41366874902e-13*rTrace*rTrace + 7.58973714641e-09*snr*snr*snr +
             1.51008430135e-05*snr*snr*rTrace + 4.38493363998e-14*snr*rTrace*rTrace +
             1.83899834142e-20*rTrace*rTrace*rTrace)
-    return 1.0/(1.0 + numpy.exp(-poly))
+    return 1.0/(1.0 + np.exp(-poly))
 
 
 def concatenateCatalogs(catalogList):
@@ -991,7 +990,7 @@ class NumStarLabeller(object):
     def __init__(self, numBands):
         self.numBands = numBands
     def __call__(self, catalog):
-        return numpy.array([0 if nn == self.numBands else 2 if nn == 0 else 1 for
+        return np.array([0 if nn == self.numBands else 2 if nn == 0 else 1 for
                             nn in catalog["numStarFlags"]])
 
 class ColorValueInRange(object):
@@ -1001,12 +1000,12 @@ class ColorValueInRange(object):
         self.requireGreater = requireGreater
         self.requireLess = requireLess
     def __call__(self, catalog):
-        good = numpy.ones(len(catalog), dtype=bool)
+        good = np.ones(len(catalog), dtype=bool)
         for col, value in self.requireGreater.iteritems():
             good &= catalog[col] > value
         for col, value in self.requireLess.iteritems():
             good &= catalog[col] < value
-        return numpy.where(good, catalog[self.column], numpy.nan)
+        return np.where(good, catalog[self.column], np.nan)
 
 def GalaxyColor(object):
     """Functor to produce difference between galaxy color calculated by different algorithms"""
@@ -1016,8 +1015,8 @@ def GalaxyColor(object):
         self.prefix1 = prefix1
         self.prefix2 = prefix2
     def __call__(self, catalog):
-        color1 = -2.5*numpy.log10(catalog[self.prefix1 + self.alg1]/catalog[self.prefix2 + self.alg1])
-        color2 = -2.5*numpy.log10(catalog[self.prefix1 + self.alg2]/catalog[self.prefix2 + self.alg2])
+        color1 = -2.5*np.log10(catalog[self.prefix1 + self.alg1]/catalog[self.prefix2 + self.alg1])
+        color2 = -2.5*np.log10(catalog[self.prefix1 + self.alg2]/catalog[self.prefix2 + self.alg2])
         return color1 - color2
 
 
@@ -1124,17 +1123,17 @@ class ColorAnalysisTask(CmdLineTask):
         for col, transform in transforms.iteritems():
             if col not in schema:
                 continue
-            value = numpy.ones(num)*transform.coeffs[""] if "" in transform.coeffs else numpy.zeros(num)
+            value = np.ones(num)*transform.coeffs[""] if "" in transform.coeffs else np.zeros(num)
             for ff, coeff in transform.coeffs.iteritems():
                 if ff == "": # Constant: already done
                     continue
                 cat = catalogs[ff]
-                mag = self.config.analysis.zp - 2.5*numpy.log10(cat[self.config.analysis.fluxColumn])
+                mag = self.config.analysis.zp - 2.5*np.log10(cat[self.config.analysis.fluxColumn])
                 value += mag*coeff
             new[col][:] = value
 
         # Flag bad values
-        bad = numpy.zeros(num, dtype=bool)
+        bad = np.zeros(num, dtype=bool)
         for cat in catalogs.itervalues():
             for flag in self.config.flags:
                 bad |= cat[flag]
@@ -1143,9 +1142,9 @@ class ColorAnalysisTask(CmdLineTask):
             row.setFlag(badKey, badValue)
 
         # Star/galaxy
-        numStarFlags = numpy.zeros(num)
+        numStarFlags = np.zeros(num)
         for cat in catalogs.itervalues():
-            numStarFlags += numpy.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
+            numStarFlags += np.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
         new["numStarFlags"][:] = numStarFlags
 
         fluxColumn = self.config.analysis.fluxColumn
@@ -1187,22 +1186,22 @@ class ColorAnalysisTask(CmdLineTask):
     def plotStarColorColor(self, catalogs, filenamer, dataId):
         num = len(catalogs.values()[0])
         zp = self.config.analysis.zp
-        mags = {ff: zp - 2.5*numpy.log10(catalogs[ff][self.config.analysis.fluxColumn]) for ff in catalogs}
+        mags = {ff: zp - 2.5*np.log10(catalogs[ff][self.config.analysis.fluxColumn]) for ff in catalogs}
 
-        bad = numpy.zeros(num, dtype=bool)
+        bad = np.zeros(num, dtype=bool)
         for cat in catalogs.itervalues():
             for flag in self.config.flags:
                 bad |= cat[flag]
 
-        bright = numpy.ones(num, dtype=bool)
+        bright = np.ones(num, dtype=bool)
         for mm in mags.itervalues():
             bright &= mm < self.config.analysis.magThreshold
 
-        numStarFlags = numpy.zeros(num)
+        numStarFlags = np.zeros(num)
         for cat in catalogs.itervalues():
-            numStarFlags += numpy.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
+            numStarFlags += np.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
 
-        good = (numStarFlags == len(catalogs)) & numpy.logical_not(bad) & bright
+        good = (numStarFlags == len(catalogs)) & np.logical_not(bad) & bright
 
         combined = self.transformCatalogs(catalogs, straightTransforms)[good].copy(True)
         filters = set(catalogs.keys())
@@ -1259,20 +1258,20 @@ def colorColorPlot(filename, xx, yy, xLabel, yLabel, xRange=None, yRange=None, o
     if yRange:
         axes[0].set_ylim(*yRange)
 
-    select = numpy.ones_like(xx, dtype=bool) if not xFitRange else ((xx > xFitRange[0]) & (xx < xFitRange[1]))
-    keep = numpy.ones_like(xx, dtype=bool)
+    select = np.ones_like(xx, dtype=bool) if not xFitRange else ((xx > xFitRange[0]) & (xx < xFitRange[1]))
+    keep = np.ones_like(xx, dtype=bool)
     for ii in range(iterations):
         keep &= select
-        poly = numpy.polyfit(xx[keep], yy[keep], order)
-        dy = yy - numpy.polyval(poly, xx)
-        q1, q3 = numpy.percentile(dy[keep], [25, 75])
+        poly = np.polyfit(xx[keep], yy[keep], order)
+        dy = yy - np.polyval(poly, xx)
+        q1, q3 = np.percentile(dy[keep], [25, 75])
         clip = rej*0.74*(q3 - q1)
-        keep = numpy.logical_not(numpy.abs(dy) > clip)
+        keep = np.logical_not(np.abs(dy) > clip)
 
     keep &= select
-    poly = numpy.polyfit(xx[keep], yy[keep], order)
-    xLine = numpy.linspace(xRange[0], xRange[1], 1000)
-    yLine = numpy.polyval(poly, xLine)
+    poly = np.polyfit(xx[keep], yy[keep], order)
+    xLine = np.linspace(xRange[0], xRange[1], 1000)
+    yLine = np.polyval(poly, xLine)
 
     kwargs = dict(s=2, marker="o", lw=0, alpha=0.3)
     axes[0].scatter(xx[keep], yy[keep], c="blue", label="used", **kwargs)
@@ -1284,17 +1283,17 @@ def colorColorPlot(filename, xx, yy, xLabel, yLabel, xRange=None, yRange=None, o
 
     # Determine quality of locus
     distance2 = []
-    poly = numpy.poly1d(poly)
-    polyDeriv = numpy.polyder(poly)
+    poly = np.poly1d(poly)
+    polyDeriv = np.polyder(poly)
     calculateDistance2 = lambda x1, y1, x2: (x2 - x1)**2 + (poly(x2) - y1)**2
     for x, y in zip(xx[select], yy[select]):
-        roots = numpy.roots(numpy.poly1d((1, -x)) + (poly - y)*polyDeriv)
-        distance2.append(min(calculateDistance2(x, y, numpy.real(rr)) for rr in roots if numpy.real(rr) == rr))
-    distance = numpy.sqrt(distance2)
-    distance *= numpy.where(yy[select] >= poly(xx[select]), 1.0, -1.0)
+        roots = np.roots(np.poly1d((1, -x)) + (poly - y)*polyDeriv)
+        distance2.append(min(calculateDistance2(x, y, np.real(rr)) for rr in roots if np.real(rr) == rr))
+    distance = np.sqrt(distance2)
+    distance *= np.where(yy[select] >= poly(xx[select]), 1.0, -1.0)
 
-    q1, median, q3 = numpy.percentile(distance, [25, 50, 75])
-    good = numpy.logical_not(numpy.abs(distance - median) > 3.0*0.74*(q3 - q1))
+    q1, median, q3 = np.percentile(distance, [25, 50, 75])
+    good = np.logical_not(np.abs(distance - median) > 3.0*0.74*(q3 - q1))
     print distance[good].mean(), distance[good].std()
 
     axes[1].hist(distance[good], numBins, range=(-0.05, 0.05), normed=False)
@@ -1319,18 +1318,18 @@ class ColorColorDistance(object):
     def __call__(self, catalog):
         xx = catalog[self.band1] - catalog[self.band2]
         yy = catalog[self.band2] - catalog[self.band3]
-        polyDeriv = numpy.polyder(self.poly)
+        polyDeriv = np.polyder(self.poly)
         calculateDistance2 = lambda x1, y1, x2: (x2 - x1)**2 + (self.poly(x2) - y1)**2
-        distance2 = numpy.ones_like(xx)*numpy.nan
+        distance2 = np.ones_like(xx)*np.nan
         for i, (x, y) in enumerate(zip(xx, yy)):
-            if (not numpy.isfinite(x) or not numpy.isfinite(y) or (self.xMin is not None and x < self.xMin) or
+            if (not np.isfinite(x) or not np.isfinite(y) or (self.xMin is not None and x < self.xMin) or
                 (self.xMax is not None and x > self.xMax)):
-                distance2[i] = numpy.nan
+                distance2[i] = np.nan
                 continue
-            roots = numpy.roots(numpy.poly1d((1, -x)) + (self.poly - y)*polyDeriv)
-            distance2[i] = min(calculateDistance2(x, y, numpy.real(rr)) for
-                               rr in roots if numpy.real(rr) == rr)
-        return numpy.sqrt(distance2)*numpy.where(yy >= self.poly(xx), 1.0, -1.0)
+            roots = np.roots(np.poly1d((1, -x)) + (self.poly - y)*polyDeriv)
+            distance2[i] = min(calculateDistance2(x, y, np.real(rr)) for
+                               rr in roots if np.real(rr) == rr)
+        return np.sqrt(distance2)*np.where(yy >= self.poly(xx), 1.0, -1.0)
 
 
 class VisitAnalysisRunner(TaskRunner):
@@ -1397,7 +1396,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
                 catList.append(calibrated)
@@ -1418,7 +1417,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 continue
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
             # generate unnormalized match with measAstrom's joinMatchListWithCatalog
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             sources = butler.get(dataset, dataRef.dataId, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
@@ -1493,14 +1492,14 @@ class VisitAnalysisTask(CoaddAnalysisTask):
 ###                continue
 ###            good = data.mag < self.config.magThreshold
 ###            total = good.sum() # Total number we're considering
-###            quartiles = numpy.percentile(data.quantity[good], [25, 50, 75])
+###            quartiles = np.percentile(data.quantity[good], [25, 50, 75])
 ###            assert len(quartiles) == 3
 ###            median = quartiles[1]
 ###            clip = self.config.clip*0.74*(quartiles[2] - quartiles[0])
-###            good &= numpy.logical_not(numpy.abs(data.quantity - median) > clip)
+###            good &= np.logical_not(np.abs(data.quantity - median) > clip)
 ###            actualMean = data.quantity[good].mean()
 ###            mean = actualMean if forcedMean is None else forcedMean
-###            stdev = numpy.sqrt(((data.quantity[good].astype(numpy.float64) - mean)**2).mean())
+###            stdev = np.sqrt(((data.quantity[good].astype(np.float64) - mean)**2).mean())
 ###            stats[name] = Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev,
 ###                                forcedMean=forcedMean)
 ###        return stats
@@ -1660,7 +1659,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             metadata = butler.get("calexp_md", dataRef.dataId)
 
             # Scale fluxes to measured zeropoint
-            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, srcCat, zp=self.config.analysis.zp)
                 catList.append(calibrated)
@@ -1699,7 +1698,7 @@ class MagDiffErr(object):
                                              catalog["first_" + self.column + "Sigma"])
         mag2, err2 = self.calib.getMagnitude(catalog["second_" + self.column],
                                              catalog["second_" + self.column + "Sigma"])
-        return numpy.sqrt(err1**2 + err2**2)
+        return np.sqrt(err1**2 + err2**2)
 
 class CentroidDiff(object):
     """Functor to calculate difference in astrometry"""
@@ -1726,4 +1725,4 @@ class CentroidDiffErr(CentroidDiff):
         subkeys2 = [catalog.schema[secondx].asKey(), catalog.schema[secondy].asKey()]
         menu = {"x": 0, "y": 1}
 
-        return numpy.hypot(catalog[subkeys1[menu[self.component]]], catalog[subkeys2[menu[self.component]]])
+        return np.hypot(catalog[subkeys1[menu[self.component]]], catalog[subkeys2[menu[self.component]]])
