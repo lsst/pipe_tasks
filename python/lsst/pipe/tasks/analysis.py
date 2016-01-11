@@ -166,7 +166,7 @@ class Analysis(object):
         axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
                       xycoords='axes fraction', ha=ha, va=va, fontsize=10)
         if hscRun is not None:
-            axes.annotate("HSC stack run= {0:s}".format(hscRun), xy=(x0, y0-4*yOff),
+            axes.annotate("HSC stack run: {0:s}".format(hscRun), xy=(x0, y0-4*yOff),
                            xycoords='axes fraction', ha=ha, va=va, fontsize=10, color="#800080")
         if matchRadius is not None:
             axes.annotate("Match radius = {0:.2f}\"".format(matchRadius), xy=(x0, y0-5*yOff),
