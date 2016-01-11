@@ -172,14 +172,14 @@ class Analysis(object):
             axes.annotate("Match radius = {0:.2f}\"".format(matchRadius), xy=(x0, y0-5*yOff),
                            xycoords='axes fraction', ha=ha, va=va, fontsize=10)
         if isHist:
-            l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.8")
-            l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8")
-            l3 = axes.axvline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
+            l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.7")
+            l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7")
+            l3 = axes.axvline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
         else:
-            l1 = axes.axhline(stats[dataSet].median, linestyle="dotted", color="0.8", label="median")
-            l2 = axes.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8",
+            l1 = axes.axhline(stats[dataSet].median, linestyle="dotted", color="0.7", label="median")
+            l2 = axes.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7",
                               label="clip")
-            l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
+            l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
             plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
 
     def plotAgainstMag(self, filename, stats=None, hscRun=None, matchRadius=None):
