@@ -155,7 +155,7 @@ class Analysis(object):
 
     @staticmethod
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
-                     ha="left", va="top", color="blue", isHist=False, hscRun=None):
+                     ha="left", va="top", color="blue", isHist=False, hscRun=None, matchRadius=None):
         axes.annotate(dataSet+r" (N = {0.num:d} of N(mag>{1:.1f}) = {0.total:d}):".format(stats[dataSet],
                                                                                           magThreshold),
                       xy=(x0, y0),xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
@@ -168,6 +168,9 @@ class Analysis(object):
         if hscRun is not None:
             axes.annotate("HSC stack run= {0:s}".format(hscRun), xy=(x0, y0-4*yOff),
                            xycoords='axes fraction', ha=ha, va=va, fontsize=10, color="#800080")
+        if matchRadius is not None:
+            axes.annotate("Match radius = {0:.2f}\"".format(matchRadius), xy=(x0, y0-5*yOff),
+                           xycoords='axes fraction', ha=ha, va=va, fontsize=10)
         if isHist:
             l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.8")
             l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8")
@@ -179,7 +182,7 @@ class Analysis(object):
             l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.8")
             plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
 
-    def plotAgainstMag(self, filename, stats=None, hscRun=None):
+    def plotAgainstMag(self, filename, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         plt.axhline(0, linestyle="--", color="0.4")
@@ -197,12 +200,13 @@ class Analysis(object):
         axes.set_ylim(self.qMin, self.qMax)
         axes.set_xlim(magMin, magMax)
         if stats is not None:
-            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, hscRun=hscRun)
+            self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, hscRun=hscRun,
+                              matchRadius=matchRadius)
         axes.legend(handles=dataPoints, loc=1, fontsize=8)
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotAgainstMagAndHist(self, filename, stats=None, hscRun=None):
+    def plotAgainstMagAndHist(self, filename, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity against magnitude with side histogram"""
         nullfmt = NullFormatter()   # no labels for histograms
 
@@ -270,14 +274,15 @@ class Analysis(object):
         axScatter.set_ylabel(self.quantityName)
 
         if stats is not None:
-             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun)
+             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun,
+                               matchRadius=matchRadius)
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
         axHistx.legend(fontsize=7, loc=2)
         axHisty.legend(fontsize=7)
         plt.savefig(filename)
         plt.close()
 
-    def plotHistogram(self, filename, numBins=51, stats=None, hscRun=None):
+    def plotHistogram(self, filename, numBins=51, stats=None, hscRun=None, matchRadius=None):
         """Plot histogram of quantity"""
         fig, axes = plt.subplots(1, 1)
         axes.axvline(0, linestyle="--", color="0.6")
@@ -304,12 +309,12 @@ class Analysis(object):
             x0, y0 = 0.68, 0.81
         if stats is not None:
             self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0,
-                              isHist=True, hscRun=hscRun)
+                              isHist=True, hscRun=hscRun, matchRadius=matchRadius)
         axes.legend()
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotSkyPosition(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None):
+    def plotSkyPosition(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity as a function of position"""
         ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
         dec = np.rad2deg(self.catalog[self.prefix + "coord_dec"])
@@ -340,7 +345,7 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotRaDec(self, filename, stats=None, hscRun=None):
+    def plotRaDec(self, filename, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity as a function of RA, Dec"""
 
         ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
@@ -368,25 +373,25 @@ class Analysis(object):
         axes[0].legend()
         if stats is not None:
             self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
-                              hscRun=hscRun)
+                              hscRun=hscRun, matchRadius=matchRadius)
             self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
-                              hscRun=hscRun)
+                              hscRun=hscRun, matchRadius=matchRadius)
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, hscRun=None):
+    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, hscRun=None, matchRadius=None):
         """Make all plots"""
         stats = self.stats(forcedMean=forcedMean)
         self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
-                                   stats=stats, hscRun=hscRun)
+                                   stats=stats, hscRun=hscRun, matchRadius=matchRadius)
         self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
-                            hscRun=hscRun)
+                            hscRun=hscRun, matchRadius=matchRadius)
         self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats,
-                           hscRun=hscRun)
+                           hscRun=hscRun, matchRadius=matchRadius)
         self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats,
-                             hscRun=hscRun)
+                             hscRun=hscRun, matchRadius=matchRadius)
         self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"), stats=stats,
-                       hscRun=hscRun)
+                       hscRun=hscRun, matchRadius=matchRadius)
         log.info("Statistics from %s of %s: %s" % (dataId, self.quantityName, stats))
         if enforcer:
             enforcer(stats, dataId, log, self.quantityName)
@@ -469,17 +474,17 @@ class Enforcer(object):
 
 
 class CcdAnalysis(Analysis):
-    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, hscRun=None):
+    def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, hscRun=None, matchRadius=None):
         stats = self.stats(forcedMean=forcedMean)
         self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats,
-                     hscRun=hscRun)
+                     hscRun=hscRun, matchRadius=matchRadius)
         self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
-                            hscRun=hscRun)
+                            hscRun=hscRun, matchRadius=matchRadius)
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean,
-                                hscRun=hscRun)
+                                hscRun=hscRun, matchRadius=matchRadius)
 
     def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.nipy_spectral, idBits=32,
-                visitMultiplier=200, stats=None, hscRun=None):
+                visitMultiplier=200, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity as a function of CCD x,y"""
         xx = self.catalog[self.prefix + centroid + "_x"]
         yy = self.catalog[self.prefix + centroid + "_y"]
@@ -509,9 +514,9 @@ class CcdAnalysis(Analysis):
         fig.text(0.02, 0.5, self.quantityName, ha="center", va="center", rotation="vertical")
         if stats is not None:
             self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
-                              hscRun=hscRun)
+                              hscRun=hscRun, matchRadius=matchRadius)
             self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
-                              hscRun=hscRun)
+                              hscRun=hscRun, matchRadius=matchRadius)
         axes[0].set_xlim(-100, 2150)
         axes[1].set_xlim(-100, 4300)
         axes[0].set_ylim(self.qMin, self.qMax)
@@ -526,7 +531,7 @@ class CcdAnalysis(Analysis):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotFocalPlane(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None):
+    def plotFocalPlane(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity colormaped on the focal plane"""
         xx = self.catalog[self.prefix + "base_FocalPlane_x"]
         yy = self.catalog[self.prefix + "base_FocalPlane_y"]
@@ -811,7 +816,7 @@ class CoaddAnalysisTask(CmdLineTask):
             self.plotOverlaps(overlaps, filenamer, dataId)
         if self.config.doMatches:
             matches = self.readCatalogs(patchRefList, "deepCoadd_measMatchFull")
-            self.plotMatches(matches, filterName, filenamer, dataId)
+            self.plotMatches(matches, filterName, filenamer, dataId, matchRadius=self.config.matchRadius)
 
         for cat in self.config.externalCatalogs:
             with andCatalog(cat):
@@ -827,28 +832,30 @@ class CoaddAnalysisTask(CmdLineTask):
             catList = [cat[cat["base_ClassificationExtendedness_value"] < 0.5].copy(True) for cat in catList]
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer, dataId, hscRun=None):
+    def plotMags(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
         enforcer = Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if col + "_flux" in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff(col + "_flux", "base_PsfFlux_flux"), "Mag(%s) - PSFMag"
                                    % col, "mag_" + col, self.config.analysis,
                                    flags=[col + "_flag"], labeller=StarGalaxyLabeller(),
-                                   ).plotAll(dataId, filenamer, self.log, enforcer, hscRun=hscRun)
+                                   ).plotAll(dataId, filenamer, self.log, enforcer, hscRun=hscRun,
+                                             matchRadius=matchRadius)
 
-    def plotStarGal(self, catalog, filenamer, dataId, hscRun=None):
+    def plotStarGal(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
         self.AnalysisClass(catalog, deconvMomStarGal, "pStar", "pStar", self.config.analysis,
                            qMin=0.0, qMax=1.0, ).plotAll(dataId, filenamer, self.log)
         self.AnalysisClass(catalog, deconvMom, "Deconvolved moments", "deconvMom", self.config.analysis,
                            qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.2}}), hscRun=hscRun)
+                                     Enforcer(requireLess={"star": {"stdev": 0.2}}), hscRun=hscRun,
+                                     matchRadius=matchRadius)
 
     def overlaps(self, catalog):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
         return joinMatches(matches, "first_", "second_")
 
-    def plotOverlaps(self, overlaps, filenamer, dataId):
+    def plotOverlaps(self, overlaps, filenamer, dataId, hscRun=None, matchRadius=None):
         magEnforcer = Enforcer(requireLess={"star": {"stdev": 0.003}})
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in overlaps.schema:
@@ -865,20 +872,22 @@ class CoaddAnalysisTask(CmdLineTask):
                            qMin=0.0, qMax=0.15, labeller=OverlapsStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0, hscRun=hscRun)
 
-    def plotMatches(self, matches, filterName, filenamer, dataId, description="matches", hscRun=None):
+    def plotMatches(self, matches, filterName, filenamer, dataId, description="matches", hscRun=None,
+                    matchRadius=None):
         ct = self.config.colorterms.getColorterm(filterName, self.config.photoCatName)
         self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0), "MagPsf - ref",
                            description + "_mag", self.config.analysisMatches,
                            prefix="src_", qMin=-0.05, qMax=0.05, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.030}}), hscRun=hscRun)
+                                     Enforcer(requireLess={"star": {"stdev": 0.030}}), hscRun=hscRun,
+                                     matchRadius=matchRadius)
         self.AnalysisClass(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", description + "_distance", self.config.analysisMatches,
                            prefix="src_", qMin=0.0, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}),
-                                     forcedMean=0.0, hscRun=hscRun)
+                                     forcedMean=0.0, hscRun=hscRun, matchRadius=matchRadius)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_ra", "ref_coord_ra", "ref_coord_dec"),
                            "dRA*cos(Dec) (arcsec)", description + "_ra", self.config.analysisMatches,
                            prefix="src_", qMin=-self.config.matchesMaxDistance,
@@ -890,7 +899,8 @@ class CoaddAnalysisTask(CmdLineTask):
                            qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.050}}), hscRun=hscRun)
+                                     Enforcer(requireLess={"star": {"stdev": 0.050}}), hscRun=hscRun,
+                                     matchRadius=matchRadius)
 
     def plotCosmos(self, catalog, filenamer, cosmos, dataId):
         labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
@@ -1383,13 +1393,15 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if self.config.doMatches:
             matches = self.readSrcMatches(dataRefList, "src")
-            self.plotMatches(matches, filterName, filenamer, dataId, hscRun=hscRun)
+            self.plotMatches(matches, filterName, filenamer, dataId, hscRun=hscRun,
+                             matchRadius=self.config.matchRadius)
 
         for cat in self.config.externalCatalogs:
             if self.config.photoCatName not in cat :
                 with andCatalog(cat):
                     matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
-                    self.plotMatches(matches, filterName, filenamer, dataId, cat, hscRun=hscRun)
+                    self.plotMatches(matches, filterName, filenamer, dataId, cat, hscRun=hscRun,
+                                     matchRadius=self.config.matchRadius)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
@@ -1574,16 +1586,16 @@ class CompareAnalysisTask(CmdLineTask):
             raise TaskError("No matches found")
         return joinMatches(matches, "first_", "second_")
 
-    def plotCentroids(self, catalog, filenamer, dataId):
+    def plotCentroids(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
         distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
-        Analysis(catalog, CentroidDiff("x"), "x offset (arcsec)", "diff_x", self.config.analysis,
-                 prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
+        Analysis(catalog, CentroidDiff("x"), "Run Comparison: x offset (arcsec)", "diff_x",
+                 self.config.analysis, prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
                  labeller=OverlapsStarGalaxyLabeller(),
-                 ).plotAll(dataId, filenamer, self.log, distEnforcer)
-        Analysis(catalog, CentroidDiff("y"), "y offset (arcsec)", "diff_y", self.config.analysis,
-                 prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("y"),
+                 ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius)
+        Analysis(catalog, CentroidDiff("y"), "Run Comparison: y offset (arcsec)", "diff_y",
+                 self.config.analysis, prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("y"),
                  labeller=OverlapsStarGalaxyLabeller(),
-                 ).plotAll(dataId, filenamer, self.log, distEnforcer)
+                 ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius)
 
     def _getConfigName(self):
         return None
@@ -1636,21 +1648,22 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         self.log.info("\nNumber of sources in catalogs: first = {0:d} and second = {1:d}".format(
                 len(catalog1), len(catalog2)))
         catalog = self.matchCatalogs(catalog1, catalog2)
-        self.log.info("Number of matches (maxDist = {0:.3f} arcsec) = {1:d}".format(
+        self.log.info("Number of matches (maxDist = {0:.2f} arcsec) = {1:d}".format(
                 self.config.matchRadius, len(catalog)))
 
         # Check metadata to see if stack used was HSC
         butler2 = dataRefList2[0].getButler()
         metadata2 = butler2.get("calexp_md", dataRefList2[0].dataId)
+        hscRun = checkHscStack(metadata2)
         # Set an alias map for differing src naming conventions of different stacks (if any)
-        if self.config.srcSchemaMap is not None and checkHscStack(metadata2) is not None:
+        if self.config.srcSchemaMap is not None and hscRun is not None:
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set("second_" + lsstName, "second_" + otherName)
         if self.config.doMags:
-            self.plotMags(catalog, filenamer, dataId)
+            self.plotMags(catalog, filenamer, dataId, hscRun=hscRun, matchRadius=self.config.matchRadius)
         if self.config.doCentroids:
-            self.plotCentroids(catalog, filenamer, dataId)
+            self.plotCentroids(catalog, filenamer, dataId, hscRun=hscRun, matchRadius=self.config.matchRadius)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
@@ -1676,15 +1689,16 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             raise TaskError("No catalogs read: %s" % ([dataRefList[0].dataId for dataRef in dataRefList]))
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer, dataId):
+    def plotMags(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
                 Analysis(catalog, MagDiffCompare(col + "_flux"),
-                         "Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
+                         "Run Comparison: Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
                          prefix="first_", qMin=-0.01, qMax=0.01, flags=[col + "_flag"],
                          errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
-                         ).plotAll(dataId, filenamer, self.log, enforcer)
+                         ).plotAll(dataId, filenamer, self.log, enforcer, hscRun=hscRun,
+                                   matchRadius=matchRadius)
 
 
 class MagDiffErr(object):
