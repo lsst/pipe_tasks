@@ -61,6 +61,7 @@ except ImportError:
     print "meas_base could not be imported; skipping this test"
     sys.exit(0)
 
+from lsst.pipe.tasks.assembleCoadd import AssembleCoaddConfig, SafeClipAssembleCoaddConfig
 from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTask,
                                        MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
 
@@ -316,10 +317,20 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=self.butler)
         self.runTaskOnCcds(task)
 
+
+class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
+    def testSafeClipConfig(self):
+        # Test for DM-4797: ensure that AssembleCoaddConfig.setDefaults() is
+        # run when SafeClipAssembleCoaddConfig.setDefaults() is run. This
+        # simply sets the default value for badMaskPlanes.
+        self.assertEqual(AssembleCoaddConfig().badMaskPlanes, SafeClipAssembleCoaddConfig().badMaskPlanes)
+
+
 def suite():
     lsst.utils.tests.init()
     suites = []
     suites += unittest.makeSuite(CoaddsTestCase)
+    suites += unittest.makeSuite(AssembleCoaddTestCase)
     suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
     return unittest.TestSuite(suites)
 

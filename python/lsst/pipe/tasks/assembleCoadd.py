@@ -670,7 +670,7 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
     def setDefaults(self):
         # The numeric values for these configuration parameters were empirically determined, future work
         # may further refine them.
-        pexConfig.Config.setDefaults(self)
+        AssembleCoaddConfig.setDefaults(self)
         self.clipDetection.reEstimateBackground = False
         self.clipDetection.returnOriginalFootprints = False
         self.clipDetection.thresholdPolarity = "both"
