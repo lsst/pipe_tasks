@@ -120,7 +120,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     self.assertAlmostEqual(bgMean, 327.61695151065607, places=7)
                     self.assertAlmostEqual(bgStdDev, 0.40081096398879795, places=7)
                     self.assertEqual(len(icSrc), 28)
-                    self.assertEqual(len(sources), 169)
+                    self.assertEqual(len(sources), 188)
                     self.assertEqual(numGoodPix, 1953514)
 
                     self.assertAlmostEqual(imMean,      1.7045581411166495, places=7)
