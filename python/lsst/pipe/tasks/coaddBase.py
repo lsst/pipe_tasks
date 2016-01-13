@@ -22,7 +22,6 @@ from __future__ import division, absolute_import
 #
 import numpy
 
-import lsst.pex.exceptions as pexExceptions
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
