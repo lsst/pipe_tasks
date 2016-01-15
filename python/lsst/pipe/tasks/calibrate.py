@@ -541,13 +541,25 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         # as long as measurement.run follows immediately
         sources.extend(sources1, self.schemaMapper)
 
+        # Note: the logic for applying aperture corrections is currently being reworked as part of DM-4692
+        # (as discussed at:
+        # https://community.lsst.org/t/how-to-measure-aperture-correction-in-the-new-processccdtask)
+        # For the time being, the following provides the desired behavior.
         if self.config.doMeasureApCorr:
-            # Run measurement through all flux measurements (all have the same execution order),
-            # then apply aperture corrections, then run the rest of the measurements
+            # First run plugins with order up to APCORR_ORDER to measure all fluxes
             self.measurement.run(exposure, sources, endOrder=BasePlugin.APCORR_ORDER)
+            # Now measure the aperture correction map
             apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sources).apCorrMap
             exposure.getInfo().setApCorrMap(apCorrMap)
-            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER)
+            # Now run APCORR_ORDER only to apply the aperture correction to the measured fluxes.
+            # The effect of this step is simply to apply the aperture correction (using the
+            # apCorrMap measured above) to any flux measurements present whose plugins were
+            # registered with shouldApCorr=True (no actual plugins are run in this step).
+            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER,
+                                 endOrder=BasePlugin.APCORR_ORDER+1)
+            # Now run the remaining APCORR_ORDER+1 plugins (whose measurements should be performed on
+            # aperture corrected fluxes) disallowing apCorr (to avoid applying it more than once)
+            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
         else:
             self.measurement.run(exposure, sources)
 
