@@ -5,7 +5,7 @@ import re
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.ticker import NullFormatter
+from matplotlib.ticker import NullFormatter, AutoMinorLocator
 import numpy as np
 np.seterr(all="ignore")
 from eups import Eups
@@ -114,7 +114,7 @@ class AnalysisConfig(Config):
                                "base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag"])
     clip = Field(dtype=float, default=4.0, doc="Rejection threshold (stdev)")
     magThreshold = Field(dtype=float, default=21.0, doc="Magnitude threshold to apply")
-    magPlotMin = Field(dtype=float, default=15.5, doc="Minimum magnitude to plot")
+    magPlotMin = Field(dtype=float, default=14.0, doc="Minimum magnitude to plot")
     magPlotMax = Field(dtype=float, default=28.0, doc="Maximum magnitude to plot")
     fluxColumn = Field(dtype=str, default="base_PsfFlux_flux", doc="Column to use for flux/magnitude plotting")
     zp = Field(dtype=float, default=27.0, doc="Magnitude zero point to apply")
@@ -132,7 +132,9 @@ class Analysis(object):
         self.qMin = qMin
         self.qMax = qMax
         if labeller.labels.has_key("galaxy"):
-            self.qMin, self.qMax = 4.0*qMin, 4.0*qMax
+            self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
+        if "galaxy" in labeller.plot:
+            self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
         self.prefix = prefix
         self.flags = flags
         self.errFunc = errFunc
@@ -209,7 +211,7 @@ class Analysis(object):
     def plotAgainstMagAndHist(self, filename, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity against magnitude with side histogram"""
         nullfmt = NullFormatter()   # no labels for histograms
-
+        minorLocator = AutoMinorLocator(2) # minor tick marks
         # definitions for the axes
         left, width = 0.1, 0.65
         bottom, height = 0.1, 0.65
@@ -223,7 +225,6 @@ class Analysis(object):
 
         axScatter = plt.axes(rect_scatter)
         axScatter.axhline(0, linestyle="--", color="0.4")
-        axScatter.axvline(self.config.magThreshold, linestyle="--", color="0.4")
         axHistx = plt.axes(rect_histx)
         axHisty = plt.axes(rect_histy)
 
@@ -235,18 +236,22 @@ class Analysis(object):
         magMax = max(self.config.magThreshold+1.0, min(magMax, self.data["star"].mag.max()))
 
         axScatter.set_xlim(magMin, magMax)
-        axScatter.set_ylim(self.qMin, self.qMax)
+        axScatter.set_ylim(0.99*self.qMin, 0.99*self.qMax)
 
         nxDecimal = int(-1.0*np.around(np.log10(0.05*abs(magMax - magMin)) - 0.5))
         xBinwidth = min(0.1, np.around(0.05*abs(magMax - magMin), nxDecimal))
         xBins = np.arange(magMin + 0.5*xBinwidth, magMax + 0.5*xBinwidth, xBinwidth)
         nyDecimal = int(-1.0*np.around(np.log10(0.05*abs(self.qMax - self.qMin)) - 0.5))
         yBinwidth = min(0.02, np.around(0.05*abs(self.qMax - self.qMin), nyDecimal))
-        yBins = np.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.5*yBinwidth, yBinwidth)
+        yBins = np.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.55*yBinwidth, yBinwidth)
         axHistx.set_xlim(axScatter.get_xlim())
         axHisty.set_ylim(axScatter.get_ylim())
         axHistx.set_yscale("log", nonposy="clip")
         axHisty.set_xscale("log", nonposy="clip")
+
+        nxSyDecimal = int(-1.0*np.around(np.log10(0.05*abs(self.config.magThreshold - magMin)) - 0.5))
+        xSyBinwidth = min(0.1, np.around(0.05*abs(self.config.magThreshold - magMin), nxSyDecimal))
+        xSyBins = np.arange(magMin + 0.5*xSyBinwidth, self.config.magThreshold + 0.5*xSyBinwidth, xSyBinwidth)
 
         dataPoints = []
         for name, data in self.data.iteritems():
@@ -255,14 +260,20 @@ class Analysis(object):
             alpha = min(0.75, max(0.25, 1.0 - 0.2*np.log10(len(data.mag))))
             # draw mean and stdev at intervals (defined by xBins)
             if name == "star" :
-                axScatter.fill_between(data.mag, axScatter.get_ylim()[0], axScatter.get_ylim()[1],
-                                       where=data.mag>self.config.magThreshold, facecolor="0.87")
-                numHist, dataHist = np.histogram(data.mag, bins=len(xBins))
-                syHist, dataHist = np.histogram(data.mag, bins=len(xBins), weights=data.quantity)
-                syHist2, datahist = np.histogram(data.mag, bins=len(xBins), weights=data.quantity**2)
+                # shade the portion of the plot fainter that self.config.magThreshold
+                axScatter.axvspan(self.config.magThreshold, axScatter.get_xlim()[1], facecolor="k",
+                                  edgecolor='none', alpha=0.15)
+                # compute running stats (just for plotting)
+                belowThresh = data.mag < magMax # set lower if you want to truncate plotted running stats
+                numHist, dataHist = np.histogram(data.mag[belowThresh], bins=len(xSyBins))
+                syHist, dataHist = np.histogram(data.mag[belowThresh], bins=len(xSyBins),
+                                                weights=data.quantity[belowThresh])
+                syHist2, datahist = np.histogram(data.mag[belowThresh], bins=len(xSyBins),
+                                                 weights=data.quantity[belowThresh]**2)
                 meanHist = syHist/numHist
                 stdHist = np.sqrt(syHist2/numHist - meanHist*meanHist)
                 axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist, fmt="k-")
+            # plot data.  Appending in dataPoints for the sake of the legend
             dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
                                            c=data.color, label=name, alpha=alpha))
             if stats is not None and name == "star" :
@@ -272,6 +283,13 @@ class Analysis(object):
             axHistx.hist(data.mag, bins=xBins, color=data.color, alpha=0.3, label=name)
             axHisty.hist(data.quantity, bins=yBins, color=data.color, orientation='horizontal', alpha=0.3,
                          label=name)
+        axHistx.xaxis.set_minor_locator(minorLocator)
+        axHistx.tick_params(axis="x", which="major", length=5)
+        axHisty.yaxis.set_minor_locator(minorLocator)
+        axHisty.tick_params(axis="y", which="major", length=5)
+        axScatter.yaxis.set_minor_locator(minorLocator)
+        axScatter.xaxis.set_minor_locator(minorLocator)
+        axScatter.tick_params(which="major", length=5)
         axScatter.set_xlabel("Mag from %s" % self.config.fluxColumn)
         axScatter.set_ylabel(self.quantityName)
 
@@ -1591,11 +1609,11 @@ class CompareAnalysisTask(CmdLineTask):
     def plotCentroids(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
         distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
         Analysis(catalog, CentroidDiff("x"), "Run Comparison: x offset (arcsec)", "diff_x",
-                 self.config.analysis, prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
+                 self.config.analysis, prefix="first_", qMin=-0.3, qMax=0.3, errFunc=CentroidDiffErr("x"),
                  labeller=OverlapsStarGalaxyLabeller(),
                  ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius)
         Analysis(catalog, CentroidDiff("y"), "Run Comparison: y offset (arcsec)", "diff_y",
-                 self.config.analysis, prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("y"),
+                 self.config.analysis, prefix="first_", qMin=-0.1, qMax=0.1, errFunc=CentroidDiffErr("y"),
                  labeller=OverlapsStarGalaxyLabeller(),
                  ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius)
 
