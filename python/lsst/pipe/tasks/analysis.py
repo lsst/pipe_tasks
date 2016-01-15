@@ -28,9 +28,11 @@ from lsst.pipe.tasks.colorterms import ColortermLibrary
 
 import lsst.meas.astrom as measAstrom
 import lsst.afw.geom as afwGeom
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.afw.coord as afwCoord
 import lsst.afw.image as afwImage
+import lsst.afw.display as afwDisplay
 
 class AllLabeller(object):
     labels = {'all': 0}
@@ -1661,6 +1663,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         return parser
 
     def run(self, dataRefList1, dataRefList2):
+        # self.showBackground(dataRefList1, dataRefList2)
         dataId = dataRefList1[0].dataId
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
         catalog1 = self.readCatalogs(dataRefList1, "src")
@@ -1715,11 +1718,36 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
                 Analysis(catalog, MagDiffCompare(col + "_flux"),
                          "Run Comparison: Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
-                         prefix="first_", qMin=-0.01, qMax=0.01, flags=[col + "_flag"],
+                         prefix="first_", qMin=-0.02, qMax=0.02, flags=[col + "_flag"],
                          errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
                          ).plotAll(dataId, filenamer, self.log, enforcer, hscRun=hscRun,
                                    matchRadius=matchRadius)
 
+    def showBackground(self, dataRefList1, dataRefList2, dataset="calexpBackground"):
+        for dataRef1, dataRef2 in zip(dataRefList1, dataRefList2):
+            # if not dataRef1.datasetExists(dataset) or not dataRef2.datasetExists(dataset):
+            #     continue
+            butler1 = dataRef1.getButler()
+            background1 = butler1.get(dataset, dataRef1.dataId)
+            butler2 = dataRef2.getButler()
+            background2 = butler2.get(dataset, dataRef2.dataId)
+            backgroundImage1 = background1.getImage()
+            backgroundImage2 = background2.getImage()
+            display1 = afwDisplay.getDisplay(frame=0)
+            display2 = afwDisplay.getDisplay(frame=1)
+            display1.mtv(backgroundImage1, title="background1")
+            display2.mtv(backgroundImage2, title="background2")
+            backgroundStats1 = afwMath.makeStatistics(backgroundImage1, afwMath.NPOINT | afwMath.MEAN |
+                                                     afwMath.MEDIAN | afwMath.STDEV |afwMath.ERRORS)
+            backgroundStats2 = afwMath.makeStatistics(backgroundImage2, afwMath.NPOINT | afwMath.MEAN |
+                                                     afwMath.MEDIAN | afwMath.STDEV |afwMath.ERRORS)
+            mean1 = backgroundStats1.getResult(afwMath.MEAN)
+            n1 = backgroundStats1.getValue(afwMath.NPOINT)
+            sd1 = backgroundStats1.getValue(afwMath.STDEV)
+            mean2 = backgroundStats2.getResult(afwMath.MEAN)
+            n2 = backgroundStats2.getValue(afwMath.NPOINT)
+            sd2 = backgroundStats2.getValue(afwMath.STDEV)
+            print "backgrounds: mean1 = , ", mean1, "  mean2 = ", mean2
 
 class MagDiffErr(object):
     """Functor to calculate magnitude difference error"""
