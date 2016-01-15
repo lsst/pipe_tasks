@@ -25,7 +25,7 @@ import lsst.daf.base as dafBase
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.meas.base import SingleFrameMeasurementTask
+from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask
 from lsst.meas.deblender import SourceDeblendTask
 
 class ProcessImageConfig(pexConfig.Config):
@@ -174,7 +174,15 @@ class ProcessImageTask(pipeBase.CmdLineTask):
             self.deblend.run(inputExposure, sources, inputExposure.getPsf())
 
         if self.config.doMeasurement:
-            self.measurement.run(inputExposure, sources, exposureId=self.getExposureId(dataRef))
+            # First run plugins with order up to and including APCORR_ORDER to measure all fluxes
+            # and apply the aperture correction (using the apCorrMap measured in the calibration
+            # task) to the measured fluxes whose plugins were registered with shouldApCorr=True
+            self.measurement.run(inputExposure, sources, exposureId=self.getExposureId(dataRef),
+                                 endOrder=BasePlugin.APCORR_ORDER+1)
+            # Now run the remaining APCORR_ORDER+1 plugins (whose measurements should be performed on
+            # aperture corrected fluxes) disallowing apCorr (to avoid applying it more than once)
+            self.measurement.run(inputExposure, sources, exposureId=self.getExposureId(dataRef),
+                                 beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
 
         if sources is not None and self.config.doWriteSources:
             sourceWriteFlags = (0 if self.config.doWriteHeavyFootprintsInSources

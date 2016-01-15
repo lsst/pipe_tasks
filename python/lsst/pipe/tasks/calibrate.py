@@ -529,12 +529,20 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         sources.extend(sources1, self.schemaMapper)
 
         if self.config.doMeasureApCorr:
-            # Run measurement through all flux measurements (all have the same execution order),
-            # then apply aperture corrections, then run the rest of the measurements
+            # First run plugins with order up to APCORR_ORDER to measure all fluxes
             self.measurement.run(exposure, sources, endOrder=BasePlugin.APCORR_ORDER)
+            # Now measure the aperture correction map
             apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sources).apCorrMap
             exposure.getInfo().setApCorrMap(apCorrMap)
-            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER)
+            # Now run APCORR_ORDER only to apply the aperture correction to the measured fluxes.
+            # Note: no actual plugin gets run here.  The effect of this step is to simply apply
+            # the aperture correction (using the apCorrMap measured above) to any
+            # flux measurements present whose plugins were registered with shouldApCorr=True
+            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER,
+                                 endOrder=BasePlugin.APCORR_ORDER+1)
+            # Now run the remaining APCORR_ORDER+1 plugins (whose measurements should be performed on
+            # aperture corrected fluxes) disallowing apCorr (to avoid applying it more than once)
+            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
         else:
             self.measurement.run(exposure, sources)
 
