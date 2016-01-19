@@ -162,21 +162,23 @@ class Analysis(object):
     @staticmethod
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
                      ha="left", va="top", color="blue", isHist=False, hscRun=None, matchRadius=None):
-        axes.annotate(dataSet+r" (N = {0.num:d} of N[mag>{1:.1f}] = {0.total:d}):".format(stats[dataSet],
-                                                                                          magThreshold),
-                      xy=(x0, y0),xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
+        xOffFact = 0.63*len(" N = {0.num:d} (of {0.total:d})".format(stats[dataSet]))
+        axes.annotate(dataSet+r" N = {0.num:d} (of {0.total:d})".format(stats[dataSet]),
+                      xy=(x0, y0), xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="blue")
+        axes.annotate(r"[mag<{0:.1f}]".format(magThreshold), xy=(x0*xOffFact, y0), xycoords="axes fraction",
+                      ha=ha, va=va, fontsize=10, color="k", alpha=0.55)
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
-                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+                      xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         axes.annotate("stdev = {0.stdev:.4f}".format(stats[dataSet]), xy=(x0, y0-2*yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         yOffMult = 3
         if matchRadius is not None:
             axes.annotate("Match radius = {0:.2f}\"".format(matchRadius), xy=(x0, y0-yOffMult*yOff),
-                           xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+                           xycoords="axes fraction", ha=ha, va=va, fontsize=10)
             yOffMult += 1
         if hscRun is not None:
             axes.annotate("HSC stack run: {0:s}".format(hscRun), xy=(x0, y0-yOffMult*yOff),
-                           xycoords='axes fraction', ha=ha, va=va, fontsize=10, color="#800080")
+                           xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="#800080")
         if isHist:
             l1 = axes.axvline(stats[dataSet].median, linestyle="dotted", color="0.7")
             l2 = axes.axvline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7")
@@ -257,13 +259,21 @@ class Analysis(object):
         xSyBinwidth = min(0.1, np.around(0.05*abs(self.config.magThreshold - magMin), nxSyDecimal))
         xSyBins = np.arange(magMin + 0.5*xSyBinwidth, self.config.magThreshold + 0.5*xSyBinwidth, xSyBinwidth)
 
+        royalBlue = "#4169E1"
+        cornflowerBlue = "#6495ED"
+
         dataPoints = []
+        runStats = []
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
             alpha = min(0.75, max(0.25, 1.0 - 0.2*np.log10(len(data.mag))))
             # draw mean and stdev at intervals (defined by xBins)
+            histColor = "red"
+            if name == "split" :
+                histColor = "green"
             if name == "star" :
+                histColor = royalBlue
                 # shade the portion of the plot fainter that self.config.magThreshold
                 axScatter.axvspan(self.config.magThreshold, axScatter.get_xlim()[1], facecolor="k",
                                   edgecolor='none', alpha=0.15)
@@ -276,17 +286,22 @@ class Analysis(object):
                                                  weights=data.quantity[belowThresh]**2)
                 meanHist = syHist/numHist
                 stdHist = np.sqrt(syHist2/numHist - meanHist*meanHist)
-                axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist, fmt="k-")
+                runStats.append(axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist,
+                                                   fmt="o", mfc=cornflowerBlue, mec="k", ms=4, ecolor="k",
+                                                   label="Running stats\n(all stars)"))
+
             # plot data.  Appending in dataPoints for the sake of the legend
             dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
                                            c=data.color, label=name, alpha=alpha))
+            axHistx.hist(data.mag, bins=xBins, color=histColor, alpha=0.6, label=name)
+            axHisty.hist(data.quantity, bins=yBins, color=histColor, alpha=0.6, orientation='horizontal',
+                         label=name)
+        # Make sure stars used histogram is plotted last
+        for name, data in self.data.iteritems():
             if stats is not None and name == "star" :
                 dataUsed = data.quantity[stats[name].dataUsed]
-                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation='horizontal',
+                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation='horizontal', alpha=1.0,
                              label="used in Stats")
-            axHistx.hist(data.mag, bins=xBins, color=data.color, alpha=0.3, label=name)
-            axHisty.hist(data.quantity, bins=yBins, color=data.color, orientation='horizontal', alpha=0.3,
-                         label=name)
         axHistx.xaxis.set_minor_locator(minorLocator)
         axHistx.tick_params(axis="x", which="major", length=5)
         axHisty.yaxis.set_minor_locator(minorLocator)
@@ -300,6 +315,7 @@ class Analysis(object):
         if stats is not None:
              self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun,
                                matchRadius=matchRadius)
+        dataPoints = dataPoints + runStats
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
         axHistx.legend(fontsize=7, loc=2)
         axHisty.legend(fontsize=7)
