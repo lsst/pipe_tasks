@@ -34,6 +34,8 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.image as afwImage
 import lsst.afw.display as afwDisplay
 
+afwDisplay.setDefaultMaskTransparency(75)
+
 class AllLabeller(object):
     labels = {'all': 0}
     plot = ["all"]
@@ -1664,6 +1666,11 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
 
     def run(self, dataRefList1, dataRefList2):
         # self.showBackground(dataRefList1, dataRefList2)
+        # raw_input("Press enter to continue...")
+        # self.showExposure(dataRefList1, dataRefList2)
+        # raw_input("Press enter to continue...")
+        # self.showPsf(dataRefList1, dataRefList2)
+        # raw_input("Press enter to continue...")
         dataId = dataRefList1[0].dataId
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
         catalog1 = self.readCatalogs(dataRefList1, "src")
@@ -1748,6 +1755,39 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             n2 = backgroundStats2.getValue(afwMath.NPOINT)
             sd2 = backgroundStats2.getValue(afwMath.STDEV)
             print "backgrounds: mean1 = , ", mean1, "  mean2 = ", mean2
+
+    def showExposure(self, dataRefList1, dataRefList2, dataset="calexp"):
+        for dataRef1, dataRef2 in zip(dataRefList1, dataRefList2):
+            # if not dataRef1.datasetExists(dataset) or not dataRef2.datasetExists(dataset):
+            #     continue
+            butler1 = dataRef1.getButler()
+            exposure1 = butler1.get(dataset, dataRef1.dataId)
+            butler2 = dataRef2.getButler()
+            exposure2 = butler2.get(dataset, dataRef2.dataId)
+            display1 = afwDisplay.getDisplay(frame=0)
+            display2 = afwDisplay.getDisplay(frame=1)
+            display1.mtv(exposure1, title="exposure1")
+            display2.mtv(exposure2, title="exposure2")
+
+    def showPsf(self, dataRefList1, dataRefList2, dataset="calexp"):
+        for dataRef1, dataRef2 in zip(dataRefList1, dataRefList2):
+            # if not dataRef1.datasetExists(dataset) or not dataRef2.datasetExists(dataset):
+            #     continue
+            butler1 = dataRef1.getButler()
+            exposure1 = butler1.get(dataset, dataRef1.dataId)
+            butler2 = dataRef2.getButler()
+            exposure2 = butler2.get(dataset, dataRef2.dataId)
+            psf1 = exposure1.getPsf().computeImage().convertFloat()
+            psf2 = exposure2.getPsf().computeImage().convertFloat()
+            # psfDiff = psf1.getArray() - psf2.getArray()
+            display1 = afwDisplay.getDisplay(frame=0)
+            display2 = afwDisplay.getDisplay(frame=1)
+            display3 = afwDisplay.getDisplay(frame=2)
+            display1.mtv(psf1, title="psf1")
+            display2.mtv(psf2, title="psf2")
+            psf1 -= psf2
+            display3.mtv(psf1, title="psfDiff")
+            psf1 += psf2
 
 class MagDiffErr(object):
     """Functor to calculate magnitude difference error"""
