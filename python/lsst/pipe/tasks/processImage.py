@@ -37,8 +37,8 @@ class ProcessImageConfig(pexConfig.Config):
     )
     doDeblend = pexConfig.Field(
         dtype = bool,
-        default = False,    ## NOTE, default this to False until it is fully vetted; #2138
-        doc = "Deblend sources?",
+        default = True,
+        doc = "Separate sources which are blended into distinct entities",
     )
     doMeasurement = pexConfig.Field(
         dtype = bool,
