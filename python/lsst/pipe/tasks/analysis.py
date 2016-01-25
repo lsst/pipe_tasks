@@ -32,6 +32,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.afw.coord as afwCoord
 import lsst.afw.image as afwImage
+import lsst.afw.cameraGeom.utils as cameraGeomUtils
 import lsst.afw.display as afwDisplay
 
 afwDisplay.setDefaultMaskTransparency(75)
@@ -1687,6 +1688,10 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         # raw_input("Press enter to continue...")
         # self.showPsf(dataRefList1, dataRefList2)
         # raw_input("Press enter to continue...")
+        # self.showCamera(dataRefList1, dataRefList2)
+        # raw_input("Press enter to continue...")
+        self.showSources(dataRefList1, dataRefList2)
+        raw_input("Press enter to continue...")
         dataId = dataRefList1[0].dataId
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
         catalog1 = self.readCatalogs(dataRefList1, "src")
@@ -1758,8 +1763,13 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             backgroundImage2 = background2.getImage()
             display1 = afwDisplay.getDisplay(frame=0)
             display2 = afwDisplay.getDisplay(frame=1)
+            display3 = afwDisplay.getDisplay(frame=2)
             display1.mtv(backgroundImage1, title="background1")
             display2.mtv(backgroundImage2, title="background2")
+            backgroundDiff = backgroundImage1.clone()
+            backgroundDiff -= backgroundImage2
+            display3.mtv(backgroundDiff, title="backgroundDiff")
+
             backgroundStats1 = afwMath.makeStatistics(backgroundImage1, afwMath.NPOINT | afwMath.MEAN |
                                                      afwMath.MEDIAN | afwMath.STDEV |afwMath.ERRORS)
             backgroundStats2 = afwMath.makeStatistics(backgroundImage2, afwMath.NPOINT | afwMath.MEAN |
@@ -1801,9 +1811,42 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             display3 = afwDisplay.getDisplay(frame=2)
             display1.mtv(psf1, title="psf1")
             display2.mtv(psf2, title="psf2")
-            psf1 -= psf2
-            display3.mtv(psf1, title="psfDiff")
-            psf1 += psf2
+            psfDiff = psf1.clone()
+            psfDiff -= psf2
+            display3.mtv(psfDiff, title="psfDiff")
+
+    def showCamera(self, dataRefList1, dataRefList2, dataset="calexp"):
+        for dataRef1, dataRef2 in zip(dataRefList1, dataRefList2):
+            print dataRef1.dataId
+            butler1 = dataRef1.getButler()
+            camera1 = butler1.get("camera", dataRef1.dataId)
+            butIm = cameraGeomUtils.ButlerImage(butler1, dataset, verbose=True, dataId=dataRef1.dataId)
+            raw_input()
+            display1 = afwDisplay.getDisplay(frame=0)
+            calexpMos = cameraGeomUtils.showCamera(camera1,
+                                                   cameraGeomUtils.ButlerImage(butler1, dataset, verbose=True),
+                                                   binSize=4, frame=0, display=display1)
+
+    def showSources(self, dataRefList1, dataRefList2, dataset="calexp"):
+        for dataRef1, dataRef2 in zip(dataRefList1, dataRefList2):
+            butler1 = dataRef1.getButler()
+            butler2 = dataRef2.getButler()
+            exposure1 = butler1.get(dataset, dataRef1.dataId)
+            display1 = afwDisplay.getDisplay(frame=0)
+            display1.setMaskTransparency(75)
+            display1.mtv(exposure1, title="display1")
+            display1.mtv(exposure1, title="Sources")
+            sources1 = butler1.get('src', dataRef1.dataId)
+            sources2 = butler2.get('src', dataRef2.dataId)
+            with display1.Buffering():
+                for s1 in sources1:
+                    xy1 = s1.getCentroid()
+                    display1.dot('+', *xy1, size=8,
+                                 ctype=afwDisplay.MAGENTA if s1.get("flags_negative") else afwDisplay.RED)
+                for s2 in sources2:
+                    xy2 = s2.getCentroid()
+                    display1.dot('o', *xy2, size=9,
+                                 ctype=afwDisplay.CYAN if s2.get("flags_negative") else afwDisplay.GREEN)
 
 class MagDiffErr(object):
     """Functor to calculate magnitude difference error"""
