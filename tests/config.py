@@ -20,30 +20,24 @@
 # the GNU General Public License along with this program.  If not, 
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import time
 import unittest
 
 import lsst.utils.tests as utilsTests
 import lsst.pipe.tasks as pipeTasks
-import lsst.pipe.tasks.calibrate
 
 class CalibrateTestCase(unittest.TestCase):
-    conf = pipeTasks.calibrate.CalibrateConfig()
-    conf.validate()
-    conf.doPhotoCal = False
-    conf.validate()
-    conf.doAstrometry = False
-    conf.validate()
+    def testGood(self):
+        conf = pipeTasks.calibrate.CalibrateConfig()
+        conf.validate()
+        conf.doPhotoCal = False
+        conf.validate()
+        conf.doAstrometry = False
+        conf.validate()
 
-
-
-
-
-
-
-
-
-
+    def testBad(self):
+        conf = pipeTasks.calibrate.CalibrateConfig()
+        conf.doPsf = True
+        
 
 
 def suite():
