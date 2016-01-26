@@ -30,10 +30,7 @@ import lsst.pipe.tasks.calibrate
 class CalibrateTestCase(unittest.TestCase):
     conf = pipeTasks.calibrate.CalibrateConfig()
     conf.validate()
-    # Demonstrate typo
     conf.doPhotoCal = False
-    conf.validate()
-    conf.doPsf = True
     conf.validate()
     conf.doAstrometry = False
     conf.validate()
@@ -56,9 +53,9 @@ def suite():
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)
 
-def run(shouldExit=False):
+def run():
     """Run the tests"""
-    utilsTests.run(suite(), shouldExit)
+    utilsTests.run(suite())
 
 if __name__ == "__main__":
-    run(True)
+    run()
