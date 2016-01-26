@@ -23,11 +23,11 @@
 import unittest
 
 import lsst.utils.tests as utilsTests
-import lsst.pipe.tasks as pipeTasks
+from lsst.pipe.tasks.calibrate import CalibrateConfig
 
 class CalibrateTestCase(unittest.TestCase):
     def testGood(self):
-        conf = pipeTasks.calibrate.CalibrateConfig()
+        conf = CalibrateConfig()
         conf.validate()
         conf.doPhotoCal = False
         conf.validate()
@@ -35,10 +35,9 @@ class CalibrateTestCase(unittest.TestCase):
         conf.validate()
 
     def testBad(self):
-        conf = pipeTasks.calibrate.CalibrateConfig()
-        conf.doPsf = True
-        
-
+        conf = CalibrateConfig()
+        with self.assertRaises(Exception):
+            conf.invalidField = True
 
 def suite():
     utilsTests.init()
