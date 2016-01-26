@@ -42,7 +42,6 @@ TrivialMeasurement schema, then check that it is transformed properly by the
 TrivialMeasurementTransform.
 """
 import contextlib
-import math
 import os
 import shutil
 import tempfile
@@ -56,8 +55,7 @@ import lsst.meas.base as measBase
 import lsst.utils.tests as utilsTests
 
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
-from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask,
-                                                  RunTransformConfig, SrcTransformTask)
+from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask)
 
 PLUGIN_NAME = "base_TrivialMeasurement"
 
