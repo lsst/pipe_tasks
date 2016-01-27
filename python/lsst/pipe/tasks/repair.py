@@ -169,6 +169,7 @@ class RepairTask(pipeBase.Task):
         Display code should be updated once we settle on a standard way of controlling what is displayed.
     """
     ConfigClass = RepairConfig
+    _DefaultName = "repair"
 
     def __init__(self, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
