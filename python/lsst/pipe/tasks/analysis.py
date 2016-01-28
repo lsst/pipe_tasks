@@ -2,7 +2,7 @@
 
 import os
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy
 numpy.seterr(all="ignore")
@@ -31,20 +31,20 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.image as afwImage
 
 class AllLabeller(object):
-    labels = {'all': 0}
+    labels = {"all": 0}
     plot = ["all"]
     def __call__(self, catalog):
         return numpy.zeros(len(catalog))
 
 class StarGalaxyLabeller(object):
-    labels = {'star': 0, 'galaxy': 1}
+    labels = {"star": 0, "galaxy": 1}
     plot = ["star"]
-    _column = 'base_ClassificationExtendedness_value'
+    _column = "base_ClassificationExtendedness_value"
     def __call__(self, catalog):
         return numpy.where(catalog[self._column] < 0.5, 0, 1)
 
 class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
-    labels = {'star': 0, 'galaxy': 1, 'split': 2}
+    labels = {"star": 0, "galaxy": 1, "split": 2}
     def __init__(self, first="first_", second="second_"):
         self._first = first
         self._second = second
@@ -54,7 +54,7 @@ class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
         return numpy.where(first == second, first, 2)
 
 class MatchesStarGalaxyLabeller(StarGalaxyLabeller):
-    _column = 'src_base_ClassificationExtendedness_value'
+    _column = "src_base_ClassificationExtendedness_value"
 
 class CosmosLabeller(StarGalaxyLabeller):
     """Do star/galaxy classification using Alexie Leauthaud's Cosmos catalog"""
@@ -148,13 +148,13 @@ class Analysis(object):
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
                      ha="left", va="top", color="blue"):
         axes.annotate(dataSet+" (N = {0.num:d} of Ntot = {0.total:d}):".format(stats[dataSet]),
-                      xy=(x0, y0),xycoords='axes fraction', ha=ha, va=va, fontsize=10, color='blue')
+                      xy=(x0, y0), xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="blue")
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
-                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+                      xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         axes.annotate("stdev = {0.stdev:.4f}".format(stats[dataSet]), xy=(x0, y0-2*yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
-                      xycoords='axes fraction', ha=ha, va=va, fontsize=10)
+                      xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         l1 = plt.axhline(stats[dataSet].median, linestyle="dotted", color="0.8", label="median")
         l2 = plt.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.8",
                          label="clip")
@@ -202,7 +202,7 @@ class Analysis(object):
         axes.set_ylim(0.9, numMax)
         axes.set_xlabel(self.quantityName)
         axes.set_ylabel("Number")
-        axes.set_yscale('log', nonposy='clip')
+        axes.set_yscale("log", nonposy="clip")
         x0, y0 = 0.03, 0.96
         if self.qMin == 0.0 :
             x0, y0 = 0.75, 0.81
@@ -225,7 +225,7 @@ class Analysis(object):
             if len(data.mag) == 0:
                 continue
             selection = data.selection & good
-            axes.scatter(ra[selection], dec[selection], s=2, marker='o', lw=0,
+            axes.scatter(ra[selection], dec[selection], s=2, marker="o", lw=0,
                          c=data.quantity[good[data.selection]], cmap=cmap, vmin=self.qMin, vmax=self.qMax)
         axes.set_xlabel("RA (deg)")
         axes.set_ylabel("Dec (deg)")
@@ -249,7 +249,7 @@ class Analysis(object):
             if len(data.mag) == 0:
                 continue
             selection = data.selection & good
-            kwargs = {'s': 5, 'marker': 'o', 'lw': 0, 'c': data.color, 'alpha': 0.5}
+            kwargs = {"s": 5, "marker": "o", "lw": 0, "c": data.color, "alpha": 0.5}
             axes[0].scatter(ra[selection], data.quantity[good[data.selection]], label=name, **kwargs)
             axes[1].scatter(dec[selection], data.quantity[good[data.selection]], **kwargs)
 
@@ -379,7 +379,7 @@ class CcdAnalysis(Analysis):
                 continue
             selection = data.selection & good
             quantity = data.quantity[good[data.selection]]
-            kwargs = {'s': 2, 'marker': 'o', 'lw': 0, 'alpha': 0.5, 'cmap': cmap}
+            kwargs = {"s": 2, "marker": "o", "lw": 0, "alpha": 0.5, "cmap": cmap}
             axes[0].scatter(xx[selection], quantity, c=ccd[selection], **kwargs)
             axes[1].scatter(yy[selection], quantity, c=ccd[selection], **kwargs)
 
@@ -418,7 +418,7 @@ class CcdAnalysis(Analysis):
             if len(data.mag) == 0:
                 continue
             selection = data.selection & good
-            axes.scatter(xx[selection], yy[selection], s=2, marker='o', lw=0,
+            axes.scatter(xx[selection], yy[selection], s=2, marker="o", lw=0,
                          c=data.quantity[good[data.selection]], cmap=cmap, vmin=self.qMin, vmax=self.qMax)
         axes.set_xlabel("x_fpa (pixels)")
         axes.set_ylabel("y_fpa (pixels)")
@@ -640,7 +640,7 @@ class CoaddAnalysisTask(CmdLineTask):
         return concatenateCatalogs(catList)
 
     def plotMags(self, catalog, filenamer, dataId):
-        enforcer = Enforcer(requireLess={'star': {'stdev': 0.02}})
+        enforcer = Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if col + "_flux" in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff(col + "_flux", "base_PsfFlux_flux"), "Mag(%s) - PSFMag"
@@ -654,7 +654,7 @@ class CoaddAnalysisTask(CmdLineTask):
         self.AnalysisClass(catalog, deconvMom, "Deconvolved moments", "deconvMom", self.config.analysis,
                            qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={'star': {'stdev': 0.2}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.2}}))
 
     def plotForced(self, unforced, forced, filenamer, dataId):
         catalog = joinMatches(afwTable.matchRaDec(unforced, forced,
@@ -675,7 +675,7 @@ class CoaddAnalysisTask(CmdLineTask):
         return joinMatches(matches, "first_", "second_")
 
     def plotOverlaps(self, overlaps, filenamer, dataId):
-        magEnforcer = Enforcer(requireLess={'star': {'stdev': 0.003}})
+        magEnforcer = Enforcer(requireLess={"star": {"stdev": 0.003}})
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in overlaps.schema:
                 self.AnalysisClass(overlaps, MagDiff("first_" + col + "_flux", "second_" + col + "_flux"),
@@ -685,7 +685,7 @@ class CoaddAnalysisTask(CmdLineTask):
                                    labeller=OverlapsStarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, magEnforcer)
 
-        distEnforcer = Enforcer(requireLess={'star': {'stdev': 0.005}})
+        distEnforcer = Enforcer(requireLess={"star": {"stdev": 0.005}})
         self.AnalysisClass(overlaps, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", "overlap_distance", self.config.analysis, prefix="first_",
                            qMin=0.0, qMax=0.15, labeller=OverlapsStarGalaxyLabeller(),
@@ -697,33 +697,33 @@ class CoaddAnalysisTask(CmdLineTask):
                            description + "_mag",
                            self.config.analysisMatches, prefix="src_", labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={'star': {'stdev': 0.030}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.030}}))
         self.AnalysisClass(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", description + "_distance", self.config.analysisMatches,
                            prefix="src_", qMin=0.0, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={'star': {'stdev': 0.050}}),
+                                     Enforcer(requireLess={"star": {"stdev": 0.050}}),
                                      forcedMean=0.0)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_ra", "ref_coord_ra", "ref_coord_dec"),
                            "dRA*cos(Dec) (arcsec)", description + "_ra", self.config.analysisMatches,
                            prefix="src_", qMin=-self.config.matchesMaxDistance,
                            qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={'star': {'stdev': 0.050}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.050}}))
         self.AnalysisClass(matches, AstrometryDiff("src_coord_dec", "ref_coord_dec"),
                            "dDec (arcsec)", description + "_dec", self.config.analysisMatches, prefix="src_",
                            qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={'star': {'stdev': 0.050}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.050}}))
 
     def plotCosmos(self, catalog, filenamer, cosmos, dataId):
         labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
         self.AnalysisClass(catalog, deconvMom, "Deconvolved moments", "cosmos", self.config.analysis,
                            qMin=-1.0, qMax=6.0, labeller=labeller,
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={'star': {'stdev': 0.2}}))
+                                     Enforcer(requireLess={"star": {"stdev": 0.2}}))
 
     def matchCatalog(self, catalog, filterName, astrometryConfig):
         astrometry = AstrometryTask(astrometryConfig)
@@ -814,7 +814,7 @@ straightTransforms = {
 }
 
 class NumStarLabeller(object):
-    labels = {'star': 0, 'maybe': 1, 'notStar': 2}
+    labels = {"star": 0, "maybe": 1, "notStar": 2}
     plot = ["star"]
     def __init__(self, numBands):
         self.numBands = numBands
@@ -1044,7 +1044,7 @@ class ColorAnalysisTask(CmdLineTask):
             self.AnalysisClass(combined, ColorColorDistance("g", "r", "i", poly, 0.3, 1.1), "griPerp", "gri",
                                self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
                                ).plotAll(dataId, filenamer, self.log,
-                                         Enforcer(requireLess={'all': {'stdev': 0.05}}))
+                                         Enforcer(requireLess={"all": {"stdev": 0.05}}))
         if filters.issuperset(set(("HSC-R", "HSC-I", "HSC-Z"))):
             poly = colorColorPlot(filenamer(dataId, description="riz", style="fit"),
                                   color("HSC-R", "HSC-I"), color("HSC-I", "HSC-Z"), "r-i", "i-z",
@@ -1052,7 +1052,7 @@ class ColorAnalysisTask(CmdLineTask):
             self.AnalysisClass(combined, ColorColorDistance("r", "i", "z", poly), "rizPerp", "riz",
                                self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
                                ).plotAll(dataId, filenamer, self.log,
-                                         Enforcer(requireLess={'all': {'stdev': 0.02}}))
+                                         Enforcer(requireLess={"all": {"stdev": 0.02}}))
         if filters.issuperset(set(("HSC-I", "HSC-Z", "HSC-Y"))):
             poly = colorColorPlot(filenamer(dataId, description="izy", style="fit"),
                                   color("HSC-I", "HSC-Z"), color("HSC-Z", "HSC-Y"), "i-z", "z-y",
@@ -1060,7 +1060,7 @@ class ColorAnalysisTask(CmdLineTask):
             self.AnalysisClass(combined, ColorColorDistance("i", "z", "y", poly), "izyPerp", "izy",
                                self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
                                ).plotAll(dataId, filenamer, self.log,
-                                         Enforcer(requireLess={'all': {'stdev': 0.02}}))
+                                         Enforcer(requireLess={"all": {"stdev": 0.02}}))
         if filters.issuperset(set(("HSC-Z", "NB0921", "HSC-Y"))):
             poly = colorColorPlot(filenamer(dataId, description="z9y", style="fit"),
                                   color("HSC-Z", "NB0921"), color("NB0921", "HSC-Y"), "z-n921", "n921-y",
@@ -1068,7 +1068,7 @@ class ColorAnalysisTask(CmdLineTask):
             self.AnalysisClass(combined, ColorColorDistance("z", "n921", "y", poly), "z9yPerp", "z9y",
                                self.config.analysis, flags=["bad"], qMin=-0.1, qMax=0.1,
                                ).plotAll(dataId, filenamer, self.log,
-                                         Enforcer(requireLess={'all': {'stdev': 0.02}}))
+                                         Enforcer(requireLess={"all": {"stdev": 0.02}}))
 
     def _getConfigName(self):
         return None
@@ -1103,13 +1103,13 @@ def colorColorPlot(filename, xx, yy, xLabel, yLabel, xRange=None, yRange=None, o
     xLine = numpy.linspace(xRange[0], xRange[1], 1000)
     yLine = numpy.polyval(poly, xLine)
 
-    kwargs = dict(s=2, marker='o', lw=0, alpha=0.3)
-    axes[0].scatter(xx[keep], yy[keep], c='blue', label="used", **kwargs)
-    axes[0].scatter(xx[~keep], yy[~keep], c='black', label="other", **kwargs)
+    kwargs = dict(s=2, marker="o", lw=0, alpha=0.3)
+    axes[0].scatter(xx[keep], yy[keep], c="blue", label="used", **kwargs)
+    axes[0].scatter(xx[~keep], yy[~keep], c="black", label="other", **kwargs)
     axes[0].set_xlabel(xLabel)
     axes[0].set_ylabel(yLabel)
     axes[0].legend(loc="upper left") # usually blank in color-color plots...
-    axes[0].plot(xLine, yLine, 'r-')
+    axes[0].plot(xLine, yLine, "r-")
 
     # Determine quality of locus
     distance2 = []
@@ -1129,7 +1129,7 @@ def colorColorPlot(filename, xx, yy, xLabel, yLabel, xRange=None, yRange=None, o
     axes[1].hist(distance[good], numBins, range=(-0.05, 0.05), normed=False)
     axes[1].set_xlabel("Distance to polynomial fit (mag)")
     axes[1].set_ylabel("Number")
-    axes[1].set_yscale('log', nonposy='clip')
+    axes[1].set_yscale("log", nonposy="clip")
 
     fig.savefig(filename)
     plt.close(fig)
@@ -1383,7 +1383,7 @@ class CompareAnalysisTask(CmdLineTask):
         return joinMatches(matches, "first_", "second_")
 
     def plotMags(self, catalog, filenamer, dataId):
-        enforcer = None # Enforcer(requireLess={'star': {'stdev': 0.02}})
+        enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
                 Analysis(catalog, MagDiff("first_" + col + "_flux", "second_" + col + "_flux"),
@@ -1393,7 +1393,7 @@ class CompareAnalysisTask(CmdLineTask):
                          ).plotAll(dataId, filenamer, self.log, enforcer)
 
     def plotCentroids(self, catalog, filenamer, dataId):
-        distEnforcer = None # Enforcer(requireLess={'star': {'stdev': 0.005}})
+        distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
         Analysis(catalog, CentroidDiff("x"), "x offset (arcsec)", "diff_x", self.config.analysis,
                  prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
                  labeller=OverlapsStarGalaxyLabeller(),
@@ -1501,6 +1501,6 @@ class CentroidDiffErr(CentroidDiff):
 
         subkeys1 = [catalog.schema[firstx].asKey(), catalog.schema[firsty].asKey()]
         subkeys2 = [catalog.schema[secondx].asKey(), catalog.schema[secondy].asKey()]
-        menu = {'x': 0, 'y': 1}
+        menu = {"x": 0, "y": 1}
 
         return numpy.hypot(catalog[subkeys1[menu[self.component]]], catalog[subkeys2[menu[self.component]]])
