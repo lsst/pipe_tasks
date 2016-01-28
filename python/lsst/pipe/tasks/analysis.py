@@ -5,9 +5,9 @@ import re
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.ticker import NullFormatter
-import numpy
-numpy.seterr(all="ignore")
+from matplotlib.ticker import NullFormatter, AutoMinorLocator
+import numpy as np
+np.seterr(all="ignore")
 from eups import Eups
 eups = Eups()
 import functools
@@ -36,14 +36,14 @@ class AllLabeller(object):
     labels = {"all": 0}
     plot = ["all"]
     def __call__(self, catalog):
-        return numpy.zeros(len(catalog))
+        return np.zeros(len(catalog))
 
 class StarGalaxyLabeller(object):
     labels = {"star": 0, "galaxy": 1}
     plot = ["star"]
     _column = "base_ClassificationExtendedness_value"
     def __call__(self, catalog):
-        return numpy.where(catalog[self._column] < 0.5, 0, 1)
+        return np.where(catalog[self._column] < 0.5, 0, 1)
 
 class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
     labels = {"star": 0, "galaxy": 1, "split": 2}
@@ -51,9 +51,9 @@ class OverlapsStarGalaxyLabeller(StarGalaxyLabeller):
         self._first = first
         self._second = second
     def __call__(self, catalog):
-        first = numpy.where(catalog[self._first + self._column] < 0.5, 0, 1)
-        second = numpy.where(catalog[self._second + self._column] < 0.5, 0, 1)
-        return numpy.where(first == second, first, 2)
+        first = np.where(catalog[self._first + self._column] < 0.5, 0, 1)
+        second = np.where(catalog[self._second + self._column] < 0.5, 0, 1)
+        return np.where(first == second, first, 2)
 
 class MatchesStarGalaxyLabeller(StarGalaxyLabeller):
     _column = "src_base_ClassificationExtendedness_value"
@@ -78,7 +78,7 @@ class CosmosLabeller(StarGalaxyLabeller):
         # A kdTree would be better, but this is all we have right now
         matches = afwTable.matchRaDec(self.cosmos, catalog, self.radius)
         good = set(mm.second.getId() for mm in matches)
-        return numpy.array([0 if ii in good else 1 for ii in catalog["id"]])
+        return np.array([0 if ii in good else 1 for ii in catalog["id"]])
 
 class Filenamer(object):
     """Callable that provides a filename given a style"""
@@ -101,6 +101,9 @@ class Stats(Struct):
     def __init__(self, dataUsed, num, total, mean, stdev, forcedMean, median, clip):
         Struct.__init__(self, dataUsed=dataUsed, num=num, total=total, mean=mean, stdev=stdev,
                         forcedMean=forcedMean, median=median, clip=clip)
+    def __repr__(self):
+        return "Stats(mean={0.mean:.4f}; stdev={0.stdev:.4f}; num={0.num:d}; total={0.total:d}; " \
+            "forcedMean={0.forcedMean:})".format(self)
 
 colorList = ["blue", "red", "green", "black", "yellow", "cyan", "magenta", ]
 
@@ -110,7 +113,7 @@ class AnalysisConfig(Config):
                                "base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag"])
     clip = Field(dtype=float, default=4.0, doc="Rejection threshold (stdev)")
     magThreshold = Field(dtype=float, default=21.0, doc="Magnitude threshold to apply")
-    magPlotMin = Field(dtype=float, default=15.5, doc="Minimum magnitude to plot")
+    magPlotMin = Field(dtype=float, default=14.0, doc="Minimum magnitude to plot")
     magPlotMax = Field(dtype=float, default=28.0, doc="Maximum magnitude to plot")
     fluxColumn = Field(dtype=str, default="base_PsfFlux_flux", doc="Column to use for flux/magnitude plotting")
     zp = Field(dtype=float, default=27.0, doc="Magnitude zero point to apply")
@@ -127,18 +130,22 @@ class Analysis(object):
         self.config = config
         self.qMin = qMin
         self.qMax = qMax
+        if labeller.labels.has_key("galaxy"):
+            self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
+        if "galaxy" in labeller.plot:
+            self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
         self.prefix = prefix
         self.flags = flags
         self.errFunc = errFunc
 
         self.quantity = func(catalog)
         self.quantityError = errFunc(catalog) if errFunc is not None else None
-        # self.mag = self.config/zp - 2.5*numpy.log10(catalog[prefix + self.config.fluxColumn])
-        self.mag = -2.5*numpy.log10(catalog[prefix + self.config.fluxColumn])
+        # self.mag = self.config/zp - 2.5*np.log10(catalog[prefix + self.config.fluxColumn])
+        self.mag = -2.5*np.log10(catalog[prefix + self.config.fluxColumn])
 
-        self.good = numpy.isfinite(self.quantity) & numpy.isfinite(self.mag)
+        self.good = np.isfinite(self.quantity) & np.isfinite(self.mag)
         if errFunc is not None:
-            self.good &= numpy.isfinite(self.quantityError)
+            self.good &= np.isfinite(self.quantityError)
         for ff in list(config.flags) + flags:
             self.good &= ~catalog[prefix + ff]
 
@@ -150,14 +157,20 @@ class Analysis(object):
     @staticmethod
     def annotateAxes(plt, axes, stats, dataSet, magThreshold, x0=0.03, y0=0.96, yOff=0.045,
                      ha="left", va="top", color="blue", isHist=False, hscRun=None):
-        axes.annotate(dataSet+r" (N = {0.num:d} of Ntot = {0.total:d}):".format(stats[dataSet]),
+        xOffFact = 0.64*len(" N = {0.num:d} (of {0.total:d})".format(stats[dataSet]))
+        axes.annotate(dataSet+r" N = {0.num:d} (of {0.total:d})".format(stats[dataSet]),
                       xy=(x0, y0), xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="blue")
+        axes.annotate(r"[mag<{0:.1f}]".format(magThreshold), xy=(x0*xOffFact, y0), xycoords="axes fraction",
+                      ha=ha, va=va, fontsize=10, color="k", alpha=0.55)
         axes.annotate("mean = {0.mean:.4f}".format(stats[dataSet]), xy=(x0, y0-yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
         axes.annotate("stdev = {0.stdev:.4f}".format(stats[dataSet]), xy=(x0, y0-2*yOff),
                       xycoords="axes fraction", ha=ha, va=va, fontsize=10)
-        axes.annotate("magThreshold = {0:.1f}".format(magThreshold), xy=(x0, y0-3*yOff),
-                      xycoords="axes fraction", ha=ha, va=va, fontsize=10)
+        yOffMult = 3
+        if matchRadius is not None:
+            axes.annotate("Match radius = {0:.2f}\"".format(matchRadius), xy=(x0, y0-5*yOff),
+                           xycoords="axes fraction", ha=ha, va=va, fontsize=10)
+            yOffMult += 1
         if hscRun is not None:
             axes.annotate("HSC stack run: {0:s}".format(hscRun), xy=(x0, y0-4*yOff),
                            xycoords="axes fraction", ha=ha, va=va, fontsize=10, color="#800080")
@@ -175,12 +188,14 @@ class Analysis(object):
     def plotAgainstMag(self, filename, stats=None, hscRun=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
+        plt.axhline(0, linestyle="--", color="0.4")
+
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
         dataPoints = []
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
-            dataPoints.append(axes.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
+            dataPoints.append(axes.scatter(data.mag, data.quantity, s=4, marker="o", lw=0,
                                            c=data.color, label=name, alpha=0.3))
         axes.set_xlabel("Mag from %s" % self.config.fluxColumn)
         axes.set_ylabel(self.quantityName)
@@ -195,21 +210,21 @@ class Analysis(object):
     def plotAgainstMagAndHist(self, filename, stats=None, hscRun=None):
         """Plot quantity against magnitude with side histogram"""
         nullfmt = NullFormatter()   # no labels for histograms
-
+        minorLocator = AutoMinorLocator(2) # minor tick marks
         # definitions for the axes
-        left, width = 0.1, 0.65
+        left, width = 0.12, 0.65
         bottom, height = 0.1, 0.65
-        bottom_h = left_h = left + width + 0.02
+        left_h = left + width + 0.02
+        bottom_h = bottom + width + 0.02
         rect_scatter = [left, bottom, width, height]
         rect_histx = [left, bottom_h, width, 0.2]
-        rect_histy = [left_h, bottom, 0.2, height]
+        rect_histy = [left_h, bottom, 0.18, height]
 
         # start with a rectangular Figure
         plt.figure(1)
 
         axScatter = plt.axes(rect_scatter)
         axScatter.axhline(0, linestyle="--", color="0.4")
-        axScatter.axvline(self.config.magThreshold, linestyle="--", color="0.4")
         axHistx = plt.axes(rect_histx)
         axHisty = plt.axes(rect_histy)
 
@@ -221,58 +236,98 @@ class Analysis(object):
         magMax = max(self.config.magThreshold+1.0, min(magMax, self.data["star"].mag.max()))
 
         axScatter.set_xlim(magMin, magMax)
-        axScatter.set_ylim(self.qMin, self.qMax)
+        axScatter.set_ylim(0.99*self.qMin, 0.99*self.qMax)
 
-        xBinwidth = 0.1
-        xBins = numpy.arange(magMin + 0.5*xBinwidth, magMax + 0.5*xBinwidth, xBinwidth)
-        yBinwidth = 0.02
-        yBins = numpy.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.5*yBinwidth, yBinwidth)
+        nxDecimal = int(-1.0*np.around(np.log10(0.05*abs(magMax - magMin)) - 0.5))
+        xBinwidth = min(0.1, np.around(0.05*abs(magMax - magMin), nxDecimal))
+        xBins = np.arange(magMin + 0.5*xBinwidth, magMax + 0.5*xBinwidth, xBinwidth)
+        nyDecimal = int(-1.0*np.around(np.log10(0.05*abs(self.qMax - self.qMin)) - 0.5))
+        yBinwidth = min(0.02, np.around(0.05*abs(self.qMax - self.qMin), nyDecimal))
+        yBins = np.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.55*yBinwidth, yBinwidth)
         axHistx.set_xlim(axScatter.get_xlim())
         axHisty.set_ylim(axScatter.get_ylim())
         axHistx.set_yscale("log", nonposy="clip")
         axHisty.set_xscale("log", nonposy="clip")
 
+        nxSyDecimal = int(-1.0*np.around(np.log10(0.05*abs(self.config.magThreshold - magMin)) - 0.5))
+        xSyBinwidth = min(0.1, np.around(0.05*abs(self.config.magThreshold - magMin), nxSyDecimal))
+        xSyBins = np.arange(magMin + 0.5*xSyBinwidth, self.config.magThreshold + 0.5*xSyBinwidth, xSyBinwidth)
+
+        royalBlue = "#4169E1"
+        cornflowerBlue = "#6495ED"
+
         dataPoints = []
+        runStats = []
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
-            alpha = min(0.75, max(0.25, 0.2*numpy.log10(len(data.mag))))
+            alpha = min(0.75, max(0.25, 1.0 - 0.2*np.log10(len(data.mag))))
             # draw mean and stdev at intervals (defined by xBins)
+            histColor = "red"
+            if name == "split" :
+                histColor = "green"
             if name == "star" :
-                numHist, dataHist = numpy.histogram(data.mag, bins=len(xBins))
-                syHist, dataHist = numpy.histogram(data.mag, bins=len(xBins), weights=data.quantity)
-                syHist2, datahist = numpy.histogram(data.mag, bins=len(xBins), weights=data.quantity**2)
+                histColor = royalBlue
+                # shade the portion of the plot fainter that self.config.magThreshold
+                axScatter.axvspan(self.config.magThreshold, axScatter.get_xlim()[1], facecolor="k",
+                                  edgecolor="none", alpha=0.15)
+                # compute running stats (just for plotting)
+                belowThresh = data.mag < magMax # set lower if you want to truncate plotted running stats
+                numHist, dataHist = np.histogram(data.mag[belowThresh], bins=len(xSyBins))
+                syHist, dataHist = np.histogram(data.mag[belowThresh], bins=len(xSyBins),
+                                                weights=data.quantity[belowThresh])
+                syHist2, datahist = np.histogram(data.mag[belowThresh], bins=len(xSyBins),
+                                                 weights=data.quantity[belowThresh]**2)
                 meanHist = syHist/numHist
-                stdHist = numpy.sqrt(syHist2/numHist - meanHist*meanHist)
-                axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist,
-                                   fmt=data.color[0]+"-", alpha=0.3)
-            dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=2, marker="o", lw=0,
-                                           c=data.color, label=name, alpha=0.5))
+                stdHist = np.sqrt(syHist2/numHist - meanHist*meanHist)
+                runStats.append(axScatter.errorbar((dataHist[1:] + dataHist[:-1])/2, meanHist, yerr=stdHist,
+                                                   fmt="o", mfc=cornflowerBlue, mec="k", ms=4, ecolor="k",
+                                                   label="Running stats\n(all stars)"))
+
+            # plot data.  Appending in dataPoints for the sake of the legend
+            dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=4, marker="o", lw=0,
+                                           c=data.color, label=name, alpha=alpha))
+            axHistx.hist(data.mag, bins=xBins, color=histColor, alpha=0.6, label=name)
+            axHisty.hist(data.quantity, bins=yBins, color=histColor, alpha=0.6, orientation="horizontal",
+                         label=name)
+        # Make sure stars used histogram is plotted last
+        for name, data in self.data.iteritems():
             if stats is not None and name == "star" :
                 dataUsed = data.quantity[stats[name].dataUsed]
-                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation='horizontal')
-            axHistx.hist(data.mag, bins=xBins, color=data.color, alpha=0.3)
-            axHisty.hist(data.quantity, bins=yBins, color=data.color, orientation='horizontal', alpha=0.3)
+                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation="horizontal", alpha=1.0,
+                             label="used in Stats")
+        axHistx.xaxis.set_minor_locator(minorLocator)
+        axHistx.tick_params(axis="x", which="major", length=5)
+        axHisty.yaxis.set_minor_locator(minorLocator)
+        axHisty.tick_params(axis="y", which="major", length=5)
+        axScatter.yaxis.set_minor_locator(minorLocator)
+        axScatter.xaxis.set_minor_locator(minorLocator)
+        axScatter.tick_params(which="major", length=5)
         axScatter.set_xlabel("Mag from %s" % self.config.fluxColumn)
         axScatter.set_ylabel(self.quantityName)
 
         if stats is not None:
-             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun)
+             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun,
+                               matchRadius=matchRadius)
+        dataPoints = dataPoints + runStats
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
+        axHistx.legend(fontsize=7, loc=2)
+        axHisty.legend(fontsize=7)
         plt.savefig(filename)
         plt.close()
 
     def plotHistogram(self, filename, numBins=51, stats=None, hscRun=None):
         """Plot histogram of quantity"""
         fig, axes = plt.subplots(1, 1)
+        axes.axvline(0, linestyle="--", color="0.6")
         numMax = 0
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
-            good = numpy.isfinite(data.quantity)
+            good = np.isfinite(data.quantity)
             if self.config.magThreshold is not None:
                 good &= data.mag < self.config.magThreshold
-            nValid = numpy.abs(data.quantity[good]) <= self.qMax # need to have datapoints lying within range
+            nValid = np.abs(data.quantity[good]) <= self.qMax # need to have datapoints lying within range
             if good.sum() == 0 or nValid.sum() == 0:
                 continue
             num, _, _ = axes.hist(data.quantity[good], numBins, range=(self.qMin, self.qMax), normed=False,
@@ -293,13 +348,17 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotSkyPosition(self, filename, cmap=plt.cm.brg, stats=None, hscRun=None):
+    def plotSkyPosition(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None):
         """Plot quantity as a function of position"""
-        ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
-        dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
+        ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
+        dec = np.rad2deg(self.catalog[self.prefix + "coord_dec"])
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
-                numpy.ones(len(self.mag), dtype=bool))
-        fig, axes = plt.subplots(1, 1)
+                np.ones(len(self.mag), dtype=bool))
+        if self.data.has_key("galaxy"):
+            vMin, vMax = 0.5*self.qMin, 0.5*self.qMax
+        else:
+            vMin, vMax = self.qMin, self.qMax
+        fig, axes = plt.subplots(1, 1, subplot_kw=dict(axisbg="0.7"))
         for name, data in self.data.iteritems():
             if not data.plot:
                 continue
@@ -307,14 +366,14 @@ class Analysis(object):
                 continue
             selection = data.selection & good
             axes.scatter(ra[selection], dec[selection], s=2, marker="o", lw=0,
-                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=self.qMin, vmax=self.qMax)
+                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=vMin, vmax=vMax)
         axes.set_xlabel("RA (deg)")
         axes.set_ylabel("Dec (deg)")
 
-        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=self.qMin, vmax=self.qMax))
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vMin, vmax=vMax))
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         cb = plt.colorbar(mappable)
-        cb.set_label(self.quantityName, rotation=270)
+        cb.set_label(self.quantityName, rotation=270, labelpad=15)
         if hscRun is not None:
             axes.set_title("HSC stack run: " + hscRun, color="#800080")
         fig.savefig(filename)
@@ -323,23 +382,24 @@ class Analysis(object):
     def plotRaDec(self, filename, stats=None, hscRun=None):
         """Plot quantity as a function of RA, Dec"""
 
-        ra = numpy.rad2deg(self.catalog[self.prefix + "coord_ra"])
-        dec = numpy.rad2deg(self.catalog[self.prefix + "coord_dec"])
+        ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
+        dec = np.rad2deg(self.catalog[self.prefix + "coord_dec"])
         good = (self.mag < self.config.magThreshold if self.config.magThreshold is not None else
-                numpy.ones(len(self.mag), dtype=bool))
+                np.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(2, 1)
+        axes[0].axhline(0, linestyle="--", color="0.6")
+        axes[1].axhline(0, linestyle="--", color="0.6")
         for name, data in self.data.iteritems():
             if len(data.mag) == 0:
                 continue
             selection = data.selection & good
-            kwargs = {"s": 5, "marker": "o", "lw": 0, "c": data.color, "alpha": 0.5}
+            kwargs = {"s": 4, "marker": "o", "lw": 0, "c": data.color, "alpha": 0.5}
             axes[0].scatter(ra[selection], data.quantity[good[data.selection]], label=name, **kwargs)
             axes[1].scatter(dec[selection], data.quantity[good[data.selection]], **kwargs)
 
-        axes[0].set_xlabel("RA (deg)")
-        axes[0].set_ylabel(self.quantityName)
+        axes[0].set_xlabel("RA (deg)", labelpad=-1)
         axes[1].set_xlabel("Dec (deg)")
-        axes[1].set_ylabel(self.quantityName)
+        fig.text(0.02, 0.5, self.quantityName, ha="center", va="center", rotation="vertical")
 
         axes[0].set_ylim(self.qMin, self.qMax)
         axes[1].set_ylim(self.qMin, self.qMax)
@@ -387,23 +447,23 @@ class Analysis(object):
     def calculateStats(self, quantity, selection, forcedMean=None):
         total = selection.sum() # Total number we're considering
         if total == 0:
-            return Stats(dataUsed=0, num=0, total=0, mean=numpy.nan, stdev=numpy.nan, forcedMean=numpy.nan,
-                         median=numpy.nan, clip=numpy.nan)
-        quartiles = numpy.percentile(quantity[selection], [25, 50, 75])
+            return Stats(dataUsed=0, num=0, total=0, mean=np.nan, stdev=np.nan, forcedMean=np.nan,
+                         median=np.nan, clip=np.nan)
+        quartiles = np.percentile(quantity[selection], [25, 50, 75])
         assert len(quartiles) == 3
         median = quartiles[1]
         clip = self.config.clip*0.74*(quartiles[2] - quartiles[0])
-        good = selection & numpy.logical_not(numpy.abs(quantity - median) > clip)
+        good = selection & np.logical_not(np.abs(quantity - median) > clip)
         actualMean = quantity[good].mean()
         mean = actualMean if forcedMean is None else forcedMean
-        stdev = numpy.sqrt(((quantity[good].astype(numpy.float64) - mean)**2).mean())
+        stdev = np.sqrt(((quantity[good].astype(np.float64) - mean)**2).mean())
         return Stats(dataUsed=good, num=good.sum(), total=total, mean=actualMean, stdev=stdev,
                      forcedMean=forcedMean, median=median, clip=clip)
 
     def calculateSysError(self, quantity, error, selection, forcedMean=None, tol=1.0e-3):
         import scipy.optimize
         def function(sysErr2):
-            sigNoise = quantity/numpy.sqrt(error**2 + sysErr2)
+            sigNoise = quantity/np.sqrt(error**2 + sysErr2)
             stats = self.calculateStats(sigNoise, selection, forcedMean=forcedMean)
             return stats.stdev - 1.0
 
@@ -411,12 +471,13 @@ class Analysis(object):
             result = scipy.optimize.root(function, 0.0, tol=tol)
             if not result.success:
                 print "Warning: sysErr calculation failed: %s" % result.message
-                answer = numpy.nan
+                answer = np.nan
             else:
-                answer = numpy.sqrt(result.x[0])
+                answer = np.sqrt(result.x[0])
         else:
-            answer = numpy.sqrt(scipy.optimize.newton(function, 0.0, tol=tol))
-        print function(answer**2), function((answer+0.001)**2), function((answer-0.001)**2)
+            answer = np.sqrt(scipy.optimize.newton(function, 0.0, tol=tol))
+        print "calculateSysError: ", (function(answer**2), function((answer+0.001)**2),
+                                      function((answer-0.001)**2))
         return answer
 
 
@@ -457,15 +518,21 @@ class CcdAnalysis(Analysis):
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean,
                                 hscRun=hscRun)
 
-    def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.hsv, idBits=32,
+    def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.nipy_spectral, idBits=32,
                 visitMultiplier=200, stats=None, hscRun=None):
         """Plot quantity as a function of CCD x,y"""
         xx = self.catalog[self.prefix + centroid + "_x"]
         yy = self.catalog[self.prefix + centroid + "_y"]
         ccd = (self.catalog[self.prefix + "id"] >> idBits) % visitMultiplier
+        vMin, vMax = ccd.min(), ccd.max()
+        if vMin == vMax:
+            vMin, vMax = vMin - 2, vMax + 2
+            print "Only one CCD (%d) to analyze: setting vMin (%d), vMax (%d)" % (ccd.min(), vMin, vMax)
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
-                numpy.ones(len(self.mag), dtype=bool))
+                np.ones(len(self.mag), dtype=bool))
         fig, axes = plt.subplots(2, 1)
+        axes[0].axhline(0, linestyle="--", color="0.6")
+        axes[1].axhline(0, linestyle="--", color="0.6")
         for name, data in self.data.iteritems():
             if not data.plot:
                 continue
@@ -473,14 +540,13 @@ class CcdAnalysis(Analysis):
                 continue
             selection = data.selection & good
             quantity = data.quantity[good[data.selection]]
-            kwargs = {"s": 2, "marker": "o", "lw": 0, "alpha": 0.5, "cmap": cmap}
+            kwargs = {"s": 4, "marker": "o", "lw": 0, "alpha": 0.5, "cmap": cmap, "vmin": vMin, "vmax": vMax}
             axes[0].scatter(xx[selection], quantity, c=ccd[selection], **kwargs)
             axes[1].scatter(yy[selection], quantity, c=ccd[selection], **kwargs)
 
-        axes[0].set_xlabel("x_ccd")
-        axes[0].set_ylabel(self.quantityName)
+        axes[0].set_xlabel("x_ccd", labelpad=-1)
         axes[1].set_xlabel("y_ccd")
-        axes[1].set_ylabel(self.quantityName)
+        fig.text(0.02, 0.5, self.quantityName, ha="center", va="center", rotation="vertical")
         if stats is not None:
             self.annotateAxes(plt, axes[0], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
                               hscRun=hscRun)
@@ -491,23 +557,27 @@ class CcdAnalysis(Analysis):
         axes[0].set_ylim(self.qMin, self.qMax)
         axes[1].set_ylim(self.qMin, self.qMax)
 
-        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=ccd.min(), vmax=ccd.max()))
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vMin, vmax=vMax))
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         fig.subplots_adjust(right=0.8)
-        cax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+        cax = fig.add_axes([0.83, 0.15, 0.04, 0.7])
         cb = fig.colorbar(mappable, cax=cax)
-        cb.set_label("CCD index", rotation=270)
+        cb.set_label("CCD index", rotation=270, labelpad=15)
 
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotFocalPlane(self, filename, cmap=plt.cm.brg, stats=None, hscRun=None):
+    def plotFocalPlane(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None):
         """Plot quantity colormaped on the focal plane"""
         xx = self.catalog[self.prefix + "base_FocalPlane_x"]
         yy = self.catalog[self.prefix + "base_FocalPlane_y"]
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
-                numpy.ones(len(self.mag), dtype=bool))
-        fig, axes = plt.subplots(1, 1)
+                np.ones(len(self.mag), dtype=bool))
+        if self.data.has_key("galaxy"):
+            vMin, vMax = 0.5*self.qMin, 0.5*self.qMax
+        else:
+            vMin, vMax = self.qMin, self.qMax
+        fig, axes = plt.subplots(1, 1, subplot_kw=dict(axisbg="0.7"))
         for name, data in self.data.iteritems():
             if not data.plot:
                 continue
@@ -515,14 +585,14 @@ class CcdAnalysis(Analysis):
                 continue
             selection = data.selection & good
             axes.scatter(xx[selection], yy[selection], s=2, marker="o", lw=0,
-                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=self.qMin, vmax=self.qMax)
+                         c=data.quantity[good[data.selection]], cmap=cmap, vmin=vMin, vmax=vMax)
         axes.set_xlabel("x_fpa (pixels)")
         axes.set_ylabel("y_fpa (pixels)")
 
-        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=self.qMin, vmax=self.qMax))
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vMin, vmax=vMax))
         mappable._A = []        # fake up the array of the scalar mappable. Urgh...
         cb = plt.colorbar(mappable)
-        cb.set_label(self.quantityName, rotation=270)
+        cb.set_label(self.quantityName, rotation=270, labelpad=15)
         if hscRun is not None:
             axes.set_title("HSC stack run: " + hscRun, color="#800080")
         fig.savefig(filename)
@@ -535,7 +605,7 @@ class MagDiff(object):
         self.col1 = col1
         self.col2 = col2
     def __call__(self, catalog):
-        return -2.5*numpy.log10(catalog[self.col1]/catalog[self.col2])
+        return -2.5*np.log10(catalog[self.col1]/catalog[self.col2])
 
 class MagDiffMatches(object):
     """Functor to calculate magnitude difference for match catalog"""
@@ -544,10 +614,10 @@ class MagDiffMatches(object):
         self.colorterm = colorterm
         self.zp = zp
     def __call__(self, catalog):
-        ref1 = -2.5*numpy.log10(catalog.get("ref_" + self.colorterm.primary + "_flux"))
-        ref2 = -2.5*numpy.log10(catalog.get("ref_" + self.colorterm.secondary + "_flux"))
+        ref1 = -2.5*np.log10(catalog.get("ref_" + self.colorterm.primary + "_flux"))
+        ref2 = -2.5*np.log10(catalog.get("ref_" + self.colorterm.secondary + "_flux"))
         ref = self.colorterm.transformMags(ref1, ref2)
-        src = self.zp - 2.5*numpy.log10(catalog.get("src_" + self.column))
+        src = self.zp - 2.5*np.log10(catalog.get("src_" + self.column))
         return src - ref
 
 class MagDiffCompare(object):
@@ -556,8 +626,8 @@ class MagDiffCompare(object):
     def __init__(self, column):
         self.column = column
     def __call__(self, catalog):
-        src1 = -2.5*numpy.log10(catalog["first_" + self.column])
-        src2 = -2.5*numpy.log10(catalog["second_" + self.column])
+        src1 = -2.5*np.log10(catalog["first_" + self.column])
+        src2 = -2.5*np.log10(catalog["second_" + self.column])
         return src1 - src2
 
 class AstrometryDiff(object):
@@ -569,7 +639,7 @@ class AstrometryDiff(object):
     def __call__(self, catalog):
         first = catalog[self.first]
         second = catalog[self.second]
-        cosDec = numpy.cos(catalog[self.declination]) if self.declination is not None else 1.0
+        cosDec = np.cos(catalog[self.declination]) if self.declination is not None else 1.0
         return (first - second)*cosDec*(1.0*afwGeom.radians).asArcseconds()
 
 def deconvMom(catalog):
@@ -577,7 +647,7 @@ def deconvMom(catalog):
     if "ext_shapeHSM_HsmMoments" in catalog.schema:
         hsm = catalog["ext_shapeHSM_HsmMoments_xx"] + catalog["ext_shapeHSM_HsmMoments_yy"]
     else:
-        hsm = numpy.ones(len(catalog))*numpy.nan
+        hsm = np.ones(len(catalog))*np.nan
     sdss = catalog["base_SdssShape_xx"] + catalog["base_SdssShape_yy"]
     if "ext_shapeHSM_HsmPsfMoments" in catalog.schema:
         psf = catalog["ext_shapeHSM_HsmPsfMoments_xx"] + catalog["ext_shapeHSM_HsmPsfMoments_yy"]
@@ -585,7 +655,7 @@ def deconvMom(catalog):
         # LSST does not have shape.sdss.psf.  Could instead add base_PsfShape to catalog using
         # exposure.getPsf().computeShape(s.getCentroid()).getIxx()
         raise TaskError("No psf shape parameter found in catalog")
-    return numpy.where(numpy.isfinite(hsm), hsm, sdss) - psf
+    return np.where(np.isfinite(hsm), hsm, sdss) - psf
 
 def deconvMomStarGal(catalog):
     """Calculate P(star) from deconvolved moments"""
@@ -595,7 +665,7 @@ def deconvMomStarGal(catalog):
             0.0482134274008*snr*rTrace + 4.41366874902e-13*rTrace*rTrace + 7.58973714641e-09*snr*snr*snr +
             1.51008430135e-05*snr*snr*rTrace + 4.38493363998e-14*snr*rTrace*rTrace +
             1.83899834142e-20*rTrace*rTrace*rTrace)
-    return 1.0/(1.0 + numpy.exp(-poly))
+    return 1.0/(1.0 + np.exp(-poly))
 
 
 def concatenateCatalogs(catalogList):
@@ -985,7 +1055,7 @@ class NumStarLabeller(object):
     def __init__(self, numBands):
         self.numBands = numBands
     def __call__(self, catalog):
-        return numpy.array([0 if nn == self.numBands else 2 if nn == 0 else 1 for
+        return np.array([0 if nn == self.numBands else 2 if nn == 0 else 1 for
                             nn in catalog["numStarFlags"]])
 
 class ColorValueInRange(object):
@@ -995,12 +1065,12 @@ class ColorValueInRange(object):
         self.requireGreater = requireGreater
         self.requireLess = requireLess
     def __call__(self, catalog):
-        good = numpy.ones(len(catalog), dtype=bool)
+        good = np.ones(len(catalog), dtype=bool)
         for col, value in self.requireGreater.iteritems():
             good &= catalog[col] > value
         for col, value in self.requireLess.iteritems():
             good &= catalog[col] < value
-        return numpy.where(good, catalog[self.column], numpy.nan)
+        return np.where(good, catalog[self.column], np.nan)
 
 class GalaxyColor(object):
     """Functor to produce difference between galaxy color calculated by different algorithms"""
@@ -1010,8 +1080,8 @@ class GalaxyColor(object):
         self.prefix1 = prefix1
         self.prefix2 = prefix2
     def __call__(self, catalog):
-        color1 = -2.5*numpy.log10(catalog[self.prefix1 + self.alg1]/catalog[self.prefix2 + self.alg1])
-        color2 = -2.5*numpy.log10(catalog[self.prefix1 + self.alg2]/catalog[self.prefix2 + self.alg2])
+        color1 = -2.5*np.log10(catalog[self.prefix1 + self.alg1]/catalog[self.prefix2 + self.alg1])
+        color2 = -2.5*np.log10(catalog[self.prefix1 + self.alg2]/catalog[self.prefix2 + self.alg2])
         return color1 - color2
 
 
@@ -1118,17 +1188,17 @@ class ColorAnalysisTask(CmdLineTask):
         for col, transform in transforms.iteritems():
             if col not in schema:
                 continue
-            value = numpy.ones(num)*transform.coeffs[""] if "" in transform.coeffs else numpy.zeros(num)
+            value = np.ones(num)*transform.coeffs[""] if "" in transform.coeffs else np.zeros(num)
             for ff, coeff in transform.coeffs.iteritems():
                 if ff == "": # Constant: already done
                     continue
                 cat = catalogs[ff]
-                mag = self.config.analysis.zp - 2.5*numpy.log10(cat[self.config.analysis.fluxColumn])
+                mag = self.config.analysis.zp - 2.5*np.log10(cat[self.config.analysis.fluxColumn])
                 value += mag*coeff
             new[col][:] = value
 
         # Flag bad values
-        bad = numpy.zeros(num, dtype=bool)
+        bad = np.zeros(num, dtype=bool)
         for cat in catalogs.itervalues():
             for flag in self.config.flags:
                 bad |= cat[flag]
@@ -1137,9 +1207,9 @@ class ColorAnalysisTask(CmdLineTask):
             row.setFlag(badKey, badValue)
 
         # Star/galaxy
-        numStarFlags = numpy.zeros(num)
+        numStarFlags = np.zeros(num)
         for cat in catalogs.itervalues():
-            numStarFlags += numpy.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
+            numStarFlags += np.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
         new["numStarFlags"][:] = numStarFlags
 
         fluxColumn = self.config.analysis.fluxColumn
@@ -1182,22 +1252,22 @@ class ColorAnalysisTask(CmdLineTask):
     def plotStarColorColor(self, catalogs, filenamer, dataId):
         num = len(catalogs.values()[0])
         zp = self.config.analysis.zp
-        mags = {ff: zp - 2.5*numpy.log10(catalogs[ff][self.config.analysis.fluxColumn]) for ff in catalogs}
+        mags = {ff: zp - 2.5*np.log10(catalogs[ff][self.config.analysis.fluxColumn]) for ff in catalogs}
 
-        bad = numpy.zeros(num, dtype=bool)
+        bad = np.zeros(num, dtype=bool)
         for cat in catalogs.itervalues():
             for flag in self.config.flags:
                 bad |= cat[flag]
 
-        bright = numpy.ones(num, dtype=bool)
+        bright = np.ones(num, dtype=bool)
         for mm in mags.itervalues():
             bright &= mm < self.config.analysis.magThreshold
 
-        numStarFlags = numpy.zeros(num)
+        numStarFlags = np.zeros(num)
         for cat in catalogs.itervalues():
-            numStarFlags += numpy.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
+            numStarFlags += np.where(cat["base_ClassificationExtendedness_value"] < 0.5, 1, 0)
 
-        good = (numStarFlags == len(catalogs)) & numpy.logical_not(bad) & bright
+        good = (numStarFlags == len(catalogs)) & np.logical_not(bad) & bright
 
         combined = self.transformCatalogs(catalogs, straightTransforms)[good].copy(True)
         filters = set(catalogs.keys())
@@ -1254,20 +1324,20 @@ def colorColorPlot(filename, xx, yy, xLabel, yLabel, xRange=None, yRange=None, o
     if yRange:
         axes[0].set_ylim(*yRange)
 
-    select = numpy.ones_like(xx, dtype=bool) if not xFitRange else ((xx > xFitRange[0]) & (xx < xFitRange[1]))
-    keep = numpy.ones_like(xx, dtype=bool)
+    select = np.ones_like(xx, dtype=bool) if not xFitRange else ((xx > xFitRange[0]) & (xx < xFitRange[1]))
+    keep = np.ones_like(xx, dtype=bool)
     for ii in range(iterations):
         keep &= select
-        poly = numpy.polyfit(xx[keep], yy[keep], order)
-        dy = yy - numpy.polyval(poly, xx)
-        q1, q3 = numpy.percentile(dy[keep], [25, 75])
+        poly = np.polyfit(xx[keep], yy[keep], order)
+        dy = yy - np.polyval(poly, xx)
+        q1, q3 = np.percentile(dy[keep], [25, 75])
         clip = rej*0.74*(q3 - q1)
-        keep = numpy.logical_not(numpy.abs(dy) > clip)
+        keep = np.logical_not(np.abs(dy) > clip)
 
     keep &= select
-    poly = numpy.polyfit(xx[keep], yy[keep], order)
-    xLine = numpy.linspace(xRange[0], xRange[1], 1000)
-    yLine = numpy.polyval(poly, xLine)
+    poly = np.polyfit(xx[keep], yy[keep], order)
+    xLine = np.linspace(xRange[0], xRange[1], 1000)
+    yLine = np.polyval(poly, xLine)
 
     kwargs = dict(s=2, marker="o", lw=0, alpha=0.3)
     axes[0].scatter(xx[keep], yy[keep], c="blue", label="used", **kwargs)
@@ -1279,17 +1349,17 @@ def colorColorPlot(filename, xx, yy, xLabel, yLabel, xRange=None, yRange=None, o
 
     # Determine quality of locus
     distance2 = []
-    poly = numpy.poly1d(poly)
-    polyDeriv = numpy.polyder(poly)
+    poly = np.poly1d(poly)
+    polyDeriv = np.polyder(poly)
     calculateDistance2 = lambda x1, y1, x2: (x2 - x1)**2 + (poly(x2) - y1)**2
     for x, y in zip(xx[select], yy[select]):
-        roots = numpy.roots(numpy.poly1d((1, -x)) + (poly - y)*polyDeriv)
-        distance2.append(min(calculateDistance2(x, y, numpy.real(rr)) for rr in roots if numpy.real(rr) == rr))
-    distance = numpy.sqrt(distance2)
-    distance *= numpy.where(yy[select] >= poly(xx[select]), 1.0, -1.0)
+        roots = np.roots(np.poly1d((1, -x)) + (poly - y)*polyDeriv)
+        distance2.append(min(calculateDistance2(x, y, np.real(rr)) for rr in roots if np.real(rr) == rr))
+    distance = np.sqrt(distance2)
+    distance *= np.where(yy[select] >= poly(xx[select]), 1.0, -1.0)
 
-    q1, median, q3 = numpy.percentile(distance, [25, 50, 75])
-    good = numpy.logical_not(numpy.abs(distance - median) > 3.0*0.74*(q3 - q1))
+    q1, median, q3 = np.percentile(distance, [25, 50, 75])
+    good = np.logical_not(np.abs(distance - median) > 3.0*0.74*(q3 - q1))
     print distance[good].mean(), distance[good].std()
 
     axes[1].hist(distance[good], numBins, range=(-0.05, 0.05), normed=False)
@@ -1314,18 +1384,18 @@ class ColorColorDistance(object):
     def __call__(self, catalog):
         xx = catalog[self.band1] - catalog[self.band2]
         yy = catalog[self.band2] - catalog[self.band3]
-        polyDeriv = numpy.polyder(self.poly)
+        polyDeriv = np.polyder(self.poly)
         calculateDistance2 = lambda x1, y1, x2: (x2 - x1)**2 + (self.poly(x2) - y1)**2
-        distance2 = numpy.ones_like(xx)*numpy.nan
+        distance2 = np.ones_like(xx)*np.nan
         for i, (x, y) in enumerate(zip(xx, yy)):
-            if (not numpy.isfinite(x) or not numpy.isfinite(y) or (self.xMin is not None and x < self.xMin) or
+            if (not np.isfinite(x) or not np.isfinite(y) or (self.xMin is not None and x < self.xMin) or
                 (self.xMax is not None and x > self.xMax)):
-                distance2[i] = numpy.nan
+                distance2[i] = np.nan
                 continue
-            roots = numpy.roots(numpy.poly1d((1, -x)) + (self.poly - y)*polyDeriv)
-            distance2[i] = min(calculateDistance2(x, y, numpy.real(rr)) for
-                               rr in roots if numpy.real(rr) == rr)
-        return numpy.sqrt(distance2)*numpy.where(yy >= self.poly(xx), 1.0, -1.0)
+            roots = np.roots(np.poly1d((1, -x)) + (self.poly - y)*polyDeriv)
+            distance2[i] = min(calculateDistance2(x, y, np.real(rr)) for
+                               rr in roots if np.real(rr) == rr)
+        return np.sqrt(distance2)*np.where(yy >= self.poly(xx), 1.0, -1.0)
 
 
 class VisitAnalysisRunner(TaskRunner):
@@ -1389,7 +1459,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
                 catList.append(calibrated)
@@ -1410,7 +1480,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 continue
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
             # Generate unnormalized match list (from normalized persisted one) with joinMatchListWithCatalog
             # (which requires a refObjLoader to be initialized).
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
@@ -1456,7 +1526,6 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 aliasMap = catalog.schema.getAliasMap()
                 for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                     aliasMap.set("src_" + lsstName, "src_" + otherName)
-
             catList.append(catalog)
 
         if len(catList) == 0:
@@ -1479,14 +1548,14 @@ class VisitAnalysisTask(CoaddAnalysisTask):
 ###                continue
 ###            good = data.mag < self.config.magThreshold
 ###            total = good.sum() # Total number we're considering
-###            quartiles = numpy.percentile(data.quantity[good], [25, 50, 75])
+###            quartiles = np.percentile(data.quantity[good], [25, 50, 75])
 ###            assert len(quartiles) == 3
 ###            median = quartiles[1]
 ###            clip = self.config.clip*0.74*(quartiles[2] - quartiles[0])
-###            good &= numpy.logical_not(numpy.abs(data.quantity - median) > clip)
+###            good &= np.logical_not(np.abs(data.quantity - median) > clip)
 ###            actualMean = data.quantity[good].mean()
 ###            mean = actualMean if forcedMean is None else forcedMean
-###            stdev = numpy.sqrt(((data.quantity[good].astype(numpy.float64) - mean)**2).mean())
+###            stdev = np.sqrt(((data.quantity[good].astype(np.float64) - mean)**2).mean())
 ###            stats[name] = Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev,
 ###                                forcedMean=forcedMean)
 ###        return stats
@@ -1494,10 +1563,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
 
 class CompareAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
-    matchRadius = Field(dtype=float, default=0.5, doc="Matching radius (arcseconds)")
+    matchRadius = Field(dtype=float, default=0.2, doc="Matching radius (arcseconds)")
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
-    doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
+    doCentroids = Field(dtype=bool, default=False, doc="Plot centroids?")
     sysErrMags = Field(dtype=float, default=0.015, doc="Systematic error in magnitudes")
     sysErrCentroids = Field(dtype=float, default=0.15, doc="Systematic error in centroids (pixels)")
     srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
@@ -1561,11 +1630,11 @@ class CompareAnalysisTask(CmdLineTask):
     def plotCentroids(self, catalog, filenamer, dataId, hscRun=None):
         distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
         Analysis(catalog, CentroidDiff("x"), "x offset (arcsec)", "diff_x", self.config.analysis,
-                 prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("x"),
+                 prefix="first_", qMin=-0.3, qMax=0.3, errFunc=CentroidDiffErr("x"),
                  labeller=OverlapsStarGalaxyLabeller(),
                  ).plotAll(dataId, filenamer, self.log, distEnforcer)
         Analysis(catalog, CentroidDiff("y"), "y offset (arcsec)", "diff_y", self.config.analysis,
-                 prefix="first_", qMin=-0.2, qMax=0.2, errFunc=CentroidDiffErr("y"),
+                 prefix="first_", qMin=-0.1, qMax=0.1, errFunc=CentroidDiffErr("y"),
                  labeller=OverlapsStarGalaxyLabeller(),
                  ).plotAll(dataId, filenamer, self.log, distEnforcer)
 
@@ -1646,7 +1715,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             metadata = butler.get("calexp_md", dataRef.dataId)
 
             # Scale fluxes to measured zeropoint
-            self.zp = 2.5*numpy.log10(metadata.get("FLUXMAG0"))
+            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, srcCat, zp=self.config.analysis.zp)
                 catList.append(calibrated)
@@ -1665,8 +1734,8 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
                 Analysis(catalog, MagDiffCompare(col + "_flux"),
-                         "Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
-                         prefix="first_", qMin=-0.01, qMax=0.01, flags=[col + "_flag"],
+                         "Run Comparison: Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
+                         prefix="first_", qMin=-0.05, qMax=0.05, flags=[col + "_flag"],
                          errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
                          ).plotAll(dataId, filenamer, self.log, enforcer)
 
@@ -1684,7 +1753,7 @@ class MagDiffErr(object):
                                              catalog["first_" + self.column + "Sigma"])
         mag2, err2 = self.calib.getMagnitude(catalog["second_" + self.column],
                                              catalog["second_" + self.column + "Sigma"])
-        return numpy.sqrt(err1**2 + err2**2)
+        return np.sqrt(err1**2 + err2**2)
 
 class CentroidDiff(object):
     """Functor to calculate difference in astrometry"""
@@ -1711,4 +1780,4 @@ class CentroidDiffErr(CentroidDiff):
         subkeys2 = [catalog.schema[secondx].asKey(), catalog.schema[secondy].asKey()]
         menu = {"x": 0, "y": 1}
 
-        return numpy.hypot(catalog[subkeys1[menu[self.component]]], catalog[subkeys2[menu[self.component]]])
+        return np.hypot(catalog[subkeys1[menu[self.component]]], catalog[subkeys2[menu[self.component]]])
