@@ -185,6 +185,15 @@ class Analysis(object):
             l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
             plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
 
+    @staticmethod
+    def labelVisit(filename, plt, axis, xLoc, yLoc, color="k"):
+        if filename.find("visit-") :
+            i1 = filename.find("visit-") + len("visit-")
+            i2 = filename.find("/", i1)
+            visitNumber = filename[i1:i2]
+            plt.text(xLoc, yLoc, "visit: " + str(visitNumber), ha="center", va="center",
+                     transform=axis.transAxes, color=color)
+
     def plotAgainstMag(self, filename, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
@@ -205,6 +214,7 @@ class Analysis(object):
             self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, hscRun=hscRun,
                               matchRadius=matchRadius)
         axes.legend(handles=dataPoints, loc=1, fontsize=8)
+        self.labelVisit(filename, plt, axes, 0.5, 1.05)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -314,6 +324,7 @@ class Analysis(object):
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
         axHistx.legend(fontsize=7, loc=2)
         axHisty.legend(fontsize=7)
+        self.labelVisit(filename, plt, axScatter, 1.18, -0.11, color="green")
         plt.savefig(filename)
         plt.close()
 
@@ -346,6 +357,7 @@ class Analysis(object):
             self.annotateAxes(plt, axes, stats, "star", self.config.magThreshold, x0=x0, y0=y0,
                               isHist=True, hscRun=hscRun, matchRadius=matchRadius)
         axes.legend()
+        self.labelVisit(filename, plt, axes, 0.5, 1.05)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -377,6 +389,7 @@ class Analysis(object):
         cb.set_label(self.quantityName, rotation=270, labelpad=15)
         if hscRun is not None:
             axes.set_title("HSC stack run: " + hscRun, color="#800080")
+        self.labelVisit(filename, plt, axes, 0.5, 1.07)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -411,6 +424,7 @@ class Analysis(object):
                               hscRun=hscRun, matchRadius=matchRadius)
             self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
                               hscRun=hscRun, matchRadius=matchRadius)
+        self.labelVisit(filename, plt, axes[0], 0.5, 1.1)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -564,7 +578,7 @@ class CcdAnalysis(Analysis):
         cax = fig.add_axes([0.83, 0.15, 0.04, 0.7])
         cb = fig.colorbar(mappable, cax=cax)
         cb.set_label("CCD index", rotation=270, labelpad=15)
-
+        self.labelVisit(filename, plt, axes[0], 0.5, 1.1)
         fig.savefig(filename)
         plt.close(fig)
 
@@ -596,6 +610,7 @@ class CcdAnalysis(Analysis):
         cb.set_label(self.quantityName, rotation=270, labelpad=15)
         if hscRun is not None:
             axes.set_title("HSC stack run: " + hscRun, color="#800080")
+        self.labelVisit(filename, plt, axes, 0.5, 1.07)
         fig.savefig(filename)
         plt.close(fig)
 
