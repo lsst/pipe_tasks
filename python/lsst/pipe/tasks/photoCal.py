@@ -33,6 +33,7 @@ import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField
+from lsst.meas.astrom import createMatchMetadata
 from .colorterms import ColortermLibrary
 
 __all__ = ["PhotoCalTask", "PhotoCalConfig"]
@@ -589,6 +590,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
          - calib -------  \link lsst::afw::image::Calib\endlink object containing the zero point
          - arrays ------ Magnitude arrays returned be PhotoCalTask.extractMagArrays
          - matches ----- Final ReferenceMatchVector, as returned by PhotoCalTask.selectMatches.
+         - matchMeta --- Metadata needed to unpersist matches (an lsst.daf.base.PropertyList)
 
         The exposure is only used to provide the name of the filter being calibrated (it may also be
         used to generate debugging plots).
@@ -677,6 +679,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             calib = calib,
             arrays = arrays,
             matches = matches,
+            matchMeta = createMatchMetadata(exposure),
             zp = r.zp,
             sigma = r.sigma,
             ngood = r.ngood,
