@@ -584,8 +584,8 @@ class CcdAnalysis(Analysis):
 
     def plotFocalPlane(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity colormaped on the focal plane"""
-        xx = self.catalog[self.prefix + "base_FocalPlane_x"]
-        yy = self.catalog[self.prefix + "base_FocalPlane_y"]
+        xx = self.catalog[self.prefix + "base_FPPosition_x"]
+        yy = self.catalog[self.prefix + "base_FPPosition_y"]
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 np.ones(len(self.mag), dtype=bool))
         if self.data.has_key("galaxy"):
