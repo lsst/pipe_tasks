@@ -403,6 +403,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         # compute photometric calibration
         photoRes = pipeBase.Struct(
             matches = None,
+            matchMeta = None,
         )
         if self.config.doPhotoCal:
             try:
@@ -434,7 +435,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             sourceCat = procRes.sourceCat,
             astromMatches = astromRes.matches,
             photoMatches = photoRes.matches,
-            matchMeta = astromRes.matchMeta,
+            matchMeta = astromRes.matchMeta if astromRes.matchMeta is not None else photoRes.matchMeta,
         )
 
     def getSchemaCatalogs(self):

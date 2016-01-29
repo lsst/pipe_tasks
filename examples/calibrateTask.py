@@ -110,11 +110,7 @@ class MyAstrometryTask(pipeBase.Task):
         return pipeBase.Struct(
             refCat = refCat,
             matches = matches,
-            matchMeta = createMatchMetadata(
-                bbox = exposure.getBBox(),
-                wcs = exposure.getWcs(),
-                filterName = FilterName,
-            ),
+            matchMeta = createMatchMetadata(exposure),
         )
 
 def run(display=False):
