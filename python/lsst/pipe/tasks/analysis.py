@@ -849,7 +849,10 @@ class CoaddAnalysisTask(CmdLineTask):
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamer, dataId)
+            if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
+                self.plotStarGal(catalog, filenamer, dataId)
+            else:
+                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if cosmos:
             self.plotCosmos(catalog, filenamer, cosmos, dataId)
         if self.config.doForced:
@@ -1434,7 +1437,6 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
             self.config.externalCatalogs):
             catalog = self.readCatalogs(dataRefList, "src")
-
         # Check metadata to see if stack used was HSC
         butler = dataRefList[0].getButler()
         metadata = butler.get("calexp_md", dataRefList[0].dataId)
@@ -1447,7 +1449,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId, hscRun=hscRun)
         if self.config.doStarGalaxy:
-            self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun)
+            if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
+                self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun)
+            else:
+                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if self.config.doMatches:
             matches = self.readSrcMatches(dataRefList, "src")
             self.plotMatches(matches, filterName, filenamer, dataId, hscRun=hscRun,
