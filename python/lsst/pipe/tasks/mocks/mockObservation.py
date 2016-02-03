@@ -111,7 +111,9 @@ class MockObservationTask(lsst.pipe.base.Task):
                 record.setCalib(calib)
                 record.setPsf(self.buildPsf(detector))
                 record.setBBox(detector.getBBox())
-                record.setId(butler.get("ccdExposureId", visit=visit, ccd=detector.getId(), immediate=True))
+                detectorId = detector.getId()
+                obj = butler.get("ccdExposureId", visit=visit, ccd=detectorId, immediate=True)
+                record.setId(obj)
             visit += 1
         return catalog
 
