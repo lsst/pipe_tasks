@@ -139,8 +139,11 @@ class Analysis(object):
         self.prefix = prefix
         self.flags = flags
         self.errFunc = errFunc
+        if type(func) == np.ndarray:
+            self.quantity = func
+        else:
+            self.quantity = func(catalog)
 
-        self.quantity = func(catalog)
         self.quantityError = errFunc(catalog) if errFunc is not None else None
         # self.mag = self.config/zp - 2.5*np.log10(catalog[prefix + self.config.fluxColumn])
         self.mag = -2.5*np.log10(catalog[prefix + self.config.fluxColumn])
@@ -563,6 +566,12 @@ class CcdAnalysis(Analysis):
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean,
                                 camera=camera, ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius)
 
+    def plotFP(self, dataId, filenamer, log, enforcer=None, forcedMean=None, camera=None, ccdList=None,
+                hscRun=None, matchRadius=None):
+        stats = self.stats(forcedMean=forcedMean)
+        self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
+                            hscRun=hscRun, matchRadius=matchRadius)
+
     def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.nipy_spectral, idBits=32,
                 visitMultiplier=200, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity as a function of CCD x,y"""
@@ -622,6 +631,11 @@ class CcdAnalysis(Analysis):
             vMin, vMax = 0.5*self.qMin, 0.5*self.qMax
         else:
             vMin, vMax = self.qMin, self.qMax
+        # Set limits to ccd pixel ranges when plotting the centroids (which are in pixel units)
+        if filename.find("Centroid") > -1:
+            cmap = plt.cm.pink
+            vMin = min(0,np.round(self.data["star"].quantity.min() - 10))
+            vMax = np.round(self.data["star"].quantity.max() + 50, -2)
         fig, axes = plt.subplots(1, 1, subplot_kw=dict(axisbg="0.7"))
         for name, data in self.data.iteritems():
             if not data.plot:
@@ -826,6 +840,7 @@ class CoaddAnalysisConfig(Config):
                                        doc="Additional external catalogs for matching")
     astrometry = ConfigField(dtype=AstrometryConfig, doc="Configuration for astrometric reference")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
+    doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
@@ -932,6 +947,16 @@ class CoaddAnalysisTask(CmdLineTask):
                                    % col, "mag_" + col, self.config.analysis,
                                    flags=[col + "_flag"], labeller=StarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, enforcer,
+                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                             matchRadius=matchRadius)
+    def plotCentroidXY(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
+                       matchRadius=None):
+        enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
+        for col in ["base_SdssCentroid_x", "base_SdssCentroid_y"]:
+            if col in catalog.schema:
+                self.AnalysisClass(catalog, catalog[col], "(%s)" % col, col, self.config.analysis,
+                                   flags=["base_SdssCentroid_flag"], labeller=StarGalaxyLabeller(),
+                                   ).plotFP(dataId, filenamer, self.log, enforcer,
                                              camera=camera, ccdList=ccdList, hscRun=hscRun,
                                              matchRadius=matchRadius)
 
@@ -1497,6 +1522,8 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 aliasMap.set(lsstName, otherName)
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun)
+        if self.config.doCentroids:
+            self.plotCentroidXY(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun)
         if self.config.doStarGalaxy:
             if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
                 self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun)
@@ -1755,6 +1782,9 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
 
     def run(self, dataRefList1, dataRefList2):
         dataId = dataRefList1[0].dataId
+        ccdList1 = [dataRef.dataId["ccd"] for dataRef in dataRefList1]
+        butler1 = dataRefList1[0].getButler()
+        camera1 = butler1.mapper.camera
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
         catalog1 = self.readCatalogs(dataRefList1, "src")
         catalog2 = self.readCatalogs(dataRefList2, "src")
@@ -1774,9 +1804,11 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set("second_" + lsstName, "second_" + otherName)
         if self.config.doMags:
-            self.plotMags(catalog, filenamer, dataId, hscRun=hscRun, matchRadius=self.config.matchRadius)
+            self.plotMags(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
+                          matchRadius=self.config.matchRadius)
         if self.config.doCentroids:
-            self.plotCentroids(catalog, filenamer, dataId, hscRun=hscRun, matchRadius=self.config.matchRadius)
+            self.plotCentroids(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
+                               matchRadius=self.config.matchRadius)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
@@ -1802,7 +1834,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             raise TaskError("No catalogs read: %s" % ([dataRefList[0].dataId for dataRef in dataRefList]))
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
+    def plotMags(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None, matchRadius=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
@@ -1810,8 +1842,8 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
                          "Run Comparison: Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
                          prefix="first_", qMin=-0.05, qMax=0.05, flags=[col + "_flag"],
                          errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
-                         ).plotAll(dataId, filenamer, self.log, enforcer, hscRun=hscRun,
-                                   matchRadius=matchRadius)
+                         ).plotAll(dataId, filenamer, self.log, enforcer, camera=camera, ccdList=ccdList,
+                                   hscRun=hscRun, matchRadius=matchRadius)
 
 
 class MagDiffErr(object):
