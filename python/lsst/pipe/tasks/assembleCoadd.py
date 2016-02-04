@@ -444,17 +444,22 @@ class AssembleCoaddTask(CoaddBaseTask):
         @param tempExpRefList: List of data references to tempExp
         @param weightList: List of weights
         """
+        assert len(tempExpRefList) == len(weightList), "Length mismatch"
         tempExpName = self.getTempExpDatasetName()
         # We load a single pixel of each coaddTempExp, because we just want to get at the metadata
-        # (and we need more than just the PropertySet that contains the header).  See #2777.
-        bbox = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(1,1))
-        first = True
+        # (and we need more than just the PropertySet that contains the header), which is not possible
+        # with the current butler (see #2777).
+        tempExpList = [tempExpRef.get(tempExpName + "_sub",
+                                      bbox=afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(1,1)),
+                                      imageOrigin="LOCAL", immediate=True) for tempExpRef in tempExpRefList]
+        numCcds = sum(len(tempExp.getInfo().getCoaddInputs().ccds) for tempExp in tempExpList)
+
+        coaddExposure.setFilter(tempExpList[0].getFilter())
         coaddInputs = coaddExposure.getInfo().getCoaddInputs()
-        for tempExpRef, weight in zip(tempExpRefList, weightList):
-            tempExp = tempExpRef.get(tempExpName + "_sub", bbox=bbox, imageOrigin="LOCAL", immediate=True)
-            if first:
-                coaddExposure.setFilter(tempExp.getFilter())
-                first = False
+        coaddInputs.ccds.reserve(numCcds)
+        coaddInputs.visits.reserve(len(tempExpList))
+
+        for tempExp, weight in zip(tempExpList, weightList):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
         if self.config.doPsfMatch:
