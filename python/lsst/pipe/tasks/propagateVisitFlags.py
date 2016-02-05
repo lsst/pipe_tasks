@@ -179,7 +179,7 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
 
         # Accumulate counts of flags being set
         for v, c in zip(visits, ccds):
-            ccdSources = butler.get("src", visit=int(v), ccd=int(c), immediate=True)
+            ccdSources = butler.get("icSrc", visit=int(v), ccd=int(c), immediate=True)
             for flag in flags:
                 # We assume that the flags will be relatively rare, so it is more efficient to match
                 # against a subset of the input catalog for each flag than it is to match once against
