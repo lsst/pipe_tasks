@@ -31,7 +31,7 @@ import lsst.afw.table as afwTable
 class PropagateVisitFlagsConfig(Config):
     """!Configuration for propagating flags to coadd"""
     flags = DictField(keytype=str, itemtype=float,
-                      default={"calib.psf.used": 0.2, "calib.psf.candidate": 0.2,},
+                      default={"calib_psfCandidate": 0.2, "calib_psfUsed": 0.2,},
                       doc="Source catalog flags to propagate, with the threshold of relative occurrence.")
     matchRadius = Field(dtype=float, default=0.2, doc="Source matching radius (arcsec)")
 
