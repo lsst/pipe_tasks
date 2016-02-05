@@ -195,5 +195,5 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
             key = self._keys[f]
             for s, num in zip(coaddSources, counts[f]):
                 numOverlaps = len(ccdInputs.subsetContaining(s.getCentroid(), coaddWcs, True))
-                s.setFlag(key, num > numOverlaps*self.config.flags[f])
+                s.setFlag(key, bool(num > numOverlaps*self.config.flags[f]))
             self.log.info("Propagated %d sources with flag %s" % (sum(s.get(key) for s in coaddSources), f))
