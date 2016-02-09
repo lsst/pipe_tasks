@@ -25,7 +25,7 @@ from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.daf.butlerUtils import ExposureIdInfo
-from lsst.afw.table import SourceCatalog, SourceTable, packMatches
+import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from .detectAndMeasure import DetectAndMeasureTask
 from .photoCal import PhotoCalTask
@@ -73,6 +73,15 @@ class CalibrateConfig(pexConfig.Config):
     photoCal = pexConfig.ConfigurableField(
         target = PhotoCalTask,
         doc = "Perform photometric calibration",
+    )
+    icSourceFieldsToCopy = pexConfig.ListField(
+        dtype = str,
+        default = ("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
+        doc = "Fields to copy from the icSource catalog to the output catalog for matching sources. "
+        "Missing fields are logged (at debug level) and ignored. "
+        "If detectAndMeasure.doMeasureApCorr is True and detectAndMeasure cannot determine its own "
+        "suitable candidates, then this list must include "
+        "config.detectAndMeasure.measureApCorr.inputFilterFlag."
     )
 
     def setDefaults(self):
@@ -207,7 +216,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, dataPrefix="", exposureIdName=None, schema=None, **kwargs):
+    def __init__(self, dataPrefix="", exposureIdName=None, icSourceSchema=None, **kwargs):
         """!Construct a CalibrateTask
 
         @param[in] dataPrefix  prefix for persisted products:
@@ -215,7 +224,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
             - for coadds use, e.g., "deepCoadd"
         @param[in] exposureIdName  name of exposure ID dataset, e.g. "ccdExposureId";
             the value None works for calexp and coadds; for other kinds of exposures you'll have to specify
-        @param[in,out] schema  initial schema or None
+        @param[in] icSourceSchema  schema for icSource catalog, or None.
+            If measuring aperture correction and the task detectAndMeasure cannot determine
+            its own suitable candidates, then this argument must be specified.
+            See also config field `icSourceFieldsToCopy`.
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
         self.dataPrefix = str(dataPrefix)
@@ -225,12 +237,40 @@ class CalibrateTask(pipeBase.CmdLineTask):
             self.exposureIdName = exposureIdName
         pipeBase.Task.__init__(self, **kwargs)
 
-        if schema is None:
-            schema = SourceTable.makeMinimalSchema()
-        self.schema = schema
+        self.haveFieldsToCopy = False
+        if icSourceSchema is not None:
+            # use a schema mapper to avoid copying each field separately
+            self.schemaMapper = afwTable.SchemaMapper(icSourceSchema)
+            self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema())
+
+            # Add fields to copy from an icSource catalog
+            # and a field to indicate that the source matched a source in that catalog
+            self.calibSourceKey = self.schemaMapper.addOutputField(
+                afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSource"))
+            foundFieldNames = []
+            missingFieldNames = []
+            for fieldName in self.config.icSourceFieldsToCopy:
+                try:
+                    schemaItem = icSourceSchema.find(fieldName)
+                except Exception:
+                    missingFieldNames.append(fieldName)
+                else: # search successful
+                    self.schemaMapper.addMapping(schemaItem.getKey())
+                    foundFieldNames.append(fieldName)
+
+            if len(foundFieldNames) > 0:
+                self.haveFieldsToCopy = True
+            self.log.logdebug("fields found: %s and not found: %s in icSourceSchema" % \
+                (foundFieldNames, missingFieldNames))
+
+            # produce a temporary schema to pass to the subtasks; finalize it later
+            self.schema=self.schemaMapper.editOutputSchema()
+        else:
+            self.schemaMapper = None
+            self.schema = afwTable.SourceTable.makeMinimalSchema()
+
         self.makeSubtask("detectAndMeasure", schema=self.schema)
-        if self.config.doAstrometry or self.config.doPhotoCal or self.detectAndMeasure.usesMatches:
-            # doing astrometry or using the loadAndMatch method
+        if self.config.doAstrometry or self.config.doPhotoCal:
             self.makeSubtask("astrometry", schema=self.schema)
             self.loadAndMatch = self.astrometry.loadAndMatch
         else:
@@ -238,8 +278,12 @@ class CalibrateTask(pipeBase.CmdLineTask):
         if self.config.doPhotoCal:
             self.makeSubtask("photoCal", schema=self.schema)
 
+        if self.schemaMapper is not None:
+            # finalize the schema
+            self.schema = self.schemaMapper.getOutputSchema()
+
     @pipeBase.timeMethod
-    def run(self, dataRef, exposure=None, background=None, doUnpersist=True):
+    def run(self, dataRef, exposure=None, background=None, icSourceCat=None, doUnpersist=True):
         """!Calibrate an exposure, optionally unpersisting inputs and persisting outputs.
 
         This is a wrapper around the `calibrate` method that unpersists inputs
@@ -254,20 +298,27 @@ class CalibrateTask(pipeBase.CmdLineTask):
             though that is unusual for calibration.
             A refined background model is output.
             Ignored if exposure is None.
-        @param[in] doUnpersist  if True the exposure is read from the repository
-            and the exposure and background arguments must be None;
-            if False the exposure must be provided.
+        @param[in] icSourceCat  catalog from which to copy the fields specified by icSourceKeys, or None;
+        @param[in] doUnpersist  unpersist data:
+            - if True, exposure, background and icSourceCat are read from dataRef and those three arguments
+                must all be None;
+            - if False the exposure must be provided; background and icSourceCat are optional.
             True is intended for running as a command-line task, False for running as a subtask
+
+        @warning until detectAndMeasure can determine suitable sources for measuring aperture correction
+        by itself, you must provide icSourceCat and a suitable entry in config.icSourceFieldsToCopy
 
         @return same data as the calibrate method
         """
         self.log.info("Processing %s" % (dataRef.dataId))
 
         if doUnpersist:
-            if exposure is not None or background is not None:
-                raise pipeBase.TaskError("doUnpersist true; exposure and background must be None")
+            if None in (exposure, background, icSourceCat):
+                raise pipeBase.TaskError("doUnpersist true; exposure, background and icSourceCat "
+                    "must all be None")
             exposure = dataRef.get("icExp", immediate=True)
             background = dataRef.get("icExpBackground", immediate=True)
+            icSourceCat = dataRef.get("icSourceCat", immediate=True)
         elif exposure is None:
             raise pipeBase.TaskError("doUnpersist false; exposure must be provided")
 
@@ -277,6 +328,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
             background = background,
+            icSourceCat = icSourceCat,
         )
 
         if self.config.doWrite:
@@ -284,7 +336,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             if self.config.doWriteMatches:
                 matches = calRes.photoMatches if calRes.photoMatches is not None else calRes.astromMatches
                 if matches is not None:
-                    normalizedMatches = packMatches(matches)
+                    normalizedMatches = afwTable.packMatches(matches)
                     normalizedMatches.table.setMetadata(calRes.matchMeta)
                     dataRef.put(normalizedMatches, self.dataPrefix + "srcMatch")
             dataRef.put(exposure, self.dataPrefix + "calexp")
@@ -292,7 +344,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         return calRes
 
-    def calibrate(self, exposure, exposureIdInfo, background=None):
+    def calibrate(self, exposure, exposureIdInfo, background=None, icSourceCat=None):
         """!Calibrate an exposure (science image or coadd)
 
         @param[in,out] exposure  exposure to calibrate (an lsst.afw.image.ExposureF or similar);
@@ -318,11 +370,17 @@ class CalibrateTask(pipeBase.CmdLineTask):
             used to persist and unpersist match lists
         """
         # detect, deblend and measure sources
+        if icSourceCat is not None and self.haveFieldsToCopy:
+            def copyFields(sourceCat):
+                self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=sourceCat)
+        else:
+            copyFields = None
+
         procRes = self.detectAndMeasure.run(
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
             background = background,
-            loadAndMatch = self.loadAndMatch,
+            preMeasApCorrFunc = copyFields,
         )
 
         # perform astrometry calibration:
@@ -383,7 +441,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task.
         """
-        sourceCat = SourceCatalog(self.schema)
+        sourceCat = afwTable.SourceCatalog(self.schema)
         sourceCat.getTable().setMetadata(self.detectAndMeasure.algMetadata)
         return {self.dataPrefix + "src": sourceCat}
 
@@ -416,3 +474,56 @@ class CalibrateTask(pipeBase.CmdLineTask):
         except Exception as e:
             self.log.warn("Could not set exposure metadata: %s" % (e,))
 
+    def copyIcSourceFields(self, icSourceCat, sourceCat, matchRadius=3):
+        """!Match sources in icSourceCat and sourceCat and copy the specified fields
+
+        @param[in] icSourceCat  catalog from which to copy fields
+        @param[in,out] sourceCat  catalog to which to copy fields
+        @param[in] matchRadius  match radius for sources (pixels)
+
+        The fields to be copied are a subset of `config.icSourceFieldsToCopy`
+        """
+        self.log.info("Matching icSource and Source catalogs to propagate flags.")
+        if self.schemaMapper is None:
+            raise RuntimeError("To copy icSource fields you must specify icSourceSchema "
+                "and icSourceKeys when constructing this task")
+        if icSourceCat is None or sourceCat is None:
+            raise RuntimeError("icSourceCat and sourceCat must both be specified")
+        if not self.haveFieldsToCopy:
+            self.log.logdebug("copyIcSourceFields doing nothing because there are no fields to copy")
+            return
+
+        closest = False  # return all matched objects
+        matched = afwTable.matchXy(icSourceCat, sourceCat, matchRadius, closest)
+        if self.config.detectAndMeasure.doDeblend:
+            matched = [m for m in matched if m[1].get("deblend_nChild") == 0] # if deblended, keep children
+
+        # Because we had to allow multiple matches to handle parents, we now need to
+        # prune to the best matches
+        bestMatches = {}
+        for m0, m1, d in matched:
+            id0 = m0.getId()
+            if bestMatches.has_key(id0):
+                if d > bestMatches[id0][2]:
+                    continue
+
+            bestMatches[id0] = (m0, m1, d)
+
+        matched = bestMatches.values()
+
+        # Check that we got it right
+        if len(set(m[0].getId() for m in matched)) != len(matched):
+            self.log.warn("At least one icSourceCat source is matched to more than one sourceCat source")
+
+        self.log.info("Matched %s sources" % (len(matched),))
+
+        # Copy over the desired fields
+        for ics, s, d in matched:
+            s.setFlag(self.calibSourceKey, True)
+            # We don't want to overwrite s's footprint with ics's; DM-407
+            icsFootprint = ics.getFootprint()
+            try:
+                ics.setFootprint(s.getFootprint())
+                s.assign(ics, self.schemaMapper)
+            finally:
+                ics.setFootprint(icsFootprint)

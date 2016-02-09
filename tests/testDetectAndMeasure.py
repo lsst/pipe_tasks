@@ -64,10 +64,15 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         # create an exposure without a Wcs; add the Wcs later
         exposure = plantSources(bbox=bbox, kwid=kwid, sky=sky, coordList=coordList, addPoissonNoise=True)
 
-        schema = SourceTable.makeMinimalSchema()        
+        schema = SourceTable.makeMinimalSchema()
+        psfUsedKey = schema.addField("calib_psfUsed", type="Flag") # needed to measure aperture correction
+        def setPsfUsed(sourceCat):
+            # claim that all detected sources make good PSF candidates
+            for source in sourceCat:
+                source.set(psfUsedKey, True)
+
         config = DetectAndMeasureTask.ConfigClass()
-        config.detection.thresholdValue = 5.0
-        config.detection.includeThresholdMultiplier = 1.0
+        config.measurement.doApplyApCorr = "yes"
         task = DetectAndMeasureTask(config=config, schema=schema)
 
         butler = Butler(root=InputDir)
@@ -75,7 +80,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         wcs = dataRef.get("raw").getWcs()
         exposure.setWcs(wcs)
         exposureIdInfo = ExposureIdInfo.fromDataRef(dataRef)
-        taskRes = task.run(exposure=exposure, exposureIdInfo=exposureIdInfo)
+        taskRes = task.run(exposure=exposure, exposureIdInfo=exposureIdInfo, preMeasApCorrFunc=setPsfUsed)
         self.assertEqual(len(taskRes.sourceCat), numX * numY)
         schema = taskRes.sourceCat.schema
         centroidFlagKey = schema.find("slot_Centroid_flag").getKey()
@@ -108,6 +113,18 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 coordList.append([x, y, counts, sigma])
                 counts += dCounts
         return coordList
+
+    def testNoPsfUsed(self):
+        """Test that the "calib_psfUsed" is required to measure aperture correction
+
+        I hope someday DetectAndMeasureTask can determine for itself
+        which sources are suitable for measuring aperture correction,
+        at which point I expect this test to be deleted.
+        """
+        schema = SourceTable.makeMinimalSchema()
+        config = DetectAndMeasureTask.ConfigClass()
+        with self.assertRaises(Exception):
+            DetectAndMeasureTask(config=config, schema=schema)
 
 def suite():
     lsst.utils.tests.init()

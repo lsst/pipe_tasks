@@ -119,7 +119,9 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
         self.makeSubtask("charImage")
-        self.makeSubtask("calibrate")
+        self.makeSubtask("calibrate",
+            icSourceSchema = self.charImage.schema,
+        )
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
@@ -157,6 +159,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                 exposure = charRes.exposure,
                 background = charRes.background,
                 doUnpersist = False,
+                icSourceCat = charRes.sourceCat,
             )
 
         return pipeBase.Struct(

@@ -26,7 +26,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, IdFactory
-from lsst.meas.algorithms import SourceDetectionTask, starSelectorRegistry
+from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask, MeasureApCorrTask
 
@@ -44,10 +44,6 @@ class DetectAndMeasureConfig(pexConfig.Config):
     deblend = pexConfig.ConfigurableField(
         target = SourceDeblendTask,
         doc = "Split blended sources into their components",
-    )
-    starSelector = starSelectorRegistry.makeField(
-        doc="algorithm to do star/galaxy classification",
-        default="secondMoment",
     )
     measurement = pexConfig.ConfigurableField(
         target = SingleFrameMeasurementTask,
@@ -168,22 +164,10 @@ class DetectAndMeasureTask(pipeBase.Task):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         if self.config.doMeasureApCorr:
             # add field to flag stars useful for measuring aperture correction
-            self.isStarFlagKey = schema.addField(
-                self.config.measureApCorr.inputFilterFlag,
-                type="Flag",
-                doc="set if source appears to be a star",
-            )
-            self.starSelector = self.config.starSelector.apply()
             self.makeSubtask("measureApCorr", schema=schema)
 
-    @property
-    def usesMatches(self):
-        """Return True if matches can be used (possibly required) so loadAndMatch should be provided
-        """
-        return self.config.doMeasureApCorr and self.starSelector.usesMatches
-
     @pipeBase.timeMethod
-    def run(self, exposure, exposureIdInfo, background=None, loadAndMatch=None):
+    def run(self, exposure, exposureIdInfo, background=None, preMeasApCorrFunc=None):
         """!Detect, deblend and perform single-frame measurement on sources and refine the background model
 
         @param[in,out] exposure  exposure to process. Background must already be subtracted
@@ -192,10 +176,12 @@ class DetectAndMeasureTask(pipeBase.Task):
         @param[in]     exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
         @param[in,out] background  background model to be modified (an lsst.afw.math.BackgroundList),
             or None to create a new background model
-        @param[in]     loadAndMatch  a function that loads a reference catalog
-            and matches sources to reference objects, or None if matching is not wanted.
-            AstrometryTask.loadAndMatch or equivalent.
-            Will only be called if the object star selector is called and if it can use matches.
+        @param[in] preMeasApCorrFunc  a function to process the source catalog just before measuring
+            aperture correction, or None. If provided it must accept a single argument: a source catalog,
+            (with measurement done up to and not including applying aperture correction)
+            and must modify that catalog in place (any returned value is ignored).
+            This is primarily offered as a way to allow the caller to set the "calib_psfUsed" field,
+            for measuring aperture correction.
 
         @return pipe_base Struct containing these fields:
         - exposure: input exposure (as modified in the course of runing)
@@ -229,6 +215,7 @@ class DetectAndMeasureTask(pipeBase.Task):
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
             sourceCat = sourceCat,
+            preMeasApCorrFunc = preMeasApCorrFunc,
         )
 
         return pipeBase.Struct(
@@ -238,7 +225,7 @@ class DetectAndMeasureTask(pipeBase.Task):
             matches = measRes.matches,
         )
 
-    def measure(self, exposure, exposureIdInfo, sourceCat, loadAndMatch=None):
+    def measure(self, exposure, exposureIdInfo, sourceCat, preMeasApCorrFunc=None):
         """Measure sources
 
         @param[in,out] exposure  exposure to process. Background must already be subtracted
@@ -247,10 +234,9 @@ class DetectAndMeasureTask(pipeBase.Task):
         @param[in]     exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
         @param[in,out] background  background model to be modified (an lsst.afw.math.BackgroundList),
             or None to create a new background model
-        @param[in]     loadAndMatch  a function that loads a reference catalog
-            and matches sources to reference objects, or None if matching is not wanted.
-            AstrometryTask.loadAndMatch or equivalent.
-            Will only be called if the object star selector is called and if it can use matches.
+        @param[in] preMeasApCorrFunc  a function to process the source catalog just before measuring, or None;
+            see the run method for more information.
+
         @return an lsst.pipe.base.Struct containing these fields:
         - matches source/reference object matches (an lsst.afw.table.ReferenceMatchVector),
             or None if matching not performed
@@ -267,13 +253,10 @@ class DetectAndMeasureTask(pipeBase.Task):
                 endOrder = BasePlugin.APCORR_ORDER,
             )
 
-            # find stars for measuring aperture correction
-            if loadAndMatch is not None and self.starSelector.selectStars.usesMatches:
-                matchRes = loadAndMatch(exposure=exposure, sourceCat=sourceCat)
-            psfCandidateList = self.starSelector.selectStars(exposure, sourceCat, matchRes.matches)
-            for psfCandidate in psfCandidateList:
-                src = psfCandidate.getSource()
-                src.set(self.isStarFlagKey, True)
+            if preMeasApCorrFunc is not None:
+                preMeasApCorrFunc(sourceCat)
+
+            sourceCat.sort(SourceTable.getParentKey())
 
             # measure aperture correction
             apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sourceCat).apCorrMap
