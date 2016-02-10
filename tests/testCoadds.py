@@ -110,6 +110,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
             measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
             measMergedConfig.measurement.slots.shape = "base_SdssShape"
+            measMergedConfig.measurement.doApplyApCorr = "no"
             measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
             measMergedConfig.propagateFlags.flags = {} # Disable flag propagation: no flags to propagate
             measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
@@ -308,6 +309,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testForcedPhotCoaddTask(self):
         config = lsst.meas.base.ForcedPhotCoaddConfig()
         config.references.filter = 'r'
+        config.measurement.doApplyApCorr = "no"
         task = lsst.meas.base.ForcedPhotCoaddTask(config=config, butler=self.butler)
         task.writeSchemas(self.butler)
         self.runTaskOnPatches(task)
@@ -315,6 +317,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testForcedPhotCcdTask(self):
         config = lsst.meas.base.ForcedPhotCcdConfig()
         config.references.filter = 'r'
+        config.measurement.doApplyApCorr = "no"
         task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=self.butler)
         self.runTaskOnCcds(task)
 
