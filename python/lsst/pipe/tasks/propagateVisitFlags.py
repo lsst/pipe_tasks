@@ -31,7 +31,7 @@ import lsst.afw.table as afwTable
 class PropagateVisitFlagsConfig(Config):
     """!Configuration for propagating flags to coadd"""
     flags = DictField(keytype=str, itemtype=float,
-                      default={"calib.psf.used": 0.2, "calib.psf.candidate": 0.2,},
+                      default={"calib_psfCandidate": 0.2, "calib_psfUsed": 0.2,},
                       doc="Source catalog flags to propagate, with the threshold of relative occurrence.")
     matchRadius = Field(dtype=float, default=0.2, doc="Source matching radius (arcsec)")
 
@@ -179,7 +179,7 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
 
         # Accumulate counts of flags being set
         for v, c in zip(visits, ccds):
-            ccdSources = butler.get("src", visit=int(v), ccd=int(c), immediate=True)
+            ccdSources = butler.get("icSrc", visit=int(v), ccd=int(c), immediate=True)
             for flag in flags:
                 # We assume that the flags will be relatively rare, so it is more efficient to match
                 # against a subset of the input catalog for each flag than it is to match once against
@@ -195,5 +195,5 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
             key = self._keys[f]
             for s, num in zip(coaddSources, counts[f]):
                 numOverlaps = len(ccdInputs.subsetContaining(s.getCentroid(), coaddWcs, True))
-                s.setFlag(key, num > numOverlaps*self.config.flags[f])
+                s.setFlag(key, bool(num > numOverlaps*self.config.flags[f]))
             self.log.info("Propagated %d sources with flag %s" % (sum(s.get(key) for s in coaddSources), f))
