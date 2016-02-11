@@ -541,10 +541,12 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         # First run plugins with order up to and including APCORR_ORDER to measure all fluxes
         # and apply the aperture correction (using the apCorrMap measured in the calibration
         # task) to the measured fluxes whose plugins were registered with shouldApCorr=True
-        self.measurement.run(sources, exposure, endOrder=BasePlugin.APCORR_ORDER+1)
+        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef),
+                             endOrder=BasePlugin.APCORR_ORDER+1)
         # Now run the remaining APCORR_ORDER+1 plugins (whose measurements should be performed on
         # aperture corrected fluxes) disallowing apCorr (to avoid applying it more than once)
-        self.measurement.run(sources, exposure, beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
+        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef),
+                             beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
 
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
@@ -591,6 +593,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         dataRef.put(sources, self.config.coaddName + "Coadd_meas")
         self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
 
+    def getExposureId(self, dataRef):
+        return long(dataRef.get(self.config.coaddName + "CoaddId"))
 
 ##############################################################################################################
 
