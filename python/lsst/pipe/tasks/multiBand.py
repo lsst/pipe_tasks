@@ -26,7 +26,7 @@ from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.meas.base import SingleFrameMeasurementTask
+from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
 from lsst.meas.astrom import ANetAstrometryTask
@@ -537,7 +537,17 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
             if numBig > 0:
                 self.log.warn("Patch %s contains %d large footprints that were not deblended" %
                               (patchRef.dataId, numBig))
-        self.measurement.run(exposure, sources)
+
+        # First run plugins with order up to and including APCORR_ORDER to measure all fluxes
+        # and apply the aperture correction (using the apCorrMap measured in the calibration
+        # task) to the measured fluxes whose plugins were registered with shouldApCorr=True
+        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef),
+                             endOrder=BasePlugin.APCORR_ORDER+1)
+        # Now run the remaining APCORR_ORDER+1 plugins (whose measurements should be performed on
+        # aperture corrected fluxes) disallowing apCorr (to avoid applying it more than once)
+        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef),
+                             beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
+
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
                                  includeDeblend=self.config.doDeblend)
@@ -583,6 +593,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         dataRef.put(sources, self.config.coaddName + "Coadd_meas")
         self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
 
+    def getExposureId(self, dataRef):
+        return long(dataRef.get(self.config.coaddName + "CoaddId"))
 
 ##############################################################################################################
 
