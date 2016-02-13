@@ -123,8 +123,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     self.assertEqual(len(src), 183)
                     self.assertEqual(numGoodPix, 1966981)
 
-                    self.assertAlmostEqual(imMean,      1.6420218886642219, places=7)
-                    self.assertAlmostEqual(imStdDev,  163.41110986175093, places=7)
+                    self.assertAlmostEqual(imMean,      1.6990100056162509, places=7)
+                    self.assertAlmostEqual(imStdDev,  163.66259396347039, places=7)
                     self.assertAlmostEqual(varMean,   212.5416436210289, places=7)
                     self.assertAlmostEqual(varStdDev, 121.25084470503148, places=7)
                     self.assertAlmostEqual(psfIxx, 2.2052301391981985, places=7)

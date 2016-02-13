@@ -241,7 +241,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         if icSourceSchema is not None:
             # use a schema mapper to avoid copying each field separately
             self.schemaMapper = afwTable.SchemaMapper(icSourceSchema)
-            self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema())
+            self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
 
             # Add fields to copy from an icSource catalog
             # and a field to indicate that the source matched a source in that catalog
