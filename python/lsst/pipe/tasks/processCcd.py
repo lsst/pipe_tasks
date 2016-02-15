@@ -19,6 +19,8 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+import os
+
 from .processImage import ProcessImageTask
 from lsst.ip.isr import IsrTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -143,8 +145,21 @@ class ProcessCcdTask(ProcessImageTask):
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
+        rawExposure = sensorRef.get(self.dataPrefix + "raw")
+        ccd = rawExposure.getDetector().getId()
+        doWriteDebug = False
+        if doWriteDebug:
+            outDir = "/tigress/HSC/users/lauren/testing/LSST/"+str(ccd)
+            try:
+                os.mkdir(outDir)
+            except:
+                print outDir+" already exists..."
+
+        if doWriteDebug: rawExposure.writeFits(outDir+"/pir0.fits")
+
         # initialize postIsrExposure exposure
         postIsrExposure = self.setPostIsrExposure(sensorRef)
+        if doWriteDebug: postIsrExposure.writeFits(outDir+"/pir1.fits")
 
         # initialize outputs
         idFactory = None

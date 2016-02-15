@@ -165,7 +165,7 @@ class InterpImageTask(pipeBase.Task):
         fallbackValue = 0.0  # interpolateOverDefects needs this to be a float, regardless if it is used
         if self.config.useFallbackValueAtEdge:
             fallbackValue = self._setFallbackValue(maskedImage)
-
+        print 'fallbackValue = ', fallbackValue
         measAlg.interpolateOverDefects(maskedImage, psf, defectList, fallbackValue,
                                        self.config.useFallbackValueAtEdge)
 

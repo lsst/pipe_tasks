@@ -19,6 +19,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+import os
 import math
 
 import lsst.daf.base as dafBase
@@ -453,6 +454,15 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         """
         assert exposure is not None, "No exposure provided"
 
+        doWriteDebug = False
+        if doWriteDebug:
+            ccd = exposure.getDetector().getId()
+            outDir = "/tigress/HSC/users/lauren/testing/LSST/"+str(ccd)
+            try:
+                os.mkdir(outDir)
+            except:
+                print outDir+" already exists..."
+        if doWriteDebug: exposure.writeFits(outDir+"/exp0.fits")
         if not exposure.hasPsf():
             self.installInitialPsf(exposure)
         if idFactory is None:
@@ -460,10 +470,10 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         backgrounds = afwMath.BackgroundList()
         keepCRs = True                  # At least until we know the PSF
         self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
+        if doWriteDebug: exposure.writeFits(outDir+"/exp1.fits")
         frame = getDebugFrame(self._display, "repair")
         if frame:
             getDisplay(frame).mtv(exposure)
-
         if self.config.doBackground:
             with self.timer("background"):
                 bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
@@ -471,18 +481,20 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             frame = getDebugFrame(self._display, "background")
             if frame:
                 getDisplay(frame).mtv(exposure)
-
+        if doWriteDebug: exposure.writeFits(outDir+"/exp2.fits")
         # Make both tables from the same detRet, since detection can only be run once
         table1 = afwTable.SourceTable.make(self.schema1, idFactory)
         table1.setMetadata(self.algMetadata)
         detRet = self.detection.makeSourceCatalog(table1, exposure)
         sources1 = detRet.sources
+        if doWriteDebug: exposure.writeFits(outDir+"/exp3.fits")
         if detRet.fpSets.background:
             backgrounds.append(detRet.fpSets.background)
 
         # do the initial measurement.  This is normally done for star selection, but do it 
         # even if the psf is not going to be calculated for consistency
         self.initialMeasurement.run(exposure, sources1, allowApCorr=False)
+        if doWriteDebug: exposure.writeFits(outDir+"/exp4.fits")
 
         if self.config.doPsf:
             matches = None
@@ -501,6 +513,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                     # Restore original Wcs: we're going to repeat the astrometry later, and if it succeeded
                     # this time, running it again with the same basic setup means it should succeed again.
                     exposure.setWcs(origWcs)
+            if doWriteDebug: exposure.writeFits(outDir+"/exp5.fits")
+
             psfRet = self.measurePsf.run(exposure, sources1, expId=expId, matches=matches)
             psf = psfRet.psf
         elif exposure.hasPsf():
@@ -508,6 +522,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         else:
             psf = None
 
+        if doWriteDebug: exposure.writeFits(outDir+"/exp6.fits")
         # Wash, rinse, repeat with proper PSF
 
         if self.config.doPsf:
@@ -515,6 +530,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             frame = getDebugFrame(self._display, "PSF_repair")
             if frame:
                 getDisplay(frame).mtv(exposure)
+        if doWriteDebug: exposure.writeFits(outDir+"/exp7.fits")
 
         if self.config.doBackground:
             # Background estimation ignores (by default) pixels with the
@@ -531,6 +547,8 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
             frame = getDebugFrame(self._display, "PSF_background")
             if frame:
                 getDisplay(frame).mtv(exposure)
+
+        if doWriteDebug: exposure.writeFits(outDir+"/exp8.fits")
 
         # make a second table with which to do the second measurement
         # the schemaMapper will copy the footprints and ids, which is all we need.
@@ -563,6 +581,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         else:
             self.measurement.run(exposure, sources)
 
+        if doWriteDebug: exposure.writeFits(outDir+"/exp9.fits")
         matches, matchMeta = None, None
         if self.config.doAstrometry:
             try:
@@ -574,6 +593,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
                     raise
                 self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
 
+        if doWriteDebug: exposure.writeFits(outDir+"/exp10.fits")
         if self.config.doPhotoCal:
             try:
                 if not matches:
@@ -604,6 +624,7 @@ into your debug.py file and run calibrateTask.py with the \c --debug flag.
         else:
             photocalRet = None
 
+        if doWriteDebug: exposure.writeFits(outDir+"/exp11.fits")
         frame = getDebugFrame(self._display, "calibrate")
         if frame:
             displayAstrometry(sourceCat=sources, exposure=exposure, matches=matches, frame=frame, pause=False)

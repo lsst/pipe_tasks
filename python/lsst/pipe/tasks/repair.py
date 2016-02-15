@@ -194,6 +194,7 @@ class RepairTask(pipeBase.Task):
           <DD> The Exposure has no associated Psf
         </DL>
         """
+        print 'defects = ', defects
         assert exposure, "No exposure provided"
         psf = exposure.getPsf()
         assert psf, "No PSF provided"
