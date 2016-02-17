@@ -255,13 +255,12 @@ class RepairTask(pipeBase.Task):
                                          psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
             if bkgd:
                 # Add back background image
-                img = exposure.getMaskedImage().getImage()
+                img = exposure.getMaskedImage()
                 img += bkgd.getImageF()
                 del img
                 # Replace original image with CR subtracted image
-                mimg = exposure0.getMaskedImage()
-                mimg <<= exposure.getMaskedImage()
-                del mimg
+                exposure0.setMaskedImage(exposure.getMaskedImage())
+
         except Exception:
             if display:
                 import lsst.afw.display.ds9 as ds9
@@ -287,4 +286,3 @@ class RepairTask(pipeBase.Task):
                         displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
         self.log.info("Identified %s cosmic rays." % (num,))
-
