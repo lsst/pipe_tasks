@@ -153,15 +153,9 @@ class RawMapping(SimpleMapping):
     template = "{dataset}-{visit:04d}-{ccd:01d}{ext}"
     keys = dict(visit=int, ccd=int)
 
-    def query(self, index, level, format, dataId):
-        results = []
-        visit = dataId.get('visit', None)
-        dictList = index[level][visit]
-        ccd = dataId.get('ccd', None)
-        for d in dictList.values():
-            if ccd is not None and d['ccd'] != ccd:
-                continue
-            results.append(tuple(d[f] for f in format))
+    def query(self, dataset, index, level, format, dataId):
+        dictList = index[dataset][level]
+        results = [d.values() for d in dictList[dataId.get(level, None)]]
         return results
 
 class SkyMapping(SimpleMapping):
@@ -196,7 +190,7 @@ class MapperMeta(type):
     @staticmethod
     def _makeQueryClosure(dataset, mapping):
         def queryClosure(self, level, format, dataId):
-            return mapping.query(self.index, level, format, dataId)
+            return mapping.query(dataset, self.index, level, format, dataId)
         return queryClosure
 
     def __init__(cls, name, bases, dict_):
