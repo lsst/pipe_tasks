@@ -95,6 +95,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             self.butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
 
             self.mocksTask.buildAllInputs(self.butler)
+            self.addMaskPlanes()
+            self.checkMaskPlanesExist()
             self.mocksTask.buildCoadd(self.butler)
             self.mocksTask.buildMockCoadd(self.butler)
             self.detectTask.writeSchemas(self.butler)
@@ -129,6 +131,32 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         del self.mocksTask
         del self.detectTask
         del self.butler
+
+    def getCalexpIds(self, butler):
+        return butler.mapper.index['calexp']['visit'][None]
+
+    def addMaskPlanes(self):
+        butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)
+        # Get the dataId for each calexp in the repository
+        calexpDataIds = self.getCalexpIds(butler)
+        # Loop over each of the calexp and add the CROSSTALK and NOT_DEBLENDED mask planes
+        for Id in calexpDataIds:
+            image = butler.get('calexp', Id)
+            mask = image.getMaskedImage().getMask()
+            mask.addMaskPlane("CROSSTALK")
+            mask.addMaskPlane("NOT_DEBLENDED")
+            butler.put(image, 'calexp', dataId=Id)
+
+    def checkMaskPlanesExist(self):
+        butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)
+        # Get the dataId for each calexp in the repository
+        calexpDataIds = self.getCalexpIds(butler)
+        # Loop over each Id and verify the mask planes were added
+        for ID in calexpDataIds:
+            image = butler.get('calexp', ID)
+            mask = image.getMaskedImage().getMask()
+            self.assert_('CROSSTALK' in mask.getMaskPlaneDict().keys())
+            self.assert_('NOT_DEBLENDED' in mask.getMaskPlaneDict().keys())
 
     def runTaskOnPatches(self, task, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
@@ -174,6 +202,14 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         for aFuncParams, bFuncParams in zip(ak.getSpatialParameters(), bk.getSpatialParameters()):
             for aParam, bParam in zip(aFuncParams, bFuncParams):
                 self.assertEqual(aParam, bParam)
+
+    @unittest.skip("Remove test until DM-5174 is complete")
+    def testMasksRemoved(self):
+        image = self.butler.get(self.mocksTask.config.coaddName + 'Coadd_mock',\
+                                {'filter':'r','tract':0, 'patch':'0,0'})
+        keys = image.getMaskedImage().getMask().getMaskPlaneDict().keys()
+        self.assert_('CROSSTALK' not in keys)
+        self.assert_('NOT_DEBLENDED' not in keys)
 
     def testTempExpInputs(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
