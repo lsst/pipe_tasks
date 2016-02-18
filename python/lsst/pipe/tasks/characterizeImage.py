@@ -160,6 +160,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
     CharacterizeImageTask has a debug dictionary the following keys:
     <dl>
+    <dt>frame
+    <dd>int: if specified, the frame of first debug image displayed (defaults to 1)
     <dt>repair_iter
     <dd>bool; if True display image after each repair in the measure PSF loop
     <dt>background_iter
@@ -179,9 +181,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         import lsstDebug
         def DebugInfo(name):
             di = lsstDebug.getInfo(name)  # N.b. lsstDebug.Info(name) would call us recursively
-            if name == "lsst.pipe.tasks.calibrate":
+            if name == "lsst.pipe.tasks.characterizeImage":
                 di.display = dict(
-                    calibrate = 1,
+                    repair = True,
                 )
 
             return di
@@ -231,7 +233,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.makeSubtask("repair")
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         self.makeSubtask("measurePsf", schema=self.schema)
-        self._frame = 0 # debug frame; reset to 0 at start of "run" and "characterize"
+        self._initialFrame = getDebugFrame(self._display, "frame") or 1
+        self._frame = self._initialFrame
 
     @pipeBase.timeMethod
     def run(self, dataRef, exposure=None, background=None, doUnpersist=True):
@@ -253,7 +256,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         @return same data as the characterize method
         """
-        self._frame = 0 # reset debug display frame
+        self._frame = self._initialFrame # reset debug display frame
         self.log.info("Processing %s" % (dataRef.dataId))
 
         if doUnpersist:
@@ -302,7 +305,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         - background: model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
         - psfCellSet: spatial cells of PSF candidates (an lsst.afw.math.SpatialCellSet)
         """
-        self._frame = 0 # reset debug display frame
+        self._frame = self._initialFrame # reset debug display frame
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             raise pipeBase.TaskError("exposure has no PSF model and config.doMeasurePsf false")
@@ -430,13 +433,13 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         @param[in] sourceCat  source catalog to display
         """
         val = getDebugFrame(self._display, itemName)
-        if val <= 0:
+        if not val:
             return
 
-        self._frame += 1
         displayAstrometry(
                 exposure = exposure,
                 sourceCat = sourceCat,
                 frame = self._frame,
                 pause = False,
             )
+        self._frame += 1
