@@ -458,7 +458,7 @@ class MergeDetectionsTask(MergeSourcesTask):
 
     def cullPeaks(self, catalog):
         """Attempt to remove garbage peaks (mostly on the outskirts of large blends)"""
-        keys = [item.key for item in self.merged.getPeakSchema().extract("merge.peak.*").itervalues()]
+        keys = [item.key for item in self.merged.getPeakSchema().extract("merge_peak_*").itervalues()]
         totalPeaks = 0
         culledPeaks = 0
         for parentSource in catalog:
