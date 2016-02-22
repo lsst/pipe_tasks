@@ -26,7 +26,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, SourceCatalog
-from lsst.daf.butlerUtils import ExposureIdInfo
 from lsst.meas.algorithms import estimateBackground
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import displayAstrometry
@@ -266,7 +265,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         elif exposure is None:
             raise pipeBase.TaskError("doUnpersist false; exposure must be provided")
 
-        exposureIdInfo = ExposureIdInfo.fromDataRef(dataRef)
+        exposureIdInfo = dataRef.get("expIdInfo")
 
         charRes = self.characterize(
             exposure = exposure,

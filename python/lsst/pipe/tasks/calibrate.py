@@ -24,7 +24,6 @@ import math
 from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.daf.butlerUtils import ExposureIdInfo
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from .detectAndMeasure import DetectAndMeasureTask
@@ -322,7 +321,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         elif exposure is None:
             raise pipeBase.TaskError("doUnpersist false; exposure must be provided")
 
-        exposureIdInfo = ExposureIdInfo.fromDataRef(dataRef, datasetName=self.exposureIdName)
+        exposureIdInfo = dataRef.get("expIdInfo")
 
         calRes = self.calibrate(
             exposure = exposure,

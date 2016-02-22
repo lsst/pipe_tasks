@@ -31,7 +31,6 @@ from lsst.utils import getPackageDir
 from lsst.afw.geom import Box2I, Point2I, Extent2I
 from lsst.afw.table import SourceTable
 from lsst.daf.persistence import Butler
-from lsst.daf.butlerUtils import ExposureIdInfo
 from lsst.meas.algorithms.testUtils import plantSources
 from lsst.pipe.tasks.detectAndMeasure import DetectAndMeasureTask
 
@@ -79,7 +78,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         dataRef = butler.dataRef("calexp", dataId=dict(visit=1))
         wcs = dataRef.get("raw").getWcs()
         exposure.setWcs(wcs)
-        exposureIdInfo = ExposureIdInfo.fromDataRef(dataRef)
+        exposureIdInfo = dataRef.get("expIdInfo")
         taskRes = task.run(exposure=exposure, exposureIdInfo=exposureIdInfo, preMeasApCorrFunc=setPsfUsed)
         self.assertEqual(len(taskRes.sourceCat), numX * numY)
         schema = taskRes.sourceCat.schema
