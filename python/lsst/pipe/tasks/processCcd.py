@@ -146,12 +146,17 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
         exposure = self.isr.runDataRef(sensorRef).exposure
 
+        self.log.warn("Temporarily reading icSrc from repo")
+        masterIcSrc = sensorRef.get("icSrc")
+
         charRes = self.charImage.run(
             dataRef = sensorRef,
             exposure = exposure,
             doUnpersist = False,
         )
         exposure = charRes.exposure
+
+        charRes.sourceCat = masterIcSrc
 
         if self.config.doCalibrate:
             calibRes = self.calibrate.run(

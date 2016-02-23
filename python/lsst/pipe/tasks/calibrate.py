@@ -25,6 +25,7 @@ from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
+from lsst.afw.image import wcsNearlyEqualOverBBox
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from .detectAndMeasure import DetectAndMeasureTask
 from .photoCal import PhotoCalTask
@@ -267,12 +268,14 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         if self.config.doAstrometry or self.config.doPhotoCal:
-            self.makeSubtask("astrometry", schema=self.schema)
+            self.log.warn("Temporarily using icSourceSchema for astrometry schema")
+            self.makeSubtask("astrometry", schema=icSourceSchema)
             self.loadAndMatch = self.astrometry.loadAndMatch
         else:
             self.loadAndMatch = None
         if self.config.doPhotoCal:
-            self.makeSubtask("photoCal", schema=self.schema)
+            self.log.warn("Temporarily using icSourceSchema for astrometry schema")
+            self.makeSubtask("photoCal", schema=icSourceSchema)
 
         if self.schemaMapper is not None:
             # finalize the schema
@@ -326,6 +329,16 @@ class CalibrateTask(pipeBase.CmdLineTask):
             background = background,
             icSourceCat = icSourceCat,
         )
+
+        self.log.warn("Temporarily compare wcs to calexp from master")
+        masterCalexp = dataRef.get("calexp", immediate=True)
+        if wcsNearlyEqualOverBBox(exposure.getWcs(), masterCalexp.getWcs(), exposure.getBBox()):
+            self.log.info("WCS is the same as master for %s" % (dataRef.dataId,))
+        else:
+            self.log.warn("WCS is the NOT same as master for %s" % (dataRef.dataId,))
+
+        self.log.warn("Temporarily use PSF from calexp on master")
+        exposure.setPsf(masterCalexp.getPsf())
 
         if self.config.doWrite:
             dataRef.put(calRes.sourceCat, self.dataPrefix + "src")
@@ -382,15 +395,28 @@ class CalibrateTask(pipeBase.CmdLineTask):
             matchMeta = None,
         )
         if self.config.doAstrometry:
+            self.log.warn("Temporarily using icSourceCat for astrometry")
+            if icSourceCat is None:
+                raise pipeBase.TaskError("icSourceCat not specified")
+            astromCat = icSourceCat
+#            astromCat = procRes.sourceCat
             try:
                 astromRes = self.astrometry.run(
                     exposure = exposure,
-                    sourceCat = procRes.sourceCat,
+                    sourceCat = astromCat,
                 )
             except Exception as e:
                 if self.config.requireAstrometry:
                     raise
                 self.log.warn("Unable to perform astrometric calibration (%s): attempting to proceed" % e)
+
+            self.log.warn("Temporarily manually set source sky coordinates")
+            wcs = exposure.getWcs()
+            sourceCat = procRes.sourceCat
+            srcCoordKey = afwTable.CoordKey(sourceCat.schema["coord"])
+            for src in sourceCat:
+                src.set(srcCoordKey, wcs.pixelToSky(src.getCentroid()))
+
 
         # compute photometric calibration
         photoRes = pipeBase.Struct(
@@ -477,6 +503,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
         that actually exist in the schema. This was set up by the constructor
         using self.schemaMapper.
         """
+        self.log.warn("Temporarily not copying flags from icSourceCat to sourceCat")
+        return
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify icSourceSchema "
                 "and icSourceKeys when constructing this task")
