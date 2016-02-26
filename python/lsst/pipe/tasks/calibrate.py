@@ -480,9 +480,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
         @param[in,out] sourceCat  catalog to which to copy fields
         @param[in] matchRadius  match radius for sources (pixels)
 
-        The fields to be copied are a subset of `config.icSourceFieldsToCopy`
+        The fields copied are those specified by `config.icSourceFieldsToCopy`
+        that actually exist in the schema. This was set up by the constructor
+        using self.schemaMapper.
         """
-        self.log.info("Matching icSource and Source catalogs to propagate flags.")
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify icSourceSchema "
                 "and icSourceKeys when constructing this task")
@@ -493,36 +494,40 @@ class CalibrateTask(pipeBase.CmdLineTask):
             return
 
         closest = False  # return all matched objects
-        matched = afwTable.matchXy(icSourceCat, sourceCat, matchRadius, closest)
+        matches = afwTable.matchXy(icSourceCat, sourceCat, matchRadius, closest)
         if self.config.detectAndMeasure.doDeblend:
-            matched = [m for m in matched if m[1].get("deblend_nChild") == 0] # if deblended, keep children
+            deblendKey = sourceCat.schema["deblend_nChild"].asKey()
+            matches = [m for m in matches if m[1].get(deblendKey) == 0] # if deblended, keep children
 
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches
-        bestMatches = {}
-        for m0, m1, d in matched:
+        bestMatches = {}  # closest matches as a dict of icSourceCat source ID:
+                          #   (icSourceCat source, sourceCat source, distance in pixels)
+        for m0, m1, d in matches:
             id0 = m0.getId()
-            if bestMatches.has_key(id0):
-                if d > bestMatches[id0][2]:
-                    continue
+            match = bestMatches.get(id0)
+            if match is None or d <= match[2]:
+                bestMatches[id0] = (m0, m1, d)
+        matches = bestMatches.values()
 
-            bestMatches[id0] = (m0, m1, d)
+        # Check that no sourceCat sources are listed twice (we already know that each match has a unique
+        # icSourceCat source ID, due to using that ID as the key in bestMatches)
+        numMatches = len(matches)
+        numUniqueSources = len(set(m[1].getId() for m in matches))
+        if numUniqueSources != numMatches:
+            self.log.warn("%d icSourceCat sources matched only %d sourceCat sources" %
+                (numMatches, numUniqueSources))
 
-        matched = bestMatches.values()
+        self.log.info("Copy flags from icSourceCat to sourceCat for %s sources" % (numMatches,))
 
-        # Check that we got it right
-        if len(set(m[0].getId() for m in matched)) != len(matched):
-            self.log.warn("At least one icSourceCat source is matched to more than one sourceCat source")
-
-        self.log.info("Matched %s sources" % (len(matched),))
-
-        # Copy over the desired fields
-        for ics, s, d in matched:
-            s.setFlag(self.calibSourceKey, True)
-            # We don't want to overwrite s's footprint with ics's; DM-407
-            icsFootprint = ics.getFootprint()
+        # For each match: set the calibSourceKey flag and copy the desired fields
+        for icSrc, src, d in matches:
+            src.setFlag(self.calibSourceKey, True)
+            # src.assign copies the footprint from icSrc, which we don't want (DM-407)
+            # so set icSrc's footprint to src's footprint before src.assign, then restore it
+            icSrcFootprint = icSrc.getFootprint()
             try:
-                ics.setFootprint(s.getFootprint())
-                s.assign(ics, self.schemaMapper)
+                icSrc.setFootprint(src.getFootprint())
+                src.assign(icSrc, self.schemaMapper)
             finally:
-                ics.setFootprint(icsFootprint)
+                icSrc.setFootprint(icSrcFootprint)
