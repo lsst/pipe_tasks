@@ -12,6 +12,7 @@ config.log
 doc/*.tag
 doc/html
 doc/doxygen.conf
+doc/xml
 python/lsst/pipe/tasks/version.py
 tests/.tests
 ups/*.cfgc
