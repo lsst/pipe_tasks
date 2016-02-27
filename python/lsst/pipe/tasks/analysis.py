@@ -327,14 +327,14 @@ class Analysis(object):
             # plot data.  Appending in dataPoints for the sake of the legend
             dataPoints.append(axScatter.scatter(data.mag, data.quantity, s=4, marker="o", lw=0,
                                            c=data.color, label=name, alpha=alpha))
-            axHistx.hist(data.mag, bins=xBins, color=histColor, alpha=0.6, label=name)
-            axHisty.hist(data.quantity, bins=yBins, color=histColor, alpha=0.6, orientation="horizontal",
+            axHistx.hist(data.mag, bins=xBins, color=histColor, histtype='stepfilled', alpha=0.6, label=name)
+            axHisty.hist(data.quantity, bins=yBins, color=histColor, histtype='stepfilled', alpha=0.6, orientation="horizontal",
                          label=name)
         # Make sure stars used histogram is plotted last
         for name, data in self.data.iteritems():
             if stats is not None and name == "star" :
                 dataUsed = data.quantity[stats[name].dataUsed]
-                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation="horizontal", alpha=1.0,
+                axHisty.hist(dataUsed, bins=yBins, color=data.color, orientation="horizontal", histtype='stepfilled', alpha=1.0,
                              label="used in Stats")
         axHistx.xaxis.set_minor_locator(minorLocator)
         axHistx.tick_params(axis="x", which="major", length=5)
@@ -560,8 +560,12 @@ class CcdAnalysis(Analysis):
         stats = self.stats(forcedMean=forcedMean)
         self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats,
                      hscRun=hscRun, matchRadius=matchRadius)
-        self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
-                            hscRun=hscRun, matchRadius=matchRadius)
+        try:
+            self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
+                                hscRun=hscRun, matchRadius=matchRadius)
+        except KeyError as ke:
+            print(ke)
+
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean,
                                 camera=camera, ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius)
 
@@ -953,11 +957,15 @@ class CoaddAnalysisTask(CmdLineTask):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_SdssCentroid_x", "base_SdssCentroid_y"]:
             if col in catalog.schema:
-                self.AnalysisClass(catalog, catalog[col], "(%s)" % col, col, self.config.analysis,
-                                   flags=["base_SdssCentroid_flag"], labeller=StarGalaxyLabeller(),
-                                   ).plotFP(dataId, filenamer, self.log, enforcer,
-                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                             matchRadius=matchRadius)
+                try:
+                    self.AnalysisClass(catalog, catalog[col], "(%s)" % col, col, self.config.analysis,
+                                       flags=["base_SdssCentroid_flag"], labeller=StarGalaxyLabeller(),
+                                       ).plotFP(dataId, filenamer, self.log, enforcer,
+                                                 camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                                 matchRadius=matchRadius)
+                except KeyError as ke:
+                    message = "Cannot run plotFP: %s" % ke
+                    self.log.warn(message)
 
     def plotStarGal(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
         self.AnalysisClass(catalog, deconvMomStarGal, "pStar", "pStar", self.config.analysis,
@@ -1528,9 +1536,12 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             else:
                 self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if self.config.doMatches:
-            matches = self.readSrcMatches(dataRefList, "src")
-            self.plotMatches(matches, filterName, filenamer, dataId, hscRun=hscRun,
-                             matchRadius=self.config.matchRadius)
+            try:
+                matches = self.readSrcMatches(dataRefList, "src")
+                self.plotMatches(matches, filterName, filenamer, dataId, hscRun=hscRun,
+                                 matchRadius=self.config.matchRadius)
+            except Exception as e:
+                print(e)
 
         for cat in self.config.externalCatalogs:
             if self.config.photoCatName not in cat:
@@ -1671,10 +1682,14 @@ class CompareAnalysisConfig(Config):
 class CompareAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
-        parentDir = parsedCmd.input
-        while os.path.exists(os.path.join(parentDir, "_parent")):
-            parentDir = os.path.realpath(os.path.join(parentDir, "_parent"))
-        butler2 = Butler(root=os.path.join(parentDir, "rerun", parsedCmd.rerun2), calibRoot=parsedCmd.calib)
+        if parsedCmd.rerun2:
+            parentDir = parsedCmd.input
+            while os.path.exists(os.path.join(parentDir, "_parent")):
+                parentDir = os.path.realpath(os.path.join(parentDir, "_parent"))
+            repodir = os.path.join(parentDir, "rerun", parsedCmd.rerun2)
+        elif parsedCmd.butler2:
+            repodir = parsedCmd.butler2
+        butler2 = Butler(root=repodir, calibRoot=parsedCmd.calib)
         idParser = parsedCmd.id.__class__(parsedCmd.id.level)
         idParser.idList = parsedCmd.id.idList
         butler = parsedCmd.butler
@@ -1693,7 +1708,10 @@ class CompareAnalysisTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_argument("--rerun2", required=True, help="Second rerun, for comparison")
+        parser.add_argument("--butler2", default=None,
+                            help="Second butler repo, for comparison.  Either butler2 xor rerun2 must be specified.")
+        parser.add_argument("--rerun2", default=None,
+                            help="Second rerun, for comparison.  Either butler2 xor rerun2 must be specified.")
         parser.add_id_argument("--id", "deepCoadd_forced_src",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=HSC-X",
                                ContainerClass=TractDataIdContainer)
@@ -1745,10 +1763,14 @@ class CompareAnalysisTask(CmdLineTask):
 class CompareVisitAnalysisRunner(TaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
-        parentDir = parsedCmd.input
-        while os.path.exists(os.path.join(parentDir, "_parent")):
-            parentDir = os.path.realpath(os.path.join(parentDir, "_parent"))
-        butler2 = Butler(root=os.path.join(parentDir, "rerun", parsedCmd.rerun2), calibRoot=parsedCmd.calib)
+        if parsedCmd.rerun2:
+            parentDir = parsedCmd.input
+            while os.path.exists(os.path.join(parentDir, "_parent")):
+                parentDir = os.path.realpath(os.path.join(parentDir, "_parent"))
+            repodir = os.path.join(parentDir, "rerun", parsedCmd.rerun2)
+        elif parsedCmd.butler2:
+            repodir = parsedCmd.butler2
+        butler2 = Butler(root=repodir, calibRoot=parsedCmd.calib)
         idParser = parsedCmd.id.__class__(parsedCmd.id.level)
         idParser.idList = parsedCmd.id.idList
         idParser.datasetType = parsedCmd.id.datasetType
@@ -1773,7 +1795,10 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_argument("--rerun2", required=True, help="Second rerun, for comparison")
+        parser.add_argument("--butler2", default=None,
+                            help="Second butler repo, for comparison.  Either butler2 xor rerun2 must be specified.")
+        parser.add_argument("--rerun2", default=None,
+                            help="Second rerun, for comparison.  Either butler2 xor rerun2 must be specified.")
         parser.add_id_argument("--id", datasetType="src", help="data ID, e.g. --id visit=12345 ccd=49")
         return parser
 
