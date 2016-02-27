@@ -461,17 +461,23 @@ class Analysis(object):
                 hscRun=None, matchRadius=None):
         """Make all plots"""
         stats = self.stats(forcedMean=forcedMean)
-        self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
-                                   stats=stats, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                   matchRadius=matchRadius)
-        self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
-                            hscRun=hscRun, matchRadius=matchRadius)
-        self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats,
-                           hscRun=hscRun, matchRadius=matchRadius)
-        self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats,
-                             hscRun=hscRun, matchRadius=matchRadius)
-        self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"), stats=stats,
-                       hscRun=hscRun, matchRadius=matchRadius)
+
+        filenameFromStyle = functools.partial(filenamer, dataId, description=self.shortName)
+        plot_kwargs = {'stats': stats, 'hscRun': hscRun, 'matchRadius': matchRadius}
+
+        plotFilename = filenameFromStyle(style="psfMagHist")
+        self.plotAgainstMagAndHist(plotFilename, camera=camera, ccdList=ccdList, **plot_kwargs)
+
+        plotsToMake, stylesToMake = zip(*[
+            (self.plotAgainstMag, 'psfMag'),
+            (self.plotHistogram, 'hist'),
+            (self.plotSkyPosition, 'sky'),
+            (self.plotRaDec, 'radec'),
+            ])
+        for plotFunc, style in zip(plotsToMake, stylesToMake):
+            plotFilename = filenameFromStyle(style=style)
+            plotFunc(plotFilename, **plot_kwargs)
+
         log.info("Statistics from %s of %s: %s" % (dataId, self.quantityName, stats))
         if enforcer:
             enforcer(stats, dataId, log, self.quantityName)
