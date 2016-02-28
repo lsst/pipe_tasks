@@ -64,14 +64,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         exposure = plantSources(bbox=bbox, kwid=kwid, sky=sky, coordList=coordList, addPoissonNoise=True)
 
         schema = SourceTable.makeMinimalSchema()
-        psfUsedKey = schema.addField("calib_psfUsed", type="Flag") # needed to measure aperture correction
-        def setPsfUsed(sourceCat):
-            # claim that all detected sources make good PSF candidates
-            for source in sourceCat:
-                source.set(psfUsedKey, True)
 
         config = DetectAndMeasureTask.ConfigClass()
-        config.measurement.doApplyApCorr = "yes"
         task = DetectAndMeasureTask(config=config, schema=schema)
 
         butler = Butler(root=InputDir)
@@ -79,7 +73,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         wcs = dataRef.get("raw").getWcs()
         exposure.setWcs(wcs)
         exposureIdInfo = dataRef.get("expIdInfo")
-        taskRes = task.run(exposure=exposure, exposureIdInfo=exposureIdInfo, preMeasApCorrFunc=setPsfUsed)
+        taskRes = task.run(exposure=exposure, exposureIdInfo=exposureIdInfo)
         self.assertEqual(len(taskRes.sourceCat), numX * numY)
         schema = taskRes.sourceCat.schema
         centroidFlagKey = schema.find("slot_Centroid_flag").getKey()
@@ -122,6 +116,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         """
         schema = SourceTable.makeMinimalSchema()
         config = DetectAndMeasureTask.ConfigClass()
+        config.doMeasureApCorr = True
         with self.assertRaises(Exception):
             DetectAndMeasureTask(config=config, schema=schema)
 

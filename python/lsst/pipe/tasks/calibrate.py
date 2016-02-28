@@ -85,8 +85,8 @@ class CalibrateConfig(pexConfig.Config):
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
-        # measure and apply aperture correction
-        self.detectAndMeasure.doMeasureApCorr = True
+        # aperture correction should already be measured
+        self.detectAndMeasure.doMeasureApCorr = False
         self.detectAndMeasure.measurement.doApplyApCorr = "yes"
 
 
@@ -114,16 +114,13 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
     @section pipe_tasks_calibrate_Purpose  Description
 
-    Given an exposure with a good PSF model (e.g. as provided by @ref CharacterizeImageTask),
-    perform the following operations:
+    Given an exposure with a good PSF model and aperture correction map
+    (e.g. as provided by @ref CharacterizeImageTask), perform the following operations:
     - Detect sources, typically to low S/N
     - Deblend sources
-    - Perform single frame measurement, typically measuring and applying aperture correction
-    - Astrometric calibration:
-        - match sources to objects found in a reference catalog
-        - fit an improved WCS
-    - Photometric calibration
-        - using the matches already found, calculate the exposure's zero-point
+    - Perform single frame measurement, applying aperture correction
+    - Astrometric calibration: fit an improved WCS
+    - Photometric calibration: fit the exposure's photometric zero-point
 
     @section pipe_tasks_calibrate_Initialize  Task initialisation
 
@@ -369,18 +366,14 @@ class CalibrateTask(pipeBase.CmdLineTask):
             used to persist and unpersist match lists
         """
         # detect, deblend and measure sources
-        if icSourceCat is not None and self.haveFieldsToCopy:
-            def copyFields(sourceCat):
-                self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=sourceCat)
-        else:
-            copyFields = None
-
         procRes = self.detectAndMeasure.run(
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
             background = background,
-            preMeasApCorrFunc = copyFields,
         )
+
+        if icSourceCat is not None and self.haveFieldsToCopy:
+            self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=procRes.sourceCat)
 
         # perform astrometry calibration:
         # fit an improved WCS and update the exposure's WCS in place

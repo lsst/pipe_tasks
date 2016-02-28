@@ -94,9 +94,10 @@ class CharacterizeImageConfig(pexConfig.Config):
         self.detectAndMeasure.detection.includeThresholdMultiplier = 10.0
         # do not deblend, as it makes a mess
         self.detectAndMeasure.doDeblend = False
-        # do not measure or apply aperture correction; save that for CalibrateTask
-        self.detectAndMeasure.doMeasureApCorr = False
-        self.detectAndMeasure.measurement.doApplyApCorr = "no"
+        # measure and apply aperture correction; note: measuring and applying aperture
+        # correction are disabled until the final measurement, after PSF is measured
+        self.detectAndMeasure.doMeasureApCorr = True
+        self.detectAndMeasure.measurement.doApplyApCorr = "yes"
         # minimal set of measurements needed to determine PSF
         self.detectAndMeasure.measurement.plugins.names = [
             "base_PixelFlags",
@@ -106,6 +107,12 @@ class CharacterizeImageConfig(pexConfig.Config):
             "base_PsfFlux",
             "base_CircularApertureFlux",
         ]
+
+    def validate(self):
+        if self.detectAndMeasure.doMeasureApCorr and not self.measurePsf:
+            raise RuntimeError("Must measure PSF to measure aperture correction, "
+                "because flags determined by PSF measurement are used to identify "
+                "sources used to measure aperture correction")
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -157,7 +164,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a flag
     `--debug` to import `debug.py` from your `$PYTHONPATH`; see @ref baseDebug for more about `debug.py`.
 
-    CharacterizeImageTask has a debug dictionary the following keys:
+    CharacterizeImageTask has a debug dictionary with the following keys:
     <dl>
     <dt>frame
     <dd>int: if specified, the frame of first debug image displayed (defaults to 1)
@@ -166,13 +173,15 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     <dt>background_iter
     <dd>bool; if True display image after each background subtraction in the measure PSF loop
     <dt>measure_iter
-    <dd>bool; if True display image at the end of each iteration of the measure PSF loop
+    <dd>bool; if True display image and sources at the end of each iteration of the measure PSF loop
         See @ref lsst.meas.astrom.displayAstrometry for the meaning of the various symbols.
-    <dt>measure
-    <dd>bool; if True display image after final measurement, but before final repair;
-        this will be identical to the previous image if measure_iter is true
+    <dt>psf
+    <dd>bool; if True display image and sources after PSF is measured;
+        this will be identical to the final image displayed by measure_iter if measure_iter is true
     <dt>repair
-    <dd>bool; if True display final image, after final repair
+    <dd>bool; if True display image and sources after final repair
+    <dt>measure
+    <dd>bool; if True display image and sources after final measurement
     </dl>
 
     For example, put something like:
@@ -230,8 +239,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.schema = schema
         self.makeSubtask("installSimplePsf")
         self.makeSubtask("repair")
-        self.makeSubtask("detectAndMeasure", schema=self.schema)
         self.makeSubtask("measurePsf", schema=self.schema)
+        self.makeSubtask("detectAndMeasure", schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
 
@@ -287,8 +296,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         Peforms the following operations:
         - Iterate the following config.psfIterations times, or once if config.doMeasurePsf false:
-            - detectMeasureAndEstimatePsf (see that method for details)
+            - detect and measure sources and estimate PSF (see detectMeasureAndEstimatePsf for details)
         - interpolate over cosmic rays
+        - perform final measurement
 
         @param[in] exposure  exposure to characterize (an lsst.afw.image.ExposureF or similar)
         @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
@@ -326,10 +336,21 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f" % \
                 (i + 1, psfSigma, psfDimensions, medBackground))
 
-        self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
+        self.display("psf", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
+        # perform final repair with final PSF
         self.repair.run(exposure=dmeRes.exposure)
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
+
+        # perform final measurement with final PSF, including measuring and applying aperture correction,
+        # if wanted
+        self.detectAndMeasure.measure(
+            exposure = dmeRes.exposure,
+            exposureIdInfo = exposureIdInfo,
+            sourceCat = dmeRes.sourceCat,
+            allowApCorr = True,  # the default; listed for emphasis
+        )
+        self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
         return dmeRes
 
@@ -342,8 +363,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - install a simple PSF model (replacing the existing one, if need be)
         - interpolate over cosmic rays with keepCRs=True
         - estimate background and subtract it from the exposure
-        - detectAndMeasure: detect, deblend and measure sources
-            and subtract a refined background model
+        - detectAndMeasure: detect, deblend and measure sources, and subtract a refined background model;
+            measuring and applying aperture correction is disabled because we don't have a final PSF
         - if config.doMeasurePsf:
             - measure PSF
 
@@ -398,6 +419,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
             background = background,
+            allowApCorr = False,  # wait for final PSF
         )
 
         measPsfRes = pipeBase.Struct(

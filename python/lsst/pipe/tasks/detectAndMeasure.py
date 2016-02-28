@@ -51,19 +51,13 @@ class DetectAndMeasureConfig(pexConfig.Config):
     )
     doMeasureApCorr = pexConfig.Field(
         dtype = bool,
-        default = True,
+        default = False,
         doc = "Compute aperture corrections and set ApCorrMap in exposure?",
     )
     measureApCorr = pexConfig.ConfigurableField(
         target = MeasureApCorrTask,
         doc = "subtask to measure aperture corrections",
     )
-
-    def validate(self):
-        pexConfig.Config.validate(self)
-        if self.measurement.doApplyApCorr.startswith("yes") and not self.doMeasureApCorr:
-            raise ValueError("Cannot set measurement.doApplyApCorr to 'yes...'"
-                " unless doMeasureApCorr is True")
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
@@ -167,21 +161,17 @@ class DetectAndMeasureTask(pipeBase.Task):
             self.makeSubtask("measureApCorr", schema=schema)
 
     @pipeBase.timeMethod
-    def run(self, exposure, exposureIdInfo, background=None, preMeasApCorrFunc=None):
+    def run(self, exposure, exposureIdInfo, background=None, allowApCorr=True):
         """!Detect, deblend and perform single-frame measurement on sources and refine the background model
 
         @param[in,out] exposure  exposure to process. Background must already be subtracted
             to reasonable accuracy, else detection will fail.
             The background model is refined and resubtracted.
+            apCorrMap is set if measuring aperture correction.
         @param[in]     exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
         @param[in,out] background  background model to be modified (an lsst.afw.math.BackgroundList),
             or None to create a new background model
-        @param[in] preMeasApCorrFunc  a function to process the source catalog just before measuring
-            aperture correction, or None. If provided it must accept a single argument: a source catalog,
-            (with measurement done up to and not including applying aperture correction)
-            and must modify that catalog in place (any returned value is ignored).
-            This is primarily offered as a way to allow the caller to set the "calib_psfUsed" field,
-            for measuring aperture correction.
+        @param[in] allowApCorr  allow measuring and applying aperture correction?
 
         @return pipe_base Struct containing these fields:
         - exposure: input exposure (as modified in the course of runing)
@@ -209,11 +199,11 @@ class DetectAndMeasureTask(pipeBase.Task):
                 psf = exposure.getPsf(),
             )
 
-        measRes = self.measure(
+        self.measure(
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
             sourceCat = sourceCat,
-            preMeasApCorrFunc = preMeasApCorrFunc,
+            allowApCorr = allowApCorr,
         )
 
         return pipeBase.Struct(
@@ -222,23 +212,18 @@ class DetectAndMeasureTask(pipeBase.Task):
             background = background,
         )
 
-    def measure(self, exposure, exposureIdInfo, sourceCat, preMeasApCorrFunc=None):
+    def measure(self, exposure, exposureIdInfo, sourceCat, allowApCorr=True):
         """Measure sources
 
         @param[in,out] exposure  exposure to process. Background must already be subtracted
             to reasonable accuracy, else detection will fail.
-            The background model is refined and resubtracted.
+            Set apCorrMap if measuring aperture correction.
         @param[in]     exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
         @param[in,out] background  background model to be modified (an lsst.afw.math.BackgroundList),
             or None to create a new background model
-        @param[in] preMeasApCorrFunc  a function to process the source catalog just before measuring, or None;
-            see the run method for more information.
-
-        @return an lsst.pipe.base.Struct containing these fields:
-        - matches source/reference object matches (an lsst.afw.table.ReferenceMatchVector),
-            or None if matching not performed
+        @param[in] allowApCorr  allow measuring and applying aperture correction?
         """
-        if self.config.doMeasureApCorr:
+        if self.config.doMeasureApCorr and allowApCorr:
             # perform measurements before aperture correction
             self.measurement.run(
                 measCat = sourceCat,
@@ -246,9 +231,6 @@ class DetectAndMeasureTask(pipeBase.Task):
                 exposureId = exposureIdInfo.expId,
                 endOrder = BasePlugin.APCORR_ORDER,
             )
-
-            if preMeasApCorrFunc is not None:
-                preMeasApCorrFunc(sourceCat)
 
             sourceCat.sort(SourceTable.getParentKey())
 
@@ -262,10 +244,12 @@ class DetectAndMeasureTask(pipeBase.Task):
                 exposure = exposure,
                 exposureId = exposureIdInfo.expId,
                 beginOrder = BasePlugin.APCORR_ORDER,
+                allowApCorr = allowApCorr,
             )
         else:
             self.measurement.run(
                 measCat = sourceCat,
                 exposure = exposure,
                 exposureId = exposureIdInfo.expId,
+                allowApCorr = allowApCorr,
             )
