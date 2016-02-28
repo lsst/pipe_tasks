@@ -188,8 +188,6 @@ class DetectAndMeasureTask(pipeBase.Task):
         - sourceCat: source catalog (an lsst.afw.table.SourceTable)
         - background: background model (input as modified, or a new model if input is None);
             an lsst.afw.math.BackgroundList
-        - matches source/reference object matches (an lsst.afw.table.ReferenceMatchVector),
-            or None if matching not performed
         """
         if background is None:
             background = BackgroundList()
@@ -222,7 +220,6 @@ class DetectAndMeasureTask(pipeBase.Task):
             exposure = exposure,
             sourceCat = sourceCat,
             background = background,
-            matches = measRes.matches,
         )
 
     def measure(self, exposure, exposureIdInfo, sourceCat, preMeasApCorrFunc=None):
@@ -241,9 +238,6 @@ class DetectAndMeasureTask(pipeBase.Task):
         - matches source/reference object matches (an lsst.afw.table.ReferenceMatchVector),
             or None if matching not performed
         """
-        matchRes = pipeBase.Struct(
-            matches = None,
-        )
         if self.config.doMeasureApCorr:
             # perform measurements before aperture correction
             self.measurement.run(
@@ -275,5 +269,3 @@ class DetectAndMeasureTask(pipeBase.Task):
                 exposure = exposure,
                 exposureId = exposureIdInfo.expId,
             )
-
-        return matchRes
