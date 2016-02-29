@@ -240,23 +240,23 @@ class RepairTask(pipeBase.Task):
         # Treat constant background as a special case to avoid the extra complexity in calling
         # measAlg.estimateBackground().
         if nx*ny <= 1:
-            bg = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.MEDIAN).getValue()
-            bkgd = None
+            medianBg = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.MEDIAN).getValue()
+            modelBg = None
         else:
             exposure = exposure.Factory(exposure, True)
-            bkgd, exposure = measAlg.estimateBackground(exposure, self.config.cosmicray.background,
-                                                        subtract=True)
-            bg = 0.0
+            modelBg, exposure = measAlg.estimateBackground(exposure, self.config.cosmicray.background,
+                                                           subtract=True)
+            medianBg = 0.0
 
         if keepCRs is None:
             keepCRs = self.config.cosmicray.keepCRs
         try:
-            crs = measAlg.findCosmicRays(exposure.getMaskedImage(),
-                                         psf, bg, pexConfig.makePolicy(self.config.cosmicray), keepCRs)
-            if bkgd:
+            crs = measAlg.findCosmicRays(exposure.getMaskedImage(), psf, medianBg,
+                                         pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+            if modelBg:
                 # Add back background image
                 img = exposure.getMaskedImage()
-                img += bkgd.getImageF()
+                img += modelBg.getImageF()
                 del img
                 # Replace original image with CR subtracted image
                 exposure0.setMaskedImage(exposure.getMaskedImage())
