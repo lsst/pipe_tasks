@@ -25,6 +25,7 @@ from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
+from lsst.afw.geom import arcseconds
 from lsst.afw.image import wcsNearlyEqualOverBBox
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from .detectAndMeasure import DetectAndMeasureTask
@@ -213,7 +214,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, dataPrefix="", exposureIdName=None, icSourceSchema=None, **kwargs):
+    def __init__(self, dataPrefix="", exposureIdName=None, icSourceSchema=None, useIcSrc=False, **kwargs):
         """!Construct a CalibrateTask
 
         @param[in] dataPrefix  prefix for persisted products:
@@ -225,8 +226,11 @@ class CalibrateTask(pipeBase.CmdLineTask):
             If measuring aperture correction and the task detectAndMeasure cannot determine
             its own suitable candidates, then this argument must be specified.
             See also config field `icSourceFieldsToCopy`.
+        @param[in] useIcSrc  use icSrc catalog for astrometric and photometric fitting;
+            warning: this is a temporary hack and disables copying flags from icSrc to src catalog
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
+        self.useIcSrc = bool(useIcSrc)
         self.dataPrefix = str(dataPrefix)
         if exposureIdName is None:
             self.exposureIdName = dataPrefix + "Id" if dataPrefix else "ccdExposureId"
@@ -268,14 +272,20 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         if self.config.doAstrometry or self.config.doPhotoCal:
-            self.log.warn("Temporarily using icSourceSchema for astrometry schema")
-            self.makeSubtask("astrometry", schema=icSourceSchema)
+            if self.useIcSrc:
+                self.log.warn("Temporarily using icSourceSchema for astrometry schema")
+                self.makeSubtask("astrometry", schema=icSourceSchema)
+            else:
+                self.makeSubtask("astrometry", schema=self.schema)
             self.loadAndMatch = self.astrometry.loadAndMatch
         else:
             self.loadAndMatch = None
         if self.config.doPhotoCal:
-            self.log.warn("Temporarily using icSourceSchema for astrometry schema")
-            self.makeSubtask("photoCal", schema=icSourceSchema)
+            if self.useIcSrc:
+                self.log.warn("Temporarily using icSourceSchema for photometry schema")
+                self.makeSubtask("photoCal", schema=icSourceSchema)
+            else:
+                self.makeSubtask("photoCal", schema=self.schema)
 
         if self.schemaMapper is not None:
             # finalize the schema
@@ -332,13 +342,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         self.log.warn("Temporarily compare wcs to calexp from master")
         masterCalexp = dataRef.get("calexp", immediate=True)
-        if wcsNearlyEqualOverBBox(exposure.getWcs(), masterCalexp.getWcs(), exposure.getBBox()):
+        if wcsNearlyEqualOverBBox(exposure.getWcs(), masterCalexp.getWcs(), exposure.getBBox(), maxDiffSky=0.001*arcseconds):
             self.log.info("WCS is the same as master for %s" % (dataRef.dataId,))
         else:
-            self.log.warn("WCS is the NOT same as master for %s" % (dataRef.dataId,))
-
-        self.log.warn("Temporarily use PSF from calexp on master")
-        exposure.setPsf(masterCalexp.getPsf())
+            self.log.warn("WCS is NOT the same as master for %s" % (dataRef.dataId,))
 
         if self.config.doWrite:
             dataRef.put(calRes.sourceCat, self.dataPrefix + "src")
@@ -395,11 +402,13 @@ class CalibrateTask(pipeBase.CmdLineTask):
             matchMeta = None,
         )
         if self.config.doAstrometry:
-            self.log.warn("Temporarily using icSourceCat for astrometry")
-            if icSourceCat is None:
-                raise pipeBase.TaskError("icSourceCat not specified")
-            astromCat = icSourceCat
-#            astromCat = procRes.sourceCat
+            if self.useIcSrc:
+                self.log.warn("Temporarily using icSourceCat for astrometry")
+                if icSourceCat is None:
+                    raise pipeBase.TaskError("icSourceCat not specified")
+                astromCat = icSourceCat
+            else:
+                astromCat = procRes.sourceCat
             try:
                 astromRes = self.astrometry.run(
                     exposure = exposure,
@@ -410,13 +419,13 @@ class CalibrateTask(pipeBase.CmdLineTask):
                     raise
                 self.log.warn("Unable to perform astrometric calibration (%s): attempting to proceed" % e)
 
-            self.log.warn("Temporarily manually set source sky coordinates")
-            wcs = exposure.getWcs()
-            sourceCat = procRes.sourceCat
-            srcCoordKey = afwTable.CoordKey(sourceCat.schema["coord"])
-            for src in sourceCat:
-                src.set(srcCoordKey, wcs.pixelToSky(src.getCentroid()))
-
+            if self.useIcSrc:
+                self.log.warn("Temporarily manually set source sky coordinates")
+                wcs = exposure.getWcs()
+                sourceCat = procRes.sourceCat
+                srcCoordKey = afwTable.CoordKey(sourceCat.schema["coord"])
+                for src in sourceCat:
+                    src.set(srcCoordKey, wcs.pixelToSky(src.getCentroid()))
 
         # compute photometric calibration
         photoRes = pipeBase.Struct(
@@ -503,8 +512,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
         that actually exist in the schema. This was set up by the constructor
         using self.schemaMapper.
         """
-        self.log.warn("Temporarily not copying flags from icSourceCat to sourceCat")
-        return
+        if self.useIcSrc:
+            self.log.warn("Temporarily not copying flags from icSourceCat to sourceCat")
+            return
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify icSourceSchema "
                 "and icSourceKeys when constructing this task")

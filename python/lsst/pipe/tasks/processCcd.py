@@ -25,6 +25,9 @@ import lsst.pipe.base as pipeBase
 from .calibrate import CalibrateTask
 from .characterizeImage import CharacterizeImageTask
 
+UseIcSrc = True  # use icSrc catalog from input repo to fit astrometry and photometry?
+UseMasterPsf = False  # use PSF from input repo calexp instead of fitting a new PSF?
+
 class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
     isr = pexConfig.ConfigurableField(
@@ -58,6 +61,10 @@ class ProcessCcdConfig(pexConfig.Config):
             - detect sources, usually at low S/N
             """,
     )
+
+    def setDefaults(self):
+        if UseMasterPsf:
+            self.charImage.doMeasurePsf = False
 
 
 ## \addtogroup LSST_task_documentation
@@ -121,6 +128,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         self.makeSubtask("charImage")
         self.makeSubtask("calibrate",
             icSourceSchema = self.charImage.schema,
+            useIcSrc = UseIcSrc,
         )
 
     @pipeBase.timeMethod
@@ -146,8 +154,15 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
         exposure = self.isr.runDataRef(sensorRef).exposure
 
-        self.log.warn("Temporarily reading icSrc from repo")
-        masterIcSrc = sensorRef.get("icSrc")
+        # must read master PSF and icSrc before calling charImage
+        if UseMasterPsf:
+            self.log.warn("Temporarily using PSF from input calexp")
+            masterPsf = sensorRef.get("calexp").getPsf()
+            exposure.setPsf(masterPsf)
+
+        if UseIcSrc:
+            self.log.warn("Temporarily using icSrc from input repo")
+            masterIcSrc = sensorRef.get("icSrc")
 
         charRes = self.charImage.run(
             dataRef = sensorRef,
@@ -156,7 +171,8 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         )
         exposure = charRes.exposure
 
-        charRes.sourceCat = masterIcSrc
+        if UseIcSrc:
+            charRes.sourceCat = masterIcSrc
 
         if self.config.doCalibrate:
             calibRes = self.calibrate.run(
