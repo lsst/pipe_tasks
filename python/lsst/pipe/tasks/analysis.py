@@ -187,7 +187,8 @@ class Analysis(object):
             l2 = axes.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7",
                               label="clip")
             l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
-            plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
+#            plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
+            axes.legend(handles=[l1, l2], loc=4, fontsize=8)
 
     @staticmethod
     def labelVisit(filename, plt, axis, xLoc, yLoc, color="k"):
