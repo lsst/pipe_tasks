@@ -1715,10 +1715,9 @@ class CompareAnalysisTask(CmdLineTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_argument("--butler2", default=None,
-                            help="Second butler repo, for comparison.  Either butler2 xor rerun2 must be specified.")
+        parser.add_argument("repo2", help="Second butler repo, for comparison.")
         parser.add_argument("--rerun2", default=None,
-                            help="Second rerun, for comparison.  Either butler2 xor rerun2 must be specified.")
+                            help="Second rerun, for comparison.  Either repo2 xor rerun2 must be specified.")
         parser.add_id_argument("--id", "deepCoadd_forced_src",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=HSC-X",
                                ContainerClass=TractDataIdContainer)
@@ -1774,10 +1773,10 @@ class CompareVisitAnalysisRunner(TaskRunner):
             parentDir = parsedCmd.input
             while os.path.exists(os.path.join(parentDir, "_parent")):
                 parentDir = os.path.realpath(os.path.join(parentDir, "_parent"))
-            repodir = os.path.join(parentDir, "rerun", parsedCmd.rerun2)
-        elif parsedCmd.butler2:
-            repodir = parsedCmd.butler2
-        butler2 = Butler(root=repodir, calibRoot=parsedCmd.calib)
+            repo2dir = os.path.join(parentDir, "rerun", parsedCmd.rerun2)
+        elif parsedCmd.repo2:
+            repo2dir = parsedCmd.repo2
+        butler2 = Butler(root=repo2dir, calibRoot=parsedCmd.calib)
         idParser = parsedCmd.id.__class__(parsedCmd.id.level)
         idParser.idList = parsedCmd.id.idList
         idParser.datasetType = parsedCmd.id.datasetType
@@ -1802,10 +1801,9 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_argument("--butler2", default=None,
-                            help="Second butler repo, for comparison.  Either butler2 xor rerun2 must be specified.")
+        parser.add_argument("repo2", help="Second butler repo, for comparison.")
         parser.add_argument("--rerun2", default=None,
-                            help="Second rerun, for comparison.  Either butler2 xor rerun2 must be specified.")
+                            help="Second rerun, for comparison.  Either repo2 xor rerun2 must be specified.")
         parser.add_id_argument("--id", datasetType="src", help="data ID, e.g. --id visit=12345 ccd=49")
         return parser
 
