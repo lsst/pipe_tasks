@@ -28,7 +28,7 @@ from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, SourceCatalog
 from lsst.meas.algorithms import estimateBackground
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
-from lsst.meas.astrom import displayAstrometry
+from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from .detectAndMeasure import DetectAndMeasureTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
@@ -76,6 +76,12 @@ class CharacterizeImageConfig(pexConfig.Config):
     installSimplePsf = pexConfig.ConfigurableField(
         target = InstallGaussianPsfTask,
         doc = "Install a simple PSF model",
+    )
+    astrometry = pexConfig.ConfigurableField(
+        target = AstrometryTask,
+        doc = "Task to load and match reference objects. Only used if measurePsf can use matches. "
+            "Warning: matching will only work well if the initial WCS is accurate enough "
+            "to give good matches (roughly: good to 3 arcsec across the CCD).",
     )
     measurePsf = pexConfig.ConfigurableField(
         target = MeasurePsfTask,
@@ -240,6 +246,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.makeSubtask("installSimplePsf")
         self.makeSubtask("repair")
         self.makeSubtask("measurePsf", schema=self.schema)
+        if self.config.doMeasurePsf and self.measurePsf.usesMatches:
+            self.makeSubtask("astrometry")
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
@@ -426,9 +434,17 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             cellSet = None
         )
         if self.config.doMeasurePsf:
+            if self.measurePsf.usesMatches:
+                matches = self.astrometry.loadAndMatch(
+                    exposure = exposure,
+                    sourceCat = damRes.sourceCat,
+                ).matches
+            else:
+                matches = None
             measPsfRes = self.measurePsf.run(
                 exposure = exposure,
                 sources = damRes.sourceCat,
+                matches = matches,
             )
         self.display("measure_iter", exposure=exposure)
 
