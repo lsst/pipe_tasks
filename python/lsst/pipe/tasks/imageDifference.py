@@ -34,7 +34,7 @@ from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, \
     starSelectorRegistry, PsfAttributes, SingleGaussianPsf
-from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
+from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, makeDipoleMeasurementConfig, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig, \
     GetCoaddAsTemplateTask, GetCalexpAsTemplateTask
@@ -159,21 +159,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.detection.thresholdType = "pixel_stdev"
 
         # Only run algorithms/plugins that make sense on an image difference
-        self.measurement.plugins = ["base_PsfFlux",
-                                    "base_CircularApertureFlux",
-                                    "ip_diffim_NaiveDipoleCentroid",
-                                    "ip_diffim_NaiveDipoleFlux",
-                                    "ip_diffim_PsfDipoleFlux",
-                                    "ip_diffim_ClassificationDipole",
-                                    "base_SkyCoord",
-                                    ]
-
-        self.measurement.slots.calibFlux = None
-        self.measurement.slots.modelFlux = None
-        self.measurement.slots.instFlux = None
-        self.measurement.slots.shape = None
-        self.measurement.slots.centroid = "ip_diffim_NaiveDipoleCentroid"
-        self.measurement.doReplaceWithNoise = False
+        self.measurement = makeDipoleMeasurementConfig(self.measurement)
 
         # Add filtered flux measurement, the correct measurement for pre-convolved images.
         # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
