@@ -245,7 +245,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self._frame = self._initialFrame
 
     @pipeBase.timeMethod
-    def run(self, dataRef, exposure=None, background=None, doUnpersist=True):
+    def run(self, dataRef, exposure=None, background=None, doUnpersist=True, masterIcSrc=None):
         """!Characterize a science image and, if wanted, persist the results
 
         This simply unpacks the exposure and passes it to the characterize method to do the work.
@@ -280,6 +280,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
             background = background,
+            masterIcSrc = masterIcSrc,
         )
 
         if self.config.doWrite:
@@ -291,7 +292,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         return charRes
 
     @pipeBase.timeMethod
-    def characterize(self, exposure, exposureIdInfo, background=None):
+    def characterize(self, exposure, exposureIdInfo, background=None, masterIcSrc=None):
         """!Characterize a science image
 
         Peforms the following operations:
@@ -327,6 +328,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
                 exposureIdInfo = exposureIdInfo,
                 background = background,
                 prevPsf = prevPsf,
+                masterIcSrc = masterIcSrc,
             )
             prevPsf = dmeRes.exposure.getPsf()
 
@@ -355,7 +357,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         return dmeRes
 
     @pipeBase.timeMethod
-    def detectMeasureAndEstimatePsf(self, exposure, exposureIdInfo, background=None, prevPsf=None):
+    def detectMeasureAndEstimatePsf(self, exposure, exposureIdInfo, background=None, prevPsf=None, masterIcSrc=None):
         """!Perform one iteration of detect, measure and estimate PSF
 
         Performs the following operations:
@@ -428,7 +430,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         if self.config.doMeasurePsf:
             measPsfRes = self.measurePsf.run(
                 exposure = exposure,
-                sources = damRes.sourceCat,
+                sources = damRes.sourceCat if masterIcSrc is None else masterIcSrc,
             )
         self.display("measure_iter", exposure=exposure)
 

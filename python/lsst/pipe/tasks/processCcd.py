@@ -20,6 +20,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 from lsst.ip.isr import IsrTask
+from lsst.afw.image.testUtils import imagesDiffer
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .calibrate import CalibrateTask
@@ -163,16 +164,25 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         if UseIcSrc:
             self.log.warn("Temporarily using icSrc from input repo")
             masterIcSrc = sensorRef.get("icSrc")
+            masterPsf = sensorRef.get("calexp").getPsf()
 
         charRes = self.charImage.run(
             dataRef = sensorRef,
             exposure = exposure,
             doUnpersist = False,
+            masterIcSrc = masterIcSrc,
         )
         exposure = charRes.exposure
 
         if UseIcSrc:
             charRes.sourceCat = masterIcSrc
+            psfImage = exposure.getPsf().computeImage()
+            masterPsfImage = exposure.getPsf().computeImage()
+            if imagesDiffer(psfImage, masterPsfImage):
+                self.log.warn("PSF image is different than master")
+            else:
+                self.log.warn("PSF image is the same as master")
+
 
         if self.config.doCalibrate:
             calibRes = self.calibrate.run(
