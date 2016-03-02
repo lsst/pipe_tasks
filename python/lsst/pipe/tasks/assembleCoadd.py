@@ -611,7 +611,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         plateScale = wcs.pixelScale().asArcseconds()
 
         for rec in brightObjectMasks:
-            center = afwGeom.PointI(wcs.skyToPixel(rec.get("coord")))
+            center = afwGeom.PointI(wcs.skyToPixel(rec.getCoord()))
             radius = rec["radius"].asArcseconds()/plateScale   # convert to pixels
 
             foot = afwDetect.Footprint(center, radius, exposure.getBBox())
