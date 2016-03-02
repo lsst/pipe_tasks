@@ -1680,7 +1680,7 @@ class CompareAnalysisConfig(Config):
     matchRadius = Field(dtype=float, default=0.2, doc="Matching radius (arcseconds)")
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
-    doCentroids = Field(dtype=bool, default=False, doc="Plot centroids?")
+    doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     sysErrMags = Field(dtype=float, default=0.015, doc="Systematic error in magnitudes")
     sysErrCentroids = Field(dtype=float, default=0.15, doc="Systematic error in centroids (pixels)")
     srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
