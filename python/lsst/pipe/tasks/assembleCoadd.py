@@ -116,6 +116,8 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                "would have contributed exceeds this value."),
         default = {"SAT": 0.1},
     )
+    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["CROSSTALK", "NOT_DEBLENDED"],\
+                                 doc="Mask planes to remove before coadding")
 
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
@@ -508,6 +510,14 @@ class AssembleCoaddTask(CoaddBaseTask):
                 maskedImage += backgroundImage.Factory(backgroundImage, bbox, afwImage.PARENT, False)
                 var = maskedImage.getVariance()
                 var += (bgInfo.fitRMS)**2
+
+            if self.config.removeMaskPlanes:
+                mask = maskedImage.getMask()
+                for maskPlane in self.config.removeMaskPlanes:
+                    try:
+                        mask &= ~mask.getPlaneBitMask(maskPlane)
+                    except Exception as e:
+                        self.log.warn("Unable to remove mask plane {}: {}".format(maskPlane, e))
 
             maskedImageList.append(maskedImage)
 
