@@ -46,6 +46,7 @@ import shutil
 import os
 import sys
 
+from lsst.utils import getPackageDir
 import lsst.utils.tests
 import lsst.afw.math
 import lsst.afw.geom
@@ -71,7 +72,8 @@ SAVE_DATAREPO = False  # Retain data repo after the tests succeed? Only set it T
     # Warning: even if True, the repository is deleted every time this test is run, so if you want
     # to keep a copy safe, be sure to move it somewhere else.
 
-DATAREPO_ROOT = "testCoadds-data"
+PIPE_TASKS_DIR = getPackageDir("pipe_tasks")
+DATAREPO_ROOT = os.path.join(PIPE_TASKS_DIR, "tests", ".tests", "testCoadds-data")
 
 if os.path.exists(DATAREPO_ROOT):
     print("Deleting existing repo: %r" % (DATAREPO_ROOT,))
