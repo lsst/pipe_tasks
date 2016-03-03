@@ -65,14 +65,19 @@ from lsst.pipe.tasks.assembleCoadd import AssembleCoaddConfig, SafeClipAssembleC
 from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTask,
                                        MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
 
-try:
-    REUSE_DATAREPO
-except NameError:              # Only set variables on initial import
-    REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
-    CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
-    DATAREPO_ROOT = "testCoadds-data"
+CLEANUP_DATAREPO = True  # Delete repository after tests are run?
+REUSE_DATAREPO = True  # Retain the data repo for each test? This greatly speeds up the tests, but may
+    # conflate or perhaps even hide some errors. If you get suspicious results, try setting it to False.
+DATAREPO_ROOT = "testCoadds-data"
+
+if os.path.exists(DATAREPO_ROOT):
+    print("Deleting existing repo: %r" % (DATAREPO_ROOT,))
+    shutil.rmtree(DATAREPO_ROOT)
 
 class CoaddsTestCase(lsst.utils.tests.TestCase):
+
+    def setupClass(self):
+        """Delete the data repo if it exists"""
 
     def setUp(self):
 
