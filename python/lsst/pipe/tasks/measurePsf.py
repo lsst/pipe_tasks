@@ -33,7 +33,7 @@ class MeasurePsfConfig(pexConfig.Config):
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
     reserveFraction = pexConfig.Field(
         dtype = float,
-        doc = "Fraction PSF candidates to reserve from fitting",
+        doc = "Fraction PSF candidates to reserve from fitting; none if <= 0",
         default = -1.0,
     )
     reserveSeed = pexConfig.Field(
@@ -106,11 +106,6 @@ parameters (as we do in \ref pipe_tasks_measurePsf_Example) your code is no long
 \section pipe_tasks_measurePsf_Config       Configuration parameters
 
 See \ref MeasurePsfConfig.
-
-\warning
-The star selector and psf determiner registries should be modified to return a class
-which has a ConfigClass attribute and can be instantiated with a config. Until then, there's no
-obvious way to get a registry algorithm's Config from another Config.
 
 \section pipe_tasks_measurePsf_Debug		Debug variables
 
