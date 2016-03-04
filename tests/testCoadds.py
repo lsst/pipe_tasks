@@ -133,7 +133,11 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         del self.butler
 
     def getCalexpIds(self, butler):
-        return butler.mapper.index['calexp']['visit'][None]
+        if len(butler.repository._parents) is not 1:
+            raise RuntimeError("This test assumes one input repository, can not continue with %s"
+                               % butler.repository._parents)
+
+        return butler.repository._parents[0]._mapper.index['calexp']['visit'][None]
 
     def addMaskPlanes(self):
         butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)

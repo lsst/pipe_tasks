@@ -249,7 +249,10 @@ class RegisterTask(Task):
             def fakeContext():
                 yield
             return fakeContext()
-        registryName = os.path.join(butler.mapper.root, name)
+
+        root = butler.repository._mapper.root
+
+        registryName = os.path.join(root, name)
         context = RegistryContext(registryName, self.createTable, create, self.config.permissions)
         return context
 
