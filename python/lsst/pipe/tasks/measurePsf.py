@@ -357,6 +357,11 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             cellSet = cellSet,
         )
 
+    @property
+    def usesMatches(self):
+        """Return True if this task makes use of the "matches" argument to the run method"""
+        return self.starSelector.usesMatches
+
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
 # Debug code
