@@ -21,151 +21,80 @@
 #
 import math
 
-import lsst.daf.base as dafBase
-import lsst.pex.config as pexConfig
-import lsst.afw.math as afwMath
-import lsst.afw.table as afwTable
-import lsst.meas.algorithms as measAlg
-import lsst.pipe.base as pipeBase
 from lsstDebug import getDebugFrame
-from lsst.afw.display import getDisplay
-from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask, MeasureApCorrTask
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
+import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
+from .detectAndMeasure import DetectAndMeasureTask
 from .photoCal import PhotoCalTask
-from .repair import RepairTask
-from .measurePsf import MeasurePsfTask
-
-class InitialPsfConfig(pexConfig.Config):
-    """!Describes the initial PSF used for detection and measurement before we do PSF determination."""
-
-    model = pexConfig.ChoiceField(
-        dtype = str,
-        doc = "PSF model type",
-        default = "SingleGaussian",
-        allowed = {
-            "SingleGaussian": "Single Gaussian model",
-            "DoubleGaussian": "Double Gaussian model",
-        },
-    )
-    pixelScale = pexConfig.Field(
-        dtype = float,
-        doc = "Pixel size (arcsec).  Only needed if no Wcs is provided",
-        default = 0.25,
-    )
-    fwhm = pexConfig.Field(
-        dtype = float,
-        doc = "FWHM of PSF model (arcsec)",
-        default = 1.0,
-    )
-    size = pexConfig.Field(
-        dtype = int,
-        doc = "Size of PSF model (pixels)",
-        default = 15,
-    )
 
 class CalibrateConfig(pexConfig.Config):
-    initialPsf = pexConfig.ConfigField(
-        dtype = InitialPsfConfig,
-        doc = InitialPsfConfig.__doc__,
-    )
-    doBackground = pexConfig.Field(
+    """Config for CalibrateTask"""
+    doWrite = pexConfig.Field(
         dtype = bool,
         default = True,
-        doc = "Subtract background (after computing it, if not supplied)?",
+        doc = "Save calibration results?",
     )
-    doPsf = pexConfig.Field(
+    doWriteHeavyFootprintsInSources = pexConfig.Field(
         dtype = bool,
         default = True,
-        doc = "Perform PSF fitting?",
+        doc = "Include HeavyFootprint data in source table? If false then heavy footprints "
+            "are saved as normal footprints, which saves some space",
     )
-    doMeasureApCorr = pexConfig.Field(
+    doWriteMatches = pexConfig.Field(
         dtype = bool,
         default = True,
-        doc = "Compute aperture corrections?",
+        doc = "Write reference matches (ignored if doWrite false)?",
+    )
+    detectAndMeasure = pexConfig.ConfigurableField(
+        target = DetectAndMeasureTask,
+        doc = "Detect sources to high sigma, deblend and peform single-frame measurement",
     )
     doAstrometry = pexConfig.Field(
         dtype = bool,
         default = True,
-        doc = "Compute astrometric solution?",
+        doc = "Perform astrometric calibration?",
+    )
+    astrometry = pexConfig.ConfigurableField(
+        target = AstrometryTask,
+        doc = "Perform astrometric calibration to refine the WCS",
+    )
+    requireAstrometry = pexConfig.Field(
+        dtype = bool,
+        default = True,
+        doc = "Raise an exception if astrometry fails? Ignored if doAstrometry false.",
     )
     doPhotoCal = pexConfig.Field(
         dtype = bool,
         default = True,
-        doc = "Compute photometric zeropoint?",
-    )
-    requireAstrometry = pexConfig.Field(
-        dtype = bool,
-        default = False,
-        doc = "Require astrometry to succeed, if activated?",
+        doc = "Perform phometric calibration?",
     )
     requirePhotoCal = pexConfig.Field(
         dtype = bool,
-        default = False,
-        doc = "Require photometric calibration to succeed?",
+        default = True,
+        doc = "Raise an exception if photoCal fails? Ignored if doPhotoCal false.",
     )
-    background = pexConfig.ConfigField(
-        dtype = measAlg.estimateBackground.ConfigClass,
-        doc = "Background estimation configuration",
-    )
-    repair = pexConfig.ConfigurableField(
-        target = RepairTask,
-        doc = "Interpolate over defects and cosmic rays",
-    )
-    detection = pexConfig.ConfigurableField(
-        target = measAlg.SourceDetectionTask,
-        doc = "Initial (high-threshold) detection phase for calibration",
-    )
-    initialMeasurement = pexConfig.ConfigurableField(
-        target = SingleFrameMeasurementTask,
-        doc = "Initial measurements used to feed PSF determination and aperture correction determination",
-    )
-    measurePsf = pexConfig.ConfigurableField(
-        target = MeasurePsfTask,
-        doc = "Measure PSF",
-    )
-    measurement = pexConfig.ConfigurableField(
-        target = SingleFrameMeasurementTask,
-        doc = "Post-PSF-determination measurements used to feed other calibrations",
-    )
-    measureApCorr = pexConfig.ConfigurableField(
-        target = MeasureApCorrTask,
-        doc = "subtask to measure aperture corrections",
-    )
-    astrometry = pexConfig.ConfigurableField(
-        target = AstrometryTask,
-        doc = "fit WCS of exposure",
-    )
-    photocal = pexConfig.ConfigurableField(
+    photoCal = pexConfig.ConfigurableField(
         target = PhotoCalTask,
-        doc = "peform photometric calibration",
+        doc = "Perform photometric calibration",
     )
-
-    def validate(self):
-        pexConfig.Config.validate(self)
-        if self.doPhotoCal and not self.doAstrometry:
-            raise ValueError("Cannot do photometric calibration without doing astrometric matching")
-        if self.requireAstrometry and not self.doAstrometry:
-            raise ValueError("Astrometric solution required, but not activated")
-        if self.requirePhotoCal and not self.doPhotoCal:
-            raise ValueError("Photometric calibration required, but not activated")
-        if self.doMeasureApCorr and self.measureApCorr.inputFilterFlag == "calib_psfUsed" and not self.doPsf:
-            raise ValueError("Cannot measure aperture correction with inputFilterFlag=calib_psfUsed"
-                " unless doPsf is also True")
-        if self.measurement.doApplyApCorr.startswith("yes") and not self.doMeasureApCorr:
-            raise ValueError("Cannot set measurement.doApplyApCorr to 'yes...'"
-                " unless doMeasureApCorr is True")
+    icSourceFieldsToCopy = pexConfig.ListField(
+        dtype = str,
+        default = ("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
+        doc = "Fields to copy from the icSource catalog to the output catalog for matching sources. "
+        "Missing fields are logged (at debug level) and ignored. "
+        "If detectAndMeasure.doMeasureApCorr is True and detectAndMeasure cannot determine its own "
+        "suitable candidates, then this list must include "
+        "config.detectAndMeasure.measureApCorr.inputFilterFlag."
+    )
 
     def setDefaults(self):
-        self.detection.includeThresholdMultiplier = 10.0
-        # Because we don't deblend in CalibrateTask, we want to minimize merge detections caused by
-        # growing the footprints.
-        self.detection.returnOriginalFootprints = True
-        self.initialMeasurement.algorithms.names -= ["base_ClassificationExtendedness"]
-        self.initialMeasurement.doApplyApCorr = "no" # no aperture correction data yet
-        self.measurement.doApplyApCorr = "yes"
-        initflags = [x for x in self.measurePsf.starSelector["catalog"].badStarPixelFlags]
-        self.measurePsf.starSelector["catalog"].badStarPixelFlags.extend(initflags)
-        self.background.binSize = 1024
+        pexConfig.Config.setDefaults(self)
+        # aperture correction should already be measured
+        self.detectAndMeasure.doMeasureApCorr = False
+        self.detectAndMeasure.measurement.doApplyApCorr = "yes"
+
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -174,468 +103,431 @@ class CalibrateConfig(pexConfig.Config):
 ## \copybrief CalibrateTask
 ## \}
 
-class CalibrateTask(pipeBase.Task):
-    """!
-\anchor CalibrateTask_
+class CalibrateTask(pipeBase.CmdLineTask):
+    """!Calibrate an exposure: measure sources and perform astrometric and photometric calibration
 
-\brief Calibrate an exposure: measure PSF, subtract background, measure astrometry and photometry
+    @anchor CalibrateTask_
+    
+    @section pipe_tasks_calibrate_Contents  Contents
 
-\section pipe_tasks_calibrate_Contents Contents
+     - @ref pipe_tasks_calibrate_Purpose
+     - @ref pipe_tasks_calibrate_Initialize
+     - @ref pipe_tasks_calibrate_IO
+     - @ref pipe_tasks_calibrate_Config
+     - @ref pipe_tasks_calibrate_Metadata
+     - @ref pipe_tasks_calibrate_Debug
+     - @ref pipe_tasks_calibrate_Example
 
- - \ref pipe_tasks_calibrate_Purpose
- - \ref pipe_tasks_calibrate_Initialize
- - \ref pipe_tasks_calibrate_IO
- - \ref pipe_tasks_calibrate_Config
- - \ref pipe_tasks_calibrate_Metadata
- - \ref pipe_tasks_calibrate_Debug
- - \ref pipe_tasks_calibrate_Example
+    @section pipe_tasks_calibrate_Purpose  Description
 
-\section pipe_tasks_calibrate_Purpose	Description
+    Given an exposure with a good PSF model and aperture correction map
+    (e.g. as provided by @ref CharacterizeImageTask), perform the following operations:
+    - Detect sources, typically to low S/N
+    - Deblend sources
+    - Perform single frame measurement, applying aperture correction
+    - Astrometric calibration: fit an improved WCS
+    - Photometric calibration: fit the exposure's photometric zero-point
 
-\copybrief CalibrateTask
+    @section pipe_tasks_calibrate_Initialize  Task initialisation
 
-Calculate an Exposure's zero-point given a set of flux measurements of stars matched to an input catalogue.
-The type of flux to use is specified by CalibrateConfig.fluxField.
+    @copydoc \_\_init\_\_
 
-The algorithm clips outliers iteratively, with parameters set in the configuration.
+    @section pipe_tasks_calibrate_IO  Invoking the Task
 
-\note This task can adds fields to the schema, so any code calling this task must ensure that
-these columns are indeed present in the input match list; see \ref pipe_tasks_calibrate_Example
+    If you want this task to unpersist inputs or persist outputs, then call
+    the `run` method (a thin wrapper around the `calibrate` method).
 
-\section pipe_tasks_calibrate_Initialize	Task initialisation
+    If you already have the inputs unpersisted and do not want to persist the output
+    then it is more direct to call the `calibrate` method:
 
-\copydoc \_\_init\_\_
+    @section pipe_tasks_calibrate_Config  Configuration parameters
 
-CalibrateTask delegates most of its work to a set of sub-Tasks:
-<DL>
-<DT> repair \ref RepairTask_ "RepairTask"
-<DD> Interpolate over defects such as bad columns and cosmic rays.  This task is called twice;  once
-before the %measurePsf step and again after the PSF has been measured.
-<DT> detection \ref SourceDetectionTask_ "SourceDetectionTask"
-<DD> Initial (high-threshold) detection phase for calibration
-<DT> initialMeasurement \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
-<DD> Make the initial measurements used to feed PSF determination and aperture correction determination
-<DT> astrometry \ref AstrometryTask_ "AstrometryTask"
-<DD> Solve the astrometry.  May be disabled by setting CalibrateTaskConfig.doAstrometry to be False.
-This task is called twice;  once before the %measurePsf step and again after the PSF has been measured.
-<DT> %measurePsf \ref MeasurePsfTask_ "MeasurePsfTask"
-<DD> Estimate the PSF.  May be disabled by setting CalibrateTaskConfig.doPsf to be False.  If requested
-the astrometry is solved before this is called, so if you disable the astrometry the %measurePsf
-task won't have access to objects positions.
-<DT> measurement \ref SingleFrameMeasurementTask_ "SingleFrameMeasurementTask"
-<DD> Post-PSF-determination measurements used to feed other calibrations
-<DT> photocal \ref PhotoCalTask_ "PhotoCalTask"
-<DD> Solve for the photometric zeropoint.
-May be disabled by setting CalibrateTaskConfig.doPhotoCal to be False.
-\em N.b.  Requires that \c astrometry was successfully run.
-</DL>
+    See @ref CalibrateConfig
 
-You can replace any of these subtasks if you wish, see \ref calibrate_MyAstrometryTask.
-\note These task APIs are not well controlled, so replacing a task is a matter of matching
-a poorly specified interface.  We will be working on this over the first year of construction.
+    @section pipe_tasks_calibrate_Metadata  Quantities set in Metadata
 
-\section pipe_tasks_calibrate_IO		Invoking the Task
+    Task metadata
+    <dl>
+        <dt>MAGZERO <dd>Measured zeropoint (DN per second)
+    </dl>
 
-\copydoc run
+    Exposure metadata
+    <dl>
+        <dt>MAGZERO_RMS  <dd>MAGZERO's RMS == return.sigma
+        <dt>MAGZERO_NOBJ <dd>Number of stars used == return.ngood
+        <dt>COLORTERM1   <dd>?? (always 0.0)
+        <dt>COLORTERM2   <dd>?? (always 0.0)
+        <dt>COLORTERM3   <dd>?? (always 0.0)
+    </dl>
 
-\section pipe_tasks_calibrate_Config       Configuration parameters
+    @section pipe_tasks_calibrate_Debug  Debug variables
 
-See \ref CalibrateConfig
+    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a flag
+    `--debug` to import `debug.py` from your `$PYTHONPATH`; see @ref baseDebug for more about `debug.py`.
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    CalibrateTask has a debug dictionary containing one key:
+    <dl>
+    <dt>calibrate
+    <dd>frame (an int; <= 0 to not display) in which to display the exposure, sources and matches.
+        See @ref lsst.meas.astrom.displayAstrometry for the meaning of the various symbols.
+    </dl>
 
-\section pipe_tasks_calibrate_Metadata   Quantities set in Metadata
+    For example, put something like:
+    @code{.py}
+        import lsstDebug
+        def DebugInfo(name):
+            di = lsstDebug.getInfo(name)  # N.b. lsstDebug.Info(name) would call us recursively
+            if name == "lsst.pipe.tasks.calibrate":
+                di.display = dict(
+                    calibrate = 1,
+                )
 
-<DL>
-<DT>Task metadata
-<DD>
-<DL>
-<DT> MAGZERO <DD> Measured zeropoint (DN per second)
-</DL>
+            return di
 
-<DT> Exposure metadata
-<DD>
-<DL>
-<DT> MAGZERO_RMS <DD> MAGZERO's RMS == return.sigma
-<DT> MAGZERO_NOBJ <DD> Number of stars used == return.ngood
-<DT> COLORTERM1 <DD> ?? (always 0.0)
-<DT> COLORTERM2 <DD> ?? (always 0.0)
-<DT> COLORTERM3 <DD> ?? (always 0.0)
-</DL>
-</DL>
+        lsstDebug.Info = DebugInfo
+    @endcode
+    into your `debug.py` file and run `calibrateTask.py` with the `--debug` flag.
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    Some subtasks may have their own debug variables; see individual Task documentation.
 
-\section pipe_tasks_calibrate_Debug		Debug variables
+    @section pipe_tasks_calibrate_Example   A complete example of using CalibrateTask
 
-The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
-flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
+    This code is in @link calibrateTask.py@endlink in the examples directory, and can be run as, e.g.:
+    @code
+    python examples/calibrateTask.py --display
+    @endcode
+    @dontinclude calibrateTask.py
 
-The calibrate task has a debug dictionary with keys which correspond to stages of the CalibrationTask
-processing:
-<DL>
-<DT>repair
-<DD> Fixed defects and masked cosmic rays with a guessed PSF.  Action: show the exposure.
-<DT>background
-<DD> Subtracted background (no sources masked).  Action: show the exposure
-<DT>PSF_repair
-<DD> Fixed defects and removed cosmic rays with an estimated PSF.  Action: show the exposure
-<DT>PSF_background
-<DD> Subtracted background (calibration sources masked).  Action: show the exposure
-<DT>calibrate
-<DD> Just before astro/photo calibration.  Action: show the exposure, and
- - sources as smallish green o
- - matches (if exposure has a Wcs).
-  - catalog position as a largish yellow +
-  - source position as a largish red x
-</DL>
-The values are the \c ds9 frame to display in (if >= 1); if <= 0, nothing's displayed.
-There's an example \ref pipe_tasks_calibrate_Debug_example "here".
+    Import the task (there are some other standard imports; read the file if you're curious)
+    @skipline CalibrateTask
 
-Some subtasks may also have their own debug information; see individual Task documentation.
+    Create the task. Note that we're using a custom AstrometryTask (because we don't have a valid
+    astrometric catalogue handy); see \ref calibrate_MyAstrometryTask.
+    @skip CalibrateTask.ConfigClass
+    @until config=config
 
-\section pipe_tasks_calibrate_Example	A complete example of using CalibrateTask
+    We're now ready to process the data. This occurs in two steps:
+    - Characterize the image: measure bright sources, fit a background and PSF, and repairs cosmic rays
+    - Calibrate the exposure: measure faint sources, fit an improved WCS and photometric zero-point
 
-This code is in \link calibrateTask.py\endlink in the examples directory, and can be run as \em e.g.
-\code
-examples/calibrateTask.py --ds9
-\endcode
-\dontinclude calibrateTask.py
-
-Import the task (there are some other standard imports; read the file if you're curious)
-\skipline CalibrateTask
-
-Create the detection task
-\skip CalibrateTask.ConfigClass
-\until config=config
-Note that we're using a custom AstrometryTask (because we don't have a valid astrometric catalogue handy);
-see \ref calibrate_MyAstrometryTask.
-
-We're now ready to process the data (we could loop over multiple exposures/catalogues using the same
-task objects) and unpack the results
-\skip loadData
-\until sources
-
-We then might plot the results (\em e.g. if you set \c --ds9 on the command line)
-\skip display
-\until dot
-
-\subsection calibrate_MyAstrometryTask Using a Custom Astrometry Task
-
-The first thing to do is define my own task:
-\dontinclude calibrateTask.py
-\skip MyAstrometryTask
-\skip MyAstrometryTask
-\until super
-
-Then we need our own \c run method.  First unpack the filtername and wcs
-\skip run
-\until wcs
-
-Then build a "reference catalog" by shamelessly copying the catalog of detected sources
-\skip schema
-\until get("photometric")
-
-Then "match" by zipping up the two catalogs,
-\skip matches
-\until append
-
-and finally return the desired results.
-\skip return
-\until )
-
-<HR>
-\anchor pipe_tasks_calibrate_Debug_example
-To investigate the \ref pipe_tasks_calibrate_Debug, put something like
-\code{.py}
-    import lsstDebug
-    def DebugInfo(name):
-        di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-        if name == "lsst.pipe.tasks.calibrate":
-            di.display = dict(
-                repair = 1,
-                calibrate = 2,
-            )
-
-        return di
-
-    lsstDebug.Info = DebugInfo
-\endcode
-into your debug.py file and run calibrateTask.py with the \c --debug flag.
+    we could loop over multiple exposures/catalogues using the same
+    task objects) and optionally display the results:
+    @skip loadData
+    @until dot
     """
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, schema=None, **kwargs):
-        """!
-        Create the calibration task
+    def __init__(self, dataPrefix="", exposureIdName=None, icSourceSchema=None, **kwargs):
+        """!Construct a CalibrateTask
 
-        \param[in] schema    input SourceTable schema
-        \param     **kwargs  keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
+        @param[in] dataPrefix  prefix for persisted products:
+            - for calexp use the default of ""
+            - for coadds use, e.g., "deepCoadd"
+        @param[in] exposureIdName  name of exposure ID dataset, e.g. "ccdExposureId";
+            the value None works for calexp and coadds; for other kinds of exposures you'll have to specify
+        @param[in] icSourceSchema  schema for icSource catalog, or None.
+            If measuring aperture correction and the task detectAndMeasure cannot determine
+            its own suitable candidates, then this argument must be specified.
+            See also config field `icSourceFieldsToCopy`.
+        @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
+        self.dataPrefix = str(dataPrefix)
+        if exposureIdName is None:
+            self.exposureIdName = dataPrefix + "Id" if dataPrefix else "ccdExposureId"
+        else:
+            self.exposureIdName = exposureIdName
         pipeBase.Task.__init__(self, **kwargs)
 
-        # the calibrate Source Catalog is divided into two catalogs to allow measurement to be run twice
-        # schema1 contains everything except what is added by the second measurement task.
-        # Before the second measurement task is run, self.schemaMapper transforms the sources into
-        # the final output schema, at the same time renaming the measurement fields to "initial_"
-        if schema is None:
-            schema = afwTable.SourceTable.makeMinimalSchema()
-        self.schema1 = schema
-        self.algMetadata = dafBase.PropertyList()
-        self.makeSubtask("repair")
-        self.makeSubtask("detection", schema=self.schema1)
-        beginInitial = self.schema1.getFieldCount()
-        self.makeSubtask("initialMeasurement", schema=self.schema1, algMetadata=self.algMetadata)
-        endInitial = self.schema1.getFieldCount()
+        self.haveFieldsToCopy = False
+        if icSourceSchema is not None:
+            # use a schema mapper to avoid copying each field separately
+            self.schemaMapper = afwTable.SchemaMapper(icSourceSchema)
+            self.schemaMapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema(), False)
 
-        # create subtasks that are run with schema1 (and possibly also the final schema)
-        self.makeSubtask("measurePsf", schema=self.schema1)
-        self.makeSubtask("astrometry", schema=self.schema1)
+            # Add fields to copy from an icSource catalog
+            # and a field to indicate that the source matched a source in that catalog
+            self.calibSourceKey = self.schemaMapper.addOutputField(
+                afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSource"))
+            foundFieldNames = []
+            missingFieldNames = []
+            for fieldName in self.config.icSourceFieldsToCopy:
+                try:
+                    schemaItem = icSourceSchema.find(fieldName)
+                except Exception:
+                    missingFieldNames.append(fieldName)
+                else: # search successful
+                    self.schemaMapper.addMapping(schemaItem.getKey())
+                    foundFieldNames.append(fieldName)
 
-        # create a schemaMapper to map schema1 into the final schema
-        self.schemaMapper = afwTable.SchemaMapper(self.schema1)
-        separator =  "_"
-        count = 0
-        for item in self.schema1:
-            count = count + 1
-            field = item.getField()
-            name = field.getName()
-            if count > beginInitial and count <= endInitial:
-                name = "initial" + separator + name
-            self.schemaMapper.addMapping(item.key, name)
+            if len(foundFieldNames) > 0:
+                self.haveFieldsToCopy = True
+            self.log.logdebug("fields found: %s and not found: %s in icSourceSchema" % \
+                (foundFieldNames, missingFieldNames))
 
-        # create subtasks that are run only with the final schema
-        schema = self.schemaMapper.editOutputSchema()
-        self.makeSubtask("measurement", schema=schema, algMetadata=self.algMetadata)
-        self.makeSubtask("measureApCorr", schema=schema)
-        self.makeSubtask("photocal", schema=schema)
-        # the final schema is the same as the schemaMapper output
-        self.schema = self.schemaMapper.getOutputSchema()
-
-    def getCalibKeys(self):
-        """!
-        Return a sequence of schema keys that represent fields that should be propagated from
-        icSrc to src by ProcessCcdTask.
-        """
-        if self.config.doPsf:
-            if self.measurePsf.config.reserveFraction > 0:
-                return (self.measurePsf.candidateKey, self.measurePsf.usedKey, self.measurePsf.reservedKey)
-            else:
-                return (self.measurePsf.candidateKey, self.measurePsf.usedKey)
+            # produce a temporary schema to pass to the subtasks; finalize it later
+            self.schema=self.schemaMapper.editOutputSchema()
         else:
-            return ()
+            self.schemaMapper = None
+            self.schema = afwTable.SourceTable.makeMinimalSchema()
+
+        self.makeSubtask("detectAndMeasure", schema=self.schema)
+        if self.config.doAstrometry or self.config.doPhotoCal:
+            self.makeSubtask("astrometry", schema=self.schema)
+            self.loadAndMatch = self.astrometry.loadAndMatch
+        else:
+            self.loadAndMatch = None
+        if self.config.doPhotoCal:
+            self.makeSubtask("photoCal", schema=self.schema)
+
+        if self.schemaMapper is not None:
+            # finalize the schema
+            self.schema = self.schemaMapper.getOutputSchema()
 
     @pipeBase.timeMethod
-    def run(self, exposure, defects=None, idFactory=None, expId=0):
-        """!Run the calibration task on an exposure
+    def run(self, dataRef, exposure=None, background=None, icSourceCat=None, doUnpersist=True):
+        """!Calibrate an exposure, optionally unpersisting inputs and persisting outputs.
 
-        \param[in,out]  exposure   Exposure to calibrate; measured PSF will be installed there as well
-        \param[in]      defects    List of defects on exposure
-        \param[in]      idFactory  afw.table.IdFactory to use for source catalog.
-        \param[in]      expId      Exposure id used for random number generation.
-        \return a pipeBase.Struct with fields:
-        - exposure: Repaired exposure
-        - backgrounds: A list of background models applied in the calibration phase
-        - psf: Point spread function
-        - sources: Sources used in calibration
-        - matches: A list of reference object/source matches (an lsst.afw.table.ReferenceMatchVector)
-        - matchMeta: Metadata about the field (an lsst.daf.base.PropertyList)
-        - photocal: Output of photocal subtask
+        This is a wrapper around the `calibrate` method that unpersists inputs
+        (if `doUnpersist` true) and persists outputs (if `config.doWrite` true)
 
-        It is moderately important to provide a decent initial guess for the seeing if you want to
-        deal with cosmic rays.  If there's a PSF in the exposure it'll be used; failing that the
-        CalibrateConfig.initialPsf is consulted (although the pixel scale will be taken from the
-        WCS if available).
+        @param[in] dataRef  butler data reference corresponding to a science image
+        @param[in,out] exposure  characterized exposure (an lsst.afw.image.ExposureF or similar),
+            or None to unpersist existing icExp and icBackground.
+            See calibrate method for details of what is read and written.
+        @param[in,out] background  model of background model already subtracted from exposure
+            (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
+            though that is unusual for calibration.
+            A refined background model is output.
+            Ignored if exposure is None.
+        @param[in] icSourceCat  catalog from which to copy the fields specified by icSourceKeys, or None;
+        @param[in] doUnpersist  unpersist data:
+            - if True, exposure, background and icSourceCat are read from dataRef and those three arguments
+                must all be None;
+            - if False the exposure must be provided; background and icSourceCat are optional.
+            True is intended for running as a command-line task, False for running as a subtask
 
-        If the exposure contains an lsst.afw.image.Calib object with the exposure time set, MAGZERO
-        will be set in the task metadata.
+        @warning until detectAndMeasure can determine suitable sources for measuring aperture correction
+        by itself, you must provide icSourceCat and a suitable entry in config.icSourceFieldsToCopy
+
+        @return same data as the calibrate method
         """
-        assert exposure is not None, "No exposure provided"
+        self.log.info("Processing %s" % (dataRef.dataId))
 
-        if not exposure.hasPsf():
-            self.installInitialPsf(exposure)
-        if idFactory is None:
-            idFactory = afwTable.IdFactory.makeSimple()
-        backgrounds = afwMath.BackgroundList()
-        keepCRs = True                  # At least until we know the PSF
-        self.repair.run(exposure, defects=defects, keepCRs=keepCRs)
-        frame = getDebugFrame(self._display, "repair")
-        if frame:
-            getDisplay(frame).mtv(exposure)
+        if doUnpersist:
+            if None in (exposure, background, icSourceCat):
+                raise pipeBase.TaskError("doUnpersist true; exposure, background and icSourceCat "
+                    "must all be None")
+            exposure = dataRef.get("icExp", immediate=True)
+            background = dataRef.get("icExpBackground", immediate=True)
+            icSourceCat = dataRef.get("icSourceCat", immediate=True)
+        elif exposure is None:
+            raise pipeBase.TaskError("doUnpersist false; exposure must be provided")
 
-        if self.config.doBackground:
-            with self.timer("background"):
-                bg, exposure = measAlg.estimateBackground(exposure, self.config.background, subtract=True)
-                backgrounds.append(bg)
-            frame = getDebugFrame(self._display, "background")
-            if frame:
-                getDisplay(frame).mtv(exposure)
+        exposureIdInfo = dataRef.get("expIdInfo")
 
-        # Make both tables from the same detRet, since detection can only be run once
-        table1 = afwTable.SourceTable.make(self.schema1, idFactory)
-        table1.setMetadata(self.algMetadata)
-        detRet = self.detection.makeSourceCatalog(table1, exposure)
-        sources1 = detRet.sources
-        if detRet.fpSets.background:
-            backgrounds.append(detRet.fpSets.background)
+        calRes = self.calibrate(
+            exposure = exposure,
+            exposureIdInfo = exposureIdInfo,
+            background = background,
+            icSourceCat = icSourceCat,
+        )
 
-        # do the initial measurement.  This is normally done for star selection, but do it 
-        # even if the psf is not going to be calculated for consistency
-        self.initialMeasurement.run(exposure, sources1, allowApCorr=False)
+        if self.config.doWrite:
+            sourceWriteFlags = 0 if self.config.doWriteHeavyFootprintsInSources \
+                else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS
+            dataRef.put(calRes.sourceCat, self.dataPrefix + "src", flags=sourceWriteFlags)
+            if self.config.doWriteMatches:
+                matches = calRes.photoMatches if calRes.photoMatches is not None else calRes.astromMatches
+                if matches is not None:
+                    normalizedMatches = afwTable.packMatches(matches)
+                    normalizedMatches.table.setMetadata(calRes.matchMeta)
+                    dataRef.put(normalizedMatches, self.dataPrefix + "srcMatch")
+            dataRef.put(exposure, self.dataPrefix + "calexp")
+            dataRef.put(calRes.background, self.dataPrefix + "calexpBackground")
 
-        if self.config.doPsf:
-            matches = None
-            if self.config.doAstrometry:
-                # If doAstrometry is False, we force the Star Selector to either make them itself
-                # or hope it doesn't need them.
-                origWcs = exposure.getWcs()
-                try:
-                    astromRet = self.astrometry.run(exposure, sources1)
-                    matches = astromRet.matches
-                except RuntimeError as e:
-                    if self.config.requireAstrometry:
-                        raise
-                    self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
-                finally:
-                    # Restore original Wcs: we're going to repeat the astrometry later, and if it succeeded
-                    # this time, running it again with the same basic setup means it should succeed again.
-                    exposure.setWcs(origWcs)
-            psfRet = self.measurePsf.run(exposure, sources1, expId=expId, matches=matches)
-            psf = psfRet.psf
-        elif exposure.hasPsf():
-            psf = exposure.getPsf()
-        else:
-            psf = None
+        return calRes
 
-        # Wash, rinse, repeat with proper PSF
+    def calibrate(self, exposure, exposureIdInfo, background=None, icSourceCat=None):
+        """!Calibrate an exposure (science image or coadd)
 
-        if self.config.doPsf:
-            self.repair.run(exposure, defects=defects, keepCRs=None)
-            frame = getDebugFrame(self._display, "PSF_repair")
-            if frame:
-                getDisplay(frame).mtv(exposure)
+        @param[in,out] exposure  exposure to calibrate (an lsst.afw.image.ExposureF or similar);
+            in:
+            - MaskedImage
+            - Psf
+            out:
+            - MaskedImage has background subtracted
+            - Wcs is replaced
+            - Calib is set
+        @param[in,out] background  model of background model already subtracted from exposure
+            (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
+            though that is unusual for calibration.
+            A refined background model is output.
 
-        if self.config.doBackground:
-            # Background estimation ignores (by default) pixels with the
-            # DETECTED bit set, so now we re-estimate the background,
-            # ignoring sources.  (see BackgroundConfig.ignoredPixelMask)
-            with self.timer("background"):
-                # Subtract background
-                bg, exposure = measAlg.estimateBackground(
-                    exposure, self.config.background, subtract=True,
-                    statsKeys=('BGMEAN2', 'BGVAR2'))
-                self.log.info("Fit and subtracted background")
-                backgrounds.append(bg)
+        @return pipe_base Struct containing these fields:
+        - exposure  calibrate science exposure with refined WCS and Calib
+        - background  model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
+        - sourceCat  table of measured sources
+        - astromMatches  list of source/refObj matches from the astrometry solver
+        - photoMatches  list of source/refObj matches from the photometry solver
+        - matchMeta  metadata about the field (an lsst.daf.base.PropertyList);
+            used to persist and unpersist match lists
+        """
+        # detect, deblend and measure sources
+        procRes = self.detectAndMeasure.run(
+            exposure = exposure,
+            exposureIdInfo = exposureIdInfo,
+            background = background,
+        )
 
-            frame = getDebugFrame(self._display, "PSF_background")
-            if frame:
-                getDisplay(frame).mtv(exposure)
+        if icSourceCat is not None and self.haveFieldsToCopy:
+            self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=procRes.sourceCat)
 
-        # make a second table with which to do the second measurement
-        # the schemaMapper will copy the footprints and ids, which is all we need.
-        table2 = afwTable.SourceTable.make(self.schema, idFactory)
-        table2.setMetadata(self.algMetadata)
-        sources = afwTable.SourceCatalog(table2)
-        # transfer to a second table -- note that the slots do not have to be reset here
-        # as long as measurement.run follows immediately
-        sources.extend(sources1, self.schemaMapper)
-
-        # Note: the logic for applying aperture corrections is currently being reworked as part of DM-4692
-        # (as discussed at:
-        # https://community.lsst.org/t/how-to-measure-aperture-correction-in-the-new-processccdtask)
-        # For the time being, the following provides the desired behavior.
-        if self.config.doMeasureApCorr:
-            # First run plugins with order up to APCORR_ORDER to measure all fluxes
-            self.measurement.run(exposure, sources, endOrder=BasePlugin.APCORR_ORDER)
-            # Now measure the aperture correction map
-            apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sources).apCorrMap
-            exposure.getInfo().setApCorrMap(apCorrMap)
-            # Now run APCORR_ORDER only to apply the aperture correction to the measured fluxes.
-            # The effect of this step is simply to apply the aperture correction (using the
-            # apCorrMap measured above) to any flux measurements present whose plugins were
-            # registered with shouldApCorr=True (no actual plugins are run in this step).
-            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER,
-                                 endOrder=BasePlugin.APCORR_ORDER+1)
-            # Now run the remaining APCORR_ORDER+1 plugins (whose measurements should be performed on
-            # aperture corrected fluxes) disallowing apCorr (to avoid applying it more than once)
-            self.measurement.run(exposure, sources, beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
-        else:
-            self.measurement.run(exposure, sources)
-
-        matches, matchMeta = None, None
+        # perform astrometry calibration:
+        # fit an improved WCS and update the exposure's WCS in place
+        astromRes = pipeBase.Struct(
+            matches = None,
+            matchMeta = None,
+        )
         if self.config.doAstrometry:
             try:
-                astromRet = self.astrometry.run(exposure, sources)
-                matches = astromRet.matches
-                matchMeta = astromRet.matchMeta
-            except RuntimeError as e:
+                astromRes = self.astrometry.run(
+                    exposure = exposure,
+                    sourceCat = procRes.sourceCat,
+                )
+            except Exception as e:
                 if self.config.requireAstrometry:
                     raise
-                self.log.warn("Unable to perform astrometry (%s): attempting to proceed" % e)
+                self.log.warn("Unable to perform astrometric calibration (%s): attempting to proceed" % e)
 
+        # compute photometric calibration
+        photoRes = pipeBase.Struct(
+            matches = None,
+        )
         if self.config.doPhotoCal:
             try:
-                if not matches:
-                    raise RuntimeError("No matches available")
-                photocalRet = self.photocal.run(exposure, matches)
-            except Exception, e:
+                if astromRes.matches is None:
+                    astromRes = self.loadAndMatch(exposure=exposure, sourceCat=procRes.sourceCat)
+                photoRes = self.photoCal.run(exposure, astromRes.matches)
+                exposure.getCalib().setFluxMag0(photoRes.calib.getFluxMag0())
+                self.log.info("Photometric zero-point: %f" % photoRes.calib.getMagnitude(1.0))
+                self.setMetadata(exposure=exposure, photoRes=photoRes)
+            except Exception as e:
                 if self.config.requirePhotoCal:
                     raise
-                self.log.warn("Failed to determine photometric zero-point: %s" % e)
-                photocalRet = None
-                self.metadata.set('MAGZERO', float("NaN"))
-
-            if photocalRet:
-                self.log.info("Photometric zero-point: %f" % photocalRet.calib.getMagnitude(1.0))
-                exposure.getCalib().setFluxMag0(photocalRet.calib.getFluxMag0())
-                metadata = exposure.getMetadata()
-                # convert to (mag/sec/adu) for metadata
-                try:
-                    magZero = photocalRet.zp - 2.5 * math.log10(exposure.getCalib().getExptime() )
-                    metadata.set('MAGZERO', magZero)
-                except:
-                    self.log.warn("Could not set normalized MAGZERO in header: no exposure time")
-                metadata.set('MAGZERO_RMS', photocalRet.sigma)
-                metadata.set('MAGZERO_NOBJ', photocalRet.ngood)
-                metadata.set('COLORTERM1', 0.0)
-                metadata.set('COLORTERM2', 0.0)
-                metadata.set('COLORTERM3', 0.0)
-        else:
-            photocalRet = None
+                self.log.warn("Unable to perform photometric calibration (%s): attempting to proceed" % e)
+                self.setMetadata(exposure=exposure, photoRes=None)
 
         frame = getDebugFrame(self._display, "calibrate")
         if frame:
-            displayAstrometry(sourceCat=sources, exposure=exposure, matches=matches, frame=frame, pause=False)
+            displayAstrometry(
+                sourceCat = procRes.sourceCat,
+                exposure = exposure,
+                matches = photoRes.matches,
+                frame = frame,
+                pause = False,
+            )
 
         return pipeBase.Struct(
             exposure = exposure,
-            backgrounds = backgrounds,
-            psf = psf,
-            sources = sources,
-            matches = matches,
-            matchMeta = matchMeta,
-            photocal = photocalRet,
+            background = procRes.background,
+            sourceCat = procRes.sourceCat,
+            astromMatches = astromRes.matches,
+            photoMatches = photoRes.matches,
+            matchMeta = astromRes.matchMeta,
         )
 
-    def installInitialPsf(self, exposure):
-        """!Initialise the calibration procedure by setting the PSF to a configuration-defined guess.
-
-        \param[in,out] exposure Exposure to process; fake PSF will be installed here.
-        \throws AssertionError if exposure is None
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task.
         """
-        assert exposure, "No exposure provided"
+        sourceCat = afwTable.SourceCatalog(self.schema)
+        sourceCat.getTable().setMetadata(self.detectAndMeasure.algMetadata)
+        return {self.dataPrefix + "src": sourceCat}
 
-        wcs = exposure.getWcs()
-        if wcs:
-            pixelScale = wcs.pixelScale().asArcseconds()
-        else:
-            pixelScale = self.config.initialPsf.pixelScale
+    def setMetadata(self, exposure, photoRes=None):
+        """!Set task and exposure metadata
 
-        cls = getattr(measAlg, self.config.initialPsf.model + "Psf")
+        Logs a warning and continues if needed data is missing.
 
-        fwhm = self.config.initialPsf.fwhm/pixelScale
-        size = self.config.initialPsf.size
-        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhm, size))
-        psf = cls(size, size, fwhm/(2*math.sqrt(2*math.log(2))))
-        exposure.setPsf(psf)
+        @param[in,out] exposure  exposure whose metadata is to be set
+        @param[in]  photoRes  results of running photoCal; if None then it was not run
+        """
+        if photoRes is None:
+            self.metadata.set('MAGZERO', float("NaN"))
+            return
+
+        # convert zero-point to (mag/sec/adu) for task MAGZERO metadata
+        try:
+            magZero = photoRes.zp - 2.5*math.log10(exposure.getCalib().getExptime())
+            self.metadata.set('MAGZERO', magZero)
+        except Exception:
+            self.log.warn("Could not set normalized MAGZERO in header: no exposure time")
+
+        try:
+            metadata = exposure.getMetadata()
+            metadata.set('MAGZERO_RMS', photoRes.sigma)
+            metadata.set('MAGZERO_NOBJ', photoRes.ngood)
+            metadata.set('COLORTERM1', 0.0)
+            metadata.set('COLORTERM2', 0.0)
+            metadata.set('COLORTERM3', 0.0)
+        except Exception as e:
+            self.log.warn("Could not set exposure metadata: %s" % (e,))
+
+    def copyIcSourceFields(self, icSourceCat, sourceCat, matchRadius=3):
+        """!Match sources in icSourceCat and sourceCat and copy the specified fields
+
+        @param[in] icSourceCat  catalog from which to copy fields
+        @param[in,out] sourceCat  catalog to which to copy fields
+        @param[in] matchRadius  match radius for sources (pixels)
+
+        The fields copied are those specified by `config.icSourceFieldsToCopy`
+        that actually exist in the schema. This was set up by the constructor
+        using self.schemaMapper.
+        """
+        if self.schemaMapper is None:
+            raise RuntimeError("To copy icSource fields you must specify icSourceSchema "
+                "and icSourceKeys when constructing this task")
+        if icSourceCat is None or sourceCat is None:
+            raise RuntimeError("icSourceCat and sourceCat must both be specified")
+        if not self.haveFieldsToCopy:
+            self.log.logdebug("copyIcSourceFields doing nothing because there are no fields to copy")
+            return
+
+        closest = False  # return all matched objects
+        matches = afwTable.matchXy(icSourceCat, sourceCat, matchRadius, closest)
+        if self.config.detectAndMeasure.doDeblend:
+            deblendKey = sourceCat.schema["deblend_nChild"].asKey()
+            matches = [m for m in matches if m[1].get(deblendKey) == 0] # if deblended, keep children
+
+        # Because we had to allow multiple matches to handle parents, we now need to
+        # prune to the best matches
+        bestMatches = {}  # closest matches as a dict of icSourceCat source ID:
+                          #   (icSourceCat source, sourceCat source, distance in pixels)
+        for m0, m1, d in matches:
+            id0 = m0.getId()
+            match = bestMatches.get(id0)
+            if match is None or d <= match[2]:
+                bestMatches[id0] = (m0, m1, d)
+        matches = bestMatches.values()
+
+        # Check that no sourceCat sources are listed twice (we already know that each match has a unique
+        # icSourceCat source ID, due to using that ID as the key in bestMatches)
+        numMatches = len(matches)
+        numUniqueSources = len(set(m[1].getId() for m in matches))
+        if numUniqueSources != numMatches:
+            self.log.warn("%d icSourceCat sources matched only %d sourceCat sources" %
+                (numMatches, numUniqueSources))
+
+        self.log.info("Copy flags from icSourceCat to sourceCat for %s sources" % (numMatches,))
+
+        # For each match: set the calibSourceKey flag and copy the desired fields
+        for icSrc, src, d in matches:
+            src.setFlag(self.calibSourceKey, True)
+            # src.assign copies the footprint from icSrc, which we don't want (DM-407)
+            # so set icSrc's footprint to src's footprint before src.assign, then restore it
+            icSrcFootprint = icSrc.getFootprint()
+            try:
+                icSrc.setFootprint(src.getFootprint())
+                src.assign(icSrc, self.schemaMapper)
+            finally:
+                icSrc.setFootprint(icSrcFootprint)
