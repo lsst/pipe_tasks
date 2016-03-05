@@ -491,7 +491,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         if icSourceCat is None or sourceCat is None:
             raise RuntimeError("icSourceCat and sourceCat must both be specified")
         if not self.haveFieldsToCopy:
-            self.log.logdebug("copyIcSourceFields doing nothing because there are no fields to copy")
+            self.log.warn("copyIcSourceFields doing nothing because there are no fields to copy")
             return
 
         closest = False  # return all matched objects

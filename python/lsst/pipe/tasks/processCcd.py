@@ -168,3 +168,20 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             exposure = exposure,
             background = calibRes.background if self.config.doCalibrate else charRes.background,
         )
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        """!Create and return an argument parser
+
+        @param[in] cls      the class object
+        @return the argument parser for this task.
+
+        This override is used to delay making the data ref list until the daset type is known;
+        this is done in @ref parseAndRun.
+        """
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument(name="--id",
+            datasetType=pipeBase.ConfigDatasetType(name="isr.datasetType"),
+            help="data IDs, e.g. --id visit=12345 ccd=1,2^0,3")
+        return parser
+
