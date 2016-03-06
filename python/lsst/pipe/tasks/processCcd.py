@@ -19,241 +19,169 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-from .processImage import ProcessImageTask
 from lsst.ip.isr import IsrTask
-from lsst.pipe.tasks.calibrate import CalibrateTask
-import lsst.afw.geom as afwGeom
-import lsst.afw.math as afwMath
-import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from .fakes import BaseFakeSourcesTask
+from .calibrate import CalibrateTask
+from .characterizeImage import CharacterizeImageTask
 
-class ProcessCcdConfig(ProcessImageTask.ConfigClass):
+class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
-    doIsr = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Perform ISR?",
-    )
     isr = pexConfig.ConfigurableField(
         target = IsrTask,
-        doc = "Instrumental Signature Removal",
+        doc = """Task to perform instrumental signature removal or load a post-ISR image; ISR consists of:
+            - assemble raw amplifier images into an exposure with image, variance and mask planes
+            - perform bias subtraction, flat fielding, etc.
+            - mask known bad pixels
+            - provide a preliminary WCS
+            """,
+    )
+    charImage = pexConfig.ConfigurableField(
+        target = CharacterizeImageTask,
+        doc = """Task to characterize a science exposure:
+            - detect sources, usually at high S/N
+            - estimate the background, which is subtracted from the image and returned as field "background"
+            - estimate a PSF model, which is added to the exposure
+            - interpolate over defects and cosmic rays, updating the image, variance and mask planes
+            """,
     )
     doCalibrate = pexConfig.Field(
         dtype = bool,
         default = True,
         doc = "Perform calibration?",
     )
-    doWriteCalibrate = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Write calibration results?",
-    )
-    doWriteCalibrateMatches = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Write icSrc to reference matches?",
-    )
-    doFakes = pexConfig.Field(
-        dtype = bool,
-        default = False,
-        doc = "Run fake sources injection task",
-    )
     calibrate = pexConfig.ConfigurableField(
         target = CalibrateTask,
-        doc = "Calibration (inc. high-threshold detection and measurement)",
-    )
-    fakes = pexConfig.ConfigurableField(
-        target = BaseFakeSourcesTask,
-        doc = "Injection of fake sources for test purposes (must be retargeted)"
+        doc = """Task to perform astrometric and photometric calibration:
+            - refine the WCS in the exposure
+            - refine the Calib photometric calibration object in the exposure
+            - detect sources, usually at low S/N
+            """,
     )
 
-class ProcessCcdTask(ProcessImageTask):
-    """Process a CCD
 
-    Available steps include:
-    - instrument signature removal (ISR)
-    - calibrate
-    - detect sources
-    - measure sources
+## \addtogroup LSST_task_documentation
+## \{
+## \page ProcessCcdTask
+## \ref ProcessCcdTask_ "ProcessCcdTask"
+## \copybrief ProcessCcdTask
+## \}
+
+class ProcessCcdTask(pipeBase.CmdLineTask):
+    """!Assemble raw data, detect and measure sources and fit background, PSF, WCS and zero-point
+
+    @anchor ProcessCcdTask_
+    
+    @section pipe_tasks_processCcd_Contents  Contents
+
+     - @ref pipe_tasks_processCcd_Purpose
+     - @ref pipe_tasks_processCcd_Initialize
+     - @ref pipe_tasks_processCcd_IO
+     - @ref pipe_tasks_processCcd_Config
+     - @ref pipe_tasks_processCcd_Debug
+     - @ref pipe_tasks_processCcd_Example
+
+    @section pipe_tasks_processCcd_Purpose  Description
+
+    Perform the following operations:
+    - Use `IsrTask` to unpersist raw data and assemble it into a post-ISR exposure
+    - Use `CharacterizeImageTask` to model and subtract the background and model the PSF
+    - Use `CalibrateTask` to detect, deblend and single-frame-measure sources
+        and refine the WCS and fit photometric zero-point
+
+    @section pipe_tasks_processCcd_Initialize  Task initialisation
+
+    @copydoc \_\_init\_\_
+
+    @section pipe_tasks_processCcd_IO  Invoking the Task
+
+    This task is primarily designed to be run from the command line.
+
+    The main method is `run`, which takes a single butler data reference for the raw input data.
+
+    @section pipe_tasks_processCcd_Config  Configuration parameters
+
+    See @ref ProcessCcdConfig
+
+    @section pipe_tasks_processCcd_Debug  Debug variables
+
+    ProcessCcdTask has no debug output, but its subtasks do.
+
+    @section pipe_tasks_processCcd_Example   A complete example of using ProcessCcdTask
+
+    The following command will process all visits in obs_test's data repository:
+    `processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id`
     """
     ConfigClass = ProcessCcdConfig
     _DefaultName = "processCcd"
-    dataPrefix = ""
 
     def __init__(self, **kwargs):
-        ProcessImageTask.__init__(self, **kwargs)
-        if self.config.doIsr :
-            self.makeSubtask("isr")
-        self.makeSubtask("calibrate")
-        # Only create a subtask for fakes if configuration option is set
-        # Additionally fakes must be retargeted to a child of BaseFakeSourcesTask
-        if self.config.doFakes:
-            self.makeSubtask("fakes")
-
-        # Setup our schema by starting with fields we want to propagate from icSrc.
-        calibSchema = self.calibrate.schema
-        self.schemaMapper = afwTable.SchemaMapper(calibSchema, self.schema)
-
-        # Add fields needed to identify stars used in the calibration step
-        self.calibSourceKey = self.schemaMapper.addOutputField(
-                              afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSrc"))
-        for key in self.calibrate.getCalibKeys():
-            self.schemaMapper.addMapping(key)
-
-    def makeIdFactory(self, sensorRef):
-        expBits = sensorRef.get("ccdExposureId_bits")
-        expId = self.getExposureId(sensorRef)
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
-
-    def getExposureId(self, dataRef):
-        return long(dataRef.get("ccdExposureId", immediate=True))
-
-    def getAstrometer(self):
-        return self.calibrate.astrometry
-
-    def setPostIsrExposure(self, sensorRef):
-        """Load the post instrument signature removal image
-
-        \param[in]  sensorRef        sensor-level butler data reference
-
-        \return     postIsrExposure  exposure to be passed to processCcdExposure
-        """
-        # initialize postIsrExposure exposure
-        postIsrExposure = None
-        if self.config.doIsr:
-            postIsrExposure = self.isr.runDataRef(sensorRef).exposure
-        elif self.config.doCalibrate:
-            postIsrExposure = sensorRef.get(self.dataPrefix + "postISRCCD")
-
-        return postIsrExposure
+        pipeBase.CmdLineTask.__init__(self, **kwargs)
+        self.makeSubtask("isr")
+        self.makeSubtask("charImage")
+        self.makeSubtask("calibrate",
+            icSourceSchema = self.charImage.schema,
+        )
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
         """Process one CCD
 
-        @param sensorRef: sensor-level butler data reference
+        The sequence of operations is:
+        - remove instrument signature
+        - characterize image to estimate PSF and background
+        - calibrate astrometry and photometry
+
+        @param sensorRef: butler data reference for raw data
+
         @return pipe_base Struct containing these fields:
-        - postIsrExposure: exposure after ISR performed if calib.doIsr or config.doCalibrate, else None
-        - exposure: calibrated exposure (calexp): as computed if config.doCalibrate,
-            else as upersisted and updated if config.doDetection, else None
-        - calib: object returned by calibration process if config.doCalibrate, else None
-        - sources: detected source if config.doPhotometry, else None
+        - charRes: object returned by image characterization task; an lsst.pipe.base.Struct
+            that will include "background" and "sourceCat" fields
+        - calibRes: object returned by calibration task: an lsst.pipe.base.Struct
+            that will include "background" and "sourceCat" fields
+        - exposure: final exposure (an lsst.afw.image.ExposureF)
+        - background: final background model (an lsst.afw.math.BackgroundList)
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
-        # initialize postIsrExposure exposure
-        postIsrExposure = self.setPostIsrExposure(sensorRef)
+        exposure = self.isr.runDataRef(sensorRef).exposure
 
-        # initialize outputs
-        idFactory = None
-        calib = None
-        sources = None
-        backgrounds = afwMath.BackgroundList()
+        charRes = self.charImage.run(
+            dataRef = sensorRef,
+            exposure = exposure,
+            doUnpersist = False,
+        )
+        exposure = charRes.exposure
+
         if self.config.doCalibrate:
-            idFactory = self.makeIdFactory(sensorRef)
-            expId = self.getExposureId(sensorRef)
-            calib = self.calibrate.run(postIsrExposure, idFactory=idFactory, expId=expId)
-            calExposure = calib.exposure
-            if self.config.doWriteCalibrate:
-                sensorRef.put(calib.sources, self.dataPrefix + "icSrc")
-                if calib.matches is not None and self.config.doWriteCalibrateMatches:
-                    normalizedMatches = afwTable.packMatches(calib.matches)
-                    normalizedMatches.table.setMetadata(calib.matchMeta)
-                    sensorRef.put(normalizedMatches, self.dataPrefix + "icMatch")
-            try:
-                for bg in calib.backgrounds:
-                    backgrounds.append(bg)
-            except TypeError:
-                backgrounds.append(calib.backgrounds)
-            except AttributeError:
-                self.log.warn("The calibration task did not return any backgrounds. " +
-                    "Any background subtracted in the calibration process cannot be persisted.")
-        elif sensorRef.datasetExists("calexp"):
-            calExposure = sensorRef.get("calexp", immediate=True)
-        else:
-            raise RuntimeError("No calibrated exposure available for processing")
-
-        # add fake sources to exposure (if enabled)
-        if self.config.doFakes:
-            self.fakes.run(calExposure, background=backgrounds)
-
-        # delegate most of the work to ProcessImageTask
-        result = self.process(sensorRef, calExposure, idFactory=idFactory)
-
-        # combine the differential background we estimated while detecting the main src catalog
-        # with the background estimated in the calibrate step
-        for bg in result.backgrounds:
-            backgrounds.append(bg)
-        result.backgrounds = backgrounds
-
-        if self.config.doCalibrate and self.config.doWriteCalibrate:
-            # wait until after detection and measurement, since detection sets detected mask bits
-            # and both require a background subtracted exposure;
-            if self.config.persistBackgroundModel:
-                self.writeBackgrounds(sensorRef, backgrounds)
-            else:
-                self.restoreBackgrounds(calExposure, backgrounds)
-            sensorRef.put(calExposure, self.dataPrefix + "calexp")
-
-        if calib is not None:
-            self.propagateCalibFlags(calib.sources, sources)
+            calibRes = self.calibrate.run(
+                dataRef = sensorRef,
+                exposure = charRes.exposure,
+                background = charRes.background,
+                doUnpersist = False,
+                icSourceCat = charRes.sourceCat,
+            )
 
         return pipeBase.Struct(
-            postIsrExposure = postIsrExposure,
-            calib = calib,
-            **result.getDict()
+            charRes = charRes,
+            calibRes = calibRes if self.config.doCalibrate else None,
+            exposure = exposure,
+            background = calibRes.background if self.config.doCalibrate else charRes.background,
         )
 
-    def propagateCalibFlags(self, icSources, sources, matchRadius=1):
-        """Match the icSources and sources, and propagate Interesting Flags (e.g. PSF star) to the sources
+    @classmethod
+    def _makeArgumentParser(cls):
+        """!Create and return an argument parser
+
+        @param[in] cls      the class object
+        @return the argument parser for this task.
+
+        This override is used to delay making the data ref list until the daset type is known;
+        this is done in @ref parseAndRun.
         """
-        self.log.info("Matching icSource and Source catalogs to propagate flags.")
-        if icSources is None or sources is None:
-            return
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument(name="--id",
+            datasetType=pipeBase.ConfigDatasetType(name="isr.datasetType"),
+            help="data IDs, e.g. --id visit=12345 ccd=1,2^0,3")
+        return parser
 
-        closest = False                 # return all matched objects
-        matched = afwTable.matchRaDec(icSources, sources, matchRadius*afwGeom.arcseconds, closest)
-        if self.config.doDeblend:
-            matched = [m for m in matched if m[1].get("deblend_nChild") == 0] # if deblended, keep children
-        #
-        # Because we had to allow multiple matches to handle parents, we now need to
-        # prune to the best matches
-        #
-        bestMatches = {}
-        for m0, m1, d in matched:
-            id0 = m0.getId()
-            if bestMatches.has_key(id0):
-                if d > bestMatches[id0][2]:
-                    continue
-
-            bestMatches[id0] = (m0, m1, d)
-
-        matched = bestMatches.values()
-        #
-        # Check that we got it right
-        #
-        if len(set(m[0].getId() for m in matched)) != len(matched):
-            self.log.warn("At least one icSource is matched to more than one Source")
-        #
-        # Copy over the desired flags
-        #
-        for ics, s, d in matched:
-            s.setFlag(self.calibSourceKey, True)
-            # We don't want to overwrite s's footprint with ics's; DM-407
-            icsFootprint = ics.getFootprint()
-            try:
-                ics.setFootprint(s.getFootprint())
-                s.assign(ics, self.schemaMapper)
-            finally:
-                ics.setFootprint(icsFootprint)
-
-    def getSchemaCatalogs(self):
-        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
-        d = ProcessImageTask.getSchemaCatalogs(self)
-        icSrc = None
-        icSrc = afwTable.SourceCatalog(self.calibrate.schema)
-        icSrc.getTable().setMetadata(self.calibrate.algMetadata)
-        d[self.dataPrefix + "icSrc"] = icSrc
-        return d

@@ -27,17 +27,23 @@ import sys
 import numpy as np
 
 import lsst.utils
-import lsst.pipe.base              as pipeBase
-import lsst.daf.base               as dafBase
-import lsst.afw.coord              as afwCoord
-import lsst.afw.geom               as afwGeom
-import lsst.afw.table              as afwTable
-import lsst.afw.image              as afwImage
-import lsst.afw.display.ds9        as ds9
-from lsst.meas.astrom import AstrometryTask
+import lsst.pipe.base as pipeBase
+from lsst.daf.butlerUtils import ExposureIdInfo
+import lsst.afw.display as afwDisplay
+import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
+from lsst.pex.config import Config
+from lsst.afw.coord import Coord
+from lsst.afw.geom import PointD
+from lsst.meas.algorithms import LoadReferenceObjectsTask
+from lsst.meas.astrom import createMatchMetadata
+
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
 np.random.seed(1)
+
+FilterName = "r"
 
 def loadData(pixelScale=1.0):
     """Prepare the data we need to run the example"""
@@ -52,81 +58,97 @@ def loadData(pixelScale=1.0):
     calib.setExptime(1.0)
     exposure.setCalib(calib)
     # add a filter
-    filterName = "r"
-    afwImage.Filter.define(afwImage.FilterProperty(filterName, 600, True))
-    exposure.setFilter(afwImage.Filter(filterName))
+    afwImage.Filter.define(afwImage.FilterProperty(FilterName, 600, True))
+    exposure.setFilter(afwImage.Filter(FilterName))
     # and a trivial WCS (needed by MyAstrometryTask)
-    pixelScale /= 3600.0                # degrees per pixel
-    wcs = afwImage.makeWcs(afwCoord.Coord(afwGeom.PointD(15, 1)), afwGeom.PointD(0, 0),
-                           pixelScale, 0.0, 0.0, pixelScale)
+    pixelScale /= 3600.0  # degrees per pixel
+    wcs = afwImage.makeWcs(Coord(PointD(15, 1)), PointD(0, 0), pixelScale, 0.0, 0.0, pixelScale)
     exposure.setWcs(wcs)
 
     return exposure
 
-class MyAstrometryTask(AstrometryTask):
-    """An override for CalibrateTask's astrometry task"""
-    def __init__(self, *args, **kwargs):
-        super(MyAstrometryTask, self).__init__(*args, **kwargs)
+class MyAstrometryTask(pipeBase.Task):
+    """An override for CalibrateTask's astrometry task that fakes a solution"""
+    ConfigClass = Config
+    _defaultName = "astrometry"
+
+    def __init__(self, schema=None, **kwargs):
+        pipeBase.Task(**kwargs)
 
     def run(self, exposure, sourceCat):
-        """My run method that totally fakes the astrometric solution"""
+        """Fake an astrometric solution
 
-        filterName = exposure.getFilter().getName()
+        Pretend the current solution is perfect
+        and make a reference catalog that matches the source catalog
+        """
+        return self.loadAndMatch(exposure=exposure, sourceCat=sourceCat)
+
+    def loadAndMatch(self, exposure, sourceCat):
+        """!Fake loading and matching
+
+        Copy the source catalog to a reference catalog and producing a match list
+        """
         wcs = exposure.getWcs()
-        #
-        # Fake a reference catalogue by copying fluxes from the list of Sources
-        #
-        schema = afwTable.SimpleTable.makeMinimalSchema()
-        schema.addField(afwTable.Field[float]("{}_flux".format(filterName), "Reference flux"))
-        schema.addField(afwTable.Field[float]("photometric", "I am a reference star"))
-        refCat = afwTable.SimpleCatalog(schema)
+        refSchema = LoadReferenceObjectsTask.makeMinimalSchema(
+            filterNameList = [FilterName],
+            addIsPhotometric = True,
+        )
+        refCat = afwTable.SimpleCatalog(refSchema)
+        refFluxKey = refSchema[FilterName + "_flux"].asKey()
+        refIsPhotoKey = refSchema["photometric"].asKey()
 
-        for s in sourceCat:
-            m = refCat.addNew()
-            flux = 1e-3*s.getPsfFlux()*np.random.normal(1.0, 2e-2)
-            m.set("{}_flux".format(filterName), flux)
-            m.setCoord(wcs.pixelToSky(s.getCentroid()))
-
-        refCat.get("photometric")[:] = True
-        #
-        # Perform the "match"
-        #
-        matches = []
-        md = dafBase.PropertyList()
-        for m, s in zip(refCat, sourceCat):
-            matches.append(afwTable.ReferenceMatch(m, s, 0.0))
+        matches = lsst.afw.table.ReferenceMatchVector()
+        for src in sourceCat:
+            flux = 1e-3*src.getPsfFlux()*np.random.normal(1.0, 2e-2)
+            refObj = refCat.addNew()
+            refObj.set(refFluxKey, flux)
+            refObj.setCoord(wcs.pixelToSky(src.getCentroid()))
+            refObj.set(refIsPhotoKey, True)
+            match = lsst.afw.table.ReferenceMatch(refObj, src, 0)
+            matches.append(match)
 
         return pipeBase.Struct(
-            matches=matches,
-            matchMeta=md
-            )
+            refCat = refCat,
+            matches = matches,
+            matchMeta = createMatchMetadata(exposure),
+        )
 
 def run(display=False):
     #
-    # Create the task
+    # Create the tasks
     #
+    charImageConfig = CharacterizeImageTask.ConfigClass()
+    charImageTask = CharacterizeImageTask(config=charImageConfig)
+
     config = CalibrateTask.ConfigClass()
-    config.initialPsf.pixelScale = 0.185 # arcsec per pixel
-    config.initialPsf.fwhm = 1.0
     config.astrometry.retarget(MyAstrometryTask)
     calibrateTask = CalibrateTask(config=config)
-    #
-    # Process the data
-    #
-    exposure = loadData(config.initialPsf.pixelScale)
-    result = calibrateTask.run(exposure)
 
-    exposure0, exposure = exposure, result.exposure
-    sources = result.sources
+    # load the data
+    # Exposure ID and the number of bits required for exposure IDs are usually obtained from a data repo,
+    # but here we pick reasonable values (there are 64 bits to share between exposure IDs and source IDs).
+    exposure = loadData()
+    exposureIdInfo = ExposureIdInfo(expId=1, expBits=5)
 
-    if display:                         # display on ds9 (see also --debug argparse option)
-        frame = 1
-        ds9.mtv(exposure, frame=frame)
+    # characterize the exposure to repair cosmic rays and fit a PSF model
+    # display now because CalibrateTask modifies the exposure in place
+    charRes = charImageTask.characterize(exposure=exposure, exposureIdInfo=exposureIdInfo)
+    if display:
+        displayFunc(charRes.exposure, charRes.sourceCat, frame=1)
 
-        with ds9.Buffering():
-            for s in sources:
-                xy = s.getCentroid()
-                ds9.dot('+', *xy, ctype=ds9.CYAN if s.get("flags_negative") else ds9.GREEN, frame=frame)
+    # calibrate the exposure
+    calRes = calibrateTask.calibrate(exposure=charRes.exposure, exposureIdInfo=exposureIdInfo)
+    if display:
+        displayFunc(calRes.exposure, calRes.sourceCat, frame=2)
+
+def displayFunc(exposure, sourceCat, frame):
+    display = afwDisplay.getDisplay(frame)
+    display.mtv(exposure)
+
+    with display.Buffering():
+        for s in sourceCat:
+            xy = s.getCentroid()
+            display.dot('+', *xy, ctype=afwDisplay.CYAN if s.get("flags_negative") else afwDisplay.GREEN)
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -135,7 +157,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Demonstrate the use of CalibrateTask")
 
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
-    parser.add_argument('--ds9', action="store_true", help="Display sources on ds9", default=False)
+    parser.add_argument('--display', action="store_true",
+        help="Display images in this example task (not using debug.py)", default=False)
 
     args = parser.parse_args()
 
@@ -145,4 +168,4 @@ if __name__ == "__main__":
         except ImportError as e:
             print >> sys.stderr, e
 
-    run(display=args.ds9)
+    run(display=args.display)

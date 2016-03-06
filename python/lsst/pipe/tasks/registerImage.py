@@ -173,7 +173,6 @@ class RegisterTask(Task):
         table = alignedSources.getTable()
         coordKey = table.getCoordKey()
         centroidKey = table.getCentroidKey()
-        centroidErrKey = table.getCentroidErrKey()
         deleteList = []
         for i, s in enumerate(alignedSources):
             oldCentroid = s.get(centroidKey)
