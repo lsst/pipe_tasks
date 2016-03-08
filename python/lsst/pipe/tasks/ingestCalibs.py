@@ -52,9 +52,9 @@ class CalibsRegisterTask(RegisterTask):
     """Task that will generate the calibration registry for the Mapper"""
     ConfigClass = CalibsRegisterConfig
 
-    def openRegistry(self, butler, create=False, dryrun=False, name="calibRegistry.sqlite3"):
+    def openRegistry(self, directory, create=False, dryrun=False, name="calibRegistry.sqlite3"):
         """Open the registry and return the connection handle"""
-        return RegisterTask.openRegistry(self, butler, create, dryrun, name)
+        return RegisterTask.openRegistry(self, directory, create, dryrun, name)
 
     def createTable(self, conn):
         """Create the registry tables"""
@@ -160,7 +160,8 @@ class IngestCalibsTask(IngestTask):
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
-        with self.register.openRegistry(args.butler, create=args.create, dryrun=args.dryrun) as registry:
+        calibRoot = args.calib if args.calib is not None else "."
+        with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun) as registry:
             for infile in args.files:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
                 if args.calibType is None:
