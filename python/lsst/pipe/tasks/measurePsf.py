@@ -240,12 +240,10 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
                 doc=("Flag set if the source was actually used for PSF determination, "
                      "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
             )
-            if self.config.reserveFraction > 0:
-                self.reservedKey = schema.addField(
-                    "calib_psfReserved", type="Flag",
-                    doc=("Flag set if the source was selected as a PSF candidate, but was "
-                         "reserved from the PSF fitting."))
-                
+            self.reservedKey = schema.addField(
+                "calib_psfReserved", type="Flag",
+                doc=("Flag set if the source was selected as a PSF candidate, but was "
+                     "reserved from the PSF fitting."))
         else:
             self.candidateKey = None
             self.usedKey = None
