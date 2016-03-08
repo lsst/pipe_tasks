@@ -55,7 +55,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             dataId = dict(visit=1)
             dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
             fullResult = ProcessCcdTask.parseAndRun(
-                args = [InputDir, "--output", outPath, "--id"] + dataIdStrList,
+                args = [InputDir, "--output", outPath, "--clobber-config", "--id"] + dataIdStrList,
                 doReturnResults = True,
             )
             butler = fullResult.parsedCmd.butler
@@ -67,13 +67,13 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             self.assertEqual(fullDataId["filter"], "g")
             result = runResult.result
 
-            calexpBackground = butler.get("calexpBackground", dataId)
-            bg0Arr = calexpBackground.getImage().getArray()
+            icExpBackground = butler.get("icExpBackground", dataId, immediate=True)
+            bg0Arr = icExpBackground.getImage().getArray()
             bgMean = bg0Arr.mean(dtype=numpy.float64)
             bgStdDev = bg0Arr.std(dtype=numpy.float64)
 
             icSrc = butler.get("icSrc", dataId)
-            sources = butler.get("src", dataId)
+            src = butler.get("src", dataId)
 
             # the following makes pyflakes linter happy and the code more robust
             oldImMean = None
@@ -110,26 +110,26 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("\nMeasured results:")
                     print("background mean = %r, stdDev = %r" % (bgMean, bgStdDev))
                     print("len(icSrc) :", len(icSrc))
-                    print("len(sources) =", len(sources))
+                    print("len(src) :", len(src))
 
                     print("numGoodPix =", numGoodPix)
                     print("image mean = %r, stdDev = %r" % (imMean, imStdDev))
                     print("variance mean = %r, stdDev = %r" % (varMean, varStdDev))
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
 
-                    self.assertAlmostEqual(bgMean, 327.61695151065607, places=7)
-                    self.assertAlmostEqual(bgStdDev, 0.40081096398879795, places=7)
+                    self.assertAlmostEqual(bgMean, 327.73706832701379, places=7)
+                    self.assertAlmostEqual(bgStdDev, 0.478942723145386, places=7)
                     self.assertEqual(len(icSrc), 28)
-                    self.assertEqual(len(sources), 188)
-                    self.assertEqual(numGoodPix, 1953514)
+                    self.assertEqual(len(src), 183)
+                    self.assertEqual(numGoodPix, 1966976)
 
-                    self.assertAlmostEqual(imMean,      1.7045581411166495, places=7)
-                    self.assertAlmostEqual(imStdDev,  163.66290334994014, places=7)
+                    self.assertAlmostEqual(imMean,      1.6992922142160001, places=7)
+                    self.assertAlmostEqual(imStdDev,  163.66265133203555, places=7)
                     self.assertAlmostEqual(varMean,   212.5416436210289, places=7)
                     self.assertAlmostEqual(varStdDev, 121.25084470503148, places=7)
-                    self.assertAlmostEqual(psfIxx, 2.790601924907123, places=7)
-                    self.assertAlmostEqual(psfIyy, 2.1989110429762513, places=7)
-                    self.assertAlmostEqual(psfIxy,  0.16599586021207952, places=7)
+                    self.assertAlmostEqual(psfIxx, 2.205197497931509, places=7)
+                    self.assertAlmostEqual(psfIyy, 2.0893651175583723, places=7)
+                    self.assertAlmostEqual(psfIxy,  -0.07647011192069166, places=7)
                 else:
                     self.assertEqual(imMean, oldImMean)
                     self.assertEqual(imStdDev, oldImStdDev)

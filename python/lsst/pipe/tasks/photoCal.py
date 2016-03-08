@@ -589,6 +589,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
          - calib -------  \link lsst::afw::image::Calib\endlink object containing the zero point
          - arrays ------ Magnitude arrays returned be PhotoCalTask.extractMagArrays
          - matches ----- Final ReferenceMatchVector, as returned by PhotoCalTask.selectMatches.
+         - zp ---------- Photometric zero point (mag)
+         - sigma ------- Standard deviation of fit of photometric zero point (mag)
+         - ngood ------- Number of sources used to fit photometric zero point
 
         The exposure is only used to provide the name of the filter being calibrated (it may also be
         used to generate debugging plots).
@@ -693,6 +696,11 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         3.  Rather than start with the median we start with a crude mode.  This means that a set of magnitude
         residuals with a tight core and asymmetrical outliers will start in the core.  We use the width of
         this core to set our maximum sigma (see 2.)
+
+        \return Struct of:
+         - zp ---------- Photometric zero point (mag)
+         - sigma ------- Standard deviation of fit of zero point (mag)
+         - ngood ------- Number of sources used to fit zero point
         """
         sigmaMax = self.config.sigmaMax
 

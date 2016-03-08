@@ -27,14 +27,13 @@ import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.afw.table as afwTable
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="secondMoment")
+    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="objectSize")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
     reserveFraction = pexConfig.Field(
         dtype = float,
-        doc = "Fraction PSF candidates to reserve from fitting",
+        doc = "Fraction of PSF candidates to reserve from fitting; none if <= 0",
         default = -1.0,
     )
     reserveSeed = pexConfig.Field(
@@ -107,11 +106,6 @@ parameters (as we do in \ref pipe_tasks_measurePsf_Example) your code is no long
 \section pipe_tasks_measurePsf_Config       Configuration parameters
 
 See \ref MeasurePsfConfig.
-
-\warning
-The star selector and psf determiner registries should be modified to return a class
-which has a ConfigClass attribute and can be instantiated with a config. Until then, there's no
-obvious way to get a registry algorithm's Config from another Config.
 
 \section pipe_tasks_measurePsf_Debug		Debug variables
 
@@ -358,6 +352,11 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             cellSet = cellSet,
         )
 
+    @property
+    def usesMatches(self):
+        """Return True if this task makes use of the "matches" argument to the run method"""
+        return self.starSelector.usesMatches
+
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
 # Debug code
@@ -389,12 +388,12 @@ def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
                 if chi2 < 1e100:
                     chi2 = "%.1f" % chi2
                 else:
-                    chi2 = numpy.nan
+                    chi2 = float("nan")
 
                 stamps.append((im, "%d%s" %
                                (maUtils.splitId(cand.getSource().getId(), True)["objId"], chi2),
                                cand.getStatus()))
-            except Exception, e:
+            except Exception:
                 continue
 
     mos = displayUtils.Mosaic()
@@ -425,7 +424,7 @@ def plotResiduals(exposure, cellSet, showBadCandidates=False, normalizeResiduals
                                       showBadCandidates=showBadCandidates,
                                       variance=True)
             frame += 1
-        except Exception as e:
+        except Exception:
             if not showBadCandidates:
                 showBadCandidates = True
                 continue

@@ -42,7 +42,6 @@ TrivialMeasurement schema, then check that it is transformed properly by the
 TrivialMeasurementTransform.
 """
 import contextlib
-import math
 import os
 import shutil
 import tempfile
@@ -56,8 +55,7 @@ import lsst.meas.base as measBase
 import lsst.utils.tests as utilsTests
 
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
-from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask,
-                                                  RunTransformConfig, SrcTransformTask)
+from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask)
 
 PLUGIN_NAME = "base_TrivialMeasurement"
 
@@ -211,13 +209,19 @@ class RunTransformTestCase(utilsTests.TestCase):
         # Configure a ProcessCcd task such that it will return a minimal
         # number of measurements plus our test plugin.
         cfg = ProcessCcdConfig()
-        cfg.measurement.value.plugins = ["base_SdssCentroid", "base_SkyCoord", PLUGIN_NAME]
-        cfg.measurement.value.slots.shape = None
-        cfg.measurement.value.slots.psfFlux = None
-        cfg.measurement.value.slots.apFlux = None
-        cfg.measurement.value.slots.instFlux = None
-        cfg.measurement.value.slots.modelFlux = None
-        cfg.measurement.value.slots.calibFlux = None
+        cfg.calibrate.detectAndMeasure.measurement.plugins.names = ["base_SdssCentroid", "base_SkyCoord", PLUGIN_NAME]
+        cfg.calibrate.detectAndMeasure.measurement.slots.shape = None
+        cfg.calibrate.detectAndMeasure.measurement.slots.psfFlux = None
+        cfg.calibrate.detectAndMeasure.measurement.slots.apFlux = None
+        cfg.calibrate.detectAndMeasure.measurement.slots.instFlux = None
+        cfg.calibrate.detectAndMeasure.measurement.slots.modelFlux = None
+        cfg.calibrate.detectAndMeasure.measurement.slots.calibFlux = None
+        # no reference catalog, so...
+        cfg.calibrate.doAstrometry = False
+        cfg.calibrate.doPhotoCal = False
+        # disable aperture correction because we aren't measuring aperture flux
+        cfg.calibrate.detectAndMeasure.doMeasureApCorr = False
+        cfg.calibrate.detectAndMeasure.measurement.doApplyApCorr = "noButWarn"
 
         # Process the test data with ProcessCcd then perform a transform.
         with tempDirectory() as tempDir:
@@ -232,7 +236,7 @@ class RunTransformTestCase(utilsTests.TestCase):
             # configuration/metadata persistence.
             trResult = SrcTransformTask.parseAndRun(args=trArgs, doReturnResults=True)
 
-        measSrcs = measResult.resultList[0].result.sources
+        measSrcs = measResult.resultList[0].result.calibRes.sourceCat
         trSrcs = trResult.resultList[0].result
 
         # The length of the measured and transformed catalogs should be the same.
