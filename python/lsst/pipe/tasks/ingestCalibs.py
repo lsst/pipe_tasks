@@ -3,19 +3,14 @@ import datetime
 import itertools
 import sqlite3
 import lsst.afw.image as afwImage
-from lsst.pex.config import Config, ListField, ConfigurableField
+from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.pipe.base import ArgumentParser
 from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, IngestTask
 
 
 def _convertToDate(dateString):
-    """Convert a string into a date object, or return None
-    when the date string cannot be converted with format %Y-%m-%d
-    """
-    try:
-        return datetime.datetime.strptime(dateString, "%Y-%m-%d").date()
-    except ValueError:
-        return None
+    """Convert a string into a date object"""
+    return datetime.datetime.strptime(dateString, "%Y-%m-%d").date()
 
 
 class CalibsParseTask(ParseTask):
@@ -44,39 +39,53 @@ class CalibsParseTask(ParseTask):
 
 class CalibsRegisterConfig(RegisterConfig):
     """Configuration for the CalibsRegisterTask"""
-    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe"],
-                       doc="Name of tables")
-
+    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe"], doc="Names of tables")
+    calibDate = Field(dtype=str, default="calibDate", doc="Name of column for calibration date")
+    validStart = Field(dtype=str, default="validStart", doc="Name of column for validity start")
+    validEnd = Field(dtype=str, default="validEnd", doc="Name of column for validity stop")
+    detector = ListField(dtype=str, default=["filter", "ccd"],
+                         doc="Columns that identify individual detectors")
+    validityUntilSuperseded = ListField(dtype=str, default=["defect"],
+                                        doc="Tables for which to set validity for a calib from when it is "
+                                        "taken until it is superseded by the next; validity in other tables "
+                                        "is calculated by applying the validity range.")
 
 class CalibsRegisterTask(RegisterTask):
     """Task that will generate the calibration registry for the Mapper"""
     ConfigClass = CalibsRegisterConfig
 
-    def openRegistry(self, butler, create=False, dryrun=False, name="calibRegistry.sqlite3"):
+    def openRegistry(self, directory, create=False, dryrun=False, name="calibRegistry.sqlite3"):
         """Open the registry and return the connection handle"""
-        return RegisterTask.openRegistry(self, butler, create, dryrun, name)
+        return RegisterTask.openRegistry(self, directory, create, dryrun, name)
 
     def createTable(self, conn):
         """Create the registry tables"""
         for table in self.config.tables:
             RegisterTask.createTable(self, conn, table=table)
 
-    def updateValidityRanges(self, conn):
+    def addRow(self, conn, info, *args, **kwargs):
+        """Add a row to the file table"""
+        info[self.config.validStart] = None
+        info[self.config.validEnd] = None
+        RegisterTask.addRow(self, conn, info, *args, **kwargs)
+
+    def updateValidityRanges(self, conn, validity):
         """Loop over all tables, filters, and ccdnums,
         and update the validity ranges in the registry.
 
         @param conn: Database connection
+        @param validity: Validity range (days)
         """
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         for table in self.config.tables:
-            sql = "SELECT DISTINCT filter,ccdnum FROM %s" % table
+            sql = "SELECT DISTINCT %s FROM %s" % (", ".join(self.config.detector), table)
             cursor.execute(sql)
             rows = cursor.fetchall()
             for row in rows:
-                self.fixSubsetValidity(conn, table, str(row["filter"]), row["ccdnum"])
+                self.fixSubsetValidity(conn, table, row, validity)
 
-    def fixSubsetValidity(self, conn, table, filterName, ccdnum):
+    def fixSubsetValidity(self, conn, table, detectorData, validity):
         """Update the validity ranges among selected rows in the registry.
 
         For defects, the products are valid from their start date until
@@ -88,30 +97,39 @@ class CalibsRegisterTask(RegisterTask):
 
         @param conn: Database connection
         @param table: Name of table to be selected
-        @param filterName: Select condition for column filter
-        @param ccdnum: Select condition for column ccdnum
+        @param detectorData: Values identifying a detector (from columns in self.config.detector)
+        @param validity: Validity range (days)
         """
-        sql = "SELECT id, calibDate, validStart, validEnd FROM %s" % table
-        sql += " WHERE filter='%s' AND ccdnum=%s" % (filterName, ccdnum)
-        sql += " ORDER BY calibDate"
+        columns = ", ".join([self.config.calibDate, self.config.validStart, self.config.validEnd])
+        sql = "SELECT id, %s FROM %s" % (columns, table)
+        sql += " WHERE " + " AND ".join(col + "=?" for col in self.config.detector)
+        sql += " ORDER BY " + self.config.calibDate
         cursor = conn.cursor()
-        cursor.execute(sql)
+        cursor.execute(sql, detectorData)
         rows = cursor.fetchall()
-        valids = collections.OrderedDict([(_convertToDate(row["calibDate"]),
-                                           [_convertToDate(row["validStart"]),
-                                            _convertToDate(row["validEnd"])]) for row in rows])
-        dates = valids.keys()
-        if None in dates:
-            self.log.warn("Skipped fixing the validity overlaps for %s filter=%s"
-                          " ccdnum=%s because of missing calibration dates" %
-                          (table, filterName, ccdnum))
+
+        try:
+            valids = collections.OrderedDict([(_convertToDate(row[self.config.calibDate]), [None, None]) for
+                                              row in rows])
+        except Exception as e:
+            det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
+            self.log.warn("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
+                          (table, det))
             return
-        if table == "defect":
+        dates = valids.keys()
+        if table in self.config.validityUntilSuperseded:
+            # A calib is valid until it is superseded
             for thisDate, nextDate in itertools.izip(dates[:-1], dates[1:]):
                 valids[thisDate][0] = thisDate
                 valids[thisDate][1] = nextDate - datetime.timedelta(1)
+            valids[dates[-1]][0] = dates[-1]
             valids[dates[-1]][1] = _convertToDate("2037-12-31")  # End of UNIX time
         else:
+            # A calib is valid within the validity range (in days) specified.
+            for dd in dates:
+                valids[dd] = [dd - datetime.timedelta(validity), dd + datetime.timedelta(validity)]
+            # Fix the dates so that they do not overlap, which can cause the butler to find a
+            # non-unique calib.
             midpoints = [t1 + (t2 - t1)//2 for t1, t2 in itertools.izip(dates[:-1], dates[1:])]
             for i, (date, midpoint) in enumerate(itertools.izip(dates[:-1], midpoints)):
                 if valids[date][1] > midpoint:
@@ -120,14 +138,15 @@ class CalibsRegisterTask(RegisterTask):
                     valids[date][1] = midpoint
             del midpoints
         del dates
+        # Update the validity data in the registry
         for row in rows:
-            calibDate = _convertToDate(row["calibDate"])
+            calibDate = _convertToDate(row[self.config.calibDate])
             validStart = valids[calibDate][0].isoformat()
             validEnd = valids[calibDate][1].isoformat()
             sql = "UPDATE %s" % table
-            sql += " SET validStart='%s', validEnd='%s'" % (validStart, validEnd)
-            sql += " WHERE id=%s" % row["id"]
-            conn.execute(sql)
+            sql += " SET %s=?, %s=?" % (self.config.validStart, self.config.validEnd)
+            sql += " WHERE id=?"
+            conn.execute(sql, (validStart, validEnd, row["id"]))
 
 
 class IngestCalibsArgumentParser(ArgumentParser):
@@ -160,7 +179,8 @@ class IngestCalibsTask(IngestTask):
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
-        with self.register.openRegistry(args.butler, create=args.create, dryrun=args.dryrun) as registry:
+        calibRoot = args.calib if args.calib is not None else "."
+        with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun) as registry:
             for infile in args.files:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
                 if args.calibType is None:
@@ -168,23 +188,13 @@ class IngestCalibsTask(IngestTask):
                 else:
                     calibType = args.calibType
                 if calibType not in self.register.config.tables:
-                    self.log.warn("Skipped adding %s of observation type %s to registry" %
+                    self.log.warn("Skipped adding %s of observation type '%s' to registry" %
                                   (infile, calibType))
                     continue
                 for info in hduInfoList:
-                    info['path'] = infile
-                    if args.validity is not None:
-                        try:
-                            info['validStart'] = (_convertToDate(info['calibDate']) -
-                                                  datetime.timedelta(args.validity)).isoformat()
-                            info['validEnd'] = (_convertToDate(info['calibDate']) +
-                                                datetime.timedelta(args.validity)).isoformat()
-                        except TypeError:
-                            self.log.warn("Skipped setting validity period of %s" %
-                                          args.validity)
                     self.register.addRow(registry, info, dryrun=args.dryrun,
                                          create=args.create, table=calibType)
-            if args.dryrun:
-                self.log.info("Would update validity ranges")
+            if not args.dryrun:
+                self.register.updateValidityRanges(registry, args.validity)
             else:
-                self.register.updateValidityRanges(registry)
+                self.log.info("Would update validity ranges here, but dryrun")
