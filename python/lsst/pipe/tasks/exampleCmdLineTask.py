@@ -25,6 +25,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .exampleStatsTasks import ExampleSigmaClippedStatsTask
 
+__all__ = ["ExampleCmdLineConfig", "ExampleCmdLineTask"]
+
 # The following block adds links to this task from the Task Documentation page.
 # This works even for task(s) that are not in lsst.pipe.tasks.
 ## \addtogroup LSST_task_documentation

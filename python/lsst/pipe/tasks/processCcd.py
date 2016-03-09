@@ -25,6 +25,8 @@ import lsst.pipe.base as pipeBase
 from .calibrate import CalibrateTask
 from .characterizeImage import CharacterizeImageTask
 
+__all__ = ["ProcessCcdConfig", "ProcessCcdTask"]
+
 class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
     isr = pexConfig.ConfigurableField(
