@@ -110,8 +110,16 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
     @section pipe_tasks_processCcd_Example   A complete example of using ProcessCcdTask
 
-    The following command will process all visits in obs_test's data repository:
-    `processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id`
+    The following commands will process all raw data in obs_test's data repository.
+    Note: be sure to specify an `--output` that does not already exist:
+
+        setup obs_test
+        setup pipe_tasks
+        processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id
+
+    The data is read from the small repository in the `obs_test` package and written `./processCcdOut`
+    (or whatever output you specified). Specifying `--id` with no values processes all data.
+    Add the option `--help` to see more options.
     """
     ConfigClass = ProcessCcdConfig
     _DefaultName = "processCcd"
