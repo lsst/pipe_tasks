@@ -25,6 +25,8 @@ import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
+__all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "ExampleSimpleStatsTask"]
+
 # The following block adds links to these tasks from the Task Documentation page.
 # This works even for task(s) that are not in lsst.pipe.tasks.
 ## \addtogroup LSST_task_documentation

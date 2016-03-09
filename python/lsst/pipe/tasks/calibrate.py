@@ -29,6 +29,8 @@ from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetad
 from .detectAndMeasure import DetectAndMeasureTask
 from .photoCal import PhotoCalTask
 
+__all__ = ["CalibrateConfig", "CalibrateTask"]
+
 class CalibrateConfig(pexConfig.Config):
     """Config for CalibrateTask"""
     doWrite = pexConfig.Field(

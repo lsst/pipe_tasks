@@ -25,6 +25,8 @@ import lsst.pipe.base as pipeBase
 from .calibrate import CalibrateTask
 from .characterizeImage import CharacterizeImageTask
 
+__all__ = ["ProcessCcdConfig", "ProcessCcdTask"]
+
 class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
     isr = pexConfig.ConfigurableField(
@@ -110,8 +112,16 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
     @section pipe_tasks_processCcd_Example   A complete example of using ProcessCcdTask
 
-    The following command will process all visits in obs_test's data repository:
-    `processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id`
+    The following commands will process all raw data in obs_test's data repository.
+    Note: be sure to specify an `--output` that does not already exist:
+
+        setup obs_test
+        setup pipe_tasks
+        processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id
+
+    The data is read from the small repository in the `obs_test` package and written `./processCcdOut`
+    (or whatever output you specified). Specifying `--id` with no values processes all data.
+    Add the option `--help` to see more options.
     """
     ConfigClass = ProcessCcdConfig
     _DefaultName = "processCcd"
@@ -167,3 +177,20 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
             exposure = exposure,
             background = calibRes.background if self.config.doCalibrate else charRes.background,
         )
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        """!Create and return an argument parser
+
+        @param[in] cls      the class object
+        @return the argument parser for this task.
+
+        This override is used to delay making the data ref list until the daset type is known;
+        this is done in @ref parseAndRun.
+        """
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument(name="--id",
+            datasetType=pipeBase.ConfigDatasetType(name="isr.datasetType"),
+            help="data IDs, e.g. --id visit=12345 ccd=1,2^0,3")
+        return parser
+

@@ -33,6 +33,8 @@ from .detectAndMeasure import DetectAndMeasureTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
 
+__all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
+
 class CharacterizeImageConfig(pexConfig.Config):
     """!Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(

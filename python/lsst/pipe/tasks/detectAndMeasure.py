@@ -30,6 +30,8 @@ from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask, MeasureApCorrTask
 
+__all__ = ["DetectAndMeasureConfig", "DetectAndMeasureTask"]
+
 class DetectAndMeasureConfig(pexConfig.Config):
     """Config for DetectAndMeasureTask"""
     detection = pexConfig.ConfigurableField(
