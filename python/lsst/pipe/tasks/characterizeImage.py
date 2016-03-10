@@ -285,10 +285,10 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         if doUnpersist:
             if exposure is not None or background is not None:
-                raise pipeBase.TaskError("doUnpersist true; exposure and background must be None")
+                raise RuntimeError("doUnpersist true; exposure and background must be None")
             exposure = dataRef.get("postISRCCD", immediate=True)
         elif exposure is None:
-            raise pipeBase.TaskError("doUnpersist false; exposure must be provided")
+            raise RuntimeError("doUnpersist false; exposure must be provided")
 
         exposureIdInfo = dataRef.get("expIdInfo")
 
@@ -338,7 +338,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self._frame = self._initialFrame # reset debug display frame
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
-            raise pipeBase.TaskError("exposure has no PSF model and config.doMeasurePsf false")
+            raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
 
         if background is None:
             background = BackgroundList()
@@ -430,7 +430,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             if self.config.useSimplePsf or not exposure.hasPsf():
                 self.installSimplePsf.run(exposure=exposure)
         elif not exposure.hasPsf():
-            raise pipeBase.TaskError("exposure has no PSF model and config.doMeasurePsf false")
+            raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
 
         # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
         self.repair.run(exposure=exposure, keepCRs=True)

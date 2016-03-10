@@ -85,7 +85,7 @@ class CalibrateConfig(pexConfig.Config):
         dtype = str,
         default = ("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
         doc = "Fields to copy from the icSource catalog to the output catalog for matching sources "
-            "Any missing fields will trigger a TaskError exception. "
+            "Any missing fields will trigger a RuntimeError exception. "
             "If detectAndMeasure.doMeasureApCorr is True and detectAndMeasure cannot determine its own "
             "suitable candidates, then this list must include "
             "config.detectAndMeasure.measureApCorr.inputFilterFlag. "
@@ -250,7 +250,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
                     self.schemaMapper.addMapping(schemaItem.getKey())
 
             if missingFieldNames:
-                raise pipeBase.TaskError(
+                raise RuntimeError(
                     "isSourceCat is missing fields %s specified in icSourceFieldsToCopy" %
                      (missingFieldNames,))
 
@@ -302,13 +302,13 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         if doUnpersist:
             if None in (exposure, background, icSourceCat):
-                raise pipeBase.TaskError("doUnpersist true; exposure, background and icSourceCat "
+                raise RuntimeError("doUnpersist true; exposure, background and icSourceCat "
                     "must all be None")
             exposure = dataRef.get("icExp", immediate=True)
             background = dataRef.get("icExpBackground", immediate=True)
             icSourceCat = dataRef.get("icSourceCat", immediate=True)
         elif exposure is None:
-            raise pipeBase.TaskError("doUnpersist false; exposure must be provided")
+            raise RuntimeError("doUnpersist false; exposure must be provided")
 
         exposureIdInfo = dataRef.get("expIdInfo")
 
