@@ -46,6 +46,7 @@ import shutil
 import os
 import sys
 
+from lsst.utils import getPackageDir
 import lsst.utils.tests
 import lsst.afw.math
 import lsst.afw.geom
@@ -65,14 +66,23 @@ from lsst.pipe.tasks.assembleCoadd import AssembleCoaddConfig, SafeClipAssembleC
 from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTask,
                                        MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
 
-try:
-    REUSE_DATAREPO
-except NameError:              # Only set variables on initial import
-    REUSE_DATAREPO = True      # If mocks are found (for each test), they will be used instead of regenerated
-    CLEANUP_DATAREPO = True    # Delete mocks after all tests (if REUSE_DATAREPO) or after each one (else).
-    DATAREPO_ROOT = "testCoadds-data"
+REUSE_DATAREPO = True  # Retain the data repo for each test? This greatly speeds up the tests, but may
+    # conflate or perhaps even hide some errors. If you get suspicious results, try setting it to False.
+SAVE_DATAREPO = False  # Retain data repo after the tests succeed? Only set it True for debugging.
+    # Warning: even if True, the repository is deleted every time this test is run, so if you want
+    # to keep a copy safe, be sure to move it somewhere else.
+
+PIPE_TASKS_DIR = getPackageDir("pipe_tasks")
+DATAREPO_ROOT = os.path.join(PIPE_TASKS_DIR, "tests", ".tests", "testCoadds-data")
+
+if os.path.exists(DATAREPO_ROOT):
+    print("Deleting existing repo: %r" % (DATAREPO_ROOT,))
+    shutil.rmtree(DATAREPO_ROOT)
 
 class CoaddsTestCase(lsst.utils.tests.TestCase):
+
+    def setupClass(self):
+        """Delete the data repo if it exists"""
 
     def setUp(self):
 
@@ -126,7 +136,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             self.runTaskOnPatchList(mergeMeasTask)
 
     def tearDown(self):
-        if CLEANUP_DATAREPO and not REUSE_DATAREPO:
+        if not REUSE_DATAREPO:
             shutil.rmtree(DATAREPO_ROOT)
         del self.mocksTask
         del self.detectTask
@@ -381,17 +391,16 @@ def suite():
 def run(shouldExit=False):
     status = lsst.utils.tests.run(suite(), False)
     if os.path.exists(DATAREPO_ROOT):
-        if CLEANUP_DATAREPO:
-            if status == 0:
-                shutil.rmtree(DATAREPO_ROOT)
-            else:
-                # Do not delete the DATAREPO_ROOT if the test failed to allow for forensics
-                print >> sys.stderr, "Tests failed; not cleaning up %s" % os.path.abspath(DATAREPO_ROOT)
+        if SAVE_DATAREPO:
+            print >> sys.stderr, "SAVE_DATAREPO is True: saving %r" % (os.path.abspath(DATAREPO_ROOT),)
+        elif status == 0:
+            shutil.rmtree(DATAREPO_ROOT)
         else:
-            print >> sys.stderr, "CLEANUP_DATAREPO is False; not cleaning up %s" % \
-                os.path.abspath(DATAREPO_ROOT)
-        if shouldExit:
-            sys.exit(status)
+            # Do not delete the DATAREPO_ROOT if the test failed to allow for forensics
+            print >> sys.stderr, "Tests failed: saving %r" % (os.path.abspath(DATAREPO_ROOT),)
+
+    if shouldExit:
+        sys.exit(status)
 
     return status
 
