@@ -84,11 +84,12 @@ class CalibrateConfig(pexConfig.Config):
     icSourceFieldsToCopy = pexConfig.ListField(
         dtype = str,
         default = ("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
-        doc = "Fields to copy from the icSource catalog to the output catalog for matching sources. "
-        "Missing fields are logged (at info level) and ignored. "
-        "If detectAndMeasure.doMeasureApCorr is True and detectAndMeasure cannot determine its own "
-        "suitable candidates, then this list must include "
-        "config.detectAndMeasure.measureApCorr.inputFilterFlag."
+        doc = "Fields to copy from the icSource catalog to the output catalog for matching sources "
+            "Any missing fields will trigger a TaskError exception. "
+            "If detectAndMeasure.doMeasureApCorr is True and detectAndMeasure cannot determine its own "
+            "suitable candidates, then this list must include "
+            "config.detectAndMeasure.measureApCorr.inputFilterFlag. "
+            "Ignored if icSourceCat is not provided."
     )
     matchRadiusPix = pexConfig.Field(
         dtype = float,
@@ -227,8 +228,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
         """
         pipeBase.Task.__init__(self, **kwargs)
 
-        self.haveFieldsToCopy = False  # True if at least one field from icSourceFieldsToCopy
-            # was found in icSourceSchema
         if icSourceSchema is not None:
             # use a schema mapper to avoid copying each field separately
             self.schemaMapper = afwTable.SchemaMapper(icSourceSchema)
@@ -236,23 +235,24 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
             # Add fields to copy from an icSource catalog
             # and a field to indicate that the source matched a source in that catalog
+            # If any fields are missing then raise an exception, but first find all missing fields
+            # in order to make the error message more useful.
             self.calibSourceKey = self.schemaMapper.addOutputField(
                 afwTable.Field["Flag"]("calib_detected", "Source was detected as an icSource"))
-            foundFieldNames = []
             missingFieldNames = []
             for fieldName in self.config.icSourceFieldsToCopy:
                 try:
                     schemaItem = icSourceSchema.find(fieldName)
                 except Exception:
                     missingFieldNames.append(fieldName)
-                else:  # search successful
+                else:
+                    # field found; if addMapping fails then raise an exception
                     self.schemaMapper.addMapping(schemaItem.getKey())
-                    foundFieldNames.append(fieldName)
 
-            if len(foundFieldNames) > 0:
-                self.haveFieldsToCopy = True
-            self.log.info("icSourceFieldsToCopy found: %s and not found: %s in icSourceSchema" % \
-                (foundFieldNames, missingFieldNames))
+            if missingFieldNames:
+                raise pipeBase.TaskError(
+                    "isSourceCat is missing fields %s specified in icSourceFieldsToCopy" %
+                     (missingFieldNames,))
 
             # produce a temporary schema to pass to the subtasks; finalize it later
             self.schema = self.schemaMapper.editOutputSchema()
@@ -361,7 +361,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         background = procRes.background
         sourceCat = procRes.sourceCat
 
-        if icSourceCat is not None and self.haveFieldsToCopy:
+        if icSourceCat is not None and len(self.config.icSourceFieldsToCopy) > 0:
             self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=sourceCat)
 
         # perform astrometry calibration:
@@ -481,8 +481,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
                 "and icSourceKeys when constructing this task")
         if icSourceCat is None or sourceCat is None:
             raise RuntimeError("icSourceCat and sourceCat must both be specified")
-        if not self.haveFieldsToCopy:
-            self.log.warn("copyIcSourceFields doing nothing because there are no fields to copy")
+        if len(self.config.icSourceFieldsToCopy) == 0:
+            self.log.warn("copyIcSourceFields doing nothing because icSourceFieldsToCopy is empty")
             return
 
         closest = False  # return all matched objects
