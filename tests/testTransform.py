@@ -227,7 +227,8 @@ class RunTransformTestCase(utilsTests.TestCase):
         with tempDirectory() as tempDir:
             measResult = ProcessCcdTask.parseAndRun(args=[inputDir, "--output", tempDir, "--id", "visit=1"],
                                                     config=cfg, doReturnResults=True)
-            trArgs = [tempDir, "--id", "visit=1", "-c", "inputConfigType=processCcd_config"]
+            trArgs = [tempDir, "--output", tempDir, "--id", "visit=1",
+                      "-c", "inputConfigType=processCcd_config"]
             trResult = SrcTransformTask.parseAndRun(args=trArgs, doReturnResults=True)
 
             # It should be possible to reprocess the data through a new transform task with exactly
