@@ -168,8 +168,6 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         flags = self._keys.keys()
         visitKey = ccdInputs.schema.find("visit").key
         ccdKey = ccdInputs.schema.find("ccd").key
-        visits = numpy.array([ccdData.get(visitKey) for ccdData in ccdInputs]) # Visit number for each input
-        ccds = numpy.array([ccdData.get(ccdKey) for ccdData in ccdInputs]) # CCD number for each input
         radius = self.config.matchRadius*afwGeom.arcseconds
 
         self.log.info("Propagating flags %s from inputs" % (flags,))
@@ -178,8 +176,12 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         indices = numpy.array([s.getId() for s in coaddSources]) # Allowing for non-contiguous data
 
         # Accumulate counts of flags being set
-        for v, c in zip(visits, ccds):
+        for ccdRecord in ccdInputs:
+            v = ccdRecord.get(visitKey)
+            c = ccdRecord.get(ccdKey)
             ccdSources = butler.get("icSrc", visit=int(v), ccd=int(c), immediate=True)
+            for sourceRecord in ccdSources:
+                sourceRecord.updateCoord(ccdRecord.getWcs())
             for flag in flags:
                 # We assume that the flags will be relatively rare, so it is more efficient to match
                 # against a subset of the input catalog for each flag than it is to match once against
