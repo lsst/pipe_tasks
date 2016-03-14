@@ -32,7 +32,7 @@ import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ["DumpTaskMetadataTask", "DumpTaskMetadataArgumentParser"]
+__all__ = ["DumpTaskMetadataTask",]
 
 class DumpTaskMetadataConfig(pexConfig.Config):
     """Config for DumpTaskMetadataTask
@@ -73,7 +73,7 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
     def _makeArgumentParser(cls):
         """Create an argument parser
         """
-        return pipeBase.ArgumentParser(name=cls._DefaultName,
+        return pipeBase.InputOnlyArgumentParser(name=cls._DefaultName,
             datasetType=pipeBase.DatasetArgument(help="dataset type for task metadata"))
     
     def _getConfigName(self):

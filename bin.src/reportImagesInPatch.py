@@ -31,7 +31,7 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
 
-__all__ = ["ReportImagesInPatchTask", "ReportImagesInPatchArgumentParser"]
+__all__ = ["ReportImagesInPatchTask",]
 
 class ReportImagesInPatchConfig(pexConfig.Config):
     """Config for ReportImagesInPatchTask
@@ -121,7 +121,7 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser = pipeBase.InputOnlyArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=ReportImagesInPatchDataIdContainer)
         return parser
