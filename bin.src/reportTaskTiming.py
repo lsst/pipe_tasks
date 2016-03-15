@@ -182,7 +182,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
 
         We specify a dynamic id argument through the use of DatasetArgument.
         """
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser = pipeBase.InputOnlyArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", pipeBase.DatasetArgument(help="dataset type for task metadata"),
                                help="data ID, e.g. --id visit=12345 ccd=1,2")
         return parser

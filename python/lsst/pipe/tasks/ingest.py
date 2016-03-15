@@ -11,10 +11,10 @@ from glob import glob
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
-from lsst.pipe.base import Task, ArgumentParser
+from lsst.pipe.base import Task, InputOnlyArgumentParser
 import lsst.afw.image as afwImage
 
-class IngestArgumentParser(ArgumentParser):
+class IngestArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting images into the image repository"""
     def __init__(self, *args, **kwargs):
         super(IngestArgumentParser, self).__init__(*args, **kwargs)

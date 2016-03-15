@@ -35,7 +35,7 @@ import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 
-__all__ = ["ReportPatchesTask", "ReportPatchesArgumentParser"]
+__all__ = ["ReportPatchesTask",]
 
 class ReportPatchesConfig(pexConfig.Config):
     """Config for ReportPatchesTask
@@ -96,7 +96,7 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser = pipeBase.InputOnlyArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=ReportPatchesDataIdContainer)
         return parser
