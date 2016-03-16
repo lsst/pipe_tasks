@@ -157,7 +157,7 @@ class IngestCalibsArgumentParser(InputOnlyArgumentParser):
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true",
                           default=False, help="Don't perform any action?")
         self.add_argument("--create", action="store_true", help="Create new registry?")
-        self.add_argument("--validity", type=int, help="Calibration validity period (days)")
+        self.add_argument("--validity", type=int, required=True, help="Calibration validity period (days)")
         self.add_argument("--calibType", type=str, default=None,
                           choices=[None, "bias", "dark", "flat", "fringe", "defect"],
                           help="Type of the calibration data to be ingested;" +
