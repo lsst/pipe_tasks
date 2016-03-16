@@ -4,7 +4,7 @@ import itertools
 import sqlite3
 import lsst.afw.image as afwImage
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
-from lsst.pipe.base import ArgumentParser
+from lsst.pipe.base import InputOnlyArgumentParser
 from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, IngestTask
 
 
@@ -149,10 +149,10 @@ class CalibsRegisterTask(RegisterTask):
             conn.execute(sql, (validStart, validEnd, row["id"]))
 
 
-class IngestCalibsArgumentParser(ArgumentParser):
+class IngestCalibsArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting calibration images into the repository"""
     def __init__(self, *args, **kwargs):
-        ArgumentParser.__init__(self, *args, **kwargs)
+        InputOnlyArgumentParser.__init__(self, *args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true",
                           default=False, help="Don't perform any action?")
         self.add_argument("--create", action="store_true", help="Create new registry?")
