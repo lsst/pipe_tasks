@@ -113,8 +113,9 @@ class CalibsRegisterTask(RegisterTask):
                                               row in rows])
         except Exception as e:
             det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
-            self.log.warn("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
-                          (table, det))
+            # Sqlite returns unicode strings, which cannot be passed through SWIG.
+            self.log.warn(str("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
+                          (table, det)))
             return
         dates = valids.keys()
         if table in self.config.validityUntilSuperseded:
@@ -188,8 +189,8 @@ class IngestCalibsTask(IngestTask):
                 else:
                     calibType = args.calibType
                 if calibType not in self.register.config.tables:
-                    self.log.warn("Skipped adding %s of observation type '%s' to registry" %
-                                  (infile, calibType))
+                    self.log.warn(str("Skipped adding %s of observation type '%s' to registry" %
+                                  (infile, calibType)))
                     continue
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun,
