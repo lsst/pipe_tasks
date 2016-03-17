@@ -4,7 +4,7 @@ import itertools
 import sqlite3
 import lsst.afw.image as afwImage
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
-from lsst.pipe.base import ArgumentParser
+from lsst.pipe.base import InputOnlyArgumentParser
 from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, IngestTask
 
 
@@ -113,8 +113,9 @@ class CalibsRegisterTask(RegisterTask):
                                               row in rows])
         except Exception as e:
             det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
-            self.log.warn("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
-                          (table, det))
+            # Sqlite returns unicode strings, which cannot be passed through SWIG.
+            self.log.warn(str("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
+                          (table, det)))
             return
         dates = valids.keys()
         if table in self.config.validityUntilSuperseded:
@@ -149,14 +150,14 @@ class CalibsRegisterTask(RegisterTask):
             conn.execute(sql, (validStart, validEnd, row["id"]))
 
 
-class IngestCalibsArgumentParser(ArgumentParser):
+class IngestCalibsArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting calibration images into the repository"""
     def __init__(self, *args, **kwargs):
-        ArgumentParser.__init__(self, *args, **kwargs)
+        InputOnlyArgumentParser.__init__(self, *args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true",
                           default=False, help="Don't perform any action?")
         self.add_argument("--create", action="store_true", help="Create new registry?")
-        self.add_argument("--validity", type=int, help="Calibration validity period (days)")
+        self.add_argument("--validity", type=int, required=True, help="Calibration validity period (days)")
         self.add_argument("--calibType", type=str, default=None,
                           choices=[None, "bias", "dark", "flat", "fringe", "defect"],
                           help="Type of the calibration data to be ingested;" +
@@ -188,8 +189,8 @@ class IngestCalibsTask(IngestTask):
                 else:
                     calibType = args.calibType
                 if calibType not in self.register.config.tables:
-                    self.log.warn("Skipped adding %s of observation type '%s' to registry" %
-                                  (infile, calibType))
+                    self.log.warn(str("Skipped adding %s of observation type '%s' to registry" %
+                                  (infile, calibType)))
                     continue
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun,
