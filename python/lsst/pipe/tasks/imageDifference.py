@@ -31,11 +31,10 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, \
-    starSelectorRegistry, PsfAttributes, SingleGaussianPsf
+from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
-    KernelCandidateQa, DiaCatalogSourceSelector, DiaCatalogSourceSelectorConfig, \
+    KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
     GetCoaddAsTemplateTask, GetCalexpAsTemplateTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
@@ -91,7 +90,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         target = measAstrom.AstrometryTask,
         doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
-    sourceSelector = starSelectorRegistry.makeField("Source selection algorithm", default="diacatalog")
+    sourceSelector = pexConfig.ConfigurableField(
+        target=DiaCatalogSourceSelectorTask,
+        doc="Source selection algorithm",
+    )
     subtract = pexConfig.ConfigurableField(
         target=ImagePsfMatchTask,
         doc="Warp and PSF match template to exposure, then subtract",
@@ -353,34 +355,28 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        "sources with template sources. Run process* on data from " +
                                        "which templates are built.")
 
-                if hasattr(self.sourceSelector, 'selectStars'):
-                    kernelSources = self.sourceSelector.selectStars(exposure, selectSources, matches=matches)
-                elif hasattr(self.sourceSelector, 'selectSources'):
-                    kernelSources = self.sourceSelector.selectSources(exposure, selectSources,
-                                                                      matches=matches)
-                else:
-                    raise RuntimeError("sourceSelector: %s has no selectStars() or selectSources() method." %
-                                       (type(self.sourceSelector)))
+                kernelSources = self.sourceSelector.selectStars(exposure, selectSources,
+                    matches=matches).starCat
 
                 random.shuffle(kernelSources, random.random)
                 controlSources = kernelSources[::self.config.controlStepSize]
                 kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
 
                 if self.config.doSelectDcrCatalog:
-                    redSelector  = DiaCatalogSourceSelector(
+                    redSelector  = DiaCatalogSourceSelectorTask(
                         DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
-                    redSources   = redSelector.selectSources(exposure, selectSources, matches=matches)
+                    redSources   = redSelector.selectStars(exposure, selectSources, matches=matches).starCat
                     controlSources.extend(redSources)
 
-                    blueSelector = DiaCatalogSourceSelector(
+                    blueSelector = DiaCatalogSourceSelectorTask(
                         DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
-                    blueSources  = blueSelector.selectSources(exposure, selectSources, matches=matches)
+                    blueSources  = blueSelector.selectStars(exposure, selectSources, matches=matches).starCat
                     controlSources.extend(blueSources)
 
                 if self.config.doSelectVariableCatalog:
-                    varSelector = DiaCatalogSourceSelector(
+                    varSelector = DiaCatalogSourceSelectorTask(
                         DiaCatalogSourceSelectorConfig(includeVariable=True))
-                    varSources  = varSelector.selectSources(exposure, selectSources, matches=matches)
+                    varSources  = varSelector.selectStars(exposure, selectSources, matches=matches).starCat
                     controlSources.extend(varSources)
 
                 self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" 

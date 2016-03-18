@@ -29,7 +29,10 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="objectSize")
+    starSelector = pexConfig.ConfigurableField(
+        target = measAlg.ObjectSizeStarSelectorTask,
+        doc = "Star selection algorithm",
+    )
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
     reserveFraction = pexConfig.Field(
         dtype = float,
@@ -72,12 +75,7 @@ Both algorithms are classes with a constructor taking a pex.config.Config object
 lsst.meas.algorithms.objectSizeStarSelector.ObjectSizeStarSelector.__init__).
 
 The algorithms are:
- - a star selector with API:
-\code
-selectStars(self, exposure, catalog, matches=None)
-\endcode
-which returns a list of lsst.meas.algorithms.PsfCandidate (\em e.g.
-lsst.meas.algorithms.objectSizeStarSelector.ObjectSizeStarSelector.selectStars)
+ - a star selector, a subclass of lsst.meas.algorithms.StarSelector.selectStars
 
  - a psf estimator with API:
 \code
@@ -88,8 +86,7 @@ lsst.meas.algorithms.pcaPsfDeterminer.PcaPsfDeterminer.determinePsf).
 MeasurePsfTask calls determinePsf with \c flagKey set to
 "calib.psf.used" if a schema is passed to its constructor (see \ref pipe_tasks_measurePsf_Initialize).
 
-See also lsst.meas.algorithms.starSelectorRegistry.starSelectorRegistry and
-lsst.meas.algorithms.psfDeterminerRegistry.psfDeterminerRegistry.
+See also lsst.meas.algorithms.psfDeterminerRegistry.psfDeterminerRegistry.
 
 \warning
 There is no establised set of configuration parameters for these algorithms, so once you start modifying
@@ -233,7 +230,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             self.candidateKey = schema.addField(
                 "calib_psfCandidate", type="Flag",
                 doc=("Flag set if the source was a candidate for PSF determination, "
-                     "as determined by the '%s' star selector.") % self.config.starSelector.name
+                     "as determined by the star selector.")
             )
             self.usedKey = schema.addField(
                 "calib_psfUsed", type="Flag",
@@ -247,7 +244,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         else:
             self.candidateKey = None
             self.usedKey = None
-        self.starSelector = self.config.starSelector.apply()
+        self.makeSubtask("starSelector")
         self.psfDeterminer = self.config.psfDeterminer.apply()
 
     @pipeBase.timeMethod
@@ -284,7 +281,8 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         #
         # Run star selector
         #
-        psfCandidateList = self.starSelector.selectStars(exposure, sources, matches=matches)
+        starCat = self.starSelector.selectStars(exposure=exposure, sourceCat=sources, matches=matches).starCat
+        psfCandidateList = self.starSelector.makePsfCandidates(exposure=exposure, starCat=starCat)
         reserveList = []
         
         if self.config.reserveFraction > 0 :
