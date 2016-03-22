@@ -281,8 +281,8 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         #
         # Run star selector
         #
-        starCat = self.starSelector.selectStars(exposure=exposure, sourceCat=sources, matches=matches).starCat
-        psfCandidateList = self.starSelector.makePsfCandidates(exposure=exposure, starCat=starCat)
+        psfCandidateList = self.starSelector.run(exposure=exposure, sourceCat=sources,
+            matches=matches).psfCandidates
         reserveList = []
         
         if self.config.reserveFraction > 0 :
