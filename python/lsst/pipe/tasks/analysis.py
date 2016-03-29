@@ -688,6 +688,16 @@ class MagDiffCompare(object):
         src2 = -2.5*np.log10(catalog["second_" + self.column])
         return src1 - src2
 
+class ApCorrDiffCompare(object):
+    """Functor to calculate magnitude difference between two entries in comparison catalogs
+    """
+    def __init__(self, column):
+        self.column = column
+    def __call__(self, catalog):
+        apCorr1 = catalog["first_" + self.column]
+        apCorr2 = catalog["second_" + self.column]
+        return -2.5*np.log10(apCorr1/apCorr2)
+
 class AstrometryDiff(object):
     """Functor to calculate difference between astrometry"""
     def __init__(self, first, second, declination=None):
@@ -797,6 +807,15 @@ def calibrateSourceCatalog(catalog, zp):
     for key in fluxKeys.values() + errKeys.values():
         for src in catalog:
             src[key] /= factor
+    return catalog
+
+def backoutApCorr(catalog):
+    """Back out the aperture correction to all fluxes
+    """
+    for src in catalog:
+        for k in src.schema.getNames():
+            if "_flux" in k and k[:-5] + "_apCorr" in src.schema.getNames() and "_apCorr" not in k:
+                src[k] /= src[k[:-5] + "_apCorr"]
     return catalog
 
 def matchJanskyToDn(matches):
@@ -1663,6 +1682,8 @@ class CompareAnalysisConfig(Config):
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doCentroids = Field(dtype=bool, default=False, doc="Plot centroids?")
+    doApCorrs = Field(dtype=bool, default=False, doc="Plot aperture corrections?")
+    doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
     sysErrMags = Field(dtype=float, default=0.015, doc="Systematic error in magnitudes")
     sysErrCentroids = Field(dtype=float, default=0.15, doc="Systematic error in centroids (pixels)")
     srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
@@ -1801,9 +1822,16 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set("second_" + lsstName, "second_" + otherName)
+
+        if self.config.doBackoutApCorr:
+            catalog = backoutApCorr(catalog)
+
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
                           matchRadius=self.config.matchRadius)
+        if self.config.doApCorrs:
+            self.plotApCorrs(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
+                             matchRadius=self.config.matchRadius)
         if self.config.doCentroids:
             self.plotCentroids(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
                                matchRadius=self.config.matchRadius)
@@ -1843,6 +1871,18 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
                          ).plotAll(dataId, filenamer, self.log, enforcer, camera=camera, ccdList=ccdList,
                                    hscRun=hscRun, matchRadius=matchRadius)
 
+    def plotApCorrs(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
+                    matchRadius=None):
+        enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
+        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+            if "first_" + col + "_apCorr" in catalog.schema and "second_" + col + "_apCorr" in catalog.schema:
+                Analysis(catalog, ApCorrDiffCompare(col + "_apCorr"),
+                         "Run Comparison: apCorr difference (%s)" % col, "diff_" + col + "_apCorr",
+                         self.config.analysis,
+                         prefix="first_", qMin=-0.025, qMax=0.025, flags=[col + "_flag_apCorr"],
+                         errFunc=ApCorrDiffErr(col + "_apCorr"), labeller=OverlapsStarGalaxyLabeller(),
+                         ).plotAll(dataId, filenamer, self.log, enforcer, camera=camera, ccdList=ccdList,
+                                   hscRun=hscRun, matchRadius=matchRadius)
 
 class MagDiffErr(object):
     """Functor to calculate magnitude difference error"""
@@ -1857,6 +1897,15 @@ class MagDiffErr(object):
                                              catalog["first_" + self.column + "Sigma"])
         mag2, err2 = self.calib.getMagnitude(catalog["second_" + self.column],
                                              catalog["second_" + self.column + "Sigma"])
+        return np.sqrt(err1**2 + err2**2)
+
+class ApCorrDiffErr(object):
+    """Functor to calculate magnitude difference error"""
+    def __init__(self, column):
+        self.column = column
+    def __call__(self, catalog):
+        err1 = catalog["first_" + self.column + "Sigma"]
+        err2 = catalog["second_" + self.column + "Sigma"]
         return np.sqrt(err1**2 + err2**2)
 
 class CentroidDiff(object):
