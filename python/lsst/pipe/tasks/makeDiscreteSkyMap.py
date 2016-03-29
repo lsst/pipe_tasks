@@ -28,6 +28,7 @@ import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
+from lsst.pipe.base import ArgumentParser
 
 class MakeDiscreteSkyMapConfig(pexConfig.Config):
     """Config for MakeDiscreteSkyMapTask
@@ -203,3 +204,8 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         """
         return None
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument(name="--id", datasetType="calexp", help="data ID, e.g. --id visit=123 ccd=1,2")
+        return parser
