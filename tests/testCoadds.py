@@ -125,6 +125,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             measMergedConfig.measurement.doApplyApCorr = "no"
             measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
             measMergedConfig.propagateFlags.flags = {} # Disable flag propagation: no flags to propagate
+            measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
             measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
             measMergedTask.writeSchemas(self.butler)
             self.runTaskOnPatches(measMergedTask)
