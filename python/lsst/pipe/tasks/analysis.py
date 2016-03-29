@@ -104,7 +104,7 @@ class Stats(Struct):
                         forcedMean=forcedMean, median=median, clip=clip)
     def __repr__(self):
         return "Stats(mean={0.mean:.4f}; stdev={0.stdev:.4f}; num={0.num:d}; total={0.total:d}; " \
-            "forcedMean={0.forcedMean:})".format(self)
+            "median={0.median:.4f}; clip={0.clip:.4f}; forcedMean={0.forcedMean:})".format(self)
 
 colorList = ["blue", "red", "green", "black", "yellow", "cyan", "magenta", ]
 
@@ -202,7 +202,6 @@ class Analysis(object):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         plt.axhline(0, linestyle="--", color="0.4")
-
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
         dataPoints = []
         for name, data in self.data.iteritems():
@@ -462,8 +461,8 @@ class Analysis(object):
         """Make all plots"""
         stats = self.stats(forcedMean=forcedMean)
         self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
-                                   stats=stats, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                   matchRadius=matchRadius)
+                                    stats=stats, camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                    matchRadius=matchRadius)
         self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
                             hscRun=hscRun, matchRadius=matchRadius)
         self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats,
@@ -525,7 +524,6 @@ class Analysis(object):
         print "calculateSysError: ", (function(answer**2), function((answer+0.001)**2),
                                       function((answer-0.001)**2))
         return answer
-
 
 class Enforcer(object):
     """Functor for enforcing limits on statistics"""
@@ -762,7 +760,8 @@ def getFluxKeys(schema):
                    name + "Sigma" in schemaKeys)
     if len(fluxKeys) == 0: # The schema is likely the HSC format
         fluxKeys = dict((name, key) for name, key in schemaKeys.items() if
-                        re.search(r"^(flux\_\w+|\w+\_flux)$", name) and name + "_err" in schemaKeys)
+                        re.search(r"^(flux\_\w+|\w+\_flux)$", name)
+                        and not re.search(r"^(\w+\_apcorr)$", name) and name + "_err" in schemaKeys)
         errKeys = dict((name, schemaKeys[name + "_err"]) for name in fluxKeys.keys() if
                        name + "_err" in schemaKeys)
     if len(fluxKeys) == 0:
@@ -786,7 +785,7 @@ def calibrateSourceCatalogMosaic(dataRef, catalog, zp=27.0):
         catalog[key][:] *= factor
     return catalog
 
-def calibrateSourceCatalog(dataRef, catalog, zp):
+def calibrateSourceCatalog(catalog, zp):
     """Calibrate catalog in the case of no meas_mosaic results using FLUXMAG0 as zp
 
     Requires a SourceCatalog and zeropoint as input.
@@ -859,7 +858,7 @@ class CoaddAnalysisConfig(Config):
         astrom.refObjLoader.filterMap["y"] = "z"
         astrom.refObjLoader.filterMap["N921"] = "z"
         # self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
-        self.analysisMatches.magThreshold = 19.0 # External catalogs like PS1 and SDSS used smaller telescopes
+        self.analysisMatches.magThreshold = 21.0 # External catalogs like PS1 and SDSS used smaller telescopes
 
 
 class CoaddAnalysisRunner(TaskRunner):
@@ -1554,7 +1553,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 catList.append(calibrated)
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                calibrated = calibrateSourceCatalog(dataRef, catalog, self.zp)
+                calibrated = calibrateSourceCatalog(catalog, self.zp)
                 catList.append(calibrated)
 
         if len(catList) == 0:
@@ -1592,7 +1591,6 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             if len(matches) == 0:
                 self.log.warn("No matches for %s" % (dataRef.dataId,))
                 continue
-            self.log.info("len(matches) = %d" % len(matches))
 
             # Set the aliap map for the matches sources (i.e. the .second attribute schema for each match)
             if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
@@ -1613,7 +1611,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
                 self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
-                src = calibrateSourceCatalog(dataRef, src, self.zp)
+                src = calibrateSourceCatalog(src, self.zp)
 
             for mm, ss in zip(matches, src):
                 mm.second = ss
@@ -1826,7 +1824,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
                 self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
-                calibrated = calibrateSourceCatalog(dataRef, srcCat, self.zp)
+                calibrated = calibrateSourceCatalog(srcCat, self.zp)
                 catList.append(calibrated)
 
         if len(catList) == 0:
