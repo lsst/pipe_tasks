@@ -57,3 +57,72 @@ class TextReaderTask(pipeBase.Task):
                                    names=names)
             # Just in case someone has only one line in the file.
             return numpy.atleast_1d(arr)
+
+
+class IngestIndexedReferenceConfig(pexConfig.Config):
+    ref_dataset_name = pexConfig.Field(
+        dtype=str,
+        default='cal_ref_cat',
+        doc='String to pass to the butler to retrieve persisted files.',
+    )
+    level = pexConfig.Field(
+        dtype=int,
+        default=8,
+        doc='Default HTM level.  Level 8 gives ~0.08 sq deg per trixel.',
+    )
+    file_reader = pexConfig.ConfigurableField(
+        target=TextReaderTask,
+        doc='Task to use to read the files.  Default is to expect text files.'
+    )
+    ra_name = pexConfig.Field(
+        dtype=str,
+        doc="Name of RA column",
+    )
+    dec_name = pexConfig.Field(
+        dtype=str,
+        doc="Name of Dec column",
+    )
+    mag_column_list = pexConfig.ListField(
+        dtype=str,
+        doc="""The values in the reference catalog are assumed to be in AB magnitudes.
+List of column names to use for photometric information.  At least one entry is required."""
+    )
+    mag_err_column_map = pexConfig.DictField(
+        keytype=str,
+        itemtype=str,
+        default={},
+        doc="A map of magnitude column name (key) to magnitude error column (value)."
+    )
+    is_photometric_name = pexConfig.Field(
+        dtype=str,
+        optional=True,
+        doc='Name of column stating if satisfactory for photometric calibration (optional).'
+    )
+    is_resolved_name = pexConfig.Field(
+        dtype=str,
+        optional=True,
+        doc='Name of column stating if the object is resolved (optional).'
+    )
+    is_variable_name = pexConfig.Field(
+        dtype=str,
+        optional=True,
+        doc='Name of column stating if the object is measured to be variable (optional).'
+    )
+    id_name = pexConfig.Field(
+        dtype=str,
+        optional=True,
+        doc='Name of column to use as an identifier (optional).'
+    )
+    extra_col_names = pexConfig.ListField(
+        dtype=str,
+        default=[],
+        doc='Extra columns to add to the reference catalog.'
+    )
+
+    def validate(self):
+        pexConfig.Config.validate(self)
+        if not (self.ra_name and self.dec_name and self.mag_column_list):
+            raise ValueError("ra_name and dec_name and at least one entry in mag_column_list must be" +
+                             " supplied.")
+        if len(self.mag_err_column_map) > 0 and not len(self.mag_column_list) == len(self.mag_err_column_map):
+            raise ValueError("If magnitude errors are provided, all magnitudes must have an error column")
