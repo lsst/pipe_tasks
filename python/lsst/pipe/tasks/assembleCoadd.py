@@ -152,7 +152,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
 class AssembleCoaddTask(CoaddBaseTask):
     """!
-\anchor AssembleCoaddTask
+\anchor AssembleCoaddTask_
 
 \brief Assemble a coadded image from a set of coadded temporary exposures.
 
@@ -930,7 +930,7 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
 
 class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     """!
-    \anchor SafeClipAssembleCoaddTask
+    \anchor SafeClipAssembleCoaddTask_
 
     \brief Assemble a coadded image from a set of coadded temporary exposures, being careful to clip & flag areas 
     with potential artifacts.
