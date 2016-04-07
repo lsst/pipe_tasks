@@ -1522,7 +1522,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         self.log.info("dataRefList size: %d" % len(dataRefList))
         ccdList = [dataRef.dataId["ccd"] for dataRef in dataRefList]
         butler = dataRefList[0].getButler()
-        camera = butler.mapper.camera
+        camera = butler.get("camera")
         dataId = dataRefList[0].dataId
         self.log.info("dataId: %s" % (dataId,))
         filterName = dataId["filter"]
@@ -1803,7 +1803,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         dataId = dataRefList1[0].dataId
         ccdList1 = [dataRef.dataId["ccd"] for dataRef in dataRefList1]
         butler1 = dataRefList1[0].getButler()
-        camera1 = butler1.mapper.camera
+        camera1 = butler1.get("camera")
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
         catalog1 = self.readCatalogs(dataRefList1, "src")
         catalog2 = self.readCatalogs(dataRefList2, "src")
