@@ -424,7 +424,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS
         dataRef.put(sourceCat, "src", flags=sourceWriteFlags)
         if self.config.doWriteMatches and astromMatches is not None:
-            matchMeta = createMatchMetadata(exposure)
+            matchMeta = createMatchMetadata(exposure, border=self.config.astrometry.refObjLoader.pixelMargin)
             normalizedMatches = afwTable.packMatches(astromMatches)
             normalizedMatches.table.setMetadata(matchMeta)
             dataRef.put(normalizedMatches, "srcMatch")
