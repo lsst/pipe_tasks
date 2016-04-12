@@ -310,6 +310,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
         elif exposure is None:
             raise RuntimeError("doUnpersist false; exposure must be provided")
 
+        if self.config.doWrite:
+            matchMeta = createMatchMetadata(exposure, border=self.config.astrometry.refObjLoader.pixelMargin)
+
         exposureIdInfo = dataRef.get("expIdInfo")
 
         calRes = self.calibrate(
@@ -326,6 +329,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
                 background = calRes.background,
                 sourceCat = calRes.sourceCat,
                 astromMatches = calRes.astromMatches,
+                matchMeta = matchMeta,
             )
 
         return calRes
@@ -411,7 +415,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             astromMatches = astromMatches,
         )
 
-    def writeOutputs(self, dataRef, exposure, background, sourceCat, astromMatches):
+    def writeOutputs(self, dataRef, exposure, background, sourceCat, astromMatches, matchMeta):
         """Write output data to the output repository
 
         @param[in] dataRef  butler data reference corresponding to a science image
@@ -424,7 +428,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
             else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS
         dataRef.put(sourceCat, "src", flags=sourceWriteFlags)
         if self.config.doWriteMatches and astromMatches is not None:
-            matchMeta = createMatchMetadata(exposure, border=self.config.astrometry.refObjLoader.pixelMargin)
             normalizedMatches = afwTable.packMatches(astromMatches)
             normalizedMatches.table.setMetadata(matchMeta)
             dataRef.put(normalizedMatches, "srcMatch")
