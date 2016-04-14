@@ -188,7 +188,7 @@ class Analysis(object):
             l2 = axes.axhline(stats[dataSet].median+stats[dataSet].clip, linestyle="dashdot", color="0.7",
                               label="clip")
             l3 = axes.axhline(stats[dataSet].median-stats[dataSet].clip, linestyle="dashdot", color="0.7")
-            plt.gca().add_artist(axes.legend(handles=[l1, l2], loc=4, fontsize=8))
+        return l1, l2
 
     @staticmethod
     def labelVisit(filename, plt, axis, xLoc, yLoc, color="k"):
@@ -347,9 +347,9 @@ class Analysis(object):
         axScatter.set_ylabel(self.quantityName)
 
         if stats is not None:
-             self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold, hscRun=hscRun,
-                               matchRadius=matchRadius)
-        dataPoints = dataPoints + runStats
+            l1, l2 = self.annotateAxes(plt, axScatter, stats, "star", self.config.magThreshold,
+                                           hscRun=hscRun, matchRadius=matchRadius)
+        dataPoints = dataPoints + runStats + [l1, l2]
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
         axHistx.legend(fontsize=7, loc=2)
         axHisty.legend(fontsize=7)
