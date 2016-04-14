@@ -301,7 +301,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         self.log.info("Processing %s" % (dataRef.dataId))
 
         if doUnpersist:
-            if None in (exposure, background, icSourceCat):
+            if any(item is not None for item in (exposure, background, icSourceCat)):
                 raise RuntimeError("doUnpersist true; exposure, background and icSourceCat "
                     "must all be None")
             exposure = dataRef.get("icExp", immediate=True)
