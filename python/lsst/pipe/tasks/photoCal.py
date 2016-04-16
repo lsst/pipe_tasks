@@ -127,6 +127,12 @@ class PhotoCalConfig(pexConf.Config):
         doc = "Additional magnitude uncertainty to be added in quadrature with measurement errors.",
         min = 0.0,
     )
+    doSelectUnresolved = pexConf.Field(
+        dtype = bool,
+        default = True,
+        doc = ("Use the extendedness parameter to select objects to use in photometric calibration?\n"
+               "This applies only to the sources detected on the exposure, not the reference catalog"),
+    )
 
     def validate(self):
         pexConf.Config.validate(self)
@@ -573,7 +579,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         )
 
     @pipeBase.timeMethod
-    def run(self, exposure, matches, doSelectUnresolved=True):
+    def run(self, exposure, matches):
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.
 
@@ -583,7 +589,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         \c first being of type lsst.afw.table.SimpleRecord and \c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
         (will not be modified  except to set the outputField if requested.).
-        \param[in]  doSelectUnresolved  Attempt to select only unresolved sources from input catalog?
 
         \return Struct of:
          - calib -------  \link lsst::afw::image::Calib\endlink object containing the zero point
@@ -646,7 +651,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         filterName = exposure.getFilter().getName()
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
-        if doSelectUnresolved:
+        if self.config.doSelectUnresolved:
             matches = self.selectUnresolved(matches, sourceKeys)
         matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,
             frame=frame)
