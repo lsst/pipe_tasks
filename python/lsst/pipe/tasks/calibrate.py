@@ -301,9 +301,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
         self.log.info("Processing %s" % (dataRef.dataId))
 
         if doUnpersist:
-            if None in (exposure, background, icSourceCat):
-                raise RuntimeError("doUnpersist true; exposure, background and icSourceCat "
-                    "must all be None")
+            if any(item is not None for item in (exposure, background, icSourceCat)):
+                raise RuntimeError("doUnpersist true; exposure, background and icSourceCat must all be None")
             exposure = dataRef.get("icExp", immediate=True)
             background = dataRef.get("icExpBackground", immediate=True)
             icSourceCat = dataRef.get("icSourceCat", immediate=True)
@@ -496,8 +495,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches
-        bestMatches = {}  # closest matches as a dict of icSourceCat source ID:
-                          #   (icSourceCat source, sourceCat source, distance in pixels)
+        bestMatches = {}    # closest matches as a dict of icSourceCat source ID:
+                            #   (icSourceCat source, sourceCat source, distance in pixels)
         for m0, m1, d in matches:
             id0 = m0.getId()
             match = bestMatches.get(id0)
