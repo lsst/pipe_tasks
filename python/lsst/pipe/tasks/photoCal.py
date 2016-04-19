@@ -327,23 +327,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         return source.get(starGalKey) < 0.5 if starGalKey is not None else True
 
     @pipeBase.timeMethod
-    def selectUnresolved(self, matches, keys):
-        """!Select matches that appear to be unresolved in our data
-
-        The selection of matches that are unresolved in the reference catalog
-        is done as part of selectMatches.
-
-        \param[in] matches  Matches from which to select
-        \param[in] keys     Struct of schema keys for source
-        \return    ReferenceMatchVector with stars only
-        """
-        result = afwTable.ReferenceMatchVector()
-        for m in matches:
-            if self.isUnresolved(m.second, keys.starGal):
-                result.append(m)
-        return result
-
-    @pipeBase.timeMethod
     def selectMatches(self, matches, sourceKeys, filterName, frame=None):
         """!Select reference/source matches according the criteria specified in the config.
 
@@ -362,8 +345,17 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         \throws ValueError There are no valid matches.
         """
-
         self.log.logdebug("Number of input matches: %d" % (len(matches)))
+
+        if self.config.doSelectUnresolved:
+            # Select only resolved sources if asked to do so.
+            result = afwTable.ReferenceMatchVector()
+            for m in matches:
+                if self.isUnresolved(m.second, sourceKeys.starGal):
+                    result.append(m)
+            matches = result
+            self.log.logdebug("Number of matches after culling resolved sources: %d" % (len(matches)))
+
         if len(matches) == 0:
             raise ValueError("No input matches")
 
@@ -651,8 +643,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         filterName = exposure.getFilter().getName()
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
-        if self.config.doSelectUnresolved:
-            matches = self.selectUnresolved(matches, sourceKeys)
         matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,
             frame=frame)
         arrays = self.extractMagArrays(matches=matches, filterName=filterName, sourceKeys=sourceKeys)
