@@ -37,6 +37,7 @@ from .colorterms import ColortermLibrary
 
 __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
+
 def checkSourceFlags(source, sourceKeys):
     """!Return True if the given source has all good flags set and none of the bad flags set.
 
@@ -44,11 +45,15 @@ def checkSourceFlags(source, sourceKeys):
     \param[in] sourceKeys  Struct of source catalog keys, as returned by PhotCalTask.getSourceKeys()
     """
     for k in sourceKeys.goodFlags:
-        if not source.get(k): return False
-    if source.getPsfFluxFlag(): return False
+        if not source.get(k):
+            return False
+    if source.getPsfFluxFlag():
+            return False
     for k in sourceKeys.badFlags:
-        if source.get(k): return False
+        if source.get(k):
+            return False
     return True
+
 
 class PhotoCalConfig(pexConf.Config):
     """Config for PhotoCal"""
@@ -205,8 +210,8 @@ The available variables in PhotoCalTask are:
       <DT> blue +
       <DD> Matched objects deemed unsuitable for photometric calibration.
             Additional information is:
-	    - a cyan o for galaxies
-	    - a magenta o for variables
+        - a cyan o for galaxies
+        - a magenta o for variables
       <DT> magenta *
       <DD> Objects that failed the flux cut
       <DT> green o
@@ -285,7 +290,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         self.fig = None
         if self.config.doWriteOutput:
             self.outputField = schema.addField("photocal_photometricStandard", type="Flag",
-                                      doc="set if source was used in photometric calibration")
+                                               doc="set if source was used in photometric calibration")
         else:
             self.outputField = None
 
@@ -366,7 +371,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     for i, m in enumerate(matches):
                         if i not in afterFlagCutInd:
                             x, y = m.second.getCentroid()
-                            ds9.dot("x", x,  y, size=4, frame=frame, ctype=ds9.RED)
+                            ds9.dot("x", x, y, size=4, frame=frame, ctype=ds9.RED)
 
             matches = afterFlagCut
 
@@ -399,12 +404,12 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                         for i, m in enumerate(matches):
                             if i not in afterRefCutInd:
                                 x, y = m.second.getCentroid()
-                                ds9.dot("+", x,  y, size=4, frame=frame, ctype=ds9.BLUE)
+                                ds9.dot("+", x, y, size=4, frame=frame, ctype=ds9.BLUE)
 
                                 if resolvedKey and m.first.get(resolvedKey):
-                                    ds9.dot("o", x,  y, size=6, frame=frame, ctype=ds9.CYAN)
+                                    ds9.dot("o", x, y, size=6, frame=frame, ctype=ds9.CYAN)
                                 if variableKey and m.first.get(variableKey):
-                                    ds9.dot("o", x,  y, size=6, frame=frame, ctype=ds9.MAGENTA)
+                                    ds9.dot("o", x, y, size=6, frame=frame, ctype=ds9.MAGENTA)
 
                 matches = afterRefCut
 
@@ -416,8 +421,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         if self.config.magLimit is not None:
             fluxLimit = fluxFromABMag(self.config.magLimit)
 
-            afterMagCutInd = [i for i, m in enumerate(matches) if (m.first.get(fluxKey) > fluxLimit
-                                                                   and m.second.getPsfFlux() > 0.0)]
+            afterMagCutInd = [i for i, m in enumerate(matches) if (m.first.get(fluxKey) > fluxLimit and
+                                                                   m.second.getPsfFlux() > 0.0)]
         else:
             afterMagCutInd = [i for i, m in enumerate(matches) if m.second.getPsfFlux() > 0.0]
 
@@ -429,7 +434,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     for i, m in enumerate(matches):
                         if i not in afterMagCutInd:
                             x, y = m.second.getCentroid()
-                            ds9.dot("*", x,  y, size=4, frame=frame, ctype=ds9.MAGENTA)
+                            ds9.dot("*", x, y, size=4, frame=frame, ctype=ds9.MAGENTA)
 
             matches = afterMagCut
 
@@ -442,7 +447,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             with ds9.Buffering():
                 for m in matches:
                     x, y = m.second.getCentroid()
-                    ds9.dot("o", x,  y, size=4, frame=frame, ctype=ds9.GREEN)
+                    ds9.dot("o", x, y, size=4, frame=frame, ctype=ds9.GREEN)
 
         result = afwTable.ReferenceMatchVector()
         for m in matches:
@@ -496,7 +501,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         if applyColorTerms:
             self.log.info("Applying color terms for filterName=%r, config.photoCatName=%s because %s" %
-                (filterName, self.config.photoCatName, applyCTReason))
+                          (filterName, self.config.photoCatName, applyCTReason))
             ct = self.config.colorterms.getColorterm(
                 filterName=filterName, photoCatName=self.config.photoCatName, doRaise=True)
         else:
@@ -520,8 +525,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         if not ct:
             fluxFieldList = [getRefFluxField(refSchema, filterName)]
 
-        refFluxArrList = [] # list of ref arrays, one per flux field
-        refFluxErrArrList = [] # list of ref flux arrays, one per flux field
+        refFluxArrList = []  # list of ref arrays, one per flux field
+        refFluxErrArrList = []  # list of ref flux arrays, one per flux field
         for fluxField in fluxFieldList:
             fluxKey = refSchema.find(fluxField).key
             refFluxArr = np.array([m.first.get(fluxKey) for m in matches])
@@ -538,8 +543,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             refFluxErrArrList.append(refFluxErrArr)
 
         if ct:                          # we have a color term to worry about
-            refMagArr1 = np.array([abMagFromFlux(rf1) for rf1 in refFluxArrList[0]]) # primary
-            refMagArr2 = np.array([abMagFromFlux(rf2) for rf2 in refFluxArrList[1]]) # secondary
+            refMagArr1 = np.array([abMagFromFlux(rf1) for rf1 in refFluxArrList[0]])  # primary
+            refMagArr2 = np.array([abMagFromFlux(rf2) for rf2 in refFluxArrList[1]])  # secondary
 
             refMagArr = ct.transformMags(refMagArr1, refMagArr2)
             refFluxErrArr = ct.propagateFluxErrors(refFluxErrArrList[0], refFluxErrArrList[1])
@@ -640,7 +645,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         filterName = exposure.getFilter().getName()
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
         matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,
-            frame=frame)
+                                     frame=frame)
         arrays = self.extractMagArrays(matches=matches, filterName=filterName, sourceKeys=sourceKeys)
 
         if matches and self.outputField:
@@ -662,8 +667,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         zp = r.zp
         self.log.info("Magnitude zero point: %f +/- %f from %d stars" % (r.zp, r.sigma, r.ngood))
 
-        flux0 = 10**(0.4*r.zp) # Flux of mag=0 star
-        flux0err = 0.4*math.log(10)*flux0*r.sigma # Error in flux0
+        flux0 = 10**(0.4*r.zp)  # Flux of mag=0 star
+        flux0err = 0.4*math.log(10)*flux0*r.sigma  # Error in flux0
 
         calib.setFluxMag0(flux0, flux0err)
 
@@ -707,15 +712,15 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         # need to remove nan elements to avoid errors in stats calculation with numpy
         ind_noNan = np.array([i for i in range(len(dmag))
-                              if (not np.isnan(dmag[i]) and not np.isnan(dmagErr[i])) ])
+                              if (not np.isnan(dmag[i]) and not np.isnan(dmagErr[i]))])
         dmag = dmag[ind_noNan]
         dmagErr = dmagErr[ind_noNan]
 
-        IQ_TO_STDEV = 0.741301109252802;    # 1 sigma in units of interquartile (assume Gaussian)
+        IQ_TO_STDEV = 0.741301109252802    # 1 sigma in units of interquartile (assume Gaussian)
 
         npt = len(dmag)
         ngood = npt
-        good = None # set at end of first iteration
+        good = None  # set at end of first iteration
         for i in range(self.config.nIter):
             if i > 0:
                 npt = sum(good)
@@ -729,16 +734,16 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 try:
                     hist, edges = np.histogram(dmag, nhist, new=True)
                 except TypeError:
-                    hist, edges = np.histogram(dmag, nhist) # they removed new=True around numpy 1.5
+                    hist, edges = np.histogram(dmag, nhist)  # they removed new=True around numpy 1.5
                 imode = np.arange(nhist)[np.where(hist == hist.max())]
 
-                if imode[-1] - imode[0] + 1 == len(imode): # Multiple modes, but all contiguous
+                if imode[-1] - imode[0] + 1 == len(imode):  # Multiple modes, but all contiguous
                     if zp0:
                         center = zp0
                     else:
                         center = 0.5*(edges[imode[0]] + edges[imode[-1] + 1])
 
-                    peak = sum(hist[imode])/len(imode) # peak height
+                    peak = sum(hist[imode])/len(imode)  # peak height
 
                     # Estimate FWHM of mode
                     j = imode[0]
@@ -758,7 +763,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                         q1 = dmag[int(0.25*npt)]
                         q3 = dmag[int(0.75*npt)]
 
-                    sig = (q3 - q1)/2.3 # estimate of standard deviation (based on FWHM; 2.358 for Gaussian)
+                    sig = (q3 - q1)/2.3  # estimate of standard deviation (based on FWHM; 2.358 for Gaussian)
 
                     if sigmaMax is None:
                         sigmaMax = 2*sig   # upper bound on st. dev. for clipping. multiplier is a heuristic
@@ -773,7 +778,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     center = np.median(dmag)
                     q1 = dmag[int(0.25*npt)]
                     q3 = dmag[int(0.75*npt)]
-                    sig = (q3 - q1)/2.3 # estimate of standard deviation (based on FWHM; 2.358 for Gaussian)
+                    sig = (q3 - q1)/2.3  # estimate of standard deviation (based on FWHM; 2.358 for Gaussian)
 
             if center is None:              # usually equivalent to (i > 0)
                 gdmag = dmag[good]
@@ -788,14 +793,14 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
                 sig = IQ_TO_STDEV*(q3 - q1)     # estimate of standard deviation
 
-            good = abs(dmag - center) < self.config.nSigma*min(sig, sigmaMax) # don't clip too softly
+            good = abs(dmag - center) < self.config.nSigma*min(sig, sigmaMax)  # don't clip too softly
 
-            #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
             if self.scatterPlot:
                 try:
                     self.fig.clf()
 
-                    axes = self.fig.add_axes((0.1, 0.1, 0.85, 0.80));
+                    axes = self.fig.add_axes((0.1, 0.1, 0.85, 0.80))
 
                     axes.plot(ref[good], dmag[good] - center, "b+")
                     axes.errorbar(ref[good], dmag[good] - center, yerr=dmagErr[good],
@@ -838,11 +843,12 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                         if reply == "n":
                             break
                         elif reply == "p":
-                            import pdb; pdb.set_trace()
+                            import pdb
+                            pdb.set_trace()
                 except Exception, e:
                     print >> sys.stderr, "Error plotting in PhotoCal.getZeroPoint: %s" % e
 
-            #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             old_ngood = ngood
             ngood = sum(good)
@@ -858,8 +864,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 return pipeBase.Struct(
                     zp = center,
                     sigma = sig,
-                    ngood = len(dmag)
-                    )
+                    ngood = len(dmag))
             elif ngood == old_ngood:
                 break
 
