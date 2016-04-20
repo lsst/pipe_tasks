@@ -331,6 +331,17 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """
         return source.get(starGalKey) < 0.5 if starGalKey is not None else True
 
+    def selectUnresolved(self, matches, sourceKeys):
+        # Select only resolved sources if asked to do so.
+        result = afwTable.ReferenceMatchVector()
+        for m in matches:
+            if self.isUnresolved(m.second, sourceKeys.starGal):
+                result.append(m)
+        self.log.logdebug("Number of matches after culling resolved sources: %d" % (len(matches)))
+        return result
+        # Doing the following instead of the above solves the segfault for me
+        #return [m for m in matches if self.isUnresolved(m.second, sourceKeys.starGal)]
+
     @pipeBase.timeMethod
     def selectMatches(self, matches, sourceKeys, filterName, frame=None):
         """!Select reference/source matches according the criteria specified in the config.
@@ -353,13 +364,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         self.log.logdebug("Number of input matches: %d" % (len(matches)))
 
         if self.config.doSelectUnresolved:
-            # Select only resolved sources if asked to do so.
-            result = afwTable.ReferenceMatchVector()
-            for m in matches:
-                if self.isUnresolved(m.second, sourceKeys.starGal):
-                    result.append(m)
-            matches = result
-            self.log.logdebug("Number of matches after culling resolved sources: %d" % (len(matches)))
+            matches = self.selectUnresolved(matches, sourceKeys)
 
         if len(matches) == 0:
             raise ValueError("No input matches")
@@ -377,6 +382,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                             x, y = m.second.getCentroid()
                             ds9.dot("x", x, y, size=4, frame=frame, ctype=ds9.RED)
 
+            #old_matches = matches
             matches = afterFlagCut
 
         if len(matches) == 0:
