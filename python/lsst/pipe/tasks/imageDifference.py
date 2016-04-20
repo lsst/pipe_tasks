@@ -707,7 +707,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
-        parser.add_id_argument("--templateId", "calexp", doMakeDataRefList=False,
+        parser.add_id_argument("--templateId", "calexp", doMakeDataRefList=True,
                                help="Optional template data ID (visit only), e.g. --templateId visit=6789")
         return parser
 
