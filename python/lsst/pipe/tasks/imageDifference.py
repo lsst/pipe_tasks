@@ -32,7 +32,7 @@ import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf, \
-    SecondMomentStarSelectorTask
+    ObjectSizeStarSelectorTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
@@ -92,7 +92,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
     sourceSelector = pexConfig.ConfigurableField(
-        target=SecondMomentStarSelectorTask,
+        target=ObjectSizeStarSelectorTask,
         doc="Source selection algorithm",
     )
     subtract = pexConfig.ConfigurableField(
