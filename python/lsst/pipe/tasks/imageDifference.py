@@ -31,7 +31,8 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf
+from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf, \
+    SecondMomentStarSelectorTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
@@ -91,7 +92,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
     sourceSelector = pexConfig.ConfigurableField(
-        target=DiaCatalogSourceSelectorTask,
+        target=SecondMomentStarSelectorTask,
         doc="Source selection algorithm",
     )
     subtract = pexConfig.ConfigurableField(
@@ -139,9 +140,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="Match radius (in arcseconds) for DiaSource to Source association")
 
     def setDefaults(self):
-        # Set default source selector and configure defaults for that one and some common alternatives
-        self.sourceSelector.name = "secondMoment"
-        self.sourceSelector["secondMoment"].clumpNSigma = 2.0
         # defaults are OK for catalog and diacatalog
 
         self.subtract.kernel.name = "AL"
@@ -202,7 +200,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.makeSubtask("register")
 
         if self.config.doSelectSources:
-            self.sourceSelector = self.config.sourceSelector.apply()
+            self.makeSubtask("sourceSelector")
             self.makeSubtask("astrometer")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
