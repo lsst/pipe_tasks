@@ -179,7 +179,7 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         for ccdRecord in ccdInputs:
             v = ccdRecord.get(visitKey)
             c = ccdRecord.get(ccdKey)
-            ccdSources = butler.get("icSrc", visit=int(v), ccd=int(c), immediate=True)
+            ccdSources = butler.get("src", visit=int(v), ccd=int(c), immediate=True)
             for sourceRecord in ccdSources:
                 sourceRecord.updateCoord(ccdRecord.getWcs())
             for flag in flags:
