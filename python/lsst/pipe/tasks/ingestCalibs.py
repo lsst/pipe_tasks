@@ -2,6 +2,7 @@ import collections
 import datetime
 import itertools
 import sqlite3
+from glob import glob
 import lsst.afw.image as afwImage
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.pipe.base import InputOnlyArgumentParser
@@ -181,8 +182,9 @@ class IngestCalibsTask(IngestTask):
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
         calibRoot = args.calib if args.calib is not None else "."
+        filenameList = sum([glob(filename) for filename in args.files], [])
         with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun) as registry:
-            for infile in args.files:
+            for infile in filenameList:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
                 if args.calibType is None:
                     calibType = self.parse.getCalibType(infile)
