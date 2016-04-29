@@ -343,9 +343,6 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         if background is None:
             background = BackgroundList()
 
-        # make a deep copy of the mask
-        originalMask = exposure.getMaskedImage().getMask().clone()
-
         # subtract an initial estimate of background level
         estBg = estimateBackground(
             exposure = exposure,
@@ -358,11 +355,6 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         psfIterations = self.config.psfIterations if self.config.doMeasurePsf else 1
         for i in range(psfIterations):
-            if i > 1:
-                # restore original mask so that detections and cosmic rays
-                # are only marked by the final iteration
-                exposure.getMaskedImage().getMask()[:] = originalMask
-
             dmeRes = self.detectMeasureAndEstimatePsf(
                 exposure = exposure,
                 exposureIdInfo = exposureIdInfo,
