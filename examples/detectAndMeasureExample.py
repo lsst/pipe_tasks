@@ -32,7 +32,7 @@ from lsst.daf.butlerUtils import ExposureIdInfo
 from lsst.afw.detection import GaussianPsf
 import lsst.afw.image as afwImage
 from lsst.meas.astrom import displayAstrometry
-from lsst.meas.algorithms import estimateBackground
+from lsst.meas.algorithms import SubtractBackgroundTask
 from lsst.pipe.tasks.calibrate import DetectAndMeasureTask
 from lsst.pipe.tasks.repair import RepairTask
 
@@ -61,12 +61,12 @@ def loadData(psfSigma=1.5):
 def run(display=False):
     """Subtract background, mask cosmic rays, then detect and measure
     """
-    # Create the tasks; note that background estimation is performed by a function,
-    # not a task, though it has a config
+    # Create the tasks; if you use the default config then you don't have to construct the config,
+    # as shown in constructing backgroundTask, but constructing the config makes it easier to modify
     repairConfig = RepairTask.ConfigClass()
     repairTask = RepairTask(config=repairConfig)
 
-    backgroundConfig = estimateBackground.ConfigClass()
+    backgroundTask = SubtractBackgroundTask()
 
     damConfig = DetectAndMeasureTask.ConfigClass()
     damConfig.detection.thresholdValue = 5.0
@@ -84,11 +84,7 @@ def run(display=False):
     repairTask.run(exposure=exposure)
 
     # subtract an initial estimate of background level
-    estBg, exposure = estimateBackground(
-        exposure = exposure,
-        backgroundConfig = backgroundConfig,
-        subtract = True,
-    )
+    backgroundTask.run(exposure=exposure)
 
     # detect and measure
     damRes = detectAndMeasureTask.run(exposure=exposure, exposureIdInfo=exposureIdInfo)
