@@ -29,7 +29,7 @@ import numpy as np
 
 import lsst.utils
 from lsst.daf.butlerUtils import ExposureIdInfo
-from lsst.afw.detection import GaussianPsf    
+from lsst.afw.detection import GaussianPsf
 import lsst.afw.image as afwImage
 from lsst.meas.astrom import displayAstrometry
 from lsst.meas.algorithms import estimateBackground
