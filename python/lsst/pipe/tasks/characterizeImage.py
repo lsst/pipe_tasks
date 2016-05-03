@@ -24,9 +24,8 @@ import numpy as np
 from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, SourceCatalog
-from lsst.meas.algorithms import estimateBackground
+from lsst.meas.algorithms import SubtractBackgroundTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from .detectAndMeasure import DetectAndMeasureTask
@@ -60,8 +59,8 @@ class CharacterizeImageConfig(pexConfig.Config):
         doc = "Number of iterations of detect sources, measure sources, estimate PSF. "
             "If useSimplePsf='all_iter' then 2 should be plenty; otherwise more may be wanted.",
     )
-    background = pexConfig.ConfigField(
-        dtype = estimateBackground.ConfigClass,
+    background = pexConfig.ConfigurableField(
+        target = SubtractBackgroundTask,
         doc = "Configuration for initial background estimation",
     )
     detectAndMeasure = pexConfig.ConfigurableField(
@@ -245,6 +244,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         if schema is None:
             schema = SourceTable.makeMinimalSchema()
         self.schema = schema
+        self.makeSubtask("background")
         self.makeSubtask("installSimplePsf")
         self.makeSubtask("repair")
         self.makeSubtask("measurePsf", schema=self.schema)
@@ -340,18 +340,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
 
-        if background is None:
-            background = BackgroundList()
-
         # subtract an initial estimate of background level
-        estBg = estimateBackground(
-            exposure = exposure,
-            backgroundConfig = self.config.background,
-            subtract = False, # this makes a deep copy, which we don't want
-        )[0]
-        image = exposure.getMaskedImage().getImage()
-        image -= estBg.getImageF()
-        background.append(estBg)
+        background = self.background.run(exposure).background
 
         psfIterations = self.config.psfIterations if self.config.doMeasurePsf else 1
         for i in range(psfIterations):
