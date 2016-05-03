@@ -269,7 +269,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - subtract background
             - interpolate over cosmic rays
             - update detection and cosmic ray mask planes
-        @param[in,out] background  model of background model already subtracted from exposure
+        @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
             which is typical for image characterization.
             A refined background model is output.
@@ -323,7 +323,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - update detection and cosmic ray mask planes
             - subtract background and interpolate over cosmic rays
         @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
-        @param[in] background  model of background model already subtracted from exposure
+        @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
             which is typical for image characterization.
 
@@ -406,7 +406,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - update detection and cosmic ray mask planes
             - subtract background
         @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
-        @param[in,out] background  model of background model already subtracted from exposure
+        @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList).
 
         @return pipe_base Struct containing these fields, all from the final iteration
