@@ -402,7 +402,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             displayAstrometry(
                 sourceCat = sourceCat,
                 exposure = exposure,
-                astromMatches = astromMatches,
+                matches = astromMatches,
                 frame = frame,
                 pause = False,
             )
