@@ -131,7 +131,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     # by adding 
     #   config.measurement.plugins["base_PixelFlags"].masksFpCenter.append("BRIGHT_OBJECT")
     #   config.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("BRIGHT_OBJECT")
-    # to your measureCoaddSources.py config overrides
+    # to your measureCoaddSources.py and forcedPhotCoadd.py config overrides
     #
     doMaskBrightObjects = pexConfig.Field(dtype=bool, default=False,
                                           doc="Set mask and flag bits for bright objects?")
