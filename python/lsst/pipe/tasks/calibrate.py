@@ -281,7 +281,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         @param[in,out] exposure  characterized exposure (an lsst.afw.image.ExposureF or similar),
             or None to unpersist existing icExp and icBackground.
             See calibrate method for details of what is read and written.
-        @param[in,out] background  model of background model already subtracted from exposure
+        @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
             though that is unusual for calibration.
             A refined background model is output.
@@ -402,7 +402,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             displayAstrometry(
                 sourceCat = sourceCat,
                 exposure = exposure,
-                astromMatches = astromMatches,
+                matches = astromMatches,
                 frame = frame,
                 pause = False,
             )

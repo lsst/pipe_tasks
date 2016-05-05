@@ -239,14 +239,17 @@ class RepairTask(pipeBase.Task):
         binSize = self.config.cosmicray.background.binSize
         nx, ny = exposure.getWidth()/binSize, exposure.getHeight()/binSize
         # Treat constant background as a special case to avoid the extra complexity in calling
-        # measAlg.estimateBackground().
+        # measAlg.SubtractBackgroundTask().
         if nx*ny <= 1:
             medianBg = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.MEDIAN).getValue()
             modelBg = None
         else:
+            # make a deep copy of the exposure before subtracting its background,
+            # because this routine is only allowed to modify the exposure by setting mask planes
+            # and interpolating over defects, not changing the background level
             exposure = exposure.Factory(exposure, True)
-            modelBg, exposure = measAlg.estimateBackground(exposure, self.config.cosmicray.background,
-                                                           subtract=True)
+            subtractBackgroundTask = measAlg.SubtractBackgroundTask(config=self.config.cosmicray.background)
+            modelBg = subtractBackgroundTask.run(exposure).background
             medianBg = 0.0
 
         if keepCRs is None:
