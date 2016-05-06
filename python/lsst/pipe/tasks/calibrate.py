@@ -96,6 +96,11 @@ class CalibrateConfig(pexConfig.Config):
         default = 3,
         doc = "Match radius for matching icSourceCat objects to sourceCat objects (pixels)",
     )
+    checkUnitsParseStrict = pexConfig.Field(
+        doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
+        dtype = str,
+        default = "raise",
+    )
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
@@ -269,6 +274,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         if self.schemaMapper is not None:
             # finalize the schema
             self.schema = self.schemaMapper.getOutputSchema()
+        self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
 
     @pipeBase.timeMethod
     def run(self, dataRef, exposure=None, background=None, icSourceCat=None, doUnpersist=True):

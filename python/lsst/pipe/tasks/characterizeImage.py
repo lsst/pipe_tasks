@@ -92,6 +92,11 @@ class CharacterizeImageConfig(pexConfig.Config):
         target = RepairTask,
         doc = "Remove cosmic rays",
     )
+    checkUnitsParseStrict = pexConfig.Field(
+        doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
+        dtype = str,
+        default = "raise",
+    )
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
@@ -253,6 +258,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
+        self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
 
     @pipeBase.timeMethod
     def run(self, dataRef, exposure=None, background=None, doUnpersist=True):

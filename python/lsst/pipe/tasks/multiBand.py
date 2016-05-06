@@ -846,6 +846,11 @@ class MeasureMergedCoaddSourcesConfig(Config):
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
     astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    checkUnitsParseStrict = Field(
+        doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
+        dtype = str,
+        default = "raise",
+    )
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -1017,6 +1022,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
             self.makeSubtask("astrometry", schema=self.schema)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
+        self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
 
     def run(self, patchRef):
         """!
