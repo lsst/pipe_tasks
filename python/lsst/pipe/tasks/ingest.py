@@ -314,7 +314,6 @@ class RegisterTask(Task):
         sql += " INTO %s VALUES (NULL" % table
         sql += ", ?" * len(self.config.columns)
         sql += ")"
-	# import pdb; pdb.set_trace()
         values = [info[col] for col in self.config.columns]
         if dryrun:
             print "Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values]))
