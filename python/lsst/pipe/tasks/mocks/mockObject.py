@@ -55,7 +55,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         lsst.pipe.base.Task.__init__(self, **kwds)
         self.schema = lsst.afw.table.SimpleTable.makeMinimalSchema()
         self.center = lsst.afw.table.Point2DKey.addFields(self.schema, "center",
-                                           "center position in tract WCS", "pixels")
+                                           "center position in tract WCS", "pixel")
         self.magKey = self.schema.addField("mag", type=float, doc="exact true magnitude")
         self.rng = numpy.random.RandomState(self.config.seed)
 
