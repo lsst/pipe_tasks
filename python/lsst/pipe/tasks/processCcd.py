@@ -155,6 +155,19 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
         exposure = self.isr.runDataRef(sensorRef).exposure
 
+        #### Merlin's PSF hack
+        from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask, FwhmPerSigma
+        task = InstallGaussianPsfTask()
+        print 'default PSF = %s'%task.config.fwhm
+        print 'width = %s'%task.config.width
+        task.config.fwhm = 1.0 * 3.53223006755
+        print 'new PSF = %s' % task.config.fwhm
+        task.run(exposure=exposure)
+        measFwhm = exposure.getPsf().computeShape().getDeterminantRadius() * FwhmPerSigma
+        print 'measFwhm = %s'%measFwhm
+        assert abs(measFwhm - task.config.fwhm) < 1e-3
+        #### end Merlin's PSF hack
+
         charRes = self.charImage.run(
             dataRef = sensorRef,
             exposure = exposure,
