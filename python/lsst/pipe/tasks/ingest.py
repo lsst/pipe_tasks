@@ -443,7 +443,13 @@ class IngestTask(Task):
                 if self.isBadFile(infile, args.badFile):
                     self.log.info("Skipping declared bad file %s" % infile)
                     continue
-                fileInfo, hduInfoList = self.parse.getInfo(infile)
+                try:
+                    fileInfo, hduInfoList = self.parse.getInfo(infile)
+                except Exception as e:
+                    if not self.config.allowError:
+                        raise
+                    self.log.warn("Error parsing %s (%s); skipping" % (infile, e))
+                    continue
                 if self.isBadId(fileInfo, args.badId.idList):
                     self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
                     continue
