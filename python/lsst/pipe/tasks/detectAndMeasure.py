@@ -225,7 +225,7 @@ class DetectAndMeasureTask(pipeBase.Task):
             or None to create a new background model
         @param[in] allowApCorr  allow measuring and applying aperture correction?
         """
-        if self.config.doMeasureApCorr and allowApCorr:
+        if self.config.doMeasureApCorr or allowApCorr:
             # perform measurements before aperture correction
             self.measurement.run(
                 measCat = sourceCat,
@@ -236,17 +236,28 @@ class DetectAndMeasureTask(pipeBase.Task):
 
             sourceCat.sort(SourceTable.getParentKey())
 
-            # measure aperture correction
-            apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sourceCat).apCorrMap
-            exposure.getInfo().setApCorrMap(apCorrMap)
+            if self.config.doMeasureApCorr:
+                # measure aperture correction
+                apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sourceCat).apCorrMap
+                exposure.getInfo().setApCorrMap(apCorrMap)
+
+            # apply aperture corrections to everything we've already measured (doesn't actually measure)
+            self.measurement.run(
+                measCat = sourceCat,
+                exposure = exposure,
+                exposureId = exposureIdInfo.expId,
+                beginOrder = BasePlugin.APCORR_ORDER,
+                endOrder = BasePlugin.APCORR_ORDER + 1,
+                allowApCorr = allowApCorr,
+            )
 
             # perform remaining measurements
             self.measurement.run(
                 measCat = sourceCat,
                 exposure = exposure,
                 exposureId = exposureIdInfo.expId,
-                beginOrder = BasePlugin.APCORR_ORDER,
-                allowApCorr = allowApCorr,
+                beginOrder = BasePlugin.APCORR_ORDER + 1,
+                allowApCorr = False
             )
         else:
             self.measurement.run(
