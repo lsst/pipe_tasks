@@ -215,8 +215,21 @@ class DetectAndMeasureTask(pipeBase.Task):
             or None to create a new background model
         @param[in] allowApCorr  allow measuring and applying aperture correction?
         """
-        if self.config.doMeasureApCorr and allowApCorr:
-            # perform measurements before aperture correction
+        if self.config.doMeasureApCorr or allowApCorr:
+            # NOTE: The measurement task has a serious misfeature when it comes to applying
+            # aperture correction (one that will be fixed in DM-5877): it applies aperture
+            # correction after performing ALL measurements, regardless of their execution
+            # order.  As a result, no plugins, in particular those whose measurements rely
+            # on aperture corrected fluxes, were getting aperture-corrected fluxes.
+            #
+            # To work around this, we measure fluxes and apply aperture correction where
+            # appropriate in three phases (as described step-by-step below):
+            #    1) run plugins up to order APCORR_ORDER to measure all fluxes
+            #    2) apply aperture correction to all appropriate fluxes
+            #    3) run the remaining plugins with aperture correction disabled
+            #       (to avoid applying the correction twice)
+
+            # 1) run plugins with order up to APCORR_ORDER to measure all fluxes
             self.measurement.run(
                 measCat = sourceCat,
                 exposure = exposure,
@@ -226,22 +239,41 @@ class DetectAndMeasureTask(pipeBase.Task):
 
             sourceCat.sort(SourceTable.getParentKey())
 
-            # measure aperture correction
-            apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sourceCat).apCorrMap
-            exposure.getInfo().setApCorrMap(apCorrMap)
+            if self.config.doMeasureApCorr:
+                # measure the aperture correction map
+                apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sourceCat).apCorrMap
+                exposure.getInfo().setApCorrMap(apCorrMap)
 
-            # perform remaining measurements
+            # 2) run APCORR_ORDER only to apply the aperture correction to the measured
+            # fluxes. The effect of this step is simply to apply the aperture correction
+            # (using the apCorrMap measured above or perhaps in a previous stage) to any
+            # flux measurements present whose plugins were registered with shouldApCorr=True
+            # (no actual plugins are run in this step)
             self.measurement.run(
                 measCat = sourceCat,
                 exposure = exposure,
                 exposureId = exposureIdInfo.expId,
                 beginOrder = BasePlugin.APCORR_ORDER,
+                endOrder = BasePlugin.APCORR_ORDER + 1,
                 allowApCorr = allowApCorr,
+            )
+            # 3) run the remaining APCORR_ORDER+1 plugins, whose measurements should be
+            # performed on aperture corrected fluxes, disallowing apCorr (to avoid applying it
+            # more than once, noting that, when allowApCorr=True, self._applyApCorrIfWanted()
+            # in meas_base's SingleFrameMeasurement runs with no regard to beginOrder, so
+            # running with allowApCorr=True in any call to measurement.run subsequent to step 2)
+            # would erroneously re-apply the aperture correction to already-corrected fluxes)
+            self.measurement.run(
+                measCat = sourceCat,
+                exposure = exposure,
+                exposureId = exposureIdInfo.expId,
+                beginOrder = BasePlugin.APCORR_ORDER + 1,
+                allowApCorr = False,
             )
         else:
             self.measurement.run(
                 measCat = sourceCat,
                 exposure = exposure,
                 exposureId = exposureIdInfo.expId,
-                allowApCorr = allowApCorr,
+                allowApCorr = False,
             )
