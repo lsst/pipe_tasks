@@ -621,8 +621,8 @@ class CcdAnalysis(Analysis):
 
     def plotFocalPlane(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None):
         """Plot quantity colormaped on the focal plane"""
-        xx = self.catalog[self.prefix + "base_FPPosition_x"]
-        yy = self.catalog[self.prefix + "base_FPPosition_y"]
+        xFp = self.catalog[self.prefix + "base_FPPosition_x"]
+        yFp = self.catalog[self.prefix + "base_FPPosition_y"]
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 np.ones(len(self.mag), dtype=bool))
         if self.data.has_key("galaxy"):
@@ -641,7 +641,7 @@ class CcdAnalysis(Analysis):
             if len(data.mag) == 0:
                 continue
             selection = data.selection & good
-            axes.scatter(xx[selection], yy[selection], s=2, marker="o", lw=0,
+            axes.scatter(xFp[selection], yFp[selection], s=2, marker="o", lw=0,
                          c=data.quantity[good[data.selection]], cmap=cmap, vmin=vMin, vmax=vMax)
         axes.set_xlabel("x_fpa (pixels)")
         axes.set_ylabel("y_fpa (pixels)")
@@ -778,6 +778,34 @@ def getFluxKeys(schema):
     if len(fluxKeys) == 0:
         raise TaskError("No flux keys found")
     return fluxKeys, errKeys
+
+def addFpPoint(det, catalog, prefix=""):
+    # Compute Focal Plane coordinates for SdssCentroid of each source and add to schema
+    mapper = afwTable.SchemaMapper(catalog[0].schema)
+    mapper.addMinimalSchema(catalog[0].schema)
+    schema = mapper.getOutputSchema()
+    fpName = prefix + "base_FPPosition"
+    fpxKey = schema.addField(fpName + "_x", type="D", doc="Position on the focal plane (in FP pixels)")
+    fpyKey = schema.addField(fpName + "_y", type="D", doc="Position on the focal plane (in FP pixels)")
+    fpFlag = schema.addField(fpName + "_flag", type="Flag", doc="Set to True for any fatal failure")
+
+    newCatalog = afwTable.SourceCatalog(schema)
+    newCatalog.reserve(len(catalog))
+    for source in catalog:
+        row = newCatalog.addNew()
+        row.assign(source, mapper)
+        try:
+            center = afwGeom.Point2D(source[prefix + "base_SdssCentroid_x"],
+                                     source[prefix + "base_SdssCentroid_y"])
+            posInPix = det.makeCameraPoint(center, cameraGeom.PIXELS)
+            fpPoint = det.transform(posInPix, cameraGeom.FOCAL_PLANE).getPoint()
+        except:
+            fpPoint = afwGeom.Point2D(np.nan, np.nan)
+            row.set(fpFlag, True)
+        row.set(fpxKey, fpPoint[0])
+        row.set(fpyKey, fpPoint[1])
+
+    return newCatalog
 
 def calibrateSourceCatalogMosaic(dataRef, catalog, zp=27.0):
     """Calibrate catalog with meas_mosaic results
@@ -1568,6 +1596,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
             self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
+            # Compute Focal Plane coordinates for each source if not already there
+            if "base_FPPosition_x" not in catalog.schema and "focalplane_x" not in catalog.schema:
+                exp = butler.get("calexp", dataRef.dataId)
+                det = exp.getDetector()
+                catalog = addFpPoint(det, catalog)
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
                 catList.append(calibrated)
@@ -1636,6 +1669,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             for mm, ss in zip(matches, src):
                 mm.second = ss
             catalog = matchesToCatalog(matches, catalog.getTable().getMetadata())
+            # Compute Focal Plane coordinates for each source if not already there
+            if "src_base_FPPosition_x" not in catalog.schema and "src_focalplane_x" not in catalog.schema:
+                exp = butler.get("calexp", dataRef.dataId)
+                det = exp.getDetector()
+                catalog = addFpPoint(det, catalog, prefix="src_")
             # Need to set the aliap map for the matched catalog sources
             if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
                 aliasMap = catalog.schema.getAliasMap()
