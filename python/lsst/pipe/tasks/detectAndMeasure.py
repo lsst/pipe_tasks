@@ -83,7 +83,6 @@ class DetectAndMeasureTask(pipeBase.Task):
      - @ref pipe_tasks_detectAndMeasure_Initialize
      - @ref pipe_tasks_detectAndMeasure_IO
      - @ref pipe_tasks_detectAndMeasure_Config
-     - @ref pipe_tasks_detectAndMeasure_Metadata
      - @ref pipe_tasks_detectAndMeasure_Debug
      - @ref pipe_tasks_detectAndMeasure_Example
 
@@ -113,28 +112,19 @@ class DetectAndMeasureTask(pipeBase.Task):
 
     @section pipe_tasks_detectAndMeasure_Example   A complete example of using DetectAndMeasureTask
 
-    This code is in @link detectAndMeasureExample.py@endlink in the examples directory, and can be run as, e.g.:
+    This code is in @link detectAndMeasureExample.py@endlink in the examples directory,
+    and can be run as, e.g.:
     @code
     python examples/detectAndMeasureExample.py --display
     @endcode
     @dontinclude detectAndMeasureExample.py
 
     Import the task (there are some other standard imports; read the file if you're curious)
-    @skipline DetectAndMeasureTask
+    @skipline import DetectAndMeasureTask
 
-    Create the task. Note that we're using a custom AstrometryTask (because we don't have a valid
-    astrometric catalogue handy); see \ref detectAndMeasure_MyAstrometryTask.
-    @skip DetectAndMeasureTask.ConfigClass
-    @until config=config
-
-    We're now ready to process the data. This occurs in two steps:
-    - Characterize the image: measure bright sources, fit a background and PSF, and repairs cosmic rays
-    - DetectAndMeasure the exposure: measure faint sources, fit an improved WCS and photometric zero-point
-
-    we could loop over multiple exposures/catalogues using the same
-    task objects) and optionally display the results:
-    @skip loadData
-    @until dot
+    Create the taskm run it and display the results.
+    @skip def run
+    @until displayAstrometry
     """
     ConfigClass = DetectAndMeasureConfig
     _DefaultName = "detectAndMeasure"
