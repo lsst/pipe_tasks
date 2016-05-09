@@ -840,9 +840,13 @@ def calibrateSourceCatalog(catalog, zp):
 def backoutApCorr(catalog):
     """Back out the aperture correction to all fluxes
     """
+    ii = 0
     for src in catalog:
         for k in src.schema.getNames():
             if "_flux" in k and k[:-5] + "_apCorr" in src.schema.getNames() and "_apCorr" not in k:
+                if ii == 0:
+                    print "Backing out apcorr for:", k
+                    ii += 1
                 src[k] /= src[k[:-5] + "_apCorr"]
     return catalog
 
@@ -887,6 +891,7 @@ class CoaddAnalysisConfig(Config):
     astrometry = ConfigField(dtype=AstrometryConfig, doc="Configuration for astrometric reference")
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
+    doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
@@ -1601,6 +1606,9 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 exp = butler.get("calexp", dataRef.dataId)
                 det = exp.getDetector()
                 catalog = addFpPoint(det, catalog)
+            # Optionally backout aperture corrections
+            if self.config.doBackoutApCorr:
+                catalog = backoutApCorr(catalog)
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
                 catList.append(calibrated)
@@ -1674,6 +1682,9 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 exp = butler.get("calexp", dataRef.dataId)
                 det = exp.getDetector()
                 catalog = addFpPoint(det, catalog, prefix="src_")
+            # Optionally backout aperture corrections
+            if self.config.doBackoutApCorr:
+                catalog = backoutApCorr(catalog)
             # Need to set the aliap map for the matched catalog sources
             if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
                 aliasMap = catalog.schema.getAliasMap()
