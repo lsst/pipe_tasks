@@ -33,10 +33,10 @@ import lsst.meas.astrom as measAstrom
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf, \
     ObjectSizeStarSelectorTask
-from lsst.ip.diffim import ImagePsfMatchTask, DipoleMeasurementTask, DipoleAnalysis, \
+from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
-    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask
+    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 
@@ -70,6 +70,11 @@ class ImageDifferenceConfig(pexConfig.Config):
     doMatchSources = pexConfig.Field(dtype=bool, default=True,
         doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
+<<<<<<< HEAD
+    doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
+=======
+    doMeasurementNew = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources using new algorithm?")
+>>>>>>> cc41b052f31b940159ca6c2e24d3f1ffe07db57e
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
         doc="Write warped and PSF-matched template coadd exposure?")
@@ -103,9 +108,13 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=SourceDetectionTask,
         doc="Low-threshold detection for final measurement",
     )
+    #measurement = pexConfig.ConfigurableField(
+    #    target=DipoleMeasurementTask,
+    #    doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
+    #)
     measurement = pexConfig.ConfigurableField(
-        target=DipoleMeasurementTask,
-        doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
+        target=DipoleFitTask,
+        doc="Enable updated dipole fitting method.",
     )
     getTemplate = pexConfig.ConfigurableField(
         target = GetCoaddAsTemplateTask,
@@ -207,8 +216,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            self.makeSubtask("measurement", schema=self.schema,
-                             algMetadata=self.algMetadata)
+            if not self.config.doMeasurementNew:
+                self.makeSubtask("measurement", schema=self.schema,
+                                 algMetadata=self.algMetadata)
+            else:
+                self.makeSubtask("measurement", schema=self.schema)
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
@@ -518,7 +530,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if self.config.doMeasurement:
                 self.log.info("Running diaSource measurement")
-                self.measurement.run(diaSources, subtractedExposure)
+                if not self.config.doMeasurementNew:
+                    self.measurement.run(diaSources, subtractedExposure)
+                else:
+                    self.measurement.run(diaSources, subtractedExposure, exposure, templateExposure)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
