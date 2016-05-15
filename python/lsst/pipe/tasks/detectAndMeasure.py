@@ -240,7 +240,7 @@ class DetectAndMeasureTask(pipeBase.Task):
 
             sourceCat.sort(SourceTable.getParentKey())
 
-            if self.config.doMeasureApCorr:
+            if self.config.doMeasureApCorr and allowApCorr:
                 # measure the aperture correction map
                 apCorrMap = self.measureApCorr.run(exposure=exposure, catalog=sourceCat).apCorrMap
                 exposure.getInfo().setApCorrMap(apCorrMap)
