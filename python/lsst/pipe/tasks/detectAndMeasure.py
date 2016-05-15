@@ -242,7 +242,7 @@ class DetectAndMeasureTask(pipeBase.Task):
 
             if self.config.doMeasureApCorr:
                 # measure the aperture correction map
-                apCorrMap = self.measureApCorr.run(bbox=exposure.getBBox(), catalog=sourceCat).apCorrMap
+                apCorrMap = self.measureApCorr.run(exposure=exposure, catalog=sourceCat).apCorrMap
                 exposure.getInfo().setApCorrMap(apCorrMap)
 
             # 2) run APCORR_ORDER only to apply the aperture correction to the measured
