@@ -25,6 +25,7 @@ bin/imageDifference.py
 bin/imageDifferenceWinter2013.py
 bin/ingestCalibs.py
 bin/ingestImages.py
+bin/ingestReferenceCatalog.py
 bin/makeCoaddTempExp.py
 bin/makeDiscreteSkyMap.py
 bin/makeSkyMap.py
