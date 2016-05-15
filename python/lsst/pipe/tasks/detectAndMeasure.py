@@ -28,7 +28,8 @@ from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, IdFactory
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask, MeasureApCorrTask
+from lsst.meas.base import BasePlugin, SingleFrameMeasurementTask
+from lsst.meas.algorithms import MeasureApCorrTask
 
 __all__ = ["DetectAndMeasureConfig", "DetectAndMeasureTask"]
 
