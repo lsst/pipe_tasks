@@ -244,7 +244,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         else:
             self.candidateKey = None
             self.usedKey = None
-        self.makeSubtask("starSelector")
+        self.makeSubtask("starSelector", schema=schema)
         self.psfDeterminer = self.config.psfDeterminer.apply()
 
     @pipeBase.timeMethod
