@@ -203,11 +203,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doUseRegister:
             self.makeSubtask("register")
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
 
         if self.config.doSelectSources:
-            self.makeSubtask("sourceSelector")
+            self.makeSubtask("sourceSelector", schema=self.schema)
             self.makeSubtask("astrometer")
-        self.schema = afwTable.SourceTable.makeMinimalSchema()
+
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
