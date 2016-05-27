@@ -25,7 +25,8 @@ from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
-from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata
+from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata,\
+    LoadAstrometryNetObjectsTask
 from .detectAndMeasure import DetectAndMeasureTask
 from .photoCal import PhotoCalTask
 
@@ -57,6 +58,10 @@ class CalibrateConfig(pexConfig.Config):
         dtype = bool,
         default = True,
         doc = "Perform astrometric calibration?",
+    )
+    refObjLoader = pexConfig.ConfigurableField(
+        target = LoadAstrometryNetObjectsTask,
+        doc = "reference object loader",
     )
     astrometry = pexConfig.ConfigurableField(
         target = AstrometryTask,
@@ -221,6 +226,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
     """
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
+    RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, icSourceSchema=None, **kwargs):
         """!Construct a CalibrateTask
@@ -267,7 +273,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         if self.config.doAstrometry or self.config.doPhotoCal:
-            self.makeSubtask("astrometry", schema=self.schema)
+            self.makeSubtask('refObjLoader', butler=kwargs['butler'])
+            self.makeSubtask("astrometry", refObjLoader=self.refObjLoader, schema=self.schema)
         if self.config.doPhotoCal:
             self.makeSubtask("photoCal", schema=self.schema)
 
@@ -316,7 +323,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             raise RuntimeError("doUnpersist false; exposure must be provided")
 
         if self.config.doWrite:
-            matchMeta = createMatchMetadata(exposure, border=self.config.astrometry.refObjLoader.pixelMargin)
+            matchMeta = createMatchMetadata(exposure, border=self.config.refObjLoader.pixelMargin)
 
         exposureIdInfo = dataRef.get("expIdInfo")
 

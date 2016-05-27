@@ -88,6 +88,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype=bool,
         default=True
     )
+    refObjLoader = pexConfig.ConfigurableField(
+        target = measAstrom.LoadAstrometryNetObjectsTask,
+        doc = "reference object loader",
+    )
     astrometer = pexConfig.ConfigurableField(
         target = measAstrom.AstrometryTask,
         doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
@@ -182,7 +186,7 @@ class ImageDifferenceConfig(pexConfig.Config):
                              "Cannot run RegisterTask without selecting sources.")
 
 
-class ImageDifferenceTaskRunner(pipeBase.TaskRunner):
+class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, templateIdList=parsedCmd.templateId.idList,
@@ -207,7 +211,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doSelectSources:
             self.makeSubtask("sourceSelector", schema=self.schema)
-            self.makeSubtask("astrometer")
+            self.makeSubtask('refObjLoader', butler=kwargs['butler'])
+            self.makeSubtask("astrometer", refObjLoader=self.refObjLoader)
 
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:

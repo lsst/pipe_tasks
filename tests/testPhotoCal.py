@@ -42,6 +42,10 @@ Log(Log.getDefaultLog(), "meas.astrom.astrometry_net", Log.WARN)
 Log(Log.getDefaultLog(), "meas.astrom.sip", Log.WARN)
 Log(Log.getDefaultLog(), "astrometricSolver", Log.WARN)
 
+def makeRefLoader():
+    config = measAstrom.LoadAstrometryNetObjectsTask.ConfigClass()
+    return measAstrom.LoadAstrometryNetObjectsTask(config=config)
+
 class PhotoCalTest(unittest.TestCase):
 
     def setUp(self):
@@ -65,14 +69,17 @@ class PhotoCalTest(unittest.TestCase):
         # Set up local astrometry_net_data
         helper.setupAstrometryNetDataDir('photocal', rootDir=testDir)
 
+        self.refObjLoader = makeRefLoader()
+
     def tearDown(self):
         del self.srcCat
         del self.conf
         del self.exposure
+        del self.refObjLoader
 
     def getAstrometrySolution(self, loglvl = Log.INFO):
         astromConfig = measAstrom.AstrometryTask.ConfigClass()
-        astrom = measAstrom.AstrometryTask(config=astromConfig)
+        astrom = measAstrom.AstrometryTask(config=astromConfig, refObjLoader=self.refObjLoader)
         # use solve instead of run because the exposure has the wrong bbox
         return astrom.solve(
             sourceCat = self.srcCat,
