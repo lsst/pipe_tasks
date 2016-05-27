@@ -28,6 +28,7 @@ import numpy as np
 
 import lsst.utils
 import lsst.pipe.base as pipeBase
+import lsst.daf.persistence as dafPersistence
 from lsst.daf.butlerUtils import ExposureIdInfo
 import lsst.afw.display as afwDisplay
 import lsst.afw.table as afwTable
@@ -72,7 +73,7 @@ class MyAstrometryTask(pipeBase.Task):
     ConfigClass = Config
     _defaultName = "astrometry"
 
-    def __init__(self, schema=None, **kwargs):
+    def __init__(self, refObjLoader, schema=None, **kwargs):
         pipeBase.Task(**kwargs)
 
     def run(self, exposure, sourceCat):
@@ -115,14 +116,15 @@ class MyAstrometryTask(pipeBase.Task):
 
 def run(display=False):
     #
-    # Create the tasks
+    # Create the task using a butler constructed using the obs_test repo
     #
+    butler = dafPersistence.Butler(os.path.join(lsst.utils.getPackageDir("obs_test"), "data", "input"))
     charImageConfig = CharacterizeImageTask.ConfigClass()
-    charImageTask = CharacterizeImageTask(config=charImageConfig)
+    charImageTask = CharacterizeImageTask(butler, config=charImageConfig)
 
     config = CalibrateTask.ConfigClass()
     config.astrometry.retarget(MyAstrometryTask)
-    calibrateTask = CalibrateTask(config=config)
+    calibrateTask = CalibrateTask(butler, config=config)
 
     # load the data
     # Exposure ID and the number of bits required for exposure IDs are usually obtained from a data repo,

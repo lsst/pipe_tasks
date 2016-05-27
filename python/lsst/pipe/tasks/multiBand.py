@@ -1020,7 +1020,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         if self.config.doMatchSources:
-            self.makeSubtask('refObjLoader', butler=kwargs['butler'])
+            self.makeSubtask('refObjLoader', butler=butler)
             self.makeSubtask("astrometry", schema=self.schema, refObjLoader=self.refObjLoader)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
