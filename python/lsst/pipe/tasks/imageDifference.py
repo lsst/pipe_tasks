@@ -200,7 +200,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     RunnerClass = ImageDifferenceTaskRunner
     _DefaultName = "imageDifference"
 
-    def __init__(self, **kwargs):
+    def __init__(self, butler=None, **kwargs):
+        """!Construct an ImageDifference Task
+        
+        @param[in] butler  Butler object to use in constructing reference object loaders
+        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("subtract")
         self.makeSubtask("getTemplate")
@@ -211,7 +215,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doSelectSources:
             self.makeSubtask("sourceSelector", schema=self.schema)
-            self.makeSubtask('refObjLoader', butler=kwargs['butler'])
+            self.makeSubtask('refObjLoader', butler=butler)
             self.makeSubtask("astrometer", refObjLoader=self.refObjLoader)
 
         self.algMetadata = dafBase.PropertyList()
