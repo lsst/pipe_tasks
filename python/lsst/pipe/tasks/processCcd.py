@@ -124,13 +124,15 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     Add the option `--help` to see more options.
     """
     ConfigClass = ProcessCcdConfig
+    RunnerClass = pipeBase.ButlerInitializedTaskRunner
     _DefaultName = "processCcd"
 
     def __init__(self, **kwargs):
+        butler = kwargs.pop('butler')
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
-        self.makeSubtask("charImage")
-        self.makeSubtask("calibrate", icSourceSchema=self.charImage.schema)
+        self.makeSubtask("charImage", butler=butler)
+        self.makeSubtask("calibrate", butler=butler, icSourceSchema=self.charImage.schema)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):

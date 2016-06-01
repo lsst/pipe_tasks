@@ -29,7 +29,7 @@ from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
-from lsst.meas.astrom import AstrometryTask
+from lsst.meas.astrom import AstrometryTask, LoadAstrometryNetObjectsTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.image as afwImage
@@ -844,6 +844,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     )
     propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
+    refObjLoader = ConfigurableField(target = LoadAstrometryNetObjectsTask, doc = "reference object loader")
     astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     checkUnitsParseStrict = Field(
@@ -1019,7 +1020,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         if self.config.doMatchSources:
-            self.makeSubtask("astrometry", schema=self.schema)
+            self.makeSubtask('refObjLoader', butler=butler)
+            self.makeSubtask("astrometry", schema=self.schema, refObjLoader=self.refObjLoader)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)

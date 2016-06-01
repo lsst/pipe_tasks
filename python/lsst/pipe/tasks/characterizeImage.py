@@ -27,7 +27,7 @@ import lsst.pipe.base as pipeBase
 from lsst.afw.table import SourceTable, SourceCatalog
 from lsst.meas.algorithms import SubtractBackgroundTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
-from lsst.meas.astrom import AstrometryTask, displayAstrometry
+from lsst.meas.astrom import AstrometryTask, displayAstrometry, LoadAstrometryNetObjectsTask
 from .detectAndMeasure import DetectAndMeasureTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
@@ -77,6 +77,10 @@ class CharacterizeImageConfig(pexConfig.Config):
     installSimplePsf = pexConfig.ConfigurableField(
         target = InstallGaussianPsfTask,
         doc = "Install a simple PSF model",
+    )
+    refObjLoader = pexConfig.ConfigurableField(
+        target = LoadAstrometryNetObjectsTask,
+        doc = "reference object loader",
     )
     astrometry = pexConfig.ConfigurableField(
         target = AstrometryTask,
@@ -238,10 +242,13 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     """
     ConfigClass = CharacterizeImageConfig
     _DefaultName = "imageCharacterization"
+    RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
-    def __init__(self, schema=None, **kwargs):
+    def __init__(self, butler, schema=None, **kwargs):
         """!Construct a CharacterizeImageTask
 
+        @param[in] butler  A butler object is passed to the refObjLoader constructor in case
+            it is needed to load catalogs.
         @param[in,out] schema  initial schema (an lsst.afw.table.SourceTable), or None
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
@@ -254,7 +261,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.makeSubtask("repair")
         self.makeSubtask("measurePsf", schema=self.schema)
         if self.config.doMeasurePsf and self.measurePsf.usesMatches:
-            self.makeSubtask("astrometry")
+            self.makeSubtask('refObjLoader', butler=butler)
+            self.makeSubtask("astrometry", refObjLoader=self.refObjLoader)
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame

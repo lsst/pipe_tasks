@@ -30,8 +30,8 @@ import lsst.utils
 import sys
 import lsst.afw.table              as afwTable
 import lsst.afw.image              as afwImage
-from lsst.meas.astrom import AstrometryTask
 from lsst.pipe.tasks.photoCal import PhotoCalTask
+import lsst.meas.astrom as measAstrom
 
 
 def loadData():
@@ -77,10 +77,12 @@ def run():
     #
     # Create the astrometry task
     #
-    config = AstrometryTask.ConfigClass()
-    config.refObjLoader.filterMap = {"_unknown_": "r"}
+    config = measAstrom.LoadAstrometryNetObjectsTask.ConfigClass()
+    config.filterMap = {"_unknown_": "r"}
+    refObjLoader = measAstrom.LoadAstrometryNetObjectsTask(config=config)
+    config = measAstrom.AstrometryTask.ConfigClass()
     config.matcher.sourceFluxType = "Psf" # sample catalog does not contain aperture flux
-    aTask = AstrometryTask(config=config)
+    aTask = measAstrom.AstrometryTask(config=config, refObjLoader=refObjLoader)
     #
     # And the photometry Task
     #
