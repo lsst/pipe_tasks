@@ -18,6 +18,7 @@ for additional information needed to write a \ref pipeBase_introduction "command
 - \ref pipeTasks_writeTask_taskMethods
 - \ref pipeTasks_writeTask_debugVariables
 - \ref pipeTasks_writeTask_documentation
+- \ref pipeTasks_writeTask_subtasks
 
 \section pipeTasks_writeTask_introduction Introduction
 
@@ -55,9 +56,10 @@ Some important details of configurations:
     about your task and ask yourself what you would need to be told to change the parameter.
     What does the parameter do and why might you change it? What units does it have?
 - Subtasks are specified in your configuration as fields of type
-    \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField".
+    \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField"
+    or (less commonly) \ref lsst.pex.config.registry.RegistryField "lsst.pex.config.RegistryField"
     This allows subtasks to be \ref pipeBase_argumentParser_retargetSubtasks "retargeted"
-    (replaced with a variant subtask).
+    (replaced with a variant subtask). For more information see \ref pipeTasks_writeTask_subtasks
 
 \ref exampleStatsTasks.ExampleSigmaClippedStatsTask "ExampleSigmaClippedStatsTask" uses configuration class
 \ref exampleStatsTasks.ExampleSigmaClippedStatsConfig "ExampleSigmaClippedStatsConfig":
@@ -229,6 +231,66 @@ page \ref LSST_task_documentation, even if your task is not in the pipe_tasks pa
 ##      An example intended to show how to write a command-line task.
 ## \}
 \endverbatim
+
+\section pipeTasks_writeTask_subtasks Subtasks
+
+Each subtask is specified in the configuration as a field of type
+\ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField"
+or (less commonly) \ref lsst.pex.config.registry.RegistryField "lsst.pex.config.RegistryField".
+There are advantages to each:
+
+- \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField" advantages:
+  - It is easier for the user to override settings of the subtask; simply use dotted name notation:
+
+        config.configurableSubtask.subtaskParam1 = ...
+
+    In contrast, to override configuration for a subtask specified as an
+    \ref lsst.pex.config.registry.RegistryField "lsst.pex.config.RegistryField"
+    you must either specify the name of the subtask to configure:
+
+        config.registrySubtask[nameOfSelectedSubtask].subtaskParam1 = ...
+
+    or use the `active` attribute to modify the configuration of the currently selected (active) subtask:
+
+        config.registrySubtask.active.subtaskParam1 = ...
+
+- \ref lsst.pex.config.registry.RegistryField "lsst.pex.config.RegistryField" advantages:
+  - You can specify overrides for any registered subtask and they are remembered if you
+    retarget subtasks. In comparison if the subtask is specified as an
+    \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField"
+    then you can only override parameters for the currently retargeted subtask, and all overrides
+    are lost each time you retarget. Thus using an
+    \ref lsst.pex.config.registry.RegistryField "lsst.pex.config.RegistryField"
+    offers the opportunity to specify suitable overrides for more than one variant subtask,
+    making it safer for the user to use those variants.
+    Of course this can get out of hand if there are many variants, so users should not assume
+    that all variants have suitable overrides.
+  - Retargeting a subtask can be done using `--config` on the command line, as long as
+    the module containing the desired subtask has been imported:
+
+        config.registrySubtask.name = "foo"
+
+    By comparison, a subtask specified as an
+    \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField"
+    can only be retargeted from a config override file (e.g. using `--configfile`, never `--config`):
+
+        from ... import FooTask
+        config.configurableSubtask.retarget(FooTask)
+
+  - Variants subtasks are kept together in one registry, making it easier to find them.
+
+Our recommendation: if you anticipate that users will often wish to override the subtask with a variant,
+then use an \ref lsst.pex.config.registry.RegistryField "lsst.pex.config.RegistryField". Otherwise
+use an \ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField"
+to keep config overrides simpler and easier to read.
+
+For example PSF determiners and star selectors are perhaps best specified using
+\ref lsst.pex.config.registry.RegistryField "lsst.pex.config.RegistryField" because there are
+several variants users may wish to select from.
+However, calibration and instrument signature removal are best specified using 
+\ref lsst.pex.config.configurableField.ConfigurableField "lsst.pex.config.ConfigurableField" 
+because (for a given camera) there is likely to be only one logical variant, and that variant
+is specified in a camera-specific configuration override file, so the user need not specify it.
 
 */
 }}} // namespace lsst::pipe::tasks
