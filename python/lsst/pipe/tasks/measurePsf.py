@@ -41,7 +41,8 @@ class MeasurePsfConfig(pexConfig.Config):
     )
     reserveSeed = pexConfig.Field(
         dtype = int,
-        doc = "This number will be multplied by the exposure ID to set the random seed for reserving candidates",
+        doc = "This number will be multiplied by the exposure ID "
+                "to set the random seed for reserving candidates",
         default = 1,
     )
 
@@ -69,24 +70,12 @@ class MeasurePsfTask(pipeBase.Task):
 
 \section pipe_tasks_measurePsf_Purpose	Description
 
-A task that wraps two algorithms set via a pair of registries specified in the task's
-\ref pipe_tasks_measurePsf_Config.
-Both algorithms are classes with a constructor taking a pex.config.Config object (\em e.g.
-lsst.meas.algorithms.objectSizeStarSelector.ObjectSizeStarSelector.__init__).
+A task that selects stars from a catalog of sources and uses those to measure the PSF.
 
-The algorithms are:
- - a star selector, a subclass of lsst.meas.algorithms.StarSelector.selectStars
-
- - a psf estimator with API:
-\code
-determinePsf(exposure, psfCandidateList, metadata=None, flagKey=None)
-\endcode
-which returns an lsst.afw.detection.Psf and lsst.afw.math.SpatialCellSet (\em e.g.
-lsst.meas.algorithms.pcaPsfDeterminer.PcaPsfDeterminer.determinePsf).
-MeasurePsfTask calls determinePsf with \c flagKey set to
-"calib.psf.used" if a schema is passed to its constructor (see \ref pipe_tasks_measurePsf_Initialize).
-
-See also lsst.meas.algorithms.psfDeterminerRegistry.psfDeterminerRegistry.
+The star selector is a subclass of
+\ref lsst.meas.algorithms.starSelector.StarSelectorTask "lsst.meas.algorithms.StarSelectorTask"
+and the PSF determiner is a sublcass of
+\ref lsst.meas.algorithms.psfDeterminer.PsfDeterminerTask "lsst.meas.algorithms.PsfDeterminerTask"
 
 \warning
 There is no establised set of configuration parameters for these algorithms, so once you start modifying
@@ -136,7 +125,8 @@ examples/measurePsfTask.py --ds9
 \endcode
 \dontinclude measurePsfTask.py
 
-The example also runs SourceDetectionTask and SourceMeasurementTask; see \ref meas_algorithms_measurement_Example for more explanation.
+The example also runs SourceDetectionTask and SourceMeasurementTask;
+see \ref meas_algorithms_measurement_Example for more explanation.
 
 Import the tasks (there are some other standard imports; read the file to see them all):
 
@@ -251,20 +241,22 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
     def run(self, exposure, sources, expId=0, matches=None):
         """!Measure the PSF
 
-        \param[in,out]   exposure      Exposure to process; measured PSF will be added.
-        \param[in,out]   sources       Measured sources on exposure; flag fields will be set marking
-                                       stars chosen by the star selector and the PSF determiner if a schema
-                                       was passed to the task constructor.
-        \param[in]       expId         Exposure id used for generating random seed.
-        \param[in] matches a list of lsst.afw.table.ReferenceMatch objects (\em i.e. of lsst.afw.table.Match
-        			       with \c first being of type lsst.afw.table.SimpleRecord and \c second
-        			       type lsst.afw.table.SourceRecord --- the reference object and detected
-        			       object respectively) as returned by \em e.g. the AstrometryTask.
-                                       Used by star selectors that choose to refer to an external catalog.
+        \param[in,out]   exposure   Exposure to process; measured PSF will be added.
+        \param[in,out]   sources    Measured sources on exposure; flag fields will be set marking
+                                    stars chosen by the star selector and the PSF determiner if a schema
+                                    was passed to the task constructor.
+        \param[in]       expId      Exposure id used for generating random seed.
+        \param[in]  matches         A list of lsst.afw.table.ReferenceMatch objects
+                                    (\em i.e. of lsst.afw.table.Match
+                                    with \c first being of type lsst.afw.table.SimpleRecord and \c second
+                                    type lsst.afw.table.SourceRecord --- the reference object and detected
+                                    object respectively) as returned by \em e.g. the AstrometryTask.
+                                    Used by star selectors that choose to refer to an external catalog.
 
         \return a pipe.base.Struct with fields:
          - psf: The measured PSF (also set in the input exposure)
-         - cellSet: an lsst.afw.math.SpatialCellSet containing the PSF candidates as returned by the psf determiner.
+         - cellSet: an lsst.afw.math.SpatialCellSet containing the PSF candidates
+            as returned by the psf determiner.
         """
         self.log.info("Measuring PSF")
 
@@ -287,7 +279,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         
         if self.config.reserveFraction > 0 :
             random.seed(self.config.reserveSeed*expId)
-            reserveList = random.sample(psfCandidateList, 
+            reserveList = random.sample(psfCandidateList,
                                         int((self.config.reserveFraction)*len(psfCandidateList)))
 
             for cand in reserveList:
