@@ -54,7 +54,9 @@ hamamatsu = ColortermLibrary(data={
 class ColortermTestCase(unittest.TestCase):
     """A test case for MaskedImage"""
     def setUp(self):
-        self.sources = dict(g=0.0, r=0.0, true_g=-0.00928), dict(g=0.0, r=-1.0, true_g=-0.09168)
+        self.sources = (dict(g=0.0, r=0.0, fluxErr_g=0.0, fluxErr_r=0.0, true_g=-0.00928, true_fluxErr_g=0.0),
+                        dict(g=0.0, r=-1.0, fluxErr_g=1.0, fluxErr_r=1.0, true_g=-0.09168, 
+                                                                          true_fluxErr_g=0.92129230974756315))
         self.colorterms = hamamatsu
 
     def tearDown(self):
@@ -101,6 +103,13 @@ class ColortermTestCase(unittest.TestCase):
 
         for s in self.sources:
             self.assertEqual(ct.transformMags(s[ct.primary], s[ct.secondary]), s["true_g"])
+
+    def testPropagateFluxErrors(self):
+        """Check if we can propagate flux errors"""
+
+        ct = self.colorterms.getColorterm("g", photoCatName="ham")
+        for s in self.sources:
+            self.assertEqual(ct.propagateFluxErrors(s["fluxErr_g"], s["fluxErr_r"]), s["true_fluxErr_g"])
 
     def testPickle(self):
         """Ensure color terms can be pickled"""
