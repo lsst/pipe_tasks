@@ -75,7 +75,7 @@ A task that selects stars from a catalog of sources and uses those to measure th
 The star selector is a subclass of
 \ref lsst.meas.algorithms.starSelector.StarSelectorTask "lsst.meas.algorithms.StarSelectorTask"
 and the PSF determiner is a sublcass of
-\ref lsst.meas.algorithms.psfDeterminer.PsfDeterminerTask "lsst.meas.algorithms.PsfDeterminerTask"
+\ref lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask "lsst.meas.algorithms.BasePsfDeterminerTask"
 
 \warning
 There is no establised set of configuration parameters for these algorithms, so once you start modifying
@@ -235,7 +235,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             self.candidateKey = None
             self.usedKey = None
         self.makeSubtask("starSelector", schema=schema)
-        self.psfDeterminer = self.config.psfDeterminer.apply()
+        self.makeSubtask("psfDeterminer", schema=schema)
 
     @pipeBase.timeMethod
     def run(self, exposure, sources, expId=0, matches=None):
