@@ -29,10 +29,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = pexConfig.ConfigurableField(
-        target = measAlg.ObjectSizeStarSelectorTask,
-        doc = "Star selection algorithm",
-    )
+    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="objectSize")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
     reserveFraction = pexConfig.Field(
         dtype = float,
