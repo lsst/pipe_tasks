@@ -70,7 +70,7 @@ class MeasurePsfTask(pipeBase.Task):
 A task that selects stars from a catalog of sources and uses those to measure the PSF.
 
 The star selector is a subclass of
-\ref lsst.meas.algorithms.starSelector.StarSelectorTask "lsst.meas.algorithms.StarSelectorTask"
+\ref lsst.meas.algorithms.starSelector.BaseStarSelectorTask "lsst.meas.algorithms.BaseStarSelectorTask"
 and the PSF determiner is a sublcass of
 \ref lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask "lsst.meas.algorithms.BasePsfDeterminerTask"
 
