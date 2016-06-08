@@ -436,7 +436,7 @@ class IngestTask(Task):
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
         filenameList = sum([glob(filename) for filename in args.files], [])
-        root = args.butler.repository._mapper.root
+        root = args.input
         context = self.register.openRegistry(root, create=args.create, dryrun=args.dryrun)
         with context as registry:
             for infile in filenameList:
