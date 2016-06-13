@@ -147,9 +147,9 @@ class PhotoCalTest(unittest.TestCase):
         self.zp = pCal.calib.getMagnitude(1.)
         self.fitdiff = pCal.arrays.srcMag + self.zp - pCal.arrays.refMag
 
-    def test1(self):
-
-        print 'Test1'
+    def testZeroPoint(self):
+        """ Test to see if we can compute a photometric zeropoint given a reference task"""
+        print 'testZeroPoint'
         self._runTask()
         self.assertGreater(len(self.diff), 50)
         self.log.info('%i magnitude differences; mean difference %g; mean abs diff %g' %
@@ -178,7 +178,7 @@ class PhotoCalTest(unittest.TestCase):
         self.assertLess(np.median(np.abs(self.fitdiff)), 0.06)  # median absolution difference
 
     def testColorTerms(self):
-
+        """ Test to see if we can apply colorterm corrections while computing photometric zeropoints"""
         print 'testColorTerms'
 
         # Turn colorterms on. The colorterm library used here is simple - we just apply a 1 mag 
