@@ -35,7 +35,7 @@ or
 import unittest
 import pickle
 
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary, ColortermNotFoundError
 
 # From the last page of http://www.naoj.org/staff/nakata/suprime/illustration/colorterm_report_ver3.pdf
@@ -51,12 +51,17 @@ hamamatsu = ColortermLibrary(data={
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+def setup_module(module):
+    lsst.utils.tests.init()
+
 class ColortermTestCase(unittest.TestCase):
     """A test case for MaskedImage"""
     def setUp(self):
+        # A list of simple fake sources. The values are chosen so that the colorterm corrections are
+        # predictable.
         self.sources = (dict(g=0.0, r=0.0, fluxErr_g=0.0, fluxErr_r=0.0, true_g=-0.00928, true_fluxErr_g=0.0),
                         dict(g=0.0, r=-1.0, fluxErr_g=1.0, fluxErr_r=1.0, true_g=-0.09168, 
-                                                                          true_fluxErr_g=0.92129230974756315))
+                             true_fluxErr_g=0.92129230974756315))
         self.colorterms = hamamatsu
 
     def tearDown(self):
@@ -116,21 +121,11 @@ class ColortermTestCase(unittest.TestCase):
         colorterms = pickle.loads(pickle.dumps(self.colorterms))
         self.assertEqual(colorterms, self.colorterms)
 
+class MemoryTester(lsst.utils.tests.MemoryTestCase):
+    pass
+
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-def suite():
-    """Returns a suite containing all the test cases in this module."""
-
-    utilsTests.init()
-
-    suites = []
-    suites += unittest.makeSuite(ColortermTestCase)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
-    return unittest.TestSuite(suites)
-
-def run(shouldExit=False):
-    """Run the tests"""
-    utilsTests.run(suite(), shouldExit)
-
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()
