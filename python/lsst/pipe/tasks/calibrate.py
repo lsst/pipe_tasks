@@ -324,8 +324,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
         elif exposure is None:
             raise RuntimeError("doUnpersist false; exposure must be provided")
 
-        if self.config.doWrite:
+        if self.config.doWrite and self.config.doAstrometry:
             matchMeta = createMatchMetadata(exposure, border=self.config.refObjLoader.pixelMargin)
+        else:
+            matchMeta = None
 
         exposureIdInfo = dataRef.get("expIdInfo")
 
