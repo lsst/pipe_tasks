@@ -186,11 +186,7 @@ class DetectAndMeasureTask(pipeBase.Task):
             background.append(detRes.fpSets.background)
 
         if self.config.doDeblend:
-            self.deblend.run(
-                exposure = exposure,
-                sources = sourceCat,
-                psf = exposure.getPsf(),
-            )
+            self.deblend.run(exposure = exposure, sources = sourceCat,)
 
         self.measure(
             exposure = exposure,

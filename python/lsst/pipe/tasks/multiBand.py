@@ -1039,7 +1039,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
         sources = self.readSources(patchRef)
         if self.config.doDeblend:
-            self.deblend.run(exposure, sources, exposure.getPsf())
+            self.deblend.run(exposure, sources)
 
             bigKey = sources.schema["deblend_parentTooBig"].asKey()
             numBig = sum((s.get(bigKey) for s in sources)) # catalog is non-contiguous so can't extract column
