@@ -24,7 +24,6 @@
 
 import os
 import unittest
-
 import numpy as np
 
 import lsst.meas.astrom            as measAstrom
@@ -32,8 +31,10 @@ import lsst.afw.geom               as afwGeom
 import lsst.afw.table              as afwTable
 import lsst.afw.image              as afwImage
 import lsst.utils.tests            as utilsTests
+import lsst.utils.tests
 from lsst.pex.logging import Log
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
+from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 
 import testFindAstrometryNetDataDir as helper
 
@@ -42,9 +43,21 @@ Log(Log.getDefaultLog(), "meas.astrom.astrometry_net", Log.WARN)
 Log(Log.getDefaultLog(), "meas.astrom.sip", Log.WARN)
 Log(Log.getDefaultLog(), "astrometricSolver", Log.WARN)
 
+testColorterms = ColortermLibrary(data={
+    "test*": ColortermDict(data={
+        "g": Colorterm(primary="g", secondary="r", c0=0.00, c1=0.00),
+        "r": Colorterm(primary="r", secondary="i", c0=0.00, c1=0.00, c2=0.00),
+        "i": Colorterm(primary="i", secondary="z", c0=1.00, c1=0.00, c2=0.00),
+        "z": Colorterm(primary="z", secondary="i", c0=0.00, c1=0.00, c2=0.00),
+    })
+})
+
 def makeRefLoader():
     config = measAstrom.LoadAstrometryNetObjectsTask.ConfigClass()
     return measAstrom.LoadAstrometryNetObjectsTask(config=config)
+
+def setup_module(module):
+    lsst.utils.tests.init()
 
 class PhotoCalTest(unittest.TestCase):
 
@@ -68,14 +81,31 @@ class PhotoCalTest(unittest.TestCase):
 
         # Set up local astrometry_net_data
         helper.setupAstrometryNetDataDir('photocal', rootDir=testDir)
-
         self.refObjLoader = makeRefLoader()
+        self.res = self.getAstrometrySolution(loglvl=Log.DEBUG)
+        self.matches = self.res.matches
+        logLevel = Log.DEBUG
+        self.log = Log(Log.getDefaultLog(),
+                  'testPhotoCal',
+                  logLevel)
+
+        self.schema = self.matches[0].second.schema
+        self.config = PhotoCalConfig()
+
+        # The test and associated data have been prepared on the basis that we
+        # use the PsfFlux to perform photometry.
+        self.config.fluxField = "base_PsfFlux_flux"
+        self.config.doWriteOutput = False    # schema is fixed because we already loaded the data
 
     def tearDown(self):
         del self.srcCat
         del self.conf
         del self.exposure
         del self.refObjLoader
+        del self.res
+        del self.matches
+        del self.log
+        del self.schema
 
     def getAstrometrySolution(self, loglvl = Log.INFO):
         astromConfig = measAstrom.AstrometryTask.ConfigClass()
@@ -87,38 +117,19 @@ class PhotoCalTest(unittest.TestCase):
         )
 
     def testGetSolution(self):
-        res = self.getAstrometrySolution(loglvl=Log.DEBUG)
-        self.assertTrue(res is not None)
-        self.assertGreater(len(res.matches), 50)
+        self.assertTrue(self.res is not None)
+        self.assertGreater(len(self.res.matches), 50)
 
-    def test1(self):
-        res = self.getAstrometrySolution()
-        matches = res.matches
-
-        print 'Test1'
-
-        logLevel = Log.DEBUG
-        log = Log(Log.getDefaultLog(),
-                  'testPhotoCal',
-                  logLevel)
-
-        schema = matches[0].second.schema
-
-        config = PhotoCalConfig()
-
-        # The test and associated data have been prepared on the basis that we
-        # use the PsfFlux to perform photometry.
-        config.fluxField = "base_PsfFlux_flux"
-
-        config.doWriteOutput = False    # schema is fixed because we already loaded the data
-        task = PhotoCalTask(config=config, schema=schema)
-        pCal = task.run(exposure=self.exposure, matches=matches)
+    def _runTask(self):
+        """All the common setup to actually test the results"""
+        task = PhotoCalTask(config=self.config, schema=self.schema)
+        pCal = task.run(exposure=self.exposure, matches=self.matches)
         print "Ref flux fields list =", pCal.arrays.refFluxFieldList
         refFluxField = pCal.arrays.refFluxFieldList[0]
 
         # These are *all* the matches; we don't really expect to do that well.
         diff=[]
-        for m in matches:
+        for m in self.matches:
             refFlux = m[0].get(refFluxField) # reference catalog flux
             if refFlux <= 0:
                 continue
@@ -128,20 +139,24 @@ class PhotoCalTest(unittest.TestCase):
                 continue
             instMag = pCal.calib.getMagnitude(instFlux)     #Instrumental mag
             diff.append(instMag - refMag)
-        diff = np.array(diff)
+        self.diff = np.array(diff)
+        # Differences of matched objects that were used in the fit.
+        self.zp = pCal.calib.getMagnitude(1.)
+        self.fitdiff = pCal.arrays.srcMag + self.zp - pCal.arrays.refMag
 
-        self.assertGreater(len(diff), 50)
-        log.info('%i magnitude differences; mean difference %g; mean abs diff %g' %
-                 (len(diff), np.mean(diff), np.mean(np.abs(diff))))
-        self.assertLess(np.mean(diff), 0.6)
+    def testZeroPoint(self):
+        """ Test to see if we can compute a photometric zeropoint given a reference task"""
+        self._runTask()
+        self.assertGreater(len(self.diff), 50)
+        self.log.info('%i magnitude differences; mean difference %g; mean abs diff %g' %
+                 (len(self.diff), np.mean(self.diff), np.mean(np.abs(self.diff))))
+        self.assertLess(np.mean(self.diff), 0.6)
 
         # Differences of matched objects that were used in the fit.
-        zp = pCal.calib.getMagnitude(1.)
-        log.logdebug('zeropoint: %g' % zp)
-        fitdiff = pCal.arrays.srcMag + zp - pCal.arrays.refMag
-        log.logdebug('number of sources used in fit: %i' % len(fitdiff))
-        log.logdebug('rms diff: %g' % np.mean(fitdiff**2)**0.5)
-        log.logdebug('median abs(diff): %g' % np.median(np.abs(fitdiff)))
+        self.log.logdebug('zeropoint: %g' % self.zp)
+        self.log.logdebug('number of sources used in fit: %i' % len(self.fitdiff))
+        self.log.logdebug('rms diff: %g' % np.mean(self.fitdiff**2)**0.5)
+        self.log.logdebug('median abs(diff): %g' % np.median(np.abs(self.fitdiff)))
 
         # zeropoint: 31.3145
         # number of sources used in fit: 65
@@ -150,29 +165,36 @@ class PhotoCalTest(unittest.TestCase):
         # median abs(diff): 0.0368904
         # mean abs(diff): 0.0516589
 
-        self.assertLess(abs(zp - 31.3145), 0.05)
-
-        self.assertGreater(len(fitdiff), 50)
+        self.assertLess(abs(self.zp - 31.3145), 0.05)
+        self.assertGreater(len(self.fitdiff), 50)
         # Tolerances are somewhat arbitrary; they're set simply to avoid regressions, and
         # are not based on we'd expect to get given the data quality.
-        self.assertLess(np.mean(fitdiff**2)**0.5, 0.07)    # rms difference
-        self.assertLess(np.median(np.abs(fitdiff)), 0.06)  # median absolution difference
+        self.assertLess(np.mean(self.fitdiff**2)**0.5, 0.07)    # rms difference
+        self.assertLess(np.median(np.abs(self.fitdiff)), 0.06)  # median absolution difference
+
+    def testColorTerms(self):
+        """ Test to see if we can apply colorterm corrections while computing photometric zeropoints"""
+        # Turn colorterms on. The colorterm library used here is simple - we just apply a 1 mag 
+        #color-independentcolorterm correction to everything. This should change the photometric zeropoint.
+        # by 1 mag.
+        self.config.applyColorTerms = True
+        self.config.colorterms = testColorterms
+        self.config.photoCatName = "testglob" # Check glo expansion
+        # zerPointOffset is the offset in the zeropoint that we expect from a uniform (i.e. color-independent)
+        # colorterm correction.
+        zeroPointOffset = testColorterms.data['test*'].data['i'].c0
+        self._runTask()
+
+        self.assertLess(np.mean(self.diff), 0.6 + zeroPointOffset)
+        self.log.logdebug('zeropoint: %g' % self.zp)
+        # zeropoint: 32.3145
+        self.assertLess(abs(self.zp - (31.3145 + zeroPointOffset)), 0.05)
+
+class MemoryTester(lsst.utils.tests.MemoryTestCase):
+    pass
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-def suite():
-    """Returns a suite containing all the test cases in this module."""
-    utilsTests.init()
-
-    suites = []
-    suites += unittest.makeSuite(PhotoCalTest)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
-
-    return unittest.TestSuite(suites)
-
-def run(exit=False):
-    """Run the tests"""
-    utilsTests.run(suite(), exit)
-
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()
