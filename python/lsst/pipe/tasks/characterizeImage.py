@@ -352,7 +352,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self._frame = self._initialFrame # reset debug display frame
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
-            raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
+            if self.config.useSimplePsf or not exposure.hasPsf():
+                self.installSimplePsf.run(exposure=exposure)
 
         # subtract an initial estimate of background level
         background = self.background.run(exposure).background
@@ -426,7 +427,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             if self.config.useSimplePsf or not exposure.hasPsf():
                 self.installSimplePsf.run(exposure=exposure)
         elif not exposure.hasPsf():
-            raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
+            self.installSimplePsf.run(exposure=exposure)
 
         # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
         self.repair.run(exposure=exposure, keepCRs=True)
