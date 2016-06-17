@@ -805,6 +805,37 @@ def getFluxKeys(schema):
         raise TaskError("No flux keys found")
     return fluxKeys, errKeys
 
+def addApertureFluxesHSC(catalog, prefix=""):
+    mapper = afwTable.SchemaMapper(catalog[0].schema)
+    mapper.addMinimalSchema(catalog[0].schema)
+    schema = mapper.getOutputSchema()
+    apName = prefix + "base_CircularApertureFlux"
+    apRadii = ["3_0", "4_5", "6_0", "9_0", "12_0", "17_0", "25_0", "35_0", "50_0", "70_0"]
+
+    # for ia in range(len(apRadii)):
+    # Just to 12 pixels for now...takes a long time...
+    for ia in (4,):
+        apFluxKey = schema.addField(apName + "_" + apRadii[ia] + "_flux", type="D",
+                                    doc="flux within " + apRadii[ia].replace("_", ".")
+                                    + "-pixel aperture", units="count")
+        apFluxSigmaKey = schema.addField(apName + "_" + apRadii[ia] + "_fluxSigma", type="D",
+                                         doc="1-sigma flux uncertainty")
+    apFlagKey = schema.addField(apName + "_flag", type="Flag", doc="general failure flag")
+
+    newCatalog = afwTable.SourceCatalog(schema)
+    newCatalog.reserve(len(catalog))
+
+    for source in catalog:
+        row = newCatalog.addNew()
+        row.assign(source, mapper)
+        # for ia in range(len(apRadii)):
+        for ia in (4,):
+            row.set(apFluxKey, source[prefix+"flux_aperture"][ia])
+            row.set(apFluxSigmaKey, source[prefix+"flux_aperture_err"][ia])
+        row.set(apFlagKey, source.get(prefix+"flux_aperture_flag"))
+
+    return newCatalog
+
 def addFpPoint(det, catalog, prefix=""):
     # Compute Focal Plane coordinates for SdssCentroid of each source and add to schema
     mapper = afwTable.SchemaMapper(catalog[0].schema)
@@ -918,6 +949,8 @@ class CoaddAnalysisConfig(Config):
     doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
+    doAddAperFluxHsc = Field(dtype=bool, default=False,
+                             doc="Add a field containing 12 pix circular aperture flux to HSC table?")
     doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
@@ -1019,7 +1052,7 @@ class CoaddAnalysisTask(CmdLineTask):
     def plotMags(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None, matchRadius=None,
                  zpLabel=None):
         enforcer = Enforcer(requireLess={"star": {"stdev": 0.02}})
-        for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+        for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel", "slot_CalibFlux"]:
             if col + "_flux" in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff(col + "_flux", "base_PsfFlux_flux"), "Mag(%s) - PSFMag"
                                    % col, "mag_" + col, self.config.analysis,
@@ -1596,7 +1629,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         metadata = butler.get("calexp_md", dataRefList[0].dataId)
         # Set an alias map for differing src naming conventions of different stacks (if any)
         hscRun = checkHscStack(metadata)
-        if self.config.srcSchemaMap is not None and hscRun is not None:
+        if hscRun is not None and self.config.doAddAperFluxHsc:
+            print "HSC run: adding aperture flux to schema..."
+            catalog = addApertureFluxesHSC(catalog, prefix="")
+        if hscRun is not None and self.config.srcSchemaMap is not None:
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set(lsstName, otherName)
@@ -1680,6 +1716,8 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
             # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
             matches = matchJanskyToDn(matches)
+            if checkHscStack(metadata) is not None and self.config.doAddAperFluxHsc:
+                addApertureFluxesHSC(matches, prefix="second_")
 
             if len(matches) == 0:
                 self.log.warn("No matches for %s" % (dataRef.dataId,))
@@ -1769,6 +1807,8 @@ class CompareAnalysisConfig(Config):
     sysErrCentroids = Field(dtype=float, default=0.15, doc="Systematic error in centroids (pixels)")
     srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
                              doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
+    doAddAperFluxHsc = Field(dtype=bool, default=False,
+                             doc="Add a field containing 12 pix circular aperture flux to HSC table?")
 
 class CompareAnalysisRunner(TaskRunner):
     @staticmethod
@@ -1886,25 +1926,39 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         dataId = dataRefList1[0].dataId
         ccdList1 = [dataRef.dataId["ccd"] for dataRef in dataRefList1]
         butler1 = dataRefList1[0].getButler()
+        metadata1 = butler1.get("calexp_md", dataRefList1[0].dataId)
         camera1 = butler1.get("camera")
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
         catalog1 = self.readCatalogs(dataRefList1, "src")
         catalog2 = self.readCatalogs(dataRefList2, "src")
+        # Check metadata to see if stack used was HSC
+        butler2 = dataRefList2[0].getButler()
+        metadata2 = butler2.get("calexp_md", dataRefList2[0].dataId)
+        hscRun = checkHscStack(metadata2)
+        if hscRun is not None and self.config.doAddAperFluxHsc:
+            print "HSC run: adding aperture flux to schema..."
+            catalog2 = addApertureFluxesHSC(catalog2, prefix="")
+
+        hscRun1 = checkHscStack(metadata1)
+        if hscRun1 is not None and self.config.doAddAperFluxHsc:
+            print "HSC run: adding aperture flux to schema..."
+            catalog1 = addApertureFluxesHSC(catalog1, prefix="")
+
         self.log.info("\nNumber of sources in catalogs: first = {0:d} and second = {1:d}".format(
                 len(catalog1), len(catalog2)))
         catalog = self.matchCatalogs(catalog1, catalog2)
         self.log.info("Number of matches (maxDist = {0:.2f} arcsec) = {1:d}".format(
                 self.config.matchRadius, len(catalog)))
 
-        # Check metadata to see if stack used was HSC
-        butler2 = dataRefList2[0].getButler()
-        metadata2 = butler2.get("calexp_md", dataRefList2[0].dataId)
-        hscRun = checkHscStack(metadata2)
         # Set an alias map for differing src naming conventions of different stacks (if any)
         if self.config.srcSchemaMap is not None and hscRun is not None:
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set("second_" + lsstName, "second_" + otherName)
+        if self.config.srcSchemaMap is not None and hscRun1 is not None:
+            aliasMap = catalog.schema.getAliasMap()
+            for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                aliasMap.set("first_" + lsstName, "first_" + otherName)
 
         if self.config.doBackoutApCorr:
             catalog = backoutApCorr(catalog)
