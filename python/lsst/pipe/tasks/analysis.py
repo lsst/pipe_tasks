@@ -505,6 +505,9 @@ class Analysis(object):
             if self.quantityError is not None:
                 stats[name].sysErr = self.calculateSysError(data.quantity, data.error,
                                                             good, forcedMean=forcedMean)
+            if len(stats) == 0:
+                stats = None
+                print "WARNING stats: no usable data.  Returning stats = None"
         return stats
 
     def calculateStats(self, quantity, selection, forcedMean=None):
