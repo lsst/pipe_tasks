@@ -196,10 +196,16 @@ class Analysis(object):
             i1 = filename.find("visit-") + len("visit-")
             i2 = filename.find("/", i1)
             visitNumber = filename[i1:i2]
-            plt.text(xLoc, yLoc, "visit: " + str(visitNumber), ha="center", va="center",
+            plt.text(xLoc, yLoc, "visit: " + str(visitNumber), ha="center", va="center", fontsize=12,
                      transform=axis.transAxes, color=color)
 
-    def plotAgainstMag(self, filename, stats=None, camera=None, ccdList=None, hscRun=None, matchRadius=None):
+    @staticmethod
+    def labelZp(zpLabel, plt, axis, xLoc, yLoc, color="k"):
+        plt.text(xLoc, yLoc, "zp: " + zpLabel, ha="center", va="center", fontsize=11,
+                 transform=axis.transAxes, color=color)
+
+    def plotAgainstMag(self, filename, stats=None, camera=None, ccdList=None, hscRun=None, matchRadius=None,
+                       zpLabel=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         plt.axhline(0, linestyle="--", color="0.4")
@@ -219,11 +225,13 @@ class Analysis(object):
                               matchRadius=matchRadius)
         axes.legend(handles=dataPoints, loc=1, fontsize=8)
         self.labelVisit(filename, plt, axes, 0.5, 1.05)
+        if zpLabel is not None:
+            self.labelZp(zpLabel, plt, axes, 0.13, -0.09, color="green")
         fig.savefig(filename)
         plt.close(fig)
 
     def plotAgainstMagAndHist(self, filename, stats=None, camera=None, ccdList=None, hscRun=None,
-                              matchRadius=None):
+                              matchRadius=None, zpLabel=None):
         """Plot quantity against magnitude with side histogram"""
         nullfmt = NullFormatter()   # no labels for histograms
         minorLocator = AutoMinorLocator(2) # minor tick marks
@@ -354,10 +362,12 @@ class Analysis(object):
         axHistx.legend(fontsize=7, loc=2)
         axHisty.legend(fontsize=7)
         self.labelVisit(filename, plt, axScatter, 1.18, -0.11, color="green")
+        if zpLabel is not None:
+            self.labelZp(zpLabel, plt, axScatter, 0.08, -0.11, color="green")
         plt.savefig(filename)
         plt.close()
 
-    def plotHistogram(self, filename, numBins=51, stats=None, hscRun=None, matchRadius=None):
+    def plotHistogram(self, filename, numBins=51, stats=None, hscRun=None, matchRadius=None, zpLabel=None):
         """Plot histogram of quantity"""
         fig, axes = plt.subplots(1, 1)
         axes.axvline(0, linestyle="--", color="0.6")
@@ -387,10 +397,13 @@ class Analysis(object):
                               isHist=True, hscRun=hscRun, matchRadius=matchRadius)
         axes.legend()
         self.labelVisit(filename, plt, axes, 0.5, 1.05)
+        if zpLabel is not None:
+            self.labelZp(zpLabel, plt, axes, 0.13, -0.09, color="green")
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotSkyPosition(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None):
+    def plotSkyPosition(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None,
+                        zpLabel=None):
         """Plot quantity as a function of position"""
         ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
         dec = np.rad2deg(self.catalog[self.prefix + "coord_dec"])
@@ -419,10 +432,12 @@ class Analysis(object):
         if hscRun is not None:
             axes.set_title("HSC stack run: " + hscRun, color="#800080")
         self.labelVisit(filename, plt, axes, 0.5, 1.07)
+        if zpLabel is not None:
+            self.labelZp(zpLabel, plt, axes, 0.13, -0.09, color="green")
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotRaDec(self, filename, stats=None, hscRun=None, matchRadius=None):
+    def plotRaDec(self, filename, stats=None, hscRun=None, matchRadius=None, zpLabel=None):
         """Plot quantity as a function of RA, Dec"""
 
         ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
@@ -454,24 +469,26 @@ class Analysis(object):
             self.annotateAxes(plt, axes[1], stats, "star", self.config.magThreshold, x0=0.03, yOff=0.07,
                               hscRun=hscRun, matchRadius=matchRadius)
         self.labelVisit(filename, plt, axes[0], 0.5, 1.1)
+        if zpLabel is not None:
+            self.labelZp(zpLabel, plt, axes[0], 0.13, -0.09, color="green")
         fig.savefig(filename)
         plt.close(fig)
 
     def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, camera=None, ccdList=None,
-                hscRun=None, matchRadius=None):
+                hscRun=None, matchRadius=None, zpLabel=None):
         """Make all plots"""
         stats = self.stats(forcedMean=forcedMean)
         self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
                                     stats=stats, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                    matchRadius=matchRadius)
+                                    matchRadius=matchRadius, zpLabel=zpLabel)
         self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
-                            hscRun=hscRun, matchRadius=matchRadius)
+                            hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats,
-                           hscRun=hscRun, matchRadius=matchRadius)
+                           hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats,
-                             hscRun=hscRun, matchRadius=matchRadius)
+                             hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"), stats=stats,
-                       hscRun=hscRun, matchRadius=matchRadius)
+                       hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         log.info("Statistics from %s of %s: %s" % (dataId, self.quantityName, stats))
         if enforcer:
             enforcer(stats, dataId, log, self.quantityName)
@@ -555,23 +572,25 @@ class Enforcer(object):
 
 class CcdAnalysis(Analysis):
     def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, camera=None, ccdList=None,
-                hscRun=None, matchRadius=None):
+                hscRun=None, matchRadius=None, zpLabel=None):
         stats = self.stats(forcedMean=forcedMean)
         self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats,
-                     hscRun=hscRun, matchRadius=matchRadius)
+                     hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
-                            hscRun=hscRun, matchRadius=matchRadius)
+                            hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
+
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean,
-                                camera=camera, ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius)
+                                camera=camera, ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius,
+                                zpLabel=zpLabel)
 
     def plotFP(self, dataId, filenamer, log, enforcer=None, forcedMean=None, camera=None, ccdList=None,
-                hscRun=None, matchRadius=None):
+                hscRun=None, matchRadius=None, zpLabel=None):
         stats = self.stats(forcedMean=forcedMean)
         self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
-                            hscRun=hscRun, matchRadius=matchRadius)
+                            hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
 
     def plotCcd(self, filename, centroid="base_SdssCentroid", cmap=plt.cm.nipy_spectral, idBits=32,
-                visitMultiplier=200, stats=None, hscRun=None, matchRadius=None):
+                visitMultiplier=200, stats=None, hscRun=None, matchRadius=None, zpLabel=None):
         """Plot quantity as a function of CCD x,y"""
         xx = self.catalog[self.prefix + centroid + "_x"]
         yy = self.catalog[self.prefix + centroid + "_y"]
@@ -616,10 +635,13 @@ class CcdAnalysis(Analysis):
         cb = fig.colorbar(mappable, cax=cax)
         cb.set_label("CCD index", rotation=270, labelpad=15)
         self.labelVisit(filename, plt, axes[0], 0.5, 1.1)
+        if zpLabel is not None:
+            self.labelZp(zpLabel, plt, axes[0], 0.08, -0.11, color="green")
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotFocalPlane(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None):
+    def plotFocalPlane(self, filename, cmap=plt.cm.Spectral, stats=None, hscRun=None, matchRadius=None,
+                       zpLabel=None):
         """Plot quantity colormaped on the focal plane"""
         xFp = self.catalog[self.prefix + "base_FPPosition_x"]
         yFp = self.catalog[self.prefix + "base_FPPosition_y"]
@@ -653,9 +675,10 @@ class CcdAnalysis(Analysis):
         if hscRun is not None:
             axes.set_title("HSC stack run: " + hscRun, color="#800080")
         self.labelVisit(filename, plt, axes, 0.5, 1.07)
+        if zpLabel is not None:
+            self.labelZp(zpLabel, plt, axes, 0.08, -0.11, color="green")
         fig.savefig(filename)
         plt.close(fig)
-
 
 class MagDiff(object):
     """Functor to calculate magnitude difference"""
@@ -990,7 +1013,8 @@ class CoaddAnalysisTask(CmdLineTask):
             catList = [cat[cat["base_ClassificationExtendedness_value"] < 0.5].copy(True) for cat in catList]
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None, matchRadius=None):
+    def plotMags(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None, matchRadius=None,
+                 zpLabel=None):
         enforcer = Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if col + "_flux" in catalog.schema:
@@ -999,9 +1023,9 @@ class CoaddAnalysisTask(CmdLineTask):
                                    flags=[col + "_flag"], labeller=StarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, enforcer,
                                              camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                             matchRadius=matchRadius)
+                                             matchRadius=matchRadius, zpLabel=zpLabel)
     def plotCentroidXY(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
-                       matchRadius=None):
+                       matchRadius=None, zpLabel=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_SdssCentroid_x", "base_SdssCentroid_y"]:
             if col in catalog.schema:
@@ -1009,16 +1033,16 @@ class CoaddAnalysisTask(CmdLineTask):
                                    flags=["base_SdssCentroid_flag"], labeller=StarGalaxyLabeller(),
                                    ).plotFP(dataId, filenamer, self.log, enforcer,
                                              camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                             matchRadius=matchRadius)
+                                             matchRadius=matchRadius, zpLabel=zpLabel)
 
-    def plotStarGal(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None):
+    def plotStarGal(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None, zpLabel=None):
         self.AnalysisClass(catalog, deconvMomStarGal, "pStar", "pStar", self.config.analysis,
                            qMin=0.0, qMax=1.0, ).plotAll(dataId, filenamer, self.log)
         self.AnalysisClass(catalog, deconvMom, "Deconvolved moments", "deconvMom", self.config.analysis,
                            qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.2}}), hscRun=hscRun,
-                                     matchRadius=matchRadius)
+                                     matchRadius=matchRadius, zpLabel=zpLabel)
 
     def plotForced(self, unforced, forced, filenamer, dataId):
         catalog = joinMatches(afwTable.matchRaDec(unforced, forced,
@@ -1038,7 +1062,7 @@ class CoaddAnalysisTask(CmdLineTask):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
         return joinMatches(matches, "first_", "second_")
 
-    def plotOverlaps(self, overlaps, filenamer, dataId, hscRun=None, matchRadius=None):
+    def plotOverlaps(self, overlaps, filenamer, dataId, hscRun=None, matchRadius=None, zpLabel=None):
         magEnforcer = Enforcer(requireLess={"star": {"stdev": 0.003}})
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in overlaps.schema:
@@ -1047,23 +1071,25 @@ class CoaddAnalysisTask(CmdLineTask):
                                    self.config.analysis,
                                    prefix="first_", flags=[col + "_flag"],
                                    labeller=OverlapsStarGalaxyLabeller(),
-                                   ).plotAll(dataId, filenamer, self.log, magEnforcer, hscRun=hscRun)
+                                   ).plotAll(dataId, filenamer, self.log, magEnforcer, hscRun=hscRun,
+                                             zpLabel=zpLabel)
 
         distEnforcer = Enforcer(requireLess={"star": {"stdev": 0.005}})
         self.AnalysisClass(overlaps, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", "overlap_distance", self.config.analysis, prefix="first_",
                            qMin=0.0, qMax=0.15, labeller=OverlapsStarGalaxyLabeller(),
-                           ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0, hscRun=hscRun)
+                           ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0, hscRun=hscRun,
+                                     zpLabel=zpLabel)
 
     def plotMatches(self, matches, filterName, filenamer, dataId, description="matches", camera=None,
-                    ccdList=None, hscRun=None, matchRadius=None):
+                    ccdList=None, hscRun=None, matchRadius=None, zpLabel=None):
         ct = self.config.colorterms.getColorterm(filterName, self.config.photoCatName)
         self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0), "MagPsf - ref",
                            description + "_mag", self.config.analysisMatches,
                            prefix="src_", qMin=-0.05, qMax=0.05, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.030}}), camera=camera,
-                                     ccdList=ccdList,hscRun=hscRun, matchRadius=matchRadius)
+                                     ccdList=ccdList,hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.AnalysisClass(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", description + "_distance", self.config.analysisMatches,
                            prefix="src_", qMin=0.0, qMax=self.config.matchesMaxDistance,
@@ -1071,21 +1097,21 @@ class CoaddAnalysisTask(CmdLineTask):
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}),
                                      forcedMean=0.0, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                     matchRadius=matchRadius)
+                                     matchRadius=matchRadius, zpLabel=zpLabel)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_ra", "ref_coord_ra", "ref_coord_dec"),
                            "dRA*cos(Dec) (arcsec)", description + "_ra", self.config.analysisMatches,
                            prefix="src_", qMin=-self.config.matchesMaxDistance,
                            qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}), camera=camera,
-                                     ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius)
+                                     ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_dec", "ref_coord_dec"),
                            "dDec (arcsec)", description + "_dec", self.config.analysisMatches, prefix="src_",
                            qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}), camera=camera,
-                                     ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius)
+                                     ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
 
     def plotCosmos(self, catalog, filenamer, cosmos, dataId):
         labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
@@ -1577,20 +1603,21 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             self.plotCentroidXY(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun)
         if self.config.doStarGalaxy:
             if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
-                self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun)
+                self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun, zpLabel=self.zpLabel)
             else:
                 self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if self.config.doMatches:
             matches = self.readSrcMatches(dataRefList, "src")
             self.plotMatches(matches, filterName, filenamer, dataId, camera=camera, ccdList=ccdList,
-                             hscRun=hscRun, matchRadius=self.config.matchRadius)
+                             hscRun=hscRun, matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
 
         for cat in self.config.externalCatalogs:
             if self.config.photoCatName not in cat:
                 with andCatalog(cat):
                     matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
                     self.plotMatches(matches, filterName, filenamer, dataId, cat, camera=camera,
-                                     ccdList=ccdList, hscRun=hscRun, matchRadius=self.config.matchRadius)
+                                     ccdList=ccdList, hscRun=hscRun, matchRadius=self.config.matchRadius,
+                                     zpLabel=self.zpLabel)
 
     def readCatalogs(self, dataRefList, dataset):
         catList = []
@@ -1612,8 +1639,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
                 catList.append(calibrated)
+                self.zpLabel = "MEAS_MOSAIC"
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
+                self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
                 calibrated = calibrateSourceCatalog(catalog, self.zp)
                 catList.append(calibrated)
 
@@ -1794,16 +1823,18 @@ class CompareAnalysisTask(CmdLineTask):
         return joinMatches(matches, "first_", "second_")
 
     def plotCentroids(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
-                      matchRadius=None):
+                      matchRadius=None, zpLabel=None):
         distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
         Analysis(catalog, CentroidDiff("x"), "Run Comparison: x offset (arcsec)", "diff_x",
                  self.config.analysis, prefix="first_", qMin=-0.3, qMax=0.3, errFunc=CentroidDiffErr("x"),
                  labeller=OverlapsStarGalaxyLabeller(),
-                 ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius)
+                 ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius,
+                           zpLabel=zpLabel)
         Analysis(catalog, CentroidDiff("y"), "Run Comparison: y offset (arcsec)", "diff_y",
                  self.config.analysis, prefix="first_", qMin=-0.1, qMax=0.1, errFunc=CentroidDiffErr("y"),
                  labeller=OverlapsStarGalaxyLabeller(),
-                 ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius)
+                 ).plotAll(dataId, filenamer, self.log, distEnforcer, hscRun=hscRun, matchRadius=matchRadius,
+                           zpLabel=zpLabel)
 
     def _getConfigName(self):
         return None
@@ -1877,10 +1908,10 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
 
         if self.config.doMags:
             self.plotMags(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
-                          matchRadius=self.config.matchRadius)
+                          matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
         if self.config.doApCorrs:
             self.plotApCorrs(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
-                             matchRadius=self.config.matchRadius)
+                             matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
         if self.config.doCentroids:
             self.plotCentroids(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
                                matchRadius=self.config.matchRadius)
@@ -1896,9 +1927,15 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
 
             # Scale fluxes to measured zeropoint
             self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
+            self.zpLabel = "FLUXMAG0"
+            # if False:
+            if True:
+                self.zp = 33.0
+                self.zpLabel = "common (" + str(self.zp) + ")"
             try:
                 calibrated = calibrateSourceCatalogMosaic(dataRef, srcCat, zp=self.config.analysis.zp)
                 catList.append(calibrated)
+                self.zpLabel = "MEAS_MOSAIC"
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
                 self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
@@ -1909,19 +1946,24 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             raise TaskError("No catalogs read: %s" % ([dataRefList[0].dataId for dataRef in dataRefList]))
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None, matchRadius=None):
+    def plotMags(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None, matchRadius=None,
+                 zpLabel=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
-        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel", "base_CircularApertureFlux_12_0"]:
+            if "CircularAperture" in col:
+                zpLabel = None
             if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
+                if "CircularAperture" in col:
+                    zpLabel = None
                 Analysis(catalog, MagDiffCompare(col + "_flux"),
                          "Run Comparison: Mag difference (%s)" % col, "diff_" + col, self.config.analysis,
                          prefix="first_", qMin=-0.05, qMax=0.05, flags=[col + "_flag"],
                          errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
                          ).plotAll(dataId, filenamer, self.log, enforcer, camera=camera, ccdList=ccdList,
-                                   hscRun=hscRun, matchRadius=matchRadius)
+                                   hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
 
     def plotApCorrs(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
-                    matchRadius=None):
+                    matchRadius=None, zpLabel=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_apCorr" in catalog.schema and "second_" + col + "_apCorr" in catalog.schema:
@@ -1931,7 +1973,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
                          prefix="first_", qMin=-0.025, qMax=0.025, flags=[col + "_flag_apCorr"],
                          errFunc=ApCorrDiffErr(col + "_apCorr"), labeller=OverlapsStarGalaxyLabeller(),
                          ).plotAll(dataId, filenamer, self.log, enforcer, camera=camera, ccdList=ccdList,
-                                   hscRun=hscRun, matchRadius=matchRadius)
+                                   hscRun=hscRun, matchRadius=matchRadius, zpLabel=None)
 
 class MagDiffErr(object):
     """Functor to calculate magnitude difference error"""
