@@ -886,10 +886,12 @@ def calibrateSourceCatalog(catalog, zp):
 
     Requires a SourceCatalog and zeropoint as input.
     """
-    factor = 10.0**(0.4*zp)
     # Convert to constant zero point, as for the coadds
     fluxKeys, errKeys = getFluxKeys(catalog.schema)
-    for key in fluxKeys.values() + errKeys.values():
+    for name, key in fluxKeys.items() + errKeys.items():
+        factor = 10.0**(0.4*zp)
+        if re.search(r"perture", name):
+            factor = 10.0**(0.4*33.0)
         for src in catalog:
             src[key] /= factor
     return catalog
@@ -1742,6 +1744,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             except Exception as e:
                 self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
                 self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
+                self.log.warn("(except for circular aperture fluxes: set to common zp=33.0) ")
                 src = calibrateSourceCatalog(src, self.zp)
 
             for mm, ss in zip(matches, src):
