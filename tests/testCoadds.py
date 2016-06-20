@@ -45,6 +45,7 @@ import unittest
 import shutil
 import os
 import sys
+import numbers
 
 from lsst.utils import getPackageDir
 import lsst.utils.tests
@@ -372,6 +373,23 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=self.butler)
         self.runTaskOnCcds(task)
 
+    def testAlgMetadataOutput(self):
+        """Test to see if algMetadata is persisted correctly from MeasureMergedCoaddSourcesTask. This test 
+           fails with a NotFoundError if the algorithm metadata is not persisted"""
+        patchList = ['0,0', '0,1', '1,0', '1,1']
+        for patch in patchList:
+            cat = self.butler.get("deepCoadd_meas", filter = 'r', tract = 0, patch = patch)
+            meta = cat.getTable().getMetadata()
+            for circApertureFluxRadius in meta.get('base_CircularApertureFlux_radii'):
+                self.assertIsInstance(circApertureFluxRadius, numbers.Number)
+            for nOffset in meta.get('NOISE_OFFSET'):
+                self.assertIsInstance(nOffset, numbers.Number)
+            for noiseSrc in meta.get('NOISE_SOURCE'):
+                self.assertEqual(noiseSrc, 'measure')
+            for noiseExpID in meta.get('NOISE_EXPOSURE_ID'):
+                self.assertIsInstance(noiseExpID, numbers.Number)
+            for noiseSeedMul in meta.get('NOISE_SEED_MULTIPLIER'):
+                self.assertIsInstance(noiseSeedMul, numbers.Number)
 
 class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
     def testSafeClipConfig(self):
