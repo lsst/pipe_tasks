@@ -1047,6 +1047,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                 self.log.warn("Patch %s contains %d large footprints that were not deblended" %
                               (patchRef.dataId, numBig))
 
+        table = sources.getTable()
+        table.setMetadata(self.algMetadata) # Capture algorithm metadata to write out to the source catalog.
         # First run plugins with order up to and including APCORR_ORDER to measure all fluxes
         # and apply the aperture correction (using the apCorrMap measured in the calibration
         # task) to the measured fluxes whose plugins were registered with shouldApCorr=True
