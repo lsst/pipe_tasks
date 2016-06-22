@@ -218,20 +218,18 @@ class RunTransformTestCase(utilsTests.TestCase):
         # Configure a ProcessCcd task such that it will return a minimal
         # number of measurements plus our test plugin.
         cfg = ProcessCcdConfig()
-        cfg.calibrate.detectAndMeasure.measurement.plugins.names = [
-            "base_SdssCentroid", "base_SkyCoord", PLUGIN_NAME]
-        cfg.calibrate.detectAndMeasure.measurement.slots.shape = None
-        cfg.calibrate.detectAndMeasure.measurement.slots.psfFlux = None
-        cfg.calibrate.detectAndMeasure.measurement.slots.apFlux = None
-        cfg.calibrate.detectAndMeasure.measurement.slots.instFlux = None
-        cfg.calibrate.detectAndMeasure.measurement.slots.modelFlux = None
-        cfg.calibrate.detectAndMeasure.measurement.slots.calibFlux = None
+        cfg.calibrate.measurement.plugins.names = ["base_SdssCentroid", "base_SkyCoord", PLUGIN_NAME]
+        cfg.calibrate.measurement.slots.shape = None
+        cfg.calibrate.measurement.slots.psfFlux = None
+        cfg.calibrate.measurement.slots.apFlux = None
+        cfg.calibrate.measurement.slots.instFlux = None
+        cfg.calibrate.measurement.slots.modelFlux = None
+        cfg.calibrate.measurement.slots.calibFlux = None
         # no reference catalog, so...
         cfg.calibrate.doAstrometry = False
         cfg.calibrate.doPhotoCal = False
         # disable aperture correction because we aren't measuring aperture flux
-        cfg.calibrate.detectAndMeasure.doMeasureApCorr = False
-        cfg.calibrate.detectAndMeasure.measurement.doApplyApCorr = "noButWarn"
+        cfg.calibrate.doApCorr = False
 
         # Process the test data with ProcessCcd then perform a transform.
         with tempDirectory() as tempDir:

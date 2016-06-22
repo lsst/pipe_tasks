@@ -228,11 +228,11 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
         """!
         The configuration of the measurement operation used to generate the input catalog.
 
-        By default we look for `detectAndMeasure.measurement` under the root configuration of the
-        generating task. Subclasses may customize this (e.g. to `calibrate.detectAndMeasure.measurement`)
+        By default we look for `measurement` under the root configuration of the
+        generating task. Subclasses may customize this (e.g. to `calibrate.measurement`)
         if required.
         """
-        return self.butler.get(self.config.inputConfigType).detectAndMeasure.measurement.value
+        return self.butler.get(self.config.inputConfigType).measurement.value
 
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, config=kwargs['config'], log=kwargs['log'])
@@ -282,7 +282,7 @@ class SrcTransformTask(RunTransformTaskBase):
 
     @property
     def measurementConfig(self):
-        return self.butler.get(self.config.inputConfigType).calibrate.detectAndMeasure.measurement.value
+        return self.butler.get(self.config.inputConfigType).calibrate.measurement.value
 
 
 ## \addtogroup LSST_task_documentation

@@ -28,7 +28,13 @@ import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata,\
     LoadAstrometryNetObjectsTask
 from lsst.daf.butlerUtils import ExposureIdInfo
-from .detectAndMeasure import DetectAndMeasureTask
+import lsst.daf.base as dafBase
+from lsst.afw.math import BackgroundList
+from lsst.afw.table import IdFactory, SourceTable
+from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata
+from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, AfterburnerTask
+from lsst.meas.deblender import SourceDeblendTask
 from .photoCal import PhotoCalTask
 
 __all__ = ["CalibrateConfig", "CalibrateTask"]
@@ -48,13 +54,9 @@ class CalibrateConfig(pexConfig.Config):
             "are saved as normal footprints, which saves some space",
     )
     doWriteMatches = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Write reference matches (ignored if doWrite false)?",
-    )
-    detectAndMeasure = pexConfig.ConfigurableField(
-        target = DetectAndMeasureTask,
-        doc = "Detect sources to high sigma, deblend and peform single-frame measurement",
+        dtype=bool,
+        default=True,
+        doc="Write reference matches (ignored if doWrite false)?",
     )
     doAstrometry = pexConfig.Field(
         dtype=bool,
@@ -93,9 +95,6 @@ class CalibrateConfig(pexConfig.Config):
         default=("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
         doc="Fields to copy from the icSource catalog to the output catalog for matching sources "
             "Any missing fields will trigger a RuntimeError exception. "
-            "If detectAndMeasure.doMeasureApCorr is True and detectAndMeasure cannot determine its own "
-            "suitable candidates, then this list must include "
-            "config.detectAndMeasure.measureApCorr.inputFilterFlag. "
             "Ignored if icSourceCat is not provided."
     )
     matchRadiusPix = pexConfig.Field(
@@ -108,13 +107,42 @@ class CalibrateConfig(pexConfig.Config):
         dtype=str,
         default="raise",
     )
+    detection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect sources"
+    )
+    doDeblend = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Run deblender input exposure"
+    )
+    deblend = pexConfig.ConfigurableField(
+        target=SourceDeblendTask,
+        doc="Split blended sources into their components"
+    )
+    measurement = pexConfig.ConfigurableField(
+        target=SingleFrameMeasurementTask,
+        doc="Measure sources"
+    )
+    doApCorr = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Run subtask to apply aperture correction"
+    )
+    applyApCorr = pexConfig.ConfigurableField(
+        target=ApplyApCorrTask,
+        doc="Subtask to apply aperture corrections"
+    )
+    # If doApCorr is False, and the exposure does not have apcorrections already applied, the
+    # active plugins in afterburners almost certainly should not contain the characterization plugin
+    afterburners = pexConfig.ConfigurableField(
+        target=AfterburnerTask,
+        doc="Subtask to run afterburner plugins on catalog"
     )
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
         # aperture correction should already be measured
-        self.detectAndMeasure.doMeasureApCorr = False
-        self.detectAndMeasure.measurement.doApplyApCorr = "yes"
 
 
 ## \addtogroup LSST_task_documentation
@@ -143,7 +171,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
     Given an exposure with a good PSF model and aperture correction map
     (e.g. as provided by @ref CharacterizeImageTask), perform the following operations:
-    - Run detectAndMeasure subtask to peform deep detection and measurement
+    - Run detection and measurement
     - Run astrometry subtask to fit an improved WCS
     - Run photoCal subtask to fit the exposure's photometric zero-point
 
@@ -240,9 +268,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
             external reference catalog.  May be None if the desired loader can be constructed
             from the butler argument or all steps requiring a reference catalog are disabled.
         @param[in] icSourceSchema  schema for icSource catalog, or None.
-            If measuring aperture correction and the task detectAndMeasure cannot determine
-            its own suitable candidates, then this argument must be specified.
-            See also config field `icSourceFieldsToCopy`.
+                   Schema values specified in config.icSourceFieldsToCopy will be taken from this schema.
+                   If set to None, no values will be propagated from the icSourceCatalog
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -281,8 +308,17 @@ class CalibrateTask(pipeBase.CmdLineTask):
         else:
             self.schemaMapper = None
             self.schema = afwTable.SourceTable.makeMinimalSchema()
+        self.makeSubtask('detection', schema=self.schema)
 
-        self.makeSubtask("detectAndMeasure", schema=self.schema)
+        self.algMetadata = dafBase.PropertyList()
+
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=self.schema)
+        self.makeSubtask('measurement', schema=self.schema, algMetadata=self.algMetadata)
+        if self.config.doApCorr:
+            self.makeSubtask('applyApCorr', schema=self.schema)
+        self.makeSubtask('afterburners', schema=self.schema)
+
         if self.config.doAstrometry or self.config.doPhotoCal:
             if refObjLoader is None:
                 self.makeSubtask('refObjLoader', butler=butler)
@@ -319,9 +355,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
                 must all be None;
             - if False the exposure must be provided; background and icSourceCat are optional.
             True is intended for running as a command-line task, False for running as a subtask
-
-        @warning until detectAndMeasure can determine suitable sources for measuring aperture correction
-        by itself, you must provide icSourceCat and a suitable entry in config.icSourceFieldsToCopy
 
         @return same data as the calibrate method
         """
@@ -392,13 +425,29 @@ class CalibrateTask(pipeBase.CmdLineTask):
         if exposureIdInfo is None:
             exposureIdInfo = ExposureIdInfo()
 
-        procRes = self.detectAndMeasure.run(
-            exposure = exposure,
-            exposureIdInfo = exposureIdInfo,
-            background = background,
+        if background is None:
+            background = BackgroundList()
+        sourceIdFactory = IdFactory.makeSource(exposureIdInfo.expId, exposureIdInfo.unusedBits)
+        table = SourceTable.make(self.schema, sourceIdFactory)
+        table.setMetadata(self.algMetadata)
+
+        detRes = self.detection.run(table=table, exposure=exposure, doSmooth=True)
+        sourceCat = detRes.sources
+        if detRes.fpSets.background:
+            background.append(detRes.fpSets.background)
+        if self.config.doDeblend:
+            self.deblend.run(exposure=exposure, sources=sourceCat)
+        self.measurement.run(
+            measCat=sourceCat,
+            exposure=exposure,
+            exposureId=exposureIdInfo.expId
         )
-        background = procRes.background
-        sourceCat = procRes.sourceCat
+        if self.config.doApCorr:
+            self.applyApCorr.run(
+                catalog=sourceCat,
+                apCorrMap=exposure.getInfo().getApCorrMap()
+            )
+        self.afterburners.run(sourceCat)
 
         if icSourceCat is not None and len(self.config.icSourceFieldsToCopy) > 0:
             self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=sourceCat)
@@ -473,7 +522,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         """Return a dict of empty catalogs for each catalog dataset produced by this task.
         """
         sourceCat = afwTable.SourceCatalog(self.schema)
-        sourceCat.getTable().setMetadata(self.detectAndMeasure.algMetadata)
+        sourceCat.getTable().setMetadata(self.algMetadata)
         return {"src": sourceCat}
 
     def setMetadata(self, exposure, photoRes=None):
@@ -525,7 +574,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         closest = False  # return all matched objects
         matches = afwTable.matchXy(icSourceCat, sourceCat, self.config.matchRadiusPix, closest)
-        if self.config.detectAndMeasure.doDeblend:
+        if self.config.doDeblend:
             deblendKey = sourceCat.schema["deblend_nChild"].asKey()
             matches = [m for m in matches if m[1].get(deblendKey) == 0]  # if deblended, keep children
 
