@@ -33,17 +33,18 @@ from .photoCal import PhotoCalTask
 
 __all__ = ["CalibrateConfig", "CalibrateTask"]
 
+
 class CalibrateConfig(pexConfig.Config):
     """Config for CalibrateTask"""
     doWrite = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Save calibration results?",
+        dtype=bool,
+        default=True,
+        doc="Save calibration results?",
     )
     doWriteHeavyFootprintsInSources = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Include HeavyFootprint data in source table? If false then heavy footprints "
+        dtype=bool,
+        default=True,
+        doc="Include HeavyFootprint data in source table? If false then heavy footprints "
             "are saved as normal footprints, which saves some space",
     )
     doWriteMatches = pexConfig.Field(
@@ -56,41 +57,41 @@ class CalibrateConfig(pexConfig.Config):
         doc = "Detect sources to high sigma, deblend and peform single-frame measurement",
     )
     doAstrometry = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Perform astrometric calibration?",
+        dtype=bool,
+        default=True,
+        doc="Perform astrometric calibration?",
     )
     refObjLoader = pexConfig.ConfigurableField(
         target = LoadAstrometryNetObjectsTask,
         doc = "reference object loader",
     )
     astrometry = pexConfig.ConfigurableField(
-        target = AstrometryTask,
-        doc = "Perform astrometric calibration to refine the WCS",
+        target=AstrometryTask,
+        doc="Perform astrometric calibration to refine the WCS",
     )
     requireAstrometry = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Raise an exception if astrometry fails? Ignored if doAstrometry false.",
+        dtype=bool,
+        default=True,
+        doc="Raise an exception if astrometry fails? Ignored if doAstrometry false.",
     )
     doPhotoCal = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Perform phometric calibration?",
+        dtype=bool,
+        default=True,
+        doc="Perform phometric calibration?",
     )
     requirePhotoCal = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Raise an exception if photoCal fails? Ignored if doPhotoCal false.",
+        dtype=bool,
+        default=True,
+        doc="Raise an exception if photoCal fails? Ignored if doPhotoCal false.",
     )
     photoCal = pexConfig.ConfigurableField(
-        target = PhotoCalTask,
-        doc = "Perform photometric calibration",
+        target=PhotoCalTask,
+        doc="Perform photometric calibration",
     )
     icSourceFieldsToCopy = pexConfig.ListField(
-        dtype = str,
-        default = ("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
-        doc = "Fields to copy from the icSource catalog to the output catalog for matching sources "
+        dtype=str,
+        default=("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
+        doc="Fields to copy from the icSource catalog to the output catalog for matching sources "
             "Any missing fields will trigger a RuntimeError exception. "
             "If detectAndMeasure.doMeasureApCorr is True and detectAndMeasure cannot determine its own "
             "suitable candidates, then this list must include "
@@ -98,14 +99,15 @@ class CalibrateConfig(pexConfig.Config):
             "Ignored if icSourceCat is not provided."
     )
     matchRadiusPix = pexConfig.Field(
-        dtype = float,
-        default = 3,
-        doc = "Match radius for matching icSourceCat objects to sourceCat objects (pixels)",
+        dtype=float,
+        default=3,
+        doc="Match radius for matching icSourceCat objects to sourceCat objects (pixels)",
     )
     checkUnitsParseStrict = pexConfig.Field(
-        doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
-        dtype = str,
-        default = "raise",
+        doc="Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
+        dtype=str,
+        default="raise",
+    )
     )
 
     def setDefaults(self):
@@ -126,7 +128,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
     """!Calibrate an exposure: measure sources and perform astrometric and photometric calibration
 
     @anchor CalibrateTask_
-    
+
     @section pipe_tasks_calibrate_Contents  Contents
 
      - @ref pipe_tasks_calibrate_Purpose
@@ -271,9 +273,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
                     self.schemaMapper.addMapping(schemaItem.getKey())
 
             if missingFieldNames:
-                raise RuntimeError(
-                    "isSourceCat is missing fields %s specified in icSourceFieldsToCopy" %
-                     (missingFieldNames,))
+                raise RuntimeError("isSourceCat is missing fields {} specified in icSourceFieldsToCopy"
+                                   .format(missingFieldNames))
 
             # produce a temporary schema to pass to the subtasks; finalize it later
             self.schema = self.schemaMapper.editOutputSchema()
@@ -343,20 +344,20 @@ class CalibrateTask(pipeBase.CmdLineTask):
         exposureIdInfo = dataRef.get("expIdInfo")
 
         calRes = self.calibrate(
-            exposure = exposure,
-            exposureIdInfo = exposureIdInfo,
-            background = background,
-            icSourceCat = icSourceCat,
+            exposure=exposure,
+            exposureIdInfo=exposureIdInfo,
+            background=background,
+            icSourceCat=icSourceCat,
         )
 
         if self.config.doWrite:
             self.writeOutputs(
-                dataRef = dataRef,
-                exposure = calRes.exposure,
-                background = calRes.background,
-                sourceCat = calRes.sourceCat,
-                astromMatches = calRes.astromMatches,
-                matchMeta = matchMeta,
+                dataRef=dataRef,
+                exposure=calRes.exposure,
+                background=calRes.background,
+                sourceCat=calRes.sourceCat,
+                astromMatches=calRes.astromMatches,
+                matchMeta=matchMeta,
             )
 
         return calRes
@@ -408,8 +409,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
         if self.config.doAstrometry:
             try:
                 astromRes = self.astrometry.run(
-                    exposure = exposure,
-                    sourceCat = sourceCat,
+                    exposure=exposure,
+                    sourceCat=sourceCat,
                 )
                 astromMatches = astromRes.matches
             except Exception as e:
@@ -435,18 +436,18 @@ class CalibrateTask(pipeBase.CmdLineTask):
         frame = getDebugFrame(self._display, "calibrate")
         if frame:
             displayAstrometry(
-                sourceCat = sourceCat,
-                exposure = exposure,
-                matches = astromMatches,
-                frame = frame,
-                pause = False,
+                sourceCat=sourceCat,
+                exposure=exposure,
+                matches=astromMatches,
+                frame=frame,
+                pause=False,
             )
 
         return pipeBase.Struct(
-            exposure = exposure,
-            background = background,
-            sourceCat = sourceCat,
-            astromMatches = astromMatches,
+            exposure=exposure,
+            background=background,
+            sourceCat=sourceCat,
+            astromMatches=astromMatches,
         )
 
     def writeOutputs(self, dataRef, exposure, background, sourceCat, astromMatches, matchMeta):
@@ -515,7 +516,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         """
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify icSourceSchema "
-                "and icSourceKeys when constructing this task")
+                               "and icSourceKeys when constructing this task")
         if icSourceCat is None or sourceCat is None:
             raise RuntimeError("icSourceCat and sourceCat must both be specified")
         if len(self.config.icSourceFieldsToCopy) == 0:
@@ -530,8 +531,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         # Because we had to allow multiple matches to handle parents, we now need to
         # prune to the best matches
-        bestMatches = {}    # closest matches as a dict of icSourceCat source ID:
-                            #   (icSourceCat source, sourceCat source, distance in pixels)
+        # closest matches as a dict of icSourceCat source ID:
+        # (icSourceCat source, sourceCat source, distance in pixels)
+        bestMatches = {}
         for m0, m1, d in matches:
             id0 = m0.getId()
             match = bestMatches.get(id0)
@@ -544,8 +546,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
         numMatches = len(matches)
         numUniqueSources = len(set(m[1].getId() for m in matches))
         if numUniqueSources != numMatches:
-            self.log.warn("%d icSourceCat sources matched only %d sourceCat sources" %
-                (numMatches, numUniqueSources))
+            self.log.warn("{} icSourceCat sources matched only {} sourceCat sources".format(
+                          numMatches, numUniqueSources))
 
         self.log.info("Copying flags from icSourceCat to sourceCat for %s sources" % (numMatches,))
 
