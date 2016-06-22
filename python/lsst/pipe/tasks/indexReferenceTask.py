@@ -51,10 +51,17 @@ class TextReaderConfig(pexConfig.Config):
 
 
 class TextReaderTask(pipeBase.Task):
+    """Read an object catalog from a text file
+    """
     _DefaultName = 'TextReaderTask'
     ConfigClass = TextReaderConfig
 
     def readFile(self, filename):
+        """Read an object table from the specified text file
+
+        @param[in] filename  path to text file
+        @return a numpy structured array containing the specified columns
+        """
         names = True
         if self.config.colnames:
             names = self.config.colnames
