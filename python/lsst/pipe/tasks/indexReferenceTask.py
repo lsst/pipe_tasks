@@ -20,6 +20,8 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy as np
+from astropy.io import fits
+from astropy.table import Table
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -70,6 +72,54 @@ class TextReaderTask(pipeBase.Task):
                             names=names)
         # Just in case someone has only one line in the file.
         return np.atleast_1d(arr)
+
+
+class FitsReaderConfig(pexConfig.Config):
+    hdu = pexConfig.Field(
+        dtype=int,
+        default=1,
+        doc="HDU containing the desired binary table, 0-based but a binary table never occurs in HDU 0",
+    )
+    column_map = pexConfig.DictField(
+        doc="Mapping of input column name: output column name; each specified column must exist, "
+            "but additional columns in the input data are written using their original name. ",
+        keytype=str,
+        itemtype=str,
+        default={},
+    )
+
+
+class FitsReaderTask(pipeBase.Task):
+    """Read an object catalog from a FITS binary table
+    """
+    _DefaultName = 'referenceCatalogReaderTask'
+    ConfigClass = FitsReaderConfig
+
+    def readFile(self, filename):
+        """Read an object table from the specified FITS file
+
+        @param[in] filename  path to FITS file
+        @return a numpy structured array containing the specified columns
+        """
+        with fits.open(filename) as f:
+            hdu = f[self.config.hdu]
+            if hdu.data is None:
+                raise RuntimeError("No data found in %s HDU %s" % (filename, self.config.hdu))
+            if hdu.is_image:
+                raise RuntimeError("%s HDU %s is an image" % (filename, self.config.hdu))
+
+            if not self.config.column_map:
+                # take the data as it is
+                return hdu.data
+
+            # some columns need to be renamed; use astropy table
+            table = Table(hdu.data, copy=False)
+            missingnames = set(self.config.column_map.keys()) - set(table.colnames)
+            if missingnames:
+                raise RuntimeError("Columns %s in column_map were not found in %s" % (missingnames, filename))
+            for inname, outname in self.config.column_map.iteritems():
+                table.rename_column(inname, outname)
+            return np.array(table)  # convert the astropy table back to a numpy structured array
 
 
 class IngestReferenceRunner(pipeBase.TaskRunner):
