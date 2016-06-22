@@ -39,8 +39,9 @@ class TextReaderConfig(pexConfig.Config):
     colnames = pexConfig.ListField(
         dtype=str,
         default=[],
-        doc="""An ordered list of column names to use in ingesting the catalog.  With an empty
-list, column names will be discovered from the first line after the skipped header lines."""
+        doc="An ordered list of column names to use in ingesting the catalog. "
+            "With an empty list, column names will be discovered from the first line "
+            "after the skipped header lines."
     )
     delimiter = pexConfig.Field(
         dtype=str,
@@ -54,14 +55,14 @@ class TextReaderTask(pipeBase.Task):
     ConfigClass = TextReaderConfig
 
     def readFile(self, filename):
-            names = True
-            if self.config.colnames:
-                names = self.config.colnames
-            arr = numpy.genfromtxt(filename, dtype=None, skip_header=self.config.header_lines,
-                                   delimiter=self.config.delimiter,
-                                   names=names)
-            # Just in case someone has only one line in the file.
-            return numpy.atleast_1d(arr)
+        names = True
+        if self.config.colnames:
+            names = self.config.colnames
+        arr = numpy.genfromtxt(filename, dtype=None, skip_header=self.config.header_lines,
+                               delimiter=self.config.delimiter,
+                               names=names)
+        # Just in case someone has only one line in the file.
+        return numpy.atleast_1d(arr)
 
 
 class IngestReferenceRunner(pipeBase.TaskRunner):
@@ -84,7 +85,7 @@ class IngestReferenceRunner(pipeBase.TaskRunner):
         result = task.create_indexed_catalog(files)
         if self.doReturnResults:
             return pipeBase.Struct(
-                result = result,
+                result=result,
             )
 
 
