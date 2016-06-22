@@ -244,11 +244,17 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     _DefaultName = "imageCharacterization"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
-    def __init__(self, butler, schema=None, **kwargs):
+    def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
         """!Construct a CharacterizeImageTask
 
         @param[in] butler  A butler object is passed to the refObjLoader constructor in case
-            it is needed to load catalogs.
+            it is needed to load catalogs.  May be None if a catalog-based star selector is
+            not used, if the reference object loader constructor does not require a butler,
+            or if a reference object loader is passed directly via the refObjLoader argument.
+        @param[in] refObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog to a catalog-based star selector.  May be None if a
+            catalog star selector is not used or the loader can be constructed from the
+            butler argument.
         @param[in,out] schema  initial schema (an lsst.afw.table.SourceTable), or None
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
@@ -261,8 +267,10 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.makeSubtask("repair")
         self.makeSubtask("measurePsf", schema=self.schema)
         if self.config.doMeasurePsf and self.measurePsf.usesMatches:
-            self.makeSubtask('refObjLoader', butler=butler)
-            self.makeSubtask("astrometry", refObjLoader=self.refObjLoader)
+            if not refObjLoader:
+                self.makeSubtask('refObjLoader', butler=butler)
+                refObjLoader = self.refObjLoader
+            self.makeSubtask("astrometry", refObjLoader=refObjLoader)
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame

@@ -228,11 +228,14 @@ class CalibrateTask(pipeBase.CmdLineTask):
     _DefaultName = "calibrate"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
-    def __init__(self, butler, icSourceSchema=None, **kwargs):
+    def __init__(self, butler=None, refObjLoader=None, icSourceSchema=None, **kwargs):
         """!Construct a CalibrateTask
 
-        @param[in] butler  The butler is passed to the refObjectLoader constructor in case it is
-            needed.
+        @param[in] butler  The butler is passed to the refObjLoader constructor in case it is
+            needed.  Ignored if the refObjLoader argument provides a loader directly.
+        @param[in] refObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog.  May be None if the desired loader can be constructed
+            from the butler argument or all steps requiring a reference catalog are disabled.
         @param[in] icSourceSchema  schema for icSource catalog, or None.
             If measuring aperture correction and the task detectAndMeasure cannot determine
             its own suitable candidates, then this argument must be specified.
@@ -275,8 +278,11 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         if self.config.doAstrometry or self.config.doPhotoCal:
-            self.makeSubtask('refObjLoader', butler=butler)
-            self.makeSubtask("astrometry", refObjLoader=self.refObjLoader, schema=self.schema)
+            if refObjLoader is None:
+                self.makeSubtask('refObjLoader', butler=butler)
+                refObjLoader = self.refObjLoader
+            self.pixelMargin = refObjLoader.config.pixelMargin
+            self.makeSubtask("astrometry", refObjLoader=refObjLoader, schema=self.schema)
         if self.config.doPhotoCal:
             self.makeSubtask("photoCal", schema=self.schema)
 
@@ -325,7 +331,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             raise RuntimeError("doUnpersist false; exposure must be provided")
 
         if self.config.doWrite and self.config.doAstrometry:
-            matchMeta = createMatchMetadata(exposure, border=self.config.refObjLoader.pixelMargin)
+            matchMeta = createMatchMetadata(exposure, border=self.pixelMargin)
         else:
             matchMeta = None
 
