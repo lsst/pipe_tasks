@@ -53,7 +53,7 @@ class TextReaderConfig(pexConfig.Config):
 class TextReaderTask(pipeBase.Task):
     """Read an object catalog from a text file
     """
-    _DefaultName = 'TextReaderTask'
+    _DefaultName = 'catalogReader'
     ConfigClass = TextReaderConfig
 
     def readFile(self, filename):
