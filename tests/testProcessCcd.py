@@ -57,8 +57,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             dataId = dict(visit=1)
             dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
             fullResult = ProcessCcdTask.parseAndRun(
-                args=[InputDir, "--output", outPath, "--clobber-config", "--id"] + dataIdStrList,
-                doReturnResults=True,
+                args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
+                doReturnResults=True
             )
             butler = fullResult.parsedCmd.butler
             self.assertEqual(len(fullResult.resultList), 1)
