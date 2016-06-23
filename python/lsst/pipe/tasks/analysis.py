@@ -1354,33 +1354,6 @@ class VisitAnalysisTask(CoaddAnalysisTask):
 
         return concatenateCatalogs(catList)
 
-###class CompareAnalysis(Analysis):
-###    def __init__(self, catalog, func, errFunc, quantityName, shortName, config, qMin=-0.2, qMax=0.2, prefix="",
-###                 flags=[], labeller=AllLabeller()):
-###        Analysis.__init__(self, catalog, func, errFunc, quantityName, shortName, config, qMin=qMin, qMax=qMax,
-###                          prefix=prefix, flags=flags, labeller=labeller)
-###        # Add errors
-###
-###    def stats(self, forcedMean=None):
-###        """Calculate statistics on quantity"""
-###        stats = {}
-###        for name, data in self.data.iteritems():
-###            if len(data.mag) == 0:
-###                continue
-###            good = data.mag < self.config.magThreshold
-###            total = good.sum() # Total number we're considering
-###            quartiles = np.percentile(data.quantity[good], [25, 50, 75])
-###            assert len(quartiles) == 3
-###            median = quartiles[1]
-###            clip = self.config.clip*0.74*(quartiles[2] - quartiles[0])
-###            good &= np.logical_not(np.abs(data.quantity - median) > clip)
-###            actualMean = data.quantity[good].mean()
-###            mean = actualMean if forcedMean is None else forcedMean
-###            stdev = np.sqrt(((data.quantity[good].astype(np.float64) - mean)**2).mean())
-###            stats[name] = Stats(num=good.sum(), total=total, mean=actualMean, stdev=stdev,
-###                                forcedMean=forcedMean)
-###        return stats
-
 
 class CompareAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
