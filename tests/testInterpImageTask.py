@@ -30,9 +30,10 @@ or
    python
    >>> import testInterpImageTask; testInterpImageTask.run()
 """
-
 import unittest
+
 import numpy as np
+
 import lsst.utils.tests as tests
 import lsst.afw.image as afwImage
 import lsst.afw.display.ds9 as ds9

@@ -22,7 +22,8 @@
 #
 
 import unittest
-import numpy
+
+import numpy as np
 
 import lsst.utils.tests as utilsTests
 import lsst.afw.image as afwImage
@@ -30,7 +31,6 @@ import lsst.afw.table as afwTable
 import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.afw.display.ds9 as ds9
-
 from lsst.pipe.base import Struct
 from lsst.pipe.tasks.registerImage import RegisterConfig, RegisterTask
 
@@ -64,7 +64,7 @@ class RegisterTestCase(unittest.TestCase):
         of the two images are identical, despite the offset; this simulates a small e.g., pointing
         error, or misalignment that the RegisterTask should rectify.
         """
-        numpy.random.seed(0)
+        np.random.seed(0)
         templateImage = afwImage.MaskedImageF(self.width, self.height)
         templateImage.set(0)
         inputImage = afwImage.MaskedImageF(self.width, self.height)
@@ -74,8 +74,8 @@ class RegisterTestCase(unittest.TestCase):
         inputArray = inputImage.getImage().getArray()
 
         # Sources are at integer positions to ensure warped pixels have value of unity
-        xTemplate = numpy.random.randint(self.border, self.width - self.border, self.numSources)
-        yTemplate = numpy.random.randint(self.border, self.width - self.border, self.numSources)
+        xTemplate = np.random.randint(self.border, self.width - self.border, self.numSources)
+        yTemplate = np.random.randint(self.border, self.width - self.border, self.numSources)
         xInput = xTemplate + self.dx
         yInput = yTemplate + self.dy
 
@@ -143,8 +143,8 @@ class RegisterTestCase(unittest.TestCase):
 
     def assertRegistered(self, inData, outData, bad=set()):
         """Assert that the registration task is registering images"""
-        xTemplate = numpy.array([x for i, x in enumerate(inData.xTemplate) if i not in bad])
-        yTemplate = numpy.array([y for i, y in enumerate(inData.yTemplate) if i not in bad])
+        xTemplate = np.array([x for i, x in enumerate(inData.xTemplate) if i not in bad])
+        yTemplate = np.array([y for i, y in enumerate(inData.yTemplate) if i not in bad])
         alignedArray = outData.warpedExp.getMaskedImage().getImage().getArray()
         self.assertTrue((alignedArray[yTemplate, xTemplate] == 1.0).all())
         for dx in (-1, 0, +1):
@@ -153,8 +153,8 @@ class RegisterTestCase(unittest.TestCase):
                 # The values are not quite zero because the "image" is undersampled, so we get ringing.
                 self.assertTrue((alignedArray[yTemplate+dy, xTemplate+dx] < 0.1).all())
 
-        xAligned = numpy.array([x for i, x in enumerate(outData.warpedSources["center_x"]) if i not in bad])
-        yAligned = numpy.array([y for i, y in enumerate(outData.warpedSources["center_y"]) if i not in bad])
+        xAligned = np.array([x for i, x in enumerate(outData.warpedSources["center_x"]) if i not in bad])
+        yAligned = np.array([y for i, y in enumerate(outData.warpedSources["center_y"]) if i not in bad])
         self.assertAlmostEqual((xAligned - xTemplate).mean(), 0, 8)
         self.assertAlmostEqual((xAligned - xTemplate).std(), 0, 8)
         self.assertAlmostEqual((yAligned - yTemplate).mean(), 0, 8)

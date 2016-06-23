@@ -25,8 +25,8 @@
 import os.path
 import sys
 import shutil
-
 import unittest
+
 from lsst.utils import getPackageDir
 import lsst.utils.tests as utilsTests
 from lsst.afw.geom import Extent2I, Box2D

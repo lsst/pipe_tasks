@@ -22,12 +22,11 @@
 #
 
 import unittest
-import lsst.utils.tests as utilsTests
 
+import lsst.utils.tests as utilsTests
 import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask, SelectStruct
 from lsst.pipe.tasks.coaddBase import CoaddBaseTask
 

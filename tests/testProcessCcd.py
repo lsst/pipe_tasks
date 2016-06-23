@@ -30,7 +30,7 @@ import shutil
 import tempfile
 import unittest
 
-import numpy
+import numpy as np
 
 import lsst.utils
 import lsst.afw.geom as afwGeom
@@ -71,8 +71,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
             icExpBackground = butler.get("icExpBackground", dataId, immediate=True)
             bg0Arr = icExpBackground.getImage().getArray()
-            bgMean = bg0Arr.mean(dtype=numpy.float64)
-            bgStdDev = bg0Arr.std(dtype=numpy.float64)
+            bgMean = bg0Arr.mean(dtype=np.float64)
+            bgStdDev = bg0Arr.std(dtype=np.float64)
 
             icSrc = butler.get("icSrc", dataId)
             src = butler.get("src", dataId)
@@ -94,14 +94,14 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                                  afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
                 maskedImage = exposure.getMaskedImage()
                 maskArr = maskedImage.getMask().getArray()
-                numGoodPix = numpy.sum(maskArr == 0)
+                numGoodPix = np.sum(maskArr == 0)
 
                 imageArr = maskedImage.getImage().getArray()
-                imMean = imageArr.mean(dtype=numpy.float64)
-                imStdDev = imageArr.std(dtype=numpy.float64)
+                imMean = imageArr.mean(dtype=np.float64)
+                imStdDev = imageArr.std(dtype=np.float64)
                 varArr = maskedImage.getVariance().getArray()
-                varMean = varArr.mean(dtype=numpy.float64)
-                varStdDev = varArr.std(dtype=numpy.float64)
+                varMean = varArr.mean(dtype=np.float64)
+                varStdDev = varArr.std(dtype=np.float64)
 
                 psfShape = exposure.getPsf().computeShape()
                 psfIxx = psfShape.getIxx()

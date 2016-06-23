@@ -48,12 +48,10 @@ import tempfile
 import unittest
 
 import lsst.utils
-
 import lsst.afw.coord as afwCoord
 import lsst.afw.table as afwTable
 import lsst.meas.base as measBase
 import lsst.utils.tests as utilsTests
-
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
 from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask)
 

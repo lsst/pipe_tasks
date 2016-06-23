@@ -23,14 +23,14 @@
 #
 import unittest
 
-import numpy
+import numpy as np
 
 import lsst.utils.tests as utilsTests
 import lsst.afw.image as afwImage
 from lsst.coadd.utils import setCoaddEdgeBits
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
 
-numpy.random.seed(1)
+np.random.seed(1)
 
 
 def makeRandomExposure(width, height, imMean, varMean, maxMask):
@@ -45,9 +45,9 @@ def makeRandomExposure(width, height, imMean, varMean, maxMask):
     exp = afwImage.ExposureF(width, height)
     mi = exp.getMaskedImage()
     imArr, maskArr, varArr = mi.getArrays()
-    imArr[:, :] = numpy.random.poisson(imMean, size=imArr.shape)
-    varArr[:, :] = numpy.random.poisson(varMean, size=varArr.shape)
-    maskArr[:, :] = numpy.random.random_integers(0, maxMask, size=maskArr.shape)
+    imArr[:, :] = np.random.poisson(imMean, size=imArr.shape)
+    varArr[:, :] = np.random.poisson(varMean, size=varArr.shape)
+    maskArr[:, :] = np.random.random_integers(0, maxMask, size=maskArr.shape)
 
     return exp
 
@@ -64,13 +64,13 @@ def simpleAdd(exp0, exp1, badPixelMask):
     weightMap = afwImage.ImageF(exp0.getDimensions())
     weightArr = weightMap.getArray()
 
-    good0 = numpy.bitwise_and(maskArr0, badPixelMask) == 0
-    good1 = numpy.bitwise_and(maskArr1, badPixelMask) == 0
+    good0 = np.bitwise_and(maskArr0, badPixelMask) == 0
+    good1 = np.bitwise_and(maskArr1, badPixelMask) == 0
 
-    imArrRes[:, :] = numpy.where(good0,  imArr0, 0) + numpy.where(good1,  imArr1, 0)
-    varArrRes[:, :] = numpy.where(good0, varArr0, 0) + numpy.where(good1, varArr1, 0)
-    maskArrRes[:, :] = numpy.bitwise_or(numpy.where(good0, maskArr0, 0), numpy.where(good1, maskArr1, 0))
-    weightArr[:, :] = numpy.where(good0, 1, 0) + numpy.where(good1, 1, 0)
+    imArrRes[:, :] = np.where(good0,  imArr0, 0) + np.where(good1,  imArr1, 0)
+    varArrRes[:, :] = np.where(good0, varArr0, 0) + np.where(good1, varArr1, 0)
+    maskArrRes[:, :] = np.bitwise_or(np.where(good0, maskArr0, 0), np.where(good1, maskArr1, 0))
+    weightArr[:, :] = np.where(good0, 1, 0) + np.where(good1, 1, 0)
 
     miRes /= weightMap
     miRes *= 2  # want addition, not mean, where both pixels are valid

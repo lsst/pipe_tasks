@@ -27,7 +27,6 @@ import unittest
 import lsst.utils
 import lsst.afw.image
 import lsst.utils.tests
-
 import lsst.pipe.tasks.fakes as fakes
 
 

@@ -23,13 +23,15 @@
 #
 
 import unittest
+
+import numpy as np
+
 import lsst.utils.tests as utilsTests
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
-import numpy
 from lsst.pipe.tasks.matchBackgrounds import MatchBackgroundsTask
 
-numpy.random.seed(1)
+np.random.seed(1)
 
 
 class MatchBackgroundsTestCase(unittest.TestCase):
@@ -50,7 +52,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         im = self.chipGap.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im, afwMath.Random('MT19937', 2))
         im += 10
-        im.getArray()[:, 200:300] = numpy.nan  # simulate 100pix chip gap
+        im.getArray()[:, 200:300] = np.nan  # simulate 100pix chip gap
         self.chipGap.getMaskedImage().getVariance().set(1.0)
 
         #3) has low coverage and mean = 20 counts
@@ -58,7 +60,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         im = self.lowCover.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im, afwMath.Random('MT19937', 3))
         im += 20
-        self.lowCover.getMaskedImage().getImage().getArray()[:, 200:] = numpy.nan
+        self.lowCover.getMaskedImage().getImage().getArray()[:, 200:] = np.nan
         self.lowCover.getMaskedImage().getVariance().set(1.0)
 
         #make a matchBackgrounds object
@@ -204,16 +206,16 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.order = 4
         for x in range(0, 50):
             for y in range(0, 50):
-                if numpy.random.rand(1)[0] < 0.6:
-                    testIm.set(x, y, numpy.nan)
+                if np.random.rand(1)[0] < 0.6:
+                    testIm.set(x, y, np.nan)
                 else:
-                    testIm.set(x, y, numpy.random.rand(1)[0]*1000)
+                    testIm.set(x, y, np.random.rand(1)[0]*1000)
 
         self.matcher.matchBackgrounds(self.vanilla, testExp)
         resultExp = testExp
         resultArr = resultExp.getMaskedImage().getImage().getArray()[60:, 60:]
-        resultMean = numpy.mean(resultArr[numpy.where(~numpy.isnan(resultArr))])
-        resultVar = numpy.std(resultArr[numpy.where(~numpy.isnan(resultArr))])**2
+        resultMean = np.mean(resultArr[np.where(~np.isnan(resultArr))])
+        resultVar = np.std(resultArr[np.where(~np.isnan(resultArr))])**2
         self.assertAlmostEqual(50, resultMean, delta=resultVar)  # very loose test.
 
     def testSameImageApproximate(self):
@@ -287,7 +289,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         im = chipGapHorizontal.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im, afwMath.Random())
         im += 10
-        im.getArray()[200:300, :] = numpy.nan  # simulate 100pix chip gap horizontal
+        im.getArray()[200:300, :] = np.nan  # simulate 100pix chip gap horizontal
         chipGapHorizontal.getMaskedImage().getVariance().set(1.0)
         self.checkAccuracy(self.vanilla, chipGapHorizontal)
 

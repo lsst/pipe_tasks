@@ -24,6 +24,7 @@
 
 import os
 import unittest
+
 import numpy as np
 
 import lsst.meas.astrom as measAstrom
