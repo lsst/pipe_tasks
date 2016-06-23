@@ -36,10 +36,9 @@ from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGauss
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
-    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask
+    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, DecorrelateALKernelTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
-from lsst.ip.diffim.imageDecorrelation import decorrelateExposure
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 IqrToSigma = 0.741
@@ -67,7 +66,7 @@ class ImageDifferenceConfig(pexConfig.Config):
             "Ignored if doPreConvolve false.")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc="Detect sources?")
     doDecorrelation = pexConfig.Field(dtype=bool, default=False,
-        doc="Perform diffim decorrelation to undo pixel correlation due to convolution? "
+        doc="Perform diffim decorrelation to undo pixel correlation due to A&L kernel convolution? "
             "If True, also update the diffim PSF.")
     doMerge = pexConfig.Field(dtype=bool, default=True,
         doc="Merge positive and negative diaSources with grow radius set by growFootprint")
@@ -107,6 +106,10 @@ class ImageDifferenceConfig(pexConfig.Config):
     subtract = pexConfig.ConfigurableField(
         target=ImagePsfMatchTask,
         doc="Warp and PSF match template to exposure, then subtract",
+    )
+    decorrelate = pexConfig.ConfigurableField(
+        target=DecorrelateALKernelTask,
+        doc="Decorrelate effects of A&L kernel convolution on image difference, only if doSubtract is True",
     )
     detection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
@@ -167,6 +170,10 @@ class ImageDifferenceConfig(pexConfig.Config):
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
         self.detection.thresholdValue = 5.5
+        # If decorrelation is turned on, no need to "hack" the detection threshold to decrease the number of
+        # false detections, so set it back to 5.0
+        if self.doDecorrelation and self.doSubtract:
+            self.detection.thresholdValue = 5.0
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
 
@@ -212,6 +219,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("subtract")
         self.makeSubtask("getTemplate")
+        self.makeSubtask("decorrelate")
 
         if self.config.doUseRegister:
             self.makeSubtask("register")
@@ -516,10 +524,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         template = self.getTemplate.run(exposure, sensorRef, templateIdList=templateIdList)
                     subtractedExposure.setPsf(template.exposure.getPsf())
 
+        # If doSubtract is False, then subtractedExposure was fetched from disk (above), thus it may have
+        # already been decorrelated. Thus, we do not do decorrelation if doSubtract is False.
         if self.config.doDecorrelation and self.config.doSubtract:
-            self.log.info("Running diffim decorrelation; updating diffim PSF.")
-            subtractedExposure, _ = decorrelateExposure(templateExposure, exposure, subtractedExposure,
-                                                        subtractRes.psfMatchingKernel, self.log)
+            decorrResult = self.decorrelate.run(templateExposure, exposure,
+                                                subtractedExposure,
+                                                subtractRes.psfMatchingKernel)
+            subtractedExposure = decorrResult.correctedExposure
 
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
