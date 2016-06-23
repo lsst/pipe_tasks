@@ -21,7 +21,7 @@ from __future__ import absolute_import, division, print_function
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-"""Test ProcessCcdTask
+"""Test ProcessCcdTask and its immediate subtasks.
 
 Run the task on one obs_test image and perform various checks on the results
 """
@@ -35,6 +35,9 @@ import numpy as np
 import lsst.utils
 import lsst.afw.geom as afwGeom
 import lsst.utils.tests
+from lsst.ip.isr import IsrTask  # we assume obs_test uses base IsrTask here; may change in future.
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
+from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.processCcd import ProcessCcdTask
 
 obsTestDir = lsst.utils.getPackageDir('obs_test')
@@ -46,13 +49,13 @@ OutputName = None  # specify a name (as a string) to save the output repository
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
     def testProcessCcd(self):
-        """test ProcessCcdTask
+        """test ProcessCcdTask via parseAndRun (simulating the command line)
 
         This is intended as a sanity check of the task, not a detailed test of its sub-tasks. As such
         comparisons are intentionally loose, so as to allow evolution of the sub-tasks over time
         without breaking this test.
         """
-        outPath = tempfile.mkdtemp() if OutputName is None else OutputName
+        outPath = tempfile.mkdtemp() if OutputName is None else "{}-ProcessCcd".format(OutputName)
         try:
             dataId = dict(visit=1)
             dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
@@ -148,6 +151,95 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 oldPsfIxx = psfIxx
                 oldPsfIyy = psfIyy
                 oldPsfIxy = psfIxy
+
+        finally:
+            if OutputName is None:
+                shutil.rmtree(outPath)
+            else:
+                print("testProcessCcd.py's output data saved to %r" % (OutputName,))
+
+    def assertCatalogsEqual(self, catalog1, catalog2):
+        """Compare two Catalogs for equality.
+
+        This should only be used in contexts where it's unlikely that the catalogs will be subtly different;
+        instead of comparing all values we simply do a spot check of a few cells.
+
+        This does not require that either catalog be contiguous (which is why we can't use column access).
+        """
+        self.assertEqual(catalog1.schema, catalog2.schema)
+        self.assertEqual(len(catalog1), len(catalog2))
+        d = catalog1.schema.extract("*")
+        fixNaN = lambda x: x if x == x else "NaN"
+        for record1, record2 in zip(catalog1, catalog2):
+            for name, item in d.iteritems():
+                self.assertEqual(fixNaN(record1.get(item.key)), fixNaN(record2.get(item.key)))
+
+    def assertBackgroundListsEqual(self, bkg1, bkg2):
+        """Compare two BackgroundLists for equality.
+
+        This should only be used in contexts where it's unlikely that the catalogs will be subtly different;
+        instead of comparing all values we simply do a spot check of a few cells.
+
+        This does not require that either catalog be contiguous (which is why we can't use column access).
+        """
+        im1 = bkg1.getImage()
+        im2 = bkg2.getImage()
+        self.assertEqual(im1.getBBox(), im2.getBBox())
+        self.assertImagesEqual(im1, im2)
+
+    def testComponents(self):
+        """test that we can run the first-level subtasks of ProcessCcdTasks separately on the command-line.
+
+        Aside from verifying that no exceptions are raised, we simply tests that most persisted results are
+        present and equivalent to in-memory results.
+        """
+        outPath = tempfile.mkdtemp() if OutputName is None else "{}-Components".format(OutputName)
+        try:
+            dataId = dict(visit=1)
+            dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
+
+            isrResult1 = IsrTask.parseAndRun(
+                args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
+                doReturnResults=True,
+            )
+            self.assertMaskedImagesEqual(
+                isrResult1.parsedCmd.butler.get("postISRCCD", dataId, immediate=True).getMaskedImage(),
+                isrResult1.resultList[0].result.exposure.getMaskedImage()
+            )
+
+            icResult1 = CharacterizeImageTask.parseAndRun(
+                args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
+                doReturnResults=True,
+            )
+            self.assertMaskedImagesEqual(
+                icResult1.parsedCmd.butler.get("icExp", dataId, immediate=True).getMaskedImage(),
+                icResult1.resultList[0].result.exposure.getMaskedImage()
+            )
+            self.assertCatalogsEqual(
+                icResult1.parsedCmd.butler.get("icSrc", dataId, immediate=True),
+                icResult1.resultList[0].result.sourceCat
+            )
+            self.assertBackgroundListsEqual(
+                icResult1.parsedCmd.butler.get("icExpBackground", dataId, immediate=True),
+                icResult1.resultList[0].result.background
+            )
+
+            calResult1 = CalibrateTask.parseAndRun(
+                args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
+                doReturnResults=True,
+            )
+            self.assertMaskedImagesEqual(
+                calResult1.parsedCmd.butler.get("calexp", dataId, immediate=True).getMaskedImage(),
+                calResult1.resultList[0].result.exposure.getMaskedImage()
+            )
+            self.assertCatalogsEqual(
+                calResult1.parsedCmd.butler.get("src", dataId, immediate=True),
+                calResult1.resultList[0].result.sourceCat
+            )
+            self.assertBackgroundListsEqual(
+                calResult1.parsedCmd.butler.get("calexpBackground", dataId, immediate=True),
+                calResult1.resultList[0].result.background
+            )
 
         finally:
             if OutputName is None:
