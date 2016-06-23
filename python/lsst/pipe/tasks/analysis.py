@@ -948,15 +948,15 @@ class CoaddAnalysisConfig(Config):
     externalCatalogs = ConfigDictField(keytype=str, itemtype=AstrometryConfig, default={},
                                        doc="Additional external catalogs for matching")
     astrometry = ConfigField(dtype=AstrometryConfig, doc="Configuration for astrometric reference")
-    doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
-    doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
+    doPlotMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
+    doPlotCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
     doAddAperFluxHsc = Field(dtype=bool, default=False,
                              doc="Add a field containing 12 pix circular aperture flux to HSC table?")
-    doStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
-    doOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
-    doMatches = Field(dtype=bool, default=True, doc="Plot matches?")
-    doForced = Field(dtype=bool, default=True, doc="Plot difference between forced and unforced?")
+    doPlotStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
+    doPlotOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
+    doPlotMatches = Field(dtype=bool, default=True, doc="Plot matches?")
+    doPlotForced = Field(dtype=bool, default=True, doc="Plot difference between forced and unforced?")
     onlyReadStars = Field(dtype=bool, default=False, doc="Only read stars (to save memory)?")
     srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
                              doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
@@ -1013,27 +1013,27 @@ class CoaddAnalysisTask(CmdLineTask):
         dataId = patchRefList[0].dataId
         filterName = dataId["filter"]
         filenamer = Filenamer(patchRefList[0].getButler(), self.outputDataset, patchRefList[0].dataId)
-        if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or
-            self.config.doForced or cosmos or self.config.externalCatalogs):
+        if (self.config.doPlotMags or self.config.doPlotStarGalaxy or self.config.doPlotOverlaps or
+            self.config.doPlotForced or cosmos or self.config.externalCatalogs):
 ###            catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
 ###            catalog = catalog[catalog["deblend_nChild"] == 0].copy(True) # Don't care about blended objects
             catalog = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
-        if self.config.doMags:
+        if self.config.doPlotMags:
             self.plotMags(catalog, filenamer, dataId)
-        if self.config.doStarGalaxy:
+        if self.config.doPlotStarGalaxy:
             if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
                 self.plotStarGal(catalog, filenamer, dataId)
             else:
                 self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
         if cosmos:
             self.plotCosmos(catalog, filenamer, cosmos, dataId)
-        if self.config.doForced:
+        if self.config.doPlotForced:
             forced = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
             self.plotForced(catalog, forced, filenamer, dataId)
-        if self.config.doOverlaps:
+        if self.config.doPlotOverlaps:
             overlaps = self.overlaps(catalog)
             self.plotOverlaps(overlaps, filenamer, dataId)
-        if self.config.doMatches:
+        if self.config.doPlotMatches:
             matches = self.readCatalogs(patchRefList, "deepCoadd_measMatchFull")
             self.plotMatches(matches, filterName, filenamer, dataId, matchRadius=self.config.matchRadius)
 
@@ -1206,7 +1206,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         self.log.info("dataId: %s" % (dataId,))
         filterName = dataId["filter"]
         filenamer = Filenamer(butler, "plotVisit", dataRefList[0].dataId)
-        if (self.config.doMags or self.config.doStarGalaxy or self.config.doOverlaps or cosmos or
+        if (self.config.doPlotMags or self.config.doPlotStarGalaxy or self.config.doPlotOverlaps or cosmos or
             self.config.externalCatalogs):
             catalog = self.readCatalogs(dataRefList, "src")
         # Check metadata to see if stack used was HSC
@@ -1220,16 +1220,18 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set(lsstName, otherName)
-        if self.config.doMags:
-            self.plotMags(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun)
-        if self.config.doCentroids:
-            self.plotCentroidXY(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun)
-        if self.config.doStarGalaxy:
+        if self.config.doPlotMags:
+            self.plotMags(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun,
+                          zpLabel=self.zpLabel)
+        if self.config.doPlotCentroids:
+            self.plotCentroidXY(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun,
+            zpLabel=self.zpLabel)
+        if self.config.doPlotStarGalaxy:
             if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
                 self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun, zpLabel=self.zpLabel)
             else:
                 self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
-        if self.config.doMatches:
+        if self.config.doPlotMatches:
             matches = self.readSrcMatches(dataRefList, "src")
             self.plotMatches(matches, filterName, filenamer, dataId, camera=camera, ccdList=ccdList,
                              hscRun=hscRun, matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
@@ -1384,8 +1386,8 @@ class CompareAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
     matchRadius = Field(dtype=float, default=0.2, doc="Matching radius (arcseconds)")
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
-    doMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
-    doCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
+    doPlotMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
+    doPlotCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     doApCorrs = Field(dtype=bool, default=True, doc="Plot aperture corrections?")
     doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
     sysErrMags = Field(dtype=float, default=0.015, doc="Systematic error in magnitudes")
@@ -1432,9 +1434,9 @@ class CompareAnalysisTask(CmdLineTask):
         catalog1 = self.readCatalogs(patchRefList1, self.config.coaddName + "Coadd_forced_src")
         catalog2 = self.readCatalogs(patchRefList2, self.config.coaddName + "Coadd_forced_src")
         catalog = self.matchCatalogs(catalog1, catalog2)
-        if self.config.doMags:
+        if self.config.doPlotMags:
             self.plotMags(catalog, filenamer, dataId)
-        if self.config.doCentroids:
+        if self.config.doPlotCentroids:
             self.plotCentroids(catalog, filenamer, dataId)
 
     def readCatalogs(self, patchRefList, dataset):
@@ -1548,13 +1550,13 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         if self.config.doBackoutApCorr:
             catalog = backoutApCorr(catalog)
 
-        if self.config.doMags:
+        if self.config.doPlotMags:
             self.plotMags(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
                           matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
         if self.config.doApCorrs:
             self.plotApCorrs(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
                              matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
-        if self.config.doCentroids:
+        if self.config.doPlotCentroids:
             self.plotCentroids(catalog, filenamer, dataId, camera=camera1, ccdList=ccdList1, hscRun=hscRun,
                                matchRadius=self.config.matchRadius)
 
