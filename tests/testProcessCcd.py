@@ -155,17 +155,12 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             else:
                 print("testProcessCcd.py's output data saved to %r" % (OutputName,))
 
-
-def suite():
+def setup_module(module):
     lsst.utils.tests.init()
-    suites = []
-    suites += unittest.makeSuite(ProcessCcdTestCase)
-    suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
-    return unittest.TestSuite(suites)
 
-
-def run(shouldExit=False):
-    lsst.utils.tests.run(suite(), shouldExit)
+class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
 
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()
