@@ -241,7 +241,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     @until dot
     """
     ConfigClass = CharacterizeImageConfig
-    _DefaultName = "imageCharacterization"
+    _DefaultName = "characterizeImage"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
