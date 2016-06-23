@@ -244,6 +244,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
+        if icSourceSchema is None and butler is not None:
+            # Use butler to read icSourceSchema from disk.
+            icSourceSchema = butler.get("icSrc_schema", immediate=True).schema
+
         if icSourceSchema is not None:
             # use a schema mapper to avoid copying each field separately
             self.schemaMapper = afwTable.SchemaMapper(icSourceSchema)
@@ -326,7 +330,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
                 raise RuntimeError("doUnpersist true; exposure, background and icSourceCat must all be None")
             exposure = dataRef.get("icExp", immediate=True)
             background = dataRef.get("icExpBackground", immediate=True)
-            icSourceCat = dataRef.get("icSourceCat", immediate=True)
+            icSourceCat = dataRef.get("icSrc", immediate=True)
         elif exposure is None:
             raise RuntimeError("doUnpersist false; exposure must be provided")
 
