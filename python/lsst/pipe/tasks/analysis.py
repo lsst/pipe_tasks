@@ -23,7 +23,7 @@ from lsst.pipe.base import Struct, CmdLineTask, ArgumentParser, TaskRunner, Task
 from lsst.coadd.utils import TractDataIdContainer
 from lsst.meas.base.forcedPhotCcd import PerTractCcdDataIdContainer
 from lsst.afw.table.catalogMatches import matchesToCatalog, matchesFromCatalog
-from lsst.meas.astrom import AstrometryTask, AstrometryConfig, LoadAstrometryNetObjectsTask
+from lsst.meas.astrom import AstrometryConfig, LoadAstrometryNetObjectsTask, LoadAstrometryNetObjectsConfig
 from lsst.pipe.tasks.colorterms import ColortermLibrary
 # from lsst.meas.mosaic.updateExposure import (applyMosaicResultsCatalog, applyCalib, getFluxFitParams,
 #                                             getFluxKeys, getMosaicResults)
@@ -947,7 +947,8 @@ class CoaddAnalysisConfig(Config):
     matchesMaxDistance = Field(dtype=float, default=0.15, doc="Maximum plotting distance for matches")
     externalCatalogs = ConfigDictField(keytype=str, itemtype=AstrometryConfig, default={},
                                        doc="Additional external catalogs for matching")
-    astrometry = ConfigField(dtype=AstrometryConfig, doc="Configuration for astrometric reference")
+    refObjLoaderConfig = ConfigField(dtype=LoadAstrometryNetObjectsConfig,
+                                     doc="Configuration for reference object loader")
     doPlotMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
     doPlotCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
@@ -968,9 +969,6 @@ class CoaddAnalysisConfig(Config):
 
     def setDefaults(self):
         Config.setDefaults(self)
-        astrom = AstrometryConfig()
-        astrom.refObjLoader.filterMap["y"] = "z"
-        astrom.refObjLoader.filterMap["N921"] = "z"
         # self.externalCatalogs = {"sdss-dr9-fink-v5b": astrom}
         self.analysisMatches.magThreshold = 21.0 # External catalogs like PS1 and SDSS used smaller telescopes
 
@@ -1159,13 +1157,13 @@ class CoaddAnalysisTask(CmdLineTask):
                                      Enforcer(requireLess={"star": {"stdev": 0.2}}))
 
     def matchCatalog(self, catalog, filterName, astrometryConfig):
-        astrometry = AstrometryTask(astrometryConfig)
+        refObjLoader = LoadAstrometryNetObjectsTask(self.config.refObjLoaderConfig)
         average = sum((afwGeom.Extent3D(src.getCoord().getVector()) for src in catalog),
                       afwGeom.Extent3D(0, 0, 0))/len(catalog)
         center = afwCoord.IcrsCoord(afwGeom.Point3D(average))
         radius = max(center.angularSeparation(src.getCoord()) for src in catalog)
         filterName = afwImage.Filter(afwImage.Filter(filterName).getId()).getName() # Get primary name
-        refs = astrometry.refObjLoader.loadSkyCircle(center, radius, filterName).refCat
+        refs = refObjLoader.loadSkyCircle(center, radius, filterName).refCat
         matches = afwTable.matchRaDec(refs, catalog, self.config.matchRadius*afwGeom.arcseconds)
         matches = matchJanskyToDn(matches)
         return joinMatches(matches, "ref_", "src_")
@@ -1297,8 +1295,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             matchmeta = packedMatches.table.getMetadata()
             rad = matchmeta.getDouble("RADIUS")
             matchmeta.setDouble("RADIUS", rad*1.05, "field radius in degrees, approximate, padded")
-            refObjLoaderConfig = LoadAstrometryNetObjectsTask.ConfigClass()
-            refObjLoader = LoadAstrometryNetObjectsTask(refObjLoaderConfig)
+            refObjLoader = LoadAstrometryNetObjectsTask(self.config.refObjLoaderConfig)
             matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
             # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
             matches = matchJanskyToDn(matches)
