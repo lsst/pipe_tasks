@@ -28,6 +28,7 @@ from lsst.afw.table import SourceTable, SourceCatalog
 from lsst.meas.algorithms import SubtractBackgroundTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, LoadAstrometryNetObjectsTask
+from lsst.daf.butlerUtils import ExposureIdInfo
 from .detectAndMeasure import DetectAndMeasureTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
@@ -329,7 +330,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         return charRes
 
     @pipeBase.timeMethod
-    def characterize(self, exposure, exposureIdInfo, background=None):
+    def characterize(self, exposure, exposureIdInfo=None, background=None):
         """!Characterize a science image
 
         Peforms the following operations:
@@ -344,7 +345,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - set apCorrMap
             - update detection and cosmic ray mask planes
             - subtract background and interpolate over cosmic rays
-        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
+        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo).
+            If not provided, returned SourceCatalog IDs will not be globally unique.
         @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
             which is typical for image characterization.
@@ -361,6 +363,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
+
+        if exposureIdInfo is None:
+            exposureIdInfo = ExposureIdInfo()
 
         # subtract an initial estimate of background level
         background = self.background.run(exposure).background

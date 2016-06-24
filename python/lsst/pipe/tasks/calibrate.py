@@ -27,6 +27,7 @@ import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata,\
     LoadAstrometryNetObjectsTask
+from lsst.daf.butlerUtils import ExposureIdInfo
 from .detectAndMeasure import DetectAndMeasureTask
 from .photoCal import PhotoCalTask
 
@@ -360,7 +361,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         return calRes
 
-    def calibrate(self, exposure, exposureIdInfo, background=None, icSourceCat=None):
+    def calibrate(self, exposure, exposureIdInfo=None, background=None, icSourceCat=None):
         """!Calibrate an exposure (science image or coadd)
 
         @param[in,out] exposure  exposure to calibrate (an lsst.afw.image.ExposureF or similar);
@@ -371,10 +372,14 @@ class CalibrateTask(pipeBase.CmdLineTask):
             - MaskedImage has background subtracted
             - Wcs is replaced
             - Calib zero-point is set
+        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
+            If not provided, returned SourceCatalog IDs will not be globally unique.
         @param[in,out] background  background model already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
             though that is unusual for calibration.
             A refined background model is output.
+        @param[in] icSourceCat  A SourceCatalog from CharacterizeImageTask from which we can copy
+            some fields.
 
         @return pipe_base Struct containing these fields:
         - exposure  calibrate science exposure with refined WCS and Calib
@@ -383,6 +388,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
         - astromMatches  list of source/refObj matches from the astrometry solver
         """
         # detect, deblend and measure sources
+        if exposureIdInfo is None:
+            exposureIdInfo = ExposureIdInfo()
+
         procRes = self.detectAndMeasure.run(
             exposure = exposure,
             exposureIdInfo = exposureIdInfo,
