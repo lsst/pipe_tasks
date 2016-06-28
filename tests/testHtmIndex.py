@@ -27,7 +27,7 @@ import unittest
 import string
 from collections import Counter
 
-import numpy
+import numpy as np
 
 import lsst.utils
 import lsst.afw.table as afwTable
@@ -46,42 +46,43 @@ def make_coord(ra, dec):
 
 
 class HtmIndexTestCase(lsst.utils.tests.TestCase):
+
     @staticmethod
     def make_sky_catalog(out_path, size=1000):
-        numpy.random.seed(123)
-        ident = numpy.arange(1, size+1, dtype=int)
-        ra = numpy.random.random(size)*360.
-        dec = numpy.degrees(numpy.arccos(2.*numpy.random.random(size) - 1.))
+        np.random.seed(123)
+        ident = np.arange(1, size+1, dtype=int)
+        ra = np.random.random(size)*360.
+        dec = np.degrees(np.arccos(2.*np.random.random(size) - 1.))
         dec -= 90.
-        a_mag = 16. + numpy.random.random(size)*4.
-        a_mag_err = 0.01 + numpy.random.random(size)*0.2
-        b_mag = 17. + numpy.random.random(size)*5.
-        b_mag_err = 0.02 + numpy.random.random(size)*0.3
-        is_photometric = numpy.random.randint(2, size=size)
-        is_resolved = numpy.random.randint(2, size=size)
-        is_variable = numpy.random.randint(2, size=size)
-        extra_col1 = numpy.random.normal(size=size)
-        extra_col2 = numpy.random.normal(1000., 100., size=size)
+        a_mag = 16. + np.random.random(size)*4.
+        a_mag_err = 0.01 + np.random.random(size)*0.2
+        b_mag = 17. + np.random.random(size)*5.
+        b_mag_err = 0.02 + np.random.random(size)*0.3
+        is_photometric = np.random.randint(2, size=size)
+        is_resolved = np.random.randint(2, size=size)
+        is_variable = np.random.randint(2, size=size)
+        extra_col1 = np.random.normal(size=size)
+        extra_col2 = np.random.normal(1000., 100., size=size)
 
         def get_word(word_len):
-            return "".join(numpy.random.choice([s for s in string.ascii_letters], word_len))
-        extra_col3 = numpy.array([get_word(num) for num in numpy.random.randint(11, size=size)])
+            return "".join(np.random.choice([s for s in string.ascii_letters], word_len))
+        extra_col3 = np.array([get_word(num) for num in np.random.randint(11, size=size)])
 
-        dtype = numpy.dtype([('id', float), ('ra_icrs', float), ('dec_icrs', float), ('a', float),
-                             ('a_err', float), ('b', float), ('b_err', float), ('is_phot', int),
-                             ('is_res', int), ('is_var', int), ('val1', float), ('val2', float),
-                             ('val3', '|S11')])
+        dtype = np.dtype([('id', float), ('ra_icrs', float), ('dec_icrs', float), ('a', float),
+                          ('a_err', float), ('b', float), ('b_err', float), ('is_phot', int),
+                          ('is_res', int), ('is_var', int), ('val1', float), ('val2', float),
+                          ('val3', '|S11')])
 
-        arr = numpy.array(zip(ident, ra, dec, a_mag, a_mag_err, b_mag, b_mag_err, is_photometric, is_resolved,
-                              is_variable, extra_col1, extra_col2, extra_col3), dtype=dtype)
-        numpy.savetxt(out_path+"/ref.txt", arr, delimiter=",",
-                      header="id,ra_icrs,dec_icrs,a,a_err,b,b_err,is_phot,is_res,is_var,val1,val2,val3",
-                      fmt=["%i", "%.6g", "%.6g", "%.4g", "%.4g", "%.4g", "%.4g", "%i",
-                           "%i", "%i", "%.2g", "%.2g", "%s"])
-        numpy.savetxt(out_path+"/ref_test_delim.txt", arr, delimiter="|",
-                      header="id,ra_icrs,dec_icrs,a,a_err,b,b_err,is_phot,is_res,is_var,val1,val2,val3",
-                      fmt=["%i", "%.6g", "%.6g", "%.4g", "%.4g", "%.4g", "%.4g", "%i",
-                           "%i", "%i", "%.2g", "%.2g", "%s"])
+        arr = np.array(zip(ident, ra, dec, a_mag, a_mag_err, b_mag, b_mag_err, is_photometric, is_resolved,
+                           is_variable, extra_col1, extra_col2, extra_col3), dtype=dtype)
+        np.savetxt(out_path+"/ref.txt", arr, delimiter=",",
+                   header="id,ra_icrs,dec_icrs,a,a_err,b,b_err,is_phot,is_res,is_var,val1,val2,val3",
+                   fmt=["%i", "%.6g", "%.6g", "%.4g", "%.4g", "%.4g", "%.4g", "%i",
+                        "%i", "%i", "%.2g", "%.2g", "%s"])
+        np.savetxt(out_path+"/ref_test_delim.txt", arr, delimiter="|",
+                   header="id,ra_icrs,dec_icrs,a,a_err,b,b_err,is_phot,is_res,is_var,val1,val2,val3",
+                   fmt=["%i", "%.6g", "%.6g", "%.4g", "%.4g", "%.4g", "%.4g", "%i",
+                        "%i", "%i", "%.2g", "%.2g", "%s"])
         return out_path+"/ref.txt", out_path+"/ref_test_delim.txt", arr
 
     @classmethod
@@ -113,7 +114,7 @@ class HtmIndexTestCase(lsst.utils.tests.TestCase):
         config.id_name = 'id'
         config.mag_err_column_map = {'a': 'a_err', 'b': 'b_err'}
         IngestIndexedReferenceTask.parseAndRun(args=[input_dir, "--output", cls.test_repo_path,
-                                               cls.sky_catalog_file], config=config)
+                                                     cls.sky_catalog_file], config=config)
         cls.test_butler = dafPersist.Butler(cls.test_repo_path)
 
     @classmethod
@@ -144,7 +145,7 @@ class HtmIndexTestCase(lsst.utils.tests.TestCase):
         # compare sets as the order may be different
         self.assertEqual(set(ex1.keys()), set(ex2.keys()))
         for key in ex1:
-            self.assertTrue(numpy.array_equal(ex1[key], ex2[key]))
+            self.assertTrue(np.array_equal(ex1[key], ex2[key]))
 
     def testIngest(self):
         default_config = IngestIndexedReferenceTask.ConfigClass()
@@ -180,8 +181,8 @@ class HtmIndexTestCase(lsst.utils.tests.TestCase):
         default_config.id_name = 'id'
         default_config.extra_col_names = ['val1', 'val2', 'val3']
         default_config.file_reader.header_lines = 1
-        default_config.file_reader.colnames = ['id', 'ra', 'dec', 'a', 'a_err', 'b', 'b_err', 'is_phot', 'is_res',
-                                   'is_var', 'val1', 'val2', 'val3']
+        default_config.file_reader.colnames = ['id', 'ra', 'dec', 'a', 'a_err', 'b', 'b_err', 'is_phot',
+                                               'is_res', 'is_var', 'val1', 'val2', 'val3']
         default_config.file_reader.delimiter = '|'
         # this also tests changing the delimiter
         IngestIndexedReferenceTask.parseAndRun(

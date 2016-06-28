@@ -21,8 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import math
-import numpy
 import unittest
 import lsst.utils.tests as utilsTests
 
@@ -30,48 +28,66 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 
-from lsst.pex.config import Config
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask, SelectStruct
 from lsst.pipe.tasks.coaddBase import CoaddBaseTask
 
+
 class KeyValue(object):
+
     """Mixin to provide __getitem__ of key/value pair"""
+
     def __init__(self, key, value):
         self._key = key
         self._value = value
+
     def __getitem__(self, key):
         if key != self._key:
             raise KeyError("Unrecognised key in %s: %s vs %s" % (self.__class__.__name__, key, self._key))
         return self._value
 
+
 class DummyPatch(object):
+
     """Quacks like a lsst.skymap.PatchInfo"""
+
     def __init__(self, xy0, dims):
         self._outerBBox = afwGeom.Box2I(xy0, dims)
+
     def getOuterBBox(self):
         return self._outerBBox
 
+
 class DummyTract(KeyValue):
+
     """Quacks like a lsst.skymap.TractInfo"""
+
     def __init__(self, patchId, patch, wcs):
         super(DummyTract, self).__init__(patchId, patch)
         self._wcs = wcs
+
     def getPatchInfo(self, patchId):
         return self[patchId]
+
     def getWcs(self):
         return self._wcs
 
+
 class DummySkyMap(KeyValue):
+
     """Quacks like a lsst.skymap.BaseSkyMap"""
+
     def __init__(self, tractId, tract):
         super(DummySkyMap, self).__init__(tractId, tract)
 
 
 class DummyDataRef(object):
+
     """Quacks like a lsst.daf.persistence.ButlerDataRef"""
+
     def __init__(self, dataId, **data):
         self.dataId = dataId
         self._data = data
+
     def get(self, dataType):
         return self._data[dataType]
 
@@ -81,20 +97,22 @@ ROTATEAXIS = afwCoord.Coord(0*afwGeom.degrees, 0*afwGeom.degrees)
 DIMS = afwGeom.Extent2I(3600, 3600)
 SCALE = 0.5*afwGeom.arcseconds
 
+
 def createPatch(
-    tractId=1, patchId=(2,3), # Tract and patch identifier, for dataId
+    tractId=1, patchId=(2, 3),  # Tract and patch identifier, for dataId
     dims=DIMS,                # Patch dimensions (Extent2I)
-    xy0=afwGeom.Point2I(1234,5678), # Patch xy0 (Point2I)
+    xy0=afwGeom.Point2I(1234, 5678),  # Patch xy0 (Point2I)
     center=CENTER,                  # Celestial coordinates of center (Coord)
     scale=SCALE                     # Pixel scale (Angle)
-    ):
+):
     crpix = afwGeom.Point2D(xy0) + afwGeom.Extent2D(dims)*0.5
     wcs = afwImage.makeWcs(center, crpix, scale.asDegrees(), 0.0, 0.0, scale.asDegrees())
     patch = DummyPatch(xy0, dims)
     tract = DummyTract(patchId, patch, wcs)
     skymap = DummySkyMap(tractId, tract)
-    dataRef = DummyDataRef({'tract': tractId, 'patch': ",".join(map(str,patchId))}, deepCoadd_skyMap=skymap)
+    dataRef = DummyDataRef({'tract': tractId, 'patch': ",".join(map(str, patchId))}, deepCoadd_skyMap=skymap)
     return dataRef
+
 
 def createImage(
     dataId={"name": "foobar"},          # Data identifier
@@ -103,15 +121,16 @@ def createImage(
     rotateAngle=0*afwGeom.degrees,      # Rotation angle/distance to move (Angle)
     dims=DIMS,                          # Image dimensions (Extent2I)
     scale=SCALE                         # Pixel scale (Angle)
-    ):
+):
     crpix = afwGeom.Point2D(afwGeom.Extent2D(dims)*0.5)
-    center = center.clone() # Ensure user doesn't need it, because we're mangling it
+    center = center.clone()  # Ensure user doesn't need it, because we're mangling it
     center.rotate(rotateAxis, rotateAngle)
     wcs = afwImage.makeWcs(center, crpix, scale.asDegrees(), 0.0, 0.0, scale.asDegrees())
     return SelectStruct(DummyDataRef(dataId), wcs, (dims[0], dims[1]))
 
 
 class WcsSelectImagesTestCase(unittest.TestCase):
+
     def check(self, patchRef, selectData, doesOverlap):
         config = CoaddBaseTask.ConfigClass()
         config.select.retarget(WcsSelectImagesTask)
@@ -137,6 +156,7 @@ class WcsSelectImagesTestCase(unittest.TestCase):
         self.check(createPatch(), createImage(rotateAngle=0.5*afwGeom.Extent2D(DIMS).computeNorm()*SCALE),
                    True)
 
+
 def suite():
     """Returns a suite containing all the test cases in this module."""
 
@@ -147,7 +167,8 @@ def suite():
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)
 
-def run(shouldExit = False):
+
+def run(shouldExit=False):
     """Run the tests"""
     utilsTests.run(suite(), shouldExit)
 

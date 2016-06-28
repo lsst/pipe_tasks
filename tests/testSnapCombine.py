@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -11,14 +11,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import unittest
@@ -32,9 +32,10 @@ from lsst.pipe.tasks.snapCombine import SnapCombineTask
 
 numpy.random.seed(1)
 
+
 def makeRandomExposure(width, height, imMean, varMean, maxMask):
     """Make a random exposure with Poisson distribution for image and variance
-    
+
     @param[in] width image width (pixels)
     @param[in] height image height (pixels)
     @param[in] imMean mean of image plane
@@ -44,11 +45,12 @@ def makeRandomExposure(width, height, imMean, varMean, maxMask):
     exp = afwImage.ExposureF(width, height)
     mi = exp.getMaskedImage()
     imArr, maskArr, varArr = mi.getArrays()
-    imArr[:,:] = numpy.random.poisson(imMean, size=imArr.shape)
-    varArr[:,:] = numpy.random.poisson(varMean, size=varArr.shape)
-    maskArr[:,:] = numpy.random.random_integers(0, maxMask, size=maskArr.shape)
-    
+    imArr[:, :] = numpy.random.poisson(imMean, size=imArr.shape)
+    varArr[:, :] = numpy.random.poisson(varMean, size=varArr.shape)
+    maskArr[:, :] = numpy.random.random_integers(0, maxMask, size=maskArr.shape)
+
     return exp
+
 
 def simpleAdd(exp0, exp1, badPixelMask):
     """Add two exposures, avoiding bad pixels
@@ -58,28 +60,30 @@ def simpleAdd(exp0, exp1, badPixelMask):
     expRes = exp0.Factory(exp0, True)
     miRes = expRes.getMaskedImage()
     imArrRes, maskArrRes, varArrRes = miRes.getArrays()
-    
+
     weightMap = afwImage.ImageF(exp0.getDimensions())
     weightArr = weightMap.getArray()
 
     good0 = numpy.bitwise_and(maskArr0, badPixelMask) == 0
     good1 = numpy.bitwise_and(maskArr1, badPixelMask) == 0
 
-    imArrRes[:,:]  = numpy.where(good0,  imArr0, 0) + numpy.where(good1,  imArr1, 0)
-    varArrRes[:,:] = numpy.where(good0, varArr0, 0) + numpy.where(good1, varArr1, 0)
-    maskArrRes[:,:] = numpy.bitwise_or(numpy.where(good0, maskArr0, 0), numpy.where(good1, maskArr1, 0))
-    weightArr[:,:] = numpy.where(good0, 1, 0) + numpy.where(good1, 1, 0)
-    
-    miRes /= weightMap
-    miRes *= 2 # want addition, not mean, where both pixels are valid
+    imArrRes[:, :] = numpy.where(good0,  imArr0, 0) + numpy.where(good1,  imArr1, 0)
+    varArrRes[:, :] = numpy.where(good0, varArr0, 0) + numpy.where(good1, varArr1, 0)
+    maskArrRes[:, :] = numpy.bitwise_or(numpy.where(good0, maskArr0, 0), numpy.where(good1, maskArr1, 0))
+    weightArr[:, :] = numpy.where(good0, 1, 0) + numpy.where(good1, 1, 0)
 
-    setCoaddEdgeBits(miRes.getMask(), weightMap)    
-    
+    miRes /= weightMap
+    miRes *= 2  # want addition, not mean, where both pixels are valid
+
+    setCoaddEdgeBits(miRes.getMask(), weightMap)
+
     return expRes
-    
+
 
 class SnapCombineTestCase(utilsTests.TestCase):
+
     """A test case for SnapCombineTask."""
+
     def testAddition(self):
         """Test addition with bad pixels
         """
@@ -94,11 +98,11 @@ class SnapCombineTestCase(utilsTests.TestCase):
         snap1 = makeRandomExposure(25, 25, 10000, 5000, badPixelMask)
         resExp = task.run(snap0, snap1).exposure
         resMi = resExp.getMaskedImage()
-        
+
         predExp = simpleAdd(snap0, snap1, badPixelMask)
         predMi = predExp.getMaskedImage()
         self.assertMaskedImagesNearlyEqual(resMi, predMi)
-    
+
     def testAdditionAllGood(self):
         """Test the case where all pixels are valid
         """
@@ -115,7 +119,7 @@ class SnapCombineTestCase(utilsTests.TestCase):
         predMi = snap0.getMaskedImage().Factory(snap0.getMaskedImage(), True)
         predMi += snap1.getMaskedImage()
         self.assertMaskedImagesNearlyEqual(resMi, predMi)
-    
+
     def testMetadata(self):
         """Test more advanced metadata handling
         """
@@ -132,7 +136,7 @@ class SnapCombineTestCase(utilsTests.TestCase):
 
         snap0 = makeRandomExposure(5, 5, 10000, 5000, 0)
         snap1 = makeRandomExposure(5, 5, 10000, 5000, 0)
-        
+
         metadata0 = snap0.getMetadata()
         metadata1 = snap1.getMetadata()
         metadata0.set("NUM0", 45.2)
@@ -149,19 +153,18 @@ class SnapCombineTestCase(utilsTests.TestCase):
         metadata1.set("SUM1", 3)
         metadata0.set("MISS0SUM", 75.4)
         metadata1.set("MISS1SUM", -234.3)
-        
-        
+
         allKeys = set(metadata0.names()) | set(metadata1.names())
         miss0Keys = set(key for key in allKeys if key.startswith("MISS0"))
         miss1Keys = set(key for key in allKeys if key.startswith("MISS1"))
         missKeys = miss0Keys | miss1Keys
-        avgKeys = set(config.averageKeys) - missKeys # keys that will be averaged
-        sumKeys = set(config.sumKeys) - missKeys # keys that will be summed
-        sameKeys = allKeys - (avgKeys | sumKeys | miss1Keys) # keys that will be the same
-        
+        avgKeys = set(config.averageKeys) - missKeys  # keys that will be averaged
+        sumKeys = set(config.sumKeys) - missKeys  # keys that will be summed
+        sameKeys = allKeys - (avgKeys | sumKeys | miss1Keys)  # keys that will be the same
+
         resExp = task.run(snap0, snap1).exposure
         resMetadata = resExp.getMetadata()
-        
+
         for key in sameKeys:
             self.assertEqual(resMetadata.get(key), metadata0.get(key))
         for key in avgKeys:
@@ -171,12 +174,14 @@ class SnapCombineTestCase(utilsTests.TestCase):
         for key in miss1Keys:
             self.assertFalse(resMetadata.exists(key))
 
+
 def suite():
     utilsTests.init()
     suites = []
     suites += unittest.makeSuite(SnapCombineTestCase)
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(shouldExit=False):
     utilsTests.run(suite(), shouldExit)

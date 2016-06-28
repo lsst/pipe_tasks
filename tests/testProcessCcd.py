@@ -40,9 +40,11 @@ from lsst.pipe.tasks.processCcd import ProcessCcdTask
 obsTestDir = lsst.utils.getPackageDir('obs_test')
 InputDir = os.path.join(obsTestDir, "data", "input")
 
-OutputName = None # specify a name (as a string) to save the output repository
+OutputName = None  # specify a name (as a string) to save the output repository
+
 
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
+
     def testProcessCcd(self):
         """test ProcessCcdTask
 
@@ -55,8 +57,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             dataId = dict(visit=1)
             dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
             fullResult = ProcessCcdTask.parseAndRun(
-                args = [InputDir, "--output", outPath, "--clobber-config", "--id"] + dataIdStrList,
-                doReturnResults = True,
+                args=[InputDir, "--output", outPath, "--clobber-config", "--id"] + dataIdStrList,
+                doReturnResults=True,
             )
             butler = fullResult.parsedCmd.butler
             self.assertEqual(len(fullResult.resultList), 1)
@@ -89,7 +91,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 result.exposure,
             )):
                 self.assertEqual(exposure.getBBox(),
-                    afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
+                                 afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
                 maskedImage = exposure.getMaskedImage()
                 maskArr = maskedImage.getMask().getArray()
                 numGoodPix = numpy.sum(maskArr == 0)
@@ -160,6 +162,7 @@ def suite():
     suites += unittest.makeSuite(ProcessCcdTestCase)
     suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(shouldExit=False):
     lsst.utils.tests.run(suite(), shouldExit)

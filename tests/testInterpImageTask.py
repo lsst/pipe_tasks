@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-# 
+#
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -10,14 +10,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -45,8 +45,10 @@ try:
 except NameError:
     display = False
 
+
 class interpolationTestCase(unittest.TestCase):
     """A test case for interpolation"""
+
     def setUp(self):
         self.FWHM = 5
 
@@ -69,10 +71,10 @@ class interpolationTestCase(unittest.TestCase):
         np.random.seed(666)
         ima[:] = np.random.uniform(-1, 1, ima.shape)
 
-        mi[0:nBadCol, :] = (10, badBit, 0) # Bad left edge
-        mi[-nBadCol:, :] = (10, badBit, 0) # With another bad set of columns next to bad left edge
-        mi[nBadCol+1:nBadCol+4, 0:10] = (100, badBit, 0) # Bad right edge
-        mi[-nBadCol-4:-nBadCol-1, 0:10] = (100, badBit, 0) # more bad of columns next to bad right edge
+        mi[0:nBadCol, :] = (10, badBit, 0)  # Bad left edge
+        mi[-nBadCol:, :] = (10, badBit, 0)  # With another bad set of columns next to bad left edge
+        mi[nBadCol+1:nBadCol+4, 0:10] = (100, badBit, 0)  # Bad right edge
+        mi[-nBadCol-4:-nBadCol-1, 0:10] = (100, badBit, 0)  # more bad of columns next to bad right edge
 
         defectList = ipIsr.getDefectListFromMask(mi, pixelPlane, growFootprints=0)
 
@@ -138,6 +140,7 @@ class interpolationTestCase(unittest.TestCase):
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+
 def suite():
     """Returns a suite containing all the test cases in this module."""
     tests.init()
@@ -147,7 +150,8 @@ def suite():
     suites += unittest.makeSuite(tests.MemoryTestCase)
     return unittest.TestSuite(suites)
 
-def run(exit = False):
+
+def run(exit=False):
     """Run the tests"""
     tests.run(suite(), exit)
 

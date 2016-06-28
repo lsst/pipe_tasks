@@ -22,12 +22,7 @@ from __future__ import absolute_import
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import os
-import shutil
-import tempfile
 import unittest
-
-import numpy
 
 import lsst.utils
 import lsst.afw.image
@@ -35,17 +30,20 @@ import lsst.utils.tests
 
 import lsst.pipe.tasks.fakes as fakes
 
+
 class TrialFakeSourcesConfig(fakes.BaseFakeSourcesConfig):
     pass
+
 
 class TrialFakeSourcesTask(fakes.BaseFakeSourcesTask):
     ConfigClass = TrialFakeSourcesConfig
 
     def __init__(self, **kwargs):
-        fakes.BaseFakeSourcesTask.__init__(self,**kwargs)
+        fakes.BaseFakeSourcesTask.__init__(self, **kwargs)
 
     def run(self, exposure, background):
         pass
+
 
 class TestFakes(lsst.utils.tests.TestCase):
     def testFakeMaskAdded(self):
@@ -79,12 +77,14 @@ class TestFakes(lsst.utils.tests.TestCase):
         lsst.afw.image.MaskU.removeMaskPlane(maskPlaneName)
         del trialInstance
 
+
 def suite():
     lsst.utils.tests.init()
     suites = []
     suites += unittest.makeSuite(TestFakes)
     suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(shouldExit=False):
     lsst.utils.tests.run(suite(), shouldExit)

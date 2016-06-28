@@ -33,6 +33,7 @@ from lsst.afw.geom import Extent2I, Box2D
 from lsst.daf.persistence import Butler
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, DiscreteSkyMap
 
+
 class MakeDiscreteSkyMapTestCase(unittest.TestCase):
     """Test MakeDiscreteSkyMapTask"""
 
@@ -40,7 +41,7 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
         self.inPath = os.path.join(getPackageDir("obs_test"), "data", "input")
         self.outPath = os.path.join(os.path.dirname(__file__), "testMakeDiscreteSkyMapOutput")
         self.config = MakeDiscreteSkyMapTask.ConfigClass()
-        self.config.doWrite = False # repo has no place to put the data
+        self.config.doWrite = False  # repo has no place to put the data
 
     def tearDown(self):
         del self.config
@@ -51,7 +52,7 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
         """Test construction of a discrete sky map
         """
         butler = Butler(root=self.inPath, outputRoot=self.outPath)
-        coordList = [] # list of sky coords of all corners of all calexp
+        coordList = []  # list of sky coords of all corners of all calexp
         for dataId in (
             dict(visit=1, filter="g"),
             dict(visit=2, filter="g"),
@@ -69,8 +70,8 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
         # use the calexp to make a sky map
         retVal = MakeDiscreteSkyMapTask.parseAndRun(
             args=[self.inPath, "--output", self.outPath, "--id", "filter=g^r"],
-            config = self.config,
-            doReturnResults = True,
+            config=self.config,
+            doReturnResults=True,
         )
         self.assertEqual(len(retVal.resultList), 1)
         skyMap = retVal.resultList[0].result.skyMap
@@ -86,6 +87,7 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+
 def suite():
     """Returns a suite containing all the test cases in this module."""
 
@@ -96,7 +98,8 @@ def suite():
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)
 
-def run(shouldExit = False):
+
+def run(shouldExit=False):
     """Run the tests"""
     utilsTests.run(suite(), shouldExit)
 

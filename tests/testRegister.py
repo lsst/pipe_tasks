@@ -39,17 +39,19 @@ try:
 except NameError:
     display = False
 
+
 class RegisterTestCase(unittest.TestCase):
+
     """A test case for RegisterTask."""
 
     def setUp(self):
         self.dx = -5
         self.dy = +3
         self.numSources = 123
-        self.border = 10 # Must be larger than dx,dy
+        self.border = 10  # Must be larger than dx,dy
         self.width = 1000
         self.height = 1000
-        self.pixelScale = 0.1 * afwGeom.arcseconds # So dx,dy is not larger than RegisterConfig.matchRadius
+        self.pixelScale = 0.1 * afwGeom.arcseconds  # So dx,dy is not larger than RegisterConfig.matchRadius
 
     def tearDown(self):
         del self.pixelScale
@@ -78,8 +80,8 @@ class RegisterTestCase(unittest.TestCase):
         yInput = yTemplate + self.dy
 
         # Note: numpy indices are backwards: [y,x]
-        templateArray[(yTemplate).astype(int),(xTemplate).astype(int)] = 1
-        inputArray[(yInput).astype(int),(xInput).astype(int)] = 1
+        templateArray[(yTemplate).astype(int), (xTemplate).astype(int)] = 1
+        inputArray[(yInput).astype(int), (xInput).astype(int)] = 1
 
         # Create WCSes
         centerCoord = afwCoord.IcrsCoord(0*afwGeom.degrees, 0*afwGeom.degrees)
@@ -129,7 +131,7 @@ class RegisterTestCase(unittest.TestCase):
         config.sipOrder = 2
         task = RegisterTask(name="register", config=config)
         results = task.run(inData.inputSources, inData.inputExp.getWcs(),
-            inData.inputExp.getBBox(afwImage.LOCAL), inData.templateSources)
+                           inData.inputExp.getBBox(afwImage.LOCAL), inData.templateSources)
         warpedExp = task.warpExposure(inData.inputExp, results.wcs, inData.templateExp.getWcs(),
                                       inData.templateExp.getBBox(afwImage.LOCAL))
         warpedSources = task.warpSources(inData.inputSources, results.wcs, inData.templateExp.getWcs(),
@@ -141,18 +143,18 @@ class RegisterTestCase(unittest.TestCase):
 
     def assertRegistered(self, inData, outData, bad=set()):
         """Assert that the registration task is registering images"""
-        xTemplate = numpy.array([x for i,x in enumerate(inData.xTemplate) if i not in bad])
-        yTemplate = numpy.array([y for i,y in enumerate(inData.yTemplate) if i not in bad])
+        xTemplate = numpy.array([x for i, x in enumerate(inData.xTemplate) if i not in bad])
+        yTemplate = numpy.array([y for i, y in enumerate(inData.yTemplate) if i not in bad])
         alignedArray = outData.warpedExp.getMaskedImage().getImage().getArray()
-        self.assertTrue((alignedArray[yTemplate,xTemplate] == 1.0).all())
+        self.assertTrue((alignedArray[yTemplate, xTemplate] == 1.0).all())
         for dx in (-1, 0, +1):
             for dy in range(-1, 0, +1):
                 # The density of points is such that I can assume that no point is next to another.
                 # The values are not quite zero because the "image" is undersampled, so we get ringing.
-                self.assertTrue((alignedArray[yTemplate+dy,xTemplate+dx] < 0.1).all())
+                self.assertTrue((alignedArray[yTemplate+dy, xTemplate+dx] < 0.1).all())
 
-        xAligned = numpy.array([x for i,x in enumerate(outData.warpedSources["center_x"]) if i not in bad])
-        yAligned = numpy.array([y for i,y in enumerate(outData.warpedSources["center_y"]) if i not in bad])
+        xAligned = numpy.array([x for i, x in enumerate(outData.warpedSources["center_x"]) if i not in bad])
+        yAligned = numpy.array([y for i, y in enumerate(outData.warpedSources["center_y"]) if i not in bad])
         self.assertAlmostEqual((xAligned - xTemplate).mean(), 0, 8)
         self.assertAlmostEqual((xAligned - xTemplate).std(), 0, 8)
         self.assertAlmostEqual((yAligned - yTemplate).mean(), 0, 8)
@@ -165,7 +167,6 @@ class RegisterTestCase(unittest.TestCase):
         self.assertAlmostEqual(metadata.get("SIP_RMS"), 0.0)
         self.assertEqual(metadata.get("SIP_GOOD"), self.numSources-numRejected)
         self.assertEqual(metadata.get("SIP_REJECTED"), numRejected)
-
 
     def testRegister(self):
         """Test image registration"""
@@ -180,10 +181,10 @@ class RegisterTestCase(unittest.TestCase):
 
         # Tweak a source to have a bad offset
         badIndex = 111
-        
+
         coordKey = inData.inputSources[badIndex].getTable().getCoordKey()
         centroidKey = inData.inputSources[badIndex].getTable().getCentroidKey()
-        x,y = float(inData.xInput[badIndex] + 0.01), float(inData.yInput[badIndex] - 0.01)
+        x, y = float(inData.xInput[badIndex] + 0.01), float(inData.yInput[badIndex] - 0.01)
         point = afwGeom.Point2D(x, y)
         inData.inputSources[badIndex].set(centroidKey, point)
         inData.inputSources[badIndex].set(coordKey, inData.wcs.pixelToSky(point))
@@ -220,6 +221,7 @@ def suite():
     suites += unittest.makeSuite(RegisterTestCase)
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(shouldExit=False):
     utilsTests.run(suite(), shouldExit)

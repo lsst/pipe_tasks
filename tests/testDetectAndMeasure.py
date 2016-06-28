@@ -40,7 +40,9 @@ try:
 except Exception:
     InputDir = None
 
+
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
+
     def testBasics(self):
         """Test detection and measurement on simple synthesized data
         """
@@ -51,14 +53,14 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         numX = 5
         numY = 5
         coordList = self.makeCoordList(
-            bbox = bbox,
-            numX = numX,
-            numY = numY,
-            minCounts = minCounts,
-            maxCounts = maxCounts,
-            sigma = starSigma,
+            bbox=bbox,
+            numX=numX,
+            numY=numY,
+            minCounts=minCounts,
+            maxCounts=maxCounts,
+            sigma=starSigma,
         )
-        kwid = 11 # kernel width
+        kwid = 11  # kernel width
         sky = 2000
         # create an exposure without a Wcs; add the Wcs later
         exposure = plantSources(bbox=bbox, kwid=kwid, sky=sky, coordList=coordList, addPoissonNoise=True)
@@ -96,7 +98,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         minX = bbox.getMinX() + (dX / 2.0)
         minY = bbox.getMinY() + (dY / 2.0)
         dCounts = (maxCounts - minCounts) / (numX * numY - 1)
-    
+
         coordList = []
         counts = minCounts
         for i in range(numX):
@@ -120,12 +122,14 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         with self.assertRaises(Exception):
             DetectAndMeasureTask(config=config, schema=schema)
 
+
 def suite():
     lsst.utils.tests.init()
     suites = []
     suites += unittest.makeSuite(ProcessCcdTestCase)
     suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(shouldExit=False):
     lsst.utils.tests.run(suite(), shouldExit)
