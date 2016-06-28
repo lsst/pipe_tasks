@@ -32,7 +32,7 @@ from lsst.afw.image import fluxFromABMag, fluxErrFromABMagErr
 from .htmIndexer import HtmIndexer as Indexer
 
 
-class TextReaderConfig(pexConfig.Config):
+class ReadTextCatalogConfig(pexConfig.Config):
     header_lines = pexConfig.Field(
         dtype=int,
         default=0,
@@ -52,14 +52,14 @@ class TextReaderConfig(pexConfig.Config):
     )
 
 
-class TextReaderTask(pipeBase.Task):
+class ReadTextCatalogTask(pipeBase.Task):
     """Read an object catalog from a text file
     """
-    _DefaultName = 'catalogReader'
-    ConfigClass = TextReaderConfig
+    _DefaultName = 'readCatalog'
+    ConfigClass = ReadTextCatalogConfig
 
-    def readFile(self, filename):
-        """Read an object table from the specified text file
+    def run(self, filename):
+        """Read an object catalog from the specified text file
 
         @param[in] filename  path to text file
         @return a numpy structured array containing the specified columns
@@ -74,7 +74,7 @@ class TextReaderTask(pipeBase.Task):
         return np.atleast_1d(arr)
 
 
-class FitsReaderConfig(pexConfig.Config):
+class ReadFitsCatalogConfig(pexConfig.Config):
     hdu = pexConfig.Field(
         dtype=int,
         default=1,
@@ -89,14 +89,14 @@ class FitsReaderConfig(pexConfig.Config):
     )
 
 
-class FitsReaderTask(pipeBase.Task):
+class ReadFitsCatalogTask(pipeBase.Task):
     """Read an object catalog from a FITS binary table
     """
-    _DefaultName = 'referenceCatalogReaderTask'
-    ConfigClass = FitsReaderConfig
+    _DefaultName = 'readCatalog'
+    ConfigClass = ReadFitsCatalogConfig
 
-    def readFile(self, filename):
-        """Read an object table from the specified FITS file
+    def run(self, filename):
+        """Read an object catalog from the specified FITS file
 
         @param[in] filename  path to FITS file
         @return a numpy structured array containing the specified columns
@@ -158,7 +158,7 @@ class IngestIndexedReferenceConfig(pexConfig.Config):
         doc='Default HTM level.  Level 8 gives ~0.08 sq deg per trixel.',
     )
     file_reader = pexConfig.ConfigurableField(
-        target=TextReaderTask,
+        target=ReadTextCatalogTask,
         doc='Task to use to read the files.  Default is to expect text files.'
     )
     ra_name = pexConfig.Field(
@@ -259,7 +259,7 @@ class IngestIndexedReferenceTask(pipeBase.CmdLineTask):
         rec_num = 0
         first = True
         for filename in files:
-            arr = self.file_reader.readFile(filename)
+            arr = self.file_reader.run(filename)
             index_list = self.indexer.index_points(arr[self.config.ra_name], arr[self.config.dec_name])
             if first:
                 schema, key_map = self.make_schema(arr.dtype)

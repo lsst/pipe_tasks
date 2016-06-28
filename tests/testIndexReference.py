@@ -29,7 +29,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 import lsst.utils
-from lsst.pipe.tasks.indexReferenceTask import FitsReaderTask
+from lsst.pipe.tasks.indexReferenceTask import ReadFitsCatalogTask
 
 # If you want to update the FITS table used for this test:
 # - modify makeFitsTable to create the table as you want it
@@ -84,8 +84,8 @@ if SaveFitsTable:
     fitsTable.writeto(FitsPath, clobber=True)
 
 
-class FitsReaderTaskTestCase(lsst.utils.tests.TestCase):
-    """Test FitsReaderTask, a reader used by IngestIndexedReferenceTask"""
+class ReadFitsCatalogTaskTestCase(lsst.utils.tests.TestCase):
+    """Test ReadFitsCatalogTask, a reader used by IngestIndexedReferenceTask"""
     def setUp(self):
         fitsTable = makeFitsTable()
         self.arr1 = fitsTable[1].data
@@ -95,8 +95,8 @@ class FitsReaderTaskTestCase(lsst.utils.tests.TestCase):
     def testHDU1DefaultNames(self):
         """Test the data in HDU 1, loading all columns without renaming
         """
-        task = FitsReaderTask()
-        table = task.readFile(FitsPath)
+        task = ReadFitsCatalogTask()
+        table = task.run(FitsPath)
         self.assertTrue(np.array_equal(table, self.arr1))
         self.assertEqual(len(table), 2)
 
@@ -111,11 +111,11 @@ class FitsReaderTaskTestCase(lsst.utils.tests.TestCase):
             "ra": "ra_deg",
             "dec": "dec_deg",
         }
-        config = FitsReaderTask.ConfigClass()
+        config = ReadFitsCatalogTask.ConfigClass()
         config.column_map = column_map
         self.assertEqual(config.hdu, 1)
-        task = FitsReaderTask(config=config)
-        arr = task.readFile(FitsPath)
+        task = ReadFitsCatalogTask(config=config)
+        arr = task.run(FitsPath)
         self.assertEqual(len(Table(arr).columns), len(Table(self.arr1).columns))
         for inname, outname in izip(Table(self.arr1).colnames, Table(arr).colnames):
             des_outname = column_map.get(inname, inname)
@@ -124,40 +124,40 @@ class FitsReaderTaskTestCase(lsst.utils.tests.TestCase):
 
     def testHDU2(self):
         """Test reading HDU 2 with original order"""
-        config = FitsReaderTask.ConfigClass()
+        config = ReadFitsCatalogTask.ConfigClass()
         config.hdu = 2
-        task = FitsReaderTask(config=config)
-        arr = task.readFile(FitsPath)
+        task = ReadFitsCatalogTask(config=config)
+        arr = task.run(FitsPath)
         self.assertTrue(np.array_equal(arr, self.arr2))
 
     def testBadPath(self):
         """Test that an invalid path causes an error"""
-        task = FitsReaderTask()
+        task = ReadFitsCatalogTask()
         badPath = "does/not/exists.garbage"
         with self.assertRaises(IOError):
-            task.readFile(badPath)
+            task.run(badPath)
 
     def testBadColumnName(self):
         """Test that non-existent columns in column_map cause an error"""
-        config = FitsReaderTask.ConfigClass()
+        config = ReadFitsCatalogTask.ConfigClass()
         for badColNames in (
             ["name", "ra", "dec", "counts", "flux", "resolved", "other"],  # "other" only in hdu 2
             ["name", "ra", "dec", "counts", "flux", "invalidname"],
             ["invalid1"],
         ):
             config.column_map = dict((name, "col %s" % (i,)) for i, name in enumerate(badColNames))
-            task = FitsReaderTask(config=config)
+            task = ReadFitsCatalogTask(config=config)
             with self.assertRaises(RuntimeError):
-                task.readFile(FitsPath)
+                task.run(FitsPath)
 
     def testBadHdu(self):
         """Test that non-existent HDUs cause an error"""
         for badHdu in [0, 3, 4]:
-            config = FitsReaderTask.ConfigClass()
+            config = ReadFitsCatalogTask.ConfigClass()
             config.hdu = badHdu
-            task = FitsReaderTask(config=config)
+            task = ReadFitsCatalogTask(config=config)
             with self.assertRaises(Exception):
-                task.readFile(FitsPath)
+                task.run(FitsPath)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
