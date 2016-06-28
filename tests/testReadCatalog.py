@@ -29,7 +29,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 import lsst.utils
-from lsst.pipe.tasks.indexReferenceTask import ReadFitsCatalogTask
+from lsst.pipe.tasks.readCatalog import ReadFitsCatalogTask
 
 # If you want to update the FITS table used for this test:
 # - modify makeFitsTable to create the table as you want it
