@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008-2016 AURA/LSST.
+# Copyright 2016 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -50,9 +50,57 @@ class ReadTextCatalogConfig(pexConfig.Config):
         doc='Delimiter to use when reading text reference files.  Comma is default.'
     )
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page ReadTextCatalogTask
+## \ref ReadTextCatalogTask_ "ReadTextCatalogTask"
+## \copybrief ReadTextCatalogTask
+## \}
+
 
 class ReadTextCatalogTask(pipeBase.Task):
-    """Read an object catalog from a text file
+    """!Read an object catalog from a text file
+
+    @anchor ReadTextCatalogTask_
+
+    @section pipe_tasks_readTextCatalog_Contents  Contents
+
+     - @ref pipe_tasks_readTextCatalog_Purpose
+     - @ref pipe_tasks_readTextCatalog_Initialize
+     - @ref pipe_tasks_readTextCatalog_Config
+     - @ref pipe_tasks_readTextCatalog_Example
+
+    @section pipe_tasks_readTextCatalog_Purpose  Description
+
+    Read an object catalog from a text file. Designed to read foreign catalogs
+    so they can be written out in a form suitable for IngestIndexedReferenceTask.
+
+    @section pipe_tasks_readTextCatalog_Initialize  Task initialisation
+
+    @copydoc \_\_init\_\_
+
+    @section pipe_tasks_readTextCatalog_Config  Configuration parameters
+
+    See @ref ReadTextCatalogConfig
+
+    @section pipe_tasks_readTextCatalog_Example   A complete example of using ReadTextCatalogTask
+
+    Given a file named `table.csv` containing the following:
+
+        ra      dec     flux
+        5.5,    -45.2,  12453
+        19.6,   34.2,   32123
+
+    you can read this file with the following code:
+
+        from lsst.pipe.tasks.readCatalog import ReadTextCatalogTask
+        task = ReadTextCatalogTask()
+        catalogArray = task.run("table.csv")
+
+    The resulting `catalogArray` is a numpy structured array containing three fields
+    ("ra", "dec" and "flux") and two rows of data. For more complex cases,
+    config parameters allow you to specify the names of the columns (instead of using automatic discovery)
+    and set the number of rows to skip.
     """
     _DefaultName = 'readCatalog'
     ConfigClass = ReadTextCatalogConfig
@@ -87,9 +135,51 @@ class ReadFitsCatalogConfig(pexConfig.Config):
         default={},
     )
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page ReadFitsCatalogTask
+## \ref ReadFitsCatalogTask_ "ReadFitsCatalogTask"
+## \copybrief ReadFitsCatalogTask
+## \}
+
 
 class ReadFitsCatalogTask(pipeBase.Task):
-    """Read an object catalog from a FITS binary table
+    """!Read an object catalog from a FITS table
+
+    @anchor ReadFitsCatalogTask_
+
+    @section pipe_tasks_readFitsCatalog_Contents  Contents
+
+     - @ref pipe_tasks_readFitsCatalog_Purpose
+     - @ref pipe_tasks_readFitsCatalog_Initialize
+     - @ref pipe_tasks_readFitsCatalog_Config
+     - @ref pipe_tasks_readFitsCatalog_Example
+
+    @section pipe_tasks_readFitsCatalog_Purpose  Description
+
+    Read an object catalog from a FITS table. Designed to read foreign catalogs
+    so they can be written out in a form suitable for IngestIndexedReferenceTask.
+
+    @section pipe_tasks_readFitsCatalog_Initialize  Task initialisation
+
+    @copydoc \_\_init\_\_
+
+    @section pipe_tasks_readFitsCatalog_Config  Configuration parameters
+
+    See @ref ReadFitsCatalogConfig
+
+    @section pipe_tasks_readFitsCatalog_Example   A complete example of using ReadFitsCatalogTask
+
+    Run the following code from the main directory of pipe_tasks:
+
+        from lsst.pipe.tasks.readCatalog import ReadFitsCatalogTask
+        filePath = "tests/data/testIndexReference_fitsReader.fits"
+        task = ReadFitsCatalogTask()
+        catalogArray = task.run(filePath)
+
+    The resulting `catalogArray` is a numpy structured array containing fields such as "ra" and "dec"
+    and a few rows of data. For more complicated cases config parameters allow you to rename columns
+    and choose which HDU to read.
     """
     _DefaultName = 'readCatalog'
     ConfigClass = ReadFitsCatalogConfig
