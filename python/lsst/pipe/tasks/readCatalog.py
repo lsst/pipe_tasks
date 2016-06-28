@@ -173,11 +173,11 @@ class ReadFitsCatalogTask(pipeBase.Task):
     Run the following code from the main directory of pipe_tasks:
 
         from lsst.pipe.tasks.readCatalog import ReadFitsCatalogTask
-        filePath = "tests/data/testIndexReference_fitsReader.fits"
+        filePath = "tests/data/testReadFitsCatalog.fits"
         task = ReadFitsCatalogTask()
         catalogArray = task.run(filePath)
 
-    The resulting `catalogArray` is a numpy structured array containing fields such as "ra" and "dec"
+    The resulting `catalogArray` is a numpy structured array containing fields such as "name", "ra" and "dec"
     and a few rows of data. For more complicated cases config parameters allow you to rename columns
     and choose which HDU to read.
     """

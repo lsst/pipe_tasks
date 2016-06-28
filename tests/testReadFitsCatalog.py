@@ -38,7 +38,7 @@ from lsst.pipe.tasks.readCatalog import ReadFitsCatalogTask
 # - set SaveFitsTable = False again
 SaveFitsTable = False  # construct and save a new FITS table file?
 TestDir = os.path.dirname(__file__)
-FitsPath = os.path.join(TestDir, "data", "testIndexReference_fitsReader.fits")
+FitsPath = os.path.join(TestDir, "data", "testReadFitsCatalog.fits")
 
 
 def setup_module(module):
@@ -52,22 +52,22 @@ def makeFitsTable():
     # table for HDU 1
     cols1 = [
         fits.Column(name='name', format='10A', array=["object 1", "object 2"]),
-        fits.Column(name='counts', format='J', array=[1000, 2000]),
-        fits.Column(name='dec', format='E', array=[-5, 45]),
         fits.Column(name='ra', format='E', array=[10, 5]),
-        fits.Column(name='resolved', format='L', array=[True, False]),
+        fits.Column(name='dec', format='E', array=[-5, 45]),
+        fits.Column(name='counts', format='J', array=[1000, 2000]),
         fits.Column(name='flux', format='D', array=[1.1, 2.2]),
+        fits.Column(name='resolved', format='L', array=[True, False]),
     ]
     hdu1 = fits.BinTableHDU.from_columns(fits.ColDefs(cols1))
 
     # table for HDU 2,
     cols2 = [
-        fits.Column(name='flux', format='D', array=[10.1, 20.2]),
-        fits.Column(name='dec', format='E', array=[75, -34]),
         fits.Column(name='name', format='10A', array=["object 3", "object 4"]),
-        fits.Column(name='counts', format='J', array=[15000, 22000]),
         fits.Column(name='ra', format='E', array=[16, 3]),
+        fits.Column(name='dec', format='E', array=[75, -34]),
         fits.Column(name='resolved', format='L', array=[False, True]),
+        fits.Column(name='flux', format='D', array=[10.1, 20.2]),
+        fits.Column(name='counts', format='J', array=[15000, 22000]),
         fits.Column(name='other', format='D', array=[11, 12]),
     ]
     hdu2 = fits.BinTableHDU.from_columns(fits.ColDefs(cols2))
@@ -103,8 +103,8 @@ class ReadFitsCatalogTaskTestCase(lsst.utils.tests.TestCase):
     def testHDU1GivenNames(self):
         """Test the data in HDU 1 with some column renaming
 
-        The new columns should be in the same order but have the same name.
-        Columns not specified in column_map should have their original name.
+        All columns should be in the same order; those that are renamed should have
+        their new name, and the rest should have their original name.
         """
         column_map = {
             "name": "source",
@@ -117,7 +117,7 @@ class ReadFitsCatalogTaskTestCase(lsst.utils.tests.TestCase):
         task = ReadFitsCatalogTask(config=config)
         arr = task.run(FitsPath)
         self.assertEqual(len(Table(arr).columns), len(Table(self.arr1).columns))
-        for inname, outname in izip(Table(self.arr1).colnames, Table(arr).colnames):
+        for inname, outname in izip(self.arr1.dtype.names, arr.dtype.names):
             des_outname = column_map.get(inname, inname)
             self.assertEqual(outname, des_outname)
             self.assertTrue(np.array_equal(self.arr1[inname], arr[outname]))
