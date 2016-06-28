@@ -30,7 +30,7 @@ import shutil
 import tempfile
 import unittest
 
-import numpy
+import numpy as np
 
 import lsst.utils
 import lsst.afw.geom as afwGeom
@@ -40,9 +40,11 @@ from lsst.pipe.tasks.processCcd import ProcessCcdTask
 obsTestDir = lsst.utils.getPackageDir('obs_test')
 InputDir = os.path.join(obsTestDir, "data", "input")
 
-OutputName = None # specify a name (as a string) to save the output repository
+OutputName = None  # specify a name (as a string) to save the output repository
+
 
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
+
     def testProcessCcd(self):
         """test ProcessCcdTask
 
@@ -55,8 +57,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             dataId = dict(visit=1)
             dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
             fullResult = ProcessCcdTask.parseAndRun(
-                args = [InputDir, "--output", outPath, "--clobber-config", "--id"] + dataIdStrList,
-                doReturnResults = True,
+                args=[InputDir, "--output", outPath, "--clobber-config", "--id"] + dataIdStrList,
+                doReturnResults=True,
             )
             butler = fullResult.parsedCmd.butler
             self.assertEqual(len(fullResult.resultList), 1)
@@ -69,8 +71,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
             icExpBackground = butler.get("icExpBackground", dataId, immediate=True)
             bg0Arr = icExpBackground.getImage().getArray()
-            bgMean = bg0Arr.mean(dtype=numpy.float64)
-            bgStdDev = bg0Arr.std(dtype=numpy.float64)
+            bgMean = bg0Arr.mean(dtype=np.float64)
+            bgStdDev = bg0Arr.std(dtype=np.float64)
 
             icSrc = butler.get("icSrc", dataId)
             src = butler.get("src", dataId)
@@ -89,17 +91,17 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 result.exposure,
             )):
                 self.assertEqual(exposure.getBBox(),
-                    afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
+                                 afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
                 maskedImage = exposure.getMaskedImage()
                 maskArr = maskedImage.getMask().getArray()
-                numGoodPix = numpy.sum(maskArr == 0)
+                numGoodPix = np.sum(maskArr == 0)
 
                 imageArr = maskedImage.getImage().getArray()
-                imMean = imageArr.mean(dtype=numpy.float64)
-                imStdDev = imageArr.std(dtype=numpy.float64)
+                imMean = imageArr.mean(dtype=np.float64)
+                imStdDev = imageArr.std(dtype=np.float64)
                 varArr = maskedImage.getVariance().getArray()
-                varMean = varArr.mean(dtype=numpy.float64)
-                varStdDev = varArr.std(dtype=numpy.float64)
+                varMean = varArr.mean(dtype=np.float64)
+                varStdDev = varArr.std(dtype=np.float64)
 
                 psfShape = exposure.getPsf().computeShape()
                 psfIxx = psfShape.getIxx()
@@ -160,6 +162,7 @@ def suite():
     suites += unittest.makeSuite(ProcessCcdTestCase)
     suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(shouldExit=False):
     lsst.utils.tests.run(suite(), shouldExit)

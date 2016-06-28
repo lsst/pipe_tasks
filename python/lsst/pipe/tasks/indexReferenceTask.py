@@ -19,6 +19,9 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+from __future__ import absolute_import, division, print_function
+import numpy as np
+
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
@@ -26,42 +29,7 @@ import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 from lsst.afw.image import fluxFromABMag, fluxErrFromABMagErr
 from .htmIndexer import HtmIndexer as Indexer
-
-import numpy
-
-
-class TextReaderConfig(pexConfig.Config):
-    header_lines = pexConfig.Field(
-        dtype=int,
-        default=0,
-        doc='Number of lines to skip when reading the text reference file.'
-    )
-    colnames = pexConfig.ListField(
-        dtype=str,
-        default=[],
-        doc="""An ordered list of column names to use in ingesting the catalog.  With an empty
-list, column names will be discovered from the first line after the skipped header lines."""
-    )
-    delimiter = pexConfig.Field(
-        dtype=str,
-        default=',',
-        doc='Delimiter to use when reading text reference files.  Comma is default.'
-    )
-
-
-class TextReaderTask(pipeBase.Task):
-    _DefaultName = 'TextReaderTask'
-    ConfigClass = TextReaderConfig
-
-    def readFile(self, filename):
-            names = True
-            if self.config.colnames:
-                names = self.config.colnames
-            arr = numpy.genfromtxt(filename, dtype=None, skip_header=self.config.header_lines,
-                                   delimiter=self.config.delimiter,
-                                   names=names)
-            # Just in case someone has only one line in the file.
-            return numpy.atleast_1d(arr)
+from .readCatalog import ReadTextCatalogTask
 
 
 class IngestReferenceRunner(pipeBase.TaskRunner):
@@ -84,7 +52,7 @@ class IngestReferenceRunner(pipeBase.TaskRunner):
         result = task.create_indexed_catalog(files)
         if self.doReturnResults:
             return pipeBase.Struct(
-                result = result,
+                result=result,
             )
 
 
@@ -100,7 +68,7 @@ class IngestIndexedReferenceConfig(pexConfig.Config):
         doc='Default HTM level.  Level 8 gives ~0.08 sq deg per trixel.',
     )
     file_reader = pexConfig.ConfigurableField(
-        target=TextReaderTask,
+        target=ReadTextCatalogTask,
         doc='Task to use to read the files.  Default is to expect text files.'
     )
     ra_name = pexConfig.Field(
@@ -201,7 +169,7 @@ class IngestIndexedReferenceTask(pipeBase.CmdLineTask):
         rec_num = 0
         first = True
         for filename in files:
-            arr = self.file_reader.readFile(filename)
+            arr = self.file_reader.run(filename)
             index_list = self.indexer.index_points(arr[self.config.ra_name], arr[self.config.dec_name])
             if first:
                 schema, key_map = self.make_schema(arr.dtype)
@@ -214,7 +182,7 @@ class IngestIndexedReferenceTask(pipeBase.CmdLineTask):
             for pixel_id in pixel_ids:
                 dataId = self.make_data_id(pixel_id)
                 catalog = self.get_catalog(dataId, schema)
-                els = numpy.where(index_list == pixel_id)
+                els = np.where(index_list == pixel_id)
                 for row in arr[els]:
                     record = catalog.addNew()
                     rec_num = self._fill_record(record, row, rec_num, key_map)
@@ -230,7 +198,7 @@ class IngestIndexedReferenceTask(pipeBase.CmdLineTask):
 
     @staticmethod
     def compute_coord(row, ra_name, dec_name):
-        """!Create a afwCoord object from a numpy.array row
+        """!Create a afwCoord object from a np.array row
         @param[in] row  dict like object with ra/dec info in degrees
         @param[in] ra_name  name of RA key
         @param[in] dec_name  name of Dec key
@@ -310,7 +278,7 @@ class IngestIndexedReferenceTask(pipeBase.CmdLineTask):
     def make_schema(self, dtype):
         """!Make the schema to use in constructing the persisted catalogs.
 
-        @param[in] dtype  A numpy.dtype to use in constructing the schema
+        @param[in] dtype  A np.dtype to use in constructing the schema
         @param[out] The schema for the output source catalog.
         @param[out] A map of catalog keys to use in filling the record
         """

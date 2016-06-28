@@ -68,10 +68,10 @@ from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTa
                                        MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
 
 REUSE_DATAREPO = True  # Retain the data repo for each test? This greatly speeds up the tests, but may
-    # conflate or perhaps even hide some errors. If you get suspicious results, try setting it to False.
+# conflate or perhaps even hide some errors. If you get suspicious results, try setting it to False.
 SAVE_DATAREPO = False  # Retain data repo after the tests succeed? Only set it True for debugging.
-    # Warning: even if True, the repository is deleted every time this test is run, so if you want
-    # to keep a copy safe, be sure to move it somewhere else.
+# Warning: even if True, the repository is deleted every time this test is run, so if you want
+# to keep a copy safe, be sure to move it somewhere else.
 
 PIPE_TASKS_DIR = getPackageDir("pipe_tasks")
 DATAREPO_ROOT = os.path.join(PIPE_TASKS_DIR, "tests", ".tests", "testCoadds-data")
@@ -79,6 +79,7 @@ DATAREPO_ROOT = os.path.join(PIPE_TASKS_DIR, "tests", ".tests", "testCoadds-data
 if os.path.exists(DATAREPO_ROOT):
     print("Deleting existing repo: %r" % (DATAREPO_ROOT,))
     shutil.rmtree(DATAREPO_ROOT)
+
 
 class CoaddsTestCase(lsst.utils.tests.TestCase):
 
@@ -125,7 +126,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             measMergedConfig.measurement.slots.shape = "base_SdssShape"
             measMergedConfig.measurement.doApplyApCorr = "no"
             measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
-            measMergedConfig.propagateFlags.flags = {} # Disable flag propagation: no flags to propagate
+            measMergedConfig.propagateFlags.flags = {}  # Disable flag propagation: no flags to propagate
             measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
             measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
             measMergedTask.writeSchemas(self.butler)
@@ -221,8 +222,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
     @unittest.skip("Remove test until DM-5174 is complete")
     def testMasksRemoved(self):
-        image = self.butler.get(self.mocksTask.config.coaddName + 'Coadd_mock',\
-                                {'filter':'r','tract':0, 'patch':'0,0'})
+        image = self.butler.get(self.mocksTask.config.coaddName + 'Coadd_mock',
+                                {'filter': 'r', 'tract': 0, 'patch': '0,0'})
         keys = image.getMaskedImage().getMask().getMaskPlaneDict().keys()
         self.assert_('CROSSTALK' not in keys)
         self.assert_('NOT_DEBLENDED' not in keys)
@@ -313,7 +314,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         simSrcByObject = {}
         for simSrcRecord in simSrcCat:
             simSrcByObject.setdefault(simSrcRecord.getL(objectIdKey), []).append(simSrcRecord)
-        pureObjectIds = set() # set will contain objects that never appear on edges
+        pureObjectIds = set()  # set will contain objects that never appear on edges
         for objectId, simSrcRecords in simSrcByObject.iteritems():
             inAnyImages = False
             for simSrcRecord in simSrcRecords:
@@ -321,7 +322,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                     if simSrcRecord.getFlag(partialOverlapKey):
                         break
                     inAnyImages = True
-            else: # only get here if we didn't break
+            else:  # only get here if we didn't break
                 if inAnyImages:
                     pureObjectIds.add(objectId)
 
@@ -355,8 +356,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 self.assertClose(starImage.getArray(), psfImage.getArray(), rtol=1E-3, atol=1E-2)
                 nTested += 1
         if nTested == 0:
-            print ("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
-                   "first try running the test again)")
+            print("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
+                  "first try running the test again)")
 
     def testForcedPhotCoaddTask(self):
         config = lsst.meas.base.ForcedPhotCoaddConfig()
@@ -374,11 +375,12 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         self.runTaskOnCcds(task)
 
     def testAlgMetadataOutput(self):
-        """Test to see if algMetadata is persisted correctly from MeasureMergedCoaddSourcesTask. This test 
-           fails with a NotFoundError if the algorithm metadata is not persisted"""
+        """Test to see if algMetadata is persisted correctly from MeasureMergedCoaddSourcesTask.
+
+        This test fails with a NotFoundError if the algorithm metadata is not persisted"""
         patchList = ['0,0', '0,1', '1,0', '1,1']
         for patch in patchList:
-            cat = self.butler.get("deepCoadd_meas", filter = 'r', tract = 0, patch = patch)
+            cat = self.butler.get("deepCoadd_meas", filter='r', tract=0, patch=patch)
             meta = cat.getTable().getMetadata()
             for circApertureFluxRadius in meta.get('base_CircularApertureFlux_radii'):
                 self.assertIsInstance(circApertureFluxRadius, numbers.Number)
@@ -391,7 +393,9 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             for noiseSeedMul in meta.get('NOISE_SEED_MULTIPLIER'):
                 self.assertIsInstance(noiseSeedMul, numbers.Number)
 
+
 class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
+
     def testSafeClipConfig(self):
         # Test for DM-4797: ensure that AssembleCoaddConfig.setDefaults() is
         # run when SafeClipAssembleCoaddConfig.setDefaults() is run. This
@@ -406,6 +410,7 @@ def suite():
     suites += unittest.makeSuite(AssembleCoaddTestCase)
     suites += unittest.makeSuite(lsst.utils.tests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(shouldExit=False):
     status = lsst.utils.tests.run(suite(), False)

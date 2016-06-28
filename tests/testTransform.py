@@ -48,12 +48,10 @@ import tempfile
 import unittest
 
 import lsst.utils
-
 import lsst.afw.coord as afwCoord
 import lsst.afw.table as afwTable
 import lsst.meas.base as measBase
 import lsst.utils.tests as utilsTests
-
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
 from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask)
 
@@ -62,7 +60,10 @@ PLUGIN_NAME = "base_TrivialMeasurement"
 # Rather than providing real WCS and calibration objects to the
 # transformation, we use this simple placeholder to keep track of the number
 # of times it is accessed.
+
+
 class Placeholder(object):
+
     def __init__(self):
         self.count = 0
 
@@ -71,6 +72,7 @@ class Placeholder(object):
 
 
 class TrivialMeasurementTransform(measBase.transforms.MeasurementTransform):
+
     def __init__(self, config, name, mapper):
         """Pass through all input fields to the output, and add a new field
         named after the measurement with the suffix "_transform".
@@ -101,6 +103,7 @@ class TrivialMeasurementTransform(measBase.transforms.MeasurementTransform):
 
 
 class TrivialMeasurementBase(object):
+
     """Default values for a trivial measurement plugin, subclassed below"""
     @staticmethod
     def getExecutionOrder():
@@ -116,7 +119,9 @@ class TrivialMeasurementBase(object):
 
 @measBase.register(PLUGIN_NAME)
 class SFTrivialMeasurement(TrivialMeasurementBase, measBase.sfm.SingleFramePlugin):
+
     """Single frame version of the trivial measurement"""
+
     def __init__(self, config, name, schema, metadata):
         measBase.sfm.SingleFramePlugin.__init__(self, config, name, schema, metadata)
         self.key = schema.addField(name, type="D", doc="dummy field")
@@ -124,13 +129,16 @@ class SFTrivialMeasurement(TrivialMeasurementBase, measBase.sfm.SingleFramePlugi
 
 @measBase.register(PLUGIN_NAME)
 class ForcedTrivialMeasurement(TrivialMeasurementBase, measBase.forcedMeasurement.ForcedPlugin):
+
     """Forced frame version of the trivial measurement"""
+
     def __init__(self, config, name, schemaMapper, metadata):
         measBase.forcedMeasurement.ForcedPlugin.__init__(self, config, name, schemaMapper, metadata)
         self.key = schemaMapper.editOutputSchema().addField(name, type="D", doc="dummy field")
 
 
 class TransformTestCase(utilsTests.TestCase):
+
     def _transformAndCheck(self, measConf, schema, transformTask):
         """Check the results of applying transformTask to a SourceCatalog.
 
@@ -202,6 +210,7 @@ def tempDirectory(*args, **kwargs):
 
 
 class RunTransformTestCase(utilsTests.TestCase):
+
     def testInterface(self):
         obsTestDir = lsst.utils.getPackageDir('obs_test')
         inputDir = os.path.join(obsTestDir, "data", "input")
@@ -209,7 +218,8 @@ class RunTransformTestCase(utilsTests.TestCase):
         # Configure a ProcessCcd task such that it will return a minimal
         # number of measurements plus our test plugin.
         cfg = ProcessCcdConfig()
-        cfg.calibrate.detectAndMeasure.measurement.plugins.names = ["base_SdssCentroid", "base_SkyCoord", PLUGIN_NAME]
+        cfg.calibrate.detectAndMeasure.measurement.plugins.names = [
+            "base_SdssCentroid", "base_SkyCoord", PLUGIN_NAME]
         cfg.calibrate.detectAndMeasure.measurement.slots.shape = None
         cfg.calibrate.detectAndMeasure.measurement.slots.psfFlux = None
         cfg.calibrate.detectAndMeasure.measurement.slots.apFlux = None
@@ -265,6 +275,7 @@ def suite():
     suites += unittest.makeSuite(RunTransformTestCase)
     suites += unittest.makeSuite(utilsTests.MemoryTestCase)
     return unittest.TestSuite(suites)
+
 
 def run(exit=False):
     utilsTests.run(suite(), exit)

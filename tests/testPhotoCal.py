@@ -24,13 +24,13 @@
 
 import os
 import unittest
+
 import numpy as np
 
-import lsst.meas.astrom            as measAstrom
-import lsst.afw.geom               as afwGeom
-import lsst.afw.table              as afwTable
-import lsst.afw.image              as afwImage
-import lsst.utils.tests            as utilsTests
+import lsst.meas.astrom as measAstrom
+import lsst.afw.geom as afwGeom
+import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.pex.logging import Log
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
@@ -52,12 +52,15 @@ testColorterms = ColortermLibrary(data={
     })
 })
 
+
 def makeRefLoader():
     config = measAstrom.LoadAstrometryNetObjectsTask.ConfigClass()
     return measAstrom.LoadAstrometryNetObjectsTask(config=config)
 
+
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 class PhotoCalTest(unittest.TestCase):
 
@@ -65,14 +68,15 @@ class PhotoCalTest(unittest.TestCase):
         self.conf = measAstrom.AstrometryConfig()
 
         # Load sample input from disk
-        testDir=os.path.dirname(__file__)
-        self.srcCat = afwTable.SourceCatalog.readFits(os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
+        testDir = os.path.dirname(__file__)
+        self.srcCat = afwTable.SourceCatalog.readFits(
+            os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
         self.srcCat["slot_ApFlux_fluxSigma"] = 1
         self.srcCat["slot_PsfFlux_fluxSigma"] = 1
 
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(2048, 4612))
+        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(2048, 4612))
         smallExposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
         self.exposure = afwImage.ExposureF(self.bbox)
         self.exposure.setWcs(smallExposure.getWcs())
@@ -86,8 +90,8 @@ class PhotoCalTest(unittest.TestCase):
         self.matches = self.res.matches
         logLevel = Log.DEBUG
         self.log = Log(Log.getDefaultLog(),
-                  'testPhotoCal',
-                  logLevel)
+                       'testPhotoCal',
+                       logLevel)
 
         self.schema = self.matches[0].second.schema
         self.config = PhotoCalConfig()
@@ -107,13 +111,13 @@ class PhotoCalTest(unittest.TestCase):
         del self.log
         del self.schema
 
-    def getAstrometrySolution(self, loglvl = Log.INFO):
+    def getAstrometrySolution(self, loglvl=Log.INFO):
         astromConfig = measAstrom.AstrometryTask.ConfigClass()
         astrom = measAstrom.AstrometryTask(config=astromConfig, refObjLoader=self.refObjLoader)
         # use solve instead of run because the exposure has the wrong bbox
         return astrom.solve(
-            sourceCat = self.srcCat,
-            exposure = self.exposure,
+            sourceCat=self.srcCat,
+            exposure=self.exposure,
         )
 
     def testGetSolution(self):
@@ -128,16 +132,16 @@ class PhotoCalTest(unittest.TestCase):
         refFluxField = pCal.arrays.refFluxFieldList[0]
 
         # These are *all* the matches; we don't really expect to do that well.
-        diff=[]
+        diff = []
         for m in self.matches:
-            refFlux = m[0].get(refFluxField) # reference catalog flux
+            refFlux = m[0].get(refFluxField)  # reference catalog flux
             if refFlux <= 0:
                 continue
-            refMag = afwImage.abMagFromFlux(refFlux) # reference catalog mag
-            instFlux = m[1].getPsfFlux()    #Instrumental Flux
+            refMag = afwImage.abMagFromFlux(refFlux)  # reference catalog mag
+            instFlux = m[1].getPsfFlux()  # Instrumental Flux
             if instFlux <= 0:
                 continue
-            instMag = pCal.calib.getMagnitude(instFlux)     #Instrumental mag
+            instMag = pCal.calib.getMagnitude(instFlux)  # Instrumental mag
             diff.append(instMag - refMag)
         self.diff = np.array(diff)
         # Differences of matched objects that were used in the fit.
@@ -149,7 +153,7 @@ class PhotoCalTest(unittest.TestCase):
         self._runTask()
         self.assertGreater(len(self.diff), 50)
         self.log.info('%i magnitude differences; mean difference %g; mean abs diff %g' %
-                 (len(self.diff), np.mean(self.diff), np.mean(np.abs(self.diff))))
+                      (len(self.diff), np.mean(self.diff), np.mean(np.abs(self.diff))))
         self.assertLess(np.mean(self.diff), 0.6)
 
         # Differences of matched objects that were used in the fit.
@@ -174,12 +178,12 @@ class PhotoCalTest(unittest.TestCase):
 
     def testColorTerms(self):
         """ Test to see if we can apply colorterm corrections while computing photometric zeropoints"""
-        # Turn colorterms on. The colorterm library used here is simple - we just apply a 1 mag 
+        # Turn colorterms on. The colorterm library used here is simple - we just apply a 1 mag
         #color-independentcolorterm correction to everything. This should change the photometric zeropoint.
         # by 1 mag.
         self.config.applyColorTerms = True
         self.config.colorterms = testColorterms
-        self.config.photoCatName = "testglob" # Check glo expansion
+        self.config.photoCatName = "testglob"  # Check glo expansion
         # zerPointOffset is the offset in the zeropoint that we expect from a uniform (i.e. color-independent)
         # colorterm correction.
         zeroPointOffset = testColorterms.data['test*'].data['i'].c0
@@ -189,6 +193,7 @@ class PhotoCalTest(unittest.TestCase):
         self.log.logdebug('zeropoint: %g' % self.zp)
         # zeropoint: 32.3145
         self.assertLess(abs(self.zp - (31.3145 + zeroPointOffset)), 0.05)
+
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass

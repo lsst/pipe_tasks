@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 from __future__ import absolute_import, division, print_function
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -11,14 +11,14 @@ from __future__ import absolute_import, division, print_function
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -51,16 +51,19 @@ hamamatsu = ColortermLibrary(data={
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+
 def setup_module(module):
     lsst.utils.tests.init()
 
+
 class ColortermTestCase(unittest.TestCase):
     """A test case for MaskedImage"""
+
     def setUp(self):
         # A list of simple fake sources. The values are chosen so that the colorterm corrections are
         # predictable.
         self.sources = (dict(g=0.0, r=0.0, fluxErr_g=0.0, fluxErr_r=0.0, true_g=-0.00928, true_fluxErr_g=0.0),
-                        dict(g=0.0, r=-1.0, fluxErr_g=1.0, fluxErr_r=1.0, true_g=-0.09168, 
+                        dict(g=0.0, r=-1.0, fluxErr_g=1.0, fluxErr_r=1.0, true_g=-0.09168,
                              true_fluxErr_g=0.92129230974756315))
         self.colorterms = hamamatsu
 
@@ -78,14 +81,14 @@ class ColortermTestCase(unittest.TestCase):
 
     def testLibraryAccess(self):
         """Test ColortermLibrary.getColorterm"""
-        ctg = self.colorterms.getColorterm("g", photoCatName="ham") # exact match
+        ctg = self.colorterms.getColorterm("g", photoCatName="ham")  # exact match
         self.assertEqual(ctg.primary, "g")
         self.assertEqual(ctg.secondary, "r")
         self.assertAlmostEqual(ctg.c0, -0.00928)
         self.assertAlmostEqual(ctg.c1, -0.0824)
         self.assertAlmostEqual(ctg.c2, 0)
 
-        ctr = self.colorterms.getColorterm("r", photoCatName="hambone") # glob should expand
+        ctr = self.colorterms.getColorterm("r", photoCatName="hambone")  # glob should expand
         self.assertEqual(ctr.primary, "r")
         self.assertEqual(ctr.secondary, "i")
         self.assertAlmostEqual(ctr.c0, -0.00282)
@@ -97,7 +100,7 @@ class ColortermTestCase(unittest.TestCase):
 
         # bad catalog name: not in library
         self.assertRaises(ColortermNotFoundError, self.colorterms.getColorterm, "r", photoCatName="eggs")
-        
+
         # bad catalog name: glob expression
         self.assertRaises(ColortermNotFoundError, self.colorterms.getColorterm, "r", photoCatName="ha*")
 
@@ -120,6 +123,7 @@ class ColortermTestCase(unittest.TestCase):
         """Ensure color terms can be pickled"""
         colorterms = pickle.loads(pickle.dumps(self.colorterms))
         self.assertEqual(colorterms, self.colorterms)
+
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass

@@ -24,30 +24,20 @@
 
 """Test lsst.pipe.tasks.ScaleZeroPointTask
 """
-import os
-import pdb # we may want to say pdb.set_trace()
 import unittest
-import warnings
-import sys
 
-import numpy
-
-import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.afw.image.utils as imageUtils
-import lsst.afw.image.testUtils as imTestUtils
-import lsst.afw.math as afwMath
 import lsst.utils.tests as utilsTests
-import lsst.pex.exceptions as pexExcept
-import lsst.pex.logging as pexLog
-import lsst.pex.policy as pexPolicy
 from lsst.pipe.tasks.scaleZeroPoint import ScaleZeroPointTask
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+
 class ScaleZeroPointTaskTestCase(unittest.TestCase):
+
     """A test case for ScaleZeroPointTask
     """
+
     def testBasics(self):
         for outZeroPoint in (23, 24):
             config = ScaleZeroPointTask.ConfigClass()
@@ -58,7 +48,7 @@ class ScaleZeroPointTaskTestCase(unittest.TestCase):
             self.assertAlmostEqual(outCalib.getMagnitude(1.0), outZeroPoint)
 
             for inZeroPoint in (24, 25.5):
-                exposure = afwImage.ExposureF(10,10)
+                exposure = afwImage.ExposureF(10, 10)
                 mi = exposure.getMaskedImage()
                 mi.set(1.0)
                 var = mi.getVariance()
@@ -80,9 +70,8 @@ class ScaleZeroPointTaskTestCase(unittest.TestCase):
                 self.assertAlmostEqual(outFluxMag0[0] / imageScaler._scale, inFluxMag0[0], places=4)
 
                 imageScaler.scaleMaskedImage(mi)
-                self.assertAlmostEqual(mi.get(1,1)[0], predScale) #check image plane scaled
-                self.assertAlmostEqual(mi.get(1,1)[2], predScale**2) #check variance plane scaled
-
+                self.assertAlmostEqual(mi.get(1, 1)[0], predScale)  # check image plane scaled
+                self.assertAlmostEqual(mi.get(1, 1)[2], predScale**2)  # check variance plane scaled
 
     def makeCalib(self, zeroPoint):
         calib = afwImage.Calib()
