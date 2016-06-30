@@ -371,6 +371,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testForcedPhotCcdTask(self):
         config = lsst.meas.base.ForcedPhotCcdConfig()
         config.references.filter = 'r'
+        # There is no reference flux for the mocks, so turn off ap corrections
+        config.doApCorr = False
         task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=self.butler)
         self.runTaskOnCcds(task)
 
