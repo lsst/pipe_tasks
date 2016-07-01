@@ -28,6 +28,7 @@ from lsst.afw.table import SourceTable, SourceCatalog
 from lsst.meas.algorithms import SubtractBackgroundTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, LoadAstrometryNetObjectsTask
+from lsst.daf.butlerUtils import ExposureIdInfo
 from .detectAndMeasure import DetectAndMeasureTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
@@ -241,14 +242,20 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     @until dot
     """
     ConfigClass = CharacterizeImageConfig
-    _DefaultName = "imageCharacterization"
+    _DefaultName = "characterizeImage"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
-    def __init__(self, butler, schema=None, **kwargs):
+    def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
         """!Construct a CharacterizeImageTask
 
         @param[in] butler  A butler object is passed to the refObjLoader constructor in case
-            it is needed to load catalogs.
+            it is needed to load catalogs.  May be None if a catalog-based star selector is
+            not used, if the reference object loader constructor does not require a butler,
+            or if a reference object loader is passed directly via the refObjLoader argument.
+        @param[in] refObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog to a catalog-based star selector.  May be None if a
+            catalog star selector is not used or the loader can be constructed from the
+            butler argument.
         @param[in,out] schema  initial schema (an lsst.afw.table.SourceTable), or None
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
@@ -261,8 +268,10 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.makeSubtask("repair")
         self.makeSubtask("measurePsf", schema=self.schema)
         if self.config.doMeasurePsf and self.measurePsf.usesMatches:
-            self.makeSubtask('refObjLoader', butler=butler)
-            self.makeSubtask("astrometry", refObjLoader=self.refObjLoader)
+            if not refObjLoader:
+                self.makeSubtask('refObjLoader', butler=butler)
+                refObjLoader = self.refObjLoader
+            self.makeSubtask("astrometry", refObjLoader=refObjLoader)
         self.makeSubtask("detectAndMeasure", schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
@@ -321,7 +330,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         return charRes
 
     @pipeBase.timeMethod
-    def characterize(self, exposure, exposureIdInfo, background=None):
+    def characterize(self, exposure, exposureIdInfo=None, background=None):
         """!Characterize a science image
 
         Peforms the following operations:
@@ -336,7 +345,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - set apCorrMap
             - update detection and cosmic ray mask planes
             - subtract background and interpolate over cosmic rays
-        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
+        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo).
+            If not provided, returned SourceCatalog IDs will not be globally unique.
         @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
             which is typical for image characterization.
@@ -353,6 +363,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
+
+        if exposureIdInfo is None:
+            exposureIdInfo = ExposureIdInfo()
 
         # subtract an initial estimate of background level
         background = self.background.run(exposure).background
