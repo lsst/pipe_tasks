@@ -138,8 +138,9 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
-        self.makeSubtask("charImage", butler=butler)
-        self.makeSubtask("calibrate", butler=butler, icSourceSchema=self.charImage.schema)
+        self.makeSubtask("charImage", butler=butler, refObjLoader=refObjLoader)
+        self.makeSubtask("calibrate", butler=butler, icSourceSchema=self.charImage.schema,
+                         refObjLoader=refObjLoader)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
