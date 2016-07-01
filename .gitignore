@@ -19,6 +19,8 @@ ups/*.cfgc
 testCoaddInputs-data
 _build.*
 bin/assembleCoadd.py
+bin/calibrate.py
+bin/characterizeImage.py
 bin/detectCoaddSources.py
 bin/dumpTaskMetadata.py
 bin/imageDifference.py
