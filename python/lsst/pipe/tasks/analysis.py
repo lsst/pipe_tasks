@@ -25,8 +25,7 @@ from lsst.meas.base.forcedPhotCcd import PerTractCcdDataIdContainer
 from lsst.afw.table.catalogMatches import matchesToCatalog, matchesFromCatalog
 from lsst.meas.astrom import AstrometryConfig, LoadAstrometryNetObjectsTask, LoadAstrometryNetObjectsConfig
 from lsst.pipe.tasks.colorterms import ColortermLibrary
-# from lsst.meas.mosaic.updateExposure import (applyMosaicResultsCatalog, applyCalib, getFluxFitParams,
-#                                             getFluxKeys, getMosaicResults)
+from lsst.meas.mosaic.updateExposure import applyMosaicResultsCatalog, applyMosaicResultsExposure
 
 import lsst.afw.cameraGeom as cameraGeom
 import lsst.afw.geom as afwGeom
@@ -917,16 +916,18 @@ def calibrateSourceCatalogMosaic(dataRef, catalog, zp=27.0):
 
     Requires a SourceCatalog input.
     """
-    result = applyMosaicResultsCatalog(dataRef, catalog, False)
+    result = applyMosaicResultsCatalog(dataRef, catalog, True)
     catalog = result.catalog
     ffp = result.ffp
-    factor = 10.0**(0.4*zp)/ffp.calib.getFluxMag0()[0]
     # Convert to constant zero point, as for the coadds
+    factor = ffp.calib.getFluxMag0()[0]/10.0**(0.4*zp)
+
     fluxKeys, errKeys = getFluxKeys(catalog.schema)
     for key in fluxKeys.values() + errKeys.values():
         if len(catalog[key].shape) > 1:
             continue
-        catalog[key][:] *= factor
+        catalog[key][:] /= factor
+
     return catalog
 
 def calibrateSourceCatalog(catalog, zp):
@@ -975,6 +976,25 @@ def checkHscStack(metadata):
         hscPipe = None
     return hscPipe
 
+def rotatePixelCoords(sources, width, height, nQuarter):
+    """Rotate catalog (x, y) pixel coordinates such that LLC of detector in FP is (0, 0)
+    """
+    xKey = sources.schema.find("slot_Centroid_x").key
+    yKey = sources.schema.find("slot_Centroid_y").key
+    for s in sources:
+        x0 = s.get(xKey)
+        y0 = s.get(yKey)
+        if nQuarter == 1:
+            s.set(xKey, height - y0 - 1.0)
+            s.set(yKey, x0)
+        if nQuarter == 2:
+            s.set(xKey, width - x0 - 1.0)
+            s.set(yKey, height - y0 - 1.0)
+        if nQuarter == 3:
+            s.set(xKey, y0)
+            s.set(yKey, width - x0 - 1.0)
+    return sources
+
 @contextmanager
 def andCatalog(version):
     current = eups.findSetupVersion("astrometry_net_data")[0]
@@ -1009,6 +1029,12 @@ class CoaddAnalysisConfig(Config):
     onlyReadStars = Field(dtype=bool, default=False, doc="Only read stars (to save memory)?")
     srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
                              doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
+    fluxToPlotList = ListField(dtype=str, default=["base_GaussianFlux", ],
+                               doc="List of fluxes to plot: mag(flux)-mag(base_PsfFlux) vs mag(base_PsfFlux)")
+    # "ext_photometryKron_KronFlux", "modelfit_Cmodel", "slot_CalibFlux"]:
+    doApplyUberCal = Field(dtype=bool, default=True, doc="Apply meas_mosaic ubercal results to input?")
+    doApplyCalexpZp = Field(dtype=bool, default=True,
+                            doc="Apply FLUXMAG0 zeropoint to sources? Ignored if doApplyUberCal is True")
 
     def saveToStream(self, outfile, root="root"):
         """Required for loading colorterms from a Config outside the 'lsst' namespace"""
@@ -1097,10 +1123,38 @@ class CoaddAnalysisTask(CmdLineTask):
             catList = [cat[cat["base_ClassificationExtendedness_value"] < 0.5].copy(True) for cat in catList]
         return concatenateCatalogs(catList)
 
-    def plotMags(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None, matchRadius=None,
-                 zpLabel=None):
+    def calibrateCatalogs(self, dataRef, catalog, metadata):
+        self.zp = 0.0
+        try:
+            self.zpLabel = self.zpLabel
+        except:
+            self.zpLabel = None
+        if self.config.doApplyUberCal:
+            calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.zp)
+            if self.zpLabel is None:
+                self.log.info("Applying meas_mosaic calibration to catalog")
+            self.zpLabel = "MEAS_MOSAIC"
+        else:
+            if self.config.doApplyCalexpZp:
+                # Scale fluxes to measured zeropoint
+                self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
+                if self.zpLabel is None:
+                    self.log.info("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % self.zp)
+                self.zpLabel = "FLUXMAG0"
+            else:
+                # Scale fluxes to common zeropoint
+                self.zp = 33.0
+                if self.zpLabel is None:
+                    self.log.info("Using common value of %.4f for zeropoint" % (self.zp))
+                self.zpLabel = "common (" + str(self.zp) + ")"
+            calibrated = calibrateSourceCatalog(catalog, self.zp)
+        return calibrated
+
+    def plotMags(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
+                 matchRadius=None, zpLabel=None):
         enforcer = Enforcer(requireLess={"star": {"stdev": 0.02}})
-        for col in ["base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel", "slot_CalibFlux"]:
+        for col in self.config.fluxToPlotList:
+        # ["base_GaussianFlux", ]: # "ext_photometryKron_KronFlux", "modelfit_Cmodel", "slot_CalibFlux"]:
             if col + "_flux" in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff(col + "_flux", "base_PsfFlux_flux"), "Mag(%s) - PSFMag"
                                    % col, "mag_" + col, self.config.analysis,
@@ -1133,8 +1187,9 @@ class CoaddAnalysisTask(CmdLineTask):
                                                   self.config.matchRadius*afwGeom.arcseconds),
                               "unforced_", "forced_")
         catalog.writeFits(dataId["filter"] + ".fits")
-        for col in ["base_PsfFlux", "base_GaussianFlux", "slot_CalibFlux", "ext_photometryKron_KronFlux",
-                    "modelfit_Cmodel", "modelfit_Cmodel_exp_flux", "modelfit_Cmodel_dev_flux"]:
+        for col in self.config.fluxToPlotList:
+            # ["base_PsfFlux", "base_GaussianFlux", "slot_CalibFlux", "ext_photometryKron_KronFlux",
+            # "modelfit_Cmodel", "modelfit_Cmodel_exp_flux", "modelfit_Cmodel_dev_flux"]:
             if "forced." + col in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff("unforced." + col, "forced." + col),
                                    "Forced mag difference (%s)" % col, "forced_" + col, self.config.analysis,
@@ -1148,7 +1203,8 @@ class CoaddAnalysisTask(CmdLineTask):
 
     def plotOverlaps(self, overlaps, filenamer, dataId, hscRun=None, matchRadius=None, zpLabel=None):
         magEnforcer = Enforcer(requireLess={"star": {"stdev": 0.003}})
-        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
+        for col in self.config.fluxToPlotList:
+            # ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
             if "first_" + col + "_flux" in overlaps.schema:
                 self.AnalysisClass(overlaps, MagDiff("first_" + col + "_flux", "second_" + col + "_flux"),
                                    "Overlap mag difference (%s)" % col, "overlap_" + col,
@@ -1243,7 +1299,8 @@ class VisitAnalysisTask(CoaddAnalysisTask):
     @classmethod
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "src", help="data ID, e.g. --id visit=12345 ccd=6^8..11")
+        parser.add_id_argument("--id", "src", help="data ID with raw CCD keys, "
+                               "e.g. --id visit=12345 ccd=6^8..11", ContainerClass=PerTractCcdDataIdContainer)
         return parser
 
     def run(self, dataRefList):
@@ -1302,7 +1359,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
+
             # Compute Focal Plane coordinates for each source if not already there
             if "base_FPPosition_x" not in catalog.schema and "focalplane_x" not in catalog.schema:
                 exp = butler.get("calexp", dataRef.dataId)
@@ -1311,15 +1368,9 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             # Optionally backout aperture corrections
             if self.config.doBackoutApCorr:
                 catalog = backoutApCorr(catalog)
-            try:
-                calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.config.analysis.zp)
-                catList.append(calibrated)
-                self.zpLabel = "MEAS_MOSAIC"
-            except Exception as e:
-                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
-                calibrated = calibrateSourceCatalog(catalog, self.zp)
-                catList.append(calibrated)
+
+            calibrated = self.calibrateCatalogs(dataRef, catalog, metadata)
+            catList.append(calibrated)
 
         if len(catList) == 0:
             raise TaskError("No catalogs read: %s" % ([dataRef.dataId for dataRef in dataRefList]))
@@ -1333,11 +1384,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 continue
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
             # Generate unnormalized match list (from normalized persisted one) with joinMatchListWithCatalog
             # (which requires a refObjLoader to be initialized).
             catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
-            sources = butler.get(dataset, dataRef.dataId, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            catalog = self.calibrateCatalogs(dataRef, catalog, metadata)
             packedMatches = butler.get(dataset + "Match", dataRef.dataId)
             # The reference object loader grows the bbox by the config parameter pixelMargin.  This
             # is set to 50 by default but is not reflected by the radius parameter set in the
@@ -1348,7 +1398,7 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             rad = matchmeta.getDouble("RADIUS")
             matchmeta.setDouble("RADIUS", rad*1.05, "field radius in degrees, approximate, padded")
             refObjLoader = LoadAstrometryNetObjectsTask(self.config.refObjLoaderConfig)
-            matches = refObjLoader.joinMatchListWithCatalog(packedMatches, sources)
+            matches = refObjLoader.joinMatchListWithCatalog(packedMatches, catalog)
             # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
             matches = matchJanskyToDn(matches)
             if checkHscStack(metadata) is not None and self.config.doAddAperFluxHsc:
@@ -1372,17 +1422,13 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                 src.append(mm.second)
             matches[0].second.table.defineCentroid("base_SdssCentroid")
             src.table.defineCentroid("base_SdssCentroid")
-            try:
-                src = calibrateSourceCatalogMosaic(dataRef, src, zp=self.config.analysisMatches.zp)
-            except Exception as e:
-                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
-                self.log.warn("(except for circular aperture fluxes: set to common zp=33.0) ")
-                src = calibrateSourceCatalog(src, self.zp)
 
             for mm, ss in zip(matches, src):
                 mm.second = ss
-            catalog = matchesToCatalog(matches, catalog.getTable().getMetadata())
+
+            matchMeta = butler.get(dataset, dataRef.dataId,
+                                   flags=afwTable.SOURCE_IO_NO_FOOTPRINTS).getTable().getMetadata()
+            catalog = matchesToCatalog(matches, matchMeta)
             # Compute Focal Plane coordinates for each source if not already there
             if "src_base_FPPosition_x" not in catalog.schema and "src_focalplane_x" not in catalog.schema:
                 exp = butler.get("calexp", dataRef.dataId)
@@ -1418,6 +1464,12 @@ class CompareAnalysisConfig(Config):
                              doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
     doAddAperFluxHsc = Field(dtype=bool, default=False,
                              doc="Add a field containing 12 pix circular aperture flux to HSC table?")
+    fluxToPlotList = ListField(dtype=str, default=["base_PsfFlux", "base_GaussianFlux"],
+                               doc="List of fluxes to plot: mag(flux)-mag(base_PsfFlux) vs mag(base_PsfFlux)")
+                               # "ext_photometryKron_KronFlux", "modelfit_Cmodel", "slot_CalibFlux"]:
+    doApplyUberCal = Field(dtype=bool, default=True, doc="Apply meas_mosaic ubercal results to input?")
+    doApplyCalexpZp = Field(dtype=bool, default=True,
+                            doc="Apply FLUXMAG0 zeropoint to sources? Ignored if doApplyUberCal is True")
 
 class CompareAnalysisRunner(TaskRunner):
     @staticmethod
@@ -1474,7 +1526,34 @@ class CompareAnalysisTask(CmdLineTask):
             raise TaskError("No matches found")
         return joinMatches(matches, "first_", "second_")
 
-    def plotCentroids(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
+    def calibrateCatalogs(self, dataRef, catalog, metadata):
+        self.zp = 0.0
+        try:
+            self.zpLabel = self.zpLabel
+        except:
+            self.zpLabel = None
+        if self.config.doApplyUberCal:
+            calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.zp)
+            self.zpLabel = "MEAS_MOSAIC"
+            if self.zpLabel is None:
+                self.log.info("Applying meas_mosaic calibration to catalog")
+        else:
+            if self.config.doApplyCalexpZp:
+                # Scale fluxes to measured zeropoint
+                self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
+                if self.zpLabel is None:
+                    self.log.info("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % self.zp)
+                self.zpLabel = "FLUXMAG0"
+            else:
+                # Scale fluxes to common zeropoint
+                self.zp = 33.0
+                if self.zpLabel is None:
+                    self.log.info("Using common value of %.4f for zeropoint" % (self.zp))
+                self.zpLabel = "common (" + str(self.zp) + ")"
+            calibrated = calibrateSourceCatalog(catalog, self.zp)
+        return calibrated
+
+    def plotCentroids(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
                       matchRadius=None, zpLabel=None):
         distEnforcer = None # Enforcer(requireLess={"star": {"stdev": 0.005}})
         Analysis(catalog, CentroidDiff("x"), "Run Comparison: x offset (arcsec)", "diff_x",
@@ -1528,7 +1607,8 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
     def _makeArgumentParser(cls):
         parser = ArgumentParser(name=cls._DefaultName)
         parser.add_argument("--rerun2", required=True, help="Second rerun, for comparison")
-        parser.add_id_argument("--id", datasetType="src", help="data ID, e.g. --id visit=12345 ccd=49")
+        parser.add_id_argument("--id", "src", help="data ID with raw CCD keys, "
+                               "e.g. --id visit=12345 ccd=6^8..11", ContainerClass=PerTractCcdDataIdContainer)
         return parser
 
     def run(self, dataRefList1, dataRefList2):
@@ -1538,17 +1618,19 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         metadata1 = butler1.get("calexp_md", dataRefList1[0].dataId)
         camera1 = butler1.get("camera")
         filenamer = Filenamer(dataRefList1[0].getButler(), "plotCompareVisit", dataId)
-        catalog1 = self.readCatalogs(dataRefList1, "src")
-        catalog2 = self.readCatalogs(dataRefList2, "src")
-        # Check metadata to see if stack used was HSC
         butler2 = dataRefList2[0].getButler()
         metadata2 = butler2.get("calexp_md", dataRefList2[0].dataId)
+        # Check metadata to see if stack used was HSC
         hscRun = checkHscStack(metadata2)
+        hscRun1 = checkHscStack(metadata1)
+        # If comparing LSST vs HSC run, need to rotate the LSST x, y coordinates for rotated CCDs
+        catalog1 = self.readCatalogs(dataRefList1, "src", hscRun=hscRun, hscRun1=hscRun1)
+        catalog2 = self.readCatalogs(dataRefList2, "src")
+
         if hscRun is not None and self.config.doAddAperFluxHsc:
             print "HSC run: adding aperture flux to schema..."
             catalog2 = addApertureFluxesHSC(catalog2, prefix="")
 
-        hscRun1 = checkHscStack(metadata1)
         if hscRun1 is not None and self.config.doAddAperFluxHsc:
             print "HSC run: adding aperture flux to schema..."
             catalog1 = addApertureFluxesHSC(catalog1, prefix="")
@@ -1582,7 +1664,7 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             self.plotCentroids(catalog, filenamer, dataId, butler=butler1, camera=camera1, ccdList=ccdList1,
                                hscRun=hscRun, matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
 
-    def readCatalogs(self, dataRefList, dataset):
+    def readCatalogs(self, dataRefList, dataset, hscRun=None, hscRun1=None):
         catList = []
         for dataRef in dataRefList:
             if not dataRef.datasetExists(dataset):
@@ -1590,23 +1672,13 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
             srcCat = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
             butler = dataRef.getButler()
             metadata = butler.get("calexp_md", dataRef.dataId)
-
-            # Scale fluxes to measured zeropoint
-            self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
-            self.zpLabel = "FLUXMAG0"
-            # if False:
-            if True:
-                self.zp = 33.0
-                self.zpLabel = "common (" + str(self.zp) + ")"
-            try:
-                calibrated = calibrateSourceCatalogMosaic(dataRef, srcCat, zp=self.config.analysis.zp)
-                catList.append(calibrated)
-                self.zpLabel = "MEAS_MOSAIC"
-            except Exception as e:
-                self.log.warn("Unable to calibrate catalog for %s: %s" % (dataRef.dataId, e))
-                self.log.warn("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % (self.zp))
-                calibrated = calibrateSourceCatalog(srcCat, self.zp)
-                catList.append(calibrated)
+            calexp = butler.get("calexp", dataRef.dataId)
+            nQuarter = calexp.getDetector().getOrientation().getNQuarter()
+            calibrated = self.calibrateCatalogs(dataRef, srcCat, metadata)
+            if hscRun is not None and hscRun1 is None:
+                if nQuarter%4 != 0:
+                    calibrated = rotatePixelCoords(calibrated, calexp.getWidth(), calexp.getHeight(), nQuarter)
+            catList.append(calibrated)
 
         if len(catList) == 0:
             raise TaskError("No catalogs read: %s" % ([dataRefList[0].dataId for dataRef in dataRefList]))
@@ -1615,9 +1687,8 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
     def plotMags(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
                  matchRadius=None, zpLabel=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
-        for col in ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel", "base_CircularApertureFlux_12_0"]:
-            if "CircularAperture" in col:
-                zpLabel = None
+        for col in self.config.fluxToPlotList:
+            # ["base_CircularApertureFlux_12_0"]:
             if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
                 if "CircularAperture" in col:
                     zpLabel = None
