@@ -46,6 +46,8 @@ import shutil
 import os
 import sys
 import numbers
+from collections import Iterable
+from types import StringTypes
 
 from lsst.utils import getPackageDir
 import lsst.utils.tests
@@ -124,10 +126,10 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
             measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
             measMergedConfig.measurement.slots.shape = "base_SdssShape"
-            measMergedConfig.measurement.doApplyApCorr = "no"
             measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
             measMergedConfig.propagateFlags.flags = {}  # Disable flag propagation: no flags to propagate
             measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
+            measMergedConfig.doApCorr = False
             measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=self.butler)
             measMergedTask.writeSchemas(self.butler)
             self.runTaskOnPatches(measMergedTask)
@@ -362,7 +364,6 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testForcedPhotCoaddTask(self):
         config = lsst.meas.base.ForcedPhotCoaddConfig()
         config.references.filter = 'r'
-        config.measurement.doApplyApCorr = "no"
         task = lsst.meas.base.ForcedPhotCoaddTask(config=config, butler=self.butler)
         task.writeSchemas(self.butler)
         self.runTaskOnPatches(task)
@@ -370,7 +371,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testForcedPhotCcdTask(self):
         config = lsst.meas.base.ForcedPhotCcdConfig()
         config.references.filter = 'r'
-        config.measurement.doApplyApCorr = "no"
+        # There is no reference flux for the mocks, so turn off ap corrections
+        config.doApCorr = False
         task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=self.butler)
         self.runTaskOnCcds(task)
 
@@ -384,13 +386,19 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             meta = cat.getTable().getMetadata()
             for circApertureFluxRadius in meta.get('base_CircularApertureFlux_radii'):
                 self.assertIsInstance(circApertureFluxRadius, numbers.Number)
-            for nOffset in meta.get('NOISE_OFFSET'):
+            # Each time the run method of a measurement task is executed, algorithm metadata is appended
+            # to the algorithm metadata object. Depending on how many times a measurement task is run,
+            # a metadata entry may be a single value or multiple values, this test ensures that in either
+            # case the value can properly be extracted and compared.
+            ensureIterable = lambda x: x if isinstance(x, Iterable) and not isinstance(x, StringTypes) else [x]
+            for nOffset in ensureIterable(meta.get('NOISE_OFFSET')):
                 self.assertIsInstance(nOffset, numbers.Number)
-            for noiseSrc in meta.get('NOISE_SOURCE'):
+            for noiseSrc in ensureIterable(meta.get('NOISE_SOURCE')):
                 self.assertEqual(noiseSrc, 'measure')
-            for noiseExpID in meta.get('NOISE_EXPOSURE_ID'):
+            for noiseExpID in ensureIterable(meta.get('NOISE_EXPOSURE_ID')):
                 self.assertIsInstance(noiseExpID, numbers.Number)
-            for noiseSeedMul in meta.get('NOISE_SEED_MULTIPLIER'):
+            noiseSeedMul = meta.get('NOISE_SEED_MULTIPLIER')
+            for noiseSeedMul in ensureIterable(meta.get('NOISE_SEED_MULTIPLIER')):
                 self.assertIsInstance(noiseSeedMul, numbers.Number)
 
 

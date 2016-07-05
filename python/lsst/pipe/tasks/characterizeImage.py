@@ -24,99 +24,135 @@ import numpy as np
 from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.afw.table import SourceTable, SourceCatalog
-from lsst.meas.algorithms import SubtractBackgroundTask
+import lsst.daf.base as dafBase
+from lsst.afw.math import BackgroundList
+from lsst.afw.table import SourceTable, SourceCatalog, IdFactory
+from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, LoadAstrometryNetObjectsTask
 from lsst.daf.butlerUtils import ExposureIdInfo
-from .detectAndMeasure import DetectAndMeasureTask
+from lsst.meas.astrom import AstrometryTask, displayAstrometry
+from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, AfterburnerTask
+from lsst.meas.deblender import SourceDeblendTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
 
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
+
 class CharacterizeImageConfig(pexConfig.Config):
     """!Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Measure PSF? If False then keep the existing PSF model (which must exist) "
+        dtype=bool,
+        default=True,
+        doc="Measure PSF? If False then keep the existing PSF model (which must exist) "
             "and use that model for all operations."
     )
     doWrite = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Persist results?",
+        dtype=bool,
+        default=True,
+        doc="Persist results?",
     )
     doWriteExposure = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Write icExp and icExpBackground in addition to icSrc? Ignored if doWrite False.",
+        dtype=bool,
+        default=True,
+        doc="Write icExp and icExpBackground in addition to icSrc? Ignored if doWrite False.",
     )
     psfIterations = pexConfig.RangeField(
-        dtype = int,
-        default = 2,
-        min = 1,
-        doc = "Number of iterations of detect sources, measure sources, estimate PSF. "
+        dtype=int,
+        default=2,
+        min=1,
+        doc="Number of iterations of detect sources, measure sources, estimate PSF. "
             "If useSimplePsf='all_iter' then 2 should be plenty; otherwise more may be wanted.",
     )
     background = pexConfig.ConfigurableField(
-        target = SubtractBackgroundTask,
-        doc = "Configuration for initial background estimation",
+        target=SubtractBackgroundTask,
+        doc="Configuration for initial background estimation",
     )
-    detectAndMeasure = pexConfig.ConfigurableField(
-        target = DetectAndMeasureTask,
-        doc = "Detect and measure sources, for measuring PSF",
+    detection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect sources"
+    )
+    doDeblend = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Run deblender input exposure"
+    )
+    deblend = pexConfig.ConfigurableField(
+        target=SourceDeblendTask,
+        doc="Split blended source into their components"
+    )
+    measurement = pexConfig.ConfigurableField(
+        target=SingleFrameMeasurementTask,
+        doc="Measure sources"
+    )
+    doApCorr = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Run subtasks to measure and apply aperture corrections"
+    )
+    measureApCorr = pexConfig.ConfigurableField(
+        target=MeasureApCorrTask,
+        doc="Subtask to measure aperture corrections"
+    )
+    applyApCorr = pexConfig.ConfigurableField(
+        target=ApplyApCorrTask,
+        doc="Subtask to apply aperture corrections"
+    )
+    # If doApCorr is False, and the exposure does not have apcorrections already applied, the
+    # active plugins in afterburners almost certainly should not contain the characterization plugin
+    afterburners = pexConfig.ConfigurableField(
+        target=AfterburnerTask,
+        doc="Subtask to run afterburner plugins on catalog"
     )
     useSimplePsf = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Replace the existing PSF model with a simplified version that has the same sigma "
+        dtype=bool,
+        default=True,
+        doc="Replace the existing PSF model with a simplified version that has the same sigma "
             "at the start of each PSF determination iteration? Doing so makes PSF determination "
             "converge more robustly and quickly.",
     )
     installSimplePsf = pexConfig.ConfigurableField(
-        target = InstallGaussianPsfTask,
-        doc = "Install a simple PSF model",
+        target=InstallGaussianPsfTask,
+        doc="Install a simple PSF model",
     )
     refObjLoader = pexConfig.ConfigurableField(
         target = LoadAstrometryNetObjectsTask,
         doc = "reference object loader",
     )
     astrometry = pexConfig.ConfigurableField(
-        target = AstrometryTask,
-        doc = "Task to load and match reference objects. Only used if measurePsf can use matches. "
+        target=AstrometryTask,
+        doc="Task to load and match reference objects. Only used if measurePsf can use matches. "
             "Warning: matching will only work well if the initial WCS is accurate enough "
             "to give good matches (roughly: good to 3 arcsec across the CCD).",
     )
     measurePsf = pexConfig.ConfigurableField(
-        target = MeasurePsfTask,
-        doc = "Measure PSF",
+        target=MeasurePsfTask,
+        doc="Measure PSF",
     )
     repair = pexConfig.ConfigurableField(
-        target = RepairTask,
-        doc = "Remove cosmic rays",
+        target=RepairTask,
+        doc="Remove cosmic rays",
     )
     checkUnitsParseStrict = pexConfig.Field(
-        doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
-        dtype = str,
-        default = "raise",
+        doc="Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
+        dtype=str,
+        default="raise",
     )
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
         # just detect bright stars; includeThresholdMultipler=10 seems large,
         # but these are the values we have been using
-        self.detectAndMeasure.detection.thresholdValue = 5.0
-        self.detectAndMeasure.detection.includeThresholdMultiplier = 10.0
+        self.detection.thresholdValue = 5.0
+        self.detection.includeThresholdMultiplier = 10.0
         # do not deblend, as it makes a mess
-        self.detectAndMeasure.doDeblend = False
+        self.doDeblend = False
         # measure and apply aperture correction; note: measuring and applying aperture
         # correction are disabled until the final measurement, after PSF is measured
-        self.detectAndMeasure.doMeasureApCorr = True
-        self.detectAndMeasure.measurement.doApplyApCorr = "yes"
+        self.doApCorr = True
         # minimal set of measurements needed to determine PSF
-        self.detectAndMeasure.measurement.plugins.names = [
+        self.measurement.plugins.names = [
             "base_PixelFlags",
             "base_SdssCentroid",
             "base_SdssShape",
@@ -126,10 +162,10 @@ class CharacterizeImageConfig(pexConfig.Config):
         ]
 
     def validate(self):
-        if self.detectAndMeasure.doMeasureApCorr and not self.measurePsf:
+        if self.doApCorr and not self.measurePsf:
             raise RuntimeError("Must measure PSF to measure aperture correction, "
-                "because flags determined by PSF measurement are used to identify "
-                "sources used to measure aperture correction")
+                               "because flags determined by PSF measurement are used to identify "
+                               "sources used to measure aperture correction")
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -138,11 +174,12 @@ class CharacterizeImageConfig(pexConfig.Config):
 ## \copybrief CharacterizeImageTask
 ## \}
 
+
 class CharacterizeImageTask(pipeBase.CmdLineTask):
     """!Measure bright sources and use this to estimate background and PSF of an exposure
 
     @anchor CharacterizeImageTask_
-    
+
     @section pipe_tasks_characterizeImage_Contents  Contents
 
      - @ref pipe_tasks_characterizeImage_Purpose
@@ -272,7 +309,15 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
                 self.makeSubtask('refObjLoader', butler=butler)
                 refObjLoader = self.refObjLoader
             self.makeSubtask("astrometry", refObjLoader=refObjLoader)
-        self.makeSubtask("detectAndMeasure", schema=self.schema)
+        self.algMetadata = dafBase.PropertyList()
+        self.makeSubtask('detection', schema=self.schema)
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=self.schema)
+        self.makeSubtask('measurement', schema=self.schema, algMetadata=self.algMetadata)
+        if self.config.doApCorr:
+            self.makeSubtask('measureApCorr', schema=self.schema)
+            self.makeSubtask('applyApCorr', schema=self.schema)
+        self.makeSubtask('afterburners', schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
@@ -303,7 +348,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         @return same data as the characterize method
         """
-        self._frame = self._initialFrame # reset debug display frame
+        self._frame = self._initialFrame  # reset debug display frame
         self.log.info("Processing %s" % (dataRef.dataId))
 
         if doUnpersist:
@@ -316,9 +361,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         exposureIdInfo = dataRef.get("expIdInfo")
 
         charRes = self.characterize(
-            exposure = exposure,
-            exposureIdInfo = exposureIdInfo,
-            background = background,
+            exposure=exposure,
+            exposureIdInfo=exposureIdInfo,
+            background=background,
         )
 
         if self.config.doWrite:
@@ -359,7 +404,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         - background: model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
         - psfCellSet: spatial cells of PSF candidates (an lsst.afw.math.SpatialCellSet)
         """
-        self._frame = self._initialFrame # reset debug display frame
+        self._frame = self._initialFrame  # reset debug display frame
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
@@ -373,17 +418,17 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         psfIterations = self.config.psfIterations if self.config.doMeasurePsf else 1
         for i in range(psfIterations):
             dmeRes = self.detectMeasureAndEstimatePsf(
-                exposure = exposure,
-                exposureIdInfo = exposureIdInfo,
-                background = background,
+                exposure=exposure,
+                exposureIdInfo=exposureIdInfo,
+                background=background,
             )
 
             psf = dmeRes.exposure.getPsf()
             psfSigma = psf.computeShape().getDeterminantRadius()
             psfDimensions = psf.computeImage().getDimensions()
             medBackground = np.median(dmeRes.background.getImage().getArray())
-            self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f" % \
-                (i + 1, psfSigma, psfDimensions, medBackground))
+            self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f" %
+                          (i + 1, psfSigma, psfDimensions, medBackground))
 
         self.display("psf", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
@@ -393,12 +438,20 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
-        self.detectAndMeasure.measure(
-            exposure = dmeRes.exposure,
-            exposureIdInfo = exposureIdInfo,
-            sourceCat = dmeRes.sourceCat,
-            allowApCorr = True,  # the default; listed for emphasis
+        self.measurement.run(
+            measCat=dmeRes.sourceCat,
+            exposure=dmeRes.exposure,
+            exposureId=exposureIdInfo.expId
         )
+        if self.config.doApCorr:
+            apCorrMap = self.measureApCorr.run(exposure=dmeRes.exposure, catalog=dmeRes.sourceCat).apCorrMap
+            dmeRes.exposure.getInfo().setApCorrMap(apCorrMap)
+            self.applyApCorr.run(
+                catalog=dmeRes.sourceCat,
+                apCorrMap=exposure.getInfo().getApCorrMap()
+            )
+        self.afterburners.run(dmeRes.sourceCat)
+
         self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
         return dmeRes
@@ -412,8 +465,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - install a simple PSF model (replacing the existing one, if need be)
         - interpolate over cosmic rays with keepCRs=True
         - estimate background and subtract it from the exposure
-        - detectAndMeasure: detect, deblend and measure sources, and subtract a refined background model;
-            measuring and applying aperture correction is disabled because we don't have a final PSF
+        - detect, deblend and measure sources, and subtract a refined background model;
         - if config.doMeasurePsf:
             - measure PSF
 
@@ -445,43 +497,57 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.repair.run(exposure=exposure, keepCRs=True)
         self.display("repair_iter", exposure=exposure)
 
-        damRes = self.detectAndMeasure.run(
-            exposure = exposure,
-            exposureIdInfo = exposureIdInfo,
-            background = background,
-            allowApCorr = False,  # wait for final PSF
+        if background is None:
+            background = BackgroundList()
+
+        sourceIdFactory = IdFactory.makeSource(exposureIdInfo.expId, exposureIdInfo.unusedBits)
+        table = SourceTable.make(self.schema, sourceIdFactory)
+        table.setMetadata(self.algMetadata)
+
+        detRes = self.detection.run(table=table, exposure=exposure, doSmooth=True)
+        sourceCat = detRes.sources
+        if detRes.fpSets.background:
+            background.append(detRes.fpSets.background)
+
+        if self.config.doDeblend:
+            self.deblend.run(exposure=exposure, sources=sourceCat)
+
+        self.measurement.run(
+            measCat=sourceCat,
+            exposure=exposure,
+            exposureId=exposureIdInfo.expId
         )
 
         measPsfRes = pipeBase.Struct(
-            cellSet = None
+            cellSet=None
         )
         if self.config.doMeasurePsf:
             if self.measurePsf.usesMatches:
                 matches = self.astrometry.loadAndMatch(
-                    exposure = exposure,
-                    sourceCat = damRes.sourceCat,
+                    exposure=exposure,
+                    sourceCat=sourceCat,
                 ).matches
             else:
                 matches = None
             measPsfRes = self.measurePsf.run(
-                exposure = exposure,
-                sources = damRes.sourceCat,
-                matches = matches,
+                exposure=exposure,
+                sources=sourceCat,
+                matches=matches,
             )
-        self.display("measure_iter", exposure=exposure, sourceCat=damRes.sourceCat)
+        self.display("measure_iter", exposure=exposure, sourceCat=sourceCat)
 
         return pipeBase.Struct(
-            exposure = exposure,
-            sourceCat = damRes.sourceCat,
-            background = damRes.background,
-            psfCellSet = measPsfRes.cellSet,
+            exposure=exposure,
+            sourceCat=sourceCat,
+            background=background,
+            psfCellSet=measPsfRes.cellSet,
         )
 
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task.
         """
         sourceCat = SourceCatalog(self.schema)
-        sourceCat.getTable().setMetadata(self.detectAndMeasure.algMetadata)
+        sourceCat.getTable().setMetadata(self.algMetadata)
         return {"icSrc": sourceCat}
 
     def display(self, itemName, exposure, sourceCat=None):
@@ -496,9 +562,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             return
 
         displayAstrometry(
-                exposure = exposure,
-                sourceCat = sourceCat,
-                frame = self._frame,
-                pause = False,
+                exposure=exposure,
+                sourceCat=sourceCat,
+                frame=self._frame,
+                pause=False,
             )
         self._frame += 1

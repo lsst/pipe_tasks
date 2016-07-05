@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-# 
+#
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -10,14 +10,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
@@ -26,7 +26,7 @@ from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin
+from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin, ApplyApCorrTask, AfterburnerTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
 from lsst.meas.astrom import AstrometryTask, LoadAstrometryNetObjectsTask
@@ -852,6 +852,24 @@ class MeasureMergedCoaddSourcesConfig(Config):
         dtype = str,
         default = "raise",
     )
+    doApCorr = Field(
+        dtype = bool,
+        default = True,
+        doc = "Apply aperture corrections"
+    )
+    applyApCorr = ConfigurableField(
+        target = ApplyApCorrTask,
+        doc = "Subtask to apply aperture corrections"
+    )
+    doRunAfterburners = Field(
+        dtype = bool,
+        default = True,
+        doc = 'Run afterburner task'
+    )
+    afterburners = ConfigurableField(
+        target = AfterburnerTask,
+        doc = "Subtask to run afterburner plugins on catalog"
+    )
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -860,7 +878,6 @@ class MeasureMergedCoaddSourcesConfig(Config):
         # The following line must be set if clipped pixel flags are to be added to the output table
         # The clipped mask plane is added by running SafeClipAssembleCoaddTask
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED']
-        self.measurement.doApplyApCorr = "yes"
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -1025,6 +1042,10 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
+        if self.config.doApCorr:
+            self.makeSubtask("applyApCorr", schema=self.schema)
+        if self.config.doRunAfterburners:
+            self.makeSubtask("afterburners", schema=self.schema)
 
     def run(self, patchRef):
         """!
@@ -1049,15 +1070,17 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
         table = sources.getTable()
         table.setMetadata(self.algMetadata) # Capture algorithm metadata to write out to the source catalog.
-        # First run plugins with order up to and including APCORR_ORDER to measure all fluxes
-        # and apply the aperture correction (using the apCorrMap measured in the calibration
-        # task) to the measured fluxes whose plugins were registered with shouldApCorr=True
-        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef),
-                             endOrder=BasePlugin.APCORR_ORDER+1)
-        # Now run the remaining APCORR_ORDER+1 plugins (whose measurements should be performed on
-        # aperture corrected fluxes) disallowing apCorr (to avoid applying it more than once)
-        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef),
-                             beginOrder=BasePlugin.APCORR_ORDER+1, allowApCorr=False)
+
+        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef))
+
+        if self.config.doApCorr:
+            self.applyApCorr.run(
+                catalog = sources,
+                apCorrMap = exposure.getInfo().getApCorrMap()
+            )
+
+        if self.config.doRunAfterburners:
+            self.afterburners.run(sources)
 
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
