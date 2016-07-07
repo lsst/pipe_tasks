@@ -527,7 +527,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # If doSubtract is False, then subtractedExposure was fetched from disk (above), thus it may have
         # already been decorrelated. Thus, we do not do decorrelation if doSubtract is False.
         if self.config.doDecorrelation and self.config.doSubtract:
-            decorrResult = self.decorrelate.run(templateExposure, exposure,
+            decorrResult = self.decorrelate.run(exposure, templateExposure,
                                                 subtractedExposure,
                                                 subtractRes.psfMatchingKernel)
             subtractedExposure = decorrResult.correctedExposure
@@ -561,7 +561,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if not self.config.doDipoleFitting:
                     self.measurement.run(diaSources, subtractedExposure)
                 else:
-                    self.measurement.run(diaSources, subtractedExposure, exposure, templateExposure)
+                    if self.config.doSubtract:
+                        self.measurement.run(diaSources, subtractedExposure, exposure,
+                                             subtractRes.matchedExposure)
+                    else:
+                        self.measurement.run(diaSources, subtractedExposure, exposure)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
