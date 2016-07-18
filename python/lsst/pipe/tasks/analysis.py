@@ -122,8 +122,8 @@ class AnalysisConfig(Config):
 class Analysis(object):
     """Centralised base for plotting"""
 
-    def __init__(self, catalog, func, quantityName, shortName, config, qMin=-0.2, qMax=0.2, prefix="",
-                 flags=[], errFunc=None, labeller=AllLabeller()):
+    def __init__(self, catalog, func, quantityName, shortName, config, qMin=-0.2, qMax=0.2,
+                 prefix="", flags=[], goodKeys=[], errFunc=None, labeller=AllLabeller()):
         self.catalog = catalog
         self.func = func
         self.quantityName = quantityName
@@ -131,12 +131,13 @@ class Analysis(object):
         self.config = config
         self.qMin = qMin
         self.qMax = qMax
-        if labeller.labels.has_key("galaxy"):
+        if labeller.labels.has_key("galaxy") and "calib_psfUsed" not in goodKeys:
             self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
-        if "galaxy" in labeller.plot:
+        if "galaxy" in labeller.plot and "calib_psfUsed" not in goodKeys:
             self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
         self.prefix = prefix
-        self.flags = flags
+        self.flags = flags # omit if flag = True
+        self.goodKeys = goodKeys # include if goodKey = True
         self.errFunc = errFunc
         if type(func) == np.ndarray:
             self.quantity = func
@@ -152,6 +153,8 @@ class Analysis(object):
             self.good &= np.isfinite(self.quantityError)
         for ff in list(config.flags) + flags:
             self.good &= ~catalog[prefix + ff]
+        for kk in goodKeys:
+            self.good &= catalog[prefix + kk]
 
         labels = labeller(catalog)
         self.data = {name: Data(catalog, self.quantity, self.mag, self.good & (labels == value),
@@ -452,7 +455,7 @@ class Analysis(object):
         decMin, decMax = np.round(dec.min() - 0.05, 2), np.round(dec.max() + 0.05, 2)
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 np.ones(len(self.mag), dtype=bool))
-        if self.data.has_key("galaxy"):
+        if self.data.has_key("galaxy") and "calib_psfUsed" not in self.goodKeys:
             vMin, vMax = 0.5*self.qMin, 0.5*self.qMax
         else:
             vMin, vMax = self.qMin, self.qMax
@@ -704,7 +707,7 @@ class CcdAnalysis(Analysis):
         yFp = self.catalog[self.prefix + "base_FPPosition_y"]
         good = (self.mag < self.config.magThreshold if self.config.magThreshold > 0 else
                 np.ones(len(self.mag), dtype=bool))
-        if self.data.has_key("galaxy"):
+        if self.data.has_key("galaxy") and "calib_psfUsed" not in self.goodKeys:
             vMin, vMax = 0.5*self.qMin, 0.5*self.qMax
         else:
             vMin, vMax = self.qMin, self.qMax
@@ -1025,6 +1028,7 @@ class CoaddAnalysisConfig(Config):
     refObjLoaderConfig = ConfigField(dtype=LoadAstrometryNetObjectsConfig,
                                      doc="Configuration for reference object loader")
     doPlotMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
+    doPlotSizes = Field(dtype=bool, default=True, doc="Plot PSF sizes?")
     doPlotCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
     doAddAperFluxHsc = Field(dtype=bool, default=False,
@@ -1164,11 +1168,34 @@ class CoaddAnalysisTask(CmdLineTask):
         # ["base_GaussianFlux", ]: # "ext_photometryKron_KronFlux", "modelfit_Cmodel", "slot_CalibFlux"]:
             if col + "_flux" in catalog.schema:
                 self.AnalysisClass(catalog, MagDiff(col + "_flux", "base_PsfFlux_flux"), "Mag(%s) - PSFMag"
-                                   % col, "mag_" + col, self.config.analysis,
-                                   flags=[col + "_flag"], labeller=StarGalaxyLabeller(),
+                                   % col, "mag_" + col, self.config.analysis, flags=[col + "_flag"],
+                                   labeller=StarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
                                              camera=camera, ccdList=ccdList, hscRun=hscRun,
                                              matchRadius=matchRadius, zpLabel=zpLabel)
+
+    def plotSizes(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
+                 matchRadius=None, zpLabel=None):
+        enforcer = None
+        for col in ["base_PsfFlux", ]:
+            if col + "_flux" in catalog.schema:
+                self.AnalysisClass(catalog, psfSdssTraceSizeDiff(),
+                                   "SdssShape Trace (psfUsed - PSFmodel)/PSFmodel", "trace_",
+                                   self.config.analysis, flags=[col + "_flag"],
+                                   goodKeys=["calib_psfUsed"], qMin=-0.04, qMax=0.04,
+                                   labeller=StarGalaxyLabeller(),
+                                   ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
+                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                             matchRadius=matchRadius, zpLabel=zpLabel)
+                self.AnalysisClass(catalog, psfHsmTraceSizeDiff(),
+                                   "HSM Trace (psfUsed - PSFmodel)/PSFmodel", "hsmTrace_",
+                                   self.config.analysis, flags=[col + "_flag"],
+                                   goodKeys=["calib_psfUsed"], qMin=-0.04, qMax=0.04,
+                                   labeller=StarGalaxyLabeller(),
+                                   ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
+                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                             matchRadius=matchRadius, zpLabel=zpLabel)
+
     def plotCentroidXY(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
                        matchRadius=None, zpLabel=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
@@ -1182,7 +1209,9 @@ class CoaddAnalysisTask(CmdLineTask):
 
     def plotStarGal(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None, zpLabel=None):
         self.AnalysisClass(catalog, deconvMomStarGal, "pStar", "pStar", self.config.analysis,
-                           qMin=0.0, qMax=1.0, ).plotAll(dataId, filenamer, self.log)
+                           qMin=0.0, qMax=1.0, labeller=StarGalaxyLabeller()
+                           ).plotAll(dataId, filenamer, self.log, hscRun=hscRun,
+                                     matchRadius=matchRadius, zpLabel=zpLabel)
         self.AnalysisClass(catalog, deconvMom, "Deconvolved moments", "deconvMom", self.config.analysis,
                            qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
@@ -1319,9 +1348,12 @@ class VisitAnalysisTask(CoaddAnalysisTask):
         self.log.info("dataId: %s" % (dataId,))
         filterName = dataId["filter"]
         filenamer = Filenamer(butler, "plotVisit", dataRefList[0].dataId)
-        if (self.config.doPlotMags or self.config.doPlotStarGalaxy or self.config.doPlotOverlaps or cosmos or
-            self.config.externalCatalogs):
+        if (self.config.doPlotMags or self.config.doPlotSizes or self.config.doPlotStarGalaxy or
+            self.config.doPlotOverlaps or cosmos or self.config.externalCatalogs):
             catalog = self.readCatalogs(dataRefList, "src")
+        calexp = None
+        if (self.config.doPlotSizes):
+            calexp = butler.get("calexp", dataId)
         # Check metadata to see if stack used was HSC
         metadata = butler.get("calexp_md", dataRefList[0].dataId)
         # Set an alias map for differing src naming conventions of different stacks (if any)
@@ -1333,6 +1365,12 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             aliasMap = catalog.schema.getAliasMap()
             for lsstName, otherName in self.config.srcSchemaMap.iteritems():
                 aliasMap.set(lsstName, otherName)
+        if self.config.doPlotSizes:
+            if "base_SdssShape_psf_xx" in catalog.schema:
+                self.plotSizes(catalog, filenamer, dataId, butler=butler, camera=camera, ccdList=ccdList,
+                               hscRun=hscRun, zpLabel=self.zpLabel)
+            else:
+                self.log.warn("Cannot run plotSizes: base_SdssShape_psf_xx not in catalog.schema")
         if self.config.doPlotMags:
             self.plotMags(catalog, filenamer, dataId, butler=butler, camera=camera, ccdList=ccdList,
                           hscRun=hscRun, zpLabel=self.zpLabel)
@@ -1462,6 +1500,7 @@ class CompareAnalysisConfig(Config):
     matchRadius = Field(dtype=float, default=0.2, doc="Matching radius (arcseconds)")
     analysis = ConfigField(dtype=AnalysisConfig, doc="Analysis plotting options")
     doPlotMags = Field(dtype=bool, default=True, doc="Plot magnitudes?")
+    doPlotSizes = Field(dtype=bool, default=False, doc="Plot PSF sizes?")
     doPlotCentroids = Field(dtype=bool, default=True, doc="Plot centroids?")
     doApCorrs = Field(dtype=bool, default=True, doc="Plot aperture corrections?")
     doBackoutApCorr = Field(dtype=bool, default=False, doc="Backout aperture corrections?")
@@ -1664,6 +1703,12 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
         if self.config.doPlotMags:
             self.plotMags(catalog, filenamer, dataId, butler=butler1, camera=camera1, ccdList=ccdList1,
                           hscRun=hscRun, matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
+        if self.config.doPlotSizes:
+            if "base_SdssShape_psf_xx" in catalog.schema:
+                self.plotSizes(catalog, filenamer, dataId, butler=butler1, camera=camera1, ccdList=ccdList1,
+                               hscRun=hscRun, matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
+            else:
+                self.log.warn("Cannot run plotSizes: base_SdssShape_psf_xx not in catalog.schema")
         if self.config.doApCorrs:
             self.plotApCorrs(catalog, filenamer, dataId, butler=butler1, camera=camera1, ccdList=ccdList1,
                              hscRun=hscRun, matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
@@ -1705,6 +1750,28 @@ class CompareVisitAnalysisTask(CompareAnalysisTask):
                          errFunc=MagDiffErr(col + "_flux"), labeller=OverlapsStarGalaxyLabeller(),
                          ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler, camera=camera,
                                    ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
+
+    def plotSizes(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
+                 matchRadius=None, zpLabel=None):
+        enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
+        for col in ["base_PsfFlux"]:
+            if "first_" + col + "_flux" in catalog.schema and "second_" + col + "_flux" in catalog.schema:
+                Analysis(catalog, psfSdssTraceSizeDiff(),
+                         "SdssShape Trace Radius Diff (psfUsed - PSF model)/(PSF model)", "trace_",
+                         self.config.analysis, flags=[col + "_flag"], prefix="first_",
+                         goodKeys=["calib_psfUsed"], qMin=-0.04, qMax=0.04,
+                         labeller=OverlapsStarGalaxyLabeller(),
+                         ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
+                                   camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                   matchRadius=matchRadius, zpLabel=zpLabel)
+                Analysis(catalog, psfHsmTraceSizeDiff(),
+                         "HSM Trace Radius Diff (psfUsed - PSF model)/(PSF model)", "hsmTrace_",
+                         self.config.analysis, flags=[col + "_flag"], prefix="first_",
+                         goodKeys=["calib_psfUsed"], qMin=-0.04, qMax=0.04,
+                         labeller=OverlapsStarGalaxyLabeller(),
+                         ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
+                                   camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                   matchRadius=matchRadius, zpLabel=zpLabel)
 
     def plotApCorrs(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
                     matchRadius=None, zpLabel=None):
