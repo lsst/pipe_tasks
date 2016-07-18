@@ -30,7 +30,9 @@ import lsst.utils
 import sys
 import lsst.afw.table              as afwTable
 import lsst.afw.image              as afwImage
+from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.photoCal import PhotoCalTask
+from lsst.daf.persistence import Butler
 import lsst.meas.astrom as measAstrom
 
 
@@ -56,13 +58,6 @@ def loadData():
         exposure.setMaskedImage(mi)
         del mi; del smi
 
-    # Set up local astrometry_net_data
-    datapath = os.path.join(mypath, 'tests', 'astrometry_net_data', 'photocal')
-    if not os.path.exists(datapath):
-        raise ValueError("Need photocal version of astrometry_net_data (from path: %s)" %
-                         datapath)
-    os.environ['ASTROMETRY_NET_DATA_DIR'] = datapath
-
     #
     # Read sources
     #
@@ -75,19 +70,25 @@ def run():
     exposure, srcCat = loadData()
     schema = srcCat.getSchema()
     #
+    # Create the reference catalog loader
+    #
+    refCatDir = os.path.join(lsst.utils.getPackageDir('meas_astrom'), 'tests', 'data', 'sdssrefcat')
+    butler = Butler(refCatDir)
+    refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
+    #
     # Create the astrometry task
     #
-    config = measAstrom.LoadAstrometryNetObjectsTask.ConfigClass()
-    config.filterMap = {"_unknown_": "r"}
-    refObjLoader = measAstrom.LoadAstrometryNetObjectsTask(config=config)
     config = measAstrom.AstrometryTask.ConfigClass()
     config.matcher.sourceFluxType = "Psf" # sample catalog does not contain aperture flux
+    config.matcher.minSnr = 0  # disable S/N test because sample catalog does not contain flux sigma
     aTask = measAstrom.AstrometryTask(config=config, refObjLoader=refObjLoader)
     #
     # And the photometry Task
     #
     config = PhotoCalTask.ConfigClass()
     config.applyColorTerms = False      # we don't have any available, so this suppresses a warning
+    # The associated data has been prepared on the basis that we use PsfFlux to perform photometry.
+    config.fluxField = "base_PsfFlux_flux"
     pTask = PhotoCalTask(config=config, schema=schema)
     #
     # The tasks may have added extra elements to the schema (e.g. AstrometryTask's centroidKey to

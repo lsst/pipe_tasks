@@ -29,7 +29,7 @@ def setupAstrometryNetDataDir(name, rootDir=None, verbose=False):
 class TestAstrometryNetDataDirDiscovery(unittest.TestCase):
 
     def test_photocal(self):
-        datapath = setupAstrometryNetDataDir('photocal')
+        datapath = setupAstrometryNetDataDir('t2155')
         self.assertEqual(os.environ["ASTROMETRY_NET_DATA_DIR"], datapath)
 
 if __name__ == '__main__':
