@@ -1,7 +1,6 @@
 setupRequired(pipe_base)
 setupRequired(pex_config)
 setupRequired(utils)
-setupRequired(esutil)
 setupOptional(afw)
 setupOptional(meas_base)
 setupOptional(meas_algorithms)

@@ -1,3 +1,3 @@
 #!/usr/bin/env python
-from lsst.pipe.tasks.indexReferenceTask import IngestIndexedReferenceTask
+from lsst.meas.algorithms import IngestIndexedReferenceTask
 IngestIndexedReferenceTask.parseAndRun()
