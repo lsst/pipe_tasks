@@ -27,16 +27,19 @@ import unittest
 
 import numpy as np
 
+from lsst.daf.persistence import Butler
 import lsst.meas.astrom as measAstrom
+from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.utils.tests
+from lsst.utils import getPackageDir
 from lsst.pex.logging import Log
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 
-import testFindAstrometryNetDataDir as helper
+RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
 
 # Quiet down meas_astrom logging, so we can see PhotoCal logs better
 Log(Log.getDefaultLog(), "meas.astrom.astrometry_net", Log.WARN)
@@ -83,9 +86,9 @@ class PhotoCalTest(unittest.TestCase):
         self.exposure.setFilter(smallExposure.getFilter())
         self.exposure.setCalib(smallExposure.getCalib())
 
-        # Set up local astrometry_net_data
-        helper.setupAstrometryNetDataDir('photocal', rootDir=testDir)
-        self.refObjLoader = makeRefLoader()
+        # Make a reference loader
+        butler = Butler(RefCatDir)
+        self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
         self.res = self.getAstrometrySolution(loglvl=Log.DEBUG)
         self.matches = self.res.matches
         logLevel = Log.DEBUG
@@ -114,7 +117,6 @@ class PhotoCalTest(unittest.TestCase):
     def getAstrometrySolution(self, loglvl=Log.INFO):
         astromConfig = measAstrom.AstrometryTask.ConfigClass()
         astrom = measAstrom.AstrometryTask(config=astromConfig, refObjLoader=self.refObjLoader)
-        # use solve instead of run because the exposure has the wrong bbox
         return astrom.solve(
             sourceCat=self.srcCat,
             exposure=self.exposure,
