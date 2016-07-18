@@ -395,6 +395,13 @@ class Analysis(object):
         axScatter.legend(handles=dataPoints, loc=1, fontsize=8)
         axHistx.legend(fontsize=7, loc=2)
         axHisty.legend(fontsize=7)
+        # Label total number of objects of each data type
+        xLoc, yLoc = 0.16, 1.40
+        for name, data in self.data.iteritems():
+            yLoc -= 0.04
+            plt.text(xLoc, yLoc, "Ntotal = " + str(len(data.mag)), ha="left", va="center",
+                     fontsize=9, transform=axScatter.transAxes, color=data.color)
+
         self.labelVisit(filename, plt, axScatter, 1.18, -0.11, color="green")
         if zpLabel is not None:
             self.labelZp(zpLabel, plt, axScatter, 0.08, -0.11, color="green")
