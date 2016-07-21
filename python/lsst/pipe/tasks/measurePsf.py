@@ -42,6 +42,12 @@ class MeasurePsfConfig(pexConfig.Config):
                 "to set the random seed for reserving candidates",
         default = 1,
     )
+    maxPsfCandidates = pexConfig.Field(
+        dtype = int,
+        doc = "Maximum number of PSF candidates to pass to the PSF determiner. "
+              "Unlimited if set to <= 0",
+        default = 300,
+    )
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -286,7 +292,11 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
                 for cand in reserveList:
                     source = cand.getSource()
                     source.set(self.reservedKey,True)
-            
+
+        if self.config.maxPsfCandidates > 0 and len(psfCandidateList) > self.config.maxPsfCandidates:
+            psfCandidateList = random.sample(psfCandidateList,
+                                             self.config.maxPsfCandidates)
+
         if psfCandidateList and self.candidateKey is not None:
             for cand in psfCandidateList:
                 source = cand.getSource()
