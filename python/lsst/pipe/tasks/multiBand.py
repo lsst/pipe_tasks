@@ -1162,6 +1162,9 @@ class MergeMeasurementsConfig(MergeSourcesConfig):
                       doc="If the difference in S/N between another band and the priority band is larger "
                       "than this value (and the S/N in the priority band is less than minSN) "
                       "use the band with the largest S/N as the reference band")
+    flags = ListField(dtype=str, doc="Require that these flags, if available, are not set",
+                      default=["base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag",
+                               "ext_photometryKron_KronFlux_flag", "modelfit_CModel_flag",])
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -1288,6 +1291,13 @@ class MergeMeasurementsTask(MergeSourcesTask):
             except:
                 self.log.warn("merge_peak is not set for pseudo-filter %s" % filt)
 
+        self.badFlags = {}
+        for flag in self.config.flags:
+            try:
+                self.badFlags[flag] = self.schema.find(flag).getKey()
+            except KeyError as exc:
+                self.log.warn("Can't find flag %s in schema: %s" % (flag, exc,))
+
 
     def mergeCatalogs(self, catalogs, patchRef):
         """!
@@ -1341,7 +1351,8 @@ class MergeMeasurementsTask(MergeSourcesTask):
                     if hasPseudoFilter:
                         break
 
-                if inputRecord.get(self.fluxFlagKey) or inputRecord.get(self.fluxErrKey) == 0:
+                isBad = any(inputRecord.get(flag) for flag in self.badFlags)
+                if isBad or inputRecord.get(self.fluxFlagKey) or inputRecord.get(self.fluxErrKey) == 0:
                     sn = 0.
                 else:
                     sn = inputRecord.get(self.fluxKey)/inputRecord.get(self.fluxErrKey)
