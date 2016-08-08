@@ -42,8 +42,7 @@ from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrar
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
 
 # Quiet down meas_astrom logging, so we can see PhotoCal logs better
-Log(Log.getDefaultLog(), "meas.astrom.astrometry_net", Log.WARN)
-Log(Log.getDefaultLog(), "meas.astrom.sip", Log.WARN)
+Log(Log.getDefaultLog(), "LoadIndexedReferenceObjectsTask", Log.WARN)
 Log(Log.getDefaultLog(), "astrometricSolver", Log.WARN)
 
 testColorterms = ColortermLibrary(data={
