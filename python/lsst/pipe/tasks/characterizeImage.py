@@ -32,7 +32,7 @@ from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, LoadAstrometryNetObjectsTask
 from lsst.daf.butlerUtils import ExposureIdInfo
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
-from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, AfterburnerTask
+from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
@@ -100,10 +100,10 @@ class CharacterizeImageConfig(pexConfig.Config):
         doc="Subtask to apply aperture corrections"
     )
     # If doApCorr is False, and the exposure does not have apcorrections already applied, the
-    # active plugins in afterburners almost certainly should not contain the characterization plugin
-    afterburners = pexConfig.ConfigurableField(
-        target=AfterburnerTask,
-        doc="Subtask to run afterburner plugins on catalog"
+    # active plugins in catalogCalculation almost certainly should not contain the characterization plugin
+    catalogCalculation = pexConfig.ConfigurableField(
+        target=CatalogCalculationTask,
+        doc="Subtask to run catalogCalculation plugins on catalog"
     )
     useSimplePsf = pexConfig.Field(
         dtype=bool,
@@ -317,7 +317,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         if self.config.doApCorr:
             self.makeSubtask('measureApCorr', schema=self.schema)
             self.makeSubtask('applyApCorr', schema=self.schema)
-        self.makeSubtask('afterburners', schema=self.schema)
+        self.makeSubtask('catalogCalculation', schema=self.schema)
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
@@ -450,7 +450,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
                 catalog=dmeRes.sourceCat,
                 apCorrMap=exposure.getInfo().getApCorrMap()
             )
-        self.afterburners.run(dmeRes.sourceCat)
+        self.catalogCalculation.run(dmeRes.sourceCat)
 
         self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 

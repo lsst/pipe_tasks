@@ -26,7 +26,7 @@ from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin, ApplyApCorrTask, AfterburnerTask
+from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
 from lsst.meas.astrom import AstrometryTask, LoadAstrometryNetObjectsTask
@@ -861,14 +861,14 @@ class MeasureMergedCoaddSourcesConfig(Config):
         target = ApplyApCorrTask,
         doc = "Subtask to apply aperture corrections"
     )
-    doRunAfterburners = Field(
+    doRunCatalogCalculation = Field(
         dtype = bool,
         default = True,
-        doc = 'Run afterburner task'
+        doc = 'Run catalogCalculation task'
     )
-    afterburners = ConfigurableField(
-        target = AfterburnerTask,
-        doc = "Subtask to run afterburner plugins on catalog"
+    catalogCalculation = ConfigurableField(
+        target = CatalogCalculationTask,
+        doc = "Subtask to run catalogCalculation plugins on catalog"
     )
 
     def setDefaults(self):
@@ -1044,8 +1044,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
         if self.config.doApCorr:
             self.makeSubtask("applyApCorr", schema=self.schema)
-        if self.config.doRunAfterburners:
-            self.makeSubtask("afterburners", schema=self.schema)
+        if self.config.doRunCatalogCalculation:
+            self.makeSubtask("catalogCalculation", schema=self.schema)
 
     def run(self, patchRef):
         """!
@@ -1079,8 +1079,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                 apCorrMap = exposure.getInfo().getApCorrMap()
             )
 
-        if self.config.doRunAfterburners:
-            self.afterburners.run(sources)
+        if self.config.doRunCatalogCalculation:
+            self.catalogCalculation.run(sources)
 
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
