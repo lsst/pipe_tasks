@@ -119,6 +119,7 @@ class AnalysisConfig(Config):
     fluxColumn = Field(dtype=str, default="base_PsfFlux_flux", doc="Column to use for flux/magnitude plotting")
     zp = Field(dtype=float, default=27.0, doc="Magnitude zero point to apply")
     doPlotOldMagsHist = Field(dtype=bool, default=False, doc="Make older, separated, mag and hist plots?")
+    doPlotFP = Field(dtype=bool, default=False, doc="Make FocalPlane plots?")
 
 class Analysis(object):
     """Centralised base for plotting"""
@@ -637,9 +638,10 @@ class CcdAnalysis(Analysis):
         stats = self.stats(forcedMean=forcedMean)
         self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats,
                      hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
-        self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
-                            camera=camera, ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius,
-                            zpLabel=zpLabel)
+        if self.config.doPlotFP:
+            self.plotFocalPlane(filenamer(dataId, description=self.shortName, style="fpa"), stats=stats,
+                                camera=camera, ccdList=ccdList, hscRun=hscRun, matchRadius=matchRadius,
+                                zpLabel=zpLabel)
 
         return Analysis.plotAll(self, dataId, filenamer, log, enforcer=enforcer, forcedMean=forcedMean,
                                 butler=butler, camera=camera, ccdList=ccdList, hscRun=hscRun,
