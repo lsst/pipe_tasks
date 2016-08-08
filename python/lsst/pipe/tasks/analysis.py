@@ -118,6 +118,7 @@ class AnalysisConfig(Config):
     magPlotMax = Field(dtype=float, default=28.0, doc="Maximum magnitude to plot")
     fluxColumn = Field(dtype=str, default="base_PsfFlux_flux", doc="Column to use for flux/magnitude plotting")
     zp = Field(dtype=float, default=27.0, doc="Magnitude zero point to apply")
+    doPlotOldMagsHist = Field(dtype=bool, default=False, doc="Make older, separated, mag and hist plots?")
 
 class Analysis(object):
     """Centralised base for plotting"""
@@ -535,10 +536,12 @@ class Analysis(object):
         self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
                                     stats=stats, camera=camera, ccdList=ccdList, hscRun=hscRun,
                                     matchRadius=matchRadius, zpLabel=zpLabel)
-        self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
-                            hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
-        self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats,
-                           hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
+        if self.config.doPlotOldMagsHist:
+            self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
+                                hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
+            self.plotHistogram(filenamer(dataId, description=self.shortName, style="hist"), stats=stats,
+                               hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
+
         self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats,
                              dataId=dataId, butler=butler, camera=camera, ccdList=ccdList, hscRun=hscRun,
                              matchRadius=matchRadius, zpLabel=zpLabel)
@@ -793,14 +796,32 @@ class AstrometryDiff(object):
         cosDec = np.cos(catalog[self.declination]) if self.declination is not None else 1.0
         return (first - second)*cosDec*(1.0*afwGeom.radians).asArcseconds()
 
+class psfSdssTraceSizeDiff(object):
+    """Functor to calculate trace radius size difference between object and psf model"""
+    def __call__(self, catalog):
+        srcSize = np.sqrt(0.5*(catalog["base_SdssShape_xx"] + catalog["base_SdssShape_yy"]))
+        psfSize = np.sqrt(0.5*(catalog["base_SdssShape_psf_xx"] + catalog["base_SdssShape_psf_yy"]))
+        sizeDiff = (srcSize - psfSize)/psfSize
+        return np.array(sizeDiff)
+
+class psfHsmTraceSizeDiff(object):
+    """Functor to calculate trace radius size difference between object and psf model"""
+    def __call__(self, catalog):
+        srcSize = np.sqrt(0.5*(catalog["ext_shapeHSM_HsmSourceMoments_xx"] +
+                               catalog["ext_shapeHSM_HsmSourceMoments_yy"]))
+        psfSize = np.sqrt(0.5*(catalog["ext_shapeHSM_HsmPsfMoments_xx"] +
+                               catalog["ext_shapeHSM_HsmPsfMoments_yy"]))
+        sizeDiff = (srcSize - psfSize)/psfSize
+        return np.array(sizeDiff)
+
 def deconvMom(catalog):
     """Calculate deconvolved moments"""
-    if "ext_shapeHSM_HsmMoments" in catalog.schema:
-        hsm = catalog["ext_shapeHSM_HsmMoments_xx"] + catalog["ext_shapeHSM_HsmMoments_yy"]
+    if "ext_shapeHSM_HsmSourceMoments" in catalog.schema:
+        hsm = catalog["ext_shapeHSM_HsmSourceMoments_xx"] + catalog["ext_shapeHSM_HsmSourceMoments_yy"]
     else:
         hsm = np.ones(len(catalog))*np.nan
     sdss = catalog["base_SdssShape_xx"] + catalog["base_SdssShape_yy"]
-    if "ext_shapeHSM_HsmPsfMoments" in catalog.schema:
+    if "ext_shapeHSM_HsmPsfMoments_xx" in catalog.schema:
         psf = catalog["ext_shapeHSM_HsmPsfMoments_xx"] + catalog["ext_shapeHSM_HsmPsfMoments_yy"]
     else:
         # LSST does not have shape.sdss.psf.  Could instead add base_PsfShape to catalog using
@@ -1104,10 +1125,10 @@ class CoaddAnalysisTask(CmdLineTask):
         if self.config.doPlotMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doPlotStarGalaxy:
-            if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
+            if "ext_shapeHSM_HsmSourceMoments_xx" in catalog.schema:
                 self.plotStarGal(catalog, filenamer, dataId)
             else:
-                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
+                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmSourceMoments_xx not in catalog.schema")
         if cosmos:
             self.plotCosmos(catalog, filenamer, cosmos, dataId)
         if self.config.doPlotForced:
@@ -1378,10 +1399,10 @@ class VisitAnalysisTask(CoaddAnalysisTask):
             self.plotCentroidXY(catalog, filenamer, dataId, camera=camera, ccdList=ccdList, hscRun=hscRun,
                                 zpLabel=self.zpLabel)
         if self.config.doPlotStarGalaxy:
-            if "ext_shapeHSM_HsmMoments_xx" in catalog.schema:
+            if "ext_shapeHSM_HsmSourceMoments_xx" in catalog.schema:
                 self.plotStarGal(catalog, filenamer, dataId, hscRun=hscRun, zpLabel=self.zpLabel)
             else:
-                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmMoments_xx not in catalog.schema")
+                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmSourceMoments_xx not in catalog.schema")
         if self.config.doPlotMatches:
             matches = self.readSrcMatches(dataRefList, "src")
             self.plotMatches(matches, filterName, filenamer, dataId, butler=butler, camera=camera,
