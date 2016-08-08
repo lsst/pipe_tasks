@@ -197,12 +197,12 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 imageCorners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
             except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
                 # Protecting ourselves from awful Wcs solutions in input images
-                self.log.logdebug("WCS error in testing calexp %s (%s): deselecting" % (dataRef.dataId, e))
+                self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
                 continue
 
             imagePoly = convexHull([coord.getVector() for coord in imageCorners])
             if imagePoly is None:
-                self.log.logdebug("Unable to create polygon from image %s: deselecting" % dataRef.dataId)
+                self.log.debug("Unable to create polygon from image %s: deselecting", dataRef.dataId)
                 continue
             if patchPoly.intersects(imagePoly): # "intersects" also covers "contains" or "is contained by"
                 self.log.info("Selecting calexp %s" % dataRef.dataId)

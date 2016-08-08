@@ -720,8 +720,8 @@ class MergeDetectionsTask(MergeSourcesTask):
                 s.setFootprint(foot)
                 s.set(key, True)
 
-            self.log.info("Added %d sky sources (%.0f%% of requested)" % (
-                len(skySourceFootprints), 100*len(skySourceFootprints)/float(self.config.nSkySourcesPerPatch)))
+            self.log.info("Added %d sky sources (%.0f%% of requested)",
+                len(skySourceFootprints), 100*len(skySourceFootprints)/float(self.config.nSkySourcesPerPatch))
 
         # Sort Peaks from brightest to faintest
         for record in mergedList:

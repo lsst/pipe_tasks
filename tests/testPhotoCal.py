@@ -35,15 +35,15 @@ import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.utils import getPackageDir
-from lsst.pex.logging import Log
+from lsst.log import Log
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
 
 # Quiet down meas_astrom logging, so we can see PhotoCal logs better
-Log(Log.getDefaultLog(), "LoadIndexedReferenceObjectsTask", Log.WARN)
-Log(Log.getDefaultLog(), "astrometricSolver", Log.WARN)
+Log.getLogger("LoadIndexedReferenceObjectsTask").setLevel(Log.WARN)
+Log.getLogger("astrometricSolver").setLevel(Log.WARN)
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={
@@ -88,12 +88,11 @@ class PhotoCalTest(unittest.TestCase):
         # Make a reference loader
         butler = Butler(RefCatDir)
         self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
-        self.res = self.getAstrometrySolution(loglvl=Log.DEBUG)
+        self.res = self.getAstrometrySolution(loglvl=Log.TRACE)
         self.matches = self.res.matches
-        logLevel = Log.DEBUG
-        self.log = Log(Log.getDefaultLog(),
-                       'testPhotoCal',
-                       logLevel)
+        logLevel = Log.TRACE
+        self.log = Log.getLogger('testPhotoCal')
+        self.log.setLevel(logLevel)
 
         self.schema = self.matches[0].second.schema
         self.config = PhotoCalConfig()
@@ -158,10 +157,10 @@ class PhotoCalTest(unittest.TestCase):
         self.assertLess(np.mean(self.diff), 0.6)
 
         # Differences of matched objects that were used in the fit.
-        self.log.logdebug('zeropoint: %g' % self.zp)
-        self.log.logdebug('number of sources used in fit: %i' % len(self.fitdiff))
-        self.log.logdebug('rms diff: %g' % np.mean(self.fitdiff**2)**0.5)
-        self.log.logdebug('median abs(diff): %g' % np.median(np.abs(self.fitdiff)))
+        self.log.debug('zeropoint: %g', self.zp)
+        self.log.debug('number of sources used in fit: %i', len(self.fitdiff))
+        self.log.debug('rms diff: %g', np.mean(self.fitdiff**2)**0.5)
+        self.log.debug('median abs(diff): %g', np.median(np.abs(self.fitdiff)))
 
         # zeropoint: 31.3145
         # number of sources used in fit: 65
@@ -191,7 +190,7 @@ class PhotoCalTest(unittest.TestCase):
         self._runTask()
 
         self.assertLess(np.mean(self.diff), 0.6 + zeroPointOffset)
-        self.log.logdebug('zeropoint: %g' % self.zp)
+        self.log.debug('zeropoint: %g', self.zp)
         # zeropoint: 32.3145
         self.assertLess(abs(self.zp - (31.3145 + zeroPointOffset)), 0.05)
 
