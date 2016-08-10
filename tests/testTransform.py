@@ -233,6 +233,8 @@ class RunTransformTestCase(lsst.utils.tests.TestCase):
         cfg.calibrate.doPhotoCal = False
         # disable aperture correction because we aren't measuring aperture flux
         cfg.calibrate.doApCorr = False
+        # Extendedness requires modelFlux, disabled above.
+        cfg.calibrate.afterburners.plugins.names.discard("base_ClassificationExtendedness")
 
         # Process the test data with ProcessCcd then perform a transform.
         with tempDirectory() as tempDir:
