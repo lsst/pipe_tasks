@@ -326,7 +326,7 @@ class CoaddSrcTransformTask(RunTransformTaskBase):
 
     @property
     def coaddName(self):
-        return self.self.butler.get(self.config.inputConfigType).coaddName
+        return self.butler.get(self.config.inputConfigType).coaddName
 
     @property
     def sourceType(self):
