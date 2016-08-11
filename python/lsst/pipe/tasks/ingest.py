@@ -482,6 +482,13 @@ class IngestTask(Task):
                 assertCanCopy(infile, outfile)
                 shutil.copyfile(infile, outfile)
             elif mode == "link":
+                if os.path.exists(outfile):
+                    if os.path.samefile(infile, outfile):
+                        self.log.debug("Already linked %s to %s: ignoring" % (infile, outfile))
+                    else:
+                        self.log.warn("%s already has a file at the target location (%s): ignoring "
+                                      "(set clobber=True to overwrite)" % (infile, outfile))
+                    return False
                 os.symlink(os.path.abspath(infile), outfile)
             elif mode == "move":
                 assertCanCopy(infile, outfile)
