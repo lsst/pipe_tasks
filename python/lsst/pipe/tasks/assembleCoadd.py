@@ -1051,7 +1051,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         overlap between the clipped region and a source.
         This leaves us with a set of footprints from the difference image that have been identified as having
         occured on just one or two individual visits. However, these footprints were generated from a
-        differece image. It is conceivable for a large diffuse source to have become broken up into multiple
+        difference image. It is conceivable for a large diffuse source to have become broken up into multiple
         footprints acrosss the coadd difference in this process.
         Determine the clipped region from all overlapping footprints from the detected sources in each visit -
         these are big footprints.
