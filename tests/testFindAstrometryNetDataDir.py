@@ -4,6 +4,8 @@ from __future__ import absolute_import, print_function
 import os
 import unittest
 
+import lsst.utils.tests
+
 
 def setupAstrometryNetDataDir(name, rootDir=None, verbose=False):
     """Locate the named Astrometry.net data directory from within
@@ -32,5 +34,15 @@ class TestAstrometryNetDataDirDiscovery(unittest.TestCase):
         datapath = setupAstrometryNetDataDir('t2155')
         self.assertEqual(os.environ["ASTROMETRY_NET_DATA_DIR"], datapath)
 
-if __name__ == '__main__':
+
+def setup_module(module):
+    lsst.utils.tests.init()
+
+
+class MatchMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
+
+
+if __name__ == "__main__":
+    lsst.utils.tests.init()
     unittest.main()

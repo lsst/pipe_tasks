@@ -34,7 +34,7 @@ import unittest
 
 import numpy as np
 
-import lsst.utils.tests as tests
+import lsst.utils.tests
 import lsst.afw.image as afwImage
 import lsst.afw.display.ds9 as ds9
 import lsst.ip.isr as ipIsr
@@ -141,20 +141,14 @@ class interpolationTestCase(unittest.TestCase):
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-
-def suite():
-    """Returns a suite containing all the test cases in this module."""
-    tests.init()
-
-    suites = []
-    suites += unittest.makeSuite(interpolationTestCase)
-    suites += unittest.makeSuite(tests.MemoryTestCase)
-    return unittest.TestSuite(suites)
+def setup_module(module):
+    lsst.utils.tests.init()
 
 
-def run(exit=False):
-    """Run the tests"""
-    tests.run(suite(), exit)
+class MatchMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
+
 
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()
