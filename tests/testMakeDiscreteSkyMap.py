@@ -28,7 +28,7 @@ import shutil
 import unittest
 
 from lsst.utils import getPackageDir
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 from lsst.afw.geom import Extent2I, Box2D
 from lsst.daf.persistence import Butler
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, DiscreteSkyMap
@@ -88,22 +88,13 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 
-def suite():
-    """Returns a suite containing all the test cases in this module."""
-
-    utilsTests.init()
-
-    suites = []
-    suites += unittest.makeSuite(MakeDiscreteSkyMapTestCase)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
-    return unittest.TestSuite(suites)
+class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
 
 
-def run(shouldExit=False):
-    """Run the tests"""
-    utilsTests.run(suite(), shouldExit)
+def setup_module(module):
+    lsst.utils.tests.init()
 
 if __name__ == "__main__":
-    if "--display" in sys.argv:
-        display = True
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()

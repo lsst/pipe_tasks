@@ -59,6 +59,7 @@ def getObsTestConfig(TaskClass):
         config.load(filename)
     return config
 
+
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
     def testProcessCcd(self):
@@ -141,9 +142,9 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     self.assertEqual(len(src), 185)
                     self.assertEqual(numGoodPix, 1965540)
 
-                    self.assertAlmostEqual(imMean,     0.99578990765845121, places=7)
-                    self.assertAlmostEqual(imStdDev,  95.645409033639211, places=7)
-                    self.assertAlmostEqual(varMean,  131.16293718847217, places=7)
+                    self.assertAlmostEqual(imMean, 0.99578990765845121, places=7)
+                    self.assertAlmostEqual(imStdDev, 95.645409033639211, places=7)
+                    self.assertAlmostEqual(varMean, 131.16293718847217, places=7)
                     self.assertAlmostEqual(varStdDev, 64.806576059889963, places=7)
                     self.assertAlmostEqual(psfIxx, 2.8540775242108163, places=7)
                     self.assertAlmostEqual(psfIyy, 2.17386182921239, places=7)
@@ -338,8 +339,10 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             else:
                 print("testProcessCcd.py's output data saved to %r" % (OutputName,))
 
+
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
     pass

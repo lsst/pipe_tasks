@@ -25,7 +25,7 @@ import unittest
 
 import numpy as np
 
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 import lsst.afw.image as afwImage
 from lsst.coadd.utils import setCoaddEdgeBits
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
@@ -67,7 +67,7 @@ def simpleAdd(exp0, exp1, badPixelMask):
     good0 = np.bitwise_and(maskArr0, badPixelMask) == 0
     good1 = np.bitwise_and(maskArr1, badPixelMask) == 0
 
-    imArrRes[:, :] = np.where(good0,  imArr0, 0) + np.where(good1,  imArr1, 0)
+    imArrRes[:, :] = np.where(good0, imArr0, 0) + np.where(good1, imArr1, 0)
     varArrRes[:, :] = np.where(good0, varArr0, 0) + np.where(good1, varArr1, 0)
     maskArrRes[:, :] = np.bitwise_or(np.where(good0, maskArr0, 0), np.where(good1, maskArr1, 0))
     weightArr[:, :] = np.where(good0, 1, 0) + np.where(good1, 1, 0)
@@ -80,7 +80,7 @@ def simpleAdd(exp0, exp1, badPixelMask):
     return expRes
 
 
-class SnapCombineTestCase(utilsTests.TestCase):
+class SnapCombineTestCase(lsst.utils.tests.TestCase):
 
     """A test case for SnapCombineTask."""
 
@@ -175,16 +175,13 @@ class SnapCombineTestCase(utilsTests.TestCase):
             self.assertFalse(resMetadata.exists(key))
 
 
-def suite():
-    utilsTests.init()
-    suites = []
-    suites += unittest.makeSuite(SnapCombineTestCase)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
-    return unittest.TestSuite(suites)
+class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
 
 
-def run(shouldExit=False):
-    utilsTests.run(suite(), shouldExit)
+def setup_module(module):
+    lsst.utils.tests.init()
 
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()
