@@ -15,6 +15,7 @@ doc/doxygen.conf
 doc/xml
 python/lsst/pipe/tasks/version.py
 tests/.tests
+tests/.cache
 ups/*.cfgc
 testCoaddInputs-data
 _build.*
