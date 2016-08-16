@@ -51,7 +51,7 @@ import lsst.utils
 import lsst.afw.coord as afwCoord
 import lsst.afw.table as afwTable
 import lsst.meas.base as measBase
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
 from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask)
 
@@ -137,7 +137,7 @@ class ForcedTrivialMeasurement(TrivialMeasurementBase, measBase.forcedMeasuremen
         self.key = schemaMapper.editOutputSchema().addField(name, type="D", doc="dummy field")
 
 
-class TransformTestCase(utilsTests.TestCase):
+class TransformTestCase(lsst.utils.tests.TestCase):
 
     def _transformAndCheck(self, measConf, schema, transformTask):
         """Check the results of applying transformTask to a SourceCatalog.
@@ -209,7 +209,7 @@ def tempDirectory(*args, **kwargs):
         shutil.rmtree(dirname, ignore_errors=True)
 
 
-class RunTransformTestCase(utilsTests.TestCase):
+class RunTransformTestCase(lsst.utils.tests.TestCase):
 
     def testInterface(self):
         obsTestDir = lsst.utils.getPackageDir('obs_test')
@@ -266,17 +266,13 @@ class RunTransformTestCase(utilsTests.TestCase):
             self.assertAlmostEqual(measSrc.getCoord().getLatitude(), trCoord.getLatitude())
 
 
-def suite():
-    utilsTests.init()
-    suites = []
-    suites += unittest.makeSuite(TransformTestCase)
-    suites += unittest.makeSuite(RunTransformTestCase)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
-    return unittest.TestSuite(suites)
+class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
 
 
-def run(exit=False):
-    utilsTests.run(suite(), exit)
+def setup_module(module):
+    lsst.utils.tests.init()
 
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()

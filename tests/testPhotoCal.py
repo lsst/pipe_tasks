@@ -123,7 +123,7 @@ class PhotoCalTest(unittest.TestCase):
         )
 
     def testGetSolution(self):
-        self.assertTrue(self.res is not None)
+        self.assertIsNotNone(self.res)
         self.assertGreater(len(self.res.matches), 50)
 
     def _runTask(self):
@@ -181,7 +181,7 @@ class PhotoCalTest(unittest.TestCase):
     def testColorTerms(self):
         """ Test to see if we can apply colorterm corrections while computing photometric zeropoints"""
         # Turn colorterms on. The colorterm library used here is simple - we just apply a 1 mag
-        #color-independentcolorterm correction to everything. This should change the photometric zeropoint.
+        # color-independentcolorterm correction to everything. This should change the photometric zeropoint.
         # by 1 mag.
         self.config.applyColorTerms = True
         self.config.colorterms = testColorterms

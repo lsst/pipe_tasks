@@ -27,7 +27,7 @@
 import unittest
 
 import lsst.afw.image as afwImage
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 from lsst.pipe.tasks.scaleZeroPoint import ScaleZeroPointTask
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -80,22 +80,13 @@ class ScaleZeroPointTaskTestCase(unittest.TestCase):
         return calib
 
 
-def suite():
-    """Return a suite containing all the test cases in this module.
-    """
-    utilsTests.init()
-
-    suites = [
-        unittest.makeSuite(ScaleZeroPointTaskTestCase),
-        unittest.makeSuite(utilsTests.MemoryTestCase),
-    ]
-
-    return unittest.TestSuite(suites)
+class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
 
 
-def run(shouldExit=False):
-    """Run the tests"""
-    utilsTests.run(suite(), shouldExit)
+def setup_module(module):
+    lsst.utils.tests.init()
 
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()

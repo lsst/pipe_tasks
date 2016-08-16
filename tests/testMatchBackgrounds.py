@@ -26,12 +26,11 @@ import unittest
 
 import numpy as np
 
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 from lsst.pipe.tasks.matchBackgrounds import MatchBackgroundsTask
 
-np.random.seed(1)
 
 
 class MatchBackgroundsTestCase(unittest.TestCase):
@@ -39,6 +38,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
     """Background Matching"""
 
     def setUp(self):
+        np.random.seed(1)
+
         #Make a few test images here
         #1) full coverage (plain vanilla image) has mean = 50counts
         self.vanilla = afwImage.ExposureF(600, 600)
@@ -306,23 +307,14 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.checkAccuracy(self.vanilla, self.lowCover)
 
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-def suite():
-    """Returns a suite containing all the test cases in this module."""
-
-    utilsTests.init()
-
-    suites = []
-    suites += unittest.makeSuite(MatchBackgroundsTestCase)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
-    return unittest.TestSuite(suites)
+def setup_module(module):
+    lsst.utils.tests.init()
 
 
-def run(shouldExit=False):
-    """Run the tests"""
+class MatchMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
 
-    utilsTests.run(suite(), shouldExit)
 
 if __name__ == "__main__":
-    run(True)
+    lsst.utils.tests.init()
+    unittest.main()

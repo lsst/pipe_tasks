@@ -22,7 +22,7 @@
 #
 import unittest
 
-import lsst.utils.tests as utilsTests
+import lsst.utils.tests
 from lsst.pipe.tasks.calibrate import CalibrateConfig
 
 
@@ -42,17 +42,14 @@ class CalibrateTestCase(unittest.TestCase):
             conf.invalidField = True
 
 
-def suite():
-    utilsTests.init()
-    suites = []
-    suites += unittest.makeSuite(CalibrateTestCase)
-    suites += unittest.makeSuite(utilsTests.MemoryTestCase)
-    return unittest.TestSuite(suites)
+def setup_module(module):
+    lsst.utils.tests.init()
 
 
-def run():
-    """Run the tests"""
-    utilsTests.run(suite())
+class MatchMemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
+
 
 if __name__ == "__main__":
-    run()
+    lsst.utils.tests.init()
+    unittest.main()
