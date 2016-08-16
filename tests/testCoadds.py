@@ -97,6 +97,7 @@ def setup_module(module):
     butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
 
     mocksTask.buildAllInputs(butler)
+
     addMaskPlanes(butler)
     mocksTask.buildCoadd(butler)
     mocksTask.buildMockCoadd(butler)
@@ -125,18 +126,15 @@ def setup_module(module):
     mergeMeasConfig.priorityList = ['r', ]
     mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=butler)
     mergeMeasTask.writeSchemas(butler)
-    runTaskOnPatchList(butler, mergeMeasTask)
+    runTaskOnPatchList(butler, mergeMeasTask, mocksTask)
 
-    runForcedPhotCoaddTask(butler)
+    runForcedPhotCoaddTask(butler, mocksTask)
     runForcedPhotCcdTask(butler)
 
 
-def getCalexpIds(butler):
-    if len(butler._repos.inputs()) is not 1:
-        raise RuntimeError("This test assumes one input repository, can not continue with %s"
-                           % butler.repository.inputs)
-
-    return butler._repos.inputs()[0].repo._mapper.index['calexp']['visit'][None]
+def getCalexpIds(butler, tract=0):
+    catalog = butler.get("observations", tract=tract, immediate=True)
+    return [{"visit": int(visit), "ccd": int(ccd)} for visit, ccd in zip(catalog["visit"], catalog["ccd"])]
 
 def addMaskPlanes(butler):
     # Get the dataId for each calexp in the repository
@@ -181,12 +179,12 @@ def getObsDict(butler, tract=0):
         obsDict.setdefault(visit, {})[ccd] = record
     return obsDict
 
-def runForcedPhotCoaddTask(butler):
+def runForcedPhotCoaddTask(butler, mocksTask):
     config = lsst.meas.base.ForcedPhotCoaddConfig()
     config.references.filter = 'r'
     task = lsst.meas.base.ForcedPhotCoaddTask(config=config, butler=butler)
     task.writeSchemas(butler)
-    runTaskOnPatches(butler, task)
+    runTaskOnPatches(butler, task, mocksTask)
 
 def runForcedPhotCcdTask(butler):
     config = lsst.meas.base.ForcedPhotCcdConfig()
@@ -243,7 +241,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testTempExpInputs(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
-        for visit, obsVisitDict in self.getObsDict(self.butler, tract).iteritems():
+        for visit, obsVisitDict in getObsDict(self.butler, tract).iteritems():
             foundOneTempExp = False
             for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
                 try:
@@ -411,5 +409,6 @@ class MatchMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 
 if __name__ == "__main__":
-    lsst.utils.tests.init()
+    import sys
+    setup_module(sys.modules[__name__])
     unittest.main()
