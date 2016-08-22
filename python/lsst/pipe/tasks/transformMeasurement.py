@@ -326,15 +326,15 @@ class CoaddSrcTransformTask(RunTransformTaskBase):
 
     @property
     def coaddName(self):
-        return self.self.butler.get(self.config.inputConfigType).coaddName
+        return self.butler.get(self.config.inputConfigType).coaddName
 
     @property
     def sourceType(self):
-        return self.coaddName + "_src"
+        return self.coaddName + "Coadd_meas"
 
     @property
     def calexpType(self):
-        return self.coaddName + "_calexp"
+        return self.coaddName + "Coadd_calexp"
 
     def _getConfigName(self):
         return "%s_transformCoaddSrcMeasurement_config" % (self.coaddName,)

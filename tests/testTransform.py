@@ -50,10 +50,13 @@ import unittest
 import lsst.utils
 import lsst.afw.coord as afwCoord
 import lsst.afw.table as afwTable
+import lsst.daf.persistence as dafPersist
 import lsst.meas.base as measBase
 import lsst.utils.tests
+from lsst.pipe.tasks.multiBand import MeasureMergedCoaddSourcesConfig
 from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
-from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask)
+from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask,
+                                                  RunTransformConfig, CoaddSrcTransformTask)
 
 PLUGIN_NAME = "base_TrivialMeasurement"
 
@@ -230,6 +233,8 @@ class RunTransformTestCase(lsst.utils.tests.TestCase):
         cfg.calibrate.doPhotoCal = False
         # disable aperture correction because we aren't measuring aperture flux
         cfg.calibrate.doApCorr = False
+        # Extendedness requires modelFlux, disabled above.
+        cfg.calibrate.afterburners.plugins.names.discard("base_ClassificationExtendedness")
 
         # Process the test data with ProcessCcd then perform a transform.
         with tempDirectory() as tempDir:
@@ -264,6 +269,68 @@ class RunTransformTestCase(lsst.utils.tests.TestCase):
             trCoord = afwTable.CoordKey(trSrcs.schema["base_SdssCentroid"]).get(trSrc)
             self.assertAlmostEqual(measSrc.getCoord().getLongitude(), trCoord.getLongitude())
             self.assertAlmostEqual(measSrc.getCoord().getLatitude(), trCoord.getLatitude())
+
+
+class CoaddTransformTestCase(lsst.utils.tests.TestCase):
+    """Check that CoaddSrcTransformTask is set up properly.
+
+    RunTransformTestCase, above, has tested the basic RunTransformTask mechanism.
+    Here, we just check that it is appropriately adapted for coadds.
+    """
+    MEASUREMENT_CONFIG_DATASET = "measureCoaddSources_config"
+
+    # The following are hard-coded in lsst.pipe.tasks.multiBand:
+    SCHEMA_SUFFIX = "Coadd_meas_schema"
+    SOURCE_SUFFIX = "Coadd_meas"
+    CALEXP_SUFFIX = "Coadd_calexp"
+
+    def setUp(self):
+        # We need a temporary repository in which we can store test configs.
+        self.repo = tempfile.mkdtemp()
+        with open(os.path.join(self.repo, "_mapper"), "w") as f:
+            f.write("lsst.obs.test.TestMapper")
+        self.butler = dafPersist.Butler(self.repo)
+
+        # Persist a coadd measurement config.
+        # We disable all measurement plugins so that there's no actual work
+        # for the TransformTask to do.
+        measCfg = MeasureMergedCoaddSourcesConfig()
+        measCfg.measurement.plugins.names = []
+        self.butler.put(measCfg, self.MEASUREMENT_CONFIG_DATASET)
+
+        # Record the type of coadd on which our supposed measurements have
+        # been carried out: we need to check this was propagated to the
+        # transformation task.
+        self.coaddName = measCfg.coaddName
+
+        # Since we disabled all measurement plugins, our catalog can be
+        # simple.
+        c = afwTable.SourceCatalog(afwTable.SourceTable.makeMinimalSchema())
+        self.butler.put(c, self.coaddName + self.SCHEMA_SUFFIX)
+
+        # Our transformation config needs to know the type of the measurement
+        # configuration.
+        trCfg = RunTransformConfig()
+        trCfg.inputConfigType = self.MEASUREMENT_CONFIG_DATASET
+
+        self.transformTask = CoaddSrcTransformTask(config=trCfg, log=None, butler=self.butler)
+
+    def tearDown(self):
+        del self.butler
+        del self.transformTask
+        shutil.rmtree(self.repo)
+
+    def testCoaddName(self):
+        """Check that we have correctly derived the coadd name."""
+        self.assertEqual(self.transformTask.coaddName, self.coaddName)
+
+    def testSourceType(self):
+        """Check that we have correctly derived the type of the measured sources."""
+        self.assertEqual(self.transformTask.sourceType, self.coaddName + self.SOURCE_SUFFIX)
+
+    def testCalexpType(self):
+        """Check that we have correctly derived the type of the measurement images."""
+        self.assertEqual(self.transformTask.calexpType, self.coaddName + self.CALEXP_SUFFIX)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
