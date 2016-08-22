@@ -319,8 +319,14 @@ class Analysis(object):
         if camera is not None and len(ccdList) > 0:
             self.plotCameraOutline(axTopRight, camera, ccdList)
 
+        starMagMax = self.data["star"].mag.max() - 0.1
+        aboveStarMagMax = self.data["star"].mag > starMagMax
+        while len(self.data["star"].mag[aboveStarMagMax]) < max(1.0, 0.008*len(self.data["star"].mag)):
+            starMagMax -= 0.2
+            aboveStarMagMax = self.data["star"].mag > starMagMax
+
         magMin, magMax = self.config.magPlotMin, self.config.magPlotMax
-        magMax = max(self.config.magThreshold+1.0, min(magMax, self.data["star"].mag.max()))
+        magMax = max(self.config.magThreshold+1.0, min(magMax, starMagMax))
 
         axScatter.set_xlim(magMin, magMax)
         axScatter.set_ylim(0.99*self.qMin, 0.99*self.qMax)
