@@ -154,7 +154,10 @@ class Analysis(object):
         if errFunc is not None:
             self.good &= np.isfinite(self.quantityError)
         for ff in list(config.flags) + flags:
-            self.good &= ~catalog[prefix + ff]
+            if ff in catalog.schema:
+                self.good &= ~catalog[prefix + ff]
+            else:
+                print "NOTE: Flag (in config.flags list to ignore) " + ff + " not in catalog.schema"
         for kk in goodKeys:
             self.good &= catalog[prefix + kk]
 
