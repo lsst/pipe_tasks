@@ -510,7 +510,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         """
         sourceWriteFlags = 0 if self.config.doWriteHeavyFootprintsInSources \
             else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS
-        dataRef.put(sourceCat, "src", flags=sourceWriteFlags)
+        dataRef.put(sourceCat, "src")
         if self.config.doWriteMatches and astromMatches is not None:
             normalizedMatches = afwTable.packMatches(astromMatches)
             normalizedMatches.table.setMetadata(matchMeta)
