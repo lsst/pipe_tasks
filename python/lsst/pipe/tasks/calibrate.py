@@ -33,7 +33,7 @@ from lsst.afw.math import BackgroundList
 from lsst.afw.table import IdFactory, SourceTable
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata
-from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, AfterburnerTask
+from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from .photoCal import PhotoCalTask
 
@@ -134,10 +134,10 @@ class CalibrateConfig(pexConfig.Config):
         doc="Subtask to apply aperture corrections"
     )
     # If doApCorr is False, and the exposure does not have apcorrections already applied, the
-    # active plugins in afterburners almost certainly should not contain the characterization plugin
-    afterburners = pexConfig.ConfigurableField(
-        target=AfterburnerTask,
-        doc="Subtask to run afterburner plugins on catalog"
+    # active plugins in catalogCalculation almost certainly should not contain the characterization plugin
+    catalogCalculation = pexConfig.ConfigurableField(
+        target=CatalogCalculationTask,
+        doc="Subtask to run catalogCalculation plugins on catalog"
     )
 
     def setDefaults(self):
@@ -317,7 +317,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         self.makeSubtask('measurement', schema=self.schema, algMetadata=self.algMetadata)
         if self.config.doApCorr:
             self.makeSubtask('applyApCorr', schema=self.schema)
-        self.makeSubtask('afterburners', schema=self.schema)
+        self.makeSubtask('catalogCalculation', schema=self.schema)
 
         if self.config.doAstrometry or self.config.doPhotoCal:
             if refObjLoader is None:
@@ -447,7 +447,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
                 catalog=sourceCat,
                 apCorrMap=exposure.getInfo().getApCorrMap()
             )
-        self.afterburners.run(sourceCat)
+        self.catalogCalculation.run(sourceCat)
 
         if icSourceCat is not None and len(self.config.icSourceFieldsToCopy) > 0:
             self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=sourceCat)
