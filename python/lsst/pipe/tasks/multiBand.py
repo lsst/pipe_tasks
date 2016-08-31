@@ -26,7 +26,7 @@ from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin, ApplyApCorrTask, CatalogCalculationTask
+from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
 from lsst.meas.astrom import AstrometryTask, LoadAstrometryNetObjectsTask
