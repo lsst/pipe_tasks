@@ -1248,7 +1248,8 @@ class CoaddAnalysisTask(CmdLineTask):
         for col in ["base_SdssCentroid_x", "base_SdssCentroid_y"]:
             if col in catalog.schema:
                 self.AnalysisClass(catalog, catalog[col], "(%s)" % col, col, self.config.analysis,
-                                   flags=["base_SdssCentroid_flag"], labeller=StarGalaxyLabeller(),
+                                   flags=["base_SdssCentroid_flag", "base_TransformedCentroid_flag"],
+                                   labeller=StarGalaxyLabeller(),
                                    ).plotFP(dataId, filenamer, self.log, enforcer,
                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
                                             matchRadius=matchRadius, zpLabel=zpLabel)
@@ -1306,9 +1307,18 @@ class CoaddAnalysisTask(CmdLineTask):
     def plotMatches(self, matches, filterName, filenamer, dataId, description="matches", butler=None,
                     camera=None, ccdList=None, hscRun=None, matchRadius=None, zpLabel=None):
         ct = self.config.colorterms.getColorterm(filterName, self.config.photoCatName)
+        self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0),
+                           "MagPsf - ref (calib_psfUsed)",
+                           description + "_mag_calib_psfUsed", self.config.analysisMatches, prefix="src_",
+                           goodKeys=["calib_psfUsed"], qMin=-0.05, qMax=0.05,
+                           labeller=MatchesStarGalaxyLabeller(),
+                           ).plotAll(dataId, filenamer, self.log,
+                                     Enforcer(requireLess={"star": {"stdev": 0.030}}), butler=butler,
+                                     camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                     matchRadius=matchRadius, zpLabel=zpLabel)
         self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0), "MagPsf - ref",
-                           description + "_mag", self.config.analysisMatches,
-                           prefix="src_", qMin=-0.05, qMax=0.05, labeller=MatchesStarGalaxyLabeller(),
+                           description + "_mag", self.config.analysisMatches, prefix="src_",
+                           qMin=-0.05, qMax=0.05, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.030}}), butler=butler,
                                      camera=camera, ccdList=ccdList, hscRun=hscRun,
