@@ -987,6 +987,19 @@ def calibrateSourceCatalog(catalog, zp):
             src[key] /= factor
     return catalog
 
+def calibrateCoaddSourceCatalog(catalog, zp):
+    """Calibrate coadd catalog
+
+    Requires a SourceCatalog and zeropoint as input.
+    """
+    # Convert to constant zero point, as for the coadds
+    fluxKeys, errKeys = getFluxKeys(catalog.schema)
+    for name, key in fluxKeys.items() + errKeys.items():
+        factor = 10.0**(0.4*zp)
+        for src in catalog:
+            src[key] /= factor
+    return catalog
+
 def backoutApCorr(catalog):
     """Back out the aperture correction to all fluxes
     """
@@ -1133,6 +1146,7 @@ class CoaddAnalysisTask(CmdLineTask):
 ###            catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
 ###            catalog = catalog[catalog["deblend_nChild"] == 0].copy(True) # Don't care about blended objects
             catalog = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
+            catalog = calibrateCoaddSourceCatalog(catalog, self.config.analysis.zp)
         if self.config.doPlotMags:
             self.plotMags(catalog, filenamer, dataId)
         if self.config.doPlotStarGalaxy:
