@@ -109,8 +109,8 @@ class RegisterTask(Task):
         inCentroidKey = copyMatches[0].second.getTable().getCentroidKey()
         for i in range(self.config.sipIter):
             sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
-            self.log.logdebug("Registration WCS RMS iteration %d: %f pixels" %
-                              (i, sipFit.getScatterInPixels()))
+            self.log.debug("Registration WCS RMS iteration %d: %f pixels",
+                           i, sipFit.getScatterInPixels())
             wcs = sipFit.getNewWcs()
             dr = [m.first.get(refCoordKey).angularSeparation(
                     wcs.pixelToSky(m.second.get(inCentroidKey))).asArcseconds() for
@@ -118,10 +118,10 @@ class RegisterTask(Task):
             dr = numpy.array(dr)
             rms = math.sqrt((dr*dr).mean()) # RMS from zero
             rms = max(rms, 1.0e-9) # Don't believe any RMS smaller than this
-            self.log.logdebug("Registration iteration %d: rms=%f" % (i, rms))
+            self.log.debug("Registration iteration %d: rms=%f", i, rms)
             good = numpy.where(dr < self.config.sipRej*rms)[0]
             numBad = len(copyMatches) - len(good)
-            self.log.logdebug("Registration iteration %d: rejected %d" % (i, numBad))
+            self.log.debug("Registration iteration %d: rejected %d", i, numBad)
             if numBad == 0:
                 break
             copyMatches = type(matches)(copyMatches[i] for i in good)

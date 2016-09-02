@@ -88,25 +88,25 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         calExpRefList = self.selectExposures(patchRef, skyInfo, selectDataList=selectDataList)
         if len(calExpRefList) == 0:
-            self.log.warn("No exposures to coadd for patch %s" % patchRef.dataId)
+            self.log.warn("No exposures to coadd for patch %s", patchRef.dataId)
             return None
-        self.log.info("Selected %d calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
+        self.log.info("Selected %d calexps for patch %s", len(calExpRefList), patchRef.dataId)
         calExpRefList = [calExpRef for calExpRef in calExpRefList if calExpRef.datasetExists("calexp")]
-        self.log.info("Processing %d existing calexps for patch %s" % (len(calExpRefList), patchRef.dataId))
+        self.log.info("Processing %d existing calexps for patch %s", len(calExpRefList), patchRef.dataId)
 
         groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
                                         self.getTempExpDatasetName())
-        self.log.info("Processing %d tempExps for patch %s" % (len(groupData.groups), patchRef.dataId))
+        self.log.info("Processing %d tempExps for patch %s", len(groupData.groups), patchRef.dataId)
 
         dataRefList = []
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.iteritems()):
             tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDatasetName(),
                                          tempExpTuple, groupData.keys)
             if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=self.getTempExpDatasetName()):
-                self.log.info("tempCoaddExp %s exists; skipping" % (tempExpRef.dataId,))
+                self.log.info("tempCoaddExp %s exists; skipping", tempExpRef.dataId)
                 dataRefList.append(tempExpRef)
                 continue
-            self.log.info("Processing tempExp %d/%d: id=%s" % (i, len(groupData.groups), tempExpRef.dataId))
+            self.log.info("Processing tempExp %d/%d: id=%s", i, len(groupData.groups), tempExpRef.dataId)
 
             # TODO: mappers should define a way to go from the "grouping keys" to a numeric ID (#2776).
             # For now, we try to get a long integer "visit" key, and if we can't, we just use the index
@@ -122,7 +122,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 if self.config.doWrite:
                     self.writeCoaddOutput(tempExpRef, exp, "tempExp")
             else:
-                self.log.warn("tempExp %s could not be created" % (tempExpRef.dataId,))
+                self.log.warn("tempExp %s could not be created", tempExpRef.dataId)
         return dataRefList
 
     def createTempExp(self, calexpRefList, skyInfo, visitId=0):
@@ -150,8 +150,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         didSetMetadata = False
         modelPsf = self.config.modelPsf.apply() if self.config.doPsfMatch else None
         for calExpInd, calExpRef in enumerate(calexpRefList):
-            self.log.info("Processing calexp %d of %d for this tempExp: id=%s" %
-                          (calExpInd+1, len(calexpRefList), calExpRef.dataId))
+            self.log.info("Processing calexp %d of %d for this tempExp: id=%s",
+                          calExpInd+1, len(calexpRefList), calExpRef.dataId)
             try:
                 ccdId = calExpRef.get("ccdExposureId", immediate=True)
             except Exception:
@@ -173,14 +173,14 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 numGoodPix = coaddUtils.copyGoodPixels(
                     coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                 totGoodPix += numGoodPix
-                self.log.logdebug("Calexp %s has %d good pixels in this patch (%.1f%%)" %
-                                  (calExpRef.dataId, numGoodPix, 100.0*numGoodPix/skyInfo.bbox.getArea()))
+                self.log.debug("Calexp %s has %d good pixels in this patch (%.1f%%)",
+                               calExpRef.dataId, numGoodPix, 100.0*numGoodPix/skyInfo.bbox.getArea())
                 if numGoodPix > 0 and not didSetMetadata:
                     coaddTempExp.setCalib(exposure.getCalib())
                     coaddTempExp.setFilter(exposure.getFilter())
                     didSetMetadata = True
             except Exception, e:
-                self.log.warn("Error processing calexp %s; skipping it: %s" % (calExpRef.dataId, e))
+                self.log.warn("Error processing calexp %s; skipping it: %s", calExpRef.dataId, e)
                 continue
             inputRecorder.addCalExp(calExp, ccdId, numGoodPix)
 
@@ -189,6 +189,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             coaddTempExp.setPsf(modelPsf if self.config.doPsfMatch else
                                 CoaddPsf(inputRecorder.coaddInputs.ccds, skyInfo.wcs))
 
-        self.log.info("coaddTempExp has %d good pixels (%.1f%%)" %
-                      (totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea()))
+        self.log.info("coaddTempExp has %d good pixels (%.1f%%)",
+                      totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea())
         return coaddTempExp if totGoodPix > 0 and didSetMetadata else None

@@ -303,11 +303,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         if len(calExpRefList) == 0:
             self.log.warn("No exposures to coadd")
             return
-        self.log.info("Coadding %d exposures" % len(calExpRefList))
+        self.log.info("Coadding %d exposures", len(calExpRefList))
 
         tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
         inputData = self.prepareInputs(tempExpRefList)
-        self.log.info("Found %d %s" % (len(inputData.tempExpRefList), self.getTempExpDatasetName()))
+        self.log.info("Found %d %s", len(inputData.tempExpRefList), self.getTempExpDatasetName())
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
@@ -415,7 +415,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         tempExpName = self.getTempExpDatasetName()
         for tempExpRef in refList:
             if not tempExpRef.datasetExists(tempExpName):
-                self.log.warn("Could not find %s %s; skipping it" % (tempExpName, tempExpRef.dataId))
+                self.log.warn("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
                 continue
 
             tempExp = tempExpRef.get(tempExpName, immediate=True)
@@ -427,16 +427,16 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             try:
                 imageScaler.scaleMaskedImage(maskedImage)
             except Exception as e:
-                self.log.warn("Scaling failed for %s (skipping it): %s" % (tempExpRef.dataId, e))
+                self.log.warn("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
                 continue
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                 afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
             weight = 1.0 / float(meanVar)
             if not numpy.isfinite(weight):
-                self.log.warn("Non-finite weight for %s: skipping" % (tempExpRef.dataId,))
+                self.log.warn("Non-finite weight for %s: skipping", tempExpRef.dataId)
                 continue
-            self.log.info("Weight of %s %s = %0.3f" % (tempExpName, tempExpRef.dataId, weight))
+            self.log.info("Weight of %s %s = %0.3f", tempExpName, tempExpRef.dataId, weight)
 
             del maskedImage
             del tempExp
@@ -476,7 +476,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 expDatasetType = self.getTempExpDatasetName(),
             ).backgroundInfoList
         except Exception as e:
-            self.log.fatal("Cannot match backgrounds: %s" % (e))
+            self.log.fatal("Cannot match backgrounds: %s", e)
             raise pipeBase.TaskError("Background matching failed.")
 
         newWeightList = []
@@ -491,27 +491,25 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 # skip exposure if it has no backgroundModel
                 # or if fit was bad
                 if (bgInfo.backgroundModel is None):
-                    self.log.info("No background offset model available for %s: skipping"%(
-                        tempExpRef.dataId))
+                    self.log.info("No background offset model available for %s: skipping", tempExpRef.dataId)
                     continue
                 try:
                     varianceRatio =  bgInfo.matchedMSE / bgInfo.diffImVar
                 except Exception as e:
-                    self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping" %
-                                  (e, tempExpRef.dataId,))
+                    self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping",
+                                  e, tempExpRef.dataId)
                     continue
                 if not numpy.isfinite(varianceRatio):
-                    self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping" %
-                                  (bgInfo.matchedMSE, bgInfo.diffImVar,
-                                   tempExpRef.dataId,))
+                    self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping",
+                                  bgInfo.matchedMSE, bgInfo.diffImVar, tempExpRef.dataId)
                     continue
                 elif (varianceRatio > self.config.maxMatchResidualRatio):
-                    self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping" % (
-                            varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId,))
+                    self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping",
+                            varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId)
                     continue
                 elif ( bgInfo.fitRMS > self.config.maxMatchResidualRMS):
-                    self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping" % (
-                            bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId,))
+                    self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping",
+                            bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId)
                     continue
             newWeightList.append(1 / (1 / weight + bgInfo.fitRMS**2))
             newTempExpRefList.append(tempExpRef)
@@ -545,7 +543,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \return coadded exposure
         """
         tempExpName = self.getTempExpDatasetName()
-        self.log.info("Assembling %s %s" % (len(tempExpRefList), tempExpName))
+        self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
         if mask is None:
             mask = self.getBadPixelMask()
 
@@ -583,7 +581,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
                                        weightList, bgInfoList, altMaskList, statsFlags, statsCtrl)
             except Exception as e:
-                self.log.fatal("Cannot compute coadd %s: %s" % (subBBox, e,))
+                self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
 
@@ -648,7 +646,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] statsFlags: Statistic for coadd
         \param[in] statsCtrl: Statistics control object for coadd
         """
-        self.log.logdebug("Computing coadd over %s" % bbox)
+        self.log.debug("Computing coadd over %s", bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
         maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
@@ -678,7 +676,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                     try:
                         mask &= ~mask.getPlaneBitMask(maskPlane)
                     except Exception as e:
-                        self.log.warn("Unable to remove mask plane {}: {}".format(maskPlane, e))
+                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e)
 
             maskedImageList.append(maskedImage)
 
@@ -717,7 +715,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         try:
             return dataRef.get("brightObjectMask", immediate=True)
         except Exception as e:
-            self.log.warn("Unable to read brightObjectMask for %s: %s" % (dataRef.dataId, e))
+            self.log.warn("Unable to read brightObjectMask for %s: %s", dataRef.dataId, e)
             return None
 
     def setBrightObjectMasks(self, exposure, dataId, brightObjectMasks):
@@ -733,14 +731,14 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         if brightObjectMasks is None:
             self.log.warn("Unable to apply bright object mask: none supplied")
             return
-        self.log.info("Applying %d bright object masks to %s" % (len(brightObjectMasks), dataId))
+        self.log.info("Applying %d bright object masks to %s", len(brightObjectMasks), dataId)
         md = brightObjectMasks.table.getMetadata()
         for k in dataId:
             if not md.exists(k):
-                self.log.warn("Expected to see %s in metadata" % k)
+                self.log.warn("Expected to see %s in metadata", k)
             else:
                 if md.get(k) != dataId[k]:
-                    self.log.warn("Expected to see %s == %s in metadata, saw %s" % (k, md.get(k), dataId[k]))
+                    self.log.warn("Expected to see %s == %s in metadata, saw %s", k, md.get(k), dataId[k])
 
         mask = exposure.getMaskedImage().getMask()
         wcs = exposure.getWcs()
@@ -1076,7 +1074,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
         result = self.detectClip(exp, tempExpRefList)
 
-        self.log.info('Found %d clipped objects' % len(result.clipFootprints))
+        self.log.info('Found %d clipped objects', len(result.clipFootprints))
 
         # Go to individual visits for big footprints
         maskClipValue = mask.getPlaneBitMask("CLIPPED")
@@ -1166,7 +1164,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # Merge positive and negative together footprints together
         fpSet.positive.merge(fpSet.negative)
         footprints = fpSet.positive
-        self.log.info('Found %d potential clipped objects' % len(footprints.getFootprints()))
+        self.log.info('Found %d potential clipped objects', len(footprints.getFootprints()))
         ignoreMask = self.getBadPixelMask()
 
         clipFootprints = []
