@@ -26,10 +26,10 @@ from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.meas.base import SingleFrameMeasurementTask, BasePlugin, ApplyApCorrTask, CatalogCalculationTask
+from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
-from lsst.meas.astrom import AstrometryTask, LoadAstrometryNetObjectsTask
+from lsst.meas.astrom import DirectMatchTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.image as afwImage
@@ -844,8 +844,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     )
     propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
-    refObjLoader = ConfigurableField(target = LoadAstrometryNetObjectsTask, doc = "reference object loader")
-    astrometry = ConfigurableField(target=AstrometryTask, doc="Astrometric matching")
+    match = ConfigurableField(target=DirectMatchTask, doc="Matching to reference catalog")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     checkUnitsParseStrict = Field(
         doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
@@ -937,8 +936,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
       sources</DD>
       <DT> \ref PropagateVisitFlagsTask_ "propagateFlags"
       <DD> Propagate flags set in individual visits to the coadd.</DD>
-      <DT> \ref ANetAstrometryTask_ "astrometry"
-      <DD> Use astronomy.net to match input sources to a reference catalog to solve for the WCS (optional).
+      <DT> \ref DirectMatchTask_ "match"
+      <DD> Match input sources to a reference catalog (optional).
       </DD>
     </DL>
     These subtasks may be retargeted as required.
@@ -1037,8 +1036,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         if self.config.doMatchSources:
-            self.makeSubtask('refObjLoader', butler=butler)
-            self.makeSubtask("astrometry", schema=self.schema, refObjLoader=self.refObjLoader)
+            self.makeSubtask("match", butler=butler)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
@@ -1122,7 +1120,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         \param[in] exposure: exposure with Wcs
         \param[in] sources: source catalog
         """
-        result = self.astrometry.loadAndMatch(exposure=exposure, sourceCat=sources)
+        result = self.match.run(sources, exposure.getInfo().getFilter().getName())
         if result.matches:
             matches = afwTable.packMatches(result.matches)
             matches.table.setMetadata(result.matchMeta)
