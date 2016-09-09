@@ -109,7 +109,9 @@ class ImageDifferenceConfig(pexConfig.Config):
     )
     decorrelate = pexConfig.ConfigurableField(
         target=DecorrelateALKernelTask,
-        doc="Decorrelate effects of A&L kernel convolution on image difference, only if doSubtract is True",
+        doc="""Decorrelate effects of A&L kernel convolution on image difference, only if doSubtract is True.
+        If this option is enabled, then detection.thresholdValue should be set to 5.0 (rather than the
+        default of 5.5).""",
     )
     detection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
@@ -170,10 +172,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
         self.detection.thresholdValue = 5.5
-        # If decorrelation is turned on, no need to "hack" the detection threshold to decrease the number of
-        # false detections, so set it back to 5.0
-        if self.doDecorrelation and self.doSubtract:
-            self.detection.thresholdValue = 5.0
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
 
