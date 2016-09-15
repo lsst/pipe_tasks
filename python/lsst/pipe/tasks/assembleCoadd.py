@@ -877,7 +877,7 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
     minClipFootOverlap = pexConfig.Field(
         doc = "Minimum fractional overlap of clipped footprint with visit DETECTED to be clipped",
         dtype = float,
-        default = 0.65
+        default = 0.6
     )
     minClipFootOverlapSingle = pexConfig.Field(
         doc = "Minimum fractional overlap of clipped footprint with visit DETECTED to be " \
@@ -912,7 +912,7 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
         self.clipDetection.returnOriginalFootprints = False
         self.clipDetection.thresholdPolarity = "both"
         self.clipDetection.thresholdValue = 2
-        self.clipDetection.nSigmaToGrow = 4
+        self.clipDetection.nSigmaToGrow = 2
         self.clipDetection.minPixels = 4
         self.clipDetection.isotropicGrow = True
         self.clipDetection.thresholdType = "pixel_stdev"
