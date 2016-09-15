@@ -48,7 +48,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     badMaskPlanes = pexConfig.ListField(
         doc="Names of mask planes to ignore while estimating the background",
         dtype=str, default=["NO_DATA", "DETECTED", "DETECTED_NEGATIVE", "SAT", "BAD", "INTRP", "CR"],
-        itemCheck=lambda x: x in list(afwImage.MaskU().getMaskPlaneDict().keys()),
+        itemCheck=lambda x: x in afwImage.MaskU().getMaskPlaneDict(),
     )
     gridStatistic = pexConfig.ChoiceField(
         dtype=str,
@@ -340,7 +340,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         Process creates a difference image of the reference exposure minus the science exposure, and then
         generates an afw.math.Background object. It assumes (but does not require/check) that the mask plane
         already has detections set. If detections have not been set/masked, sources will bias the
-        background estimation. 
+        background estimation.
         The 'background' of the difference image is smoothed by spline interpolation (by the Background class)
         or by polynomial interpolation by the Approximate class. This model of difference image is added to the
         science exposure in memory.

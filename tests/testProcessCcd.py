@@ -184,6 +184,9 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(catalog1.schema, catalog2.schema)
         self.assertEqual(len(catalog1), len(catalog2))
         d = catalog1.schema.extract("*")
+        def fixNaN(x):
+            if x!=x:
+                return "NaN"
         fixNaN = lambda x: x if x == x else "NaN"
         for record1, record2 in zip(catalog1, catalog2):
             for name, item in d.items():
