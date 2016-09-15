@@ -27,7 +27,7 @@ import argparse
 
 parser = argparse.ArgumentParser(add_help=False)
 parser.add_argument('--legacyCoadd', action='store_true', default=False)
-parser.add_argument('-h','--help', action='store_true',default=False)
+parser.add_argument('-h', '--help', action='store_true', default=False)
 result, extra = parser.parse_known_args(sys.argv)
 
 legacy_message = '''

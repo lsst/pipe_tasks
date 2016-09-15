@@ -117,8 +117,8 @@ class CharacterizeImageConfig(pexConfig.Config):
         doc="Install a simple PSF model",
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target = LoadAstrometryNetObjectsTask,
-        doc = "reference object loader",
+        target=LoadAstrometryNetObjectsTask,
+        doc="reference object loader",
     )
     astrometry = pexConfig.ConfigurableField(
         target=AstrometryTask,
@@ -562,9 +562,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             return
 
         displayAstrometry(
-                exposure=exposure,
-                sourceCat=sourceCat,
-                frame=self._frame,
-                pause=False,
-            )
+            exposure=exposure,
+            sourceCat=sourceCat,
+            frame=self._frame,
+            pause=False,
+        )
         self._frame += 1

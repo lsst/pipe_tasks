@@ -32,13 +32,14 @@ import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ["DumpTaskMetadataTask",]
+__all__ = ["DumpTaskMetadataTask", ]
+
 
 class DumpTaskMetadataConfig(pexConfig.Config):
     """Config for DumpTaskMetadataTask
     """
     showTimingData = pexConfig.Field(dtype=bool, default=True,
-        doc = "Show timing data?")
+                                     doc="Show timing data?")
 
 
 class DumpTaskMetadataTask(pipeBase.CmdLineTask):
@@ -46,17 +47,17 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
     """
     ConfigClass = DumpTaskMetadataConfig
     _DefaultName = "DumpTaskMetadata"
-    
+
     @pipeBase.timeMethod
     def run(self, dataRef):
         """Report task metadata
         """
         print "%s for dataId=%s" % (dataRef.butlerSubset.datasetType, dataRef.dataId)
         TimerSuffixList = ("CpuTime", "InBlock", "MajFlt", "MaxRss",
-            "MinFlt",  "NIvCsw", "NVCsw", "OuBlock", "STime", "UTime", "Utc")
+                           "MinFlt", "NIvCsw", "NVCsw", "OuBlock", "STime", "UTime", "Utc")
 
         taskMetadata = dataRef.get()
-        nameList = list(taskMetadata.names(False)) # hierarchical names
+        nameList = list(taskMetadata.names(False))  # hierarchical names
         nameList.sort()
         for name in nameList:
             if not self.config.showTimingData:
@@ -74,13 +75,14 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
         """Create an argument parser
         """
         return pipeBase.InputOnlyArgumentParser(name=cls._DefaultName,
-            datasetType=pipeBase.DatasetArgument(help="dataset type for task metadata"))
-    
+                                                datasetType=pipeBase.DatasetArgument(
+                                                    help="dataset type for task metadata"))
+
     def _getConfigName(self):
         """Don't persist config, so return None
         """
         return None
-    
+
     def _getMetadataName(self):
         """Don't persist metadata, so return None
         """

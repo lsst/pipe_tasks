@@ -64,8 +64,8 @@ class CalibrateConfig(pexConfig.Config):
         doc="Perform astrometric calibration?",
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target = LoadAstrometryNetObjectsTask,
-        doc = "reference object loader",
+        target=LoadAstrometryNetObjectsTask,
+        doc="reference object loader",
     )
     astrometry = pexConfig.ConfigurableField(
         target=AstrometryTask,

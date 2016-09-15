@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -31,40 +31,42 @@ import lsst.afw.math
 import lsst.afw.detection
 import lsst.pipe.base
 
+
 class MockObservationConfig(lsst.pex.config.Config):
     pixelScale = lsst.pex.config.Field(
         dtype=float, default=0.2, optional=False,
         doc="Pixel scale for mock WCSs in arcseconds/pixel"
-        )
+    )
     doRotate = lsst.pex.config.Field(
         dtype=bool, default=True, optional=False,
         doc="Whether to randomly rotate observations relative to the tract Wcs"
-        )
+    )
     fluxMag0 = lsst.pex.config.Field(
         dtype=float, default=1E11, optional=False,
         doc="Flux at zero magnitude used to define Calibs."
-        )
+    )
     fluxMag0Sigma = lsst.pex.config.Field(
         dtype=float, default=100.0, optional=False,
         doc="Error on flux at zero magnitude used to define Calibs; used to add scatter as well."
-        )
+    )
     expTime = lsst.pex.config.Field(
         dtype=float, default=60.0, optional=False,
         doc="Exposure time set in generated Calibs (does not affect flux or noise level)"
-        )
+    )
     psfImageSize = lsst.pex.config.Field(
         dtype=int, default=21, optional=False,
         doc="Image width and height of generated Psfs."
-        )
+    )
     psfMinSigma = lsst.pex.config.Field(
         dtype=float, default=1.5, optional=False,
         doc="Minimum radius for generated Psfs."
-        )
+    )
     psfMaxSigma = lsst.pex.config.Field(
         dtype=float, default=3.0, optional=False,
         doc="Maximum radius for generated Psfs."
-        )
+    )
     seed = lsst.pex.config.Field(dtype=int, default=1, doc="Seed for numpy random number generator")
+
 
 class MockObservationTask(lsst.pipe.base.Task):
     """Task to generate mock Exposure parameters (Wcs, Psf, Calib), intended for use as a subtask
@@ -177,7 +179,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         calib.setFluxMag0(
             self.rng.randn() * self.config.fluxMag0Sigma + self.config.fluxMag0,
             self.config.fluxMag0Sigma
-            )
+        )
         return calib
 
     def buildPsf(self, detector):
@@ -209,5 +211,5 @@ class MockObservationTask(lsst.pipe.base.Task):
             self.config.psfImageSize, self.config.psfImageSize,
             lsst.afw.math.GaussianFunction2D(self.config.psfMinSigma, self.config.psfMinSigma),
             spatialFuncList
-            )
+        )
         return lsst.meas.algorithms.KernelPsf(kernel)

@@ -44,8 +44,8 @@ hamamatsu = ColortermLibrary(data={
     "ham*": ColortermDict(data={
         "g": Colorterm(primary="g", secondary="r", c0=-0.00928, c1=-0.0824),
         "r": Colorterm(primary="r", secondary="i", c0=-0.00282, c1=-0.0498, c2=-0.0149),
-        "i": Colorterm(primary="i", secondary="z", c0=0.00186,  c1=-0.140,  c2=-0.0196),
-        "z": Colorterm(primary="z", secondary="i", c0=-4.03e-4, c1=0.0967,  c2=0.0210),
+        "i": Colorterm(primary="i", secondary="z", c0=0.00186, c1=-0.140, c2=-0.0196),
+        "z": Colorterm(primary="z", secondary="i", c0=-4.03e-4, c1=0.0967, c2=0.0210),
     })
 })
 

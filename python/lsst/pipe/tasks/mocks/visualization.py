@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,20 +9,21 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
 from matplotlib import pyplot
 
 import lsst.afw.geom
+
 
 def plotObservations(catalog, wcs):
     """Plot the bounding boxes of an observation catalog (see MockCoaddTask.buildObservationCatalog)
@@ -43,6 +44,7 @@ def plotObservations(catalog, wcs):
                 print "WARNING: point %d, %d failed" % (xi, yi)
         pyplot.fill(x, y, facecolor='r', alpha=0.1, edgecolor=None)
 
+
 def plotPatches(tractInfo):
     """Plot the patches in a skymap tract using matplotlib.
     """
@@ -55,6 +57,7 @@ def plotPatches(tractInfo):
             pyplot.fill(xp1, yp1, fill=False, edgecolor='g', linestyle='dashed')
             pyplot.fill(xp2, yp2, fill=False, edgecolor='g')
 
+
 def plotTruth(catalog, wcs):
     """Plot the objects in a truth catalog as dots using matplotlib, in the coordinate
     system defined by the given Wcs.
@@ -66,6 +69,7 @@ def plotTruth(catalog, wcs):
         xp.append(x)
         yp.append(y)
     pyplot.plot(xp, yp, 'k+')
+
 
 def displayImages(root):
     """Display coadd images with DS9 in different frames, with the bounding boxes of the
@@ -84,6 +88,7 @@ def displayImages(root):
     for n, coadd in enumerate(coadds):
         lsst.afw.display.utils.drawCoaddInputs(coadd, frame=n+1)
     return butler
+
 
 def makePlots(root):
     """Convenience function to make all matplotlib plots.

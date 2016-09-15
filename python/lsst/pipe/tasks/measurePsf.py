@@ -28,19 +28,20 @@ import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
+
 class MeasurePsfConfig(pexConfig.Config):
     starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="objectSize")
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
     reserveFraction = pexConfig.Field(
-        dtype = float,
-        doc = "Fraction of PSF candidates to reserve from fitting; none if <= 0",
-        default = -1.0,
+        dtype=float,
+        doc="Fraction of PSF candidates to reserve from fitting; none if <= 0",
+        default=-1.0,
     )
     reserveSeed = pexConfig.Field(
-        dtype = int,
-        doc = "This number will be multiplied by the exposure ID "
-                "to set the random seed for reserving candidates",
-        default = 1,
+        dtype=int,
+        doc="This number will be multiplied by the exposure ID "
+        "to set the random seed for reserving candidates",
+        default=1,
     )
 
 ## \addtogroup LSST_task_documentation
@@ -49,6 +50,7 @@ class MeasurePsfConfig(pexConfig.Config):
 ## \ref MeasurePsfTask_ "MeasurePsfTask"
 ## \copybrief MeasurePsfTask
 ## \}
+
 
 class MeasurePsfTask(pipeBase.Task):
     """!
@@ -260,21 +262,21 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         import lsstDebug
         display = lsstDebug.Info(__name__).display
         displayExposure = lsstDebug.Info(__name__).displayExposure     # display the Exposure + spatialCells
-        displayPsfMosaic = lsstDebug.Info(__name__).displayPsfMosaic # show mosaic of reconstructed PSF(x,y)
-        displayPsfCandidates = lsstDebug.Info(__name__).displayPsfCandidates # show mosaic of candidates
+        displayPsfMosaic = lsstDebug.Info(__name__).displayPsfMosaic  # show mosaic of reconstructed PSF(x,y)
+        displayPsfCandidates = lsstDebug.Info(__name__).displayPsfCandidates  # show mosaic of candidates
         displayResiduals = lsstDebug.Info(__name__).displayResiduals   # show residuals
-        showBadCandidates = lsstDebug.Info(__name__).showBadCandidates # include bad candidates
-        normalizeResiduals = lsstDebug.Info(__name__).normalizeResiduals # normalise residuals by object peak
+        showBadCandidates = lsstDebug.Info(__name__).showBadCandidates  # include bad candidates
+        normalizeResiduals = lsstDebug.Info(__name__).normalizeResiduals  # normalise residuals by object peak
 
         #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         #
         # Run star selector
         #
         psfCandidateList = self.starSelector.run(exposure=exposure, sourceCat=sources,
-            matches=matches).psfCandidates
+                                                 matches=matches).psfCandidates
         reserveList = []
-        
-        if self.config.reserveFraction > 0 :
+
+        if self.config.reserveFraction > 0:
             random.seed(self.config.reserveSeed*expId)
             reserveList = random.sample(psfCandidateList,
                                         int((self.config.reserveFraction)*len(psfCandidateList)))
@@ -285,15 +287,15 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             if reserveList and self.reservedKey is not None:
                 for cand in reserveList:
                     source = cand.getSource()
-                    source.set(self.reservedKey,True)
-            
+                    source.set(self.reservedKey, True)
+
         if psfCandidateList and self.candidateKey is not None:
             for cand in psfCandidateList:
                 source = cand.getSource()
                 source.set(self.candidateKey, True)
 
         self.log.info("PSF star selector found %d candidates" % len(psfCandidateList))
-        if self.config.reserveFraction > 0 :
+        if self.config.reserveFraction > 0:
             self.log.info("Reserved %d candidates from the fitting" % len(reserveList))
 
         if display:
@@ -308,7 +310,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata,
                                                        flagKey=self.usedKey)
         self.log.info("PSF determination using %d/%d stars." %
-                     (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
+                      (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
 
         exposure.setPsf(psf)
 
@@ -333,8 +335,8 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
                 frame += 1
 
         return pipeBase.Struct(
-            psf = psf,
-            cellSet = cellSet,
+            psf=psf,
+            cellSet=cellSet,
         )
 
     @property
@@ -346,24 +348,27 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
 #
 # Debug code
 #
+
+
 def showPsfSpatialCells(exposure, cellSet, showBadCandidates, frame=1):
     maUtils.showPsfSpatialCells(exposure, cellSet,
                                 symb="o", ctype=ds9.CYAN, ctypeUnused=ds9.YELLOW,
                                 size=4, frame=frame)
     for cell in cellSet.getCellList():
-        for cand in cell.begin(not showBadCandidates): # maybe include bad candidates
+        for cand in cell.begin(not showBadCandidates):  # maybe include bad candidates
             cand = measAlg.cast_PsfCandidateF(cand)
             status = cand.getStatus()
             ds9.dot('+', *cand.getSource().getCentroid(), frame=frame,
                     ctype=ds9.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
                     ds9.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else ds9.RED)
 
+
 def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
     import lsst.afw.display.utils as displayUtils
 
     stamps = []
     for cell in cellSet.getCellList():
-        for cand in cell.begin(not showBadCandidates): # maybe include bad candidates
+        for cand in cell.begin(not showBadCandidates):  # maybe include bad candidates
             cand = measAlg.cast_PsfCandidateF(cand)
 
             try:
@@ -395,6 +400,7 @@ def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
 
     if mos.images:
         mos.makeMosaic(frame=frame, title="Psf Candidates")
+
 
 def plotResiduals(exposure, cellSet, showBadCandidates=False, normalizeResiduals=True, frame=2):
     psf = exposure.getPsf()

@@ -141,6 +141,7 @@ class interpolationTestCase(unittest.TestCase):
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+
 def setup_module(module):
     lsst.utils.tests.init()
 

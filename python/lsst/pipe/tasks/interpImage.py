@@ -27,46 +27,48 @@ import lsst.ip.isr as ipIsr
 
 __all__ = ["InterpImageConfig", "InterpImageTask"]
 
+
 class InterpImageConfig(pexConfig.Config):
     """Config for InterpImageTask
     """
-    modelPsf = measAlg.GaussianPsfFactory.makeField(doc = "Model Psf factory")
+    modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
 
     useFallbackValueAtEdge = pexConfig.Field(
-        dtype = bool,
-        doc = "Smoothly taper to the fallback value at the edge of the image?",
-        default = True,
+        dtype=bool,
+        doc="Smoothly taper to the fallback value at the edge of the image?",
+        default=True,
     )
     fallbackValueType = pexConfig.ChoiceField(
-        dtype = str,
-        doc = "Type of statistic to calculate edge fallbackValue for interpolation",
-        allowed = {
+        dtype=str,
+        doc="Type of statistic to calculate edge fallbackValue for interpolation",
+        allowed={
             "MEAN": "mean",
             "MEDIAN": "median",
             "MEANCLIP": "clipped mean",
             "USER": "user value set in fallbackUserValue config",
-            },
-        default = "MEDIAN",
+        },
+        default="MEDIAN",
     )
     fallbackUserValue = pexConfig.Field(
-        dtype = float,
-        doc = "If fallbackValueType is 'USER' then use this as the fallbackValue; ignored otherwise",
-        default = 0.0,
+        dtype=float,
+        doc="If fallbackValueType is 'USER' then use this as the fallbackValue; ignored otherwise",
+        default=0.0,
     )
     negativeFallbackAllowed = pexConfig.Field(
-        dtype = bool,
-        doc = ("Allow negative values for egde interpolation fallbackValue?  If False, set "
-               "fallbackValue to max(fallbackValue, 0.0)"),
-        default = False,
+        dtype=bool,
+        doc=("Allow negative values for egde interpolation fallbackValue?  If False, set "
+             "fallbackValue to max(fallbackValue, 0.0)"),
+        default=False,
     )
 
     def validate(self):
         pexConfig.Config.validate(self)
         if self.useFallbackValueAtEdge:
             if (not self.negativeFallbackAllowed and self.fallbackValueType == "USER" and
-                self.fallbackUserValue < 0.0):
+                    self.fallbackUserValue < 0.0):
                 raise ValueError("User supplied fallbackValue is negative (%.2f) but "
                                  "negativeFallbackAllowed is False" % self.fallbackUserValue)
+
 
 class InterpImageTask(pipeBase.Task):
     """Interpolate over bad image pixels

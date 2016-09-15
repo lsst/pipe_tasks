@@ -14,8 +14,10 @@ import lsst.pex.exceptions
 from lsst.pipe.base import Task, InputOnlyArgumentParser
 import lsst.afw.image as afwImage
 
+
 class IngestArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting images into the image repository"""
+
     def __init__(self, *args, **kwargs):
         super(IngestArgumentParser, self).__init__(*args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true", default=False,
@@ -28,6 +30,7 @@ class IngestArgumentParser(InputOnlyArgumentParser):
                           help="Names of bad files (no path; wildcards allowed)")
         self.add_argument("files", nargs="+", help="Names of file")
 
+
 class ParseConfig(Config):
     """Configuration for ParseTask"""
     translation = DictField(keytype=str, itemtype=str, default={},
@@ -38,6 +41,7 @@ class ParseConfig(Config):
                          doc="Default values if header is not present")
     hdu = Field(dtype=int, default=0, doc="HDU to read for metadata")
     extnames = ListField(dtype=str, default=[], doc="Extension names to search for")
+
 
 class ParseTask(Task):
     """Task that will parse the filename and/or its contents to get the required information
@@ -162,17 +166,18 @@ class ParseTask(Task):
             raw = raw[:c]
         return raw
 
+
 class RegisterConfig(Config):
     """Configuration for the RegisterTask"""
     table = Field(dtype=str, default="raw", doc="Name of table")
     columns = DictField(keytype=str, itemtype=str, doc="List of columns for raw table, with their types",
                         itemCheck=lambda x: x in ("text", "int", "double"),
-                        default={'object':  'text',
-                                 'visit':   'int',
-                                 'ccd':     'int',
-                                 'filter':  'text',
-                                 'date':    'text',
-                                 'taiObs':  'text',
+                        default={'object': 'text',
+                                 'visit': 'int',
+                                 'ccd': 'int',
+                                 'filter': 'text',
+                                 'date': 'text',
+                                 'taiObs': 'text',
                                  'expTime': 'double',
                                  },
                         )
@@ -181,7 +186,8 @@ class RegisterConfig(Config):
     visit = ListField(dtype=str, default=["visit", "object", "date", "filter"],
                       doc="List of columns for raw_visit table")
     ignore = Field(dtype=bool, default=False, doc="Ignore duplicates in the table?")
-    permissions = Field(dtype=int, default=0664, doc="Permissions mode for registry") # octal 664 = rw-rw-r--
+    permissions = Field(dtype=int, default=0664, doc="Permissions mode for registry")  # octal 664 = rw-rw-r--
+
 
 class RegistryContext(object):
     """Context manager to provide a registry
@@ -190,6 +196,7 @@ class RegistryContext(object):
     to be used while we add to this new registry.  Finally,
     the new registry is moved into the right place.
     """
+
     def __init__(self, registryName, createTableFunc, forceCreateTables, permissions):
         """Construct a context manager
 
@@ -228,7 +235,8 @@ class RegistryContext(object):
                 os.unlink(self.registryName)
             os.rename(self.updateName, self.registryName)
             os.chmod(self.registryName, self.permissions)
-        return False # Don't suppress any exceptions
+        return False  # Don't suppress any exceptions
+
 
 class RegisterTask(Task):
     """Task that will generate the registry for the Mapper"""
@@ -245,6 +253,7 @@ class RegisterTask(Task):
         """
         if dryrun:
             from contextlib import contextmanager
+
             @contextmanager
             def fakeContext():
                 yield
@@ -266,7 +275,7 @@ class RegisterTask(Task):
         if table is None:
             table = self.config.table
         cmd = "create table %s (id integer primary key autoincrement, " % table
-        cmd += ",".join([("%s %s" % (col, colType)) for col,colType in self.config.columns.items()])
+        cmd += ",".join([("%s %s" % (col, colType)) for col, colType in self.config.columns.items()])
         if len(self.config.unique) > 0:
             cmd += ", unique(" + ",".join(self.config.unique) + ")"
         cmd += ")"
@@ -288,7 +297,7 @@ class RegisterTask(Task):
         if table is None:
             table = self.config.table
         if self.config.ignore or len(self.config.unique) == 0:
-            return False # Our entry could already be there, but we don't care
+            return False  # Our entry could already be there, but we don't care
         cursor = conn.cursor()
         sql = "SELECT COUNT(*) FROM %s WHERE " % table
         sql += " AND ".join(["%s=?" % col for col in self.config.unique])
@@ -344,6 +353,7 @@ class IngestConfig(Config):
     register = ConfigurableField(target=RegisterTask, doc="Registry entry")
     allowError = Field(dtype=bool, default=False, doc="Allow error in ingestion?")
     clobber = Field(dtype=bool, default=False, doc="Clobber existing file?")
+
 
 class IngestTask(Task):
     """Task that will ingest images into the data repository"""
@@ -462,6 +472,7 @@ class IngestTask(Task):
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
             self.register.addVisits(registry, dryrun=args.dryrun)
+
 
 def assertCanCopy(fromPath, toPath):
     """Can I copy a file?  Raise an exception is space constraints not met.

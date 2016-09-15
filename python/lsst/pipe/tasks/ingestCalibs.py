@@ -17,6 +17,7 @@ def _convertToDate(dateString):
 class CalibsParseTask(ParseTask):
     """Task that will parse the filename and/or its contents to get the
     required information to populate the calibration registry."""
+
     def getCalibType(self, filename):
         """Return a a known calibration dataset type using
         the observation type in the header keyword OBSTYPE
@@ -50,6 +51,7 @@ class CalibsRegisterConfig(RegisterConfig):
                                         doc="Tables for which to set validity for a calib from when it is "
                                         "taken until it is superseded by the next; validity in other tables "
                                         "is calculated by applying the validity range.")
+
 
 class CalibsRegisterTask(RegisterTask):
     """Task that will generate the calibration registry for the Mapper"""
@@ -116,7 +118,7 @@ class CalibsRegisterTask(RegisterTask):
             det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
             # Sqlite returns unicode strings, which cannot be passed through SWIG.
             self.log.warn(str("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
-                          (table, det)))
+                              (table, det)))
             return
         dates = valids.keys()
         if table in self.config.validityUntilSuperseded:
@@ -153,6 +155,7 @@ class CalibsRegisterTask(RegisterTask):
 
 class IngestCalibsArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting calibration images into the repository"""
+
     def __init__(self, *args, **kwargs):
         InputOnlyArgumentParser.__init__(self, *args, **kwargs)
         self.add_argument("-n", "--dry-run", dest="dryrun", action="store_true",
@@ -192,7 +195,7 @@ class IngestCalibsTask(IngestTask):
                     calibType = args.calibType
                 if calibType not in self.register.config.tables:
                     self.log.warn(str("Skipped adding %s of observation type '%s' to registry" %
-                                  (infile, calibType)))
+                                      (infile, calibType)))
                     continue
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun,

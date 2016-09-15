@@ -31,30 +31,31 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
 
-__all__ = ["ReportImagesToCoaddTask",]
+__all__ = ["ReportImagesToCoaddTask", ]
+
 
 class ReportImagesToCoaddConfig(pexConfig.Config):
     """Config for ReportImagesToCoaddTask
     """
     coaddName = pexConfig.Field(
-        doc = "coadd name: one of deep or goodSeeing",
-        dtype = str,
-        default = "deep",
+        doc="coadd name: one of deep or goodSeeing",
+        dtype=str,
+        default="deep",
     )
     select = pexConfig.ConfigurableField(
-        doc = "image selection subtask",
-        target = WcsSelectImagesTask,
+        doc="image selection subtask",
+        target=WcsSelectImagesTask,
     )
     raDecRange = pexConfig.ListField(
-        doc = "min RA, min Dec, max RA, max Dec (ICRS, deg); if omitted then search whole sky",
-        dtype = float,
-        length = 4,
-        optional = True,
+        doc="min RA, min Dec, max RA, max Dec (ICRS, deg); if omitted then search whole sky",
+        dtype=float,
+        length=4,
+        optional=True,
     )
     showImageIds = pexConfig.Field(
-        doc = "show individual image IDs in addition to a summary?",
-        dtype = bool,
-        default = False,
+        doc="show individual image IDs in addition to a summary?",
+        dtype=bool,
+        default=False,
     )
 
 
@@ -63,7 +64,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
     """
     ConfigClass = ReportImagesToCoaddConfig
     _DefaultName = "reportImagesToCoadd"
-    
+
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
@@ -71,9 +72,9 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
     @pipeBase.timeMethod
     def run(self, dataRef):
         """Select images across the sky and report how many are in each tract and patch
-        
+
         Also report quartiles of FWHM 
-    
+
         @param dataRef: data reference for sky map.
         @return: a pipeBase.Struct with fields:
         - ccdInfoSetDict: a dict of (tractId, patchIndex): set of CcdExposureInfo
@@ -85,7 +86,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
             coordList = None
         else:
             # make coords in the correct order to form an enclosed space
-            raRange  = (self.config.raDecRange[0], self.config.raDecRange[2])
+            raRange = (self.config.raDecRange[0], self.config.raDecRange[2])
             decRange = (self.config.raDecRange[1], self.config.raDecRange[3])
             raDecList = [
                 (raRange[0], decRange[0]),
@@ -98,18 +99,18 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
                 for ra, dec in raDecList]
 
         exposureInfoList = self.select.runDataRef(
-            dataRef = dataRef,
-            coordList = coordList,
-            makeDataRefList = False,
+            dataRef=dataRef,
+            coordList=coordList,
+            makeDataRefList=False,
         ).exposureInfoList
-        
+
         numExp = len(exposureInfoList)
         self.log.info("Found %s exposures that match your selection criteria" % (numExp,))
         if numExp < 1:
             return
-        
+
         ccdInfoSetDict = dict()
-        
+
         fwhmList = []
         for exposureInfo in exposureInfoList:
             fwhmList.append(exposureInfo.fwhm)
@@ -123,25 +124,26 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
                         ccdInfoSetDict[key] = set([exposureInfo])
                     else:
                         ccdInfoSet.add(exposureInfo)
-        
+
         fwhmList = numpy.array(fwhmList, dtype=float)
         print "FWHM Q1=%0.2f Q2=%0.2f Q3=%0.2f" % (
             numpy.percentile(fwhmList, 25.0),
             numpy.percentile(fwhmList, 50.0),
             numpy.percentile(fwhmList, 75.0),
         )
-        
+
         print "\nTract  patchX  patchY  numExp"
         for key in sorted(ccdInfoSetDict.keys()):
             ccdInfoSet = ccdInfoSetDict[key]
             print "%5d   %5d   %5d  %5d" % (key[0], key[1][0], key[1][1], len(ccdInfoSet))
-        
+
         if self.config.showImageIds:
             print "\nImage IDs:"
             if len(exposureInfoList) > 0:
                 keys = sorted(exposureInfoList[0].dataId.keys())
                 # use a dict to remove duplicates, then sort keys and report information
-                exposureInfoDict = dict((tuple(expInfo.dataId[k] for k in keys), expInfo) for expInfo in exposureInfoList)
+                exposureInfoDict = dict(
+                    (tuple(expInfo.dataId[k] for k in keys), expInfo) for expInfo in exposureInfoList)
                 for idTuple in sorted(exposureInfoDict.keys()):
                     exposureInfo = exposureInfoDict[idTuple]
                     idStr = " ".join("%s=%s" % (key, val) for key, val in zip(keys, idTuple))
@@ -149,32 +151,32 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
                     skyPosStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
                     skyPosStr = ", ".join(skyPosStrList)
                     print "dataId=%s; corner RA/Dec=%s" % (idStr, skyPosStr)
-        
+
         return pipeBase.Struct(
-            ccdInfoSetDict = ccdInfoSetDict,
+            ccdInfoSetDict=ccdInfoSetDict,
         )
 
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
-        
+
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
         parser = pipeBase.InputOnlyArgumentParser(name=cls._DefaultName)
         parser.add_id_argument(
-            name = "--id",
-            datasetType = "deepCoadd",
-            help = "data ID, e.g. --id filter=i",
-            ContainerClass = SkyMapPlusFilterIdContainer,
+            name="--id",
+            datasetType="deepCoadd",
+            help="data ID, e.g. --id filter=i",
+            ContainerClass=SkyMapPlusFilterIdContainer,
         )
         return parser
-            
+
     def _getConfigName(self):
         """Don't persist config, so return None
         """
         return None
-    
+
     def _getMetadataName(self):
         """Don't persist metadata, so return None
         """
@@ -183,11 +185,12 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
 
 class SkyMapPlusFilterIdContainer(pipeBase.DataIdContainer):
     """Make dataRefs for skyMap plus filter
-    
+
     Required because there is no dataset type that is has exactly the right keys for this task.
     datasetType = namespace.config.coaddName + "Coadd" comes closest, but includes "patch" and "tract",
     which are irrelevant to the task, but required to make a data reference of this dataset type.
     """
+
     def makeDataRefList(self, namespace):
         """Make namespace.id.refList from namespace.dataIdList
         """
@@ -198,8 +201,8 @@ class SkyMapPlusFilterIdContainer(pipeBase.DataIdContainer):
             expandedDataId = dict(patch=0, tract="0,0")
             expandedDataId.update(dataId)
             dataRef = namespace.butler.dataRef(
-                datasetType = datasetType,
-                dataId = expandedDataId,
+                datasetType=datasetType,
+                dataId=expandedDataId,
             )
             namespace.id.refList.append(dataRef)
 

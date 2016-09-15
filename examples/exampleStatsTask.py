@@ -44,7 +44,7 @@ maskedImage = MaskedImageF(maskedImagePath)
 print "running ExampleSimpleStatsTask"
 config1 = ExampleSimpleStatsTask.ConfigClass()
 # ...modify the config if desired...
-config1.validate() # check that the config parameters are valid; optional, but catches errors early
+config1.validate()  # check that the config parameters are valid; optional, but catches errors early
 task1 = ExampleSimpleStatsTask(config=config1)
 res1 = task1.run(maskedImage)
 print "result  =", res1

@@ -3,7 +3,8 @@ from fnmatch import fnmatch
 
 from lsst.pipe.base.argumentParser import setDottedAttr
 
-__all__ = ["getAndVersion", "setAstrometryConfigFromEups", "setPhotocalConfigFromEups", "setConfigFromEups",]
+__all__ = ["getAndVersion", "setAstrometryConfigFromEups", "setPhotocalConfigFromEups", "setConfigFromEups", ]
+
 
 def getEups():
     """Return a cached eups instance"""

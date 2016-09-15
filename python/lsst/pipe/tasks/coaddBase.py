@@ -40,40 +40,44 @@ except ImportError:
 
 __all__ = ["CoaddBaseTask", "getSkyInfo"]
 
+
 class CoaddBaseConfig(pexConfig.Config):
     """Config for CoaddBaseTask
     """
     coaddName = pexConfig.Field(
-        doc = "Coadd name: typically one of deep or goodSeeing.",
-        dtype = str,
-        default = "deep",
+        doc="Coadd name: typically one of deep or goodSeeing.",
+        dtype=str,
+        default="deep",
     )
     select = pexConfig.ConfigurableField(
-        doc = "Image selection subtask.",
-        target = WcsSelectImagesTask,
+        doc="Image selection subtask.",
+        target=WcsSelectImagesTask,
     )
     badMaskPlanes = pexConfig.ListField(
-        dtype = str,
-        doc = "Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default = ("NO_DATA",),
+        dtype=str,
+        doc="Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
+        default=("NO_DATA",),
     )
     inputRecorder = pexConfig.ConfigurableField(
-        doc = "Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
-        target = CoaddInputRecorderTask
+        doc="Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
+        target=CoaddInputRecorderTask
     )
     doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
-    modelPsf = measAlg.GaussianPsfFactory.makeField(doc = "Model Psf factory")
+    modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     doApplyUberCal = pexConfig.Field(
-        dtype = bool,
-        doc = "Apply meas_mosaic ubercal results to input calexps?",
-        default = False
+        dtype=bool,
+        doc="Apply meas_mosaic ubercal results to input calexps?",
+        default=False
     )
 
+
 class CoaddTaskRunner(pipeBase.TaskRunner):
+
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
                                                  **kwargs)
+
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
     """Base class for coaddition.
@@ -147,7 +151,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             raise RuntimeError(
                 "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
                 % dataRef.dataId
-                )
+            )
         else:
             applyMosaicResults(dataRef, calexp=exposure)
         return exposure
@@ -199,6 +203,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         self.log.info("Persisting %s" % objName)
         dataRef.put(obj, objName)
 
+
 class SelectDataIdContainer(pipeBase.DataIdContainer):
     """!
     \brief A dataId container for inputs to be selected.
@@ -208,6 +213,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
     This is most useful when used with multiprocessing, as input headers are
     only read once.
     """
+
     def makeDataRefList(self, namespace):
         """Add a dataList containing useful information for selecting images"""
         super(SelectDataIdContainer, self).makeDataRefList(namespace)
@@ -221,6 +227,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
                 namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
                 continue
             self.dataList.append(data)
+
 
 def getSkyInfo(coaddName, patchRef):
     """!
@@ -245,12 +252,13 @@ def getSkyInfo(coaddName, patchRef):
     patchInfo = tractInfo.getPatchInfo(patchIndex)
 
     return pipeBase.Struct(
-        skyMap = skyMap,
-        tractInfo = tractInfo,
-        patchInfo = patchInfo,
-        wcs = tractInfo.getWcs(),
-        bbox = patchInfo.getOuterBBox(),
+        skyMap=skyMap,
+        tractInfo=tractInfo,
+        patchInfo=patchInfo,
+        wcs=tractInfo.getWcs(),
+        bbox=patchInfo.getOuterBBox(),
     )
+
 
 def scaleVariance(maskedImage, maskPlanes, log=None):
     """!

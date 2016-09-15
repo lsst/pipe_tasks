@@ -147,7 +147,6 @@ class CoaddTempExpInputRecorder(object):
         record.setVisitInfo(info.getVisitInfo())
         record.setBBox(exposure.getBBox())
 
-
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
     visits that went into a coadd.

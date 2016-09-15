@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-# 
+#
 # LSST Data Management System
 # Copyright 2014 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -11,14 +11,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
@@ -29,16 +29,17 @@ import lsst.afw.geom as afwGeom
 import lsst.meas.algorithms as measAlg
 from lsst.pipe.tasks.repair import RepairTask
 
+
 def makeTestImage(xsize=200, ysize=100, nCR=15):
 
     randArr = numpy.random.poisson(1000., xsize*ysize)
-    randArr = numpy.array(randArr.reshape(ysize, xsize), dtype=numpy.float32) # force to ImageF
+    randArr = numpy.array(randArr.reshape(ysize, xsize), dtype=numpy.float32)  # force to ImageF
     factory = measAlg.GaussianPsfFactory()
     factory.addWing = False
-    psf = factory.apply(4) # FWHM in pixels
+    psf = factory.apply(4)  # FWHM in pixels
 
     img = afwImage.makeImageFromArray(randArr)
-    var = afwImage.ImageF(img, True) #copy constructor
+    var = afwImage.ImageF(img, True)  # copy constructor
     mask = afwImage.MaskU(xsize, ysize)
 
     xind = numpy.random.randint(0, xsize, nCR)
@@ -53,6 +54,7 @@ def makeTestImage(xsize=200, ysize=100, nCR=15):
     exp = afwImage.makeExposure(mi)
     exp.setPsf(psf)
     return exp
+
 
 def addDefects(exp, nBadCols=10):
     img = exp.getMaskedImage().getImage()
@@ -74,6 +76,7 @@ def addDefects(exp, nBadCols=10):
     defectList.push_back(measAlg.Defect(bbox))
     return defectList
 
+
 def runRepair(exp, defectList):
     repair = RepairTask(name="RepairTask")
     repair.run(exp, defects=defectList)
@@ -83,7 +86,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Demonstrate the use of RepairTask")
 
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
-    parser.add_argument('--randSeed', '-s', type=int, help="Seed for the random number generator.",\
+    parser.add_argument('--randSeed', '-s', type=int, help="Seed for the random number generator.",
                         default=1)
 
     args = parser.parse_args()

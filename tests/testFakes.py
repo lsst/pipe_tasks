@@ -45,6 +45,7 @@ class TrialFakeSourcesTask(fakes.BaseFakeSourcesTask):
 
 
 class TestFakes(lsst.utils.tests.TestCase):
+
     def testFakeMaskAdded(self):
         '''
         Test that the FAKE mask plane does not exist, that it is added, and the instance's

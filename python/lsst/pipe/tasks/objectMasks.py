@@ -5,11 +5,13 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 from lsst.log import Log
 
+
 class ObjectMaskCatalog(object):
     """Class to support bright object masks
 
     N.b. I/O is done by providing a readFits method which fools the butler.
     """
+
     def __init__(self):
         schema = afwTable.SimpleTable.makeMinimalSchema()
         schema.addField("radius", "Angle", "radius of mask")
@@ -17,7 +19,7 @@ class ObjectMaskCatalog(object):
         self._catalog = afwTable.SimpleCatalog(schema)
         self._catalog.table.setMetadata(dafBase.PropertyList())
 
-        self.table  = self._catalog.table
+        self.table = self._catalog.table
         self.addNew = self._catalog.addNew
 
     def __len__(self):
@@ -78,7 +80,7 @@ class ObjectMaskCatalog(object):
                     # Parse any line of the form "# key : value" and put them into the metadata.
                     #
                     # The medatdata values must be defined as outlined in the above docstring
-                    # 
+                    #
                     # The value of these three keys will be checked,
                     # so get them right!
                     #
@@ -104,14 +106,13 @@ class ObjectMaskCatalog(object):
                                 "(\d+(?:\.\d*)([d]*))" "(?:\s+|\s*,\s*)"
                                 "([+-]?\d+(?:\.\d*)([d]*))" "(?:\s+|\s*,\s*)"
                                 "(\d+(?:\.\d*))([d'\"]*)" "(?:\s*|\s*\)\s*)"
-                                "\s*#\s*ID:\s*(\d+)" "\s*$"
-                                , line)
+                                "\s*#\s*ID:\s*(\d+)" "\s*$", line)
                 if mat:
                     ra, raUnit, dec, decUnit, radius, radiusUnit, _id = mat.groups()
 
                     _id = int(_id)
-                    ra =     convertToAngle(ra, raUnit, "ra", fileName, lineNo)
-                    dec =    convertToAngle(dec, decUnit, "dec", fileName, lineNo)
+                    ra = convertToAngle(ra, raUnit, "ra", fileName, lineNo)
+                    dec = convertToAngle(dec, decUnit, "dec", fileName, lineNo)
                     radius = convertToAngle(radius, radiusUnit, "radius", fileName, lineNo)
 
                     rec = brightObjects.addNew()
@@ -146,6 +147,6 @@ def convertToAngle(var, varUnit, what, fileName, lineNo):
         var /= 3600.0
     else:
         raise RuntimeError("unsupported unit \"%s\" for %s at %s:%d" %
-                          (varUnit, what, fileName, lineNo))
+                           (varUnit, what, fileName, lineNo))
 
     return var*afwGeom.degrees

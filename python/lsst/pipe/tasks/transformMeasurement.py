@@ -26,6 +26,7 @@ import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
+
 def makeContiguous(catalog):
     """!Return a version of the input catalog which is contiguous in memory."""
     if not catalog.isContiguous():
@@ -48,6 +49,7 @@ class TransformConfig(pexConfig.Config):
 ## \ref TransformTask_ "TransformTask"
 ## \copybrief TransformTask
 ## \}
+
 
 class TransformTask(pipeBase.Task):
     """!

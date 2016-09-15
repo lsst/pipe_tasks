@@ -61,6 +61,7 @@ def _makeGetSchemaCatalogs(datasetSuffix):
 
     datasetSuffix:  Suffix of dataset name, e.g., "src" for "deepCoadd_src"
     """
+
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task."""
         src = afwTable.SourceCatalog(self.schema)
@@ -68,6 +69,7 @@ def _makeGetSchemaCatalogs(datasetSuffix):
             src.getTable().setMetadata(self.algMetadata)
         return {self.config.coaddName + "Coadd_" + datasetSuffix: src}
     return getSchemaCatalogs
+
 
 def _makeMakeIdFactory(datasetName):
     """Construct a makeIdFactory instance method
@@ -77,6 +79,7 @@ def _makeMakeIdFactory(datasetName):
 
     datasetName:  Dataset name without the coadd name prefix, e.g., "CoaddId" for "deepCoaddId"
     """
+
     def makeIdFactory(self, dataRef):
         """Return an IdFactory for setting the detection identifiers
 
@@ -87,6 +90,7 @@ def _makeMakeIdFactory(datasetName):
         expId = long(dataRef.get(self.config.coaddName + datasetName))
         return afwTable.IdFactory.makeSource(expId, 64 - expBits)
     return makeIdFactory
+
 
 def getShortFilterName(name):
     """Given a longer, camera-specific filter name (e.g. "HSC-I") return its shorthand name ("i").
@@ -125,6 +129,7 @@ class DetectCoaddSourcesConfig(Config):
 ## \ref DetectCoaddSourcesTask_ "DetectCoaddSourcesTask"
 ## \copybrief DetectCoaddSourcesTask
 ## \}
+
 
 class DetectCoaddSourcesTask(CmdLineTask):
     """!
@@ -299,6 +304,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
 
 ##############################################################################################################
 
+
 class MergeSourcesRunner(TaskRunner):
     """!
     \anchor MergeSourcesRunner_
@@ -306,6 +312,7 @@ class MergeSourcesRunner(TaskRunner):
     \brief Task runner for the \ref MergeSourcesTask_ "MergeSourcesTask". Required because the run method
     requires a list of dataRefs rather than a single dataRef.
     """
+
     def makeTask(self, parsedCmd=None, args=None):
         """!
         \brief Provide a butler to the Task constructor.
@@ -335,7 +342,7 @@ class MergeSourcesRunner(TaskRunner):
         \throws RuntimeError if multiple references are provided for the same combination of tract, patch and
         filter
         """
-        refList = {} # Will index this as refList[tract][patch][filter] = ref
+        refList = {}  # Will index this as refList[tract][patch][filter] = ref
         for ref in parsedCmd.id.refList:
             tract = ref.dataId["tract"]
             patch = ref.dataId["patch"]
@@ -551,12 +558,13 @@ class MergeDetectionsConfig(MergeSourcesConfig):
     skySourceRadius = Field(dtype=float, default=8,
                             doc="Radius, in pixels, of sky objects")
     skyGrowDetectedFootprints = Field(dtype=int, default=0,
-                                     doc="Number of pixels to grow the detected footprint mask when adding sky objects")
+                                      doc="Number of pixels to grow the detected footprint mask "
+                                          "when adding sky objects")
     nSkySourcesPerPatch = Field(dtype=int, default=100,
                                 doc="Try to add this many sky objects to the mergeDet list, which will\n"
                                 "then be measured along with the detected objects in sourceMeasurementTask")
     nTrialSkySourcesPerPatch = Field(dtype=int, default=None, optional=True,
-                                doc="Maximum number of trial sky object positions\n"
+                                     doc="Maximum number of trial sky object positions\n"
                                      "(default: nSkySourcesPerPatch*nTrialSkySourcesPerPatchMultiplier)")
     nTrialSkySourcesPerPatchMultiplier = Field(dtype=int, default=5,
                                                doc="Set nTrialSkySourcesPerPatch to\n"
@@ -569,6 +577,7 @@ class MergeDetectionsConfig(MergeSourcesConfig):
 ## \ref MergeDetectionsTask_ "MergeDetectionsTask"
 ## \copybrief MergeDetectionsTask
 ## \}
+
 
 class MergeDetectionsTask(MergeSourcesTask):
     """!
@@ -711,7 +720,8 @@ class MergeDetectionsTask(MergeSourcesTask):
         #
         # Add extra sources that correspond to blank sky
         #
-        skySourceFootprints = self.getSkySourceFootprints(mergedList, skyInfo, self.config.skyGrowDetectedFootprints)
+        skySourceFootprints = self.getSkySourceFootprints(
+            mergedList, skyInfo, self.config.skyGrowDetectedFootprints)
         if skySourceFootprints:
             key = mergedList.schema.find("merge_footprint_%s" % self.config.skyFilterName).key
 
@@ -721,7 +731,8 @@ class MergeDetectionsTask(MergeSourcesTask):
                 s.set(key, True)
 
             self.log.info("Added %d sky sources (%.0f%% of requested)",
-                len(skySourceFootprints), 100*len(skySourceFootprints)/float(self.config.nSkySourcesPerPatch))
+                          len(skySourceFootprints),
+                          100*len(skySourceFootprints)/float(self.config.nSkySourcesPerPatch))
 
         # Sort Peaks from brightest to faintest
         for record in mergedList:
@@ -826,7 +837,6 @@ class MergeDetectionsTask(MergeSourcesTask):
 
         return skySourceFootprints
 
-##############################################################################################################
 
 class MeasureMergedCoaddSourcesConfig(Config):
     """!
@@ -847,27 +857,27 @@ class MeasureMergedCoaddSourcesConfig(Config):
     match = ConfigurableField(target=DirectMatchTask, doc="Matching to reference catalog")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     checkUnitsParseStrict = Field(
-        doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
-        dtype = str,
-        default = "raise",
+        doc="Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
+        dtype=str,
+        default="raise",
     )
     doApCorr = Field(
-        dtype = bool,
-        default = True,
-        doc = "Apply aperture corrections"
+        dtype=bool,
+        default=True,
+        doc="Apply aperture corrections"
     )
     applyApCorr = ConfigurableField(
-        target = ApplyApCorrTask,
-        doc = "Subtask to apply aperture corrections"
+        target=ApplyApCorrTask,
+        doc="Subtask to apply aperture corrections"
     )
     doRunCatalogCalculation = Field(
-        dtype = bool,
-        default = True,
-        doc = 'Run catalogCalculation task'
+        dtype=bool,
+        default=True,
+        doc='Run catalogCalculation task'
     )
     catalogCalculation = ConfigurableField(
-        target = CatalogCalculationTask,
-        doc = "Subtask to run catalogCalculation plugins on catalog"
+        target=CatalogCalculationTask,
+        doc="Subtask to run catalogCalculation plugins on catalog"
     )
 
     def setDefaults(self):
@@ -884,6 +894,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
 ## \ref MeasureMergedCoaddSourcesTask_ "MeasureMergedCoaddSourcesTask"
 ## \copybrief MeasureMergedCoaddSourcesTask
 ## \}
+
 
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
     """!
@@ -997,7 +1008,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     ConfigClass = MeasureMergedCoaddSourcesConfig
     RunnerClass = ButlerInitializedTaskRunner
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
-    makeIdFactory = _makeMakeIdFactory("MergedCoaddId") # The IDs we already have are of this type
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")  # The IDs we already have are of this type
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -1067,20 +1078,21 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
             self.deblend.run(exposure, sources)
 
             bigKey = sources.schema["deblend_parentTooBig"].asKey()
-            numBig = sum((s.get(bigKey) for s in sources)) # catalog is non-contiguous so can't extract column
+            # catalog is non-contiguous so can't extract column
+            numBig = sum((s.get(bigKey) for s in sources))
             if numBig > 0:
                 self.log.warn("Patch %s contains %d large footprints that were not deblended" %
                               (patchRef.dataId, numBig))
 
         table = sources.getTable()
-        table.setMetadata(self.algMetadata) # Capture algorithm metadata to write out to the source catalog.
+        table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
 
         self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef))
 
         if self.config.doApCorr:
             self.applyApCorr.run(
-                catalog = sources,
-                apCorrMap = exposure.getInfo().getApCorrMap()
+                catalog=sources,
+                apCorrMap=exposure.getInfo().getApCorrMap()
             )
 
         if self.config.doRunCatalogCalculation:
@@ -1147,6 +1159,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
 ##############################################################################################################
 
+
 class MergeMeasurementsConfig(MergeSourcesConfig):
     """!
     \anchor MergeMeasurementsConfig_
@@ -1168,7 +1181,7 @@ class MergeMeasurementsConfig(MergeSourcesConfig):
                       "use the band with the largest S/N as the reference band")
     flags = ListField(dtype=str, doc="Require that these flags, if available, are not set",
                       default=["base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag",
-                               "ext_photometryKron_KronFlux_flag", "modelfit_CModel_flag",])
+                               "ext_photometryKron_KronFlux_flag", "modelfit_CModel_flag", ])
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -1176,6 +1189,7 @@ class MergeMeasurementsConfig(MergeSourcesConfig):
 ## \ref MergeMeasurementsTask_ "MergeMeasurementsTask"
 ## \copybrief MergeMeasurementsTask
 ## \}
+
 
 class MergeMeasurementsTask(MergeSourcesTask):
     """!
@@ -1302,7 +1316,6 @@ class MergeMeasurementsTask(MergeSourcesTask):
             except KeyError as exc:
                 self.log.warn("Can't find flag %s in schema: %s" % (flag, exc,))
 
-
     def mergeCatalogs(self, catalogs, patchRef):
         """!
         Merge measurement catalogs to create a single reference catalog for forced photometry
@@ -1384,7 +1397,7 @@ class MergeMeasurementsTask(MergeSourcesTask):
                 bestRecord = priorityRecord
                 bestFlagKeys = priorityFlagKeys
             elif (prioritySN < self.config.minSN and (maxSN - prioritySN) > self.config.minSNDiff and
-                maxSNRecord is not None):
+                  maxSNRecord is not None):
                 bestRecord = maxSNRecord
                 bestFlagKeys = maxSNFlagKeys
             elif priorityRecord is not None:
@@ -1395,7 +1408,7 @@ class MergeMeasurementsTask(MergeSourcesTask):
                 outputRecord = mergedCatalog.addNew()
                 outputRecord.assign(bestRecord, self.schemaMapper)
                 outputRecord.set(bestFlagKeys.output, True)
-            else: # if we didn't find any records
+            else:  # if we didn't find any records
                 raise ValueError("Error in inputs to MergeCoaddMeasurements: no valid reference for %s" %
                                  inputRecord.getId())
 

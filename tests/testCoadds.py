@@ -136,6 +136,7 @@ def getCalexpIds(butler, tract=0):
     catalog = butler.get("observations", tract=tract, immediate=True)
     return [{"visit": int(visit), "ccd": int(ccd)} for visit, ccd in zip(catalog["visit"], catalog["ccd"])]
 
+
 def addMaskPlanes(butler):
     # Get the dataId for each calexp in the repository
     calexpDataIds = getCalexpIds(butler)
@@ -147,17 +148,20 @@ def addMaskPlanes(butler):
         mask.addMaskPlane("NOT_DEBLENDED")
         butler.put(image, 'calexp', dataId=Id)
 
+
 def runTaskOnPatches(butler, task, mocksTask, tract=0):
     skyMap = butler.get(mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
     tractInfo = skyMap[tract]
     for dataRef in mocksTask.iterPatchRefs(butler, tractInfo):
         task.run(dataRef)
 
+
 def runTaskOnPatchList(butler, task, mocksTask, tract=0, rerun=None):
     skyMap = butler.get(mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
     tractInfo = skyMap[tract]
     for dataRef in mocksTask.iterPatchRefs(butler, tractInfo):
         task.run([dataRef])
+
 
 def runTaskOnCcds(butler, task, tract=0):
     catalog = butler.get("observations", tract=tract, immediate=True)
@@ -167,6 +171,7 @@ def runTaskOnCcds(butler, task, tract=0):
         dataRef = butler.dataRef("forced_src", tract=tract, visit=record.getI(visitKey),
                                  ccd=record.getI(ccdKey))
         task.run(dataRef)
+
 
 def getObsDict(butler, tract=0):
     catalog = butler.get("observations", tract=tract, immediate=True)
@@ -179,12 +184,14 @@ def getObsDict(butler, tract=0):
         obsDict.setdefault(visit, {})[ccd] = record
     return obsDict
 
+
 def runForcedPhotCoaddTask(butler, mocksTask):
     config = lsst.meas.base.ForcedPhotCoaddConfig()
     config.references.filter = 'r'
     task = lsst.meas.base.ForcedPhotCoaddTask(config=config, butler=butler)
     task.writeSchemas(butler)
     runTaskOnPatches(butler, task, mocksTask)
+
 
 def runForcedPhotCcdTask(butler):
     config = lsst.meas.base.ForcedPhotCcdConfig()
@@ -383,7 +390,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             # to the algorithm metadata object. Depending on how many times a measurement task is run,
             # a metadata entry may be a single value or multiple values, this test ensures that in either
             # case the value can properly be extracted and compared.
-            ensureIterable = lambda x: x if isinstance(x, Iterable) and not isinstance(x, StringTypes) else [x]
+            ensureIterable = lambda x: x if isinstance(
+                x, Iterable) and not isinstance(x, StringTypes) else [x]
             for nOffset in ensureIterable(meta.get('NOISE_OFFSET')):
                 self.assertIsInstance(nOffset, numbers.Number)
             for noiseSrc in ensureIterable(meta.get('NOISE_SOURCE')):

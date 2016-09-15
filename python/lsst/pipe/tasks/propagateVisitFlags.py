@@ -31,7 +31,7 @@ import lsst.afw.table as afwTable
 class PropagateVisitFlagsConfig(Config):
     """!Configuration for propagating flags to coadd"""
     flags = DictField(keytype=str, itemtype=float,
-                      default={"calib_psfCandidate": 0.2, "calib_psfUsed": 0.2,},
+                      default={"calib_psfCandidate": 0.2, "calib_psfUsed": 0.2, },
                       doc="Source catalog flags to propagate, with the threshold of relative occurrence.")
     matchRadius = Field(dtype=float, default=0.2, doc="Source matching radius (arcsec)")
 
@@ -173,7 +173,7 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         self.log.info("Propagating flags %s from inputs" % (flags,))
 
         counts = dict((f, numpy.zeros(len(coaddSources), dtype=int)) for f in flags)
-        indices = numpy.array([s.getId() for s in coaddSources]) # Allowing for non-contiguous data
+        indices = numpy.array([s.getId() for s in coaddSources])  # Allowing for non-contiguous data
 
         # Accumulate counts of flags being set
         for ccdRecord in ccdInputs:
