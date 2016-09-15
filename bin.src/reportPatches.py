@@ -27,6 +27,7 @@
   a proper implementation will report all tracts and patches that overlap each image
 - One must specify a patch and tract even though those arguments are ignored.
 """
+from __future__ import print_function
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -88,7 +89,7 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         for tractInfo, patchInfoList in tractPatchList:
             for patchInfo in patchInfoList:
                 patchIndex = patchInfo.getIndex()
-                print "tract=%d patch=%d,%d" % (tractInfo.getId(), patchIndex[0], patchIndex[1])
+                print("tract=%d patch=%d,%d" % (tractInfo.getId(), patchIndex[0], patchIndex[1]))
 
     @classmethod
     def _makeArgumentParser(cls):

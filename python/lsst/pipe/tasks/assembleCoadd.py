@@ -1,4 +1,5 @@
 from __future__ import division, absolute_import
+from __future__ import print_function
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -833,7 +834,7 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
                         # user probably meant: autoReference = False
                         namespace.config.autoReference = False
                         datasetType = namespace.config.coaddName + "Coadd_tempExp"
-                        print "Switching config.autoReference to False; applies only to background Matching."
+                        print("Switching config.autoReference to False; applies only to background Matching.")
                         break
 
             dataRef = namespace.butler.dataRef(

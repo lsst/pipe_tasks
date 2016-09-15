@@ -1,4 +1,5 @@
 from __future__ import absolute_import, division
+from __future__ import print_function
 #
 # LSST Data Management System
 # Copyright 2008-2016 AURA/LSST.
@@ -831,21 +832,21 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                                 reply = "n"
 
                             if reply == "h":
-                                print >> sys.stderr, "Options: c[ontinue] h[elp] n[o] p[db] y[es]"
+                                print("Options: c[ontinue] h[elp] n[o] p[db] y[es]", file=sys.stderr)
                                 continue
 
                             if reply in ("", "c", "n", "p", "y"):
                                 break
                             else:
-                                print >> sys.stderr, "Unrecognised response: %s" % reply
+                                print("Unrecognised response: %s" % reply, file=sys.stderr)
 
                         if reply == "n":
                             break
                         elif reply == "p":
                             import pdb
                             pdb.set_trace()
-                except Exception, e:
-                    print >> sys.stderr, "Error plotting in PhotoCal.getZeroPoint: %s" % e
+                except Exception as e:
+                    print("Error plotting in PhotoCal.getZeroPoint: %s" % e, file=sys.stderr)
 
             # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 

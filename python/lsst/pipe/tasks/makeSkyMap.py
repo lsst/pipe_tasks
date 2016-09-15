@@ -68,7 +68,7 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
         else:
             try:
                 results = task.run(butler)
-            except Exception, e:
+            except Exception as e:
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)

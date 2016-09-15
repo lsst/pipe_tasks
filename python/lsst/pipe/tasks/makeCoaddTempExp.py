@@ -180,7 +180,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     coaddTempExp.setCalib(exposure.getCalib())
                     coaddTempExp.setFilter(exposure.getFilter())
                     didSetMetadata = True
-            except Exception, e:
+            except Exception as e:
                 self.log.warn("Error processing calexp %s; skipping it: %s", calExpRef.dataId, e)
                 continue
             inputRecorder.addCalExp(calExp, ccdId, numGoodPix)

@@ -93,7 +93,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
         else:
             try:
                 result = task.run(butler, dataRefList)
-            except Exception, e:
+            except Exception as e:
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)

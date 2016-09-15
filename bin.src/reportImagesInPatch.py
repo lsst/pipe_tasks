@@ -22,6 +22,7 @@
 #
 """Select images for a given coadd patch
 """
+from __future__ import print_function
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -81,7 +82,7 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         skyPosList = [coord.getPosition(afwGeom.degrees) for coord in coordList]
         skyPosStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
         skyPosStr = ", ".join(skyPosStrList)
-        print "PatchId=%s; corner RA/Dec (deg)=%s" % (patchRef.dataId, skyPosStr)
+        print("PatchId=%s; corner RA/Dec (deg)=%s" % (patchRef.dataId, skyPosStr))
 
         exposureInfoList = self.select.runDataRef(
             dataRef=patchRef,
@@ -89,19 +90,19 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
             makeDataRefList=False,
         ).exposureInfoList
 
-        print "Found %d suitable exposures" % (len(exposureInfoList),)
+        print("Found %d suitable exposures" % (len(exposureInfoList),))
         if len(exposureInfoList) < 1:
             return
 
         fwhmList = [exposureInfo.fwhm for exposureInfo in exposureInfoList]
         fwhmList = numpy.array(fwhmList, dtype=float)
-        print "FWHM Q1=%0.2f Q2=%0.2f Q3=%0.2f" % (
+        print("FWHM Q1=%0.2f Q2=%0.2f Q3=%0.2f" % (
             numpy.percentile(fwhmList, 25.0),
             numpy.percentile(fwhmList, 50.0),
             numpy.percentile(fwhmList, 75.0),
-        )
+        ))
 
-        print "Image IDs:"
+        print("Image IDs:")
         if len(exposureInfoList) > 0:
             idKeys = sorted(exposureInfoList[0].dataId.keys())
             for exposureInfo in exposureInfoList:
@@ -109,7 +110,7 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
                 skyPosList = [coord.getPosition(afwGeom.degrees) for coord in exposureInfo.coordList]
                 skyPosStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
                 skyPosStr = ", ".join(skyPosStrList)
-                print "dataId=%s; corner RA/Dec (deg)=%s" % (idStr, skyPosStr)
+                print("dataId=%s; corner RA/Dec (deg)=%s" % (idStr, skyPosStr))
 
         return pipeBase.Struct(exposureInfoList=exposureInfoList)
 

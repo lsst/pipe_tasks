@@ -21,6 +21,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+from __future__ import print_function
 import numpy
 import sys
 
@@ -97,7 +98,7 @@ if __name__ == "__main__":
         try:
             import debug
         except ImportError as e:
-            print >> sys.stderr, e
+            print(e, file=sys.stderr)
 
     exp = makeTestImage()
     defectList = addDefects(exp)

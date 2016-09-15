@@ -22,6 +22,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import print_function
 import os
 import unittest
 
@@ -128,7 +129,7 @@ class PhotoCalTest(unittest.TestCase):
         """All the common setup to actually test the results"""
         task = PhotoCalTask(config=self.config, schema=self.schema)
         pCal = task.run(exposure=self.exposure, matches=self.matches)
-        print "Ref flux fields list =", pCal.arrays.refFluxFieldList
+        print("Ref flux fields list =", pCal.arrays.refFluxFieldList)
         refFluxField = pCal.arrays.refFluxFieldList[0]
 
         # These are *all* the matches; we don't really expect to do that well.

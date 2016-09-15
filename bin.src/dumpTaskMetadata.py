@@ -22,6 +22,7 @@
 #
 """Select images and report which tracts and patches they are in
 """
+from __future__ import print_function
 import collections
 import itertools
 import re
@@ -52,7 +53,7 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
     def run(self, dataRef):
         """Report task metadata
         """
-        print "%s for dataId=%s" % (dataRef.butlerSubset.datasetType, dataRef.dataId)
+        print("%s for dataId=%s" % (dataRef.butlerSubset.datasetType, dataRef.dataId))
         TimerSuffixList = ("CpuTime", "InBlock", "MajFlt", "MaxRss",
                            "MinFlt", "NIvCsw", "NVCsw", "OuBlock", "STime", "UTime", "Utc")
 
@@ -68,7 +69,7 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
             if isinstance(data, dafBase.PropertySet):
                 # this same data will come up again in nameList
                 continue
-            print "%s    %s" % (name, data)
+            print("%s    %s" % (name, data))
 
     @classmethod
     def _makeArgumentParser(cls):

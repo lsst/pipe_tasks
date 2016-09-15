@@ -22,6 +22,7 @@
 #
 """Select images and report which tracts and patches they are in
 """
+from __future__ import print_function
 import collections
 import itertools
 import re
@@ -127,8 +128,8 @@ class ResourceInfo(object):
             stdDev = numpy.std(deltaList)
             min = numpy.min(deltaList)
             max = numpy.max(deltaList)
-        print "%s: %s median=%s; mean=%s; stdDev=%s; min=%s; max=%s; n=%s" % \
-            (self.taskName, baseName, median, mean, stdDev, min, max, len(deltaList))
+        print("%s: %s median=%s; mean=%s; stdDev=%s; min=%s; max=%s; n=%s" % \
+            (self.taskName, baseName, median, mean, stdDev, min, max, len(deltaList)))
 
     def __str__(self):
         return "ResourceUsage(%s)" % (self.taskName,)

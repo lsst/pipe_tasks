@@ -1,3 +1,4 @@
+from __future__ import print_function
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -41,7 +42,7 @@ def plotObservations(catalog, wcs):
                 x.append(xo)
                 y.append(yo)
             except:
-                print "WARNING: point %d, %d failed" % (xi, yi)
+                print("WARNING: point %d, %d failed" % (xi, yi))
         pyplot.fill(x, y, facecolor='r', alpha=0.1, edgecolor=None)
 
 

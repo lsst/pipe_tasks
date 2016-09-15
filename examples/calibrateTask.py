@@ -22,6 +22,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import print_function
 import os
 import sys
 import numpy as np
@@ -169,6 +170,6 @@ if __name__ == "__main__":
         try:
             import debug
         except ImportError as e:
-            print >> sys.stderr, e
+            print(e, file=sys.stderr)
 
     run(display=args.display)

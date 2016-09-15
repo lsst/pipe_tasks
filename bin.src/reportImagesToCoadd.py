@@ -22,6 +22,7 @@
 #
 """Select images and report which tracts and patches they are in
 """
+from __future__ import print_function
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -126,19 +127,19 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
                         ccdInfoSet.add(exposureInfo)
 
         fwhmList = numpy.array(fwhmList, dtype=float)
-        print "FWHM Q1=%0.2f Q2=%0.2f Q3=%0.2f" % (
+        print("FWHM Q1=%0.2f Q2=%0.2f Q3=%0.2f" % (
             numpy.percentile(fwhmList, 25.0),
             numpy.percentile(fwhmList, 50.0),
             numpy.percentile(fwhmList, 75.0),
-        )
+        ))
 
-        print "\nTract  patchX  patchY  numExp"
+        print("\nTract  patchX  patchY  numExp")
         for key in sorted(ccdInfoSetDict.keys()):
             ccdInfoSet = ccdInfoSetDict[key]
-            print "%5d   %5d   %5d  %5d" % (key[0], key[1][0], key[1][1], len(ccdInfoSet))
+            print("%5d   %5d   %5d  %5d" % (key[0], key[1][0], key[1][1], len(ccdInfoSet)))
 
         if self.config.showImageIds:
-            print "\nImage IDs:"
+            print("\nImage IDs:")
             if len(exposureInfoList) > 0:
                 keys = sorted(exposureInfoList[0].dataId.keys())
                 # use a dict to remove duplicates, then sort keys and report information
@@ -150,7 +151,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
                     skyPosList = [coord.getPosition(afwGeom.degrees) for coord in exposureInfo.coordList]
                     skyPosStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
                     skyPosStr = ", ".join(skyPosStrList)
-                    print "dataId=%s; corner RA/Dec=%s" % (idStr, skyPosStr)
+                    print("dataId=%s; corner RA/Dec=%s" % (idStr, skyPosStr))
 
         return pipeBase.Struct(
             ccdInfoSetDict=ccdInfoSetDict,

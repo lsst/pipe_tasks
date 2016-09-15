@@ -610,9 +610,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # Assign source Ids
                 for diaSource in diaSources:
                     sid = diaSource.getId()
-                    if srcMatchDict.has_key(sid):
+                    if sid in srcMatchDict:
                         diaSource.set("srcMatchId", srcMatchDict[sid])
-                    if refMatchDict.has_key(sid):
+                    if sid in refMatchDict:
                         diaSource.set("refMatchId", refMatchDict[sid])
 
             if diaSources is not None and self.config.doWriteSources:

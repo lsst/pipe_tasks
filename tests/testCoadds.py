@@ -40,6 +40,7 @@ different problem that's revealed when we're not trying to cache the mock data b
 tests (but set REUSE_DATAREPO back to True when done debugging, or this test will be very
 slow).
 """
+from __future__ import print_function
 
 import unittest
 import shutil
@@ -285,8 +286,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             try:
                 ccdVisitKey = coaddInputs.ccds.getSchema().find("visit").key
             except:
-                print patchRef.dataId
-                print coaddInputs.ccds.getSchema()
+                print(patchRef.dataId)
+                print(coaddInputs.ccds.getSchema())
                 raise
             for ccdRecord in coaddInputs.ccds:
                 obsRecord = obsCatalog.find(ccdRecord.getId())

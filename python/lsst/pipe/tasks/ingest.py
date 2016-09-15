@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import shutil
 import tempfile
@@ -186,7 +187,7 @@ class RegisterConfig(Config):
     visit = ListField(dtype=str, default=["visit", "object", "date", "filter"],
                       doc="List of columns for raw_visit table")
     ignore = Field(dtype=bool, default=False, doc="Ignore duplicates in the table?")
-    permissions = Field(dtype=int, default=0664, doc="Permissions mode for registry")  # octal 664 = rw-rw-r--
+    permissions = Field(dtype=int, default=0o664, doc="Permissions mode for registry")  # octal 664 = rw-rw-r--
 
 
 class RegistryContext(object):
@@ -325,7 +326,7 @@ class RegisterTask(Task):
         sql += ")"
         values = [info[col] for col in self.config.columns]
         if dryrun:
-            print "Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values]))
+            print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
         else:
             conn.execute(sql, values)
 
@@ -342,7 +343,7 @@ class RegisterTask(Task):
         sql += ",".join(self.config.visit)
         sql += " FROM %s" % table
         if dryrun:
-            print "Would execute: %s" % sql
+            print("Would execute: %s" % sql)
         else:
             conn.execute(sql)
 
@@ -410,8 +411,8 @@ class IngestTask(Task):
                 os.rename(infile, outfile)
             else:
                 raise AssertionError("Unknown mode: %s" % mode)
-            print "%s --<%s>--> %s" % (infile, mode, outfile)
-        except Exception, e:
+            print("%s --<%s>--> %s" % (infile, mode, outfile))
+        except Exception as e:
             self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
             if not self.config.allowError:
                 raise

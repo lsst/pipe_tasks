@@ -20,6 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+from __future__ import print_function
 import unittest
 import os
 
@@ -41,7 +42,7 @@ class TestForceWcs(unittest.TestCase):
 
     def test1(self):
         fn = os.path.join(os.path.dirname(__file__), 'data', 'mini-r-3-113,0.fits.gz')
-        print 'Reading image', fn
+        print('Reading image', fn)
         exposure = afwImage.ExposureF(fn)
         exposure.setPsf(afwDetection.GaussianPsf(15, 15, 3))
         schema = afwTable.SourceTable.makeMinimalSchema()
@@ -63,9 +64,9 @@ class TestForceWcs(unittest.TestCase):
         astrom.log.setLevel(astrom.log.TRACE)
 
         inwcs = exposure.getWcs()
-        print 'inwcs:', inwcs
+        print('inwcs:', inwcs)
         instr = inwcs.getFitsMetadata().toString()
-        print 'inwcs:', instr
+        print('inwcs:', instr)
         table = afwTable.SourceTable.make(schema, idFactory)
         sources = det.makeSourceCatalog(table, exposure, sigma=1).sources
         meas.measure(exposure, sources)
@@ -78,9 +79,9 @@ class TestForceWcs(unittest.TestCase):
             if dosip is False:
                 self.assertEqual(inwcs, outwcs)
                 self.assertEqual(instr, outstr)
-            print 'inwcs:', instr
-            print 'outwcs:', outstr
-            print len(ast.matches), 'matches'
+            print('inwcs:', instr)
+            print('outwcs:', outstr)
+            print(len(ast.matches), 'matches')
             self.assertGreater(len(ast.matches), 10)
 
 

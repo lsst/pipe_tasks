@@ -249,7 +249,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                         sciExposure=toMatchExposure,
                     )
                     backgroundInfoStruct.isReference = False
-                except Exception, e:
+                except Exception as e:
                     self.log.warn("Failed to fit background %s: %s" % (toMatchRef.dataId, e))
                     backgroundInfoStruct = pipeBase.Struct(
                         isReference=False,
@@ -439,7 +439,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 bkgdImage = approx.getImage()
             else:
                 bkgdImage = bkgd.getImageF()
-        except Exception, e:
+        except Exception as e:
             raise RuntimeError("Background/Approximation failed to interp image %s: %s" % (
                 self.debugDataIdString, e))
 
@@ -464,7 +464,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             bbox = afwGeom.Box2D(refExposure.getMaskedImage().getBBox())
             try:
                 self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
-            except Exception, e:
+            except Exception as e:
                 self.log.warn('Debug plot not generated: %s'%(e))
 
         meanVar = afwMath.makeStatistics(diffMI.getVariance(), diffMI.getMask(),

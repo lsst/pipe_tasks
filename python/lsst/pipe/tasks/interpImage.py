@@ -150,7 +150,7 @@ class InterpImageTask(pipeBase.Task):
         else:
             if defects is not None:
                 raise ValueError("Provide EITHER a planeName OR a list of defects, not both")
-            if not maskedImage.getMask().getMaskPlaneDict().has_key(planeName):
+            if planeName not in maskedImage.getMask().getMaskPlaneDict():
                 raise ValueError("maskedImage does not contain mask plane %s" % planeName)
             defectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
 

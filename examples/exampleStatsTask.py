@@ -20,6 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+from __future__ import print_function
 import os
 import sys
 
@@ -34,27 +35,27 @@ if len(sys.argv) < 2:
     maskedImagePath = os.path.join(afwDataDir, "data", "med.fits")
 else:
     maskedImagePath = sys.argv[1]
-print "computing statistics on %r\n" % (maskedImagePath,)
+print("computing statistics on %r\n" % (maskedImagePath,))
 
 # Read the masked image from the specified file. The file may be a masked image or exposure,
 # but if the file is a simple image, with no mask or variance plane, then this call will fail.
 maskedImage = MaskedImageF(maskedImagePath)
 
 # Construct the simple stats task configuration and use that to construct and run the task
-print "running ExampleSimpleStatsTask"
+print("running ExampleSimpleStatsTask")
 config1 = ExampleSimpleStatsTask.ConfigClass()
 # ...modify the config if desired...
 config1.validate()  # check that the config parameters are valid; optional, but catches errors early
 task1 = ExampleSimpleStatsTask(config=config1)
 res1 = task1.run(maskedImage)
-print "result  =", res1
-print
+print("result  =", res1)
+print()
 
 # Construct the sigma-clipped stats task configuration and use that to construct and run the task
-print "running ExampleSigmaClippedStatsTask"
+print("running ExampleSigmaClippedStatsTask")
 config2 = ExampleSigmaClippedStatsTask.ConfigClass()
 # ...modify the config if desired...
 config2.validate()
 task2 = ExampleSigmaClippedStatsTask(config=config2)
 res2 = task2.run(maskedImage)
-print "result  =", res2
+print("result  =", res2)
