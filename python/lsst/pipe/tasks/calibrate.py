@@ -589,7 +589,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             match = bestMatches.get(id0)
             if match is None or d <= match[2]:
                 bestMatches[id0] = (m0, m1, d)
-        matches = bestMatches.values()
+        matches = list(bestMatches.values())
 
         # Check that no sourceCat sources are listed twice (we already know that each match has a unique
         # icSourceCat source ID, due to using that ID as the key in bestMatches)

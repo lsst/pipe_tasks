@@ -1,3 +1,4 @@
+from builtins import zip
 #
 # LSST Data Management System
 # Copyright 2012 LSST Corporation.
@@ -296,7 +297,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # I don't know if this is the way we ultimately want to do things, but at least
         # this ensures the source IDs are fully unique.
         expBits = sensorRef.get("ccdExposureId_bits")
-        expId = long(sensorRef.get("ccdExposureId"))
+        expId = int(sensorRef.get("ccdExposureId"))
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
         # Retrieve the science image we wish to analyze

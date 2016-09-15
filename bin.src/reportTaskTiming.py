@@ -23,6 +23,8 @@
 """Select images and report which tracts and patches they are in
 """
 from __future__ import print_function
+from builtins import zip
+from builtins import object
 import collections
 import itertools
 import re
@@ -104,7 +106,7 @@ class ResourceInfo(object):
                               (self, startName, len(startList), endName, len(endList)))
                 continue
 
-            deltaList = numpy.array([e - s for s, e in itertools.izip(startList, endList)])
+            deltaList = numpy.array([e - s for s, e in zip(startList, endList)])
             setattr(self, deltaName, deltaList)
             self._reportItem(baseName)
 
@@ -172,7 +174,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
                 if resInfo.isValidName(itemName):
                     resInfo.setItem(itemName, taskMetadata.get(name, True))
 
-        for resourceInfo in resourceDict.itervalues():
+        for resourceInfo in resourceDict.values():
             resourceInfo.reportUsage()
 
         return pipeBase.Struct(

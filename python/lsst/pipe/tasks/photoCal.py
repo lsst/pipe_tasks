@@ -1,5 +1,8 @@
 from __future__ import absolute_import, division
 from __future__ import print_function
+from builtins import zip
+from builtins import input
+from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008-2016 AURA/LSST.
@@ -22,7 +25,7 @@ from __future__ import print_function
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 # \package lsst.pipe.tasks.
-from itertools import izip
+
 import math
 import sys
 
@@ -556,12 +559,12 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         # Fitting with error bars in both axes is hard
         # for now ignore reference flux error, but ticket DM-2308 is a request for a better solution
-        magErrArr = np.array([abMagErrFromFluxErr(fe, sf) for fe, sf in izip(srcFluxErrArr, srcFluxArr)])
+        magErrArr = np.array([abMagErrFromFluxErr(fe, sf) for fe, sf in zip(srcFluxErrArr, srcFluxArr)])
         if self.config.magErrFloor != 0.0:
             magErrArr = (magErrArr**2 + self.config.magErrFloor**2)**0.5
 
-        srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in izip(srcFluxErrArr, srcFluxArr)])
-        refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in izip(refFluxErrArr, refFluxArr)])
+        srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in zip(srcFluxErrArr, srcFluxArr)])
+        refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in zip(refFluxErrArr, refFluxArr)])
 
         return pipeBase.Struct(
             srcMag=srcMagArr,
@@ -827,7 +830,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                         reply = None
                         while i == 0 or reply != "c":
                             try:
-                                reply = raw_input("Next iteration? [ynhpc] ")
+                                reply = input("Next iteration? [ynhpc] ")
                             except EOFError:
                                 reply = "n"
 

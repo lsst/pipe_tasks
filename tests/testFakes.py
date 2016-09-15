@@ -52,9 +52,9 @@ class TestFakes(lsst.utils.tests.TestCase):
         bitmask points to the correct plane
         '''
         maskPlaneName = "FAKE"
-        maskKeysBefore = lsst.afw.image.MaskU().getMaskPlaneDict().keys()
+        maskKeysBefore = list(lsst.afw.image.MaskU().getMaskPlaneDict())
         trialInstance = TrialFakeSourcesTask()
-        maskKeysAfter = lsst.afw.image.MaskU().getMaskPlaneDict().keys()
+        maskKeysAfter = list(lsst.afw.image.MaskU().getMaskPlaneDict())
         maskPlaneName = trialInstance.config.maskPlaneName
         self.assertNotIn(maskPlaneName, maskKeysBefore)
         self.assertIn(maskPlaneName, maskKeysAfter)
@@ -69,7 +69,7 @@ class TestFakes(lsst.utils.tests.TestCase):
         '''
         maskPlaneName = "FAKE"
         lsst.afw.image.MaskU().addMaskPlane(maskPlaneName)
-        maskKeysBefore = lsst.afw.image.MaskU().getMaskPlaneDict().keys()
+        maskKeysBefore = list(lsst.afw.image.MaskU().getMaskPlaneDict())
         self.assertIn(maskPlaneName, maskKeysBefore)
         maskPlaneBitMask = lsst.afw.image.MaskU.getPlaneBitMask(maskPlaneName)
         trialInstance = TrialFakeSourcesTask()

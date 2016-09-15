@@ -1,3 +1,4 @@
+from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -146,7 +147,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         wcs = tractInfo.getWcs()
         bbox = lsst.afw.geom.Box2D(tractInfo.getBBox())
         bbox.grow(lsst.afw.geom.Extent2D(-0.1 * bbox.getWidth(), -0.1 * bbox.getHeight()))
-        for i in xrange(n):
+        for i in range(n):
             x = self.rng.rand() * bbox.getWidth() + bbox.getMinX()
             y = self.rng.rand() * bbox.getHeight() + bbox.getMinY()
             pa = 0.0 * lsst.afw.geom.radians

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import absolute_import, division, print_function
+from builtins import zip
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -72,7 +73,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         outPath = tempfile.mkdtemp() if OutputName is None else "{}-ProcessCcd".format(OutputName)
         try:
             dataId = dict(visit=1)
-            dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
+            dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.items()]
             fullResult = ProcessCcdTask.parseAndRun(
                 args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
                 doReturnResults=True
@@ -185,7 +186,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         d = catalog1.schema.extract("*")
         fixNaN = lambda x: x if x == x else "NaN"
         for record1, record2 in zip(catalog1, catalog2):
-            for name, item in d.iteritems():
+            for name, item in d.items():
                 if name not in skipCols:
                     self.assertEqual(
                         fixNaN(record1.get(item.key)), fixNaN(record2.get(item.key)),
@@ -238,7 +239,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         )
         try:
             dataId = dict(visit=1)
-            dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.iteritems()]
+            dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.items()]
 
             isrResult1 = IsrTask.parseAndRun(
                 args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,

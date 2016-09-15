@@ -1,4 +1,7 @@
 from __future__ import print_function
+from builtins import str
+from past.builtins import basestring
+from builtins import object
 import os
 import shutil
 import tempfile
@@ -107,7 +110,7 @@ class ParseTask(Task):
         @param info    File properties, to be supplemented
         @return info
         """
-        for p, h in self.config.translation.iteritems():
+        for p, h in self.config.translation.items():
             if md.exists(h):
                 value = md.get(h)
                 if isinstance(value, basestring):
@@ -117,7 +120,7 @@ class ParseTask(Task):
                 info[p] = self.config.defaults[p]
             else:
                 self.log.warn("Unable to find value for %s (derived from %s)" % (p, h))
-        for p, t in self.config.translators.iteritems():
+        for p, t in self.config.translators.items():
             func = getattr(self, t)
             try:
                 value = func(md)
@@ -440,7 +443,7 @@ class IngestTask(Task):
         if not badIdList:
             return False
         for badId in badIdList:
-            if all(info[key] == value for key, value in badId.iteritems()):
+            if all(info[key] == value for key, value in badId.items()):
                 return True
         return False
 

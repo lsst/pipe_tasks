@@ -41,6 +41,7 @@ tests (but set REUSE_DATAREPO back to True when done debugging, or this test wil
 slow).
 """
 from __future__ import print_function
+from builtins import zip
 
 import unittest
 import shutil
@@ -222,8 +223,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         for ID in calexpDataIds:
             image = self.butler.get('calexp', ID)
             mask = image.getMaskedImage().getMask()
-            self.assertIn('CROSSTALK', mask.getMaskPlaneDict().keys())
-            self.assertIn('NOT_DEBLENDED', mask.getMaskPlaneDict().keys())
+            self.assertIn('CROSSTALK', list(mask.getMaskPlaneDict().keys()))
+            self.assertIn('NOT_DEBLENDED', list(mask.getMaskPlaneDict().keys()))
 
     def comparePsfs(self, a, b):
         if a is None and b is None:
@@ -249,7 +250,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testTempExpInputs(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
-        for visit, obsVisitDict in getObsDict(self.butler, tract).iteritems():
+        for visit, obsVisitDict in getObsDict(self.butler, tract).items():
             foundOneTempExp = False
             for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
                 try:
@@ -333,7 +334,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         for simSrcRecord in simSrcCat:
             simSrcByObject.setdefault(simSrcRecord.getL(objectIdKey), []).append(simSrcRecord)
         pureObjectIds = set()  # set will contain objects that never appear on edges
-        for objectId, simSrcRecords in simSrcByObject.iteritems():
+        for objectId, simSrcRecords in simSrcByObject.items():
             inAnyImages = False
             for simSrcRecord in simSrcRecords:
                 if simSrcRecord.getFlag(centroidInBBoxKey):

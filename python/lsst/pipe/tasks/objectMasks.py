@@ -1,3 +1,4 @@
+from builtins import object
 import re
 import lsst.daf.base as dafBase
 import lsst.afw.coord as afwCoord

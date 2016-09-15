@@ -1,3 +1,4 @@
+from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
@@ -120,8 +121,8 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         self.makeSubtask("mockObject")
         self.makeSubtask("mockObservation")
         self.schema = lsst.afw.table.SimpleTable.makeMinimalSchema()
-        self.objectIdKey = self.schema.addField("objectId", type=long, doc="foreign key to truth catalog")
-        self.exposureIdKey = self.schema.addField("exposureId", type=long,
+        self.objectIdKey = self.schema.addField("objectId", type=int, doc="foreign key to truth catalog")
+        self.exposureIdKey = self.schema.addField("exposureId", type=int,
                                                   doc="foreign key to observation catalog")
         self.centroidInBBoxKey = self.schema.addField(
             "centroidInBBox", type="Flag",

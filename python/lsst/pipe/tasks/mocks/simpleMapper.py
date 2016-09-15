@@ -29,6 +29,9 @@ possible approach, but it gave him an opportunity to play around with
 prototyping a future paf-free mapper class, and it does everything it
 needs to do right now.
 """
+from builtins import map
+from builtins import range
+from builtins import object
 
 import os
 import shutil
@@ -38,6 +41,7 @@ import lsst.daf.persistence
 import lsst.afw.cameraGeom
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.image.utils as afwImageUtils
+from future.utils import with_metaclass
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
 
@@ -171,7 +175,7 @@ class RawMapping(SimpleMapping):
 
     def query(self, dataset, index, level, format, dataId):
         dictList = index[dataset][level]
-        results = [d.values() for d in dictList[dataId.get(level, None)]]
+        results = [list(d.values()) for d in dictList[dataId.get(level, None)]]
         return results
 
 
@@ -216,7 +220,7 @@ class MapperMeta(type):
     def __init__(cls, name, bases, dict_):
         type.__init__(cls, name, bases, dict_)
         cls.keyDict = dict()
-        for dataset, mapping in cls.mappings.iteritems():
+        for dataset, mapping in cls.mappings.items():
             setattr(cls, "map_" + dataset, MapperMeta._makeMapClosure(dataset, mapping, suffix=None))
             for suffix in mapping.persistence.suffixes:
                 setattr(cls, "map_" + dataset + suffix,
@@ -226,7 +230,7 @@ class MapperMeta(type):
         cls.keyDict.update(mapping.keys)
 
 
-class SimpleMapper(lsst.daf.persistence.Mapper):
+class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
     """
     An extremely simple mapper for an imaginary camera for use in integration tests.
 
@@ -237,8 +241,6 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
     The imaginary camera's raw data format has only 'visit' and 'ccd' keys, with
     two CCDs per visit (by default).
     """
-
-    __metaclass__ = MapperMeta
 
     mappings = dict(
         calexp=RawMapping(ExposurePersistenceType),
@@ -351,22 +353,22 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         return item
 
     def _computeCcdExposureId(self, dataId):
-        return long(dataId["visit"]) * 10 + long(dataId["ccd"])
+        return int(dataId["visit"]) * 10 + int(dataId["ccd"])
 
     def _computeCoaddId(self, dataId):
         # Note: for real IDs, we'd want to include filter here, but it doesn't actually matter
         # for any of the tests we've done so far, which all assume filter='r'
-        tract = long(dataId['tract'])
+        tract = int(dataId['tract'])
         if tract < 0 or tract >= 128:
             raise RuntimeError('tract not in range [0,128)')
-        patchX, patchY = map(int, dataId['patch'].split(','))
+        patchX, patchY = list(map(int, dataId['patch'].split(',')))
         for p in (patchX, patchY):
             if p < 0 or p >= 2**13:
                 raise RuntimeError('patch component not in range [0, 8192)')
         return (tract * 2**13 + patchX) * 2**13 + patchY
 
     def splitCcdExposureId(ccdExposureId):
-        return dict(visit=(long(ccdExposureId) // 10), ccd=(long(ccdExposureId) % 10))
+        return dict(visit=(int(ccdExposureId) // 10), ccd=(int(ccdExposureId) % 10))
 
     def bypass_ccdExposureId(self, datasetType, pythonType, location, dataId):
         return self._computeCcdExposureId(dataId)

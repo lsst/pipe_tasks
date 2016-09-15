@@ -100,7 +100,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         self.log.info("Processing %d tempExps for patch %s", len(groupData.groups), patchRef.dataId)
 
         dataRefList = []
-        for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.iteritems()):
+        for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.items()):
             tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDatasetName(),
                                          tempExpTuple, groupData.keys)
             if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=self.getTempExpDatasetName()):
@@ -113,7 +113,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             # For now, we try to get a long integer "visit" key, and if we can't, we just use the index
             # of the visit in the list.
             try:
-                visitId = long(tempExpRef.dataId["visit"])
+                visitId = int(tempExpRef.dataId["visit"])
             except (KeyError, ValueError):
                 visitId = i
 

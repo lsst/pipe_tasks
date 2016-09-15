@@ -23,6 +23,7 @@
 """Select images and report which tracts and patches they are in
 """
 from __future__ import print_function
+from builtins import zip
 import numpy
 
 import lsst.pex.config as pexConfig

@@ -1,3 +1,5 @@
+from builtins import zip
+from builtins import range
 #!/usr/bin/env python
 #
 # LSST Data Management System
@@ -87,7 +89,7 @@ def _makeMakeIdFactory(datasetName):
         the butler (through the provided data reference.
         """
         expBits = dataRef.get(self.config.coaddName + datasetName + "_bits")
-        expId = long(dataRef.get(self.config.coaddName + datasetName))
+        expId = int(dataRef.get(self.config.coaddName + datasetName))
         return afwTable.IdFactory.makeSource(expId, 64 - expBits)
     return makeIdFactory
 
@@ -354,7 +356,7 @@ class MergeSourcesRunner(TaskRunner):
             if filter in refList[tract][patch]:
                 raise RuntimeError("Multiple versions of %s" % (ref.dataId,))
             refList[tract][patch][filter] = ref
-        return [(p.values(), kwargs) for t in refList.itervalues() for p in t.itervalues()]
+        return [(list(p.values()), kwargs) for t in refList.values() for p in t.values()]
 
 
 class MergeSourcesConfig(Config):
@@ -748,7 +750,7 @@ class MergeDetectionsTask(MergeSourcesTask):
 
         \param[in] catalog Source catalog
         """
-        keys = [item.key for item in self.merged.getPeakSchema().extract("merge.peak.*").itervalues()]
+        keys = [item.key for item in self.merged.getPeakSchema().extract("merge.peak.*").values()]
         totalPeaks = 0
         culledPeaks = 0
         for parentSource in catalog:
@@ -1155,7 +1157,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
 
     def getExposureId(self, dataRef):
-        return long(dataRef.get(self.config.coaddName + "CoaddId"))
+        return int(dataRef.get(self.config.coaddName + "CoaddId"))
 
 ##############################################################################################################
 

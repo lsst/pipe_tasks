@@ -1,4 +1,6 @@
 from __future__ import print_function
+from builtins import zip
+from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -53,8 +55,8 @@ def plotPatches(tractInfo):
     for iPatchX in range(nPatchX):
         for iPatchY in range(nPatchY):
             patchInfo = tractInfo.getPatchInfo((iPatchX, iPatchY))
-            xp1, yp1 = zip(*patchInfo.getOuterBBox().getCorners())
-            xp2, yp2 = zip(*patchInfo.getInnerBBox().getCorners())
+            xp1, yp1 = list(zip(*patchInfo.getOuterBBox().getCorners()))
+            xp2, yp2 = list(zip(*patchInfo.getInnerBBox().getCorners()))
             pyplot.fill(xp1, yp1, fill=False, edgecolor='g', linestyle='dashed')
             pyplot.fill(xp2, yp2, fill=False, edgecolor='g')
 

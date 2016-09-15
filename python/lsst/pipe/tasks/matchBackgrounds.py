@@ -1,3 +1,7 @@
+from builtins import zip
+from builtins import str
+from builtins import range
+from builtins import object
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
@@ -44,7 +48,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     badMaskPlanes = pexConfig.ListField(
         doc="Names of mask planes to ignore while estimating the background",
         dtype=str, default=["NO_DATA", "DETECTED", "DETECTED_NEGATIVE", "SAT", "BAD", "INTRP", "CR"],
-        itemCheck=lambda x: x in afwImage.MaskU().getMaskPlaneDict().keys(),
+        itemCheck=lambda x: x in list(afwImage.MaskU().getMaskPlaneDict().keys()),
     )
     gridStatistic = pexConfig.ChoiceField(
         dtype=str,

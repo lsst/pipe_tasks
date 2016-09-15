@@ -23,6 +23,8 @@
 
 Helpful while creating them or harvesting data from them.
 """
+from builtins import zip
+from builtins import object
 import itertools
 
 import numpy
@@ -42,7 +44,7 @@ def _getDTypeList(keyTuple, valTuple):
     longer strings will be truncated when inserted into numpy structured arrays
     """
     typeList = []
-    for name, val in itertools.izip(keyTuple, valTuple):
+    for name, val in zip(keyTuple, valTuple):
         if isinstance(val, str):
             predLen = len(val) + STR_PADDING
             typeList.append((name, str, predLen))
@@ -132,7 +134,7 @@ class SourceData(object):
                                    (idKeyTuple, self._idKeyTuple))
 
         dataDict = {}
-        for idTuple, sourceTable in itertools.izip(idValList, sourceTableList):
+        for idTuple, sourceTable in zip(idValList, sourceTableList):
             if len(sourceTable) == 0:
                 continue
 
@@ -141,13 +143,13 @@ class SourceData(object):
 
             if self._sourceDTypeList is None:
                 self._sourceDTypeList = [(key, arr.dtype)
-                                         for key, arr in itertools.izip(self._sourceKeyTuple, dataList)]
+                                         for key, arr in zip(self._sourceKeyTuple, dataList)]
 
-            transposedDataList = zip(*dataList)
+            transposedDataList = list(zip(*dataList))
             del dataList
 
             dataDict.update((srcId, idTuple + tuple(data))
-                            for srcId, data in itertools.izip(idList, transposedDataList))
+                            for srcId, data in zip(idList, transposedDataList))
         return dataDict
 
     def addSourceMetrics(self, repoInfo, idKeyTuple, idValList, sourceTableList):
@@ -189,7 +191,7 @@ class SourceData(object):
 
         fullSrcIdSet = set()
         for dataIdDict in self._tempDataList:
-            fullSrcIdSet.update(dataIdDict.iterkeys())
+            fullSrcIdSet.update(iter(dataIdDict.keys()))
 
         # source data
         sourceArrDType = [("sourceId", int)] + self._idKeyDTypeList + self._sourceDTypeList

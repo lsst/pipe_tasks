@@ -1,3 +1,4 @@
+from builtins import zip
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -79,7 +80,7 @@ def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepC
 
     # Supplement the groups with the coadd-specific information (e.g., tract, patch; these are constant)
     coaddValues = tuple(patchId[k] for k in coaddKeys)
-    groups = dict((k + coaddValues, v) for k, v in groups.iteritems())
+    groups = dict((k + coaddValues, v) for k, v in groups.items())
     keys += tuple(coaddKeys)
 
     return Struct(groups=groups, keys=keys)
