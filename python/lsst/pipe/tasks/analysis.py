@@ -927,6 +927,31 @@ def joinMatches(matches, first="first_", second="second_"):
         row.set(distanceKey, mm.distance*afwGeom.radians)
     return catalog
 
+def joinCatalogs(catalog1, catalog2, prefix1="cat1_", prefix2="cat2_"):
+    # Make sure catalogs entries are all associated with the same object
+    idStrList = ["", ""]
+    for i, cat in enumerate((catalog1, catalog2)):
+        if "id" in cat.schema:
+            idStrList[i] = "id"
+        elif "objectId" in cat.schema:
+            idStrList[i] = "objectId"
+        else:
+            raise RuntimeError("Cannot identify object id field (tried id and objectId)")
+
+    if not np.all(catalog1[idStrList[0]] == catalog2[idStrList[1]]):
+        raise RuntimeError("Catalogs with different sets of objects cannot be joined")
+
+    mapperList = afwTable.SchemaMapper.join(afwTable.SchemaVector([catalog1[0].schema, catalog2[0].schema]),
+                                            [prefix1, prefix2])
+    schema = mapperList[0].getOutputSchema()
+    catalog = afwTable.BaseCatalog(schema)
+    catalog.reserve(len(catalog1))
+    for s1, s2 in zip(catalog1, catalog2):
+        row = catalog.addNew()
+        row.assign(s1, mapperList[0])
+        row.assign(s2, mapperList[1])
+    return catalog
+
 def getFluxKeys(schema):
     """Retrieve the flux and flux error keys from a schema
     Both are returned as dicts indexed on the flux name (e.g. "flux.psf" or "cmodel.flux").
