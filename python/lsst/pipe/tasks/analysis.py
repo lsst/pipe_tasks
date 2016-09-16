@@ -1174,7 +1174,7 @@ class CoaddAnalysisConfig(Config):
     doPlotStarGalaxy = Field(dtype=bool, default=True, doc="Plot star/galaxy?")
     doPlotOverlaps = Field(dtype=bool, default=True, doc="Plot overlaps?")
     doPlotMatches = Field(dtype=bool, default=True, doc="Plot matches?")
-    doPlotForced = Field(dtype=bool, default=True, doc="Plot difference between forced and unforced?")
+    doPlotCompareUnforced = Field(dtype=bool, default=True, doc="Plot difference between forced and unforced?")
     onlyReadStars = Field(dtype=bool, default=False, doc="Only read stars (to save memory)?")
     srcSchemaMap = DictField(keytype=str, itemtype=str, default=None, optional=True,
                              doc="Mapping between different stack (e.g. HSC vs. LSST) schema names")
@@ -1239,11 +1239,23 @@ class CoaddAnalysisTask(CmdLineTask):
         filterName = dataId["filter"]
         filenamer = Filenamer(patchRefList[0].getButler(), self.outputDataset, patchRefList[0].dataId)
         if (self.config.doPlotMags or self.config.doPlotStarGalaxy or self.config.doPlotOverlaps or
-            self.config.doPlotForced or cosmos or self.config.externalCatalogs):
-###            catalog = self.readCatalogs(patchRefList, "deepCoadd_meas")
+            self.config.doPlotCompareUnforced or cosmos or self.config.externalCatalogs):
 ###            catalog = catalog[catalog["deblend_nChild"] == 0].copy(True) # Don't care about blended objects
-            catalog = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
-            catalog = calibrateCoaddSourceCatalog(catalog, self.config.analysis.zp)
+            forced = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
+            forced = self.calibrateCatalogs(forced)
+            unforced = self.readCatalogs(patchRefList, "deepCoadd_meas")
+            unforced = self.calibrateCatalogs(unforced)
+            # catalog = joinCatalogs(meas, forced, prefix1="meas_", prefix2="forced_")
+
+        # Check metadata to see if stack used was HSC
+        metadata = butler.get("deepCoadd_md", patchRefList[0].dataId)
+        # Set an alias map for differing src naming conventions of different stacks (if any)
+        hscRun = checkHscStack(metadata)
+        if hscRun is not None and self.config.srcSchemaMap is not None:
+            aliasMap = forced.schema.getAliasMap()
+            for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                aliasMap.set(lsstName, otherName)
+
         if self.config.doPlotMags:
             self.plotMags(forced, filenamer, dataId, skymap=skymap, patchList=patchList, hscRun=hscRun,
                           zpLabel=self.zpLabel)
@@ -1252,22 +1264,24 @@ class CoaddAnalysisTask(CmdLineTask):
                 self.plotStarGal(unforced, filenamer, dataId, skymap=skymap, patchList=patchList,
                                  hscRun=hscRun, zpLabel=self.zpLabel)
             else:
-                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmSourceMoments_xx not in catalog.schema")
+                self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmSourceMoments_xx not in forced.schema")
         if cosmos:
-            self.plotCosmos(catalog, filenamer, cosmos, dataId)
-        if self.config.doPlotForced:
-            forced = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
-            self.plotForced(catalog, forced, filenamer, dataId)
+            self.plotCosmos(forced, filenamer, cosmos, dataId)
+        if self.config.doPlotCompareUnforced:
+            self.plotCompareUnforced(forced, unforced, filenamer, dataId, skymap=skymap, patchList=patchList,
+                                     hscRun=hscRun, zpLabel=self.zpLabel)
         if self.config.doPlotOverlaps:
-            overlaps = self.overlaps(catalog)
-            self.plotOverlaps(overlaps, filenamer, dataId)
+            overlaps = self.overlaps(forced)
+            self.plotOverlaps(overlaps, filenamer, dataId, skymap=skymap, patchList=patchList, hscRun=hscRun,
+                              zpLabel=self.zpLabel)
         if self.config.doPlotMatches:
-            matches = self.readCatalogs(patchRefList, "deepCoadd_measMatchFull")
-            self.plotMatches(matches, filterName, filenamer, dataId, matchRadius=self.config.matchRadius)
+            matches = self.readSrcMatches(patchRefList, "deepCoadd_forced_src")
+            self.plotMatches(matches, filterName, filenamer, dataId, skymap=skymap, patchList=patchList,
+                             hscRun=hscRun, matchRadius=self.config.matchRadius, zpLabel=self.zpLabel)
 
         for cat in self.config.externalCatalogs:
             with andCatalog(cat):
-                matches = self.matchCatalog(catalog, filterName, self.config.externalCatalogs[cat])
+                matches = self.matchCatalog(forced, filterName, self.config.externalCatalogs[cat])
                 self.plotMatches(matches, filterName, filenamer, dataId, cat)
 
     def readCatalogs(self, patchRefList, dataset):
@@ -1279,31 +1293,93 @@ class CoaddAnalysisTask(CmdLineTask):
             catList = [cat[cat["base_ClassificationExtendedness_value"] < 0.5].copy(True) for cat in catList]
         return concatenateCatalogs(catList)
 
-    def calibrateCatalogs(self, dataRef, catalog, metadata):
-        self.zp = 0.0
-        try:
-            self.zpLabel = self.zpLabel
-        except:
-            self.zpLabel = None
-        if self.config.doApplyUberCal:
-            calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.zp)
-            if self.zpLabel is None:
-                self.log.info("Applying meas_mosaic calibration to catalog")
-            self.zpLabel = "MEAS_MOSAIC"
-        else:
-            if self.config.doApplyCalexpZp:
-                # Scale fluxes to measured zeropoint
-                self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
-                if self.zpLabel is None:
-                    self.log.info("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % self.zp)
-                self.zpLabel = "FLUXMAG0"
+    def readSrcMatches(self, dataRefList, dataset):
+        catList = []
+        for dataRef in dataRefList:
+            print "dataRef, dataset: ", dataRef.dataId, dataset
+            if not dataRef.datasetExists(dataset):
+                print "Dataset does not exist: ", dataRef.dataId, dataset
+                continue
+            butler = dataRef.getButler()
+            if dataset.startswith("deepCoadd_"):
+                metadata = butler.get("deepCoadd_md", dataRef.dataId)
             else:
-                # Scale fluxes to common zeropoint
-                self.zp = 33.0
-                if self.zpLabel is None:
-                    self.log.info("Using common value of %.4f for zeropoint" % (self.zp))
-                self.zpLabel = "common (" + str(self.zp) + ")"
-            calibrated = calibrateSourceCatalog(catalog, self.zp)
+                metadata = butler.get("calexp_md", dataRef.dataId)
+            # Generate unnormalized match list (from normalized persisted one) with joinMatchListWithCatalog
+            # (which requires a refObjLoader to be initialized).
+            catalog = dataRef.get(dataset, immediate=True, flags=afwTable.SOURCE_IO_NO_FOOTPRINTS)
+            catalog = self.calibrateCatalogs(catalog)
+            if dataset.startswith("deepCoadd_"):
+                packedMatches = butler.get("deepCoadd_src" + "Match", dataRef.dataId)
+            else:
+                packedMatches = butler.get(dataset + "Match", dataRef.dataId)
+            # The reference object loader grows the bbox by the config parameter pixelMargin.  This
+            # is set to 50 by default but is not reflected by the radius parameter set in the
+            # metadata, so some matches may reside outside the circle searched within this radius
+            # Thus, increase the radius set in the metadata fed into joinMatchListWithCatalog() to
+            # accommodate.
+            matchmeta = packedMatches.table.getMetadata()
+            rad = matchmeta.getDouble("RADIUS")
+            matchmeta.setDouble("RADIUS", rad*1.05, "field radius in degrees, approximate, padded")
+            refObjLoader = LoadAstrometryNetObjectsTask(self.config.refObjLoaderConfig)
+            matches = refObjLoader.joinMatchListWithCatalog(packedMatches, catalog)
+            # LSST reads in a_net catalogs with flux in "janskys", so must convert back to DN
+            matches = matchJanskyToDn(matches)
+            if checkHscStack(metadata) is not None and self.config.doAddAperFluxHsc:
+                addApertureFluxesHSC(matches, prefix="second_")
+
+            if len(matches) == 0:
+                self.log.warn("No matches for %s" % (dataRef.dataId,))
+                continue
+
+            # Set the aliap map for the matches sources (i.e. the .second attribute schema for each match)
+            if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
+                for mm in matches:
+                    aliasMap = mm.second.schema.getAliasMap()
+                    for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                        aliasMap.set(lsstName, otherName)
+
+            schema = matches[0].second.schema
+            src = afwTable.SourceCatalog(schema)
+            src.reserve(len(catalog))
+            for mm in matches:
+                src.append(mm.second)
+            centroidStr = "base_SdssCentroid"
+            if centroidStr not in schema:
+                centroidStr =  "base_TransformedCentroid"
+            matches[0].second.table.defineCentroid(centroidStr)
+            src.table.defineCentroid(centroidStr)
+
+            for mm, ss in zip(matches, src):
+                mm.second = ss
+
+            matchMeta = butler.get(dataset, dataRef.dataId,
+                                   flags=afwTable.SOURCE_IO_NO_FOOTPRINTS).getTable().getMetadata()
+            catalog = matchesToCatalog(matches, matchMeta)
+            # Compute Focal Plane coordinates for each source if not already there
+            if self.config.analysisMatches.doPlotFP:
+                if "src_base_FPPosition_x" not in catalog.schema and "src_focalplane_x" not in catalog.schema:
+                    exp = butler.get("calexp", dataRef.dataId)
+                    det = exp.getDetector()
+                    catalog = addFpPoint(det, catalog, prefix="src_")
+            # Optionally backout aperture corrections
+            if self.config.doBackoutApCorr:
+                catalog = backoutApCorr(catalog)
+            # Need to set the aliap map for the matched catalog sources
+            if self.config.srcSchemaMap is not None and checkHscStack(metadata) is not None:
+                aliasMap = catalog.schema.getAliasMap()
+                for lsstName, otherName in self.config.srcSchemaMap.iteritems():
+                    aliasMap.set("src_" + lsstName, "src_" + otherName)
+            catList.append(catalog)
+
+        if len(catList) == 0:
+            raise TaskError("No matches read: %s" % ([dataRef.dataId for dataRef in dataRefList]))
+
+        return concatenateCatalogs(catList)
+
+    def calibrateCatalogs(self, catalog):
+        self.zpLabel = "common (" + str(self.config.analysis.zp) + ")"
+        calibrated = calibrateCoaddSourceCatalog(catalog, self.config.analysis.zp)
         return calibrated
 
     def plotMags(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, skymap=None,
@@ -1371,20 +1447,25 @@ class CoaddAnalysisTask(CmdLineTask):
                                      camera=camera, ccdList=ccdList, skymap=skymap, patchList=patchList,
                                      hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
 
-    def plotForced(self, unforced, forced, filenamer, dataId):
-        catalog = joinMatches(afwTable.matchRaDec(unforced, forced,
+    def plotCompareUnforced(self, forced, unforced, filenamer, dataId, butler=None, camera=None, ccdList=None,
+                            skymap=None, patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
+        enforcer = None
+        catalog = joinMatches(afwTable.matchRaDec(forced, unforced,
                                                   self.config.matchRadius*afwGeom.arcseconds),
-                              "unforced_", "forced_")
+                              "forced_", "unforced_")
         catalog.writeFits(dataId["filter"] + ".fits")
         for col in self.config.fluxToPlotList:
             # ["base_PsfFlux", "base_GaussianFlux", "slot_CalibFlux", "ext_photometryKron_KronFlux",
             # "modelfit_Cmodel", "modelfit_Cmodel_exp_flux", "modelfit_Cmodel_dev_flux"]:
-            if "forced." + col in catalog.schema:
-                self.AnalysisClass(catalog, MagDiff("unforced." + col, "forced." + col),
-                                   "Forced mag difference (%s)" % col, "forced_" + col, self.config.analysis,
-                                   prefix="unforced.", flags=[col + ".flags"],
-                                   labeller=OverlapsStarGalaxyLabeller("forced.", "unforced."),
-                                   ).plotAll(dataId, filenamer, self.log)
+            if "forced_" + col in catalog.schema:
+                self.AnalysisClass(catalog, MagDiff("forced_" + col, "unforced_" + col),
+                                   "Forced - Unforced mag difference (%s)" % col, "forced_" + col,
+                                   self.config.analysis, prefix="unforced_", flags=[col + "_flags"],
+                                   labeller=OverlapsStarGalaxyLabeller("forced_", "unforced_"),
+                                   ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
+                                             camera=camera, ccdList=ccdList, skymap=skymap,
+                                             patchList=patchList, hscRun=hscRun,
+                                             matchRadius=matchRadius, zpLabel=zpLabel)
 
     def overlaps(self, catalog):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
@@ -1646,10 +1727,11 @@ class VisitAnalysisTask(CoaddAnalysisTask):
                                    flags=afwTable.SOURCE_IO_NO_FOOTPRINTS).getTable().getMetadata()
             catalog = matchesToCatalog(matches, matchMeta)
             # Compute Focal Plane coordinates for each source if not already there
-            if "src_base_FPPosition_x" not in catalog.schema and "src_focalplane_x" not in catalog.schema:
-                exp = butler.get("calexp", dataRef.dataId)
-                det = exp.getDetector()
-                catalog = addFpPoint(det, catalog, prefix="src_")
+            if self.config.analysisMatches.doPlotFP:
+                if "src_base_FPPosition_x" not in catalog.schema and "src_focalplane_x" not in catalog.schema:
+                    exp = butler.get("calexp", dataRef.dataId)
+                    det = exp.getDetector()
+                    catalog = addFpPoint(det, catalog, prefix="src_")
             # Optionally backout aperture corrections
             if self.config.doBackoutApCorr:
                 catalog = backoutApCorr(catalog)
@@ -1665,6 +1747,32 @@ class VisitAnalysisTask(CoaddAnalysisTask):
 
         return concatenateCatalogs(catList)
 
+    def calibrateCatalogs(self, dataRef, catalog, metadata):
+        self.zp = 0.0
+        try:
+            self.zpLabel = self.zpLabel
+        except:
+            self.zpLabel = None
+        if self.config.doApplyUberCal:
+            calibrated = calibrateSourceCatalogMosaic(dataRef, catalog, zp=self.zp)
+            if self.zpLabel is None:
+                self.log.info("Applying meas_mosaic calibration to catalog")
+            self.zpLabel = "MEAS_MOSAIC"
+        else:
+            if self.config.doApplyCalexpZp:
+                # Scale fluxes to measured zeropoint
+                self.zp = 2.5*np.log10(metadata.get("FLUXMAG0"))
+                if self.zpLabel is None:
+                    self.log.info("Using 2.5*log10(FLUXMAG0) = %.4f from FITS header for zeropoint" % self.zp)
+                self.zpLabel = "FLUXMAG0"
+            else:
+                # Scale fluxes to common zeropoint
+                self.zp = 33.0
+                if self.zpLabel is None:
+                    self.log.info("Using common value of %.4f for zeropoint" % (self.zp))
+                self.zpLabel = "common (" + str(self.zp) + ")"
+            calibrated = calibrateSourceCatalog(catalog, self.zp)
+        return calibrated
 
 class CompareAnalysisConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name for coadd")
