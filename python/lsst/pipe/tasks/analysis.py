@@ -200,11 +200,16 @@ class Analysis(object):
 
     @staticmethod
     def labelVisit(filename, plt, axis, xLoc, yLoc, color="k"):
-        if filename.find("visit-") :
-            i1 = filename.find("visit-") + len("visit-")
+        labelStr = None
+        if filename.find("visit-") >= 0:
+            labelStr = "visit"
+        if filename.find("tract-") >= 0:
+            labelStr = "tract"
+        if labelStr is not None:
+            i1 = filename.find(labelStr + "-") + len(labelStr + "-")
             i2 = filename.find("/", i1)
             visitNumber = filename[i1:i2]
-            plt.text(xLoc, yLoc, "visit: " + str(visitNumber), ha="center", va="center", fontsize=12,
+            plt.text(xLoc, yLoc, labelStr + ": " + str(visitNumber), ha="center", va="center", fontsize=12,
                      transform=axis.transAxes, color=color)
 
     @staticmethod
