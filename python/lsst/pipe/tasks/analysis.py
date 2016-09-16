@@ -387,7 +387,7 @@ class Analysis(object):
         xBinwidth = min(0.1, np.around(0.05*abs(magMax - magMin), nxDecimal))
         xBins = np.arange(magMin + 0.5*xBinwidth, magMax + 0.5*xBinwidth, xBinwidth)
         nyDecimal = int(-1.0*np.around(np.log10(0.05*abs(self.qMax - self.qMin)) - 0.5))
-        yBinwidth = min(0.02, np.around(0.05*abs(self.qMax - self.qMin), nyDecimal))
+        yBinwidth = max(0.005, np.around(0.02*abs(self.qMax - self.qMin), nyDecimal))
         yBins = np.arange(self.qMin - 0.5*yBinwidth, self.qMax + 0.55*yBinwidth, yBinwidth)
         axHistx.set_xlim(axScatter.get_xlim())
         axHisty.set_ylim(axScatter.get_ylim())
