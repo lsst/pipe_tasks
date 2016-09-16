@@ -538,7 +538,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         # convert zero-point to (mag/sec/adu) for task MAGZERO metadata
         try:
-            magZero = photoRes.zp - 2.5*math.log10(exposure.getCalib().getExptime())
+            exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
+            magZero = photoRes.zp - 2.5*math.log10(exposureTime)
             self.metadata.set('MAGZERO', magZero)
         except Exception:
             self.log.warn("Could not set normalized MAGZERO in header: no exposure time")
