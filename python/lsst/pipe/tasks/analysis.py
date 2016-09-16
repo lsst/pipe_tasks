@@ -219,9 +219,12 @@ class Analysis(object):
 
     @staticmethod
     def plotCameraOutline(axes, camera, ccdList):
+        axes.tick_params(labelsize=6)
+        axes.locator_params(nbins=6)
+        axes.ticklabel_format(useOffset=False)
         camRadius = max(camera.getFpBBox().getWidth(), camera.getFpBBox().getHeight())/2
         camRadius = np.round(camRadius, -2)
-        camLimits = np.round(1.2*camRadius, -2)
+        camLimits = np.round(1.25*camRadius, -2)
         for ccd in camera:
             if ccd.getId() in ccdList:
                 ccdCorners = ccd.getCorners(cameraGeom.FOCAL_PLANE)
@@ -237,13 +240,46 @@ class Analysis(object):
         for x, y, t in ([-1, 0, "N"], [0, 1, "W"], [1, 0, "S"], [0, -1, "E"]):
             axes.text(1.08*camRadius*x, 1.08*camRadius*y, t, ha="center", va="center", fontsize=6)
 
+
+    @staticmethod
+    def plotPatchOutline(axes, skymap, patchList):
+        buff = 0.02
+        axes.tick_params(labelsize=6)
+        axes.locator_params(nbins=6)
+        axes.ticklabel_format(useOffset=False)
+        for tract in skymap:
+            tractRa, tractDec = bboxToRaDec(tract.getBBox(), tract.getWcs())
+            xlim = max(tractRa) + buff, min(tractRa) - buff
+            ylim = min(tractDec) - buff, max(tractDec) + buff
+            axes.fill(tractRa, tractDec, fill=True, edgecolor='k', lw=1, linestyle='dashed',
+                      color="black", alpha=0.2)
+            for ip, patch in enumerate(tract):
+                color = "k"
+                alpha = 0.05
+                if str(patch.getIndex()[0])+","+str(patch.getIndex()[1]) in patchList:
+                    color = ("r", "b", "c", "g", "m")[ip%5]
+                    alpha = 0.5
+                ra, dec = bboxToRaDec(patch.getOuterBBox(), tract.getWcs())
+                axes.fill(ra, dec, fill=True, color=color, lw=1, linestyle="solid", alpha=alpha)
+                ra, dec = bboxToRaDec(patch.getInnerBBox(), tract.getWcs())
+                axes.fill(ra, dec, fill=False, color=color, lw=1, linestyle="dashed", alpha=0.5*alpha)
+                axes.text(percent(ra), percent(dec, 0.5), str(patch.getIndex()),
+                            fontsize=5, horizontalalignment="center", verticalalignment="center")
+            axes.text(percent(tractRa, 0.5), 2.0*percent(tractDec, 0.0) - percent(tractDec, 0.18), "RA (deg)",
+                      fontsize=6, horizontalalignment="center", verticalalignment="center")
+            axes.text(2*percent(tractRa, 1.0) - percent(tractRa, 0.78), percent(tractDec, 0.5), "Dec (deg)",
+                      fontsize=6, horizontalalignment="center", verticalalignment="center",
+                      rotation="vertical")
+            axes.set_xlim(xlim)
+            axes.set_ylim(ylim)
+
     @staticmethod
     def plotCcdOutline(axes, butler, dataId, ccdList, zpLabel=None):
         """!Plot outlines of CCDs in ccdList
         """
         dataIdCopy = dataId.copy()
         for ccd in ccdList:
-            dataIdCopy['ccd'] = ccd
+            dataIdCopy["ccd"] = ccd
             calexp = butler.get("calexp", dataIdCopy)
             dataRef = butler.dataRef("raw", dataId=dataIdCopy)
             if zpLabel == "MEAS_MOSAIC":
@@ -268,8 +304,8 @@ class Analysis(object):
             centerY = np.rad2deg(np.float64(wcs.pixelToSky(xy)[1]))
             axes.text(centerX, centerY, "%i" % ccd, ha="center", va= "center", fontsize=6)
 
-    def plotAgainstMag(self, filename, stats=None, camera=None, ccdList=None, hscRun=None, matchRadius=None,
-                       zpLabel=None):
+    def plotAgainstMag(self, filename, stats=None, camera=None, ccdList=None, skymap=None, patchList=None,
+                       hscRun=None, matchRadius=None, zpLabel=None):
         """Plot quantity against magnitude"""
         fig, axes = plt.subplots(1, 1)
         plt.axhline(0, linestyle="--", color="0.4")
@@ -294,20 +330,20 @@ class Analysis(object):
         fig.savefig(filename)
         plt.close(fig)
 
-    def plotAgainstMagAndHist(self, filename, stats=None, camera=None, ccdList=None, hscRun=None,
-                              matchRadius=None, zpLabel=None):
+    def plotAgainstMagAndHist(self, filename, stats=None, camera=None, ccdList=None, skymap=None,
+                              patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
         """Plot quantity against magnitude with side histogram"""
         nullfmt = NullFormatter()   # no labels for histograms
         minorLocator = AutoMinorLocator(2) # minor tick marks
         # definitions for the axes
-        left, width = 0.12, 0.62
-        bottom, height = 0.1, 0.62
-        left_h = left + width + 0.02
-        bottom_h = bottom + width + 0.02
+        left, width = 0.10, 0.62
+        bottom, height = 0.08, 0.62
+        left_h = left + width + 0.03
+        bottom_h = bottom + width + 0.04
         rect_scatter = [left, bottom, width, height]
         rect_histx = [left, bottom_h, width, 0.23]
         rect_histy = [left_h, bottom, 0.20, height]
-        topRight = [left_h - 0.01, bottom_h, 0.23, 0.23]
+        topRight = [left_h - 0.002, bottom_h + 0.01, 0.22, 0.22]
         # start with a rectangular Figure
         plt.figure(1)
 
@@ -315,18 +351,25 @@ class Analysis(object):
         axScatter.axhline(0, linestyle="--", color="0.4")
         axHistx = plt.axes(rect_histx)
         axHisty = plt.axes(rect_histy)
+        axHistx.tick_params(labelsize=9)
+        axHisty.tick_params(labelsize=9)
         # no labels
         axHistx.xaxis.set_major_formatter(nullfmt)
         axHisty.yaxis.set_major_formatter(nullfmt)
 
         axTopRight = plt.axes(topRight)
         # no labels
-        axTopRight.xaxis.set_major_formatter(nullfmt)
-        axTopRight.yaxis.set_major_formatter(nullfmt)
+        # axTopRight.xaxis.set_major_formatter(nullfmt)
+        # axTopRight.yaxis.set_major_formatter(nullfmt)
         axTopRight.set_aspect("equal")
+
+        axScatter.tick_params(labelsize=10)
 
         if camera is not None and len(ccdList) > 0:
             self.plotCameraOutline(axTopRight, camera, ccdList)
+
+        if skymap is not None and len(patchList) > 0:
+            self.plotPatchOutline(axTopRight, skymap, patchList)
 
         starMagMax = self.data["star"].mag.max() - 0.1
         aboveStarMagMax = self.data["star"].mag > starMagMax
@@ -464,7 +507,8 @@ class Analysis(object):
         plt.close(fig)
 
     def plotSkyPosition(self, filename, cmap=plt.cm.Spectral, stats=None, dataId=None, butler=None,
-                        camera=None, ccdList=None, hscRun=None, matchRadius=None, zpLabel=None):
+                        camera=None, ccdList=None, skymap=None, patchList=None, hscRun=None,
+                        matchRadius=None, zpLabel=None):
         """Plot quantity as a function of position"""
         ra = np.rad2deg(self.catalog[self.prefix + "coord_ra"])
         dec = np.rad2deg(self.catalog[self.prefix + "coord_dec"])
@@ -546,12 +590,14 @@ class Analysis(object):
         plt.close(fig)
 
     def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, butler=None, camera=None,
-                ccdList=None, hscRun=None, matchRadius=None, zpLabel=None):
+                ccdList=None, skymap=None, patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
         """Make all plots"""
         stats = self.stats(forcedMean=forcedMean)
         self.plotAgainstMagAndHist(filenamer(dataId, description=self.shortName, style="psfMagHist"),
-                                    stats=stats, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                    matchRadius=matchRadius, zpLabel=zpLabel)
+                                   stats=stats, camera=camera, ccdList=ccdList, skymap=skymap,
+                                   patchList=patchList, hscRun=hscRun, matchRadius=matchRadius,
+                                   zpLabel=zpLabel)
+
         if self.config.doPlotOldMagsHist:
             self.plotAgainstMag(filenamer(dataId, description=self.shortName, style="psfMag"), stats=stats,
                                 hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
@@ -559,8 +605,8 @@ class Analysis(object):
                                hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
 
         self.plotSkyPosition(filenamer(dataId, description=self.shortName, style="sky"), stats=stats,
-                             dataId=dataId, butler=butler, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                             matchRadius=matchRadius, zpLabel=zpLabel)
+                             dataId=dataId, butler=butler, camera=camera, ccdList=ccdList,  skymap=skymap,
+                             patchList=patchList, hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.plotRaDec(filenamer(dataId, description=self.shortName, style="radec"), stats=stats,
                        hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         log.info("Statistics from %s of %s: %s" % (dataId, self.quantityName, stats))
@@ -649,7 +695,7 @@ class Enforcer(object):
 
 class CcdAnalysis(Analysis):
     def plotAll(self, dataId, filenamer, log, enforcer=None, forcedMean=None, butler=None, camera=None,
-                ccdList=None, hscRun=None, matchRadius=None, zpLabel=None):
+                ccdList=None, skymap=None, patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
         stats = self.stats(forcedMean=forcedMean)
         self.plotCcd(filenamer(dataId, description=self.shortName, style="ccd"), stats=stats,
                      hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
@@ -1056,6 +1102,22 @@ def rotatePixelCoords(sources, width, height, nQuarter):
             s.set(yKey, width - x0 - 1.0)
     return sources
 
+def bboxToRaDec(bbox, wcs):
+    """Get the corners of a BBox and convert them to lists of RA and Dec."""
+    corners = []
+    for corner in bbox.getCorners():
+        p = afwGeom.Point2D(corner.getX(), corner.getY())
+        coord = wcs.pixelToSky(p).toIcrs()
+        corners.append([coord.getRa().asDegrees(), coord.getDec().asDegrees()])
+    ra, dec = zip(*corners)
+    return ra, dec
+
+def percent(values, p=0.5):
+    """Return a value a faction of the way between the min and max values in a list."""
+    m = min(values)
+    interval = max(values) - m
+    return m + p*interval
+
 @contextmanager
 def andCatalog(version):
     current = eups.findSetupVersion("astrometry_net_data")[0]
@@ -1145,6 +1207,10 @@ class CoaddAnalysisTask(CmdLineTask):
 
     def run(self, patchRefList, cosmos=None):
         dataId = patchRefList[0].dataId
+        patchList = [dataRef.dataId["patch"] for dataRef in patchRefList]
+        butler = patchRefList[0].getButler()
+        skymap = butler.get("deepCoadd_skyMap", {"tract": dataRef.dataId["tract"]})
+
         filterName = dataId["filter"]
         filenamer = Filenamer(patchRefList[0].getButler(), self.outputDataset, patchRefList[0].dataId)
         if (self.config.doPlotMags or self.config.doPlotStarGalaxy or self.config.doPlotOverlaps or
@@ -1154,10 +1220,12 @@ class CoaddAnalysisTask(CmdLineTask):
             catalog = self.readCatalogs(patchRefList, "deepCoadd_forced_src")
             catalog = calibrateCoaddSourceCatalog(catalog, self.config.analysis.zp)
         if self.config.doPlotMags:
-            self.plotMags(catalog, filenamer, dataId)
+            self.plotMags(forced, filenamer, dataId, skymap=skymap, patchList=patchList, hscRun=hscRun,
+                          zpLabel=self.zpLabel)
         if self.config.doPlotStarGalaxy:
-            if "ext_shapeHSM_HsmSourceMoments_xx" in catalog.schema:
-                self.plotStarGal(catalog, filenamer, dataId)
+            if "ext_shapeHSM_HsmSourceMoments_xx" in unforced.schema:
+                self.plotStarGal(unforced, filenamer, dataId, skymap=skymap, patchList=patchList,
+                                 hscRun=hscRun, zpLabel=self.zpLabel)
             else:
                 self.log.warn("Cannot run plotStarGal: ext_shapeHSM_HsmSourceMoments_xx not in catalog.schema")
         if cosmos:
@@ -1213,8 +1281,8 @@ class CoaddAnalysisTask(CmdLineTask):
             calibrated = calibrateSourceCatalog(catalog, self.zp)
         return calibrated
 
-    def plotMags(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
-                 matchRadius=None, zpLabel=None):
+    def plotMags(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, skymap=None,
+                 patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
         enforcer = Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in self.config.fluxToPlotList:
         # ["base_GaussianFlux", ]: # "ext_photometryKron_KronFlux", "modelfit_Cmodel", "slot_CalibFlux"]:
@@ -1223,11 +1291,12 @@ class CoaddAnalysisTask(CmdLineTask):
                                    % col, "mag_" + col, self.config.analysis, flags=[col + "_flag"],
                                    labeller=StarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
-                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                             camera=camera, ccdList=ccdList, skymap=skymap,
+                                             patchList=patchList, hscRun=hscRun,
                                              matchRadius=matchRadius, zpLabel=zpLabel)
 
-    def plotSizes(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, hscRun=None,
-                 matchRadius=None, zpLabel=None):
+    def plotSizes(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, skymap=None,
+                 patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
         enforcer = None
         for col in ["base_PsfFlux", ]:
             if col + "_flux" in catalog.schema:
@@ -1237,7 +1306,8 @@ class CoaddAnalysisTask(CmdLineTask):
                                    goodKeys=["calib_psfUsed"], qMin=-0.04, qMax=0.04,
                                    labeller=StarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
-                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                             camera=camera, ccdList=ccdList, skymap=skymap,
+                                             patchList=patchList, hscRun=hscRun,
                                              matchRadius=matchRadius, zpLabel=zpLabel)
                 self.AnalysisClass(catalog, psfHsmTraceSizeDiff(),
                                    "HSM Trace (psfUsed - PSFmodel)/PSFmodel", "hsmTrace_",
@@ -1245,11 +1315,12 @@ class CoaddAnalysisTask(CmdLineTask):
                                    goodKeys=["calib_psfUsed"], qMin=-0.04, qMax=0.04,
                                    labeller=StarGalaxyLabeller(),
                                    ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler,
-                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
+                                             camera=camera, ccdList=ccdList, skymap=skymap,
+                                             patchList=patchList, hscRun=hscRun,
                                              matchRadius=matchRadius, zpLabel=zpLabel)
 
-    def plotCentroidXY(self, catalog, filenamer, dataId, camera=None, ccdList=None, hscRun=None,
-                       matchRadius=None, zpLabel=None):
+    def plotCentroidXY(self, catalog, filenamer, dataId, camera=None, ccdList=None, skymap=None,
+                       patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
         enforcer = None # Enforcer(requireLess={"star": {"stdev": 0.02}})
         for col in ["base_SdssCentroid_x", "base_SdssCentroid_y"]:
             if col in catalog.schema:
@@ -1260,16 +1331,20 @@ class CoaddAnalysisTask(CmdLineTask):
                                             camera=camera, ccdList=ccdList, hscRun=hscRun,
                                             matchRadius=matchRadius, zpLabel=zpLabel)
 
-    def plotStarGal(self, catalog, filenamer, dataId, hscRun=None, matchRadius=None, zpLabel=None):
+    def plotStarGal(self, catalog, filenamer, dataId, butler=None, camera=None, ccdList=None, skymap=None,
+                    patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
+        enforcer = None
         self.AnalysisClass(catalog, deconvMomStarGal, "pStar", "pStar", self.config.analysis,
-                           qMin=0.0, qMax=1.0, labeller=StarGalaxyLabeller()
-                           ).plotAll(dataId, filenamer, self.log, hscRun=hscRun,
+                           qMin=-0.1, qMax=1.3, labeller=StarGalaxyLabeller()
+                           ).plotAll(dataId, filenamer, self.log, enforcer, butler=butler, camera=camera,
+                                     ccdList=ccdList, skymap=skymap, patchList=patchList, hscRun=hscRun,
                                      matchRadius=matchRadius, zpLabel=zpLabel)
-        self.AnalysisClass(catalog, deconvMom, "Deconvolved moments", "deconvMom", self.config.analysis,
-                           qMin=-1.0, qMax=6.0, labeller=StarGalaxyLabeller()
+        self.AnalysisClass(catalog, deconvMom, "Deconvolved moments (unforced)", "deconvMom",
+                           self.config.analysis, qMin=-1.0, qMax=3.0, labeller=StarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.2}}), hscRun=hscRun,
-                                     matchRadius=matchRadius, zpLabel=zpLabel)
+                                     Enforcer(requireLess={"star": {"stdev": 0.2}}), butler=butler,
+                                     camera=camera, ccdList=ccdList, skymap=skymap, patchList=patchList,
+                                     hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
 
     def plotForced(self, unforced, forced, filenamer, dataId):
         catalog = joinMatches(afwTable.matchRaDec(unforced, forced,
@@ -1290,7 +1365,8 @@ class CoaddAnalysisTask(CmdLineTask):
         matches = afwTable.matchRaDec(catalog, self.config.matchRadius*afwGeom.arcseconds, False)
         return joinMatches(matches, "first_", "second_")
 
-    def plotOverlaps(self, overlaps, filenamer, dataId, hscRun=None, matchRadius=None, zpLabel=None):
+    def plotOverlaps(self, overlaps, filenamer, dataId, butler=None, camera=None, ccdList=None,
+                     skymap=None, patchList=None, hscRun=None, matchRadius=None, zpLabel=None):
         magEnforcer = Enforcer(requireLess={"star": {"stdev": 0.003}})
         for col in self.config.fluxToPlotList:
             # ["base_PsfFlux", "base_GaussianFlux", "ext_photometryKron_KronFlux", "modelfit_Cmodel"]:
@@ -1300,59 +1376,67 @@ class CoaddAnalysisTask(CmdLineTask):
                                    self.config.analysis,
                                    prefix="first_", flags=[col + "_flag"],
                                    labeller=OverlapsStarGalaxyLabeller(),
-                                   ).plotAll(dataId, filenamer, self.log, magEnforcer, hscRun=hscRun,
-                                             zpLabel=zpLabel)
+                                   ).plotAll(dataId, filenamer, self.log, magEnforcer, butler=butler,
+                                             camera=camera, ccdList=ccdList, skymap=skymap,
+                                             patchList=patchList, hscRun=hscRun, zpLabel=zpLabel)
 
         distEnforcer = Enforcer(requireLess={"star": {"stdev": 0.005}})
         self.AnalysisClass(overlaps, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", "overlap_distance", self.config.analysis, prefix="first_",
                            qMin=0.0, qMax=0.15, labeller=OverlapsStarGalaxyLabeller(),
-                           ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0, hscRun=hscRun,
-                                     zpLabel=zpLabel)
+                           ).plotAll(dataId, filenamer, self.log, distEnforcer, forcedMean=0.0,
+                                     butler=butler, camera=camera, ccdList=ccdList, skymap=skymap,
+                                     patchList=patchList, hscRun=hscRun, zpLabel=zpLabel)
 
     def plotMatches(self, matches, filterName, filenamer, dataId, description="matches", butler=None,
-                    camera=None, ccdList=None, hscRun=None, matchRadius=None, zpLabel=None):
+                    camera=None, ccdList=None, skymap=None, patchList=None, hscRun=None, matchRadius=None,
+                    zpLabel=None):
         ct = self.config.colorterms.getColorterm(filterName, self.config.photoCatName)
-        self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0),
-                           "MagPsf - ref (calib_psfUsed)",
-                           description + "_mag_calib_psfUsed", self.config.analysisMatches, prefix="src_",
-                           goodKeys=["calib_psfUsed"], qMin=-0.05, qMax=0.05,
-                           labeller=MatchesStarGalaxyLabeller(),
-                           ).plotAll(dataId, filenamer, self.log,
-                                     Enforcer(requireLess={"star": {"stdev": 0.030}}), butler=butler,
-                                     camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                     matchRadius=matchRadius, zpLabel=zpLabel)
-        self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0), "MagPsf - ref",
+        if "src_calib_psfUsed" in matches.schema:
+            self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0),
+                               "MagPsf(unforced) - ref (calib_psfUsed)",
+                               description + "_mag_calib_psfUsed", self.config.analysisMatches, prefix="src_",
+                               goodKeys=["calib_psfUsed"], qMin=-0.05, qMax=0.05,
+                               labeller=MatchesStarGalaxyLabeller(),
+                               ).plotAll(dataId, filenamer, self.log,
+                                         Enforcer(requireLess={"star": {"stdev": 0.030}}), butler=butler,
+                                         camera=camera, ccdList=ccdList, skymap=skymap, patchList=patchList,
+                                         hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
+
+        self.AnalysisClass(matches, MagDiffMatches("base_PsfFlux_flux", ct, zp=0.0), "MagPsf(unforced) - ref",
                            description + "_mag", self.config.analysisMatches, prefix="src_",
                            qMin=-0.05, qMax=0.05, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.030}}), butler=butler,
-                                     camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                     matchRadius=matchRadius, zpLabel=zpLabel)
+                                     camera=camera, ccdList=ccdList, skymap=skymap, patchList=patchList,
+                                     hscRun=hscRun, matchRadius=matchRadius, zpLabel=zpLabel)
         self.AnalysisClass(matches, lambda cat: cat["distance"]*(1.0*afwGeom.radians).asArcseconds(),
                            "Distance (arcsec)", description + "_distance", self.config.analysisMatches,
                            prefix="src_", qMin=-0.02*self.config.matchesMaxDistance,
                            qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller()
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}), forcedMean=0.0,
-                                     butler=butler, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                     matchRadius=matchRadius, zpLabel=zpLabel)
+                                     butler=butler, camera=camera, ccdList=ccdList, skymap=skymap,
+                                     patchList=patchList, hscRun=hscRun, matchRadius=matchRadius,
+                                     zpLabel=zpLabel)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_ra", "ref_coord_ra", "ref_coord_dec"),
                            "dRA*cos(Dec) (arcsec)", description + "_ra", self.config.analysisMatches,
                            prefix="src_", qMin=-self.config.matchesMaxDistance,
                            qMax=self.config.matchesMaxDistance, labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}),
-                                     butler=butler, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                     matchRadius=matchRadius, zpLabel=zpLabel)
+                                     butler=butler, camera=camera, ccdList=ccdList, skymap=skymap,
+                                     patchList=patchList, hscRun=hscRun, matchRadius=matchRadius,
+                                     zpLabel=zpLabel)
         self.AnalysisClass(matches, AstrometryDiff("src_coord_dec", "ref_coord_dec"),
                            "dDec (arcsec)", description + "_dec", self.config.analysisMatches, prefix="src_",
                            qMin=-self.config.matchesMaxDistance, qMax=self.config.matchesMaxDistance,
                            labeller=MatchesStarGalaxyLabeller(),
                            ).plotAll(dataId, filenamer, self.log,
                                      Enforcer(requireLess={"star": {"stdev": 0.050}}),
-                                     butler=butler, camera=camera, ccdList=ccdList, hscRun=hscRun,
-                                     matchRadius=matchRadius, zpLabel=zpLabel)
+                                     butler=butler, camera=camera, ccdList=ccdList, skymap=skymap,
+                                     patchList=patchList, hscRun=hscRun, matchRadius=matchRadius,
+                                     zpLabel=zpLabel)
 
     def plotCosmos(self, catalog, filenamer, cosmos, dataId):
         labeller = CosmosLabeller(cosmos, self.config.matchRadius*afwGeom.arcseconds)
