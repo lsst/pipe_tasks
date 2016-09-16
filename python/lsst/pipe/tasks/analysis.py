@@ -133,9 +133,10 @@ class Analysis(object):
         self.config = config
         self.qMin = qMin
         self.qMax = qMax
-        if labeller.labels.has_key("galaxy") and "calib_psfUsed" not in goodKeys:
+        if (labeller.labels.has_key("galaxy") and "calib_psfUsed" not in goodKeys and
+            self.quantityName != "pStar"):
             self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
-        if "galaxy" in labeller.plot and "calib_psfUsed" not in goodKeys:
+        if "galaxy" in labeller.plot and "calib_psfUsed" not in goodKeys and self.quantityName != "pStar":
             self.qMin, self.qMax = 2.0*qMin, 2.0*qMax
         self.prefix = prefix
         self.flags = flags # omit if flag = True
