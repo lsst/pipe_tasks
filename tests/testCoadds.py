@@ -42,13 +42,13 @@ slow).
 """
 from __future__ import print_function
 from builtins import zip
+from past.builtins import basestring
 
 import unittest
 import shutil
 import os
 import numbers
 from collections import Iterable
-from types import StringTypes
 
 import lsst.utils.tests
 import lsst.afw.math
@@ -332,7 +332,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         partialOverlapKey = simSrcSchema.find("partialOverlap").key
         simSrcByObject = {}
         for simSrcRecord in simSrcCat:
-            simSrcByObject.setdefault(simSrcRecord.getL(objectIdKey), []).append(simSrcRecord)
+            simSrcByObject.setdefault(simSrcRecord.getI(objectIdKey), []).append(simSrcRecord)
         pureObjectIds = set()  # set will contain objects that never appear on edges
         for objectId, simSrcRecords in simSrcByObject.items():
             inAnyImages = False
@@ -393,7 +393,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             # a metadata entry may be a single value or multiple values, this test ensures that in either
             # case the value can properly be extracted and compared.
             ensureIterable = lambda x: x if isinstance(
-                x, Iterable) and not isinstance(x, StringTypes) else [x]
+                x, Iterable) and not isinstance(x, basestring) else [x]
             for nOffset in ensureIterable(meta.get('NOISE_OFFSET')):
                 self.assertIsInstance(nOffset, numbers.Number)
             for noiseSrc in ensureIterable(meta.get('NOISE_SOURCE')):

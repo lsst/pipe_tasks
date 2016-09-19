@@ -197,8 +197,8 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
                 if status:
                     simSrcRecord = simSrcCatalog.addNew()
                     simSrcRecord.setCoord(truthRecord.getCoord())
-                    simSrcRecord.setL(self.objectIdKey, truthRecord.getId())
-                    simSrcRecord.setL(self.exposureIdKey, obsRecord.getId())
+                    simSrcRecord.setI(self.objectIdKey, truthRecord.getId())
+                    simSrcRecord.setI(self.exposureIdKey, obsRecord.getId())
                     simSrcRecord.setFlag(self.centroidInBBoxKey, obsRecord.contains(truthRecord.getCoord()))
                     simSrcRecord.setFlag(self.partialOverlapKey, status == 1)
                     self.log.info("  added object {id}".format(id=truthRecord.getId()))
