@@ -53,7 +53,7 @@ class MeasurePsfConfig(pexConfig.Config):
 
 
 class MeasurePsfTask(pipeBase.Task):
-    """!
+    r"""!
 \anchor MeasurePsfTask_
 
 \brief Measure the PSF

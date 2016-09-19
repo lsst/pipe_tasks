@@ -63,7 +63,7 @@ class RepairConfig(pexConfig.Config):
 
 
 class RepairTask(pipeBase.Task):
-    """!
+    r"""!
     \anchor RepairTask_
 
     \brief Interpolate over defects in an exposure and handle cosmic rays

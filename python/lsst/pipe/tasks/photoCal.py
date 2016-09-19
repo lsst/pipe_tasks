@@ -159,7 +159,7 @@ class PhotoCalConfig(pexConf.Config):
 ## \}
 
 class PhotoCalTask(pipeBase.Task):
-    """!
+    r"""!
 \anchor PhotoCalTask_
 
 \brief Calculate the zero point of an exposure given a lsst.afw.table.ReferenceMatchVector.
