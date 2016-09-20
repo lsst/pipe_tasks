@@ -121,8 +121,8 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         self.makeSubtask("mockObject")
         self.makeSubtask("mockObservation")
         self.schema = lsst.afw.table.SimpleTable.makeMinimalSchema()
-        self.objectIdKey = self.schema.addField("objectId", type=int, doc="foreign key to truth catalog")
-        self.exposureIdKey = self.schema.addField("exposureId", type=int,
+        self.objectIdKey = self.schema.addField("objectId", type="L", doc="foreign key to truth catalog")
+        self.exposureIdKey = self.schema.addField("exposureId", type="L",
                                                   doc="foreign key to observation catalog")
         self.centroidInBBoxKey = self.schema.addField(
             "centroidInBBox", type="Flag",
@@ -197,8 +197,8 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
                 if status:
                     simSrcRecord = simSrcCatalog.addNew()
                     simSrcRecord.setCoord(truthRecord.getCoord())
-                    simSrcRecord.setI(self.objectIdKey, truthRecord.getId())
-                    simSrcRecord.setI(self.exposureIdKey, obsRecord.getId())
+                    simSrcRecord.setL(self.objectIdKey, truthRecord.getId())
+                    simSrcRecord.setL(self.exposureIdKey, obsRecord.getId())
                     simSrcRecord.setFlag(self.centroidInBBoxKey, obsRecord.contains(truthRecord.getCoord()))
                     simSrcRecord.setFlag(self.partialOverlapKey, status == 1)
                     self.log.info("  added object {id}".format(id=truthRecord.getId()))

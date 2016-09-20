@@ -332,7 +332,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         partialOverlapKey = simSrcSchema.find("partialOverlap").key
         simSrcByObject = {}
         for simSrcRecord in simSrcCat:
-            simSrcByObject.setdefault(simSrcRecord.getI(objectIdKey), []).append(simSrcRecord)
+            simSrcByObject.setdefault(simSrcRecord.getL(objectIdKey), []).append(simSrcRecord)
         pureObjectIds = set()  # set will contain objects that never appear on edges
         for objectId, simSrcRecords in simSrcByObject.items():
             inAnyImages = False
