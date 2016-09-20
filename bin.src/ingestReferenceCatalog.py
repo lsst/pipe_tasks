@@ -1,3 +1,3 @@
-#!/Users/rowen/UW/LSST/lsstsw/miniconda/bin/python
+#!/usr/bin/env python
 from lsst.meas.algorithms import IngestIndexedReferenceTask
 IngestIndexedReferenceTask.parseAndRun()
