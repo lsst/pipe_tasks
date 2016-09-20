@@ -65,7 +65,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="Use a simple gaussian PSF model for pre-convolution (else use fit PSF)? "
             "Ignored if doPreConvolve false.")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc="Detect sources?")
-    doDecorrelation = pexConfig.Field(dtype=bool, default=False,
+    doDecorrelate = pexConfig.Field(dtype=bool, default=False,
         doc="Perform diffim decorrelation to undo pixel correlation due to A&L kernel convolution? "
             "If True, also update the diffim PSF.")
     doMerge = pexConfig.Field(dtype=bool, default=True,
@@ -322,7 +322,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # (properly, this should be a cross-correlation, but our code does not yet support that)
             # compute scienceSigmaPost: sigma of science exposure with pre-convolution, if done,
             # else sigma of original science exposure
+            preConvPsf = None  # Store the preConvPsf (kernel) for use in decorrelation
+            svar = None
+            if self.config.doDecorrelate:
+                svar = self.decorrelate.computeVarianceMean(exposure)  # store svar for possible decorrelation
+
             if self.config.doPreConvolve:
+                self.log.info("Pre-convolving the science image.")
                 convControl = afwMath.ConvolutionControl()
                 # cannot convolve in place, so make a new MI to receive convolved image
                 srcMI = exposure.getMaskedImage()
@@ -338,6 +344,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
                 exposure.setMaskedImage(destMI)
                 scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
+                self.log.info("Finished pre-convolving. %f %f" % (scienceSigmaOrig, scienceSigmaPost))
             else:
                 scienceSigmaPost = scienceSigmaOrig
 
@@ -524,10 +531,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         # If doSubtract is False, then subtractedExposure was fetched from disk (above), thus it may have
         # already been decorrelated. Thus, we do not do decorrelation if doSubtract is False.
-        if self.config.doDecorrelation and self.config.doSubtract:
+        if self.config.doDecorrelate and self.config.doSubtract:
             decorrResult = self.decorrelate.run(exposure, templateExposure,
                                                 subtractedExposure,
-                                                subtractRes.psfMatchingKernel)
+                                                subtractRes.psfMatchingKernel,
+                                                preConvPsf, svar=svar)
             subtractedExposure = decorrResult.correctedExposure
 
         if self.config.doDetection:
