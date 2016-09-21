@@ -63,7 +63,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
-    
+
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("warpAndPsfMatch")
@@ -71,15 +71,15 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     @pipeBase.timeMethod
     def run(self, patchRef, selectDataList=[]):
         """Produce <coaddName>Coadd_tempExp images
-        
+
         <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
-        
+
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
         @return: dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
 
         @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
-        
+
         @warning: this task sets the Calib of the coaddTempExp to the Calib of the first calexp
         with any good pixels in the patch. For a mosaic camera the resulting Calib should be ignored
         (assembleCoadd should determine zeropoint scaling without referring to it).
@@ -164,8 +164,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
                                                                   tract=skyInfo.tractInfo.getId())
                 calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
+                covName = 'covar'
+                for key, val in calExpRef.dataId.items():
+                    covName += '_%s_%s'%(key, val)
                 exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
-                                                    maxBBox=skyInfo.bbox).exposure
+                                                    maxBBox=skyInfo.bbox, covName=None).exposure
                 if didSetMetadata:
                     mimg = exposure.getMaskedImage()
                     mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])

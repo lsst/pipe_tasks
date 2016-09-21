@@ -75,7 +75,6 @@ DATAREPO_ROOT = os.path.join(os.path.dirname(__file__), ".tests", "testCoadds-da
 
 plt.ion()
 
-
 def setup_module(module):
     lsst.utils.tests.init()
 
@@ -109,7 +108,7 @@ def setup_module(module):
     # Now run the seperate multiband tasks on the Coadd to make the reference
     # catalog for the forced photometry tests.
     runTaskOnPatches(butler, detectTask, mocksTask)
-    pdb.set_trace()
+    #pdb.set_trace()
 
     mergeDetConfig = MergeDetectionsTask.ConfigClass()
     mergeDetConfig.priorityList = ['r', ]
