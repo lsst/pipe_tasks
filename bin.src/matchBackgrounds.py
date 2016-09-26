@@ -20,7 +20,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import lsst.pex.logging as pexLog
 from lsst.pipe.tasks.matchBackgrounds import MatchBackgroundsTask
 
 MatchBackgroundsTask.parseAndRun()
