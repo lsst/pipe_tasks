@@ -859,7 +859,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     center = np.average(dmag, weights=dmagErr)
                     msg += " on first iteration; using average of all calibration stars"
 
-                self.log.log(self.log.WARN, msg)
+                self.log.warn(msg)
 
                 return pipeBase.Struct(
                     zp = center,
