@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division
 #
 # LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
+# Copyright 2008-2016 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -518,7 +518,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     missingFluxFieldList.append(fluxField)
 
             if missingFluxFieldList:
-                self.log.warn("Source catalog does not have fluxes for %s; ignoring color terms" %
+                self.log.warn("Source catalog does not have fluxes for %s; ignoring color terms",
                               " ".join(missingFluxFieldList))
                 ct = None
 
@@ -768,8 +768,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     if sigmaMax is None:
                         sigmaMax = 2*sig   # upper bound on st. dev. for clipping. multiplier is a heuristic
 
-                    self.log.debug("Photo calibration histogram: center = %.2f, sig = %.2f",
-                                   center, sig)
+                    self.log.debug("Photo calibration histogram: center = %.2f, sig = %.2f", center, sig)
 
                 else:
                     if sigmaMax is None:
@@ -859,7 +858,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     center = np.average(dmag, weights=dmagErr)
                     msg += " on first iteration; using average of all calibration stars"
 
-                self.log.log(self.log.WARN, msg)
+                self.log.warn(msg)
 
                 return pipeBase.Struct(
                     zp = center,
