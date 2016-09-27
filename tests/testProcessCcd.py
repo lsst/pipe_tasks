@@ -187,7 +187,6 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         def fixNaN(x):
             if x!=x:
                 return "NaN"
-        fixNaN = lambda x: x if x == x else "NaN"
         for record1, record2 in zip(catalog1, catalog2):
             for name, item in d.items():
                 if name not in skipCols:
