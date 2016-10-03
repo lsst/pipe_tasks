@@ -19,9 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import pdb
-
-import lsst.afw.display as afwDisplay
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
@@ -53,7 +50,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
 
-    def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None, covName=None):
+    def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None):
         """PSF-match exposure (if modelPsf is not None) and warp
 
         Note that PSF-matching is performed before warping, which is incorrect:
@@ -77,23 +74,9 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         """
         if modelPsf is not None:
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-        if covName is None:
-            covName = exposure.getId()
         with self.timer("warp"):
-            inWcs = exposure.getWcs()
-            inIm = exposure.getMaskedImage().getImage().clone()
-            inVar = exposure.getMaskedImage().getVariance().clone()
-            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox,
-                                                covName=covName)
-            outWcs = exposure.getWcs()
-            outIm = exposure.getMaskedImage().getImage().clone()
-            outVar = exposure.getMaskedImage().getVariance().clone()
-        if outIm.getArray().shape[0] > 0:
-            afwDisplay.getDisplay(0).mtv(inIm, wcs = inWcs)
-            afwDisplay.getDisplay(1).mtv(outIm, wcs = outWcs)
-            afwDisplay.getDisplay(2).mtv(inVar, wcs = inWcs)
-            afwDisplay.getDisplay(3).mtv(outVar, wcs = outWcs)
-            pdb.set_trace()
+            exposure, covImage = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
         return pipeBase.Struct(
             exposure = exposure,
+            covImage = covImage,
         )

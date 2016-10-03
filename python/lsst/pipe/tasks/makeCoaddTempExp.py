@@ -21,10 +21,11 @@ from __future__ import division, absolute_import
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import numpy
+import numpy; numpy.set_printoptions(linewidth=300); import pdb
 
 import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
+import lsst.afw.display as afwDisplay
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.meas.algorithms import CoaddPsf
@@ -56,6 +57,25 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype = bool,
         default = True,
     )
+
+
+class covView(object):
+    def __init__(self, destImage, covImage):
+        self.destImage = destImage
+        self.covArr = covImage.getArray()
+        self.destKernelWidth = covImage.getWidth()/destImage.getWidth()
+        self.destKernelHeight = covImage.getHeight()/destImage.getHeight()
+
+    def __getitem__(self, (loc1X, loc1Y, loc2X, loc2Y)):
+        if loc1X < loc2X or loc1Y < loc2Y:
+            loc2X, loc1X = loc1X, loc2X
+            loc2Y, loc1Y = loc1Y, loc2Y
+        if loc2X - loc1X > self.destKernelWidth or loc2Y - loc1Y > self.destKernelHeight:
+            val = 0.0
+        else:
+            val = self.covArr[int(loc1X*self.destKernelWidth) + (loc2X - loc1X), int(loc1Y*self.destKernelHeight) + (loc2Y - loc1Y)]
+            #pdb.set_trace()
+        return val
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
@@ -167,8 +187,20 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 covName = 'covar'
                 for key, val in calExpRef.dataId.items():
                     covName += '_%s_%s'%(key, val)
-                exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
-                                                    maxBBox=skyInfo.bbox, covName=None).exposure
+                warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
+                                                    maxBBox=skyInfo.bbox)
+                exposure = warpRes.exposure
+                covImage = warpRes.covImage
+                if exposure.getHeight() != 0 and exposure.getWidth() != 0:
+                    afwDisplay.getDisplay(0).mtv(exposure.getMaskedImage().getImage())
+                    afwDisplay.getDisplay(1).mtv(calExp.getMaskedImage().getImage())
+                    afwDisplay.getDisplay(2).mtv(calExp.getMaskedImage().getVariance())
+                    afwDisplay.getDisplay(3).mtv(exposure.getMaskedImage().getVariance())
+                    afwDisplay.getDisplay(4).mtv(covImage)
+                    view = covView(exposure, covImage)
+                    destArr = exposure.getMaskedImage().getImage().getArray()
+                    view[51,150,51,150]
+                    import pdb; pdb.set_trace()
                 if didSetMetadata:
                     mimg = exposure.getMaskedImage()
                     mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])
