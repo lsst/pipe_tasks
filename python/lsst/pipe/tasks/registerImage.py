@@ -9,7 +9,7 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -127,7 +127,7 @@ class RegisterTask(Task):
             copyMatches = type(matches)(copyMatches[i] for i in good)
 
         sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
-        self.log.info("Registration WCS: final WCS RMS=%f pixels from %d matches" % 
+        self.log.info("Registration WCS: final WCS RMS=%f pixels from %d matches" %
                       (sipFit.getScatterInPixels(), len(copyMatches)))
         self.metadata.set("SIP_RMS", sipFit.getScatterInPixels())
         self.metadata.set("SIP_GOOD", len(copyMatches))
@@ -150,7 +150,7 @@ class RegisterTask(Task):
         """
         warper = Warper.fromConfig(self.config.warper)
         copyExp = inputExp.Factory(inputExp.getMaskedImage(), newWcs)
-        alignedExp = warper.warpExposure(templateWcs, copyExp, destBBox=templateBBox)
+        alignedExp, covImage = warper.warpExposure(templateWcs, copyExp, destBBox=templateBBox)
         return alignedExp
 
     def warpSources(self, inputSources, newWcs, templateWcs, templateBBox):

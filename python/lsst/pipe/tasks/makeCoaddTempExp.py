@@ -74,7 +74,6 @@ class covView(object):
             val = 0.0
         else:
             val = self.covArr[int(loc1X*self.destKernelWidth) + (loc2X - loc1X), int(loc1Y*self.destKernelHeight) + (loc2Y - loc1Y)]
-            #pdb.set_trace()
         return val
 
 
@@ -191,7 +190,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                                     maxBBox=skyInfo.bbox)
                 exposure = warpRes.exposure
                 covImage = warpRes.covImage
-                if exposure.getHeight() != 0 and exposure.getWidth() != 0:
+                '''if exposure.getHeight() != 0 and exposure.getWidth() != 0:
                     afwDisplay.getDisplay(0).mtv(exposure.getMaskedImage().getImage())
                     afwDisplay.getDisplay(1).mtv(calExp.getMaskedImage().getImage())
                     afwDisplay.getDisplay(2).mtv(calExp.getMaskedImage().getVariance())
@@ -199,8 +198,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     afwDisplay.getDisplay(4).mtv(covImage)
                     view = covView(exposure, covImage)
                     destArr = exposure.getMaskedImage().getImage().getArray()
-                    view[51,150,51,150]
-                    import pdb; pdb.set_trace()
+                    import pdb; pdb.set_trace()'''
                 if didSetMetadata:
                     mimg = exposure.getMaskedImage()
                     mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])
