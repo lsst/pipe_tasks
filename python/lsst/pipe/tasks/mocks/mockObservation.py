@@ -93,6 +93,8 @@ class MockObservationTask(lsst.pipe.base.Task):
         @param[in] camera: camera geometry (an lsst.afw.cameraGeom.Camera)
         @param[in] catalog: catalog to which to add observations (an ExposureCatalog);
             if None then a new catalog is created.
+
+        @todo figure out what `pa` is and use that knowledge to set `boresightRotAng` and `rotType`
         """
         if catalog is None:
             catalog = lsst.afw.table.ExposureCatalog(self.schema)
@@ -100,7 +102,13 @@ class MockObservationTask(lsst.pipe.base.Task):
             if not catalog.getSchema().contains(self.schema):
                 raise ValueError("Catalog schema does not match Task schema")
         visit = 1
+
         for position, pa in self.makePointings(n, tractInfo):
+            visitInfo = lsst.afw.image.makeVisitInfo(
+                exposureTime = self.config.expTime,
+                date = lsst.daf.base.DateTime.now(),
+                boresightRaDec = position,
+            )
             for detector in camera:
                 calib = self.buildCalib()
                 record = catalog.addNew()
@@ -109,6 +117,7 @@ class MockObservationTask(lsst.pipe.base.Task):
                 record.set(self.pointingKey, position)
                 record.setWcs(self.buildWcs(position, pa, detector))
                 record.setCalib(calib)
+                record.setVisitInfo(visitInfo)
                 record.setPsf(self.buildPsf(detector))
                 record.setBBox(detector.getBBox())
                 detectorId = detector.getId()
@@ -165,8 +174,6 @@ class MockObservationTask(lsst.pipe.base.Task):
         a Gaussian defined by config, and mid-time set to DateTime.now().
         """
         calib = lsst.afw.image.Calib()
-        calib.setMidTime(lsst.daf.base.DateTime.now())
-        calib.setExptime(self.config.expTime)
         calib.setFluxMag0(
             self.rng.randn() * self.config.fluxMag0Sigma + self.config.fluxMag0,
             self.config.fluxMag0Sigma
