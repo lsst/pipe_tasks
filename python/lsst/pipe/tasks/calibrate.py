@@ -27,7 +27,7 @@ import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata,\
     LoadAstrometryNetObjectsTask
-from lsst.daf.butlerUtils import ExposureIdInfo
+from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import IdFactory, SourceTable
@@ -406,7 +406,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             - MaskedImage has background subtracted
             - Wcs is replaced
             - Calib zero-point is set
-        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
+        @param[in] exposureIdInfo  ID info for exposure (an lsst.obs.base.ExposureIdInfo)
             If not provided, returned SourceCatalog IDs will not be globally unique.
         @param[in,out] background  background model already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
