@@ -357,11 +357,11 @@ class IngestTask(Task):
         self.makeSubtask("register")
 
     @classmethod
-    def parseAndRun(cls):
+    def parseAndRun(cls, args=None):
         """Parse the command-line arguments and run the Task"""
         config = cls.ConfigClass()
         parser = cls.ArgumentParser(name=cls._DefaultName)
-        args = parser.parse_args(config)
+        args = parser.parse_args(config=config, args=args)
         task = cls(config=args.config)
         task.run(args)
 
