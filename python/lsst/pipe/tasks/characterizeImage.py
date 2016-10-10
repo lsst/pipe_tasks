@@ -30,7 +30,7 @@ from lsst.afw.table import SourceTable, SourceCatalog, IdFactory
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, LoadAstrometryNetObjectsTask
-from lsst.daf.butlerUtils import ExposureIdInfo
+from lsst.obs.base import ExposureIdInfo
 from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
@@ -390,7 +390,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - set apCorrMap
             - update detection and cosmic ray mask planes
             - subtract background and interpolate over cosmic rays
-        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo).
+        @param[in] exposureIdInfo  ID info for exposure (an lsst.obs.base.ExposureIdInfo).
             If not provided, returned SourceCatalog IDs will not be globally unique.
         @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
@@ -474,7 +474,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             - update or set psf
             - update detection and cosmic ray mask planes
             - subtract background
-        @param[in] exposureIdInfo  ID info for exposure (an lsst.daf.butlerUtils.ExposureIdInfo)
+        @param[in] exposureIdInfo  ID info for exposure (an lsst.obs_base.ExposureIdInfo)
         @param[in,out] background  initial model of background already subtracted from exposure
             (an lsst.afw.math.BackgroundList).
 

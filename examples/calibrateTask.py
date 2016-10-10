@@ -29,7 +29,7 @@ import numpy as np
 import lsst.utils
 import lsst.pipe.base as pipeBase
 import lsst.daf.persistence as dafPersistence
-from lsst.daf.butlerUtils import ExposureIdInfo
+from lsst.obs.base import ExposureIdInfo
 import lsst.afw.display as afwDisplay
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage

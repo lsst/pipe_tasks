@@ -215,7 +215,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
     """
     An extremely simple mapper for an imaginary camera for use in integration tests.
 
-    As SimpleMapper does not inherit from daf.butlerUtils.CameraMapper, it does not
+    As SimpleMapper does not inherit from obs.base.CameraMapper, it does not
     use a policy file to set mappings or a registry; all the information is here
     (in the map_* and query_* methods).
 
