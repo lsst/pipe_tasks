@@ -141,9 +141,9 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=5
     )
     controlRandomSeed = pexConfig.Field(
-        doc="Random seed for shuffing the control sample",
-        dtype=int,
-        default=10
+        doc = "Random seed for shuffing the control sample",
+        dtype = int,
+        default = 10
     )
     register = pexConfig.ConfigurableField(
         target=RegisterTask,

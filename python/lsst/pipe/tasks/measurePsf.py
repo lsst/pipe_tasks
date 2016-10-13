@@ -38,10 +38,10 @@ class MeasurePsfConfig(pexConfig.Config):
         default=-1.0,
     )
     reserveSeed = pexConfig.Field(
-        dtype=int,
-        doc="This number will be multiplied by the exposure ID "
+        dtype = int,
+        doc = "This number will be multiplied by the exposure ID "
         "to set the random seed for reserving candidates",
-        default=1,
+        default = 1,
     )
 
 ## \addtogroup LSST_task_documentation

@@ -104,10 +104,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             oldPsfIyy = None
             oldPsfIxy = None
 
-            for i, exposure in enumerate((
-                butler.get("calexp", dataId),
-                result.exposure,
-            )):
+            for i, exposure in enumerate((butler.get("calexp", dataId), result.exposure)):
                 self.assertEqual(exposure.getBBox(),
                                  afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
                 maskedImage = exposure.getMaskedImage()
