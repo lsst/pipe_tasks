@@ -29,6 +29,7 @@ from lsst.meas.algorithms import CoaddPsf, makeCoaddApCorrMap
 
 __all__ = ["CoaddInputRecorderTask"]
 
+
 class CoaddInputRecorderConfig(pexConfig.Config):
     """Config for CoaddInputRecorderTask
 
@@ -56,6 +57,7 @@ class CoaddInputRecorderConfig(pexConfig.Config):
         doc=("Save weights in the CCDs table as well as the visits table?"
              " (This is necessary for easy construction of CoaddPsf, but otherwise duplicate information.)")
     )
+
 
 class CoaddTempExpInputRecorder(object):
     """A helper class for CoaddInputRecorderTask, managing the CoaddInputs object for that a single
@@ -102,13 +104,13 @@ class CoaddTempExpInputRecorder(object):
             record.setI(self.task.ccdCcdKey, calExp.getDetector().getId())
         except:
             self.task.log.warn("Error getting detector serial number in visit %d; using -1"
-                                   % self.visitRecord.getId())
+                               % self.visitRecord.getId())
             record.setI(self.task.ccdCcdKey, -1)
         record.setI(self.task.ccdGoodPixKey, nGoodPix)
         if calExp is not None:
             self._setExposureInfoInRecord(exposure=calExp, record=record)
             if self.task.config.saveCcdWeights:
-                record.setD(self.task.ccdWeightKey, 1.0) # No weighting or overlap when warping
+                record.setD(self.task.ccdWeightKey, 1.0)  # No weighting or overlap when warping
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
@@ -145,6 +147,7 @@ class CoaddTempExpInputRecorder(object):
         record.setVisitInfo(info.getVisitInfo())
         record.setBBox(exposure.getBBox())
 
+
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
     visits that went into a coadd.
@@ -156,7 +159,7 @@ class CoaddInputRecorderTask(pipeBase.Task):
     ConfigClass = CoaddInputRecorderConfig
 
     def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)        
+        pipeBase.Task.__init__(self, *args, **kwargs)
         self.visitSchema = afwTable.ExposureTable.makeMinimalSchema()
         if self.config.saveVisitGoodPix:
             self.visitGoodPixKey = self.visitSchema.addField("goodpix", type=int,
@@ -202,7 +205,7 @@ class CoaddInputRecorderTask(pipeBase.Task):
                           "(found %d).  CoaddInputs for this visit will not be saved."
                           % len(tempExpInputs.visits))
             return None
-        inputVisitRecord = tempExpInputs.visits[0];
+        inputVisitRecord = tempExpInputs.visits[0]
         outputVisitRecord = coaddInputs.visits.addNew()
         outputVisitRecord.assign(inputVisitRecord)
         outputVisitRecord.setD(self.visitWeightKey, weight)
