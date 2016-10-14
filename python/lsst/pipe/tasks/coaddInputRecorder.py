@@ -106,11 +106,7 @@ class CoaddTempExpInputRecorder(object):
             record.setI(self.task.ccdCcdKey, -1)
         record.setI(self.task.ccdGoodPixKey, nGoodPix)
         if calExp is not None:
-            record.setPsf(calExp.getPsf())
-            record.setWcs(calExp.getWcs())
-            record.setBBox(calExp.getBBox())
-            record.setApCorrMap(calExp.getInfo().getApCorrMap())
-            record.setValidPolygon(calExp.getInfo().getValidPolygon())
+            self._setExposureInfoInRecord(exposure=calExp, record=record)
             if self.task.config.saveCcdWeights:
                 record.setD(self.task.ccdWeightKey, 1.0) # No weighting or overlap when warping
 
@@ -123,10 +119,7 @@ class CoaddTempExpInputRecorder(object):
         @param[in]     nGoodPix       Total number of good pixels in the CoaddTempExp; ignored unless
                                       saveVisitGoodPix is true.
         """
-        self.visitRecord.setPsf(coaddTempExp.getPsf())
-        self.visitRecord.setWcs(coaddTempExp.getWcs())
-        self.visitRecord.setValidPolygon(coaddTempExp.getInfo().getValidPolygon())
-        self.visitRecord.setBBox(coaddTempExp.getBBox())
+        self._setExposureInfoInRecord(exposure=coaddTempExp, record=self.visitRecord)
         if self.task.config.saveVisitGoodPix:
             self.visitRecord.setI(self.task.visitGoodPixKey, nGoodPix)
         coaddTempExp.getInfo().setCoaddInputs(self.coaddInputs)
@@ -136,6 +129,21 @@ class CoaddTempExpInputRecorder(object):
             coaddTempExp.setPsf(CoaddPsf(self.coaddInputs.ccds, wcs))
         apCorrMap = makeCoaddApCorrMap(self.coaddInputs.ccds, coaddTempExp.getBBox(afwImage.PARENT), wcs)
         coaddTempExp.getInfo().setApCorrMap(apCorrMap)
+
+    def _setExposureInfoInRecord(self, exposure, record):
+        """Set exposure info and bbox in an ExposureTable record
+
+        @param[in] exposure  exposure whose info is to be recorded
+        @param[in,out] record  record of an ExposureTable to set
+        """
+        info = exposure.getInfo()
+        record.setPsf(info.getPsf())
+        record.setWcs(info.getWcs())
+        record.setCalib(info.getCalib())
+        record.setApCorrMap(info.getApCorrMap())
+        record.setValidPolygon(info.getValidPolygon())
+        record.setVisitInfo(info.getVisitInfo())
+        record.setBBox(exposure.getBBox())
 
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
