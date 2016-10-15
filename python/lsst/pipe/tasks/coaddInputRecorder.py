@@ -29,6 +29,7 @@ from lsst.meas.algorithms import CoaddPsf, makeCoaddApCorrMap
 
 __all__ = ["CoaddInputRecorderTask"]
 
+
 class CoaddInputRecorderConfig(pexConfig.Config):
     """Config for CoaddInputRecorderTask
 
@@ -56,6 +57,7 @@ class CoaddInputRecorderConfig(pexConfig.Config):
         doc=("Save weights in the CCDs table as well as the visits table?"
              " (This is necessary for easy construction of CoaddPsf, but otherwise duplicate information.)")
     )
+
 
 class CoaddTempExpInputRecorder(object):
     """A helper class for CoaddInputRecorderTask, managing the CoaddInputs object for that a single
@@ -102,17 +104,13 @@ class CoaddTempExpInputRecorder(object):
             record.setI(self.task.ccdCcdKey, calExp.getDetector().getId())
         except:
             self.task.log.warn("Error getting detector serial number in visit %d; using -1"
-                                   % self.visitRecord.getId())
+                               % self.visitRecord.getId())
             record.setI(self.task.ccdCcdKey, -1)
         record.setI(self.task.ccdGoodPixKey, nGoodPix)
         if calExp is not None:
-            record.setPsf(calExp.getPsf())
-            record.setWcs(calExp.getWcs())
-            record.setBBox(calExp.getBBox())
-            record.setApCorrMap(calExp.getInfo().getApCorrMap())
-            record.setValidPolygon(calExp.getInfo().getValidPolygon())
+            self._setExposureInfoInRecord(exposure=calExp, record=record)
             if self.task.config.saveCcdWeights:
-                record.setD(self.task.ccdWeightKey, 1.0) # No weighting or overlap when warping
+                record.setD(self.task.ccdWeightKey, 1.0)  # No weighting or overlap when warping
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
@@ -123,10 +121,7 @@ class CoaddTempExpInputRecorder(object):
         @param[in]     nGoodPix       Total number of good pixels in the CoaddTempExp; ignored unless
                                       saveVisitGoodPix is true.
         """
-        self.visitRecord.setPsf(coaddTempExp.getPsf())
-        self.visitRecord.setWcs(coaddTempExp.getWcs())
-        self.visitRecord.setValidPolygon(coaddTempExp.getInfo().getValidPolygon())
-        self.visitRecord.setBBox(coaddTempExp.getBBox())
+        self._setExposureInfoInRecord(exposure=coaddTempExp, record=self.visitRecord)
         if self.task.config.saveVisitGoodPix:
             self.visitRecord.setI(self.task.visitGoodPixKey, nGoodPix)
         coaddTempExp.getInfo().setCoaddInputs(self.coaddInputs)
@@ -136,6 +131,22 @@ class CoaddTempExpInputRecorder(object):
             coaddTempExp.setPsf(CoaddPsf(self.coaddInputs.ccds, wcs))
         apCorrMap = makeCoaddApCorrMap(self.coaddInputs.ccds, coaddTempExp.getBBox(afwImage.PARENT), wcs)
         coaddTempExp.getInfo().setApCorrMap(apCorrMap)
+
+    def _setExposureInfoInRecord(self, exposure, record):
+        """Set exposure info and bbox in an ExposureTable record
+
+        @param[in] exposure  exposure whose info is to be recorded
+        @param[in,out] record  record of an ExposureTable to set
+        """
+        info = exposure.getInfo()
+        record.setPsf(info.getPsf())
+        record.setWcs(info.getWcs())
+        record.setCalib(info.getCalib())
+        record.setApCorrMap(info.getApCorrMap())
+        record.setValidPolygon(info.getValidPolygon())
+        record.setVisitInfo(info.getVisitInfo())
+        record.setBBox(exposure.getBBox())
+
 
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
@@ -148,7 +159,7 @@ class CoaddInputRecorderTask(pipeBase.Task):
     ConfigClass = CoaddInputRecorderConfig
 
     def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)        
+        pipeBase.Task.__init__(self, *args, **kwargs)
         self.visitSchema = afwTable.ExposureTable.makeMinimalSchema()
         if self.config.saveVisitGoodPix:
             self.visitGoodPixKey = self.visitSchema.addField("goodpix", type=int,
@@ -194,7 +205,7 @@ class CoaddInputRecorderTask(pipeBase.Task):
                           "(found %d).  CoaddInputs for this visit will not be saved."
                           % len(tempExpInputs.visits))
             return None
-        inputVisitRecord = tempExpInputs.visits[0];
+        inputVisitRecord = tempExpInputs.visits[0]
         outputVisitRecord = coaddInputs.visits.addNew()
         outputVisitRecord.assign(inputVisitRecord)
         outputVisitRecord.setD(self.visitWeightKey, weight)
