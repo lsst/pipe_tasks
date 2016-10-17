@@ -1007,14 +1007,18 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
-    def __init__(self, butler=None, schema=None, peakSchema=None, **kwargs):
+    def __init__(self, butler=None, schema=None, peakSchema=None, refObjLoader=None, **kwargs):
         """!
         \brief Initialize the task.
 
         Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
         \param[in] schema: the schema of the merged detection catalog used as input to this one
         \param[in] peakSchema: the schema of the PeakRecords in the Footprints in the merged detection catalog
-        \param[in] butler: a butler used to read the input schemas from disk, if schema or peakSchema is None
+        \param[in] refObjLoader: an instance of LoadReferenceObjectsTasks that supplies an external reference
+            catalog. May be None if the loader can be constructed from the butler argument or all steps
+            requiring a reference catalog are disabled.
+        \param[in] butler: a butler used to read the input schemas from disk or construct the reference
+            catalog loader, if schema or peakSchema or refObjLoader is None
 
         The task will set its own self.schema attribute to the schema of the output measurement catalog.
         This will include all fields from the input schema, as well as additional fields for all the
@@ -1036,7 +1040,9 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         if self.config.doMatchSources:
-            self.makeSubtask("match", butler=butler)
+            if refObjLoader is None:
+                assert butler is not None, "Neither butler nor refObjLoader is defined"
+            self.makeSubtask("match", butler=butler, refObjLoader=refObjLoader)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
