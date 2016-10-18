@@ -133,7 +133,13 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("image mean = %r, stdDev = %r" % (imMean, imStdDev))
                     print("variance mean = %r, stdDev = %r" % (varMean, varStdDev))
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
-
+                    
+                    # TODO: these thresholds are larger than they ought to be because the 
+                    # background modeling differs in py2 and py3.
+                    # The values asserted here are the precise result that py2 gives. The precision below 
+                    # should be tightened and this comment removed in the course of DM-8017.
+                    # Also see: https://community.lsst.org/t/difference-in-py2-and-py3-background-models/1240
+                    
                     self.assertAlmostEqual(bgMean, 191.51595080958367, places=3)
                     self.assertAlmostEqual(bgStdDev, 0.22492169148323429, places=3)
                     self.assertEqual(len(icSrc), 28)
