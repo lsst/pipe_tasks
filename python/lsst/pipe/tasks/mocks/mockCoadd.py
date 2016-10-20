@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,16 +9,17 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+import pdb
 
 import lsst.afw.image
 import lsst.afw.geom
@@ -189,6 +190,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             exposure.setCalib(obsRecord.getCalib())
             exposure.setWcs(obsRecord.getWcs())
             exposure.setPsf(obsRecord.getPsf())
+            exposure.getMaskedImage().getVariance().set(1.0)
             for truthRecord in truthCatalog:
                 status = self.mockObject.drawSource(truthRecord, exposure, buffer=self.config.edgeBuffer)
                 if status:
@@ -199,7 +201,6 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
                     simSrcRecord.setFlag(self.centroidInBBoxKey, obsRecord.contains(truthRecord.getCoord()))
                     simSrcRecord.setFlag(self.partialOverlapKey, status == 1)
                     self.log.info("  added object {id}".format(id=truthRecord.getId()))
-            exposure.getMaskedImage().getVariance().set(1.0)
             if butler is not None:
                 butler.put(exposure, "calexp", ccd=ccd, visit=visit)
         if butler is not None:

@@ -21,10 +21,11 @@ from __future__ import division, absolute_import
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import numpy
+import numpy; numpy.set_printoptions(linewidth=300); import pdb
 
 import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
+import lsst.afw.display as afwDisplay
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.meas.algorithms import CoaddPsf
@@ -58,12 +59,30 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     )
 
 
+class covView(object):
+    def __init__(self, destImage, covImage):
+        self.destImage = destImage
+        self.covArr = covImage.getArray()
+        self.destKernelWidth = covImage.getWidth()/destImage.getWidth()
+        self.destKernelHeight = covImage.getHeight()/destImage.getHeight()
+
+    def __getitem__(self, (loc1X, loc1Y, loc2X, loc2Y)):
+        if loc1X < loc2X or loc1Y < loc2Y:
+            loc2X, loc1X = loc1X, loc2X
+            loc2Y, loc1Y = loc1Y, loc2Y
+        if loc2X - loc1X > self.destKernelWidth or loc2Y - loc1Y > self.destKernelHeight:
+            val = 0.0
+        else:
+            val = self.covArr[int(loc1X*self.destKernelWidth) + (loc2X - loc1X), int(loc1Y*self.destKernelHeight) + (loc2Y - loc1Y)]
+        return val
+
+
 class MakeCoaddTempExpTask(CoaddBaseTask):
     """Task to produce <coaddName>Coadd_tempExp images
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
-    
+
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("warpAndPsfMatch")
@@ -71,15 +90,15 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     @pipeBase.timeMethod
     def run(self, patchRef, selectDataList=[]):
         """Produce <coaddName>Coadd_tempExp images
-        
+
         <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
-        
+
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
         @return: dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
 
         @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
-        
+
         @warning: this task sets the Calib of the coaddTempExp to the Calib of the first calexp
         with any good pixels in the patch. For a mosaic camera the resulting Calib should be ignored
         (assembleCoadd should determine zeropoint scaling without referring to it).
@@ -164,8 +183,22 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
                                                                   tract=skyInfo.tractInfo.getId())
                 calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
-                exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
-                                                    maxBBox=skyInfo.bbox).exposure
+                covName = 'covar'
+                for key, val in calExpRef.dataId.items():
+                    covName += '_%s_%s'%(key, val)
+                warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
+                                                    maxBBox=skyInfo.bbox)
+                exposure = warpRes.exposure
+                covImage = warpRes.covImage
+                '''if exposure.getHeight() != 0 and exposure.getWidth() != 0:
+                    afwDisplay.getDisplay(0).mtv(exposure.getMaskedImage().getImage())
+                    afwDisplay.getDisplay(1).mtv(calExp.getMaskedImage().getImage())
+                    afwDisplay.getDisplay(2).mtv(calExp.getMaskedImage().getVariance())
+                    afwDisplay.getDisplay(3).mtv(exposure.getMaskedImage().getVariance())
+                    afwDisplay.getDisplay(4).mtv(covImage)
+                    view = covView(exposure, covImage)
+                    destArr = exposure.getMaskedImage().getImage().getArray()
+                    import pdb; pdb.set_trace()'''
                 if didSetMetadata:
                     mimg = exposure.getMaskedImage()
                     mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])

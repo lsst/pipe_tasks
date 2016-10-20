@@ -21,6 +21,7 @@
 #
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
+import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
 
@@ -67,14 +68,15 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             ignored if destBBox is not None
         @param destBBox: exact parent bbox of warped exposure (an afwGeom.Box2I or None);
             if None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored
-        
+
         @return a pipe_base Struct containing:
         - exposure: processed exposure
         """
         if modelPsf is not None:
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
         with self.timer("warp"):
-            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
+            exposure, covImage = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
         return pipeBase.Struct(
             exposure = exposure,
+            covImage = covImage,
         )
