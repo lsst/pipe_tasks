@@ -910,6 +910,7 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
         # The numeric values for these configuration parameters were empirically determined, future work
         # may further refine them.
         AssembleCoaddConfig.setDefaults(self)
+        self.clipDetection.doTempLocalBackground = False
         self.clipDetection.reEstimateBackground = False
         self.clipDetection.returnOriginalFootprints = False
         self.clipDetection.thresholdPolarity = "both"

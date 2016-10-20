@@ -62,6 +62,9 @@ class ProcessCcdConfig(pexConfig.Config):
             """,
     )
 
+    def setDefaults(self):
+        self.charImage.detection.doTempLocalBackground = False
+        self.calibrate.detection.doTempLocalBackground = False
 
 ## \addtogroup LSST_task_documentation
 ## \{
