@@ -59,12 +59,16 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     )
 
 
-class covView(object):
-    def __init__(self, destImage, covImage):
+class CovView(object):
+    """Class to aid in visualizing covariance matrix
+    """
+
+    def __init__(self, destImage, covImage, covName=''):
         self.destImage = destImage
         self.covArr = covImage.getArray()
         self.destKernelWidth = covImage.getWidth()/destImage.getWidth()
         self.destKernelHeight = covImage.getHeight()/destImage.getHeight()
+        self.covName = covName
 
     def __getitem__(self, (loc1X, loc1Y, loc2X, loc2Y)):
         if loc1X < loc2X or loc1Y < loc2Y:
@@ -73,8 +77,12 @@ class covView(object):
         if loc2X - loc1X > self.destKernelWidth or loc2Y - loc1Y > self.destKernelHeight:
             val = 0.0
         else:
-            val = self.covArr[int(loc1X*self.destKernelWidth) + (loc2X - loc1X), int(loc1Y*self.destKernelHeight) + (loc2Y - loc1Y)]
+            val = self.covArr[int(loc1X*self.destKernelWidth) + (loc2X - loc1X),
+                              int(loc1Y*self.destKernelHeight) + (loc2Y - loc1Y)]
         return val
+
+    def setName(covName):
+        self.covName = covName
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
@@ -187,7 +195,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 for key, val in calExpRef.dataId.items():
                     covName += '_%s_%s'%(key, val)
                 warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
-                                                    maxBBox=skyInfo.bbox)
+                                                   maxBBox=skyInfo.bbox)
                 exposure = warpRes.exposure
                 covImage = warpRes.covImage
                 '''if exposure.getHeight() != 0 and exposure.getWidth() != 0:
@@ -196,7 +204,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     afwDisplay.getDisplay(2).mtv(calExp.getMaskedImage().getVariance())
                     afwDisplay.getDisplay(3).mtv(exposure.getMaskedImage().getVariance())
                     afwDisplay.getDisplay(4).mtv(covImage)
-                    view = covView(exposure, covImage)
+                    view = covView(exposure, covImage, covName=covName)
                     destArr = exposure.getMaskedImage().getImage().getArray()
                     import pdb; pdb.set_trace()'''
                 if didSetMetadata:
