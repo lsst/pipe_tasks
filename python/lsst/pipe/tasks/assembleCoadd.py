@@ -676,7 +676,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                     try:
                         mask &= ~mask.getPlaneBitMask(maskPlane)
                     except Exception as e:
-                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e)
+                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
 
             maskedImageList.append(maskedImage)
 
