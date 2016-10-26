@@ -139,6 +139,15 @@ class CharacterizeImageConfig(pexConfig.Config):
         dtype=str,
         default="raise",
     )
+    doTrails = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Search for and mask trails on image?"
+    )
+    trails = pexConfig.ConfigurableField(
+        target=TrailsTask,
+        doc="Task to search for and mask trails on image"
+    )
 
     def setDefaults(self):
         pexConfig.Config.setDefaults(self)
@@ -435,6 +444,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         # perform final repair with final PSF
         self.repair.run(exposure=dmeRes.exposure)
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
+
+        if self.doTrails:
+            self.trails.run(exposure)
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
