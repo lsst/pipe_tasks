@@ -36,6 +36,7 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogC
 from lsst.meas.deblender import SourceDeblendTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
+from .trails import TrailsTask
 
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
