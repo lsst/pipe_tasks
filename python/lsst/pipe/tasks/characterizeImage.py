@@ -330,6 +330,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
+        if self.config.doTrails:
+            self.makeSubtask("trails")
 
     @pipeBase.timeMethod
     def run(self, dataRef, exposure=None, background=None, doUnpersist=True):
@@ -445,7 +447,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.repair.run(exposure=dmeRes.exposure)
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
-        if self.doTrails:
+        if self.config.doTrails:
             self.trails.run(exposure)
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
