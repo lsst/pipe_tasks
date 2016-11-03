@@ -1,4 +1,3 @@
-from builtins import str
 #
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.

@@ -1,5 +1,4 @@
 from builtins import zip
-from builtins import str
 import collections
 import datetime
 import itertools
