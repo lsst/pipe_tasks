@@ -41,24 +41,25 @@ __all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "Ex
 
 #------------------------- ExampleSigmaClippedStatsTask -------------------------#
 
+
 class ExampleSigmaClippedStatsConfig(pexConfig.Config):
     """!Configuration for ExampleSigmaClippedStatsTask
     """
     badMaskPlanes = pexConfig.ListField(
-        dtype = str,
-        doc = "Mask planes that, if set, indicate the associated pixel should " \
-              "not be included when the calculating statistics.",
-        default = ("EDGE",),
+        dtype=str,
+        doc="Mask planes that, if set, indicate the associated pixel should "
+        "not be included when the calculating statistics.",
+        default=("EDGE",),
     )
     numSigmaClip = pexConfig.Field(
-        doc = "number of sigmas at which to clip data",
-        dtype = float,
-        default = 3.0,
+        doc="number of sigmas at which to clip data",
+        dtype=float,
+        default=3.0,
     )
     numIter = pexConfig.Field(
-        doc = "number of iterations of sigma clipping",
-        dtype = int,
-        default = 2,
+        doc="number of iterations of sigma clipping",
+        dtype=int,
+        default=2,
     )
 
 
@@ -67,7 +68,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     \section pipeTasks_ExampleSigmaClippedStatsTask_Contents Contents
 
-     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Purpose 
+     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Purpose
      - \ref pipeTasks_ExampleSigmaClippedStatsTask_Config
      - \ref pipeTasks_ExampleSigmaClippedStatsTask_Debug
      - \ref pipeTasks_ExampleSigmaClippedStatsTask_Example
@@ -78,7 +79,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     This is a simple example task designed to be run as a subtask by ExampleCmdLineTask.
     See also ExampleSimpleStatsTask as a variant that is even simpler.
-    
+
     The main method is \ref ExampleSigmaClippedStatsTask.run "run".
 
     \section pipeTasks_ExampleSigmaClippedStatsTask_Config  Configuration parameters
@@ -128,19 +129,20 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         - stdDevErr: uncertainty in standard deviation
         """
         statObj = afwMath.makeStatistics(maskedImage, afwMath.MEANCLIP | afwMath.STDEVCLIP | afwMath.ERRORS,
-            self._statsControl)
+                                         self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEANCLIP)
         stdDev, stdDevErr = statObj.getResult(afwMath.STDEVCLIP)
-        self.log.info("clipped mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
-            (mean, meanErr, stdDev, stdDevErr))
+        self.log.info("clipped mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" %
+                      (mean, meanErr, stdDev, stdDevErr))
         return pipeBase.Struct(
-            mean = mean,
-            meanErr = meanErr,
-            stdDev = stdDev,
-            stdDevErr = stdDevErr,
+            mean=mean,
+            meanErr=meanErr,
+            stdDev=stdDev,
+            stdDevErr=stdDevErr,
         )
 
 #------------------------- ExampleSimpleStatsTask -------------------------#
+
 
 class ExampleSimpleStatsTask(pipeBase.Task):
     """!Example task to compute mean and standard deviation of an image
@@ -159,7 +161,7 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     This was designed to be run as a subtask by ExampleCmdLineTask.
     It is about as simple as a task can be; it has no configuration parameters and requires no special
     initialization. See also ExampleSigmaClippedStatsTask as a variant that is slightly more complicated.
-    
+
     The main method is \ref ExampleSimpleTask.run "run".
 
     \section pipeTasks_ExampleSimpleStatsTask_Config    Configuration parameters
@@ -178,12 +180,12 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     examples/exampleStatsTask.py [fitsFile]
     \endcode
     """
-    ### Even a task with no configuration requires setting ConfigClass
+    # Even a task with no configuration requires setting ConfigClass
     ConfigClass = pexConfig.Config
-    ### Having a default name simplifies construction of the task, since the parent task
-    ### need not specify a name. Note: having a default name is required for command-line tasks.
-    ### The name can be simple and need not be unique (except for multiple subtasks that will
-    ### be run by a parent task at the same time).
+    # Having a default name simplifies construction of the task, since the parent task
+    # need not specify a name. Note: having a default name is required for command-line tasks.
+    # The name can be simple and need not be unique (except for multiple subtasks that will
+    # be run by a parent task at the same time).
     _DefaultName = "exampleSimpleStats"
 
     # The `lsst.pipe.timeMethod` decorator measures how long a task method takes to run,
@@ -203,15 +205,15 @@ class ExampleSimpleStatsTask(pipeBase.Task):
         """
         self._statsControl = afwMath.StatisticsControl()
         statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV | afwMath.ERRORS,
-            self._statsControl)
+                                         self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEAN)
         stdDev, stdDevErr = statObj.getResult(afwMath.STDEV)
-        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" % \
-            (mean, meanErr, stdDev, stdDevErr))
+        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" %
+                      (mean, meanErr, stdDev, stdDevErr))
 
         return pipeBase.Struct(
-            mean = mean,
-            meanErr = meanErr,
-            stdDev = stdDev,
-            stdDevErr = stdDevErr,
+            mean=mean,
+            meanErr=meanErr,
+            stdDev=stdDev,
+            stdDevErr=stdDevErr,
         )

@@ -27,6 +27,7 @@
   a proper implementation will report all tracts and patches that overlap each image
 - One must specify a patch and tract even though those arguments are ignored.
 """
+from __future__ import print_function
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -35,20 +36,21 @@ import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 
-__all__ = ["ReportPatchesTask",]
+__all__ = ["ReportPatchesTask", ]
+
 
 class ReportPatchesConfig(pexConfig.Config):
     """Config for ReportPatchesTask
     """
     coaddName = pexConfig.Field(
-        doc = "coadd name: one of deep or goodSeeing",
-        dtype = str,
-        default = "deep",
+        doc="coadd name: one of deep or goodSeeing",
+        dtype=str,
+        default="deep",
     )
     raDecRange = pexConfig.ListField(
-        doc = "min RA, min Dec, max RA, max Dec (ICRS, deg)",
-        dtype = float,
-        length = 4,
+        doc="min RA, min Dec, max RA, max Dec (ICRS, deg)",
+        dtype=float,
+        length=4,
     )
 
 
@@ -57,7 +59,7 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
     """
     ConfigClass = ReportPatchesConfig
     _DefaultName = "reportPatches"
-    
+
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
@@ -72,7 +74,7 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         skyMap = dataRef.get(self.config.coaddName + "Coadd_skyMap")
 
         # make coords in the correct order to form an enclosed space
-        raRange  = (self.config.raDecRange[0], self.config.raDecRange[2])
+        raRange = (self.config.raDecRange[0], self.config.raDecRange[2])
         decRange = (self.config.raDecRange[1], self.config.raDecRange[3])
         raDecList = [
             (raRange[0], decRange[0]),
@@ -87,12 +89,12 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         for tractInfo, patchInfoList in tractPatchList:
             for patchInfo in patchInfoList:
                 patchIndex = patchInfo.getIndex()
-                print "tract=%d patch=%d,%d" % (tractInfo.getId(), patchIndex[0], patchIndex[1])
+                print("tract=%d patch=%d,%d" % (tractInfo.getId(), patchIndex[0], patchIndex[1]))
 
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
-        
+
         Use datasetType="deepCoadd" to get the right keys (even chi-squared coadds
         need filter information for this particular task).
         """
@@ -105,34 +107,33 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         """Don't persist config, so return None
         """
         return None
-    
+
     def _getMetadataName(self):
         """Don't persist metadata, so return None
         """
         return None
 
 
-
-
 class ReportPatchesDataIdContainer(pipeBase.DataIdContainer):
     """A version of lsst.pipe.base.DataIdContainer specialized for reporting images.
-    
+
     Required because there is no dataset type that is has exactly the right keys for this task.
     datasetType = namespace.config.coaddName + "Coadd" comes closest, but includes "patch" and "tract",
     which are irrelevant to the task, but required to make a data reference of this dataset type.
     Also required because butler.subset cannot handle this dataset type.
     """
+
     def makeDataRefList(self, namespace):
         """Make self.refList from self.idList
         """
         datasetType = namespace.config.coaddName + "Coadd"
 
         for dataId in self.idList:
-            expandedDataId = dict(patch=0, tract=(0,0))
+            expandedDataId = dict(patch=0, tract=(0, 0))
             expandedDataId.update(dataId)
             dataRef = namespace.butler.dataRef(
-                datasetType = datasetType,
-                dataId = expandedDataId,
+                datasetType=datasetType,
+                dataId=expandedDataId,
             )
             self.refList.append(dataRef)
 

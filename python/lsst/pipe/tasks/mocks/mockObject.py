@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -28,6 +28,7 @@ import lsst.afw.geom
 import lsst.afw.image
 import lsst.pipe.base
 
+
 class MockObjectConfig(lsst.pex.config.Config):
     minMag = lsst.pex.config.Field(dtype=float, default=18.0, doc="Minimum magnitude for mock objects")
     maxMag = lsst.pex.config.Field(dtype=float, default=20.0, doc="Maximum magnitude for mock objects")
@@ -35,12 +36,13 @@ class MockObjectConfig(lsst.pex.config.Config):
         dtype=float, default=10.0,
         doc=("Maximum radius of an object in arcseconds; only used "
              "when determining which objects are in an exposure.")
-        )
+    )
     spacing = lsst.pex.config.Field(
-        dtype=float, default=20.0, 
+        dtype=float, default=20.0,
         doc="Distance between objects (in arcseconds)."
-        )
+    )
     seed = lsst.pex.config.Field(dtype=int, default=1, doc="Seed for numpy random number generator")
+
 
 class MockObjectTask(lsst.pipe.base.Task):
     """Task that generates simple mock objects and draws them on images, intended as a subtask of
@@ -55,7 +57,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         lsst.pipe.base.Task.__init__(self, **kwds)
         self.schema = lsst.afw.table.SimpleTable.makeMinimalSchema()
         self.center = lsst.afw.table.Point2DKey.addFields(self.schema, "center",
-                                           "center position in tract WCS", "pixel")
+                                                          "center position in tract WCS", "pixel")
         self.magKey = self.schema.addField("mag", type=float, doc="exact true magnitude")
         self.rng = numpy.random.RandomState(self.config.seed)
 
@@ -91,11 +93,11 @@ class MockObjectTask(lsst.pipe.base.Task):
         return any iterable. 
         """
         wcs = tractInfo.getWcs()
-        spacing = self.config.spacing / wcs.pixelScale().asArcseconds() # get spacing in tract pixels
+        spacing = self.config.spacing / wcs.pixelScale().asArcseconds()  # get spacing in tract pixels
         bbox = tractInfo.getBBox()
         for y in numpy.arange(bbox.getMinY() + 0.5 * spacing, bbox.getMaxY(), spacing):
             for x in numpy.arange(bbox.getMinX() + 0.5 * spacing, bbox.getMaxX(), spacing):
-                yield wcs.pixelToSky(x, y), lsst.afw.geom.Point2D(x, y), 
+                yield wcs.pixelToSky(x, y), lsst.afw.geom.Point2D(x, y),
 
     def defineObject(self, record):
         """Fill in additional fields in a truth catalog record (id and coord will already have

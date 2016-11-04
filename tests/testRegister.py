@@ -1,3 +1,5 @@
+from builtins import zip
+from builtins import range
 #!/usr/bin/env python
 #
 # LSST Data Management System

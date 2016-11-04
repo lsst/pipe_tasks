@@ -1,3 +1,4 @@
+from builtins import range
 #!/usr/bin/env python
 
 #
@@ -32,7 +33,6 @@ import lsst.afw.math as afwMath
 from lsst.pipe.tasks.matchBackgrounds import MatchBackgroundsTask
 
 
-
 class MatchBackgroundsTestCase(unittest.TestCase):
 
     """Background Matching"""
@@ -40,15 +40,15 @@ class MatchBackgroundsTestCase(unittest.TestCase):
     def setUp(self):
         np.random.seed(1)
 
-        #Make a few test images here
-        #1) full coverage (plain vanilla image) has mean = 50counts
+        # Make a few test images here
+        # 1) full coverage (plain vanilla image) has mean = 50counts
         self.vanilla = afwImage.ExposureF(600, 600)
         im = self.vanilla.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im, afwMath.Random('MT19937', 1))
         im += 50
         self.vanilla.getMaskedImage().getVariance().set(1.0)
 
-        #2) has chip gap and mean = 10 counts
+        # 2) has chip gap and mean = 10 counts
         self.chipGap = afwImage.ExposureF(600, 600)
         im = self.chipGap.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im, afwMath.Random('MT19937', 2))
@@ -56,7 +56,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         im.getArray()[:, 200:300] = np.nan  # simulate 100pix chip gap
         self.chipGap.getMaskedImage().getVariance().set(1.0)
 
-        #3) has low coverage and mean = 20 counts
+        # 3) has low coverage and mean = 20 counts
         self.lowCover = afwImage.ExposureF(600, 600)
         im = self.lowCover.getMaskedImage().getImage()
         afwMath.randomGaussianImage(im, afwMath.Random('MT19937', 3))
@@ -64,7 +64,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.lowCover.getMaskedImage().getImage().getArray()[:, 200:] = np.nan
         self.lowCover.getMaskedImage().getVariance().set(1.0)
 
-        #make a matchBackgrounds object
+        # make a matchBackgrounds object
         self.matcher = MatchBackgroundsTask()
         self.matcher.config.usePolynomial = True
         self.matcher.binSize = 64
@@ -101,9 +101,9 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         refStats = afwMath.makeStatistics(
             refExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE, self.sctrl)
         refMean, _ = refStats.getResult(afwMath.MEAN)
-        #print "refMean %.03f, resultMean %.03f, resultVar %.03f"%(refMean, resultMean, resultVar)
+        # print "refMean %.03f, resultMean %.03f, resultVar %.03f"%(refMean, resultMean, resultVar)
         self.assertAlmostEqual(refMean, resultMean, delta=resultVar)  # very loose test.
-        #If MSE is within 1% of the variance of the difference image:  SUCCESS
+        # If MSE is within 1% of the variance of the difference image:  SUCCESS
         self.assertLess(MSE, diffImVar * 1.01)
 
     #-=-=-=-=-=-=Test Polynomial Fit (Approximate class)-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -117,7 +117,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
             self.matcher.config.binSize = size
             self.assertRaises(ValueError, self.matcher.matchBackgrounds, self.chipGap, self.vanilla)
 
-        #for image 600x600 and binsize 256 = 3x3 grid for fitting.  order 3,4,5...should fail
+        # for image 600x600 and binsize 256 = 3x3 grid for fitting.  order 3,4,5...should fail
         self.matcher.config.binSize = 256
         for order in range(3, 8):
             self.matcher.config.order = order
@@ -132,7 +132,7 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         """Test throws RuntimeError when dimensions don't match."""
         self.matcher.config.binSize = 128
         self.matcher.config.order = 2
-        #make image with wronge size
+        # make image with wronge size
         wrongSize = afwImage.ExposureF(500, 500)
         wrongSize.getMaskedImage().getImage().set(1.0)
         wrongSize.getMaskedImage().getVariance().set(1.0)

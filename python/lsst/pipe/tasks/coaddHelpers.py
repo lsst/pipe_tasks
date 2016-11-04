@@ -1,3 +1,4 @@
+from builtins import zip
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -32,6 +33,7 @@ values, and carry the data identifier keys separately.  Doing the key/value
 gymnastics can be annoying, so we provide these helper functions to do this.
 """
 
+
 def groupDataRefs(keys, dataRefIterable):
     """Group data references by data identifier value-tuple.
 
@@ -46,7 +48,7 @@ def groupDataRefs(keys, dataRefIterable):
     groupDict = dict()
     for dataRef in dataRefIterable:
         dataId = dataRef.dataId
-        values = tuple(dataId[key] for key in keys) # NOT dataId.values() as we must preserve order
+        values = tuple(dataId[key] for key in keys)  # NOT dataId.values() as we must preserve order
         group = groupDict.get(values)
         if group:
             group.append(dataRef)
@@ -54,6 +56,7 @@ def groupDataRefs(keys, dataRefIterable):
             groupDict[values] = [dataRef]
 
     return groupDict
+
 
 def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepCoadd",
                         tempExpDatasetType="deepCoadd_tempExp"):
@@ -71,16 +74,17 @@ def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepC
     butler = patchDataRef.getButler()
     tempExpKeys = butler.getKeys(datasetType=tempExpDatasetType)
     coaddKeys = sorted(butler.getKeys(datasetType=coaddDatasetType))
-    keys = sorted(set(tempExpKeys) - set(coaddKeys)) # Keys that will specify an exposure
+    keys = sorted(set(tempExpKeys) - set(coaddKeys))  # Keys that will specify an exposure
     patchId = patchDataRef.dataId
     groups = groupDataRefs(keys, calexpDataRefList)
 
     # Supplement the groups with the coadd-specific information (e.g., tract, patch; these are constant)
     coaddValues = tuple(patchId[k] for k in coaddKeys)
-    groups = dict((k + coaddValues, v) for k,v in groups.iteritems())
+    groups = dict((k + coaddValues, v) for k, v in groups.items())
     keys += tuple(coaddKeys)
 
     return Struct(groups=groups, keys=keys)
+
 
 def getGroupDataId(groupTuple, keys):
     """Reconstitute a data identifier from a tuple and corresponding keys
@@ -92,6 +96,7 @@ def getGroupDataId(groupTuple, keys):
     if len(groupTuple) != len(keys):
         raise RuntimeError("Number of values (%d) and keys (%d) do not match" % (len(groupTuple), len(keys)))
     return dict(zip(keys, groupTuple))
+
 
 def getGroupDataRef(butler, datasetType, groupTuple, keys):
     """Construct a data reference from a tuple and corresponding keys

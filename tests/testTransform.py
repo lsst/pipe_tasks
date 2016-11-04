@@ -41,6 +41,8 @@ genuine SourceRecords, we directly populate a catalog following the
 TrivialMeasurement schema, then check that it is transformed properly by the
 TrivialMeasurementTransform.
 """
+from builtins import zip
+from builtins import object
 import contextlib
 import os
 import shutil
@@ -81,7 +83,7 @@ class TrivialMeasurementTransform(measBase.transforms.MeasurementTransform):
         named after the measurement with the suffix "_transform".
         """
         measBase.transforms.MeasurementTransform.__init__(self, config, name, mapper)
-        for key, field in mapper.getInputSchema().extract(name + "*").itervalues():
+        for key, field in mapper.getInputSchema().extract(name + "*").values():
             mapper.addMapping(key)
         self.key = mapper.editOutputSchema().addField(name + "_transform", type="D", doc="transformed dummy")
 
@@ -180,7 +182,7 @@ class TransformTestCase(lsst.utils.tests.TestCase):
         schema = afwTable.SourceTable.makeMinimalSchema()
         sfmConfig = measBase.SingleFrameMeasurementConfig(plugins=[PLUGIN_NAME])
         # We don't use slots in this test
-        for key in sfmConfig.slots.keys():
+        for key in sfmConfig.slots:
             setattr(sfmConfig.slots, key, None)
         sfmTask = measBase.SingleFrameMeasurementTask(schema, config=sfmConfig)
         transformTask = TransformTask(measConfig=sfmConfig,
@@ -192,7 +194,7 @@ class TransformTestCase(lsst.utils.tests.TestCase):
         schema = afwTable.SourceTable.makeMinimalSchema()
         forcedConfig = measBase.ForcedMeasurementConfig(plugins=[PLUGIN_NAME])
         # We don't use slots in this test
-        for key in forcedConfig.slots.keys():
+        for key in forcedConfig.slots:
             setattr(forcedConfig.slots, key, None)
         forcedTask = measBase.ForcedMeasurementTask(schema, config=forcedConfig)
         transformConfig = TransformConfig(copyFields=("objectId", "coord_ra", "coord_dec"))

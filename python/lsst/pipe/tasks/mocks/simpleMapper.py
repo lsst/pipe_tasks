@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -29,6 +29,9 @@ possible approach, but it gave him an opportunity to play around with
 prototyping a future paf-free mapper class, and it does everything it
 needs to do right now.
 """
+from builtins import map
+from builtins import range
+from builtins import object
 
 import os
 import shutil
@@ -38,8 +41,10 @@ import lsst.daf.persistence
 import lsst.afw.cameraGeom
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.image.utils as afwImageUtils
+from future.utils import with_metaclass
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
+
 
 class PersistenceType(object):
     """Base class of a hierarchy used by SimpleMapper to defined different kinds of types of objects
@@ -63,6 +68,7 @@ class PersistenceType(object):
     def canStandardize(self, datasetType):
         return False
 
+
 class BypassPersistenceType(PersistenceType):
     """Persistence type for things that don't actually use daf_persistence.
     """
@@ -74,6 +80,7 @@ class BypassPersistenceType(PersistenceType):
         """Method called by SimpleMapping to implement a map_ method; overridden to not use the path."""
         return lsst.daf.persistence.ButlerLocation(cls.python, cls.cpp, cls.storage, [], dataId,
                                                    mapper=mapper)
+
 
 class ExposurePersistenceType(PersistenceType):
     """Persistence type of Exposure images.
@@ -103,10 +110,12 @@ class ExposurePersistenceType(PersistenceType):
                                        dataId['imageOrigin'])
         return loc
 
+
 class SkyMapPersistenceType(PersistenceType):
     python = "lsst.skymap.BaseSkyMap"
     storage = "PickleStorage"
     ext = ".pickle"
+
 
 class CatalogPersistenceType(PersistenceType):
     python = "lsst.afw.table.BaseCatalog"
@@ -114,21 +123,26 @@ class CatalogPersistenceType(PersistenceType):
     storage = "FitsCatalogStorage"
     ext = ".fits"
 
+
 class SimpleCatalogPersistenceType(CatalogPersistenceType):
     python = "lsst.afw.table.SimpleCatalog"
     cpp = "SimpleCatalog"
+
 
 class SourceCatalogPersistenceType(SimpleCatalogPersistenceType):
     python = "lsst.afw.table.SourceCatalog"
     cpp = "SourceCatalog"
 
+
 class ExposureCatalogPersistenceType(CatalogPersistenceType):
     python = "lsst.afw.table.ExposureCatalog"
     cpp = "ExposureCatalog"
 
+
 class PeakCatalogPersistenceType(CatalogPersistenceType):
     python = "lsst.afw.detection.PeakCatalog"
     cpp = "PeakCatalog"
+
 
 class SimpleMapping(object):
     """Mapping object used to implement SimpleMapper, similar in intent to lsst.daf.peristence.Mapping.
@@ -161,8 +175,9 @@ class RawMapping(SimpleMapping):
 
     def query(self, dataset, index, level, format, dataId):
         dictList = index[dataset][level]
-        results = [d.values() for d in dictList[dataId.get(level, None)]]
+        results = [list(d.values()) for d in dictList[dataId.get(level, None)]]
         return results
+
 
 class SkyMapping(SimpleMapping):
     """Mapping for dataset types that are organized according to a SkyMap subdivision of the sky."""
@@ -170,17 +185,20 @@ class SkyMapping(SimpleMapping):
     template = "{dataset}-{filter}-{tract:02d}-{patch}{ext}"
     keys = dict(filter=str, tract=int, patch=str)
 
+
 class TempExpMapping(SimpleMapping):
     """Mapping for CoaddTempExp datasets."""
 
     template = "{dataset}-{tract:02d}-{patch}-{visit:04d}{ext}"
     keys = dict(tract=int, patch=str, visit=int)
 
+
 class ForcedSrcMapping(RawMapping):
     """Mapping for forced_src datasets."""
 
     template = "{dataset}-{tract:02d}-{visit:04d}-{ccd:01d}{ext}"
     keys = dict(tract=int, ccd=int, visit=int)
+
 
 class MapperMeta(type):
     """Metaclass for SimpleMapper that creates map_ and query_ methods for everything found in the
@@ -202,7 +220,7 @@ class MapperMeta(type):
     def __init__(cls, name, bases, dict_):
         type.__init__(cls, name, bases, dict_)
         cls.keyDict = dict()
-        for dataset, mapping in cls.mappings.iteritems():
+        for dataset, mapping in cls.mappings.items():
             setattr(cls, "map_" + dataset, MapperMeta._makeMapClosure(dataset, mapping, suffix=None))
             for suffix in mapping.persistence.suffixes:
                 setattr(cls, "map_" + dataset + suffix,
@@ -211,7 +229,8 @@ class MapperMeta(type):
                 setattr(cls, "query_" + dataset, MapperMeta._makeQueryClosure(dataset, mapping))
         cls.keyDict.update(mapping.keys)
 
-class SimpleMapper(lsst.daf.persistence.Mapper):
+
+class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
     """
     An extremely simple mapper for an imaginary camera for use in integration tests.
 
@@ -223,60 +242,58 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
     two CCDs per visit (by default).
     """
 
-    __metaclass__ = MapperMeta
-
     mappings = dict(
-        calexp = RawMapping(ExposurePersistenceType),
-        forced_src = ForcedSrcMapping(SourceCatalogPersistenceType),
-        forced_src_schema = SimpleMapping(SourceCatalogPersistenceType,
-                                          template="{dataset}{ext}", keys={}),
-        truth = SimpleMapping(SimpleCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
-                              keys={"tract":int}),
-        simsrc = RawMapping(SimpleCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
-                            keys={"tract":int}),
-        observations = SimpleMapping(ExposureCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
-                                     keys={"tract":int}),
-        ccdExposureId = RawMapping(BypassPersistenceType),
-        ccdExposureId_bits = SimpleMapping(BypassPersistenceType),
-        deepCoaddId = SkyMapping(BypassPersistenceType),
-        deepCoaddId_bits = SimpleMapping(BypassPersistenceType),
-        deepMergedCoaddId = SkyMapping(BypassPersistenceType),
-        deepMergedCoaddId_bits = SimpleMapping(BypassPersistenceType),
-        deepCoadd_skyMap = SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
-        deepCoadd = SkyMapping(ExposurePersistenceType),
-        deepCoadd_calexp = SkyMapping(ExposurePersistenceType),
-        deepCoadd_calexp_background = SkyMapping(CatalogPersistenceType),
-        deepCoadd_icSrc = SkyMapping(SourceCatalogPersistenceType),
-        deepCoadd_icSrc_schema = SimpleMapping(SourceCatalogPersistenceType,
-                                               template="{dataset}{ext}", keys={}),
-        deepCoadd_src = SkyMapping(SourceCatalogPersistenceType),
-        deepCoadd_src_schema = SimpleMapping(SourceCatalogPersistenceType,
+        calexp=RawMapping(ExposurePersistenceType),
+        forced_src=ForcedSrcMapping(SourceCatalogPersistenceType),
+        forced_src_schema=SimpleMapping(SourceCatalogPersistenceType,
+                                        template="{dataset}{ext}", keys={}),
+        truth=SimpleMapping(SimpleCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
+                            keys={"tract": int}),
+        simsrc=RawMapping(SimpleCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
+                          keys={"tract": int}),
+        observations=SimpleMapping(ExposureCatalogPersistenceType, template="{dataset}-{tract:02d}{ext}",
+                                   keys={"tract": int}),
+        ccdExposureId=RawMapping(BypassPersistenceType),
+        ccdExposureId_bits=SimpleMapping(BypassPersistenceType),
+        deepCoaddId=SkyMapping(BypassPersistenceType),
+        deepCoaddId_bits=SimpleMapping(BypassPersistenceType),
+        deepMergedCoaddId=SkyMapping(BypassPersistenceType),
+        deepMergedCoaddId_bits=SimpleMapping(BypassPersistenceType),
+        deepCoadd_skyMap=SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
+        deepCoadd=SkyMapping(ExposurePersistenceType),
+        deepCoadd_calexp=SkyMapping(ExposurePersistenceType),
+        deepCoadd_calexp_background=SkyMapping(CatalogPersistenceType),
+        deepCoadd_icSrc=SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_icSrc_schema=SimpleMapping(SourceCatalogPersistenceType,
                                              template="{dataset}{ext}", keys={}),
-        deepCoadd_peak_schema = SimpleMapping(PeakCatalogPersistenceType,
-                                             template="{dataset}{ext}", keys={}),
-        deepCoadd_ref = SkyMapping(SourceCatalogPersistenceType),
-        deepCoadd_ref_schema = SimpleMapping(SourceCatalogPersistenceType,
-                                             template="{dataset}{ext}", keys={}),
-        deepCoadd_det = SkyMapping(SourceCatalogPersistenceType),
-        deepCoadd_det_schema = SimpleMapping(SourceCatalogPersistenceType,
-                                             template="{dataset}{ext}", keys={}),
-        deepCoadd_mergeDet = SkyMapping(SourceCatalogPersistenceType),
-        deepCoadd_mergeDet_schema = SimpleMapping(SourceCatalogPersistenceType,
-                                             template="{dataset}{ext}", keys={}),
-        deepCoadd_meas = SkyMapping(SourceCatalogPersistenceType),
-        deepCoadd_meas_schema = SimpleMapping(SourceCatalogPersistenceType,
-                                          template="{dataset}{ext}", keys={}),
-        deepCoadd_forced_src = SkyMapping(SourceCatalogPersistenceType),
-        deepCoadd_forced_src_schema = SimpleMapping(SourceCatalogPersistenceType,
-                                                    template="{dataset}{ext}", keys={}),
-        deepCoadd_mock = SkyMapping(ExposurePersistenceType),
-        deepCoadd_tempExp = TempExpMapping(ExposurePersistenceType),
-        deepCoadd_tempExp_mock = TempExpMapping(ExposurePersistenceType),
+        deepCoadd_src=SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_src_schema=SimpleMapping(SourceCatalogPersistenceType,
+                                           template="{dataset}{ext}", keys={}),
+        deepCoadd_peak_schema=SimpleMapping(PeakCatalogPersistenceType,
+                                            template="{dataset}{ext}", keys={}),
+        deepCoadd_ref=SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_ref_schema=SimpleMapping(SourceCatalogPersistenceType,
+                                           template="{dataset}{ext}", keys={}),
+        deepCoadd_det=SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_det_schema=SimpleMapping(SourceCatalogPersistenceType,
+                                           template="{dataset}{ext}", keys={}),
+        deepCoadd_mergeDet=SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_mergeDet_schema=SimpleMapping(SourceCatalogPersistenceType,
+                                                template="{dataset}{ext}", keys={}),
+        deepCoadd_meas=SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_meas_schema=SimpleMapping(SourceCatalogPersistenceType,
+                                            template="{dataset}{ext}", keys={}),
+        deepCoadd_forced_src=SkyMapping(SourceCatalogPersistenceType),
+        deepCoadd_forced_src_schema=SimpleMapping(SourceCatalogPersistenceType,
+                                                  template="{dataset}{ext}", keys={}),
+        deepCoadd_mock=SkyMapping(ExposurePersistenceType),
+        deepCoadd_tempExp=TempExpMapping(ExposurePersistenceType),
+        deepCoadd_tempExp_mock=TempExpMapping(ExposurePersistenceType),
     )
 
     levels = dict(
-        visit = ['ccd'],
-        ccd = [],
+        visit=['ccd'],
+        ccd=[],
     )
 
     def __init__(self, root):
@@ -294,7 +311,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         else:
             keyDict = self.mappings[datasetType].keys
         if level is not None and level in self.levels:
-            keyDict  = dict(keyDict)
+            keyDict = dict(keyDict)
             for l in self.levels[level]:
                 if l in keyDict:
                     del keyDict[l]
@@ -308,7 +325,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
             m = rawRegex.match(filename)
             if not m:
                 continue
-            index = self.index.setdefault(m.group('dataset'), dict(ccd={None:[]}, visit={None:[]}))
+            index = self.index.setdefault(m.group('dataset'), dict(ccd={None: []}, visit={None: []}))
             visit = int(m.group('visit'))
             ccd = int(m.group('ccd'))
             d1 = dict(visit=visit, ccd=ccd)
@@ -327,7 +344,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
     def map_camera(self, dataId, write=False):
         return lsst.daf.persistence.ButlerLocation(
             "lsst.afw.cameraGeom.Camera", "Camera", None, [], dataId, mapper=self
-            )
+        )
 
     def std_calexp(self, item, dataId):
         detectorId = dataId["ccd"]
@@ -336,22 +353,22 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         return item
 
     def _computeCcdExposureId(self, dataId):
-        return long(dataId["visit"]) * 10 + long(dataId["ccd"])
+        return int(dataId["visit"]) * 10 + int(dataId["ccd"])
 
     def _computeCoaddId(self, dataId):
         # Note: for real IDs, we'd want to include filter here, but it doesn't actually matter
         # for any of the tests we've done so far, which all assume filter='r'
-        tract = long(dataId['tract'])
+        tract = int(dataId['tract'])
         if tract < 0 or tract >= 128:
             raise RuntimeError('tract not in range [0,128)')
-        patchX, patchY = map(int, dataId['patch'].split(','))
+        patchX, patchY = (int(c) for c in dataId['patch'].split(','))
         for p in (patchX, patchY):
             if p < 0 or p >= 2**13:
                 raise RuntimeError('patch component not in range [0, 8192)')
         return (tract * 2**13 + patchX) * 2**13 + patchY
 
     def splitCcdExposureId(ccdExposureId):
-        return dict(visit=(long(ccdExposureId) // 10), ccd=(long(ccdExposureId) % 10))
+        return dict(visit=(int(ccdExposureId) // 10), ccd=(int(ccdExposureId) % 10))
 
     def bypass_ccdExposureId(self, datasetType, pythonType, location, dataId):
         return self._computeCcdExposureId(dataId)
@@ -370,6 +387,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
 
     def bypass_deepMergedCoaddId_bits(self, datasetType, pythonType, location, dataId):
         return 1 + 7 + 13*2 + 3
+
 
 def makeSimpleCamera(
     nX, nY,
@@ -415,23 +433,24 @@ def makeSimpleCamera(
             detectorName = "detector %d,%d" % (iX, iY)
             detectorId = len(detectorList) + 1
             detectorList.append(DetectorWrapper(
-                name = detectorName,
-                id = detectorId,
-                serial = detectorName + " serial",
-                bbox = ccdBBox,
-                ampExtent = ccdBBox.getDimensions(),
-                numAmps = 1,
-                pixelSize = lsst.afw.geom.Extent2D(pixelSize, pixelSize),
-                orientation = lsst.afw.cameraGeom.Orientation(fpPos),
-                plateScale = plateScale,
-                radialDistortion = radialDistortion,
+                name=detectorName,
+                id=detectorId,
+                serial=detectorName + " serial",
+                bbox=ccdBBox,
+                ampExtent=ccdBBox.getDimensions(),
+                numAmps=1,
+                pixelSize=lsst.afw.geom.Extent2D(pixelSize, pixelSize),
+                orientation=lsst.afw.cameraGeom.Orientation(fpPos),
+                plateScale=plateScale,
+                radialDistortion=radialDistortion,
             ).detector)
 
     return lsst.afw.cameraGeom.Camera(
-        name = "Simple Camera",
-        detectorList = detectorList,
-        transformMap = transformMap,
+        name="Simple Camera",
+        detectorList=detectorList,
+        transformMap=transformMap,
     )
+
 
 def makeDataRepo(root):
     """

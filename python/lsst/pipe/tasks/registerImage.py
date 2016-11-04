@@ -9,7 +9,7 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -23,6 +23,7 @@
 """
 This module contains a Task to register (align) multiple images.
 """
+from builtins import range
 
 __all__ = ["RegisterTask", "RegisterConfig"]
 
@@ -113,11 +114,11 @@ class RegisterTask(Task):
                            i, sipFit.getScatterInPixels())
             wcs = sipFit.getNewWcs()
             dr = [m.first.get(refCoordKey).angularSeparation(
-                    wcs.pixelToSky(m.second.get(inCentroidKey))).asArcseconds() for
-                  m in copyMatches]
+                wcs.pixelToSky(m.second.get(inCentroidKey))).asArcseconds() for
+                m in copyMatches]
             dr = numpy.array(dr)
-            rms = math.sqrt((dr*dr).mean()) # RMS from zero
-            rms = max(rms, 1.0e-9) # Don't believe any RMS smaller than this
+            rms = math.sqrt((dr*dr).mean())  # RMS from zero
+            rms = max(rms, 1.0e-9)  # Don't believe any RMS smaller than this
             self.log.debug("Registration iteration %d: rms=%f", i, rms)
             good = numpy.where(dr < self.config.sipRej*rms)[0]
             numBad = len(copyMatches) - len(good)
@@ -127,7 +128,7 @@ class RegisterTask(Task):
             copyMatches = type(matches)(copyMatches[i] for i in good)
 
         sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
-        self.log.info("Registration WCS: final WCS RMS=%f pixels from %d matches" % 
+        self.log.info("Registration WCS: final WCS RMS=%f pixels from %d matches" %
                       (sipFit.getScatterInPixels(), len(copyMatches)))
         self.metadata.set("SIP_RMS", sipFit.getScatterInPixels())
         self.metadata.set("SIP_GOOD", len(copyMatches))
@@ -184,7 +185,7 @@ class RegisterTask(Task):
             s.set(coordKey, newCoord)
             s.set(centroidKey, newCentroid)
 
-        for i in reversed(deleteList): # Delete from back so we don't change indices
+        for i in reversed(deleteList):  # Delete from back so we don't change indices
             del alignedSources[i]
 
         return alignedSources

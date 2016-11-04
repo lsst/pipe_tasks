@@ -28,9 +28,10 @@ import lsst.pipe.base as pipeBase
 
 __all__ = ["DataRefListRunner", "GetRepositoryDataTask"]
 
+
 class DataRefListRunner(pipeBase.TaskRunner):
     """A task runner that calls run with a list of data references
-    
+
     Differs from the default TaskRunner by providing all data references at once,
     instead of iterating over them one at a time.
     """
@@ -38,11 +39,11 @@ class DataRefListRunner(pipeBase.TaskRunner):
     def getTargetList(parsedCmd):
         """Return a list of targets (arguments for __call__); one entry per invocation
         """
-        return [parsedCmd.id.refList] # one argument consisting of a list of dataRefs
+        return [parsedCmd.id.refList]  # one argument consisting of a list of dataRefs
 
     def __call__(self, dataRefList):
         """Run GetRepositoryDataTask.run on a single target
-        
+
         @param dataRefList: argument dict for run; contains one key: dataRefList
 
         @return:
@@ -54,36 +55,36 @@ class DataRefListRunner(pipeBase.TaskRunner):
         """
         task = self.TaskClass(config=self.config, log=self.log)
         result = task.run(dataRefList)
-        
+
         if self.doReturnResults:
             return pipeBase.Struct(
-                dataRefList = dataRefList,
-                metadata = task.metadata,
-                result = result,
+                dataRefList=dataRefList,
+                metadata=task.metadata,
+                result=result,
             )
 
 
 class GetRepositoryDataTask(pipeBase.CmdLineTask):
     """Retrieve data from a repository, e.g. for plotting or analysis purposes
     """
-    ConfigClass = pexConfig.Config # nothing to configure
+    ConfigClass = pexConfig.Config  # nothing to configure
     RunnerClass = DataRefListRunner
     _DefaultName = "getTaskData"
-    
+
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
     def run(self, dataRefList):
         """Get data from a repository for a collection of data references
-    
+
         @param dataRefList: a list of data references
         """
         raise NotImplementedError("subclass must specify a run method")
-    
+
     def getIdList(self, dataRefList):
         """Get a list of data IDs in a form that can be used as dictionary keys
-        
+
         @param dataRefList: a list of data references
         @return a pipe_base Struct with fields:
         - idKeyTuple: a tuple of dataRef data ID keys
@@ -92,17 +93,17 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
         if not dataRefList:
             raise RuntimeError("No data refs")
         idKeyTuple = tuple(sorted(dataRefList[0].dataId.keys()))
-        
+
         idValList = []
         for dataRef in dataRefList:
             idValTuple = tuple(dataRef.dataId[key] for key in idKeyTuple)
             idValList.append(idValTuple)
 
         return pipeBase.Struct(
-            idKeyTuple = idKeyTuple,
-            idValList = idValList,
+            idKeyTuple=idKeyTuple,
+            idValList=idValList,
         )
-    
+
     def getDataList(self, dataRefList, datasetType):
         """Retrieve a list of data
 
@@ -111,10 +112,10 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
         @return a list of data, one entry per dataRef in dataRefList (in order)
         """
         return [dataRef.get(datasetType=datasetType) for dataRef in dataRefList]
-    
+
     def getMetadataItems(self, dataRefList, datasetType, nameList):
         """Retrieve a list of dictionaries of metadata
-        
+
         @param dataRefList: a list of data references
         @param datasetType: datasetType of metadata (or any object that supports get(name))
         @return a list of dicts of metadata:

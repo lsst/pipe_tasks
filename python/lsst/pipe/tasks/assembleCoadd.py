@@ -1,4 +1,7 @@
 from __future__ import division, absolute_import
+from __future__ import print_function
+from builtins import zip
+from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -39,7 +42,8 @@ from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from lsst.meas.algorithms import SourceDetectionTask
 
-__all__ = ["AssembleCoaddTask","SafeClipAssembleCoaddTask"]
+__all__ = ["AssembleCoaddTask", "SafeClipAssembleCoaddTask"]
+
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     """!
@@ -48,87 +52,87 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 \brief Configuration parameters for the \ref AssembleCoaddTask_ "AssembleCoaddTask"
     """
     subregionSize = pexConfig.ListField(
-        dtype = int,
-        doc = "Width, height of stack subregion size; " \
-              "make small enough that a full stack of images will fit into memory at once.",
-        length = 2,
-        default = (2000, 2000),
+        dtype=int,
+        doc="Width, height of stack subregion size; "
+        "make small enough that a full stack of images will fit into memory at once.",
+        length=2,
+        default=(2000, 2000),
     )
     doSigmaClip = pexConfig.Field(
-        dtype = bool,
-        doc = "Perform sigma clipped outlier rejection? If False then compute a simple mean.",
-        default = True,
+        dtype=bool,
+        doc="Perform sigma clipped outlier rejection? If False then compute a simple mean.",
+        default=True,
     )
     sigmaClip = pexConfig.Field(
-        dtype = float,
-        doc = "Sigma for outlier rejection; ignored if doSigmaClip false.",
-        default = 3.0,
+        dtype=float,
+        doc="Sigma for outlier rejection; ignored if doSigmaClip false.",
+        default=3.0,
     )
     clipIter = pexConfig.Field(
-        dtype = int,
-        doc = "Number of iterations of outlier rejection; ignored if doSigmaClip false.",
-        default = 2,
+        dtype=int,
+        doc="Number of iterations of outlier rejection; ignored if doSigmaClip false.",
+        default=2,
     )
     scaleZeroPoint = pexConfig.ConfigurableField(
-        target = ScaleZeroPointTask,
-        doc = "Task to adjust the photometric zero point of the coadd temp exposures",
+        target=ScaleZeroPointTask,
+        doc="Task to adjust the photometric zero point of the coadd temp exposures",
     )
     doInterp = pexConfig.Field(
-        doc = "Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
-        dtype = bool,
-        default = True,
+        doc="Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
+        dtype=bool,
+        default=True,
     )
     interpImage = pexConfig.ConfigurableField(
-        target = InterpImageTask,
-        doc = "Task to interpolate (and extrapolate) over NaN pixels",
+        target=InterpImageTask,
+        doc="Task to interpolate (and extrapolate) over NaN pixels",
     )
     matchBackgrounds = pexConfig.ConfigurableField(
-        target = MatchBackgroundsTask,
-        doc = "Task to match backgrounds",
+        target=MatchBackgroundsTask,
+        doc="Task to match backgrounds",
     )
     maxMatchResidualRatio = pexConfig.Field(
-        doc = "Maximum ratio of the mean squared error of the background matching model to the variance " \
+        doc="Maximum ratio of the mean squared error of the background matching model to the variance "
         "of the difference in backgrounds",
-        dtype = float,
-        default = 1.1
+        dtype=float,
+        default=1.1
     )
     maxMatchResidualRMS = pexConfig.Field(
-        doc = "Maximum RMS of residuals of the background offset fit in matchBackgrounds.",
-        dtype = float,
-        default = 1.0
+        doc="Maximum RMS of residuals of the background offset fit in matchBackgrounds.",
+        dtype=float,
+        default=1.0
     )
     doWrite = pexConfig.Field(
-        doc = "Persist coadd?",
-        dtype = bool,
-        default = True,
+        doc="Persist coadd?",
+        dtype=bool,
+        default=True,
     )
     doMatchBackgrounds = pexConfig.Field(
-        doc = "Match backgrounds of coadd temp exposures before coadding them? " \
+        doc="Match backgrounds of coadd temp exposures before coadding them? "
         "If False, the coadd temp expsosures must already have been background subtracted or matched",
-        dtype = bool,
-        default = True,
+        dtype=bool,
+        default=True,
     )
     autoReference = pexConfig.Field(
-        doc = "Automatically select the coadd temp exposure to use as a reference for background matching? " \
-              "Ignored if doMatchBackgrounds false. " \
-              "If False you must specify the reference temp exposure as the data Id",
-        dtype = bool,
-        default = True,
+        doc="Automatically select the coadd temp exposure to use as a reference for background matching? "
+        "Ignored if doMatchBackgrounds false. "
+        "If False you must specify the reference temp exposure as the data Id",
+        dtype=bool,
+        default=True,
     )
     maskPropagationThresholds = pexConfig.DictField(
-        keytype = str,
-        itemtype = float,
-        doc = ("Threshold (in fractional weight) of rejection at which we propagate a mask plane to "
-               "the coadd; that is, we set the mask bit on the coadd if the fraction the rejected frames "
-               "would have contributed exceeds this value."),
-        default = {"SAT": 0.1},
+        keytype=str,
+        itemtype=float,
+        doc=("Threshold (in fractional weight) of rejection at which we propagate a mask plane to "
+             "the coadd; that is, we set the mask bit on the coadd if the fraction the rejected frames "
+             "would have contributed exceeds this value."),
+        default={"SAT": 0.1},
     )
-    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["CROSSTALK", "NOT_DEBLENDED"],\
-                                 doc="Mask planes to remove before coadding")
+    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["CROSSTALK", "NOT_DEBLENDED"],
+                                           doc="Mask planes to remove before coadding")
     #
     # N.b. These configuration options only set the bitplane config.brightObjectMaskName
     # To make this useful you *must* also configure the flags.pixel algorithm, for example
-    # by adding 
+    # by adding
     #   config.measurement.plugins["base_PixelFlags"].masksFpCenter.append("BRIGHT_OBJECT")
     #   config.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("BRIGHT_OBJECT")
     # to your measureCoaddSources.py and forcedPhotCoadd.py config overrides
@@ -140,15 +144,15 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
-        self.badMaskPlanes = ["NO_DATA", "BAD", "CR",]
+        self.badMaskPlanes = ["NO_DATA", "BAD", "CR", ]
 
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page AssembleCoaddTask
-## \ref AssembleCoaddTask_ "AssembleCoaddTask"
-## \copybrief AssembleCoaddTask
-## \}
+# \addtogroup LSST_task_documentation
+# \{
+# \page AssembleCoaddTask
+# \ref AssembleCoaddTask_ "AssembleCoaddTask"
+# \copybrief AssembleCoaddTask
+# \}
 
 class AssembleCoaddTask(CoaddBaseTask):
     """!
@@ -213,9 +217,9 @@ the documetation for the subtasks for further information.
 
 AssembleCoaddTask assembles a set of warped coaddTempExp images into a coadded image. The AssembleCoaddTask
 can be invoked by running assembleCoadd.py with the flag '--legacyCoadd'. Usage of assembleCoadd.py expects
-a data reference to the tract patch and filter to be coadded (specified using 
+a data reference to the tract patch and filter to be coadded (specified using
 '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]') along with a list of
-coaddTempExps to attempt to coadd (specified using 
+coaddTempExps to attempt to coadd (specified using
 '--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]'). Only the coaddTempExps
 that cover the specified tract and patch will be coadded. A list of the available optional
 arguments can be obtained by calling assembleCoadd.py with the --help command line argument:
@@ -243,14 +247,14 @@ This will produce warped coaddTempExps for each visit. To coadd the warped data,
 follows:
 \code
 assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24\endcode
-that will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I 
+that will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I
 You may also choose to run:
 \code
 scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
 assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R --selectId visit=903334 ccd=16 --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 --selectId visit=903334 ccd=100 --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 --selectId visit=903338 ccd=18 --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 --selectId visit=903342 ccd=10 --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 --selectId visit=903344 ccd=5 --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 --selectId visit=903346 ccd=6 --selectId visit=903346 ccd=12
 \endcode
-to generate the coadd for the HSC-R band if you are interested in following multiBand Coadd processing as 
-discussed in \ref pipeTasks_multiBand (but note that normally, one would use the 
+to generate the coadd for the HSC-R band if you are interested in following multiBand Coadd processing as
+discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 \ref SafeClipAssembleCoaddTask_ "SafeClipAssembleCoaddTask" rather than AssembleCoaddTask to make the coadd.
     """
     ConfigClass = AssembleCoaddConfig
@@ -258,7 +262,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
     def __init__(self, *args, **kwargs):
         """!
-        \brief Initialize the task. Create the \ref InterpImageTask "interpImage", 
+        \brief Initialize the task. Create the \ref InterpImageTask "interpImage",
         \ref MatchBackgroundsTask "matchBackgrounds", & \ref ScaleZeroPointTask "scaleZeroPoint" subtasks.
         """
         CoaddBaseTask.__init__(self, *args, **kwargs)
@@ -343,7 +347,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
     def getTempExpRefList(self, patchRef, calExpRefList):
         """!
-        \brief Generate list of coaddTempExp data references corresponding to exposures that lie within the 
+        \brief Generate list of coaddTempExp data references corresponding to exposures that lie within the
         patch to be coadded.
 
         \param[in] patchRef: Data reference for patch
@@ -361,10 +365,10 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         """!
         \brief Construct an image scaler for the background reference frame
 
-        Each coaddTempExp has a different background level. A reference background level must be chosen before 
-        coaddition. If config.autoReference=True, \ref backgroundMatching will pick the reference level and 
-        this routine is a no-op and None is returned. Otherwise, use the 
-        \ref ScaleZeroPointTask_ "scaleZeroPoint" subtask to compute an imageScaler object for the provided 
+        Each coaddTempExp has a different background level. A reference background level must be chosen before
+        coaddition. If config.autoReference=True, \ref backgroundMatching will pick the reference level and
+        this routine is a no-op and None is returned. Otherwise, use the
+        \ref ScaleZeroPointTask_ "scaleZeroPoint" subtask to compute an imageScaler object for the provided
         reference image and return it.
 
         \param[in] dataRef: Data reference for the background reference frame, or None
@@ -380,19 +384,19 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         refExposure = dataRef.get(self.getTempExpDatasetName(), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
-            exposure = refExposure,
-            dataRef = dataRef,
-            )
+            exposure=refExposure,
+            dataRef=dataRef,
+        )
         return refImageScaler
 
     def prepareInputs(self, refList):
         """!
-        \brief Prepare the input warps for coaddition by measuring the weight for each warp and the scaling 
+        \brief Prepare the input warps for coaddition by measuring the weight for each warp and the scaling
         for the photometric zero point.
 
-        Each coaddTempExp has its own photometric zeropoint and background variance. Before coadding these 
+        Each coaddTempExp has its own photometric zeropoint and background variance. Before coadding these
         coaddTempExps together, compute a scale factor to normalize the photometric zeropoint and compute the
-        weight for each coaddTempExp. 
+        weight for each coaddTempExp.
 
         \param[in] refList: List of data references to tempExp
         \return Struct:
@@ -421,8 +425,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             tempExp = tempExpRef.get(tempExpName, immediate=True)
             maskedImage = tempExp.getMaskedImage()
             imageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure = tempExp,
-                dataRef = tempExpRef,
+                exposure=tempExp,
+                dataRef=tempExpRef,
             )
             try:
                 imageScaler.scaleMaskedImage(maskedImage)
@@ -430,8 +434,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 self.log.warn("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
                 continue
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
-                afwMath.MEANCLIP, statsCtrl)
-            meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP);
+                                             afwMath.MEANCLIP, statsCtrl)
+            meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP)
             weight = 1.0 / float(meanVar)
             if not numpy.isfinite(weight):
                 self.log.warn("Non-finite weight for %s: skipping", tempExpRef.dataId)
@@ -448,12 +452,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList,
                                imageScalerList=imageScalerList)
 
-
     def backgroundMatching(self, inputData, refExpDataRef=None, refImageScaler=None):
         """!
         \brief Perform background matching on the prepared inputs
 
-        Each coaddTempExp has a different background level that must be normalized to a reference level 
+        Each coaddTempExp has a different background level that must be normalized to a reference level
         before coaddition. If no reference is provided, the background matcher selects one. If the background
         matching is performed sucessfully, recompute the weight to be applied to the coaddTempExp to be
         consistent with the scaled background.
@@ -469,11 +472,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         """
         try:
             backgroundInfoList = self.matchBackgrounds.run(
-                expRefList = inputData.tempExpRefList,
-                imageScalerList = inputData.imageScalerList,
-                refExpDataRef = refExpDataRef if not self.config.autoReference else None,
-                refImageScaler = refImageScaler,
-                expDatasetType = self.getTempExpDatasetName(),
+                expRefList=inputData.tempExpRefList,
+                imageScalerList=inputData.imageScalerList,
+                refExpDataRef=refExpDataRef if not self.config.autoReference else None,
+                refImageScaler=refImageScaler,
+                expDatasetType=self.getTempExpDatasetName(),
             ).backgroundInfoList
         except Exception as e:
             self.log.fatal("Cannot match backgrounds: %s", e)
@@ -494,7 +497,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                     self.log.info("No background offset model available for %s: skipping", tempExpRef.dataId)
                     continue
                 try:
-                    varianceRatio =  bgInfo.matchedMSE / bgInfo.diffImVar
+                    varianceRatio = bgInfo.matchedMSE / bgInfo.diffImVar
                 except Exception as e:
                     self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping",
                                   e, tempExpRef.dataId)
@@ -505,11 +508,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                     continue
                 elif (varianceRatio > self.config.maxMatchResidualRatio):
                     self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping",
-                            varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId)
+                                  varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId)
                     continue
-                elif ( bgInfo.fitRMS > self.config.maxMatchResidualRMS):
+                elif (bgInfo.fitRMS > self.config.maxMatchResidualRMS):
                     self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping",
-                            bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId)
+                                  bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId)
                     continue
             newWeightList.append(1 / (1 / weight + bgInfo.fitRMS**2))
             newTempExpRefList.append(tempExpRef)
@@ -519,14 +522,14 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         return pipeBase.Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList,
                                imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None, 
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None,
                  altMaskList=None, doClip=False, mask=None):
         """!
         \anchor AssembleCoaddTask.assemble_
 
         \brief Assemble a coadd from input warps
 
-        Assemble the coadd using the provided list of coaddTempExps. Since the full coadd covers a patch (a 
+        Assemble the coadd using the provided list of coaddTempExps. Since the full coadd covers a patch (a
         large area), the assembly is performed over small areas on the image at a time in order to
         conserve memory usage. Iterate over subregions within the outer bbox of the patch using
         \ref assembleSubregion to mean-stack the corresponding subregions from the coaddTempExps (with outlier
@@ -604,7 +607,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
         tempExpList = [tempExpRef.get(tempExpName + "_sub",
-                                      bbox=afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(1,1)),
+                                      bbox=afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1, 1)),
                                       imageOrigin="LOCAL", immediate=True) for tempExpRef in tempExpRefList]
         numCcds = sum(len(tempExp.getInfo().getCoaddInputs().ccds) for tempExp in tempExpList)
 
@@ -649,7 +652,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         self.log.debug("Computing coadd over %s", bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
-        maskedImageList = afwImage.vectorMaskedImageF() # [] is rejected by afwMath.statisticsStack
+        maskedImageList = afwImage.vectorMaskedImageF()  # [] is rejected by afwMath.statisticsStack
         for tempExpRef, imageScaler, bgInfo, altMask in zip(tempExpRefList, imageScalerList, bgInfoList,
                                                             altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
@@ -686,7 +689,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         coaddMaskedImage.assign(coaddSubregion, bbox)
 
-
     def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):
         """!
         \brief Add metadata from the background matching to the coadd
@@ -700,7 +702,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         metadata.addString("CTExp_SDQA1_DESCRIPTION",
                            "Background matching: Ratio of matchedMSE / diffImVar")
         for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
-            tempExpStr = '&'.join('%s=%s' % (k,v) for k,v in tempExpRef.dataId.items())
+            tempExpStr = '&'.join('%s=%s' % (k, v) for k, v in tempExpRef.dataId.items())
             if backgroundInfo.isReference:
                 metadata.addString("ReferenceExp_ID", tempExpStr)
             else:
@@ -765,7 +767,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         return parser
 
 
-
 def _subBBoxIter(bbox, subregionSize):
     """!
     \brief Iterate over subregions of a bbox
@@ -787,16 +788,16 @@ def _subBBoxIter(bbox, subregionSize):
             subBBox = afwGeom.Box2I(bbox.getMin() + afwGeom.Extent2I(colShift, rowShift), subregionSize)
             subBBox.clip(bbox)
             if subBBox.isEmpty():
-                raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, colShift=%s, rowShift=%s" % \
-                    (bbox, subregionSize, colShift, rowShift))
+                raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, colShift=%s, rowShift=%s" %
+                                   (bbox, subregionSize, colShift, rowShift))
             yield subBBox
-
 
 
 class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
     """!
     \brief A version of lsst.pipe.base.DataIdContainer specialized for assembleCoadd.
     """
+
     def makeDataRefList(self, namespace):
         """!
            \brief Make self.refList from self.idList.
@@ -813,13 +814,13 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
                                                     level=self.level)
 
         if namespace.config.doMatchBackgrounds:
-            if namespace.config.autoReference: #matcher will pick it's own reference image
+            if namespace.config.autoReference:  # matcher will pick it's own reference image
                 datasetType = namespace.config.coaddName + "Coadd"
                 validKeys = keysCoadd
             else:
                 datasetType = namespace.config.coaddName + "Coadd_tempExp"
                 validKeys = keysCoaddTempExp
-        else: #bkg subtracted coadd
+        else:  # bkg subtracted coadd
             datasetType = namespace.config.coaddName + "Coadd"
             validKeys = keysCoadd
 
@@ -829,20 +830,21 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
                 if key not in dataId:
                     raise RuntimeError("--id must include " + key)
 
-            for key in dataId: # check if users supplied visit/run
-                if (key not in keysCoadd) and (key in keysCoaddTempExp):  #user supplied a visit/run
+            for key in dataId:  # check if users supplied visit/run
+                if (key not in keysCoadd) and (key in keysCoaddTempExp):  # user supplied a visit/run
                     if namespace.config.autoReference:
                         # user probably meant: autoReference = False
                         namespace.config.autoReference = False
                         datasetType = namespace.config.coaddName + "Coadd_tempExp"
-                        print "Switching config.autoReference to False; applies only to background Matching."
+                        print("Switching config.autoReference to False; applies only to background Matching.")
                         break
 
             dataRef = namespace.butler.dataRef(
-                datasetType = datasetType,
-                dataId = dataId,
+                datasetType=datasetType,
+                dataId=dataId,
             )
             self.refList.append(dataRef)
+
 
 def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
     """!
@@ -873,35 +875,35 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
 \brief Configuration parameters for the SafeClipAssembleCoaddTask
     """
     clipDetection = pexConfig.ConfigurableField(target=SourceDetectionTask,
-                                      doc="Detect sources on difference between unclipped and clipped coadd")
+                                                doc="Detect sources on difference between unclipped and clipped coadd")
     minClipFootOverlap = pexConfig.Field(
-        doc = "Minimum fractional overlap of clipped footprint with visit DETECTED to be clipped",
-        dtype = float,
-        default = 0.6
+        doc="Minimum fractional overlap of clipped footprint with visit DETECTED to be clipped",
+        dtype=float,
+        default=0.6
     )
     minClipFootOverlapSingle = pexConfig.Field(
-        doc = "Minimum fractional overlap of clipped footprint with visit DETECTED to be " \
-              "clipped when only one visit overlaps",
-        dtype = float,
-        default = 0.5
+        doc="Minimum fractional overlap of clipped footprint with visit DETECTED to be "
+        "clipped when only one visit overlaps",
+        dtype=float,
+        default=0.5
     )
     minClipFootOverlapDouble = pexConfig.Field(
-        doc = "Minimum fractional overlap of clipped footprints with visit DETECTED to be " \
-              "clipped when two visits overlap",
-        dtype = float,
-        default = 0.45
+        doc="Minimum fractional overlap of clipped footprints with visit DETECTED to be "
+        "clipped when two visits overlap",
+        dtype=float,
+        default=0.45
     )
     maxClipFootOverlapDouble = pexConfig.Field(
-        doc = "Maximum fractional overlap of clipped footprints with visit DETECTED when " \
-              "considering two visits",
-        dtype = float,
-        default = 0.15
+        doc="Maximum fractional overlap of clipped footprints with visit DETECTED when "
+        "considering two visits",
+        dtype=float,
+        default=0.15
     )
     minBigOverlap = pexConfig.Field(
-        doc = "Minimum number of pixels in footprint to use DETECTED mask from the single visits " \
-              "when labeling clipped footprints",
-        dtype = int,
-        default = 100
+        doc="Minimum number of pixels in footprint to use DETECTED mask from the single visits "
+        "when labeling clipped footprints",
+        dtype=int,
+        default=100
     )
 
     def setDefaults(self):
@@ -926,11 +928,12 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
 ## \copybrief SafeClipAssembleCoaddTask
 ## \}
 
+
 class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     """!
     \anchor SafeClipAssembleCoaddTask_
 
-    \brief Assemble a coadded image from a set of coadded temporary exposures, being careful to clip & flag areas 
+    \brief Assemble a coadded image from a set of coadded temporary exposures, being careful to clip & flag areas
     with potential artifacts.
 
     \section pipe_tasks_assembleCoadd_Contents Contents
@@ -945,7 +948,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
     \copybrief SafeClipAssembleCoaddTask
 
-    Read the documentation for \ref AssembleCoaddTask_ "AssembleCoaddTask" first since 
+    Read the documentation for \ref AssembleCoaddTask_ "AssembleCoaddTask" first since
     SafeClipAssembleCoaddTask subtasks that task.
     In \ref AssembleCoaddTask_ "AssembleCoaddTask", we compute the coadd as an clipped mean (i.e. we clip
     outliers).
@@ -1001,7 +1004,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     begin, assuming that the lsst stack has been already set up, we must set up the obs_subaru and ci_hsc
     packages.
     This defines the environment variable $CI_HSC_DIR and points at the location of the package. The raw HSC
-    data live in the $CI_HSC_DIR/raw directory. To begin assembling the coadds, we must first 
+    data live in the $CI_HSC_DIR/raw directory. To begin assembling the coadds, we must first
     <DL>
       <DT>processCcd</DT>
       <DD> process the individual ccds in $CI_HSC_RAW to produce calibrated exposures</DD>
@@ -1019,7 +1022,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     \code
     assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24
     \endcode
-    This will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I 
+    This will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I
     You may also choose to run:
     \code
     scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
@@ -1135,7 +1138,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         exp.setPsf(coaddMean.getPsf())
         return exp
 
-
     def detectClip(self, exp, tempExpRefList):
         """!
         \brief Detect clipped regions on an exposure and set the mask on the individual tempExp masks
@@ -1172,13 +1174,13 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
         # build a list with a mask for each visit which can be modified with clipping information
         tempExpClipList = [tmpExpRef.get(self.getTempExpDatasetName(),
-                           immediate=True).getMaskedImage().getMask() for tmpExpRef in tempExpRefList]
+                                         immediate=True).getMaskedImage().getMask() for tmpExpRef in tempExpRefList]
 
         for footprint in footprints.getFootprints():
             nPixel = footprint.getArea()
-            overlap = [] # hold the overlap with each visit
-            maskList = [] # which visit mask match
-            indexList = []# index of visit in global list
+            overlap = []  # hold the overlap with each visit
+            maskList = []  # which visit mask match
+            indexList = []  # index of visit in global list
             for i, tmpExpMask in enumerate(tempExpClipList):
                 # Determine the overlap with the footprint
                 ignore = countMaskFromFootprint(tmpExpMask, footprint, ignoreMask, 0x0)
@@ -1197,7 +1199,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
                 continue
 
             keep = False   # Should this footprint be marked as clipped?
-            keepIndex = [] # Which tempExps does the clipped footprint belong to
+            keepIndex = []  # Which tempExps does the clipped footprint belong to
 
             # If footprint only has one overlap use a lower threshold
             if len(overlap) == 1:
@@ -1208,7 +1210,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
                 # This is the general case where only visit should be clipped
                 clipIndex = numpy.where(overlap > self.config.minClipFootOverlap)[0]
                 if len(clipIndex) == 1:
-                    keep=True
+                    keep = True
                     keepIndex = [clipIndex[0]]
 
                 # Test if there are clipped objects that overlap two different visits
@@ -1216,7 +1218,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
                 if len(clipIndex) == 2 and len(overlap) > 3:
                     clipIndexComp = numpy.where(overlap < self.config.minClipFootOverlapDouble)[0]
                     if numpy.max(overlap[clipIndexComp]) < self.config.maxClipFootOverlapDouble:
-                        keep=True
+                        keep = True
                         keepIndex = clipIndex
 
             if not keep:
@@ -1230,7 +1232,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
         return pipeBase.Struct(clipFootprints=clipFootprints, clipIndices=clipIndices,
                                tempExpClipList=tempExpClipList)
-
 
     def detectClipBig(self, tempExpClipList, clipFootprints, clipIndices, maskClipValue, maskDetValue):
         """!
@@ -1281,5 +1282,3 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
             tmpExpMask |= maskVisitClip
 
         return bigFootprintsCoadd
-
-

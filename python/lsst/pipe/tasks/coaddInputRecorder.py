@@ -1,3 +1,4 @@
+from builtins import object
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -146,7 +147,6 @@ class CoaddTempExpInputRecorder(object):
         record.setValidPolygon(info.getValidPolygon())
         record.setVisitInfo(info.getVisitInfo())
         record.setBBox(exposure.getBBox())
-
 
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and

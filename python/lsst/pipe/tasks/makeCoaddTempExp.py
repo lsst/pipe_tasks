@@ -34,27 +34,28 @@ from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
 __all__ = ["MakeCoaddTempExpTask"]
 
+
 class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     """Config for MakeCoaddTempExpTask
     """
     warpAndPsfMatch = pexConfig.ConfigurableField(
-        target = WarpAndPsfMatchTask,
-        doc = "Task to warp and PSF-match calexp",
+        target=WarpAndPsfMatchTask,
+        doc="Task to warp and PSF-match calexp",
     )
     doWrite = pexConfig.Field(
-        doc = "persist <coaddName>Coadd_tempExp",
-        dtype = bool,
-        default = True,
+        doc="persist <coaddName>Coadd_tempExp",
+        dtype=bool,
+        default=True,
     )
     doOverwrite = pexConfig.Field(
-        doc = "overwrite <coaddName>Coadd_tempExp; If False, continue if the file exists on disk",
-        dtype = bool,
-        default = True,
+        doc="overwrite <coaddName>Coadd_tempExp; If False, continue if the file exists on disk",
+        dtype=bool,
+        default=True,
     )
     bgSubtracted = pexConfig.Field(
-        doc = "Work with a background subtracted calexp?",
-        dtype = bool,
-        default = True,
+        doc="Work with a background subtracted calexp?",
+        dtype=bool,
+        default=True,
     )
 
 
@@ -63,7 +64,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
-    
+
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("warpAndPsfMatch")
@@ -71,15 +72,15 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     @pipeBase.timeMethod
     def run(self, patchRef, selectDataList=[]):
         """Produce <coaddName>Coadd_tempExp images
-        
+
         <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
-        
+
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
         @return: dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
 
         @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
-        
+
         @warning: this task sets the Calib of the coaddTempExp to the Calib of the first calexp
         with any good pixels in the patch. For a mosaic camera the resulting Calib should be ignored
         (assembleCoadd should determine zeropoint scaling without referring to it).
@@ -99,7 +100,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         self.log.info("Processing %d tempExps for patch %s", len(groupData.groups), patchRef.dataId)
 
         dataRefList = []
-        for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.iteritems()):
+        for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.items()):
             tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDatasetName(),
                                          tempExpTuple, groupData.keys)
             if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=self.getTempExpDatasetName()):
@@ -112,7 +113,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             # For now, we try to get a long integer "visit" key, and if we can't, we just use the index
             # of the visit in the list.
             try:
-                visitId = long(tempExpRef.dataId["visit"])
+                visitId = int(tempExpRef.dataId["visit"])
             except (KeyError, ValueError):
                 visitId = i
 
@@ -179,7 +180,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     coaddTempExp.setCalib(exposure.getCalib())
                     coaddTempExp.setFilter(exposure.getFilter())
                     didSetMetadata = True
-            except Exception, e:
+            except Exception as e:
                 self.log.warn("Error processing calexp %s; skipping it: %s", calExpRef.dataId, e)
                 continue
             inputRecorder.addCalExp(calExp, ccdId, numGoodPix)

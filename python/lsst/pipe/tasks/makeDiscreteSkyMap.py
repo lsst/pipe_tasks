@@ -30,36 +30,38 @@ import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
 from lsst.pipe.base import ArgumentParser
 
+
 class MakeDiscreteSkyMapConfig(pexConfig.Config):
     """Config for MakeDiscreteSkyMapTask
     """
     coaddName = pexConfig.Field(
-        doc = "coadd name, e.g. deep, goodSeeing, chiSquared",
-        dtype = str,
-        default = "deep",
+        doc="coadd name, e.g. deep, goodSeeing, chiSquared",
+        dtype=str,
+        default="deep",
     )
     skyMap = pexConfig.ConfigField(
-        dtype = BaseSkyMap.ConfigClass,
-        doc = "SkyMap configuration parameters, excluding position and radius"
+        dtype=BaseSkyMap.ConfigClass,
+        doc="SkyMap configuration parameters, excluding position and radius"
     )
     borderSize = pexConfig.Field(
-        doc = "additional border added to the bounding box of the calexps, in degrees",
-        dtype = float,
-        default = 0.0
+        doc="additional border added to the bounding box of the calexps, in degrees",
+        dtype=float,
+        default=0.0
     )
     doAppend = pexConfig.Field(
-        doc = "append another tract to an existing DiscreteSkyMap on disk, if present?",
-        dtype = bool,
-        default = False
+        doc="append another tract to an existing DiscreteSkyMap on disk, if present?",
+        dtype=bool,
+        default=False
     )
     doWrite = pexConfig.Field(
-        doc = "persist the skyMap?",
-        dtype = bool,
-        default = True,
+        doc="persist the skyMap?",
+        dtype=bool,
+        default=True,
     )
 
     def setDefaults(self):
         self.skyMap.tractOverlap = 0.0
+
 
 class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
     """Run a task with all dataRefs at once, rather than one dataRef at a time.
@@ -85,13 +87,13 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
         """
         butler, dataRefList = args
         task = self.TaskClass(config=self.config, log=self.log)
-        result = None # in case the task fails
+        result = None  # in case the task fails
         if self.doRaise:
             result = task.run(butler, dataRefList)
         else:
             try:
                 result = task.run(butler, dataRefList)
-            except Exception, e:
+            except Exception as e:
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
@@ -100,10 +102,11 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
 
         if self.doReturnResults:
             return pipeBase.Struct(
-                dataRefList = dataRefList,
-                metadata = task.metadata,
-                result = result,
+                dataRefList=dataRefList,
+                metadata=task.metadata,
+                result=result,
             )
+
 
 class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
     """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
@@ -136,7 +139,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             md = dataRef.get("calexp_md", immediate=True)
             wcs = afwImage.makeWcs(md)
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
-            boxI = afwGeom.Box2I(afwGeom.Point2I(0,0), afwGeom.Extent2I(md.get("NAXIS1"), md.get("NAXIS2")))
+            boxI = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(md.get("NAXIS1"), md.get("NAXIS2")))
             boxD = afwGeom.Box2D(boxI)
             points.extend(tuple(wcs.pixelToSky(corner).getVector()) for corner in boxD.getCorners())
         if len(points) == 0:
@@ -147,7 +150,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             raise RuntimeError(
                 "Failed to compute convex hull of the vertices of all calexp bounding boxes; "
                 "they may not be hemispherical."
-                )
+            )
         circle = polygon.getBoundingCircle()
 
         datasetName = self.config.coaddName + "Coadd_skyMap"
@@ -180,13 +183,13 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             )
             skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
-            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
-                (tractInfo.getId(), ", ".join(posStrList), \
-                tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
+            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" %
+                          (tractInfo.getId(), ", ".join(posStrList),
+                           tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
         if self.config.doWrite:
             butler.put(skyMap, datasetName)
         return pipeBase.Struct(
-            skyMap = skyMap
+            skyMap=skyMap
         )
 
     def _getConfigName(self):

@@ -1,4 +1,8 @@
 from __future__ import absolute_import, division
+from __future__ import print_function
+from builtins import zip
+from builtins import input
+from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008-2016 AURA/LSST.
@@ -21,7 +25,7 @@ from __future__ import absolute_import, division
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 # \package lsst.pipe.tasks.
-from itertools import izip
+
 import math
 import sys
 
@@ -48,7 +52,7 @@ def checkSourceFlags(source, sourceKeys):
         if not source.get(k):
             return False
     if source.getPsfFluxFlag():
-            return False
+        return False
     for k in sourceKeys.badFlags:
         if source.get(k):
             return False
@@ -58,85 +62,85 @@ def checkSourceFlags(source, sourceKeys):
 class PhotoCalConfig(pexConf.Config):
     """Config for PhotoCal"""
     magLimit = pexConf.Field(
-        dtype = float,
-        default = 22.0,
-        doc = "Don't use objects fainter than this magnitude",
+        dtype=float,
+        default=22.0,
+        doc="Don't use objects fainter than this magnitude",
     )
     doWriteOutput = pexConf.Field(
-        dtype = bool,
-        default = True,
-        doc = "Write a field name astrom_usedByPhotoCal to the schema",
+        dtype=bool,
+        default=True,
+        doc="Write a field name astrom_usedByPhotoCal to the schema",
     )
     fluxField = pexConf.Field(
-        dtype = str,
-        default = "slot_CalibFlux_flux",
-        doc = ("Name of the source flux field to use.  The associated flag field\n"
-               "('<name>_flags') will be implicitly included in badFlags."),
+        dtype=str,
+        default="slot_CalibFlux_flux",
+        doc=("Name of the source flux field to use.  The associated flag field\n"
+             "('<name>_flags') will be implicitly included in badFlags."),
     )
     applyColorTerms = pexConf.Field(
-        dtype = bool,
-        default = None,
-        doc = ("Apply photometric color terms to reference stars? One of:\n"
-               "None: apply if colorterms and photoCatName are not None;\n"
-               "      fail if color term data is not available for the specified ref catalog and filter.\n"
-               "True: always apply colorterms; fail if color term data is not available for the\n"
-               "      specified reference catalog and filter.\n"
-               "False: do not apply."),
-        optional = True,
+        dtype=bool,
+        default=None,
+        doc=("Apply photometric color terms to reference stars? One of:\n"
+             "None: apply if colorterms and photoCatName are not None;\n"
+             "      fail if color term data is not available for the specified ref catalog and filter.\n"
+             "True: always apply colorterms; fail if color term data is not available for the\n"
+             "      specified reference catalog and filter.\n"
+             "False: do not apply."),
+        optional=True,
     )
     goodFlags = pexConf.ListField(
-        dtype = str,
-        default = [],
-        doc = "List of source flag fields that must be set for a source to be used.",
+        dtype=str,
+        default=[],
+        doc="List of source flag fields that must be set for a source to be used.",
     )
     badFlags = pexConf.ListField(
-        dtype = str,
-        default = ["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
-                   "base_PixelFlags_flag_saturated"],
-        doc = "List of source flag fields that will cause a source to be rejected when they are set.",
+        dtype=str,
+        default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
+                 "base_PixelFlags_flag_saturated"],
+        doc="List of source flag fields that will cause a source to be rejected when they are set.",
     )
     sigmaMax = pexConf.Field(
-        dtype = float,
-        default = 0.25,
-        doc = "maximum sigma to use when clipping",
-        optional = True,
+        dtype=float,
+        default=0.25,
+        doc="maximum sigma to use when clipping",
+        optional=True,
     )
     nSigma = pexConf.Field(
-        dtype = float,
-        default = 3.0,
-        doc = "clip at nSigma",
+        dtype=float,
+        default=3.0,
+        doc="clip at nSigma",
     )
     useMedian = pexConf.Field(
-        dtype = bool,
-        default = True,
-        doc = "use median instead of mean to compute zeropoint",
+        dtype=bool,
+        default=True,
+        doc="use median instead of mean to compute zeropoint",
     )
     nIter = pexConf.Field(
-        dtype = int,
-        default = 20,
-        doc = "number of iterations",
+        dtype=int,
+        default=20,
+        doc="number of iterations",
     )
     colorterms = pexConf.ConfigField(
-        dtype = ColortermLibrary,
-        doc = "Library of photometric reference catalog name: color term dict",
+        dtype=ColortermLibrary,
+        doc="Library of photometric reference catalog name: color term dict",
     )
     photoCatName = pexConf.Field(
-        dtype = str,
-        optional = True,
-        doc = ("Name of photometric reference catalog; used to select a color term dict in colorterms."
-               " see also applyColorTerms"),
+        dtype=str,
+        optional=True,
+        doc=("Name of photometric reference catalog; used to select a color term dict in colorterms."
+             " see also applyColorTerms"),
     )
     magErrFloor = pexConf.RangeField(
-        dtype = float,
-        default = 0.0,
-        doc = "Additional magnitude uncertainty to be added in quadrature with measurement errors.",
-        min = 0.0,
+        dtype=float,
+        default=0.0,
+        doc="Additional magnitude uncertainty to be added in quadrature with measurement errors.",
+        min=0.0,
     )
     doSelectUnresolved = pexConf.Field(
-        dtype = bool,
-        default = True,
-        doc = ("Use the extendedness parameter to select objects to use in photometric calibration?\n"
-               "This applies only to the sources detected on the exposure, not the reference catalog"),
+        dtype=bool,
+        default=True,
+        doc=("Use the extendedness parameter to select objects to use in photometric calibration?\n"
+             "This applies only to the sources detected on the exposure, not the reference catalog"),
     )
 
     def validate(self):
@@ -155,7 +159,7 @@ class PhotoCalConfig(pexConf.Config):
 ## \}
 
 class PhotoCalTask(pipeBase.Task):
-    """!
+    r"""!
 \anchor PhotoCalTask_
 
 \brief Calculate the zero point of an exposure given a lsst.afw.table.ReferenceMatchVector.
@@ -555,20 +559,20 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         # Fitting with error bars in both axes is hard
         # for now ignore reference flux error, but ticket DM-2308 is a request for a better solution
-        magErrArr = np.array([abMagErrFromFluxErr(fe, sf) for fe, sf in izip(srcFluxErrArr, srcFluxArr)])
+        magErrArr = np.array([abMagErrFromFluxErr(fe, sf) for fe, sf in zip(srcFluxErrArr, srcFluxArr)])
         if self.config.magErrFloor != 0.0:
             magErrArr = (magErrArr**2 + self.config.magErrFloor**2)**0.5
 
-        srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in izip(srcFluxErrArr, srcFluxArr)])
-        refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in izip(refFluxErrArr, refFluxArr)])
+        srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in zip(srcFluxErrArr, srcFluxArr)])
+        refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in zip(refFluxErrArr, refFluxArr)])
 
         return pipeBase.Struct(
-            srcMag = srcMagArr,
-            refMag = refMagArr,
-            magErr = magErrArr,
-            srcMagErr = srcMagErrArr,
-            refMagErr = refMagErrArr,
-            refFluxFieldList = fluxFieldList,
+            srcMag=srcMagArr,
+            refMag=refMagArr,
+            magErr=magErrArr,
+            srcMagErr=srcMagErrArr,
+            refMagErr=refMagErrArr,
+            refFluxFieldList=fluxFieldList,
         )
 
     @pipeBase.timeMethod
@@ -673,12 +677,12 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         calib.setFluxMag0(flux0, flux0err)
 
         return pipeBase.Struct(
-            calib = calib,
-            arrays = arrays,
-            matches = matches,
-            zp = r.zp,
-            sigma = r.sigma,
-            ngood = r.ngood,
+            calib=calib,
+            arrays=arrays,
+            matches=matches,
+            zp=r.zp,
+            sigma=r.sigma,
+            ngood=r.ngood,
         )
 
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
@@ -826,26 +830,26 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                         reply = None
                         while i == 0 or reply != "c":
                             try:
-                                reply = raw_input("Next iteration? [ynhpc] ")
+                                reply = input("Next iteration? [ynhpc] ")
                             except EOFError:
                                 reply = "n"
 
                             if reply == "h":
-                                print >> sys.stderr, "Options: c[ontinue] h[elp] n[o] p[db] y[es]"
+                                print("Options: c[ontinue] h[elp] n[o] p[db] y[es]", file=sys.stderr)
                                 continue
 
                             if reply in ("", "c", "n", "p", "y"):
                                 break
                             else:
-                                print >> sys.stderr, "Unrecognised response: %s" % reply
+                                print("Unrecognised response: %s" % reply, file=sys.stderr)
 
                         if reply == "n":
                             break
                         elif reply == "p":
                             import pdb
                             pdb.set_trace()
-                except Exception, e:
-                    print >> sys.stderr, "Error plotting in PhotoCal.getZeroPoint: %s" % e
+                except Exception as e:
+                    print("Error plotting in PhotoCal.getZeroPoint: %s" % e, file=sys.stderr)
 
             # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -861,9 +865,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 self.log.warn(msg)
 
                 return pipeBase.Struct(
-                    zp = center,
-                    sigma = sig,
-                    ngood = len(dmag))
+                    zp=center,
+                    sigma=sig,
+                    ngood=len(dmag))
             elif ngood == old_ngood:
                 break
 
@@ -877,7 +881,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         zp, weightSum = np.average(dmag, weights=1/dmagErr**2, returned=True)
         sigma = np.sqrt(1.0/weightSum)
         return pipeBase.Struct(
-            zp = zp,
-            sigma = sigma,
-            ngood = len(dmag),
+            zp=zp,
+            sigma=sigma,
+            ngood=len(dmag),
         )

@@ -1,3 +1,5 @@
+from builtins import map
+from builtins import object
 #!/usr/bin/env python
 #
 # LSST Data Management System

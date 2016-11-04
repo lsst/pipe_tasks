@@ -1,7 +1,8 @@
-# 
+from builtins import range
+#
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +10,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -32,40 +33,41 @@ from .mockObject import MockObjectTask
 from .mockObservation import MockObservationTask
 from .mockSelect import MockSelectImagesTask
 
+
 class MockCoaddConfig(lsst.pex.config.Config):
     makeSkyMap = lsst.pex.config.ConfigurableField(
-        doc = "SkyMap builder subtask",
-        target = MakeSkyMapTask
-        )
+        doc="SkyMap builder subtask",
+        target=MakeSkyMapTask
+    )
     mockObject = lsst.pex.config.ConfigurableField(
-        doc = "Subtask that generates and draws the objects/sources in the mock images",
-        target = MockObjectTask
-        )
+        doc="Subtask that generates and draws the objects/sources in the mock images",
+        target=MockObjectTask
+    )
     mockObservation = lsst.pex.config.ConfigurableField(
-        doc = "Subtask that generates the Wcs, Psf, Calib, etc. of mock images",
-        target = MockObservationTask
-        )
+        doc="Subtask that generates the Wcs, Psf, Calib, etc. of mock images",
+        target=MockObservationTask
+    )
     coaddName = lsst.pex.config.Field(
-        doc = "Coadd name used as a prefix for other datasets",
-        dtype = str,
-        optional = False,
-        default = "deep"
-        )
+        doc="Coadd name used as a prefix for other datasets",
+        dtype=str,
+        optional=False,
+        default="deep"
+    )
     nObservations = lsst.pex.config.Field(
-        doc = "Number of mock observations to generate.",
-        dtype = int,
-        optional = False,
-        default = 12
-        )
+        doc="Number of mock observations to generate.",
+        dtype=int,
+        optional=False,
+        default=12
+    )
     edgeBuffer = lsst.pex.config.Field(
-        doc = ("Number of pixels by which to grow object bounding boxes when determining whether they land "
-               " completely on a generated image"),
-        dtype = int,
-        optional = False,
-        default = 5
-        )
+        doc=("Number of pixels by which to grow object bounding boxes when determining whether they land "
+             " completely on a generated image"),
+        dtype=int,
+        optional=False,
+        default=5
+    )
 
-    def setupSkyMapPatches(self, nPatches=2, patchSize=400, pixelScale = 0.2*lsst.afw.geom.arcseconds):
+    def setupSkyMapPatches(self, nPatches=2, patchSize=400, pixelScale=0.2*lsst.afw.geom.arcseconds):
         """
         Set the nested [discrete] skymap config parameters such that the full tract
         has nPatches x nPatches patches of the given size and pixel scale.
@@ -85,6 +87,7 @@ class MockCoaddConfig(lsst.pex.config.Config):
         self.makeSkyMap.skyMap['discrete'].projection = "TAN"
         self.makeSkyMap.skyMap['discrete'].tractOverlap = 0.0
         self.setupSkyMapPatches()
+
 
 class MockCoaddTask(lsst.pipe.base.CmdLineTask):
     """MockCoaddTask is a driver task for creating mock coadds.  As opposed to more realistic
@@ -118,17 +121,17 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         self.makeSubtask("mockObject")
         self.makeSubtask("mockObservation")
         self.schema = lsst.afw.table.SimpleTable.makeMinimalSchema()
-        self.objectIdKey = self.schema.addField("objectId", type=long, doc="foreign key to truth catalog")
-        self.exposureIdKey = self.schema.addField("exposureId", type=long,
+        self.objectIdKey = self.schema.addField("objectId", type="L", doc="foreign key to truth catalog")
+        self.exposureIdKey = self.schema.addField("exposureId", type="L",
                                                   doc="foreign key to observation catalog")
         self.centroidInBBoxKey = self.schema.addField(
             "centroidInBBox", type="Flag",
             doc="set if this source's center position is inside the generated image's bbox"
-            )
+        )
         self.partialOverlapKey = self.schema.addField(
             "partialOverlap", type="Flag",
             doc="set if this source was not completely inside the generated image"
-            )
+        )
 
     def buildSkyMap(self, butler):
         """Build the skymap for the mock dataset."""
@@ -241,7 +244,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         for iPatchX in range(nPatchX):
             for iPatchY in range(nPatchY):
                 patchRef = butler.dataRef(self.config.coaddName + "Coadd",
-                                          tract=tractInfo.getId(), patch="%d,%d" % (iPatchX,iPatchY),
+                                          tract=tractInfo.getId(), patch="%d,%d" % (iPatchX, iPatchY),
                                           filter='r')
                 yield patchRef
 
@@ -277,11 +280,12 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             exposure.getMaskedImage().getImage().set(0.0)
             coaddPsf = lsst.meas.algorithms.CoaddPsf(
                 exposure.getInfo().getCoaddInputs().ccds, exposure.getWcs()
-                )
+            )
             exposure.setPsf(coaddPsf)
             for truthRecord in truthCatalog:
                 self.mockObject.drawSource(truthRecord, exposure, buffer=0)
             patchRef.put(exposure, self.config.coaddName + "Coadd_mock")
+
 
 def run(root):
     """Convenience function to create and run MockCoaddTask with default settings.

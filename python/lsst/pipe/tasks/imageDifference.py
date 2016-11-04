@@ -1,3 +1,4 @@
+from builtins import zip
 #
 # LSST Data Management System
 # Copyright 2012 LSST Corporation.
@@ -43,43 +44,48 @@ import lsst.ip.diffim.utils as diUtils
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 IqrToSigma = 0.741
 
+
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
     """
     doAddCalexpBackground = pexConfig.Field(dtype=bool, default=True,
-        doc="Add background to calexp before processing it.  Useful as ipDiffim does background matching.")
+                                            doc="Add background to calexp before processing it.  "
+                                                "Useful as ipDiffim does background matching.")
     doUseRegister = pexConfig.Field(dtype=bool, default=True,
-        doc="Use image-to-image registration to align template with science image")
+                                    doc="Use image-to-image registration to align template with "
+                                        "science image")
     doDebugRegister = pexConfig.Field(dtype=bool, default=False,
-        doc="Writing debugging data for doUseRegister")
+                                      doc="Writing debugging data for doUseRegister")
     doSelectSources = pexConfig.Field(dtype=bool, default=True,
-        doc="Select stars to use for kernel fitting")
+                                      doc="Select stars to use for kernel fitting")
     doSelectDcrCatalog = pexConfig.Field(dtype=bool, default=False,
-        doc="Select stars of extreme color as part of the control sample") 
+                                         doc="Select stars of extreme color as part of the control sample")
     doSelectVariableCatalog = pexConfig.Field(dtype=bool, default=False,
-        doc="Select stars that are variable to be part of the control sample") 
+                                              doc="Select stars that are variable to be part "
+                                                  "of the control sample")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc="Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
-        doc="Convolve science image by its PSF before PSF-matching?")
+                                    doc="Convolve science image by its PSF before PSF-matching?")
     useGaussianForPreConvolution = pexConfig.Field(dtype=bool, default=True,
-        doc="Use a simple gaussian PSF model for pre-convolution (else use fit PSF)? "
-            "Ignored if doPreConvolve false.")
+                                                   doc="Use a simple gaussian PSF model for pre-convolution "
+                                                       "(else use fit PSF)? Ignored if doPreConvolve false.")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc="Detect sources?")
     doDecorrelation = pexConfig.Field(dtype=bool, default=False,
-        doc="Perform diffim decorrelation to undo pixel correlation due to A&L kernel convolution? "
-            "If True, also update the diffim PSF.")
+                                      doc="Perform diffim decorrelation to undo pixel correlation due to A&L "
+                                          "kernel convolution? If True, also update the diffim PSF.")
     doMerge = pexConfig.Field(dtype=bool, default=True,
-        doc="Merge positive and negative diaSources with grow radius set by growFootprint")
+                              doc="Merge positive and negative diaSources with grow radius "
+                                  "set by growFootprint")
     doMatchSources = pexConfig.Field(dtype=bool, default=True,
-        doc="Match diaSources with input calexp sources and ref catalog sources")
+                                     doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
     doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
-        doc="Write warped and PSF-matched template coadd exposure?")
+                                        doc="Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
     doAddMetrics = pexConfig.Field(dtype=bool, default=True,
-        doc="Add columns to the source table to hold analysis metrics?")
+                                   doc="Add columns to the source table to hold analysis metrics?")
 
     coaddName = pexConfig.Field(
         doc="coadd name: typically one of deep or goodSeeing",
@@ -92,12 +98,12 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=True
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target = measAstrom.LoadAstrometryNetObjectsTask,
-        doc = "reference object loader",
+        target=measAstrom.LoadAstrometryNetObjectsTask,
+        doc="reference object loader",
     )
     astrometer = pexConfig.ConfigurableField(
-        target = measAstrom.AstrometryTask,
-        doc = "astrometry task; used to match sources to reference objects, but not to fit a WCS",
+        target=measAstrom.AstrometryTask,
+        doc="astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
     sourceSelector = pexConfig.ConfigurableField(
         target=ObjectSizeStarSelectorTask,
@@ -117,7 +123,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=SourceDetectionTask,
         doc="Low-threshold detection for final measurement",
     )
-    #measurement = pexConfig.ConfigurableField(
+    # measurement = pexConfig.ConfigurableField(
     #    target=DipoleMeasurementTask,
     #    doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
     #)
@@ -126,8 +132,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="Enable updated dipole fitting method.",
     )
     getTemplate = pexConfig.ConfigurableField(
-        target = GetCoaddAsTemplateTask,
-        doc = "Subtask to retrieve template exposure and sources",
+        target=GetCoaddAsTemplateTask,
+        doc="Subtask to retrieve template exposure and sources",
     )
     controlStepSize = pexConfig.Field(
         doc="What step size (every Nth one) to select a control sample from the kernelSources",
@@ -135,9 +141,9 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=5
     )
     controlRandomSeed = pexConfig.Field(
-        doc="Random seed for shuffing the control sample",
-        dtype=int,
-        default=10
+        doc = "Random seed for shuffing the control sample",
+        dtype = int,
+        default = 10
     )
     register = pexConfig.ConfigurableField(
         target=RegisterTask,
@@ -149,13 +155,15 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=False
     )
     templateSipOrder = pexConfig.Field(dtype=int, default=2,
-        doc="Sip Order for fitting the Template Wcs (default is too high, overfitting)")
+                                       doc="Sip Order for fitting the Template Wcs "
+                                           "(default is too high, overfitting)")
 
     growFootprint = pexConfig.Field(dtype=int, default=2,
-        doc="Grow positive and negative footprints by this amount before merging")
+                                    doc="Grow positive and negative footprints by this amount before merging")
 
     diaSourceMatchRadius = pexConfig.Field(dtype=float, default=0.5,
-        doc="Match radius (in arcseconds) for DiaSource to Source association")
+                                           doc="Match radius (in arcseconds) "
+                                               "for DiaSource to Source association")
 
     def setDefaults(self):
         # defaults are OK for catalog and diacatalog
@@ -196,6 +204,7 @@ class ImageDifferenceConfig(pexConfig.Config):
 
 
 class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
+
     @staticmethod
     def getTargetList(parsedCmd, **kwargs):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, templateIdList=parsedCmd.templateId.idList,
@@ -211,7 +220,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
     def __init__(self, butler=None, **kwargs):
         """!Construct an ImageDifference Task
-        
+
         @param[in] butler  Butler object to use in constructing reference object loaders
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -288,7 +297,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # I don't know if this is the way we ultimately want to do things, but at least
         # this ensures the source IDs are fully unique.
         expBits = sensorRef.get("ccdExposureId_bits")
-        expId = long(sensorRef.get("ccdExposureId"))
+        expId = int(sensorRef.get("ccdExposureId"))
         idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
 
         # Retrieve the science image we wish to analyze
@@ -348,9 +357,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     # Run own detection and measurement; necessary in nightly processing
                     selectSources = self.subtract.getSelectSources(
                         exposure,
-                        sigma = scienceSigmaPost,
-                        doSmooth = not self.doPreConvolve,
-                        idFactory = idFactory,
+                        sigma=scienceSigmaPost,
+                        doSmooth=not self.doPreConvolve,
+                        idFactory=idFactory,
                     )
                 else:
                     self.log.info("Source selection via src product")
@@ -382,30 +391,30 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        "which templates are built.")
 
                 kernelSources = self.sourceSelector.selectStars(exposure, selectSources,
-                    matches=matches).starCat
+                                                                matches=matches).starCat
 
                 random.shuffle(kernelSources, random.random)
                 controlSources = kernelSources[::self.config.controlStepSize]
-                kernelSources = [k for i,k in enumerate(kernelSources) if i % self.config.controlStepSize]
+                kernelSources = [k for i, k in enumerate(kernelSources) if i % self.config.controlStepSize]
 
                 if self.config.doSelectDcrCatalog:
-                    redSelector  = DiaCatalogSourceSelectorTask(
+                    redSelector = DiaCatalogSourceSelectorTask(
                         DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
-                    redSources   = redSelector.selectStars(exposure, selectSources, matches=matches).starCat
+                    redSources = redSelector.selectStars(exposure, selectSources, matches=matches).starCat
                     controlSources.extend(redSources)
 
                     blueSelector = DiaCatalogSourceSelectorTask(
                         DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
-                    blueSources  = blueSelector.selectStars(exposure, selectSources, matches=matches).starCat
+                    blueSources = blueSelector.selectStars(exposure, selectSources, matches=matches).starCat
                     controlSources.extend(blueSources)
 
                 if self.config.doSelectVariableCatalog:
                     varSelector = DiaCatalogSourceSelectorTask(
                         DiaCatalogSourceSelectorConfig(includeVariable=True))
-                    varSources  = varSelector.selectStars(exposure, selectSources, matches=matches).starCat
+                    varSources = varSelector.selectStars(exposure, selectSources, matches=matches).starCat
                     controlSources.extend(varSources)
 
-                self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)" 
+                self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)"
                               % (len(kernelSources), len(selectSources), len(controlSources)))
             allresids = {}
             if self.config.doUseRegister:
@@ -425,7 +434,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 #
                 wcsResults = self.fitAstrometry(templateSources, templateExposure, selectSources)
                 warpedExp = self.register.warpExposure(templateExposure, wcsResults.wcs,
-                                            exposure.getWcs(), exposure.getBBox())
+                                                       exposure.getWcs(), exposure.getBBox())
                 templateExposure = warpedExp
 
                 # Create debugging outputs on the astrometric
@@ -433,48 +442,51 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # not yet implemented; expected on (I believe) #2636.
                 if self.config.doDebugRegister:
                     # Grab matches to reference catalog
-                    srcToMatch = {x.second.getId() : x.first for x in matches}
+                    srcToMatch = {x.second.getId(): x.first for x in matches}
 
                     refCoordKey = wcsResults.matches[0].first.getTable().getCoordKey()
                     inCentroidKey = wcsResults.matches[0].second.getTable().getCentroidKey()
-                    sids      = [m.first.getId() for m in wcsResults.matches]
+                    sids = [m.first.getId() for m in wcsResults.matches]
                     positions = [m.first.get(refCoordKey) for m in wcsResults.matches]
                     residuals = [m.first.get(refCoordKey).getOffsetFrom(wcsResults.wcs.pixelToSky(
-                                m.second.get(inCentroidKey))) for m in wcsResults.matches]
+                        m.second.get(inCentroidKey))) for m in wcsResults.matches]
                     allresids = dict(zip(sids, zip(positions, residuals)))
 
                     cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
-                            wcsResults.wcs.pixelToSky(
-                                m.second.get(inCentroidKey))) for m in wcsResults.matches]
-                    colors    = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))
-                                              + 2.5*numpy.log10(srcToMatch[x].get("r")) 
-                                              for x in sids if x in srcToMatch.keys()])
-                    dlong     = numpy.array([r[0].asArcseconds() for s,r in zip(sids, cresiduals) 
-                                             if s in srcToMatch.keys()])
-                    dlat      = numpy.array([r[1].asArcseconds() for s,r in zip(sids, cresiduals) 
-                                             if s in srcToMatch.keys()])
-                    idx1      = numpy.where(colors<self.sourceSelector.config.grMin)
-                    idx2      = numpy.where((colors>=self.sourceSelector.config.grMin)&
-                                            (colors<=self.sourceSelector.config.grMax))
-                    idx3      = numpy.where(colors>self.sourceSelector.config.grMax)
-                    rms1Long  = IqrToSigma*(numpy.percentile(dlong[idx1],75)-numpy.percentile(dlong[idx1],25))
-                    rms1Lat   = IqrToSigma*(numpy.percentile(dlat[idx1],75)-numpy.percentile(dlat[idx1],25))
-                    rms2Long  = IqrToSigma*(numpy.percentile(dlong[idx2],75)-numpy.percentile(dlong[idx2],25))
-                    rms2Lat   = IqrToSigma*(numpy.percentile(dlat[idx2],75)-numpy.percentile(dlat[idx2],25))
-                    rms3Long  = IqrToSigma*(numpy.percentile(dlong[idx3],75)-numpy.percentile(dlong[idx3],25))
-                    rms3Lat   = IqrToSigma*(numpy.percentile(dlat[idx3],75)-numpy.percentile(dlat[idx3],25))
-                    self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx1]), 
-                                                                                  rms1Long,
-                                                                                  numpy.median(dlat[idx1]), 
-                                                                                  rms1Lat))
-                    self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx2]), 
-                                                                                   rms2Long,
-                                                                                   numpy.median(dlat[idx2]), 
-                                                                                   rms2Lat))
-                    self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f"  % (numpy.median(dlong[idx3]), 
-                                                                                 rms3Long,
-                                                                                 numpy.median(dlat[idx3]), 
-                                                                                 rms3Lat))
+                        wcsResults.wcs.pixelToSky(
+                            m.second.get(inCentroidKey))) for m in wcsResults.matches]
+                    colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))
+                                          + 2.5*numpy.log10(srcToMatch[x].get("r"))
+                                          for x in sids if x in srcToMatch.keys()])
+                    dlong = numpy.array([r[0].asArcseconds() for s, r in zip(sids, cresiduals)
+                                         if s in srcToMatch.keys()])
+                    dlat = numpy.array([r[1].asArcseconds() for s, r in zip(sids, cresiduals)
+                                        if s in srcToMatch.keys()])
+                    idx1 = numpy.where(colors < self.sourceSelector.config.grMin)
+                    idx2 = numpy.where((colors >= self.sourceSelector.config.grMin) &
+                                       (colors <= self.sourceSelector.config.grMax))
+                    idx3 = numpy.where(colors > self.sourceSelector.config.grMax)
+                    rms1Long = IqrToSigma * \
+                        (numpy.percentile(dlong[idx1], 75)-numpy.percentile(dlong[idx1], 25))
+                    rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75)-numpy.percentile(dlat[idx1], 25))
+                    rms2Long = IqrToSigma * \
+                        (numpy.percentile(dlong[idx2], 75)-numpy.percentile(dlong[idx2], 25))
+                    rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75)-numpy.percentile(dlat[idx2], 25))
+                    rms3Long = IqrToSigma * \
+                        (numpy.percentile(dlong[idx3], 75)-numpy.percentile(dlong[idx3], 25))
+                    rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75)-numpy.percentile(dlat[idx3], 25))
+                    self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx1]),
+                                                                                 rms1Long,
+                                                                                 numpy.median(dlat[idx1]),
+                                                                                 rms1Lat))
+                    self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx2]),
+                                                                                  rms2Long,
+                                                                                  numpy.median(dlat[idx2]),
+                                                                                  rms2Lat))
+                    self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx3]),
+                                                                                rms3Long,
+                                                                                numpy.median(dlat[idx3]),
+                                                                                rms3Lat))
 
                     self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
                     self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))
@@ -494,7 +506,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # PSF match template exposure to exposure,
             # then return the difference
 
-            #Return warped template...  Construct sourceKernelCand list after subtract
+            # Return warped template...  Construct sourceKernelCand list after subtract
             self.log.info("Subtracting images")
             subtractRes = self.subtract.subtractExposures(
                 templateExposure=templateExposure,
@@ -533,7 +545,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
             # Erase existing detection mask planes
-            mask  = subtractedExposure.getMaskedImage().getMask()
+            mask = subtractedExposure.getMaskedImage().getMask()
             mask &= ~(mask.getPlaneBitMask("DETECTED") | mask.getPlaneBitMask("DETECTED_NEGATIVE"))
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
@@ -542,7 +554,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 table=table,
                 exposure=subtractedExposure,
                 doSmooth=not self.config.doPreConvolve
-                )
+            )
 
             if self.config.doMerge:
                 fpSet = results.fpSets.positive
@@ -573,7 +585,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
 
                     srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True)
-                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for 
+                    srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for
                                          srcMatch in srcMatches])
                     self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict),
                                                                              len(diaSources)))
@@ -593,15 +605,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 else:
                     self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches),
                                                                                        len(diaSources)))
-                    refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for \
-                                             refMatch in refMatches])
+                    refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for
+                                         refMatch in refMatches])
 
                 # Assign source Ids
                 for diaSource in diaSources:
                     sid = diaSource.getId()
-                    if srcMatchDict.has_key(sid):
+                    if sid in srcMatchDict:
                         diaSource.set("srcMatchId", srcMatchDict[sid])
-                    if refMatchDict.has_key(sid):
+                    if sid in refMatchDict:
                         diaSource.set("refMatchId", refMatchDict[sid])
 
             if diaSources is not None and self.config.doWriteSources:
@@ -612,7 +624,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 kernelCandList = []
                 for cell in subtractRes.kernelCellSet.getCellList():
-                    for cand in cell.begin(False): # include bad candidates
+                    for cand in cell.begin(False):  # include bad candidates
                         kernelCandList.append(cast_KernelCandidateF(cand))
 
                 # Get basis list to build control sample kernels
@@ -620,14 +632,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     kernelCandList[0].getKernel(KernelCandidateF.ORIG)).getKernelList()
 
                 controlCandList = \
-                    diffimTools.sourceTableToCandidateList(controlSources, 
+                    diffimTools.sourceTableToCandidateList(controlSources,
                                                            subtractRes.warpedExposure, exposure,
                                                            self.config.subtract.kernel.active,
                                                            self.config.subtract.kernel.active.detectionConfig,
                                                            self.log, doBuild=True, basisList=basisList)
 
                 kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel,
-                                dof=nparam)
+                           dof=nparam)
                 kcQa.apply(controlCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel)
 
                 if self.config.doDetection:
@@ -683,7 +695,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     x, y = s.getX() - x0, s.getY() - y0
                     ctype = "red" if s.get("flags.negative") else "yellow"
                     if (s.get("flags.pixel.interpolated.center") or s.get("flags.pixel.saturated.center") or
-                        s.get("flags.pixel.cr.center")):
+                            s.get("flags.pixel.cr.center")):
                         ptype = "x"
                     elif (s.get("flags.pixel.interpolated.any") or s.get("flags.pixel.saturated.any") or
                           s.get("flags.pixel.cr.any")):
@@ -718,9 +730,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                        self.subtract.config.kernel.active.detectionConfig,
                                        origVariance=True)
         if display and showDiaSources:
-            flagChecker   = SourceFlagChecker(diaSources)
-            isFlagged     = [flagChecker(x) for x in diaSources]
-            isDipole      = [x.get("classification.dipole") for x in diaSources]
+            flagChecker = SourceFlagChecker(diaSources)
+            isFlagged = [flagChecker(x) for x in diaSources]
+            isDipole = [x.get("classification.dipole") for x in diaSources]
             diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole,
                                    frame=lsstDebug.frame)
             lsstDebug.frame += 1
@@ -756,11 +768,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                help="Optional template data ID (visit only), e.g. --templateId visit=6789")
         return parser
 
+
 class Winter2013ImageDifferenceConfig(ImageDifferenceConfig):
     winter2013WcsShift = pexConfig.Field(dtype=float, default=0.0,
-        doc="Shift stars going into RegisterTask by this amount")
+                                         doc="Shift stars going into RegisterTask by this amount")
     winter2013WcsRms = pexConfig.Field(dtype=float, default=0.0,
-        doc="Perturb stars going into RegisterTask by this amount")
+                                       doc="Perturb stars going into RegisterTask by this amount")
 
     def setDefaults(self):
         ImageDifferenceConfig.setDefaults(self)

@@ -26,16 +26,17 @@ from lsst.ip.diffim import ModelPsfMatchTask
 
 __all__ = ["WarpAndPsfMatchTask"]
 
+
 class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
     psfMatch = pexConfig.ConfigurableField(
-        target = ModelPsfMatchTask,
-        doc = "PSF matching model to model task",
+        target=ModelPsfMatchTask,
+        doc="PSF matching model to model task",
     )
     warp = pexConfig.ConfigField(
-        dtype = afwMath.Warper.ConfigClass,
-        doc = "warper configuration",
+        dtype=afwMath.Warper.ConfigClass,
+        doc="warper configuration",
     )
 
 
@@ -67,7 +68,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             ignored if destBBox is not None
         @param destBBox: exact parent bbox of warped exposure (an afwGeom.Box2I or None);
             if None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored
-        
+
         @return a pipe_base Struct containing:
         - exposure: processed exposure
         """
@@ -76,5 +77,5 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         with self.timer("warp"):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
         return pipeBase.Struct(
-            exposure = exposure,
+            exposure=exposure,
         )

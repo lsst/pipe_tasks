@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -29,6 +29,7 @@ from lsst.pex.config import Config, Field, ConfigDictField
 from lsst.afw.image import Filter
 
 __all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
+
 
 class ColortermNotFoundError(LookupError):
     """Exception class indicating we couldn't find a colorterm
@@ -169,7 +170,7 @@ class ColortermLibrary(Config):
             if ctDictConfig is None:
                 # try glob expression
                 matchList = [libRefNameGlob for libRefNameGlob in self.data
-                    if fnmatch.fnmatch(photoCatName, libRefNameGlob)]
+                             if fnmatch.fnmatch(photoCatName, libRefNameGlob)]
                 if len(matchList) == 1:
                     trueRefCatName = matchList[0]
                     ctDictConfig = self.data[trueRefCatName]
@@ -177,16 +178,18 @@ class ColortermLibrary(Config):
                     raise ColortermNotFoundError(
                         "Multiple library globs match photoCatName %r: %s" % (photoCatName, matchList))
                 else:
-                    raise ColortermNotFoundError("No colorterm dict found with photoCatName %r" % photoCatName)
+                    raise ColortermNotFoundError(
+                        "No colorterm dict found with photoCatName %r" % photoCatName)
             ctDict = ctDictConfig.data
             if filterName not in ctDict:
                 # Perhaps it's an alias
                 try:
                     filterName = Filter(Filter(filterName).getId()).getName()
                 except pexExcept.NotFoundError:
-                    pass # this will be handled shortly
+                    pass  # this will be handled shortly
                 if filterName not in ctDict:
-                    errMsg = "No colorterm found for filter %r with photoCatName %r" % (filterName, photoCatName)
+                    errMsg = "No colorterm found for filter %r with photoCatName %r" % (
+                        filterName, photoCatName)
                     if trueRefCatName is not None:
                         errMsg += " = catalog %r" % (trueRefCatName,)
                     raise ColortermNotFoundError(errMsg)

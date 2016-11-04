@@ -22,6 +22,9 @@
 #
 """Select images and report which tracts and patches they are in
 """
+from __future__ import print_function
+from builtins import zip
+from builtins import object
 import collections
 import itertools
 import re
@@ -31,6 +34,7 @@ import numpy
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.getRepositoryData import DataRefListRunner
+
 
 class ReportTaskTimingConfig(pexConfig.Config):
     """Config for ReportTaskTimingTask
@@ -42,6 +46,7 @@ class ResourceInfo(object):
     # note: UTime, STime and MaxRss were renamed to UserTime, SystemTime and MaxResidentSetSize;
     # list both so the code can report time for both older and newer runs
     _BaseNameList = ("CpuTime", "UserTime", "SystemTime", "MaxResidentSetSize", "UTime", "STime", "MaxRss")
+
     def __init__(self, taskName, log):
         self.taskName = taskName
         self.log = log
@@ -51,21 +56,21 @@ class ResourceInfo(object):
                 setattr(self, name, [])
             self._validNames.add("Start" + baseName)
             self._validNames.add("End" + baseName)
-    
+
     @staticmethod
     def canMultiproccess():
         """Multiprocessing makes no sense for this task because it processes all data at once
         """
         return False
-    
+
     def isValidName(self, name):
         """Return True if name is a valid name for an item to add
         """
         return name in self._validNames
-    
+
     def setItem(self, name, data):
         """Set an attribute based on its key name
-        
+
         @param[in] name: name of item; must start with "Start" or "End"
             and be one of the supported values (see _BaseNameList).
             The associated field name is the same except the first letter is lowercase
@@ -80,7 +85,7 @@ class ResourceInfo(object):
             raise RuntimeError("%s error: unknown field %s" % (self, fieldName))
         valList = getattr(self, fieldName)
         valList += data
-    
+
     def reportUsage(self):
         """Compute and report resource usage; silently skip the item if no data is available.
         """
@@ -97,22 +102,22 @@ class ResourceInfo(object):
                 self.log.warn("%s: %s not set; skipping" % (self, endName))
                 continue
             if len(startList) != len(endList):
-                self.log.warn("%s: len(%s) = %d != %d = len(%s); skipping" % \
-                    (self, startName, len(startList), endName, len(endList)))
+                self.log.warn("%s: len(%s) = %d != %d = len(%s); skipping" %
+                              (self, startName, len(startList), endName, len(endList)))
                 continue
-        
-            deltaList = numpy.array([e - s for s, e in itertools.izip(startList, endList)])
+
+            deltaList = numpy.array([e - s for s, e in zip(startList, endList)])
             setattr(self, deltaName, deltaList)
             self._reportItem(baseName)
-    
+
     def _getNameList(self, baseName):
         """Return start, end and delta field names given a base name
         """
         return tuple(prefix + baseName for prefix in ("start", "end", "delta"))
-    
+
     def _reportItem(self, baseName):
         """Report statistics for one item, given its base name
-        
+
         If the item has not been set then report NaNs
         """
         deltaName = self._getNameList(baseName)[2]
@@ -125,12 +130,12 @@ class ResourceInfo(object):
             stdDev = numpy.std(deltaList)
             min = numpy.min(deltaList)
             max = numpy.max(deltaList)
-        print "%s: %s median=%s; mean=%s; stdDev=%s; min=%s; max=%s; n=%s" % \
-            (self.taskName, baseName, median, mean, stdDev, min, max, len(deltaList))
-    
+        print("%s: %s median=%s; mean=%s; stdDev=%s; min=%s; max=%s; n=%s" % \
+            (self.taskName, baseName, median, mean, stdDev, min, max, len(deltaList)))
+
     def __str__(self):
         return "ResourceUsage(%s)" % (self.taskName,)
-        
+
 
 class ReportTaskTimingTask(pipeBase.CmdLineTask):
     """Report which tracts and patches are needed for coaddition
@@ -139,14 +144,14 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
     RunnerClass = DataRefListRunner
     _DefaultName = "reportTaskTiming"
     _NameRe = re.compile(r"((?:Start|End)[a-zA-Z]+)$")
-    
+
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
     def run(self, dataRefList):
         """Report timing statistics for a collection of task metadata
-    
+
         @param dataRefList: a list of data references for task metadata
         @return: a pipeBase.Struct with fields:
         - resourceDict: a dict (collections.OrderedDict) of task name: ResourceInfo
@@ -155,7 +160,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
         resourceDict = collections.OrderedDict()
         for dataRef in dataRefList:
             taskMetadata = dataRef.get()
-            for name in taskMetadata.names(False): # hierarchical names
+            for name in taskMetadata.names(False):  # hierarchical names
                 # make stripped version of name without Start... or End...;
                 # if neither present then skip this name
                 strList = self._NameRe.split(name, 1)
@@ -168,12 +173,12 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
                     resourceDict[taskName] = resInfo
                 if resInfo.isValidName(itemName):
                     resInfo.setItem(itemName, taskMetadata.get(name, True))
-        
-        for resourceInfo in resourceDict.itervalues():
+
+        for resourceInfo in resourceDict.values():
             resourceInfo.reportUsage()
-        
+
         return pipeBase.Struct(
-            resourceDict = resourceDict,
+            resourceDict=resourceDict,
         )
 
     @classmethod

@@ -22,6 +22,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import print_function
 import os
 import sys
 import numpy as np
@@ -46,6 +47,7 @@ np.random.seed(1)
 
 FilterName = "r"
 
+
 def loadData(pixelScale=1.0):
     """Prepare the data we need to run the example"""
 
@@ -64,6 +66,7 @@ def loadData(pixelScale=1.0):
     exposure.setWcs(wcs)
 
     return exposure
+
 
 class MyAstrometryTask(pipeBase.Task):
     """An override for CalibrateTask's astrometry task that fakes a solution"""
@@ -88,8 +91,8 @@ class MyAstrometryTask(pipeBase.Task):
         """
         wcs = exposure.getWcs()
         refSchema = LoadReferenceObjectsTask.makeMinimalSchema(
-            filterNameList = [FilterName],
-            addIsPhotometric = True,
+            filterNameList=[FilterName],
+            addIsPhotometric=True,
         )
         refCat = afwTable.SimpleCatalog(refSchema)
         refFluxKey = refSchema[FilterName + "_flux"].asKey()
@@ -106,10 +109,11 @@ class MyAstrometryTask(pipeBase.Task):
             matches.append(match)
 
         return pipeBase.Struct(
-            refCat = refCat,
-            matches = matches,
-            matchMeta = createMatchMetadata(exposure),
+            refCat=refCat,
+            matches=matches,
+            matchMeta=createMatchMetadata(exposure),
         )
+
 
 def run(display=False):
     #
@@ -140,6 +144,7 @@ def run(display=False):
     if display:
         displayFunc(calRes.exposure, calRes.sourceCat, frame=2)
 
+
 def displayFunc(exposure, sourceCat, frame):
     display = afwDisplay.getDisplay(frame)
     display.mtv(exposure)
@@ -157,7 +162,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
     parser.add_argument('--display', action="store_true",
-        help="Display images in this example task (not using debug.py)", default=False)
+                        help="Display images in this example task (not using debug.py)", default=False)
 
     args = parser.parse_args()
 
@@ -165,6 +170,6 @@ if __name__ == "__main__":
         try:
             import debug
         except ImportError as e:
-            print >> sys.stderr, e
+            print(e, file=sys.stderr)
 
     run(display=args.display)

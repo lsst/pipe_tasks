@@ -1,3 +1,4 @@
+from builtins import object
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -15,8 +16,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
@@ -34,6 +35,7 @@ class ImageScaler(object):
 
     This version uses a single scalar. Fancier versions may use a spatially varying scale.
     """
+
     def __init__(self, scale=1.0):
         """Construct an ImageScaler
 
@@ -73,7 +75,7 @@ class SpatialImageScaler(ImageScaler):
                 "len(xList)=%s len(yList)=%s, len(scaleList)=%s but all lists must have the same length" %
                 (len(xList), len(yList), len(scaleList)))
 
-        #Eventually want this do be: self.interpStyle = getattr(afwMath.Interpolate2D, interpStyle)
+        # Eventually want this do be: self.interpStyle = getattr(afwMath.Interpolate2D, interpStyle)
         self._xList = xList
         self._yList = yList
         self._scaleList = scaleList
@@ -105,26 +107,26 @@ class ScaleZeroPointConfig(pexConfig.Config):
     """Config for ScaleZeroPointTask
     """
     zeroPoint = pexConfig.Field(
-        dtype = float,
-        doc = "desired photometric zero point",
-        default = 27.0,
+        dtype=float,
+        doc="desired photometric zero point",
+        default=27.0,
     )
 
 
 class SpatialScaleZeroPointConfig(ScaleZeroPointConfig):
     selectFluxMag0 = pexConfig.ConfigurableField(
-        doc = "Task to select data to compute spatially varying photometric zeropoint",
-        target = BaseSelectImagesTask,
+        doc="Task to select data to compute spatially varying photometric zeropoint",
+        target=BaseSelectImagesTask,
     )
 
     interpStyle = pexConfig.ChoiceField(
-        dtype = str,
-        doc = "Algorithm to interpolate the flux scalings;" \
-              "Currently only one choice implemented",
-        default = "CONSTANT",
+        dtype=str,
+        doc="Algorithm to interpolate the flux scalings;"
+        "Currently only one choice implemented",
+        default="CONSTANT",
         allowed={
-             "CONSTANT" : "Use a single constant value",
-             }
+            "CONSTANT": "Use a single constant value",
+        }
     )
 
 
@@ -141,7 +143,7 @@ class ScaleZeroPointTask(pipeBase.Task):
         """
         pipeBase.Task.__init__(self, *args, **kwargs)
 
-        #flux at mag=0 is 10^(zeroPoint/2.5)   because m = -2.5*log10(F/F0)
+        # flux at mag=0 is 10^(zeroPoint/2.5)   because m = -2.5*log10(F/F0)
         fluxMag0 = 10**(0.4 * self.config.zeroPoint)
         self._calib = afwImage.Calib()
         self._calib.setFluxMag0(fluxMag0)
@@ -160,7 +162,7 @@ class ScaleZeroPointTask(pipeBase.Task):
         mi = exposure.getMaskedImage()
         imageScaler.scaleMaskedImage(mi)
         return pipeBase.Struct(
-            imageScaler = imageScaler,
+            imageScaler=imageScaler,
         )
 
     def computeImageScaler(self, exposure, dataRef=None):
@@ -173,7 +175,6 @@ class ScaleZeroPointTask(pipeBase.Task):
         """
         scale = self.scaleFromCalib(exposure.getCalib()).scale
         return ImageScaler(scale)
-
 
     def getCalib(self):
         """Get desired Calib
@@ -197,7 +198,7 @@ class ScaleZeroPointTask(pipeBase.Task):
         """
         fluxAtZeroPoint = calib.getFlux(self.config.zeroPoint)
         return pipeBase.Struct(
-            scale = 1.0 / fluxAtZeroPoint,
+            scale=1.0 / fluxAtZeroPoint,
         )
 
     def scaleFromFluxMag0(self, fluxMag0):
@@ -237,7 +238,7 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
         mi = exposure.getMaskedImage()
         imageScaler.scaleMaskedImage(mi)
         return pipeBase.Struct(
-            imageScaler = imageScaler,
+            imageScaler=imageScaler,
         )
 
     def computeImageScaler(self, exposure, dataRef):
@@ -263,19 +264,19 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
                 raise RuntimeError("no x,y data for fluxMagInfo")
             ctr = afwGeom.Extent2D()
             for coord in fluxMagInfo.coordList:
-                #accumulate x, y
+                # accumulate x, y
                 ctr += afwGeom.Extent2D(wcs.skyToPixel(coord))
-            #and find average x, y as the center of the chip
+            # and find average x, y as the center of the chip
             ctr = afwGeom.Point2D(ctr / len(fluxMagInfo.coordList))
             xList.append(ctr.getX())
             yList.append(ctr.getY())
             scaleList.append(self.scaleFromFluxMag0(fluxMagInfo.fluxMag0).scale)
 
-        self.log.info("Found %d flux scales for interpolation: %s"% (len(scaleList),
-                                                                     ["%0.4f"%(s) for s in scaleList]))
+        self.log.info("Found %d flux scales for interpolation: %s" % (len(scaleList),
+                                                                      ["%0.4f"%(s) for s in scaleList]))
         return SpatialImageScaler(
-            interpStyle = self.config.interpStyle,
-            xList = xList,
-            yList = yList,
-            scaleList = scaleList,
-            )
+            interpStyle=self.config.interpStyle,
+            xList=xList,
+            yList=yList,
+            scaleList=scaleList,
+        )

@@ -25,23 +25,25 @@ import abc
 import lsst.pex.config
 import lsst.pipe.base
 import lsst.afw.image
+from future.utils import with_metaclass
+
 
 class BaseFakeSourcesConfig(lsst.pex.config.Config):
     maskPlaneName = lsst.pex.config.Field(
         dtype=str, default="FAKE",
         doc="Mask plane to set on pixels affected by fakes.  Will be added if not already present."
-        )
+    )
 
-class BaseFakeSourcesTask(lsst.pipe.base.Task):
+
+class BaseFakeSourcesTask(with_metaclass(abc.ABCMeta, lsst.pipe.base.Task)):
     """An abstract base class for subtasks that inject fake sources into images to test completeness and
     other aspects of the processing.
 
     This class simply adds a mask plane that subclasses should use to mark pixels that have been touched.
-    
+
     This is an abstract base class (abc) and is not intended to be directly used. To create a fake sources
     injector, create a child class and re-implement the required methods.
     """
-    __metaclass__ = abc.ABCMeta
 
     ConfigClass = BaseFakeSourcesConfig
     _DefaultName = "baseFakeSources"

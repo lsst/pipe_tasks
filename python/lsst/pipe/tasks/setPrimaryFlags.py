@@ -26,11 +26,13 @@ from lsst.pex.config import Config, Field, ListField
 from lsst.pipe.base import Task
 from lsst.afw.geom import Box2D
 
+
 class SetPrimaryFlagsConfig(Config):
     nChildKeyName = Field(dtype=str, default="deblend_nChild",
                           doc="Name of field in schema with number of deblended children")
     pseudoFilterList = ListField(dtype=str, default=['sky'],
                                  doc="Names of filters which should never be primary")
+
 
 class SetPrimaryFlagsTask(Task):
     ConfigClass = SetPrimaryFlagsConfig
@@ -48,7 +50,7 @@ class SetPrimaryFlagsTask(Task):
         )
         self.isPrimaryKey = self.schema.addField(
             "detect_isPrimary", type="Flag",
-            doc="true if source has no children and is in the inner region of a coadd patch " \
+            doc="true if source has no children and is in the inner region of a coadd patch "
                 + "and is in the inner region of a coadd tract "
                   "and is not \"detected\" in a pseudo-filter (see config.pseudoFilterList)",
         )
@@ -112,4 +114,3 @@ class SetPrimaryFlagsTask(Task):
                     isPseudo = False
 
                 source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner and not isPseudo)
-

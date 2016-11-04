@@ -36,19 +36,21 @@ __all__ = ["ExampleCmdLineConfig", "ExampleCmdLineTask"]
 ##      An example intended to show how to write a command-line task.
 ## \}
 
+
 class ExampleCmdLineConfig(pexConfig.Config):
     """!Configuration for ExampleCmdLineTask
     """
     stats = pexConfig.ConfigurableField(
-        doc = "Subtask to compute statistics of an image",
-        target = ExampleSigmaClippedStatsTask,
+        doc="Subtask to compute statistics of an image",
+        target=ExampleSigmaClippedStatsTask,
     )
     doFail = pexConfig.Field(
-        doc = "Raise an lsst.base.TaskError exception when processing each image? " \
-            + "This allows one to see the effects of the --doraise command line flag",
-        dtype = bool,
-        default = False,
+        doc="Raise an lsst.base.TaskError exception when processing each image? "
+        + "This allows one to see the effects of the --doraise command line flag",
+        dtype=bool,
+        default=False,
     )
+
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
     """!Example command-line task that computes simple statistics on an image
@@ -110,11 +112,11 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         """
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("stats")
-    
+
     @pipeBase.timeMethod
     def run(self, dataRef):
         """!Compute a few statistics on the image plane of an exposure
-        
+
         @param dataRef: data reference for a calibrated science exposure ("calexp")
         @return a pipeBase Struct containing:
         - mean: mean of image plane
@@ -131,7 +133,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         maskedImage = rawExp.getMaskedImage()
 
         # Support extra debug output.
-        # - 
+        # -
         import lsstDebug
         display = lsstDebug.Info(__name__).display
         if display:
@@ -164,7 +166,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         Normally if you override _getConfigName then you override _getMetadataName to match.
         """
         return None
-    
+
     def _getMetadataName(self):
         """!Get the name prefix for the task metadata's dataset type, or None to prevent persisting metadata
 

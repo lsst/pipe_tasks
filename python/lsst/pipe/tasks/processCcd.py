@@ -27,11 +27,12 @@ from .characterizeImage import CharacterizeImageTask
 
 __all__ = ["ProcessCcdConfig", "ProcessCcdTask"]
 
+
 class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
     isr = pexConfig.ConfigurableField(
-        target = IsrTask,
-        doc = """Task to perform instrumental signature removal or load a post-ISR image; ISR consists of:
+        target=IsrTask,
+        doc="""Task to perform instrumental signature removal or load a post-ISR image; ISR consists of:
             - assemble raw amplifier images into an exposure with image, variance and mask planes
             - perform bias subtraction, flat fielding, etc.
             - mask known bad pixels
@@ -39,8 +40,8 @@ class ProcessCcdConfig(pexConfig.Config):
             """,
     )
     charImage = pexConfig.ConfigurableField(
-        target = CharacterizeImageTask,
-        doc = """Task to characterize a science exposure:
+        target=CharacterizeImageTask,
+        doc="""Task to characterize a science exposure:
             - detect sources, usually at high S/N
             - estimate the background, which is subtracted from the image and returned as field "background"
             - estimate a PSF model, which is added to the exposure
@@ -48,13 +49,13 @@ class ProcessCcdConfig(pexConfig.Config):
             """,
     )
     doCalibrate = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Perform calibration?",
+        dtype=bool,
+        default=True,
+        doc="Perform calibration?",
     )
     calibrate = pexConfig.ConfigurableField(
-        target = CalibrateTask,
-        doc = """Task to perform astrometric and photometric calibration:
+        target=CalibrateTask,
+        doc="""Task to perform astrometric and photometric calibration:
             - refine the WCS in the exposure
             - refine the Calib photometric calibration object in the exposure
             - detect sources, usually at low S/N
@@ -73,7 +74,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     """!Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
 
     @anchor ProcessCcdTask_
-    
+
     @section pipe_tasks_processCcd_Contents  Contents
 
      - @ref pipe_tasks_processCcd_Purpose
@@ -88,7 +89,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     Perform the following operations:
     - Call isr to unpersist raw data and assemble it into a post-ISR exposure
     - Call charImage subtract background, fit a PSF model, repair cosmic rays,
-        detect and measure bright sources, and measure aperture correction 
+        detect and measure bright sources, and measure aperture correction
     - Call calibrate to perform deep detection, deblending and single-frame measurement,
         refine the WCS and fit the photometric zero-point
 
@@ -166,26 +167,26 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         exposure = self.isr.runDataRef(sensorRef).exposure
 
         charRes = self.charImage.run(
-            dataRef = sensorRef,
-            exposure = exposure,
-            doUnpersist = False,
+            dataRef=sensorRef,
+            exposure=exposure,
+            doUnpersist=False,
         )
         exposure = charRes.exposure
 
         if self.config.doCalibrate:
             calibRes = self.calibrate.run(
-                dataRef = sensorRef,
-                exposure = charRes.exposure,
-                background = charRes.background,
-                doUnpersist = False,
-                icSourceCat = charRes.sourceCat,
+                dataRef=sensorRef,
+                exposure=charRes.exposure,
+                background=charRes.background,
+                doUnpersist=False,
+                icSourceCat=charRes.sourceCat,
             )
 
         return pipeBase.Struct(
-            charRes = charRes,
-            calibRes = calibRes if self.config.doCalibrate else None,
-            exposure = exposure,
-            background = calibRes.background if self.config.doCalibrate else charRes.background,
+            charRes=charRes,
+            calibRes=calibRes if self.config.doCalibrate else None,
+            exposure=exposure,
+            background=calibRes.background if self.config.doCalibrate else charRes.background,
         )
 
     @classmethod
@@ -200,7 +201,6 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument(name="--id",
-            datasetType=pipeBase.ConfigDatasetType(name="isr.datasetType"),
-            help="data IDs, e.g. --id visit=12345 ccd=1,2^0,3")
+                               datasetType=pipeBase.ConfigDatasetType(name="isr.datasetType"),
+                               help="data IDs, e.g. --id visit=12345 ccd=1,2^0,3")
         return parser
-

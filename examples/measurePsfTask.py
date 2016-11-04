@@ -22,19 +22,21 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import print_function
 import os
 import sys
 import numpy as np
 
 import lsst.utils
-import lsst.daf.base               as dafBase
-import lsst.afw.table              as afwTable
-import lsst.afw.image              as afwImage
-import lsst.afw.display.ds9        as ds9
-import lsst.meas.algorithms        as measAlg
+import lsst.daf.base as dafBase
+import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
+import lsst.afw.display.ds9 as ds9
+import lsst.meas.algorithms as measAlg
 from lsst.meas.algorithms.detection import SourceDetectionTask
-from lsst.meas.base                 import SingleFrameMeasurementTask
-from lsst.pipe.tasks.measurePsf     import MeasurePsfTask
+from lsst.meas.base import SingleFrameMeasurementTask
+from lsst.pipe.tasks.measurePsf import MeasurePsfTask
+
 
 def loadData():
     """Prepare the data we need to run the example"""
@@ -55,6 +57,7 @@ def loadData():
 
     return exposure
 
+
 def run(display=False):
     exposure = loadData()
     schema = afwTable.SourceTable.makeMinimalSchema()
@@ -71,7 +74,8 @@ def run(display=False):
     for plugin in ["base_SdssCentroid", "base_SdssShape", "base_CircularApertureFlux", "base_PixelFlags"]:
         config.plugins.names.add(plugin)
     config.plugins["base_CircularApertureFlux"].radii = [7.0]
-    config.slots.psfFlux = "base_CircularApertureFlux_7_0" # Use of the PSF flux is hardcoded in secondMomentStarSelector
+    # Use of the PSF flux is hardcoded in secondMomentStarSelector
+    config.slots.psfFlux = "base_CircularApertureFlux_7_0"
     measureTask = SingleFrameMeasurementTask(schema, config=config)
     #
     # Create the measurePsf task
@@ -127,6 +131,6 @@ if __name__ == "__main__":
         try:
             import debug
         except ImportError as e:
-            print >> sys.stderr, e
+            print(e, file=sys.stderr)
 
     run(display=args.ds9)

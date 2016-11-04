@@ -3,7 +3,8 @@ from fnmatch import fnmatch
 
 from lsst.pipe.base.argumentParser import setDottedAttr
 
-__all__ = ["getAndVersion", "setAstrometryConfigFromEups", "setPhotocalConfigFromEups", "setConfigFromEups",]
+__all__ = ["getAndVersion", "setAstrometryConfigFromEups", "setPhotocalConfigFromEups", "setConfigFromEups", ]
+
 
 def getEups():
     """Return a cached eups instance"""
@@ -43,7 +44,7 @@ def setAstrometryConfigFromEups(config, menu):
         if len(matchList) == 0:
             raise RuntimeError("No menu key matches astrometry_net_data version %s" % version)
         selected = menu[matchList.pop()]
-    for name, value in selected.iteritems():
+    for name, value in selected.items():
         setDottedAttr(config, name, value)
 
 

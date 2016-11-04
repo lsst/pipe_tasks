@@ -27,23 +27,24 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
 
+
 class MakeSkyMapConfig(pexConfig.Config):
     """Config for MakeSkyMapTask
     """
     coaddName = pexConfig.Field(
-        doc = "coadd name, e.g. deep, goodSeeing, chiSquared",
-        dtype = str,
-        default = "deep",
+        doc="coadd name, e.g. deep, goodSeeing, chiSquared",
+        dtype=str,
+        default="deep",
     )
     skyMap = skyMapRegistry.makeField(
-        doc = "type of skyMap",
-        default = "dodeca",
+        doc="type of skyMap",
+        default="dodeca",
     )
     doWrite = pexConfig.Field(
-        doc = "persist the skyMap? If False then run generates the sky map and returns it, " \
-            + "but does not save it to the data repository",
-        dtype = bool,
-        default = True,
+        doc="persist the skyMap? If False then run generates the sky map and returns it, "
+        + "but does not save it to the data repository",
+        dtype=bool,
+        default=True,
     )
 
 
@@ -67,13 +68,14 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
         else:
             try:
                 results = task.run(butler)
-            except Exception, e:
+            except Exception as e:
                 task.log.fatal("Failed: %s" % e)
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
         task.writeMetadata(butler)
         if self.doReturnResults:
             return results
+
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
     """!Make a sky map in a repository
@@ -101,7 +103,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         if self.config.doWrite:
             butler.put(skyMap, self.config.coaddName + "Coadd_skyMap")
         return pipeBase.Struct(
-            skyMap = skyMap
+            skyMap=skyMap
         )
 
     def logSkyMapInfo(self, skyMap):
@@ -121,9 +123,9 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
             )
             skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
-            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" % \
-                (tractInfo.getId(), ", ".join(posStrList), \
-                tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
+            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" %
+                          (tractInfo.getId(), ", ".join(posStrList),
+                           tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -142,4 +144,3 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         """Return the name of the metadata dataset
         """
         return "%s_makeSkyMap_metadata" % (self.config.coaddName,)
-
