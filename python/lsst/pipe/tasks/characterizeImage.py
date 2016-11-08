@@ -448,7 +448,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
         if self.config.doTrails:
-            self.trails.run(exposure)
+            self.trails.runExposure(dmeRes.exposure)
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
