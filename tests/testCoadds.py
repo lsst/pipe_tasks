@@ -201,6 +201,7 @@ def runForcedPhotCcdTask(butler):
     # There is no reference flux for the mocks, so turn off ap corrections
     config.doApCorr = False
     task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=butler)
+    task.writeSchemas(butler)
     runTaskOnCcds(butler, task)
 
 
@@ -403,6 +404,25 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             noiseSeedMul = meta.get('NOISE_SEED_MULTIPLIER')
             for noiseSeedMul in ensureIterable(meta.get('NOISE_SEED_MULTIPLIER')):
                 self.assertIsInstance(noiseSeedMul, numbers.Number)
+
+    def testForcedIdNames(self):
+        """Test that forced photometry ID fields are named as we expect
+        (DM-8210).
+
+        Specifically, coadd forced photometry should have only "id" and "parent"
+        fields, while CCD forced photometry should have those, "objectId", and
+        "parentObjectId".
+        """
+        coaddSchema = self.butler.get("deepCoadd_forced_src_schema", immediate=True).schema
+        self.assertIn("id", coaddSchema)
+        self.assertIn("parent", coaddSchema)
+        self.assertNotIn("objectId", coaddSchema)
+        self.assertNotIn("parentObjectId", coaddSchema)
+        ccdSchema = self.butler.get("forced_src_schema", immediate=True).schema
+        self.assertIn("id", ccdSchema)
+        self.assertIn("parent", ccdSchema)
+        self.assertIn("objectId", ccdSchema)
+        self.assertIn("parentObjectId", ccdSchema)
 
 
 class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
