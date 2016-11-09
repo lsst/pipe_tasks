@@ -23,6 +23,7 @@ from builtins import range
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
+import collections
 
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
@@ -840,6 +841,297 @@ class MergeDetectionsTask(MergeSourcesTask):
         return skySourceFootprints
 
 
+class RemoveDegenerateTemplatesConfig(MergeSourcesConfig):
+    """!
+    \anchor RemoveDegenerateTemplatesConfig_
+
+    \brief Configuration for removing degenerate templates.
+    """
+    maxTemplateInnerProduct = Field(dtype=float, default=0.5, doc=
+                                    "threshold for the inner product of two templates to be labeled as degenerate")
+
+    # Redefine validate because we don't need the priorityList
+    def validate(self):
+        Config.validate(self)
+
+## \addtogroup LSST_task_documentation
+## \{
+## \page RemoveDegenerateTemplatesTask
+## \ref RemoveDegenerateTemplates_ "RemoveDegenerateTemplatesTask"
+## \copybrief RemoveDegnerateTemplatesTask
+## \}
+
+class RemoveDegenerateTemplatesTask(MergeSourcesTask):
+    """!
+    \anchor RemoveDegenerateTemnplatesTask_
+
+    \brief Remove objects with degenerate templates consistently in all bands.
+
+    \section pipe_tasks_multiBand_Contents Contents
+
+      - \ref pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Purpose
+      - \ref pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Init
+      - \ref pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Run
+      - \ref pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Config
+      - \ref pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Debug
+      - \ref pipe_tasks_multiband_RemoveDegenerateTemplatesTask_Example
+
+    \section pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Purpose	Description
+
+    Command-line task that identifies and removes objects with similar templates.
+
+    Galaxies can be shredded into different objects.  In this task we try identify objects that
+    should not have been split, by comparing the inner product of all possible pairs of templates
+    for each blend family.  If the inner product is larger than the threshold the object is identified
+    as degenerate and removed from the output catalog.
+
+      \par Inputs:
+        deepCoadd_template{tract,patch,filter}: SourceCatalog with templates stored in HeavyFootprint
+      \par Outputs:
+        deepCoadd_template{tract,patch}: SourceCatalog with templates stored in HeavyFootprint
+      \par Data Unit:
+        tract, patch
+
+    RemoveDegenerateTemplatesTask subclasses \ref MergeSourcesTask_ "MergeSourcesTask".
+
+    \section pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Init       Task initialisation
+
+    \copydoc \_\_init\_\_
+
+    \section pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Run       Invoking the Task
+
+    \copydoc run
+
+    \section pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Config       Configuration parameters
+
+    See \ref RemoveDegenerateTemplatesConfig_
+
+    \section pipe_tasks_multiBand_RemoveDegenerateTemplatesTask_Debug		Debug variables
+
+    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a flag \c -d
+    to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
+
+    RemoveDegenerateTemplatesTask has no debug variables.
+
+    \section pipe_tasks_multiband_RemoveDegenerateTemplatesTask_Example	A complete example of using 
+    RemoveDegenerateTemplatesTask
+
+    RemoveDegenerateTemplatesTask is meant to be run after measureCoaddSources where you have written out
+    the galaxy templates to the HeavyFootprints in the SourceCatalog instead of the usual deblended image.
+    The templates within a single blend are then compared across different filters to find and remove
+    similar objects that could be the result of shredding.  The task overwrites the template file
+    with the peaks from the degenerate templates removed.  The program measureCoaddSources can then be run with
+    template file as an input and be deblended/measured again with the new set of objects.
+
+    A list of the available optional arguments can be obtained by calling removeDegenerateTempltes.py with the
+    `--help` command line argument:
+    \code
+    removeDegenerateTemplates.py --help
+    \endcode
+
+    To demonstrate usage of the DetectCoaddSourcesTask in the larger context of multi-band processing, we
+    will process HSC data in the [ci_hsc](https://github.com/lsst/ci_hsc) package. Assuming one has finished
+    step 3 at \ref pipeTasks_multiBand, one can identify degenerate templates from each coadd as follows:
+    \code
+    measureCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R -c doMeasurement=False 
+    deblend.writeTemplates=True outputDataset="template" doPropagateFlags=False doMatchSources=False
+    \endcode
+    This will create HSC-I & -R band deepCoadd_template catalogs in
+    `$CI_HSC_DIR/DATA/deepCoadd-results/{filter}/5,4/template-{filter}-0-5,4.fits`.
+
+    Now we can run this code to identify and remove the templates:
+    \code
+    removeDegenerateTemplates.py /tigress/HSC/HSC/ --rerun $CI_HSC_DIR/DATA --id patch=5,4 tract=8766 filter=HSC-I^HSC-R
+    \endcode
+
+    We then rerun the measurement task to use only the objects not identified as degenerate:
+    \code
+    measureCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R -c inputDataset="template"
+    \endcode
+    The next step in the multi-band processing procedure is
+    \ref MeasureCoaddSourcesTask_ "MeasureCoaddSourcesTask"
+    """
+    ConfigClass = RemoveDegenerateTemplatesConfig
+    RunnerClass = MergeSourcesRunner
+    _DefaultName = "removeDegenerateTemplates"
+    inputDataset = "template"
+    outputDataset = "template"
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
+    getSchemaCatalogs = _makeGetSchemaCatalogs("template")
+
+    def __init__(self, butler=None, schema=None, **kwargs):
+        """!
+        \brief Initialize the remove template task.
+
+        Additional keyword arguments (forwarded to MergeSourcesTask.__init__):
+        \param[in] schema     the schema of the detection catalogs used as input to this one
+        \param[in] butler     a butler used to read the input schema from disk, if schema is None
+        \param[in] **kwargs   keyword arguments to be passed to MergeSourcesTask.__init__
+
+        The task will set its own self.schema attribute to the schema of the output merged catalog.
+        """
+        MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
+        if schema is None:
+            self.schema = afwTable.SourceTable.makeMinimalSchema()
+
+    def run(self, patchRefList):
+        """!
+        \brief Identify degenerate templates and remove them from the list
+        subclasses that inherit from MergeSourcesTask.
+
+        \param[in] patchRefList list of data references for each filter
+        """
+        catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
+        self.removeTemplates(catalogs, patchRefList)
+
+        self.write(patchRefList, catalogs)
+
+    def removeTemplates(self, catalogs, patchRef):
+        """!
+        Identify and remove degenerate template objects
+
+        \param[in] catalogs: the catalogs to compared
+        \param[in] patchRef: patch reference for data
+
+        """
+
+        # We create a dictionary of parent objects that contain a dictionary of child objects
+        # which hold a list of objects, one for each filter
+        families = collections.defaultdict(lambda: collections.defaultdict(list))
+        parents = {}
+        nFilters = len(catalogs)
+        for filter, catalog in catalogs.items():
+            for src in catalog:
+                srcId = src.getId()
+                parentId = src.getParent()
+                if parentId == 0:
+                    if not srcId in parents:
+                        parents[srcId] = []
+                    parents[srcId].append(src)
+                    continue
+                if not parentId in families:
+                    families[parentId][srcId] = []
+                families[parentId][srcId].append(src)
+
+        # Loop over parent families until no more objects are found that are degenerate
+        for parentId, family in families.items():
+            ids = family.keys()
+            if len(ids) < 2:
+                continue
+
+            skipKey = family[ids[0]][0].schema["deblend_skipped"].asKey()
+            while True:
+                exitLoop = True
+                nchild = numpy.sum([family[id][0].get(skipKey) is False for id in ids])
+                # keep track of index into original array because objects can be skipped
+                indexes = [i for i,id in enumerate(ids) if family[id][0].get(skipKey) is False]
+
+                # Matrix containing inner product of all possible template pairs
+                A = numpy.zeros((nchild, nchild))
+                # Maximum value across filters
+                maxTemplate=[]
+                for id in ids:
+                    if family[id][0].get(skipKey) is True:
+                        continue
+                    maxValue = 0.
+                    for ifilter in range(nFilters):
+                        src = family[id][ifilter]
+                        hfp = afwDetect.cast_HeavyFootprintF(src.getFootprint())
+                        if len(hfp.getImageArray()) == 0:
+                            continue
+                        currentMax = numpy.max(hfp.getImageArray())
+                        if currentMax > maxValue:
+                            maxValue = currentMax
+                    maxTemplate.append(maxValue)
+
+                # Calculate the dot product between all pairs of templates
+                for index1 in range(nchild):
+                    for index2 in range(index1+1):
+                        for ifilter in range(nFilters):
+                            src1 = family[ids[indexes[index1]]][ifilter]
+                            src2 = family[ids[indexes[index2]]][ifilter]
+                            hfp1 = afwDetect.cast_HeavyFootprintF(src1.getFootprint())
+                            hfp2 = afwDetect.cast_HeavyFootprintF(src2.getFootprint())
+                            if not hfp1.isNormalized():
+                                hfp1.normalize()
+                            if not hfp2.isNormalized():
+                                hfp2.normalize()
+                            A[index1, index2] += hfp1.dot(hfp2)
+
+                # Normalize to get the "angle" between different templates
+                for i in range(nchild):
+                    for j in range(i):
+                        norm = A[i, i]*A[j, j]
+                        if norm <= 0:
+                            A[i, j] = 0
+                        else:
+                            A[i, j] /= numpy.sqrt(norm)
+
+                # Loop through each pair until an above threshold value has been found
+                rejectedIndex = -1
+                foundReject = False
+                for i in range(nchild):
+                    currentMax = 0.
+                    for j in range(i):
+                        if A[i, j] > currentMax:
+                            currentMax = A[i, j]
+                            if currentMax > self.config.maxTemplateInnerProduct:
+                                foundReject = True
+                                rejectedIndex = j
+
+                    if foundReject:
+                        break
+                del A
+
+                # If we found a pair to reject, choose to keep the one with the largest
+                # maximum value
+                if foundReject:
+                    keep = indexes[i]
+                    reject = indexes[rejectedIndex]
+                    exitLoop = False
+
+                    if maxTemplate[rejectedIndex] > maxTemplate[i]:
+                        keep = indexes[rejectedIndex]
+                        reject = indexes[i]
+
+                    # For each filter identify and match the rejected src to the the peak in the parent object
+                    for ifilter in range(nFilters):
+
+                        parent = parents[parentId][ifilter]
+                        peakCatalog = parent.getFootprint().getPeaks()
+
+                        src = family[ids[reject]][ifilter]
+                        src.set(skipKey, True)
+                        peak_id = src.get('deblend_peakId')
+
+                        for ip, peak in enumerate(peakCatalog):
+                            if peak.get('id') == peak_id:
+                                del peakCatalog[ip]
+                                break
+
+                if exitLoop:
+                    break
+
+        # Find the indices of rejected sources from the first catalog
+        skipIndexes = catalogs.values()[0][skipKey] == True
+        self.log.info("Rejected %d sources because they degenerate with another template" % numpy.sum(skipIndexes))
+
+    def write(self, patchRefList, catalogs):
+        """!
+
+        \param[in]  patchRef   data reference for patch
+        \param[in]  catalog    catalog
+
+        We write as the dataset provided by the 'outputDataset'
+        class variable.
+        """
+        for patchRef, (band, catalog) in zip(patchRefList, catalogs.items()):
+            patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
+
+
+##############################################################################################################
+
+
 class MeasureMergedCoaddSourcesConfig(Config):
     """!
     \anchor MeasureMergedCoaddSourcesConfig_
@@ -848,6 +1140,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     """
     doDeblend = Field(dtype=bool, default=True, doc="Deblend sources?")
     deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
+    doMeasurement = Field(dtype=bool, default=True, doc="Do measurement?")
     measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
     setPrimaryFlags = ConfigurableField(target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch")
     doPropagateFlags = Field(
@@ -880,6 +1173,16 @@ class MeasureMergedCoaddSourcesConfig(Config):
     catalogCalculation = ConfigurableField(
         target=CatalogCalculationTask,
         doc="Subtask to run catalogCalculation plugins on catalog"
+    )
+    inputDataset = Field(
+        dtype = str,
+        default = "mergeDet",
+        doc = 'Input catalog dataset type'
+    )
+    outputDataset = Field(
+        dtype = str,
+        default = "meas",
+        doc = 'Output catalog dataset type'
     )
 
     def setDefaults(self):
@@ -1009,7 +1312,6 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
     RunnerClass = ButlerInitializedTaskRunner
-    getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")  # The IDs we already have are of this type
 
     @classmethod
@@ -1040,18 +1342,19 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         CmdLineTask.__init__(self, **kwargs)
         if schema is None:
             assert butler is not None, "Neither butler nor schema is defined"
-            schema = butler.get(self.config.coaddName + "Coadd_mergeDet_schema", immediate=True).schema
+            schema = butler.get(self.config.coaddName + "Coadd_" + self.config.inputDataset + "_schema",
+                                immediate=True).schema
         self.schemaMapper = afwTable.SchemaMapper(schema)
         self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = PropertyList()
-        if self.config.doDeblend:
-            if peakSchema is None:
-                assert butler is not None, "Neither butler nor peakSchema is defined"
-                peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
-            self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
-        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("setPrimaryFlags", schema=self.schema)
+        if peakSchema is None:
+            assert butler is not None, "Neither butler nor peakSchema is defined"
+            peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
+        self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
+        if self.config.doMeasurement:
+            self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+            self.makeSubtask("setPrimaryFlags", schema=self.schema)
         if self.config.doMatchSources:
             if refObjLoader is None:
                 assert butler is not None, "Neither butler nor refObjLoader is defined"
@@ -1077,6 +1380,13 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
         sources = self.readSources(patchRef)
         if self.config.doDeblend:
+
+            # We need to remove the child objects from the template files
+            if self.config.inputDataset == "template":
+                parent = numpy.array([a.getParent() for a in sources])
+                mask = parent == 0
+                sources = sources.subset(mask)
+
             self.deblend.run(exposure, sources)
 
             bigKey = sources.schema["deblend_parentTooBig"].asKey()
@@ -1089,38 +1399,39 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
 
-        self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef))
+        if self.config.doMeasurement:
+            self.measurement.run(sources, exposure, exposureId=self.getExposureId(patchRef))
 
-        if self.config.doApCorr:
-            self.applyApCorr.run(
-                catalog=sources,
-                apCorrMap=exposure.getInfo().getApCorrMap()
-            )
+            if self.config.doApCorr:
+                self.applyApCorr.run(
+                    catalog=sources,
+                    apCorrMap=exposure.getInfo().getApCorrMap()
+                )
 
-        if self.config.doRunCatalogCalculation:
-            self.catalogCalculation.run(sources)
+            if self.config.doRunCatalogCalculation:
+                self.catalogCalculation.run(sources)
 
-        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
-        self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
-                                 includeDeblend=self.config.doDeblend)
-        if self.config.doPropagateFlags:
-            self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
+            skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
+            self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
+                                     includeDeblend=self.config.doDeblend)
+            if self.config.doPropagateFlags:
+                self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
                                     exposure.getWcs())
-        if self.config.doMatchSources:
-            self.writeMatches(patchRef, exposure, sources)
+            if self.config.doMatchSources:
+                self.writeMatches(patchRef, exposure, sources)
         self.write(patchRef, sources)
 
     def readSources(self, dataRef):
         """!
         \brief Read input sources.
 
-        \param[in] dataRef: Data reference for catalog of merged detections
-        \return List of sources in merged catalog
+        \param[in] dataRef: Data reference for catalog of inputDataSet
+        \return List of sources in catalog
 
         We also need to add columns to hold the measurements we're about to make
         so we can measure in-place.
         """
-        merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
+        merged = dataRef.get(self.config.coaddName + "Coadd_" + self.config.inputDataset, immediate=True)
         self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
         idFactory = self.makeIdFactory(dataRef)
         for s in merged:
@@ -1153,11 +1464,21 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         \param[in] dataRef: data reference
         \param[in] sources: source catalog
         """
-        dataRef.put(sources, self.config.coaddName + "Coadd_meas")
+        dataRef.put(sources, self.config.coaddName + "Coadd_" + self.config.outputDataset)
         self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
 
     def getExposureId(self, dataRef):
         return int(dataRef.get(self.config.coaddName + "CoaddId"))
+
+    def getSchemaCatalogs(self):
+        """!
+        Return a dict of empty catalogs for each catalog dataset produced by this task.
+
+        \param[out] dictionary of empty catalogs
+        """
+        src = afwTable.SourceCatalog(self.schema)
+        return {self.config.coaddName + "Coadd_" + self.config.outputDataset: src}
+
 
 ##############################################################################################################
 
