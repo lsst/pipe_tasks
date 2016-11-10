@@ -50,7 +50,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         self.makeSubtask("psfMatch")
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
 
-    def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None):
+    def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None, multX=None, multY=None):
         """PSF-match exposure (if modelPsf is not None) and warp
 
         Note that PSF-matching is performed before warping, which is incorrect:
@@ -75,8 +75,9 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         if modelPsf is not None:
             exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
         with self.timer("warp"):
-            exposure, covImage = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
+            exposure, covImage = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox,
+                                                          multX=multX, multY=multY)
         return pipeBase.Struct(
-            exposure = exposure,
-            covImage = covImage,
+            exposure=exposure,
+            covImage=covImage,
         )

@@ -152,6 +152,30 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 self.log.warn("tempExp %s could not be created", tempExpRef.dataId)
         return dataRefList
 
+    def _getCovMultiplier(self, calexpRefList, modelPsf, skyInfo):
+        multX = 0
+        multY = 0
+        for calExpInd, calExpRef in enumerate(calexpRefList):
+            try:
+                ccdId = calExpRef.get("ccdExposureId", immediate=True)
+            except Exception:
+                ccdId = calExpInd
+            calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
+                                                              tract=skyInfo.tractInfo.getId())
+            calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
+            warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
+                                               maxBBox=skyInfo.bbox)
+            exposure = warpRes.exposure
+            covImage = warpRes.covImage
+            try:
+                multX = int(covImage.getWidth()/exposure.getWidth())
+                multY = int(covImage.getHeight()/exposure.getHeight())
+            except ZeroDivisionError:
+                continue
+            else:
+                break
+        return (multX, multY)
+
     def createTempExp(self, calexpRefList, skyInfo, visitId=0):
         """Create a tempExp from inputs
 
@@ -173,9 +197,18 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId, len(calexpRefList))
         coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         coaddTempExp.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.inf)
+        # FOR DEBUG
+        '''coaddTempExp_orig = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
+        coaddTempExp_orig.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"),
+                                               numpy.inf)
+        DEBUG_OLDALG = TRUE'''
+        # END DEBUG
         totGoodPix = 0
         didSetMetadata = False
         modelPsf = self.config.modelPsf.apply() if self.config.doPsfMatch else None
+        multX, multY = self._getCovMultiplier(calexpRefList, modelPsf, skyInfo)
+        coaddTempCov = afwImage.ImageD(coaddTempExp.getWidth()*multX, coaddTempExp.getHeight()*multY,
+                                       numpy.inf)
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s",
                           calExpInd+1, len(calexpRefList), calExpRef.dataId)
@@ -195,9 +228,10 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 for key, val in calExpRef.dataId.items():
                     covName += '_%s_%s'%(key, val)
                 warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
-                                                   maxBBox=skyInfo.bbox)
+                                                   maxBBox=skyInfo.bbox, multX=multX, multY=multY)
                 exposure = warpRes.exposure
                 covImage = warpRes.covImage
+                # FOR DEBUG
                 '''if exposure.getHeight() != 0 and exposure.getWidth() != 0:
                     afwDisplay.getDisplay(0).mtv(exposure.getMaskedImage().getImage())
                     afwDisplay.getDisplay(1).mtv(calExp.getMaskedImage().getImage())
@@ -206,13 +240,31 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     afwDisplay.getDisplay(4).mtv(covImage)
                     view = covView(exposure, covImage, covName=covName)
                     destArr = exposure.getMaskedImage().getImage().getArray()
-                    import pdb; pdb.set_trace()'''
+                    import pdb
+                    pdb.set_trace()'''
+                # END DEBUG
                 if didSetMetadata:
                     mimg = exposure.getMaskedImage()
                     mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])
                     del mimg
                 numGoodPix = coaddUtils.copyGoodPixels(
-                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
+                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask(),
+                    coaddTempCov, covImage)
+                # FOR DEBUG
+                '''if DEBUG_OLDALG:
+                    numGoodPix_orig = coaddUtils.copyGoodPixels(
+                        coaddTempExp_orig.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
+                    print "numGoodPix_orig: %d"%(numGoodPix_orig)
+                    afwDisplay.getDisplay(0).mtv(coaddTempExp_orig.getMaskedImage().getImage())
+                    afwDisplay.getDisplay(1).mtv(coaddTempExp_orig.getMaskedImage().getImage())
+                print "numGoodPix: %d"%(numGoodPix)
+                afwDisplay.getDisplay(2).mtv(coaddTempExp.getMaskedImage().getVariance())
+                afwDisplay.getDisplay(3).mtv(coaddTempExp.getMaskedImage().getVariance())
+                afwDisplay.getDisplay(4).mtv(covImage)
+                afwDisplay.getDisplay(5).mtv(coaddTempCov)
+                import pdb
+                pdb.set_trace()'''
+                # END DEBUG
                 totGoodPix += numGoodPix
                 self.log.debug("Calexp %s has %d good pixels in this patch (%.1f%%)",
                                calExpRef.dataId, numGoodPix, 100.0*numGoodPix/skyInfo.bbox.getArea())
