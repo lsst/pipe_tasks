@@ -119,7 +119,6 @@ def setup_module(module):
     measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
     measMergedConfig.propagateFlags.flags = {}  # Disable flag propagation: no flags to propagate
     measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
-    measMergedConfig.doApCorr = False
     measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=butler)
     measMergedTask.writeSchemas(butler)
     runTaskOnPatches(butler, measMergedTask, mocksTask)
@@ -198,8 +197,6 @@ def runForcedPhotCoaddTask(butler, mocksTask):
 def runForcedPhotCcdTask(butler):
     config = lsst.meas.base.ForcedPhotCcdConfig()
     config.references.filter = 'r'
-    # There is no reference flux for the mocks, so turn off ap corrections
-    config.doApCorr = False
     task = lsst.meas.base.ForcedPhotCcdTask(config=config, butler=butler)
     task.writeSchemas(butler)
     runTaskOnCcds(butler, task)
