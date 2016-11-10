@@ -55,6 +55,7 @@ import lsst.afw.math
 import lsst.afw.geom
 import lsst.afw.image
 import lsst.afw.table.io
+import lsst.afw.table.testUtils
 import lsst.meas.algorithms
 import lsst.pipe.tasks.mocks
 import lsst.daf.persistence
@@ -375,6 +376,32 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         if nTested == 0:
             print("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
                   "first try running the test again)")
+
+    def testSchemaConsistency(self):
+        """Test that _schema catalogs are consistent with the data catalogs.
+        """
+        det_schema = self.butler.get("deepCoadd_det_schema").schema
+        meas_schema = self.butler.get("deepCoadd_meas_schema").schema
+        mergeDet_schema = self.butler.get("deepCoadd_mergeDet_schema").schema
+        ref_schema = self.butler.get("deepCoadd_ref_schema").schema
+        coadd_forced_schema = self.butler.get("deepCoadd_forced_src_schema").schema
+        ccd_forced_schema = self.butler.get("forced_src_schema").schema
+        patchList = ['0,0', '0,1', '1,0', '1,1']
+        for patch in patchList:
+            det = self.butler.get("deepCoadd_det", filter='r', tract=0, patch=patch)
+            self.assertSchemasEqual(det.schema, det_schema)
+            mergeDet = self.butler.get("deepCoadd_mergeDet", filter='r', tract=0, patch=patch)
+            self.assertSchemasEqual(mergeDet.schema, mergeDet_schema)
+            meas = self.butler.get("deepCoadd_meas", filter='r', tract=0, patch=patch)
+            self.assertSchemasEqual(meas.schema, meas_schema)
+            ref = self.butler.get("deepCoadd_ref", filter='r', tract=0, patch=patch)
+            self.assertSchemasEqual(ref.schema, ref_schema)
+            coadd_forced_src = self.butler.get("deepCoadd_forced_src", filter='r', tract=0, patch=patch)
+            self.assertSchemasEqual(coadd_forced_src.schema, coadd_forced_schema)
+        for visit, obsVisitDict in getObsDict(self.butler, 0).items():
+            for ccd in obsVisitDict:
+                ccd_forced_src = self.butler.get("forced_src", tract=0, visit=visit, ccd=ccd)
+                self.assertSchemasEqual(ccd_forced_src.schema, ccd_forced_schema)
 
     def testAlgMetadataOutput(self):
         """Test to see if algMetadata is persisted correctly from MeasureMergedCoaddSourcesTask.
