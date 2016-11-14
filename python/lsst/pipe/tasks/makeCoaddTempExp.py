@@ -143,11 +143,12 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             except (KeyError, ValueError):
                 visitId = i
 
-            exp = self.createTempExp(calexpRefList, skyInfo, visitId)
-            if exp is not None:
+            res = self.createTempExp(calexpRefList, skyInfo, visitId)
+            if res is not None:
+                exp, cov = res
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
-                    self.writeCoaddOutput(tempExpRef, exp, "tempExp")
+                    self.writeCoaddOutput(tempExpRef, exp, "tempExp", cov)
             else:
                 self.log.warn("tempExp %s could not be created", tempExpRef.dataId)
         return dataRefList
@@ -284,4 +285,4 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         self.log.info("coaddTempExp has %d good pixels (%.1f%%)",
                       totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea())
-        return coaddTempExp if totGoodPix > 0 and didSetMetadata else None
+        return (coaddTempExp, coaddTempCov) if totGoodPix > 0 and didSetMetadata else None

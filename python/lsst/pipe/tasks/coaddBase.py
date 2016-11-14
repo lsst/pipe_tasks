@@ -92,9 +92,9 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """!
         \brief Select exposures to coadd
 
-        Get the corners of the bbox supplied in skyInfo using \ref afwGeom.Box2D and convert the pixel 
-        positions of the bbox corners to sky coordinates using \ref skyInfo.wcs.pixelToSky. Use the 
-        \ref WcsSelectImagesTask_ "WcsSelectImagesTask" to select exposures that lie inside the patch 
+        Get the corners of the bbox supplied in skyInfo using \ref afwGeom.Box2D and convert the pixel
+        positions of the bbox corners to sky coordinates using \ref skyInfo.wcs.pixelToSky. Use the
+        \ref WcsSelectImagesTask_ "WcsSelectImagesTask" to select exposures that lie inside the patch
         indicated by the dataRef.
 
         \param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
@@ -110,7 +110,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
 
     def getSkyInfo(self, patchRef):
         """!
-        \brief Use \ref getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox 
+        \brief Use \ref getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
         of the patch.
 
         \param[in] patchRef  data reference for sky map. Must include keys "tract" and "patch"
@@ -185,19 +185,26 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
 
-    def writeCoaddOutput(self, dataRef, obj, suffix=None):
+    def writeCoaddOutput(self, dataRef, obj, suffix=None, cov=None):
         """!
         \brief Write a coadd product through the butler
 
         \param[in]      dataRef  data reference for coadd
         \param[in,out]  obj      coadd product to write
         \param[in]      suffix   suffix to apply to coadd dataset name
+        \param[in]      cov
         """
         objName = self.getCoaddDatasetName()
+        covName = self.getCoaddDatasetName()
         if suffix is not None:
             objName += "_" + suffix
+            covName += "_tempCov"
         self.log.info("Persisting %s" % objName)
         dataRef.put(obj, objName)
+        # FOR NOW - ONCE COADDS START PROPAGATING COVARIANCE, COV SHOULD NEVER BE NONE!!
+        if cov is not None:
+            dataRef.put(cov, covName)
+
 
 class SelectDataIdContainer(pipeBase.DataIdContainer):
     """!

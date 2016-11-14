@@ -1,7 +1,7 @@
-# 
+#
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
-# 
+#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
 #
@@ -9,14 +9,14 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+#
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
@@ -103,6 +103,34 @@ class ExposurePersistenceType(PersistenceType):
                                        dataId['imageOrigin'])
         return loc
 
+class ImageDPersistenceType(PersistenceType):
+    """Persistence type of ImageD images.
+    """
+
+    python = "lsst.afw.image.ImageD"
+    cpp = "ImageD"
+    storage = "FitsStorage"
+    ext = ".fits"
+    suffixes = ("_sub",)
+
+    @classmethod
+    def makeButlerLocation(cls, path, dataId, mapper, suffix=None):
+        """Method called by SimpleMapping to implement a map_ method; overridden to support subimages."""
+        if suffix is None:
+            loc = super(ImageDPersistenceType, cls).makeButlerLocation(path, dataId, mapper, suffix=None)
+        elif suffix == "_sub":
+            subId = dataId.copy()
+            bbox = subId.pop('bbox')
+            loc = super(ImageDPersistenceType, cls).makeButlerLocation(path, subId, mapper, suffix=None)
+            loc.additionalData.set('llcX', bbox.getMinX())
+            loc.additionalData.set('llcY', bbox.getMinY())
+            loc.additionalData.set('width', bbox.getWidth())
+            loc.additionalData.set('height', bbox.getHeight())
+            if 'imageOrigin' in dataId:
+                loc.additionalData.set('imageOrigin',
+                                       dataId['imageOrigin'])
+        return loc
+
 class SkyMapPersistenceType(PersistenceType):
     python = "lsst.skymap.BaseSkyMap"
     storage = "PickleStorage"
@@ -172,6 +200,12 @@ class SkyMapping(SimpleMapping):
 
 class TempExpMapping(SimpleMapping):
     """Mapping for CoaddTempExp datasets."""
+
+    template = "{dataset}-{tract:02d}-{patch}-{visit:04d}{ext}"
+    keys = dict(tract=int, patch=str, visit=int)
+
+class TempCovMapping(SimpleMapping):
+    """Mapping for CoaddTempCov datasets."""
 
     template = "{dataset}-{tract:02d}-{patch}-{visit:04d}{ext}"
     keys = dict(tract=int, patch=str, visit=int)
@@ -271,6 +305,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
                                                     template="{dataset}{ext}", keys={}),
         deepCoadd_mock = SkyMapping(ExposurePersistenceType),
         deepCoadd_tempExp = TempExpMapping(ExposurePersistenceType),
+        deepCoadd_tempCov = TempCovMapping(ImageDPersistenceType),
         deepCoadd_tempExp_mock = TempExpMapping(ExposurePersistenceType),
     )
 
