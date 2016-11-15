@@ -21,7 +21,7 @@ from builtins import range
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import numpy
+import numpy as np
 
 import lsst.pex.config
 import lsst.afw.table
@@ -31,6 +31,7 @@ import lsst.afw.image
 import lsst.afw.math
 import lsst.afw.detection
 import lsst.pipe.base
+from lsst.meas.base.apCorrRegistry import getApCorrNameSet
 
 
 class MockObservationConfig(lsst.pex.config.Config):
@@ -66,6 +67,10 @@ class MockObservationConfig(lsst.pex.config.Config):
         dtype=float, default=3.0, optional=False,
         doc="Maximum radius for generated Psfs."
     )
+    apCorrOrder = lsst.pex.config.Field(
+        dtype=int, default=1, optional=False,
+        doc="Polynomial order for aperture correction fields"
+    )
     seed = lsst.pex.config.Field(dtype=int, default=1, doc="Seed for numpy random number generator")
 
 
@@ -86,7 +91,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         self.ccdKey = self.schema.addField("ccd", type=int, doc="CCD number")
         self.visitKey = self.schema.addField("visit", type=int, doc="visit number")
         self.pointingKey = lsst.afw.table.CoordKey.addFields(self.schema, "pointing", "center of visit")
-        self.rng = numpy.random.RandomState(self.config.seed)
+        self.rng = np.random.RandomState(self.config.seed)
 
     def run(self, butler, n, tractInfo, camera, catalog=None):
         """Driver that generates an ExposureCatalog of mock observations.
@@ -122,6 +127,7 @@ class MockObservationTask(lsst.pipe.base.Task):
                 record.setCalib(calib)
                 record.setVisitInfo(visitInfo)
                 record.setPsf(self.buildPsf(detector))
+                record.setApCorrMap(self.buildApCorrMap(detector))
                 record.setBBox(detector.getBBox())
                 detectorId = detector.getId()
                 obj = butler.get("ccdExposureId", visit=visit, ccd=detectorId, immediate=True)
@@ -152,7 +158,7 @@ class MockObservationTask(lsst.pipe.base.Task):
             y = self.rng.rand() * bbox.getHeight() + bbox.getMinY()
             pa = 0.0 * lsst.afw.geom.radians
             if self.config.doRotate:
-                pa = self.rng.rand() * 2.0 * numpy.pi * lsst.afw.geom.radians
+                pa = self.rng.rand() * 2.0 * np.pi * lsst.afw.geom.radians
             yield wcs.pixelToSky(x, y), pa
 
     def buildWcs(self, position, pa, detector):
@@ -214,3 +220,27 @@ class MockObservationTask(lsst.pipe.base.Task):
             spatialFuncList
         )
         return lsst.meas.algorithms.KernelPsf(kernel)
+
+    def buildApCorrMap(self, detector):
+        """Build an ApCorrMap with random linearly-varying fields for all
+        flux fields registered for aperture correction.
+
+        These flux field names are used only as strings; there is no
+        connection to any actual algorithms with those names or the PSF model.
+        """
+        order = self.config.apCorrOrder
+
+        def makeRandomBoundedField():
+            """Make an upper-left triangular coefficient array appropriate
+            for a 2-d polynomial."""
+            array = np.zeros((order + 1, order + 1), dtype=float)
+            for n in range(order + 1):
+                array[n, 0:order + 1 - n] = self.rng.randn(order + 1 - n)
+            return lsst.afw.math.ChebyshevBoundedField(bbox, array)
+
+        bbox = detector.getBBox()
+        apCorrMap = lsst.afw.image.ApCorrMap()
+        for name in getApCorrNameSet():
+            apCorrMap.set(name + "_flux", makeRandomBoundedField())
+            apCorrMap.set(name + "_fluxSigma", makeRandomBoundedField())
+        return apCorrMap
