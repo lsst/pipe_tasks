@@ -192,6 +192,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             exposure.setCalib(obsRecord.getCalib())
             exposure.setWcs(obsRecord.getWcs())
             exposure.setPsf(obsRecord.getPsf())
+            exposure.getInfo().setApCorrMap(obsRecord.getApCorrMap())
             for truthRecord in truthCatalog:
                 status = self.mockObject.drawSource(truthRecord, exposure, buffer=self.config.edgeBuffer)
                 if status:
