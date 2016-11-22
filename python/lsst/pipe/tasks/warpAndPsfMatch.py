@@ -21,8 +21,11 @@
 #
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
+import lsst.afw.image as afwImage
+import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
+from lsst.meas.algorithms import WarpedPsf
 
 __all__ = ["WarpAndPsfMatchTask"]
 
@@ -38,6 +41,11 @@ class WarpAndPsfMatchConfig(pexConfig.Config):
         dtype=afwMath.Warper.ConfigClass,
         doc="warper configuration",
     )
+    matchThenWarp = pexConfig.Field(
+        dtype=bool,
+        doc="Reverse order of warp and match operations to replicate legacy coadd temporary exposures",
+        default=False,
+    )
 
 
 class WarpAndPsfMatchTask(pipeBase.Task):
@@ -51,31 +59,64 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         self.warper = afwMath.Warper.fromConfig(self.config.warp)
 
     def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None):
-        """PSF-match exposure (if modelPsf is not None) and warp
+        """Warp and PSF-match exposure (if modelPsf is not None)
 
-        Note that PSF-matching is performed before warping, which is incorrect:
-        a position-dependent warping (as is used in the general case) will
-        re-introduce a position-dependent PSF.  However, this is easier, and
-        sufficient for now (until we are able to warp PSFs to determine the
-        correct target PSF).
-
-        @param[in,out] exposure: exposure to preprocess; PSF matching is done in place
-        @param[in] wcs: desired WCS of temporary images
-        @param[in] modelPsf: target PSF to which to match (or None)
-        @param maxBBox: maximum allowed parent bbox of warped exposure (an afwGeom.Box2I or None);
-            if None then the warped exposure will be just big enough to contain all warped pixels;
+        Parameters
+        ----------
+        exposure : :cpp:class: `lsst::afw::image::Exposure`
+            Exposure to preprocess. PSF matching is done in place.
+        wcs : :cpp:class:`lsst::afw::image::Wcs`
+            Desired WCS of temporary images.
+        modelPsf : :cpp:class: `lsst::meas::algorithms::KernelPsf` or None
+            Target PSF to which to match.
+            If None then exposures are not PSF matched.
+        maxBBox : :cpp:class:`lsst::afw::geom::Box2I` or None
+            Maximum allowed parent bbox of warped exposure.
+            If None then the warped exposure will be just big enough to contain all warped pixels;
             if provided then the warped exposure may be smaller, and so missing some warped pixels;
-            ignored if destBBox is not None
-        @param destBBox: exact parent bbox of warped exposure (an afwGeom.Box2I or None);
-            if None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored
+            ignored if destBBox is not None.
+        destBBox: :cpp:class: `lsst::afw::geom::Box2I` or None
+            Exact parent bbox of warped exposure.
+            If None then maxBBox is used to determine the bbox, otherwise maxBBox is ignored.
 
-        @return a pipe_base Struct containing:
-        - exposure: processed exposure
+
+        Returns
+        -------
+        An lsst.pipe.base.Struct with the following fields:
+
+        exposure : :cpp:class:`lsst::afw::image::Exposure`
+            processed exposure
         """
-        if modelPsf is not None:
-            exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-        with self.timer("warp"):
-            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
+        if self.config.matchThenWarp:
+            # Legacy order of operations:
+            # PSF-matching is performed before warping, which is incorrect.
+            # a position-dependent warping (as is used in the general case) will
+            # re-introduce a position-dependent PSF.
+            if modelPsf is not None:
+                exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
+            with self.timer("warp"):
+                exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
+        else:
+            if modelPsf is not None:
+                # Warp PSF before overwriting exposure
+                xyTransform = afwImage.XYTransformFromWcsPair(wcs, exposure.getWcs())
+                psfWarped = WarpedPsf(exposure.getPsf(), xyTransform)
+
+                if maxBBox is not None:
+                    # grow warped region to provide sufficient area for PSF-matching
+                    pixToGrow = 2 * max(self.config.psfMatch.kernel.active.sizeCellX,
+                                        self.config.psfMatch.kernel.active.sizeCellY)
+                    # replace with copy
+                    maxBBox = afwGeom.Box2I(maxBBox)
+                    maxBBox.grow(pixToGrow)
+
+            with self.timer("warp"):
+                exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
+
+            if modelPsf is not None:
+                exposure.setPsf(psfWarped)
+                exposure = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
+
         return pipeBase.Struct(
             exposure=exposure,
         )
