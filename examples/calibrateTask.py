@@ -54,8 +54,8 @@ def loadData(pixelScale=1.0):
     mypath = lsst.utils.getPackageDir('afwdata')
     imFile = os.path.join(mypath, "CFHT", "D4", "cal-53535-i-797722_small_1.fits")
 
-    visitInfo = afwImage.makeVisitInfo(exposureTime=1.0)
-    exposure = afwImage.ExposureF(imFile, visitInfo)
+    exposure = afwImage.ExposureF(imFile)
+    exposure.getInfo().setVisitInfo(afwImage.makeVisitInfo(exposureTime=1.0))
     # add a filter
     afwImage.Filter.define(afwImage.FilterProperty(FilterName, 600, True))
     exposure.setFilter(afwImage.Filter(FilterName))
