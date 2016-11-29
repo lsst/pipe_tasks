@@ -35,7 +35,7 @@ from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf, \
     ObjectSizeStarSelectorTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
-    SourceFlagChecker, KernelCandidateF, cast_KernelCandidateF, makeKernelBasisList, \
+    SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
     GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, DecorrelateALKernelTask
 import lsst.ip.diffim.diffimTools as diffimTools
@@ -625,7 +625,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 kernelCandList = []
                 for cell in subtractRes.kernelCellSet.getCellList():
                     for cand in cell.begin(False):  # include bad candidates
-                        kernelCandList.append(cast_KernelCandidateF(cand))
+                        kernelCandList.append(KernelCandidateF.cast(cand))
 
                 # Get basis list to build control sample kernels
                 basisList = afwMath.cast_LinearCombinationKernel(
