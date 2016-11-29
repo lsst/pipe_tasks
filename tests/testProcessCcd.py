@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 from builtins import zip
 #
 # LSST Data Management System
-# Copyright 2008-2013 LSST Corporation.
+# Copyright 2008-2016 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -20,7 +20,7 @@ from builtins import zip
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 """Test ProcessCcdTask and its immediate subtasks.
 
@@ -133,13 +133,13 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("image mean = %r, stdDev = %r" % (imMean, imStdDev))
                     print("variance mean = %r, stdDev = %r" % (varMean, varStdDev))
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
-                    
-                    # TODO: these thresholds are larger than they ought to be because the 
+
+                    # TODO: these thresholds are larger than they ought to be because the
                     # background modeling differs in py2 and py3.
-                    # The values asserted here are the precise result that py2 gives. The precision below 
+                    # The values asserted here are the precise result that py2 gives. The precision below
                     # should be tightened and this comment removed in the course of DM-8017.
                     # Also see: https://community.lsst.org/t/difference-in-py2-and-py3-background-models/1240
-                    
+
                     self.assertAlmostEqual(bgMean, 191.51453611409124, places=3)
                     self.assertAlmostEqual(bgStdDev, 0.22438381414455047, places=3)
                     self.assertEqual(len(icSrc), 28)
@@ -187,9 +187,11 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(catalog1.schema, catalog2.schema)
         self.assertEqual(len(catalog1), len(catalog2))
         d = catalog1.schema.extract("*")
+
         def fixNaN(x):
-            if x!=x:
+            if x != x:
                 return "NaN"
+
         for record1, record2 in zip(catalog1, catalog2):
             for name, item in d.items():
                 if name not in skipCols:
@@ -212,7 +214,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
         self.assertImagesEqual(im1, im2)
 
     def testComponents(self):
-        """test that we can run the first-level subtasks of ProcessCcdTasks.
+        """Test that we can run the first-level subtasks of ProcessCcdTasks.
 
         This tests that we can run these subtasks from the command-line independently (they're all
         CmdLineTasks) as well as directly from Python (without giving them access to a Butler).

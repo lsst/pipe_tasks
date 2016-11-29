@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
+# Copyright 2008-2016 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -72,6 +72,7 @@ class ProcessCcdConfig(pexConfig.Config):
 ## \ref ProcessCcdTask_ "ProcessCcdTask"
 ## \copybrief ProcessCcdTask
 ## \}
+
 
 class ProcessCcdTask(pipeBase.CmdLineTask):
     """!Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
