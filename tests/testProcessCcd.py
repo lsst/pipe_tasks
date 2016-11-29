@@ -140,19 +140,19 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     # should be tightened and this comment removed in the course of DM-8017.
                     # Also see: https://community.lsst.org/t/difference-in-py2-and-py3-background-models/1240
                     
-                    self.assertAlmostEqual(bgMean, 191.51595080958367, places=3)
-                    self.assertAlmostEqual(bgStdDev, 0.22492169148323429, places=3)
+                    self.assertAlmostEqual(bgMean, 191.51453611409124, places=3)
+                    self.assertAlmostEqual(bgStdDev, 0.22438381414455047, places=3)
                     self.assertEqual(len(icSrc), 28)
-                    self.assertEqual(len(src), 178)
-                    self.assertAlmostEqual(numGoodPix, 1966762, delta=200)
+                    self.assertEqual(len(src), 185)
+                    self.assertAlmostEqual(numGoodPix, 1965508, delta=200)
 
-                    self.assertAlmostEqual(imMean, 0.99296421356520304, places=3)
-                    self.assertAlmostEqual(imStdDev, 95.646024055615044, places=4)
+                    self.assertAlmostEqual(imMean, 0.99592485493752636, places=3)
+                    self.assertAlmostEqual(imStdDev, 95.64609939459902, places=4)
                     self.assertAlmostEqual(varMean, 131.16293718847217, places=7)
                     self.assertAlmostEqual(varStdDev, 64.806576059889963, places=7)
-                    self.assertAlmostEqual(psfIxx, 2.8540469922966296, delta=.2)
-                    self.assertAlmostEqual(psfIyy, 2.173868758768284, delta=.1)
-                    self.assertAlmostEqual(psfIxy, 0.14397371221988944, delta=.1)
+                    self.assertAlmostEqual(psfIxx, 2.8540480723051846, delta=.2)
+                    self.assertAlmostEqual(psfIyy, 2.173868563513369, delta=.1)
+                    self.assertAlmostEqual(psfIxy, 0.14397457739362085, delta=.1)
                 else:
                     self.assertEqual(imMean, oldImMean)
                     self.assertEqual(imStdDev, oldImStdDev)
