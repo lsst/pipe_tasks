@@ -4,7 +4,7 @@ from builtins import zip
 from builtins import range
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
+# Copyright 2008-2016 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -21,7 +21,7 @@ from builtins import range
 #
 # You should have received a copy of the LSST License Statement and
 # the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
 import lsst.pex.config as pexConfig
@@ -874,8 +874,9 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
 
 \brief Configuration parameters for the SafeClipAssembleCoaddTask
     """
-    clipDetection = pexConfig.ConfigurableField(target=SourceDetectionTask,
-                                                doc="Detect sources on difference between unclipped and clipped coadd")
+    clipDetection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect sources on difference between unclipped and clipped coadd")
     minClipFootOverlap = pexConfig.Field(
         doc="Minimum fractional overlap of clipped footprint with visit DETECTED to be clipped",
         dtype=float,
@@ -910,6 +911,7 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
         # The numeric values for these configuration parameters were empirically determined, future work
         # may further refine them.
         AssembleCoaddConfig.setDefaults(self)
+        self.clipDetection.doTempLocalBackground = False
         self.clipDetection.reEstimateBackground = False
         self.clipDetection.returnOriginalFootprints = False
         self.clipDetection.thresholdPolarity = "both"
@@ -1174,7 +1176,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
         # build a list with a mask for each visit which can be modified with clipping information
         tempExpClipList = [tmpExpRef.get(self.getTempExpDatasetName(),
-                                         immediate=True).getMaskedImage().getMask() for tmpExpRef in tempExpRefList]
+                                         immediate=True).getMaskedImage().getMask() for
+                           tmpExpRef in tempExpRefList]
 
         for footprint in footprints.getFootprints():
             nPixel = footprint.getArea()
