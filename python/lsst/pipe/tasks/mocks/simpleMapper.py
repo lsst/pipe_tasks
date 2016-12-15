@@ -160,8 +160,8 @@ class SimpleMapping(object):
 
     def map(self, dataset, root, dataId, mapper, suffix=None):
         if self.template is not None:
-            path = os.path.join(root, self.template.format(dataset=dataset, ext=self.persistence.ext,
-                                                           **dataId))
+            path = os.path.join(self.template.format(dataset=dataset, ext=self.persistence.ext,
+                                                     **dataId))
         else:
             path = None
         return self.persistence.makeButlerLocation(path, dataId, suffix=suffix, mapper=mapper)
