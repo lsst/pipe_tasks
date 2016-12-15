@@ -44,7 +44,6 @@ RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefc
 
 # Quiet down meas_astrom logging, so we can see PhotoCal logs better
 Log.getLogger("LoadIndexedReferenceObjectsTask").setLevel(Log.WARN)
-Log.getLogger("astrometricSolver").setLevel(Log.WARN)
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={
@@ -56,11 +55,6 @@ testColorterms = ColortermLibrary(data={
 })
 
 
-def makeRefLoader():
-    config = measAstrom.LoadAstrometryNetObjectsTask.ConfigClass()
-    return measAstrom.LoadAstrometryNetObjectsTask(config=config)
-
-
 def setup_module(module):
     lsst.utils.tests.init()
 
@@ -68,7 +62,6 @@ def setup_module(module):
 class PhotoCalTest(unittest.TestCase):
 
     def setUp(self):
-        self.conf = measAstrom.AstrometryConfig()
 
         # Load sample input from disk
         testDir = os.path.dirname(__file__)
@@ -89,13 +82,10 @@ class PhotoCalTest(unittest.TestCase):
         # Make a reference loader
         butler = Butler(RefCatDir)
         self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
-        self.res = self.getAstrometrySolution(loglvl=Log.TRACE)
-        self.matches = self.res.matches
         logLevel = Log.TRACE
         self.log = Log.getLogger('testPhotoCal')
         self.log.setLevel(logLevel)
 
-        self.schema = self.matches[0].second.schema
         self.config = PhotoCalConfig()
 
         # The test and associated data have been prepared on the basis that we
@@ -105,36 +95,21 @@ class PhotoCalTest(unittest.TestCase):
 
     def tearDown(self):
         del self.srcCat
-        del self.conf
         del self.exposure
         del self.refObjLoader
-        del self.res
-        del self.matches
         del self.log
-        del self.schema
-
-    def getAstrometrySolution(self, loglvl=Log.INFO):
-        astromConfig = measAstrom.AstrometryTask.ConfigClass()
-        astrom = measAstrom.AstrometryTask(config=astromConfig, refObjLoader=self.refObjLoader)
-        return astrom.solve(
-            sourceCat=self.srcCat,
-            exposure=self.exposure,
-        )
-
-    def testGetSolution(self):
-        self.assertIsNotNone(self.res)
-        self.assertGreater(len(self.res.matches), 50)
 
     def _runTask(self):
         """All the common setup to actually test the results"""
-        task = PhotoCalTask(config=self.config, schema=self.schema)
-        pCal = task.run(exposure=self.exposure, matches=self.matches)
+        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=self.srcCat.schema)
+        pCal = task.run(exposure=self.exposure, sourceCat=self.srcCat)
+        matches = pCal.matches
         print("Ref flux fields list =", pCal.arrays.refFluxFieldList)
         refFluxField = pCal.arrays.refFluxFieldList[0]
 
         # These are *all* the matches; we don't really expect to do that well.
         diff = []
-        for m in self.matches:
+        for m in matches:
             refFlux = m[0].get(refFluxField)  # reference catalog flux
             if refFlux <= 0:
                 continue
