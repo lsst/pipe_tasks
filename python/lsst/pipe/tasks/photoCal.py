@@ -35,6 +35,7 @@ import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
+from lsst.meas.astrom import RefMatchTask, RefMatchConfig
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField
 from .colorterms import ColortermLibrary
@@ -59,7 +60,7 @@ def checkSourceFlags(source, sourceKeys):
     return True
 
 
-class PhotoCalConfig(pexConf.Config):
+class PhotoCalConfig(RefMatchConfig):
     """Config for PhotoCal"""
     magLimit = pexConf.Field(
         dtype=float,
@@ -158,7 +159,7 @@ class PhotoCalConfig(pexConf.Config):
 ##      Detect positive and negative sources on an exposure and return a new SourceCatalog.
 ## \}
 
-class PhotoCalTask(pipeBase.Task):
+class PhotoCalTask(RefMatchTask):
     r"""!
 \anchor PhotoCalTask_
 
@@ -286,10 +287,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     ConfigClass = PhotoCalConfig
     _DefaultName = "photoCal"
 
-    def __init__(self, schema, **kwds):
+    def __init__(self, refObjLoader, schema=None, **kwds):
         """!Create the photometric calibration task.  See PhotoCalTask.init for documentation
         """
-        pipeBase.Task.__init__(self, **kwds)
+        RefMatchTask.__init__(self, refObjLoader, schema=schema, **kwds)
         self.scatterPlot = None
         self.fig = None
         if self.config.doWriteOutput:
@@ -576,12 +577,12 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         )
 
     @pipeBase.timeMethod
-    def run(self, exposure, matches):
+    def run(self, exposure, sourceCat):
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.
 
         \param[in]  exposure  Exposure upon which the sources in the matches were detected.
-        \param[in]  matches   Input lsst.afw.table.ReferenceMatchVector
+        \param[in]  sourceCat  A catalog of sources to use in the calibration
         (\em i.e. a list of lsst.afw.table.Match with
         \c first being of type lsst.afw.table.SimpleRecord and \c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
@@ -646,6 +647,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         else:
             frame = None
 
+        res = self.loadAndMatch(exposure, sourceCat)
+        matches = res.matches
         filterName = exposure.getFilter().getName()
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
         matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,

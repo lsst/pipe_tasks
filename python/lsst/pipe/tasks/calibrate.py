@@ -63,9 +63,13 @@ class CalibrateConfig(pexConfig.Config):
         default=True,
         doc="Perform astrometric calibration?",
     )
-    refObjLoader = pexConfig.ConfigurableField(
+    astromRefObjLoader = pexConfig.ConfigurableField(
         target=LoadAstrometryNetObjectsTask,
-        doc="reference object loader",
+        doc="reference object loader for astrometric calibration",
+    )
+    photoRefObjLoader = pexConfig.ConfigurableField(
+        target=LoadAstrometryNetObjectsTask,
+        doc="reference object loader for photometric calibration",
     )
     astrometry = pexConfig.ConfigurableField(
         target=AstrometryTask,
@@ -259,14 +263,20 @@ class CalibrateTask(pipeBase.CmdLineTask):
     _DefaultName = "calibrate"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
-    def __init__(self, butler=None, refObjLoader=None, icSourceSchema=None, **kwargs):
+    def __init__(self, butler=None, astromRefObjLoader=None, photoRefObjLoader=None,
+                 icSourceSchema=None, **kwargs):
         """!Construct a CalibrateTask
 
         @param[in] butler  The butler is passed to the refObjLoader constructor in case it is
             needed.  Ignored if the refObjLoader argument provides a loader directly.
-        @param[in] refObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog are disabled.
+        @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog for astrometric calibration.  May be None if the desired
+            loader can be constructed from the butler argument or all steps requiring a reference
+            catalog are disabled.
+        @param[in] photoRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog for photometric calibration.  May be None if the desired
+            loader can be constructed from the butler argument or all steps requiring a reference
+            catalog are disabled.
         @param[in] icSourceSchema  schema for icSource catalog, or None.
                    Schema values specified in config.icSourceFieldsToCopy will be taken from this schema.
                    If set to None, no values will be propagated from the icSourceCatalog
@@ -319,14 +329,18 @@ class CalibrateTask(pipeBase.CmdLineTask):
             self.makeSubtask('applyApCorr', schema=self.schema)
         self.makeSubtask('catalogCalculation', schema=self.schema)
 
-        if self.config.doAstrometry or self.config.doPhotoCal:
-            if refObjLoader is None:
-                self.makeSubtask('refObjLoader', butler=butler)
-                refObjLoader = self.refObjLoader
-            self.pixelMargin = refObjLoader.config.pixelMargin
-            self.makeSubtask("astrometry", refObjLoader=refObjLoader, schema=self.schema)
+        if self.config.doAstrometry:
+            if astromRefObjLoader is None:
+                self.makeSubtask('astromRefObjLoader', butler=butler)
+                astromRefObjLoader = self.astromRefObjLoader
+            self.pixelMargin = astromRefObjLoader.config.pixelMargin
+            self.makeSubtask("astrometry", refObjLoader=astromRefObjLoader, schema=self.schema)
         if self.config.doPhotoCal:
-            self.makeSubtask("photoCal", schema=self.schema)
+            if photoRefObjLoader is None:
+                self.makeSubtask('photoRefObjLoader', butler=butler)
+                photoRefObjLoader = self.photoRefObjLoader
+            self.pixelMargin = photoRefObjLoader.config.pixelMargin
+            self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader, schema=self.schema)
 
         if self.schemaMapper is not None:
             # finalize the schema
@@ -470,9 +484,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         # compute photometric calibration
         if self.config.doPhotoCal:
             try:
-                if astromMatches is None:
-                    astromRes = self.astrometry.loadAndMatch(exposure=exposure, sourceCat=sourceCat)
-                photoRes = self.photoCal.run(exposure, astromMatches)
+                photoRes = self.photoCal.run(exposure, sourceCat=sourceCat)
                 exposure.getCalib().setFluxMag0(photoRes.calib.getFluxMag0())
                 self.log.info("Photometric zero-point: %f" % photoRes.calib.getMagnitude(1.0))
                 self.setMetadata(exposure=exposure, photoRes=photoRes)

@@ -30,9 +30,8 @@ from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, SourceCatalog, IdFactory
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
-from lsst.meas.astrom import AstrometryTask, displayAstrometry, LoadAstrometryNetObjectsTask
+from lsst.meas.astrom import RefMatchTask, displayAstrometry, LoadAstrometryNetObjectsTask
 from lsst.obs.base import ExposureIdInfo
-from lsst.meas.astrom import AstrometryTask, displayAstrometry
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from .measurePsf import MeasurePsfTask
@@ -47,7 +46,7 @@ class CharacterizeImageConfig(pexConfig.Config):
         dtype = bool,
         default = True,
         doc = "Measure PSF? If False then keep the existing PSF model (which must exist) "
-            "and use that model for all operations."
+              "and use that model for all operations."
     )
     doWrite = pexConfig.Field(
         dtype = bool,
@@ -64,7 +63,7 @@ class CharacterizeImageConfig(pexConfig.Config):
         default = 2,
         min = 1,
         doc = "Number of iterations of detect sources, measure sources, estimate PSF. "
-            "If useSimplePsf='all_iter' then 2 should be plenty; otherwise more may be wanted.",
+              "If useSimplePsf='all_iter' then 2 should be plenty; otherwise more may be wanted.",
     )
     background = pexConfig.ConfigurableField(
         target = SubtractBackgroundTask,
@@ -110,8 +109,8 @@ class CharacterizeImageConfig(pexConfig.Config):
         dtype = bool,
         default = True,
         doc = "Replace the existing PSF model with a simplified version that has the same sigma "
-            "at the start of each PSF determination iteration? Doing so makes PSF determination "
-            "converge more robustly and quickly.",
+              "at the start of each PSF determination iteration? Doing so makes PSF determination "
+              "converge more robustly and quickly.",
     )
     installSimplePsf = pexConfig.ConfigurableField(
         target = InstallGaussianPsfTask,
@@ -121,11 +120,11 @@ class CharacterizeImageConfig(pexConfig.Config):
         target = LoadAstrometryNetObjectsTask,
         doc = "reference object loader",
     )
-    astrometry = pexConfig.ConfigurableField(
-        target = AstrometryTask,
+    ref_match = pexConfig.ConfigurableField(
+        target = RefMatchTask,
         doc = "Task to load and match reference objects. Only used if measurePsf can use matches. "
-            "Warning: matching will only work well if the initial WCS is accurate enough "
-            "to give good matches (roughly: good to 3 arcsec across the CCD).",
+              "Warning: matching will only work well if the initial WCS is accurate enough "
+              "to give good matches (roughly: good to 3 arcsec across the CCD).",
     )
     measurePsf = pexConfig.ConfigurableField(
         target = MeasurePsfTask,
@@ -309,7 +308,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
             if not refObjLoader:
                 self.makeSubtask('refObjLoader', butler=butler)
                 refObjLoader = self.refObjLoader
-            self.makeSubtask("astrometry", refObjLoader=refObjLoader)
+            self.makeSubtask("ref_match", refObjLoader=refObjLoader)
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask('detection', schema=self.schema)
         if self.config.doDeblend:
@@ -512,7 +511,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         measPsfRes = pipeBase.Struct(cellSet=None)
         if self.config.doMeasurePsf:
             if self.measurePsf.usesMatches:
-                matches = self.astrometry.loadAndMatch(exposure=exposure, sourceCat=sourceCat).matches
+                matches = self.ref_match.loadAndMatch(exposure=exposure, sourceCat=sourceCat).matches
             else:
                 matches = None
             measPsfRes = self.measurePsf.run(exposure=exposure, sources=sourceCat, matches=matches)
