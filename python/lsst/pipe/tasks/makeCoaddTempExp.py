@@ -28,7 +28,7 @@ import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.meas.algorithms import CoaddPsf
-from .coaddBase import CoaddBaseTask
+from .coaddBase import CoaddBaseTask, WarpType
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
@@ -78,6 +78,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
         @return: dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
+            if direct or both warp types are requested and <coaddName>Coadd_tempExpPsfMatched if only
+            psfMatched temp exps are requested.
 
         @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
 
@@ -86,6 +88,12 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         (assembleCoadd should determine zeropoint scaling without referring to it).
         """
         skyInfo = self.getSkyInfo(patchRef)
+
+        # DataRefs to return are of type *_directWarp unless only a *_psfMatchedWarp requested
+        if self.config.makePsfMatched and not self.config.makeDirect:
+            primaryTempExpDataset = self.getTempExpDatasetName(WarpType.PSF_MATCHED)
+        else:
+            primaryTempExpDataset = self.getTempExpDatasetName(WarpType.DIRECT)
 
         calExpRefList = self.selectExposures(patchRef, skyInfo, selectDataList=selectDataList)
         if len(calExpRefList) == 0:
@@ -96,14 +104,14 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         self.log.info("Processing %d existing calexps for patch %s", len(calExpRefList), patchRef.dataId)
 
         groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
-                                        self.getTempExpDatasetName())
+                                        primaryTempExpDataset)
         self.log.info("Processing %d tempExps for patch %s", len(groupData.groups), patchRef.dataId)
 
         dataRefList = []
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.items()):
-            tempExpRef = getGroupDataRef(patchRef.getButler(), self.getTempExpDatasetName(),
+            tempExpRef = getGroupDataRef(patchRef.getButler(), primaryTempExpDataset,
                                          tempExpTuple, groupData.keys)
-            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=self.getTempExpDatasetName()):
+            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=primaryTempExpDataset):
                 self.log.info("tempCoaddExp %s exists; skipping", tempExpRef.dataId)
                 dataRefList.append(tempExpRef)
                 continue
@@ -117,13 +125,19 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             except (KeyError, ValueError):
                 visitId = i
 
-            exp = self.createTempExp(calexpRefList, skyInfo, visitId)
-            if exp is not None:
+            exps = self.createTempExp(calexpRefList, skyInfo, visitId).exposures
+
+            if any(exps.values()):
                 dataRefList.append(tempExpRef)
-                if self.config.doWrite:
-                    self.writeCoaddOutput(tempExpRef, exp, "tempExp")
             else:
                 self.log.warn("tempExp %s could not be created", tempExpRef.dataId)
+
+            if self.config.doWrite:
+                for (warpType, exposure) in exps.items():  # compatible w/ Py3
+                    if exposure is not None:
+                        self.log.info("Persisting %s" % self.getTempExpDatasetName(warpType))
+                        tempExpRef.put(exposure, self.getTempExpDatasetName(warpType))
+
         return dataRefList
 
     def createTempExp(self, calexpRefList, skyInfo, visitId=0):
@@ -142,14 +156,20 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             information about the patch
         @param visitId: integer identifier for visit, for the table that will
             produce the CoaddPsf
-        @return warped exposure, or None if no pixels overlap
+        @return a pipeBase Struct containing:
+          - exposures: a dictionary containing the coadd temp exps requested:
+                "direct": direct coadd temp exp if config.makeDirect
+                "psfMatched": PSF-matched coadd temp exp if config.makePsfMatched
         """
-        inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(visitId, len(calexpRefList))
-        coaddTempExp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
-        coaddTempExp.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.inf)
-        totGoodPix = 0
-        didSetMetadata = False
-        modelPsf = self.config.modelPsf.apply() if self.config.doPsfMatch else None
+        warpTypeList = self.getWarpTypeList()
+
+        totGoodPix = {warpType: 0 for warpType in warpTypeList}
+        didSetMetadata = {warpType: False for warpType in warpTypeList}
+        coaddTempExps = {warpType: self._prepareEmptyExposure(skyInfo) for warpType in warpTypeList}
+        inputRecorder = {warpType: self.inputRecorder.makeCoaddTempExpRecorder(visitId, len(calexpRefList))
+                         for warpType in warpTypeList}
+
+        modelPsf = self.config.modelPsf.apply() if self.config.makePsfMatched else None
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s",
                           calExpInd+1, len(calexpRefList), calExpRef.dataId)
@@ -157,7 +177,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 ccdId = calExpRef.get("ccdExposureId", immediate=True)
             except Exception:
                 ccdId = calExpInd
-            numGoodPix = 0
             try:
                 # We augment the dataRef here with the tract, which is harmless for loading things
                 # like calexps that don't need the tract, and necessary for meas_mosaic outputs,
@@ -165,32 +184,66 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
                                                                   tract=skyInfo.tractInfo.getId())
                 calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
-                exposure = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
-                                                    maxBBox=skyInfo.bbox).exposure
-                if didSetMetadata:
-                    mimg = exposure.getMaskedImage()
-                    mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])
-                    del mimg
-                numGoodPix = coaddUtils.copyGoodPixels(
-                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
-                totGoodPix += numGoodPix
-                self.log.debug("Calexp %s has %d good pixels in this patch (%.1f%%)",
-                               calExpRef.dataId, numGoodPix, 100.0*numGoodPix/skyInfo.bbox.getArea())
-                if numGoodPix > 0 and not didSetMetadata:
-                    coaddTempExp.setCalib(exposure.getCalib())
-                    coaddTempExp.setFilter(exposure.getFilter())
-                    # PSF replaced with CoaddPsf after loop if and only if creating direct warp
-                    coaddTempExp.setPsf(exposure.getPsf())
-                    didSetMetadata = True
+            except Exception as e:
+                self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
+                continue
+            try:
+                warpedAndMatched = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf,
+                                                            wcs=skyInfo.wcs, maxBBox=skyInfo.bbox,
+                                                            makeDirect=self.config.makeDirect,
+                                                            makePsfMatched=self.config.makePsfMatched)
+            except Exception as e:
+                self.log.warn("WarpAndPsfMatch failed for calexp %s; skipping it: %s", calExpRef.dataId, e)
+                continue
+            try:
+                numGoodPix = {warpType: 0 for warpType in warpTypeList}
+                for warpType in warpTypeList:
+                    exposure = warpedAndMatched.getDict()[warpType.value]
+                    if exposure is None:
+                        continue
+                    coaddTempExp = coaddTempExps[warpType]
+                    if didSetMetadata[warpType]:
+                        mimg = exposure.getMaskedImage()
+                        mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] /
+                                 exposure.getCalib().getFluxMag0()[0])
+                        del mimg
+                    numGoodPix[warpType] = coaddUtils.copyGoodPixels(
+                        coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
+                    totGoodPix[warpType] += numGoodPix[warpType]
+                    self.log.debug("Calexp %s has %d good pixels in this patch (%.1f%%) for %s",
+                                   calExpRef.dataId, numGoodPix[warpType],
+                                   100.0*numGoodPix[warpType]/skyInfo.bbox.getArea(), warpType.value)
+                    if numGoodPix[warpType] > 0 and not didSetMetadata[warpType]:
+                        coaddTempExp.setCalib(exposure.getCalib())
+                        coaddTempExp.setFilter(exposure.getFilter())
+                        # PSF replaced with CoaddPsf after loop if and only if creating direct warp
+                        coaddTempExp.setPsf(exposure.getPsf())
+                        didSetMetadata[warpType] = True
+
+                    # Need inputRecorder for CoaddApCorrMap for both direct and PSF-matched
+                    inputRecorder[warpType].addCalExp(calExp, ccdId, numGoodPix[warpType])
+
             except Exception as e:
                 self.log.warn("Error processing calexp %s; skipping it: %s", calExpRef.dataId, e)
                 continue
-            inputRecorder.addCalExp(calExp, ccdId, numGoodPix)
 
-        inputRecorder.finish(coaddTempExp, totGoodPix)
-        if totGoodPix > 0 and didSetMetadata and not self.config.doPsfMatch:
-            coaddTempExp.setPsf(CoaddPsf(inputRecorder.coaddInputs.ccds, skyInfo.wcs))
+        for warpType in warpTypeList:
+            self.log.info("coaddTempExp (%s) has %d good pixels (%.1f%%)",
+                          warpType.value, totGoodPix[warpType], 100.0*totGoodPix[warpType]/skyInfo.bbox.getArea())
+            if totGoodPix[warpType] > 0 and didSetMetadata[warpType]:
+                inputRecorder[warpType].finish(coaddTempExps[warpType], totGoodPix[warpType])
+                if warpType == WarpType.DIRECT:
+                    coaddTempExps[warpType].setPsf(
+                        CoaddPsf(inputRecorder[warpType].coaddInputs.ccds, skyInfo.wcs))
+            else:
+                # No good pixels. Exposure still empty
+                coaddTempExps[warpType] = None
 
-        self.log.info("coaddTempExp has %d good pixels (%.1f%%)",
-                      totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea())
-        return coaddTempExp if totGoodPix > 0 and didSetMetadata else None
+        result = pipeBase.Struct(exposures=coaddTempExps)
+        return result
+
+    def _prepareEmptyExposure(cls, skyInfo):
+        """Produce an empty exposure for a given patch"""
+        exp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
+        exp.getMaskedImage().set(numpy.nan, afwImage.MaskU.getPlaneBitMask("NO_DATA"), numpy.inf)
+        return exp

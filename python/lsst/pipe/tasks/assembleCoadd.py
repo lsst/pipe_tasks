@@ -34,7 +34,7 @@ import lsst.afw.detection as afwDet
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer, WarpType
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
 from .scaleZeroPoint import ScaleZeroPointTask
@@ -144,6 +144,12 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.badMaskPlanes = ["NO_DATA", "BAD", "CR", ]
+
+    def validate(self):
+        CoaddBaseTask.ConfigClass.validate(self)
+        if self.makeDirect and self.makePsfMatched:
+            raise ValueError("Currently, assembleCoadd can only make either Direct or PsfMatched Coadds "
+                             "at a time. Set either makeDirect or makePsfMatched to False")
 
 
 # \addtogroup LSST_task_documentation
@@ -278,6 +284,13 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                    mask.getMaskPlaneDict().keys())
             del mask
 
+        if self.config.makeDirect:
+            self.warpType = WarpType.DIRECT
+        elif self.config.makePsfMatched:
+            self.warpType = WarpType.PSF_MATCHED
+        else:
+            raise ValueError("Neither makeDirect nor makePsfMatched configs are True")
+
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
         """!
@@ -310,7 +323,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
         inputData = self.prepareInputs(tempExpRefList)
-        self.log.info("Found %d %s", len(inputData.tempExpRefList), self.getTempExpDatasetName())
+        self.log.info("Found %d %s", len(inputData.tempExpRefList),
+                      self.getTempExpDatasetName(self.warpType))
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
@@ -340,7 +354,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             self.setBrightObjectMasks(coaddExp, dataRef.dataId, brightObjectMasks)
 
         if self.config.doWrite:
-            self.writeCoaddOutput(dataRef, coaddExp)
+            self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
+            dataRef.put(coaddExp, self.getCoaddDatasetName(self.warpType))
 
         return pipeBase.Struct(coaddExposure=coaddExp)
 
@@ -354,9 +369,10 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \return List of coaddTempExp data references
         """
         butler = patchRef.getButler()
-        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
-                                        self.getTempExpDatasetName())
-        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(), g, groupData.keys) for
+        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(self.warpType),
+                                        self.getTempExpDatasetName(self.warpType))
+        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(self.warpType),
+                                          g, groupData.keys) for
                           g in groupData.groups.keys()]
         return tempExpRefList
 
@@ -377,11 +393,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             return None
 
         # We've been given the data reference
-        dataset = self.getTempExpDatasetName()
+        dataset = self.getTempExpDatasetName(self.warpType)
         if not dataRef.datasetExists(dataset):
             raise RuntimeError("Could not find reference exposure %s %s." % (dataset, dataRef.dataId))
 
-        refExposure = dataRef.get(self.getTempExpDatasetName(), immediate=True)
+        refExposure = dataRef.get(self.getTempExpDatasetName(self.warpType), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
             exposure=refExposure,
             dataRef=dataRef,
@@ -415,7 +431,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         tempExpRefList = []
         weightList = []
         imageScalerList = []
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         for tempExpRef in refList:
             if not tempExpRef.datasetExists(tempExpName):
                 self.log.warn("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
@@ -475,7 +491,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 imageScalerList=inputData.imageScalerList,
                 refExpDataRef=refExpDataRef if not self.config.autoReference else None,
                 refImageScaler=refImageScaler,
-                expDatasetType=self.getTempExpDatasetName(),
+                expDatasetType=self.getTempExpDatasetName(self.warpType),
             ).backgroundInfoList
         except Exception as e:
             self.log.fatal("Cannot match backgrounds: %s", e)
@@ -544,7 +560,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] mask: Mask to ignore when coadding
         \return coadded exposure
         """
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
         if mask is None:
             mask = self.getBadPixelMask()
@@ -601,7 +617,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] weightList: List of weights
         """
         assert len(tempExpRefList) == len(weightList), "Length mismatch"
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         # We load a single pixel of each coaddTempExp, because we just want to get at the metadata
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
@@ -618,7 +634,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         for tempExp, weight in zip(tempExpList, weightList):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
-        if self.config.doPsfMatch:
+        if self.warpType == WarpType.PSF_MATCHED:
             # The modelPsf BBox for a psfMatchedWarp/coaddTempExp was dynamically defined by
             # ModelPsfMatchTask as the square box bounding its spatially-variable, pre-matched WarpedPsf.
             # Likewise, set the PSF of a PSF-Matched Coadd to the modelPsf
@@ -655,7 +671,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] statsCtrl: Statistics control object for coadd
         """
         self.log.debug("Computing coadd over %s", bbox)
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         maskedImageList = []
         for tempExpRef, imageScaler, bgInfo, altMask in zip(tempExpRefList, imageScalerList, bgInfoList,
@@ -1195,7 +1211,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         clipIndices = []
 
         # build a list with a mask for each visit which can be modified with clipping information
-        tempExpClipList = [tmpExpRef.get(self.getTempExpDatasetName(),
+        tempExpClipList = [tmpExpRef.get(self.getTempExpDatasetName(self.warpType),
                                          immediate=True).getMaskedImage().getMask() for
                            tmpExpRef in tempExpRefList]
 
