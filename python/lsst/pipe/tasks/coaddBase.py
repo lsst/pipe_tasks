@@ -192,16 +192,17 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         \param[in]      dataRef  data reference for coadd
         \param[in,out]  obj      coadd product to write
         \param[in]      suffix   suffix to apply to coadd dataset name
-        \param[in]      cov
+        \param[in]      cov      suffix to apply to the covariance dataset name
         """
         objName = self.getCoaddDatasetName()
         covName = self.getCoaddDatasetName()
         if suffix is not None:
             objName += "_" + suffix
+            #covName += "_" + suffix + " _cov"
             covName += "_tempCov"
         self.log.info("Persisting %s" % objName)
         dataRef.put(obj, objName)
-        # FOR NOW - ONCE COADDS START PROPAGATING COVARIANCE, COV SHOULD NEVER BE NONE!!
+        # For now - Once Coadds start propagating covariance (DM-7902), cov should never be none!!
         if cov is not None:
             dataRef.put(cov, covName)
 
