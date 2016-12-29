@@ -132,15 +132,15 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
     _DefaultName = "processCcd"
 
-    def __init__(self, butler=None, charRefObjLoader=None, astromRefObjLoader=None, photoRefObjLoader=None, 
+    def __init__(self, butler=None, psfRefObjLoader=None, astromRefObjLoader=None, photoRefObjLoader=None, 
                  **kwargs):
         """!
         @param[in] butler  The butler is passed to the refObjLoader constructor in case it is
             needed.  Ignored if the refObjLoader argument provides a loader directly.
-        @param[in] charRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for image characterization.  May be None if the desired
-            loader can be constructed from the butler argument or all steps requiring a reference
-            catalog are disabled.
+        @param[in] psfRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog for image characterization.  An example of when this would
+            be used is when a CatalogStarSelector is used.  May be None if the desired loader can
+            be constructed from the butler argument or all steps requiring a catalog are disabled.
         @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
             external reference catalog for astrometric calibration.  May be None if the desired
             loader can be constructed from the butler argument or all steps requiring a reference
@@ -153,7 +153,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
-        self.makeSubtask("charImage", butler=butler, refObjLoader=charRefObjLoader)
+        self.makeSubtask("charImage", butler=butler, refObjLoader=psfRefObjLoader)
         self.makeSubtask("calibrate", butler=butler, icSourceSchema=self.charImage.schema,
                          astromRefObjLoader=astromRefObjLoader, photoRefObjLoader=photoRefObjLoader)
 
