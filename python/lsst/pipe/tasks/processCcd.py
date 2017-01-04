@@ -132,20 +132,30 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
     _DefaultName = "processCcd"
 
-    def __init__(self, butler=None, refObjLoader=None, **kwargs):
+    def __init__(self, butler=None, psfRefObjLoader=None, astromRefObjLoader=None, photoRefObjLoader=None, 
+                 **kwargs):
         """!
         @param[in] butler  The butler is passed to the refObjLoader constructor in case it is
             needed.  Ignored if the refObjLoader argument provides a loader directly.
-        @param[in] refObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog are disabled.
+        @param[in] psfRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog for image characterization.  An example of when this would
+            be used is when a CatalogStarSelector is used.  May be None if the desired loader can
+            be constructed from the butler argument or all steps requiring a catalog are disabled.
+        @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog for astrometric calibration.  May be None if the desired
+            loader can be constructed from the butler argument or all steps requiring a reference
+            catalog are disabled.
+        @param[in] photoRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog for photometric calibration.  May be None if the desired
+            loader can be constructed from the butler argument or all steps requiring a reference
+            catalog are disabled.
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
-        self.makeSubtask("charImage", butler=butler, refObjLoader=refObjLoader)
+        self.makeSubtask("charImage", butler=butler, refObjLoader=psfRefObjLoader)
         self.makeSubtask("calibrate", butler=butler, icSourceSchema=self.charImage.schema,
-                         refObjLoader=refObjLoader)
+                         astromRefObjLoader=astromRefObjLoader, photoRefObjLoader=photoRefObjLoader)
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
