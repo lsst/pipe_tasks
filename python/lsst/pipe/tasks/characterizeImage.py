@@ -45,8 +45,9 @@ class CharacterizeImageConfig(pexConfig.Config):
     doMeasurePsf = pexConfig.Field(
         dtype = bool,
         default = True,
-        doc = "Measure PSF? If False then keep the existing PSF model (which must exist) "
-              "and use that model for all operations."
+        doc = "Measure PSF? If False then for all subsequent operations use either existing PSF "
+              "model when present, or install simple PSF model when not (see installSimplePsf "
+              "config options)"
     )
     doWrite = pexConfig.Field(
         dtype = bool,
@@ -408,7 +409,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self._frame = self._initialFrame  # reset debug display frame
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
-            raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
+            self.log.warn("Source catalog detected and measured with placeholder or default PSF")
+            self.installSimplePsf.run(exposure=exposure)
 
         if exposureIdInfo is None:
             exposureIdInfo = ExposureIdInfo()
@@ -456,7 +458,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         """!Perform one iteration of detect, measure and estimate PSF
 
         Performs the following operations:
-        - if config.doMeasurePsf:
+        - if config.doMeasurePsf or not exposure.hasPsf():
             - install a simple PSF model (replacing the existing one, if need be)
         - interpolate over cosmic rays with keepCRs=True
         - estimate background and subtract it from the exposure
@@ -481,12 +483,10 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         - background  model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
         - psfCellSet  spatial cells of PSF candidates (an lsst.afw.math.SpatialCellSet)
         """
-        # install a simple PSF model, if wanted
-        if self.config.doMeasurePsf:
-            if self.config.useSimplePsf or not exposure.hasPsf():
-                self.installSimplePsf.run(exposure=exposure)
-        elif not exposure.hasPsf():
-            raise RuntimeError("exposure has no PSF model and config.doMeasurePsf false")
+        # install a simple PSF model, if needed or wanted
+        if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
+            self.log.warn("Source catalog detected and measured with placeholder or default PSF")
+            self.installSimplePsf.run(exposure=exposure)
 
         # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
         self.repair.run(exposure=exposure, keepCRs=True)
