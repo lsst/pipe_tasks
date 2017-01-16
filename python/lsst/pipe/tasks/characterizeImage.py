@@ -62,8 +62,9 @@ class CharacterizeImageConfig(pexConfig.Config):
         dtype = int,
         default = 2,
         min = 1,
-        doc = "Number of iterations of detect sources, measure sources, estimate PSF. "
-              "If useSimplePsf='all_iter' then 2 should be plenty; otherwise more may be wanted.",
+        doc = "Number of iterations of detect sources, measure sources, "
+              "estimate PSF. If useSimplePsf is True then 2 should be plenty; "
+              "otherwise more may be wanted.",
     )
     background = pexConfig.ConfigurableField(
         target = SubtractBackgroundTask,
