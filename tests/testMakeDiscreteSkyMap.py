@@ -22,6 +22,8 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import division, print_function, absolute_import
+
 import os.path
 import sys
 import shutil

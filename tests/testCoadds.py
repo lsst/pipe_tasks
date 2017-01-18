@@ -40,7 +40,7 @@ different problem that's revealed when we're not trying to cache the mock data b
 tests (but set REUSE_DATAREPO back to True when done debugging, or this test will be very
 slow).
 """
-from __future__ import print_function
+from __future__ import division, print_function, absolute_import
 from builtins import zip
 from past.builtins import basestring
 
@@ -228,8 +228,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def comparePsfs(self, a, b):
         if a is None and b is None:
             return
-        ak = lsst.meas.algorithms.KernelPsf.swigConvert(a).getKernel()
-        bk = lsst.meas.algorithms.KernelPsf.swigConvert(b).getKernel()
+        ak = a.getKernel()
+        bk = b.getKernel()
         self.assertEqual(type(ak), type(bk))
         self.assertEqual(ak.getDimensions(), bk.getDimensions())
         self.assertEqual(ak.getNKernelParameters(), ak.getNKernelParameters())
@@ -308,15 +308,15 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
             coaddExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd", immediate=True)
             ccdCat = coaddExp.getInfo().getCoaddInputs().ccds
-            savedPsf = lsst.meas.algorithms.CoaddPsf.swigConvert(coaddExp.getPsf())
+            savedPsf = coaddExp.getPsf()
             newPsf = lsst.meas.algorithms.CoaddPsf(ccdCat, coaddExp.getWcs())
             self.assertEqual(savedPsf.getComponentCount(), len(ccdCat))
             self.assertEqual(newPsf.getComponentCount(), len(ccdCat))
             for n, record in enumerate(ccdCat):
-                self.assertTrue(lsst.afw.table.io.comparePersistablePtrs(savedPsf.getPsf(n), record.getPsf()))
-                self.assertTrue(lsst.afw.table.io.comparePersistablePtrs(newPsf.getPsf(n), record.getPsf()))
-                self.assertTrue(lsst.afw.table.io.comparePersistablePtrs(savedPsf.getWcs(n), record.getWcs()))
-                self.assertTrue(lsst.afw.table.io.comparePersistablePtrs(newPsf.getWcs(n), record.getWcs()))
+                self.assertIs(savedPsf.getPsf(n), record.getPsf())
+                self.assertIs(newPsf.getPsf(n), record.getPsf())
+                self.assertIs(savedPsf.getWcs(n), record.getWcs())
+                self.assertIs(newPsf.getWcs(n), record.getWcs())
                 self.assertEqual(savedPsf.getBBox(n), record.getBBox())
                 self.assertEqual(newPsf.getBBox(n), record.getBBox())
 
