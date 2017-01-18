@@ -88,8 +88,8 @@ class MockObservationTask(lsst.pipe.base.Task):
     def __init__(self, **kwds):
         lsst.pipe.base.Task.__init__(self, **kwds)
         self.schema = lsst.afw.table.ExposureTable.makeMinimalSchema()
-        self.ccdKey = self.schema.addField("ccd", type=int, doc="CCD number")
-        self.visitKey = self.schema.addField("visit", type=int, doc="visit number")
+        self.ccdKey = self.schema.addField("ccd", type=np.int32, doc="CCD number")
+        self.visitKey = self.schema.addField("visit", type=np.int32, doc="visit number")
         self.pointingKey = lsst.afw.table.CoordKey.addFields(self.schema, "pointing", "center of visit")
         self.rng = np.random.RandomState(self.config.seed)
 
@@ -210,7 +210,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         sigmaYFunc.setParameter(1, 0.0)
         sigmaYFunc.setParameter(2, dy)
         angleFunc = lsst.afw.math.PolynomialFunction2D(0)
-        spatialFuncList = lsst.afw.math.Function2DList()
+        spatialFuncList = []
         spatialFuncList.append(sigmaXFunc)
         spatialFuncList.append(sigmaYFunc)
         spatialFuncList.append(angleFunc)

@@ -162,15 +162,15 @@ class CoaddInputRecorderTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.visitSchema = afwTable.ExposureTable.makeMinimalSchema()
         if self.config.saveVisitGoodPix:
-            self.visitGoodPixKey = self.visitSchema.addField("goodpix", type=int,
+            self.visitGoodPixKey = self.visitSchema.addField("goodpix", type=numpy.int32,
                                                              doc="Number of good pixels in the coaddTempExp")
         self.visitWeightKey = self.visitSchema.addField("weight", type=float,
                                                         doc="Weight for this visit in the coadd")
         self.ccdSchema = afwTable.ExposureTable.makeMinimalSchema()
-        self.ccdCcdKey = self.ccdSchema.addField("ccd", type=int, doc="cameraGeom CCD serial number")
+        self.ccdCcdKey = self.ccdSchema.addField("ccd", type=numpy.int32, doc="cameraGeom CCD serial number")
         self.ccdVisitKey = self.ccdSchema.addField("visit", type=numpy.int64,
                                                    doc="Foreign key for the visits (coaddTempExp) catalog")
-        self.ccdGoodPixKey = self.ccdSchema.addField("goodpix", type=int,
+        self.ccdGoodPixKey = self.ccdSchema.addField("goodpix", type=numpy.int32,
                                                      doc="Number of good pixels in this CCD")
         if self.config.saveCcdWeights:
             self.ccdWeightKey = self.ccdSchema.addField("weight", type=float,

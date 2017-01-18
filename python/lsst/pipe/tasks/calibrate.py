@@ -565,8 +565,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
             self.log.warn("copyIcSourceFields doing nothing because icSourceFieldsToCopy is empty")
             return
 
-        closest = False  # return all matched objects
-        matches = afwTable.matchXy(icSourceCat, sourceCat, self.config.matchRadiusPix, closest)
+        mc = afwTable.MatchControl()
+        mc.findOnlyClosest = False  # return all matched objects
+        matches = afwTable.matchXy(icSourceCat, sourceCat, self.config.matchRadiusPix, mc)
         if self.config.doDeblend:
             deblendKey = sourceCat.schema["deblend_nChild"].asKey()
             matches = [m for m in matches if m[1].get(deblendKey) == 0]  # if deblended, keep children

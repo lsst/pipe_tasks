@@ -41,6 +41,8 @@ genuine SourceRecords, we directly populate a catalog following the
 TrivialMeasurement schema, then check that it is transformed properly by the
 TrivialMeasurementTransform.
 """
+from __future__ import division, print_function, absolute_import
+
 from builtins import zip
 from builtins import object
 import contextlib
