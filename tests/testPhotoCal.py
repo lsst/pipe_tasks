@@ -67,6 +67,12 @@ class PhotoCalTest(unittest.TestCase):
         testDir = os.path.dirname(__file__)
         self.srcCat = afwTable.SourceCatalog.readFits(
             os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
+        # The following block sets the flag deblend_nChild which is required
+        # by the astronomy and matcher sourceSelecctors used in 
+        # matchOptimistcB.
+        aliasMap = self.srcCat.schema.getAliasMap()
+        aliasMap.set("deblend_nChild", "parent")
+
         self.srcCat["slot_ApFlux_fluxSigma"] = 1
         self.srcCat["slot_PsfFlux_fluxSigma"] = 1
 
