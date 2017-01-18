@@ -382,8 +382,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matches = astromRet.matches
                 elif templateSources:
                     # match exposure sources to template sources
+                    mc = afwTable.MatchControl()
+                    mc.findOnlyClosest = False
                     matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds,
-                                                  False)
+                                                  mc)
                 else:
                     raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False," +
                                        "but template sources not available. Cannot match science " +
@@ -584,7 +586,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matchRadAsec = self.config.diaSourceMatchRadius
                     matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
 
-                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True)
+                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel)
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for
                                          srcMatch in srcMatches])
                     self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict),
@@ -625,11 +627,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 kernelCandList = []
                 for cell in subtractRes.kernelCellSet.getCellList():
                     for cand in cell.begin(False):  # include bad candidates
-                        kernelCandList.append(KernelCandidateF.cast(cand))
+                        kernelCandList.append(cand)
 
                 # Get basis list to build control sample kernels
-                basisList = afwMath.cast_LinearCombinationKernel(
-                    kernelCandList[0].getKernel(KernelCandidateF.ORIG)).getKernelList()
+                basisList = kernelCandList[0].getKernel(KernelCandidateF.ORIG).getKernelList()
 
                 controlCandList = \
                     diffimTools.sourceTableToCandidateList(controlSources,

@@ -140,7 +140,7 @@ class MockExposure(object):
             Coord(134.5*degrees, 33.3*degrees),
             1.73,
             73.2*degrees,
-            lsst.afw.image.RotType_SKY,
+            lsst.afw.image.RotType.SKY,
             lsst.afw.coord.Observatory(11.1*degrees, 22.2*degrees, 0.333),
             lsst.afw.coord.Weather(1.1, 2.2, 34.5),
         )
