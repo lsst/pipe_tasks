@@ -30,6 +30,8 @@ or
    python
    >>> import testInterpImageTask; testInterpImageTask.run()
 """
+from __future__ import division, print_function, absolute_import
+
 import unittest
 
 import numpy as np
