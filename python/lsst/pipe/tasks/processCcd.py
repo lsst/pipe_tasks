@@ -210,7 +210,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         @param[in] cls      the class object
         @return the argument parser for this task.
 
-        This override is used to delay making the data ref list until the daset type is known;
+        This override is used to delay making the data ref list until the dataset type is known;
         this is done in @ref parseAndRun.
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
