@@ -96,7 +96,6 @@ def setup_module(module):
     mocksTask.buildCoadd(butler)
     mocksTask.buildMockCoadd(butler)
     detectTask.writeSchemas(butler)
-    pdb.set_trace()
     # Now run the seperate multiband tasks on the Coadd to make the reference
     # catalog for the forced photometry tests.
     runTaskOnPatches(butler, detectTask, mocksTask)

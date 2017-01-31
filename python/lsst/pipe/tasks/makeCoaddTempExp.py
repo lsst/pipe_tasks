@@ -25,6 +25,7 @@ import numpy; numpy.set_printoptions(linewidth=300); import pdb
 
 import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
+import lsst.afw.geom as afwGeom
 import lsst.afw.display as afwDisplay
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
@@ -148,7 +149,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 exp, cov = res
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
-                    self.writeCoaddOutput(tempExpRef, exp, "tempExp", cov)
+                    self.writeCoaddOutput(tempExpRef, exp, "tempExp")
+                    self.writeCoaddOutput(tempExpRef, cov, "tempCov")
             else:
                 self.log.warn("tempExp %s could not be created", tempExpRef.dataId)
         return dataRefList
@@ -209,8 +211,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         didSetMetadata = False
         modelPsf = self.config.modelPsf.apply() if self.config.doPsfMatch else None
         multX, multY = self._getCovMultiplier(calexpRefList, modelPsf, skyInfo)
-        coaddTempCov = afwImage.ImageD(coaddTempExp.getWidth()*multX, coaddTempExp.getHeight()*multY,
-                                       numpy.inf)
+        covBBox = afwGeom.Box2I(afwGeom.Point2I(skyInfo.bbox.getBegin().getX()*multX,
+                                                skyInfo.bbox.getBegin().getY()*multY),
+                                afwGeom.Extent2I(skyInfo.bbox.getWidth()*multX,
+                                                 skyInfo.bbox.getHeight()*multY))
+        coaddTempCov = afwImage.ImageD(covBBox)
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s",
                           calExpInd+1, len(calexpRefList), calExpRef.dataId)

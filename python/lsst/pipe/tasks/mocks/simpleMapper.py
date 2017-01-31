@@ -33,6 +33,7 @@ needs to do right now.
 import os
 import shutil
 import re
+import pdb
 
 import lsst.daf.persistence
 import lsst.afw.cameraGeom
@@ -278,6 +279,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         deepMergedCoaddId_bits = SimpleMapping(BypassPersistenceType),
         deepCoadd_skyMap = SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
         deepCoadd = SkyMapping(ExposurePersistenceType),
+        deepCoadd_Cov = SkyMapping(ExposurePersistenceType),
         deepCoadd_calexp = SkyMapping(ExposurePersistenceType),
         deepCoadd_calexp_background = SkyMapping(CatalogPersistenceType),
         deepCoadd_icSrc = SkyMapping(SourceCatalogPersistenceType),
@@ -307,6 +309,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper):
         deepCoadd_tempExp = TempExpMapping(ExposurePersistenceType),
         deepCoadd_tempCov = TempCovMapping(ImageDPersistenceType),
         deepCoadd_tempExp_mock = TempExpMapping(ExposurePersistenceType),
+        deepCoadd_tempCov_mock = TempExpMapping(ExposurePersistenceType),
     )
 
     levels = dict(

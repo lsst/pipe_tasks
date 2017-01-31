@@ -15,11 +15,12 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and 
-# the GNU General Public License along with this program.  If not, 
+# You should have received a copy of the LSST License Statement and
+# the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
+import pdb
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
@@ -41,12 +42,15 @@ class ImageScaler(object):
         """
         self._scale = scale
 
-    def scaleMaskedImage(self, maskedImage):
+    def scaleMaskedImage(self, maskedImage, covImage=None):
         """Scale the specified image or masked image in place.
 
         @param[in,out] maskedImage: masked image to scale
+        @param[in, out] covImage: covariance array to scale
         """
         maskedImage *= self._scale
+        if covImage is not None:
+            covImage *= self._scale*self._scale
 
 
 class SpatialImageScaler(ImageScaler):
