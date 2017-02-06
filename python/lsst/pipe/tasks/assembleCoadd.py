@@ -108,7 +108,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc = "Match backgrounds of coadd temp exposures before coadding them? " \
         "If False, the coadd temp expsosures must already have been background subtracted or matched",
         dtype = bool,
-        default = False,
+        default = True,
     )
     autoReference = pexConfig.Field(
         doc = "Automatically select the coadd temp exposure to use as a reference for background matching? " \
