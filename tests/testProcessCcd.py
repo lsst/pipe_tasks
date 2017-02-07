@@ -134,19 +134,25 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("variance mean = %r, stdDev = %r" % (varMean, varStdDev))
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
 
-                    self.assertAlmostEqual(bgMean, 191.51453611409124, places=7)
-                    self.assertAlmostEqual(bgStdDev, 0.22438381414455047, places=7)
                     self.assertEqual(len(icSrc), 28)
                     self.assertEqual(len(src), 185)
-                    self.assertAlmostEqual(numGoodPix, 1965508)
 
-                    self.assertAlmostEqual(imMean, 0.99592485493752636, places=7)
-                    self.assertAlmostEqual(imStdDev, 95.64609939459902, places=7)
-                    self.assertAlmostEqual(varMean, 131.16293718847217, places=7)
-                    self.assertAlmostEqual(varStdDev, 64.806576059889963, places=7)
-                    self.assertAlmostEqual(psfIxx, 2.8540480723051846, places=7)
-                    self.assertAlmostEqual(psfIyy, 2.173868563513369, places=7)
-                    self.assertAlmostEqual(psfIxy, 0.14397457739362085, places=7)
+                    expectedPlaces = 7  # Tolerance for numerical comparisons
+                    for var, val in [
+                        (bgMean, 191.51453611409124),
+                        (bgStdDev, 0.22438381414455047),
+                        (numGoodPix, 1965508),
+                        (imMean, 0.99592485493752636),
+                        (imStdDev, 95.64609939459902),
+                        (varMean, 131.16293718847217),
+                        (varStdDev, 64.806576059889963),
+                        (psfIxx, 2.8540480723051846),
+                        (psfIyy, 2.173868563513369),
+                        (psfIxy, 0.14397457739362085)
+                    ]:
+                        self.assertAlmostEqual(var, val, places=expectedPlaces)
+
+
                 else:
                     self.assertEqual(imMean, oldImMean)
                     self.assertEqual(imStdDev, oldImStdDev)
