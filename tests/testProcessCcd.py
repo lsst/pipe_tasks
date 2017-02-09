@@ -134,25 +134,25 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("variance mean = %r, stdDev = %r" % (varMean, varStdDev))
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
 
-                    # TODO: these thresholds are larger than they ought to be because the
-                    # background modeling differs in py2 and py3.
-                    # The values asserted here are the precise result that py2 gives. The precision below
-                    # should be tightened and this comment removed in the course of DM-8017.
-                    # Also see: https://community.lsst.org/t/difference-in-py2-and-py3-background-models/1240
-
-                    self.assertAlmostEqual(bgMean, 191.51453611409124, places=3)
-                    self.assertAlmostEqual(bgStdDev, 0.22438381414455047, places=3)
                     self.assertEqual(len(icSrc), 28)
                     self.assertEqual(len(src), 185)
-                    self.assertAlmostEqual(numGoodPix, 1965508, delta=200)
 
-                    self.assertAlmostEqual(imMean, 0.99592485493752636, places=3)
-                    self.assertAlmostEqual(imStdDev, 95.64609939459902, places=4)
-                    self.assertAlmostEqual(varMean, 131.16293718847217, places=7)
-                    self.assertAlmostEqual(varStdDev, 64.806576059889963, places=7)
-                    self.assertAlmostEqual(psfIxx, 2.8540480723051846, delta=.2)
-                    self.assertAlmostEqual(psfIyy, 2.173868563513369, delta=.1)
-                    self.assertAlmostEqual(psfIxy, 0.14397457739362085, delta=.1)
+                    expectedPlaces = 7  # Tolerance for numerical comparisons
+                    for var, val in [
+                        (bgMean, 191.51453611409124),
+                        (bgStdDev, 0.22438381414455047),
+                        (numGoodPix, 1965508),
+                        (imMean, 0.99592485493752636),
+                        (imStdDev, 95.64609939459902),
+                        (varMean, 131.16293718847217),
+                        (varStdDev, 64.806576059889963),
+                        (psfIxx, 2.8540480723051846),
+                        (psfIyy, 2.173868563513369),
+                        (psfIxy, 0.14397457739362085)
+                    ]:
+                        self.assertAlmostEqual(var, val, places=expectedPlaces)
+
+
                 else:
                     self.assertEqual(imMean, oldImMean)
                     self.assertEqual(imStdDev, oldImStdDev)
