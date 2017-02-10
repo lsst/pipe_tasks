@@ -188,7 +188,9 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
                 # against a subset of the input catalog for each flag than it is to match once against
                 # the entire catalog.  It would be best to have built a kd-tree on coaddSources and
                 # keep reusing that for the matching, but we don't have a suitable implementation.
-                matches = afwTable.matchRaDec(coaddSources, ccdSources[ccdSources.get(flag)], radius, False)
+                mc = afwTable.MatchControl()
+                mc.findOnlyClosest = False
+                matches = afwTable.matchRaDec(coaddSources, ccdSources[ccdSources.get(flag)], radius, mc)
                 for m in matches:
                     index = (numpy.where(indices == m.first.getId()))[0][0]
                     counts[flag][index] += 1
