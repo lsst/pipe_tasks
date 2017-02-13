@@ -161,8 +161,7 @@ class SimpleMapping(object):
 
     def map(self, dataset, root, dataId, mapper, suffix=None):
         if self.template is not None:
-            path = os.path.join(root, self.template.format(dataset=dataset, ext=self.persistence.ext,
-                                                           **dataId))
+            path = self.template.format(dataset=dataset, ext=self.persistence.ext, **dataId)
         else:
             path = None
         return self.persistence.makeButlerLocation(path, dataId, suffix=suffix, mapper=mapper)
@@ -297,8 +296,8 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
         ccd=[],
     )
 
-    def __init__(self, root):
-        super(SimpleMapper, self).__init__()
+    def __init__(self, root, **kwargs):
+        super(SimpleMapper, self).__init__(**kwargs)
         self.root = root
         self.camera = makeSimpleCamera(nX=1, nY=2, sizeX=400, sizeY=200, gapX=2, gapY=2)
         afwImageUtils.defineFilter('r', 619.42)
