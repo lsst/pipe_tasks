@@ -382,8 +382,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matches = astromRet.matches
                 elif templateSources:
                     # match exposure sources to template sources
+                    mc = afwTable.MatchControl()
+                    mc.findOnlyClosest = False
                     matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds,
-                                                  False)
+                                                  mc)
                 else:
                     raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False," +
                                        "but template sources not available. Cannot match science " +
@@ -584,7 +586,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     matchRadAsec = self.config.diaSourceMatchRadius
                     matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
 
-                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel, True)
+                    srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel)
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for
                                          srcMatch in srcMatches])
                     self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict),
