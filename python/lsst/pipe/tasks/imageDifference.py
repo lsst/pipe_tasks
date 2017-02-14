@@ -627,11 +627,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 kernelCandList = []
                 for cell in subtractRes.kernelCellSet.getCellList():
                     for cand in cell.begin(False):  # include bad candidates
-                        kernelCandList.append(KernelCandidateF.cast(cand))
+                        kernelCandList.append(cand)
 
                 # Get basis list to build control sample kernels
-                basisList = afwMath.cast_LinearCombinationKernel(
-                    kernelCandList[0].getKernel(KernelCandidateF.ORIG)).getKernelList()
+                basisList = kernelCandList[0].getKernel(KernelCandidateF.ORIG).getKernelList()
 
                 controlCandList = \
                     diffimTools.sourceTableToCandidateList(controlSources,
