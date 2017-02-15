@@ -24,6 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .calibrate import CalibrateTask
 from .characterizeImage import CharacterizeImageTask
+from lsst.daf.ingest import IndexExposureTask, getDatabase
 
 __all__ = ["ProcessCcdConfig", "ProcessCcdTask"]
 
@@ -60,6 +61,15 @@ class ProcessCcdConfig(pexConfig.Config):
             - refine the Calib photometric calibration object in the exposure
             - detect sources, usually at low S/N
             """,
+    )
+    doIndexExposure = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Index exposure in single frame database?",
+    )
+    indexExposure = pexConfig.ConfigurableField(
+        target=IndexExposureTask,
+        doc="Task to index exposure in single frame database",
     )
 
     def setDefaults(self):
@@ -156,6 +166,8 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         self.makeSubtask("charImage", butler=butler, refObjLoader=psfRefObjLoader)
         self.makeSubtask("calibrate", butler=butler, icSourceSchema=self.charImage.schema,
                          astromRefObjLoader=astromRefObjLoader, photoRefObjLoader=photoRefObjLoader)
+        if self.config.doIndexExposure:
+            self.makeSubtask("indexExposure")
 
     @pipeBase.timeMethod
     def run(self, sensorRef):
@@ -195,6 +207,10 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                 doUnpersist=False,
                 icSourceCat=charRes.sourceCat,
             )
+
+        if self.config.doIndex:
+            database = getDatabase(sensorRef.getButler())
+            self.indexExposure.index(exposure, sensorRef.dataId, database)
 
         return pipeBase.Struct(
             charRes=charRes,
