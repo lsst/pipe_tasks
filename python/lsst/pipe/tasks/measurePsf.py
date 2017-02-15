@@ -356,7 +356,6 @@ def showPsfSpatialCells(exposure, cellSet, showBadCandidates, frame=1):
                                 size=4, frame=frame)
     for cell in cellSet.getCellList():
         for cand in cell.begin(not showBadCandidates):  # maybe include bad candidates
-            cand = measAlg.cast_PsfCandidateF(cand)
             status = cand.getStatus()
             ds9.dot('+', *cand.getSource().getCentroid(), frame=frame,
                     ctype=ds9.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
@@ -369,8 +368,6 @@ def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
     stamps = []
     for cell in cellSet.getCellList():
         for cand in cell.begin(not showBadCandidates):  # maybe include bad candidates
-            cand = measAlg.cast_PsfCandidateF(cand)
-
             try:
                 im = cand.getMaskedImage()
 
