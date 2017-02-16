@@ -61,10 +61,11 @@ class PersistenceType(object):
     suffixes = ()
 
     @classmethod
-    def makeButlerLocation(cls, path, dataId, mapper, suffix=None):
+    def makeButlerLocation(cls, path, dataId, mapper, suffix=None, storage=None):
         """Method called by SimpleMapping to implement a map_ method."""
         return lsst.daf.persistence.ButlerLocation(cls.python, cls.cpp, cls.storage, [path], dataId,
-                                                   mapper=mapper)
+                                                   mapper=mapper,
+                                                   storage=storage)
 
     def canStandardize(self, datasetType):
         return False
@@ -77,10 +78,10 @@ class BypassPersistenceType(PersistenceType):
     python = "lsst.daf.base.PropertySet"  # something to import even when we don't need to
 
     @classmethod
-    def makeButlerLocation(cls, path, dataId, mapper, suffix=None):
+    def makeButlerLocation(cls, path, dataId, mapper, suffix=None, storage=None):
         """Method called by SimpleMapping to implement a map_ method; overridden to not use the path."""
         return lsst.daf.persistence.ButlerLocation(cls.python, cls.cpp, cls.storage, [], dataId,
-                                                   mapper=mapper)
+                                                   mapper=mapper, storage=storage)
 
 
 class ExposurePersistenceType(PersistenceType):
@@ -94,14 +95,16 @@ class ExposurePersistenceType(PersistenceType):
     suffixes = ("_sub",)
 
     @classmethod
-    def makeButlerLocation(cls, path, dataId, mapper, suffix=None):
+    def makeButlerLocation(cls, path, dataId, mapper, suffix=None, storage=None):
         """Method called by SimpleMapping to implement a map_ method; overridden to support subimages."""
         if suffix is None:
-            loc = super(ExposurePersistenceType, cls).makeButlerLocation(path, dataId, mapper, suffix=None)
+            loc = super(ExposurePersistenceType, cls).makeButlerLocation(path, dataId, mapper, suffix=None,
+                                                                         storage=storage)
         elif suffix == "_sub":
             subId = dataId.copy()
             bbox = subId.pop('bbox')
-            loc = super(ExposurePersistenceType, cls).makeButlerLocation(path, subId, mapper, suffix=None)
+            loc = super(ExposurePersistenceType, cls).makeButlerLocation(path, subId, mapper, suffix=None,
+                                                                         storage=storage)
             loc.additionalData.set('llcX', bbox.getMinX())
             loc.additionalData.set('llcY', bbox.getMinY())
             loc.additionalData.set('width', bbox.getWidth())
@@ -159,12 +162,13 @@ class SimpleMapping(object):
         if keys is not None:
             self.keys = keys
 
-    def map(self, dataset, root, dataId, mapper, suffix=None):
+    def map(self, dataset, root, dataId, mapper, suffix=None, storage=None):
         if self.template is not None:
             path = self.template.format(dataset=dataset, ext=self.persistence.ext, **dataId)
         else:
             path = None
-        return self.persistence.makeButlerLocation(path, dataId, suffix=suffix, mapper=mapper)
+        return self.persistence.makeButlerLocation(path, dataId, suffix=suffix, mapper=mapper,
+                                                   storage=storage)
 
 
 class RawMapping(SimpleMapping):
@@ -208,7 +212,7 @@ class MapperMeta(type):
     @staticmethod
     def _makeMapClosure(dataset, mapping, suffix=None):
         def mapClosure(self, dataId, write=False):
-            return mapping.map(dataset, self.root, dataId, self, suffix=suffix)
+            return mapping.map(dataset, self.root, dataId, self, suffix=suffix, storage=self.storage)
         return mapClosure
 
     @staticmethod
@@ -297,6 +301,7 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
     )
 
     def __init__(self, root, **kwargs):
+        self.storage = lsst.daf.persistence.Storage.makeFromURI(root)
         super(SimpleMapper, self).__init__(**kwargs)
         self.root = root
         self.camera = makeSimpleCamera(nX=1, nY=2, sizeX=400, sizeY=200, gapX=2, gapY=2)
@@ -343,7 +348,7 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
 
     def map_camera(self, dataId, write=False):
         return lsst.daf.persistence.ButlerLocation(
-            "lsst.afw.cameraGeom.Camera", "Camera", None, [], dataId, mapper=self
+            "lsst.afw.cameraGeom.Camera", "Camera", None, [], dataId, mapper=self, storage=self.storage
         )
 
     def std_calexp(self, item, dataId):
