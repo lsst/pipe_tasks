@@ -69,7 +69,7 @@ class TestForceWcs(unittest.TestCase):
         print('inwcs:', instr)
         table = afwTable.SourceTable.make(schema, idFactory)
         sources = det.makeSourceCatalog(table, exposure, sigma=1).sources
-        meas.measure(exposure, sources)
+        meas.measure(sources, exposure)
 
         for dosip in [False, True]:
             aconf.solver.calculateSip = dosip
