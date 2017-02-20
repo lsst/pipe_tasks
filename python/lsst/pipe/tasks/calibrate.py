@@ -237,7 +237,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
     Some subtasks may have their own debug variables; see individual Task documentation.
     """
 
-    # Example description used to live here, removed 2-20-2017 by MSSG
+    # Example description used to live here, removed 2-20-2017 as per https://jira.lsstcorp.org/browse/DM-9520
 
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
