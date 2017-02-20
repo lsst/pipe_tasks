@@ -189,7 +189,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
      - @ref pipe_tasks_characterizeImage_IO
      - @ref pipe_tasks_characterizeImage_Config
      - @ref pipe_tasks_characterizeImage_Debug
-     - @ref pipe_tasks_characterizeImage_Example
+
 
     @section pipe_tasks_characterizeImage_Purpose  Description
 
@@ -257,29 +257,10 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     into your `debug.py` file and run `calibrateTask.py` with the `--debug` flag.
 
     Some subtasks may have their own debug variables; see individual Task documentation.
-
-    @section pipe_tasks_characterizeImage_Example   A complete example of using CharacterizeImageTask
-
-    This code is in @link calibrateTask.py@endlink (which calls CharacterizeImageTask
-    before calling CalibrateTask) in the examples directory, and can be run as, e.g.:
-    @code
-    python examples/calibrateTask.py --display
-    @endcode
-    @dontinclude calibrateTask.py
-
-    Import the task (there are some other standard imports; read the file if you're curious)
-    @skipline CharacterizeImageTask
-
-    Create the task.
-    @skip CharacterizeImageTask.ConfigClass
-    @until config=config
-
-    We're now ready to process the data. This occurs in two steps:
-    - Characterize the image: measure bright sources, fit a background and PSF, and repairs cosmic rays
-    - Calibrate the exposure: measure faint sources, fit an improved WCS and photometric zero-point
-    @skip loadData
-    @until dot
     """
+
+    # Example description used to live here, removed 2-20-2017 by MSSG
+
     ConfigClass = CharacterizeImageConfig
     _DefaultName = "characterizeImage"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner

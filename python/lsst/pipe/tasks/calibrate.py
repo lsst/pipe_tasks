@@ -169,7 +169,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
      - @ref pipe_tasks_calibrate_Config
      - @ref pipe_tasks_calibrate_Metadata
      - @ref pipe_tasks_calibrate_Debug
-     - @ref pipe_tasks_calibrate_Example
+
 
     @section pipe_tasks_calibrate_Purpose  Description
 
@@ -235,30 +235,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
     into your `debug.py` file and run `calibrateTask.py` with the `--debug` flag.
 
     Some subtasks may have their own debug variables; see individual Task documentation.
-
-    @section pipe_tasks_calibrate_Example   A complete example of using CalibrateTask
-
-    This code is in @link calibrateTask.py@endlink in the examples directory, and can be run as, e.g.:
-    @code
-    python examples/calibrateTask.py --display
-    @endcode
-    @dontinclude calibrateTask.py
-
-    Import the task (there are some other standard imports; read the file if you're curious)
-    @skipline CalibrateTask
-
-    Create the task. Note that we're using a custom AstrometryTask (because we don't have a valid
-    astrometric catalogue handy); see \ref calibrate_MyAstrometryTask.
-    @skip CalibrateTask.ConfigClass
-    @until config=config
-
-    We're now ready to process the data. This occurs in two steps, optionally displaying the data after each:
-    - Characterize the image: measure bright sources, fit a background and PSF, and repairs cosmic rays
-    - Calibrate the exposure: measure faint sources, fit an improved WCS and photometric zero-point
-
-    @skip loadData
-    @until dot
     """
+
+    # Example description used to live here, removed 2-20-2017 by MSSG
+
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
