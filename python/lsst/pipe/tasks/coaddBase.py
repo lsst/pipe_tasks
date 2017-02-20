@@ -81,12 +81,12 @@ class CoaddBaseConfig(pexConfig.Config):
         default=False
     )
     makeDirect = pexConfig.Field(
-        doc="Make direct TempExps/Coadds?",
+        doc="Make direct Warp/Coadds",
         dtype=bool,
         default=True,
     )
     makePsfMatched = pexConfig.Field(
-        doc="Make Psf-Matched TempExps/Coadds?",
+        doc="Make Psf-Matched Warp/Coadd?",
         dtype=bool,
         default=False,
     )
@@ -215,8 +215,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         -------
         WarpDatasetName : `string`
         """
-        suffix = "" if warpType == WarpType.DIRECT else warpType.value[0].upper() + warpType.value[1:]
-        return self.config.coaddName + "Coadd_tempExp" + suffix
+        return self.config.coaddName + "Coadd_" + warpType.value + "Warp"
 
     def getWarpTypeList(self):
         """Return list of requested warp types per the config.

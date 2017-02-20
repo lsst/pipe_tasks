@@ -43,12 +43,12 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         doc="Task to warp and PSF-match calexp",
     )
     doWrite = pexConfig.Field(
-        doc="persist <coaddName>Coadd_tempExp",
+        doc="persist <coaddName>Coadd_<warpType>Warp",
         dtype=bool,
         default=True,
     )
     doOverwrite = pexConfig.Field(
-        doc="overwrite <coaddName>Coadd_tempExp; If False, continue if the file exists on disk",
+        doc="overwrite <coaddName>Coadd_<warpType>Warp; If False, continue if the file exists on disk",
         dtype=bool,
         default=True,
     )
@@ -60,7 +60,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
-    """Task to produce <coaddName>Coadd_tempExp images
+    """Task to produce <coaddName>Coadd_<warpType>Warp images
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
@@ -71,17 +71,17 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
     @pipeBase.timeMethod
     def run(self, patchRef, selectDataList=[]):
-        """Produce <coaddName>Coadd_tempExp images
+        """Produce <coaddName>Coadd_<warpType>Warp images
 
-        <coaddName>Coadd_tempExp are produced by PSF-matching (optional) and warping.
+        <coaddName>Coadd_<warpType>Warp images are produced by warping and optionally PSF-matching.
 
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
-        @return: dataRefList: a list of data references for the new <coaddName>Coadd_tempExp
-            if direct or both warp types are requested and <coaddName>Coadd_tempExpPsfMatched if only
-            psfMatched temp exps are requested.
+        @return: dataRefList: a list of data references for the new <coaddName>Coadd_directWarps
+            if direct or both warp types are requested and <coaddName>Coadd_psfMatchedWarps if only psfMatched
+            warps are requested.
 
-        @warning: this task assumes that all exposures in a coaddTempExp have the same filter.
+        @warning: this task assumes that all exposures in a warp (coaddTempExp) have the same filter.
 
         @warning: this task sets the Calib of the coaddTempExp to the Calib of the first calexp
         with any good pixels in the patch. For a mosaic camera the resulting Calib should be ignored
@@ -89,11 +89,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         """
         skyInfo = self.getSkyInfo(patchRef)
 
-        # DataRefs to return are of type *_directWarp unless only a *_psfMatchedWarp requested
+        # DataRefs to return are of type *_directWarp unless only *_psfMatchedWarp requested
         if self.config.makePsfMatched and not self.config.makeDirect:
-            primaryTempExpDataset = self.getTempExpDatasetName(WarpType.PSF_MATCHED)
+            primaryWarpDataset = self.getTempExpDatasetName(WarpType.PSF_MATCHED)
         else:
-            primaryTempExpDataset = self.getTempExpDatasetName(WarpType.DIRECT)
+            primaryWarpDataset = self.getTempExpDatasetName(WarpType.DIRECT)
 
         calExpRefList = self.selectExposures(patchRef, skyInfo, selectDataList=selectDataList)
         if len(calExpRefList) == 0:
@@ -104,18 +104,18 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         self.log.info("Processing %d existing calexps for patch %s", len(calExpRefList), patchRef.dataId)
 
         groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
-                                        primaryTempExpDataset)
-        self.log.info("Processing %d tempExps for patch %s", len(groupData.groups), patchRef.dataId)
+                                        primaryWarpDataset)
+        self.log.info("Processing %d warp exposures for patch %s", len(groupData.groups), patchRef.dataId)
 
         dataRefList = []
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.items()):
-            tempExpRef = getGroupDataRef(patchRef.getButler(), primaryTempExpDataset,
+            tempExpRef = getGroupDataRef(patchRef.getButler(), primaryWarpDataset,
                                          tempExpTuple, groupData.keys)
-            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=primaryTempExpDataset):
-                self.log.info("tempCoaddExp %s exists; skipping", tempExpRef.dataId)
+            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=primaryWarpDataset):
+                self.log.info("Warp %s exists; skipping", tempExpRef.dataId)
                 dataRefList.append(tempExpRef)
                 continue
-            self.log.info("Processing tempExp %d/%d: id=%s", i, len(groupData.groups), tempExpRef.dataId)
+            self.log.info("Processing Warp %d/%d: id=%s", i, len(groupData.groups), tempExpRef.dataId)
 
             # TODO: mappers should define a way to go from the "grouping keys" to a numeric ID (#2776).
             # For now, we try to get a long integer "visit" key, and if we can't, we just use the index
@@ -130,7 +130,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             if any(exps.values()):
                 dataRefList.append(tempExpRef)
             else:
-                self.log.warn("tempExp %s could not be created", tempExpRef.dataId)
+                self.log.warn("Warp %s could not be created", tempExpRef.dataId)
 
             if self.config.doWrite:
                 for (warpType, exposure) in exps.items():  # compatible w/ Py3
@@ -141,10 +141,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         return dataRefList
 
     def createTempExp(self, calexpRefList, skyInfo, visitId=0):
-        """Create a tempExp from inputs
+        """Create a Warp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
-        the warp ("tempExp") of that exposure to the supplied tract/patch.
+        the warp (previously called a coaddTempExp) of that exposure to the
+        supplied tract/patch.
 
         Pixels that receive no pixels are set to NAN; this is not correct
         (violates LSST algorithms group policy), but will be fixed up by
@@ -157,9 +158,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         @param visitId: integer identifier for visit, for the table that will
             produce the CoaddPsf
         @return a pipeBase Struct containing:
-          - exposures: a dictionary containing the coadd temp exps requested:
-                "direct": direct coadd temp exp if config.makeDirect
-                "psfMatched": PSF-matched coadd temp exp if config.makePsfMatched
+          - exposures: a dictionary containing the warps requested:
+                "direct": direct warp if config.makeDirect
+                "psfMatched": PSF-matched warp if config.makePsfMatched
         """
         warpTypeList = self.getWarpTypeList()
 
@@ -171,7 +172,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         modelPsf = self.config.modelPsf.apply() if self.config.makePsfMatched else None
         for calExpInd, calExpRef in enumerate(calexpRefList):
-            self.log.info("Processing calexp %d of %d for this tempExp: id=%s",
+            self.log.info("Processing calexp %d of %d for this Warp: id=%s",
                           calExpInd+1, len(calexpRefList), calExpRef.dataId)
             try:
                 ccdId = calExpRef.get("ccdExposureId", immediate=True)
@@ -228,8 +229,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 continue
 
         for warpType in warpTypeList:
-            self.log.info("coaddTempExp (%s) has %d good pixels (%.1f%%)",
+            self.log.info("%sWarp has %d good pixels (%.1f%%)",
                           warpType.value, totGoodPix[warpType], 100.0*totGoodPix[warpType]/skyInfo.bbox.getArea())
+
             if totGoodPix[warpType] > 0 and didSetMetadata[warpType]:
                 inputRecorder[warpType].finish(coaddTempExps[warpType], totGoodPix[warpType])
                 if warpType == WarpType.DIRECT:

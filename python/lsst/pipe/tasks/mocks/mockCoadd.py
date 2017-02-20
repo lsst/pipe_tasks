@@ -234,7 +234,8 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         config.select.retarget(MockSelectImagesTask)
         if cls == MakeCoaddTempExpTask:
             config.bgSubtracted = True
-            config.doPsfMatch = False
+            config.makeDirect = True
+            config.makePsfMatched = False
         elif cls == AssembleCoaddTask:
             config.doMatchBackgrounds = False
         return cls(config)

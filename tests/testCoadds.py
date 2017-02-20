@@ -254,7 +254,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             foundOneTempExp = False
             for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
                 try:
-                    tempExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd_tempExp", visit=visit,
+                    tempExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd_directWarp", visit=visit,
                                            immediate=True)
                     foundOneTempExp = True
                 except:

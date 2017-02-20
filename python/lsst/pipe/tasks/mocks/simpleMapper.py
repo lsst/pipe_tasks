@@ -291,8 +291,11 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
         deepCoadd_forced_src_schema=SimpleMapping(SourceCatalogPersistenceType,
                                                   template="{dataset}{ext}", keys={}),
         deepCoadd_mock=SkyMapping(ExposurePersistenceType),
-        deepCoadd_tempExp=TempExpMapping(ExposurePersistenceType),
-        deepCoadd_tempExp_mock=TempExpMapping(ExposurePersistenceType),
+        deepCoaddPsfMatched_mock=SkyMapping(ExposurePersistenceType),
+        deepCoadd_directWarp=TempExpMapping(ExposurePersistenceType),
+        deepCoadd_directWarp_mock=TempExpMapping(ExposurePersistenceType),
+        deepCoadd_psfMatchedWarp=TempExpMapping(ExposurePersistenceType),
+        deepCoadd_psfMatchedWarp_mock=TempExpMapping(ExposurePersistenceType),
     )
 
     levels = dict(
