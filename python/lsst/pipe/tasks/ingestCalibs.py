@@ -39,6 +39,8 @@ class CalibsParseTask(ParseTask):
             obstype = "dark"
         elif "fringe" in obstype:
             obstype = "fringe"
+        elif "sky" in obstype:
+            obstype = "sky"
         return obstype
 
     def getDestination(self, butler, info, filename):
@@ -64,7 +66,7 @@ class CalibsParseTask(ParseTask):
 
 class CalibsRegisterConfig(RegisterConfig):
     """Configuration for the CalibsRegisterTask"""
-    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe"], doc="Names of tables")
+    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky"], doc="Names of tables")
     calibDate = Field(dtype=str, default="calibDate", doc="Name of column for calibration date")
     validStart = Field(dtype=str, default="validStart", doc="Name of column for validity start")
     validEnd = Field(dtype=str, default="validEnd", doc="Name of column for validity stop")
@@ -188,7 +190,7 @@ class IngestCalibsArgumentParser(InputOnlyArgumentParser):
         self.add_argument("--create", action="store_true", help="Create new registry?")
         self.add_argument("--validity", type=int, required=True, help="Calibration validity period (days)")
         self.add_argument("--calibType", type=str, default=None,
-                          choices=[None, "bias", "dark", "flat", "fringe", "defect"],
+                          choices=[None, "bias", "dark", "flat", "fringe", "sky", "defect"],
                           help="Type of the calibration data to be ingested;" +
                                " if omitted, the type is determined from" +
                                " the file header information")
