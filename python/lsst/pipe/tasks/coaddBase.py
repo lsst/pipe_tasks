@@ -21,6 +21,7 @@ from __future__ import division, absolute_import
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
+import pdb
 
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
@@ -158,6 +159,9 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     def getTempExpDatasetName(self):
         return self.config.coaddName + "Coadd_tempExp"
 
+    def getTempCovDatasetName(self):
+        return self.config.coaddName + "Coadd_tempCov"
+
     @classmethod
     def _makeArgumentParser(cls):
         """Create an argument parser
@@ -195,16 +199,10 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         \param[in]      cov      suffix to apply to the covariance dataset name
         """
         objName = self.getCoaddDatasetName()
-        covName = self.getCoaddDatasetName()
         if suffix is not None:
             objName += "_" + suffix
-            #covName += "_" + suffix + " _cov"
-            covName += "_tempCov"
         self.log.info("Persisting %s" % objName)
         dataRef.put(obj, objName)
-        # For now - Once Coadds start propagating covariance (DM-7902), cov should never be none!!
-        if cov is not None:
-            dataRef.put(cov, covName)
 
 
 class SelectDataIdContainer(pipeBase.DataIdContainer):
