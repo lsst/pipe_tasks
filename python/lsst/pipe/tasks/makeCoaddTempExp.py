@@ -143,14 +143,46 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             except (KeyError, ValueError):
                 visitId = i
 
-            exp = self.createTempExp(calexpRefList, skyInfo, visitId)
-            if exp is not None:
+            res = self.createTempExp(calexpRefList, skyInfo, visitId)
+            if res is not None:
+                exp, cov = res
                 dataRefList.append(tempExpRef)
                 if self.config.doWrite:
-                    self.writeCoaddOutput(tempExpRef, exp, "tempExp")
+                    self.writeCoaddOutput(tempExpRef, exp, "tempExp", cov)
             else:
                 self.log.warn("tempExp %s could not be created", tempExpRef.dataId)
         return dataRefList
+
+    def _getCovMultiplier(self, calexpRefList, modelPsf, skyInfo):
+        """Determine how many times larger the covariance matrix should be than an exposure
+
+        Warping introduces covariance between pixels separated by as much as twice the size
+        of the warping kernel. This function returns the size multiplier for the covariance
+        image.
+
+        We iterate through all the exposures that are being warped and pick the multipliers
+        based on the first exposure that warps successfully i.e. all calexps get the same
+        multipliers. This may not always be correct but in practice the covariance pixels
+        dropped by this assumption should be of negligable value.
+        """
+        multX = 1
+        multY = 1
+        for calExpRef in calexpRefList:
+            calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
+                                                              tract=skyInfo.tractInfo.getId())
+            calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
+            warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
+                                               maxBBox=skyInfo.bbox)
+            exposure = warpRes.exposure
+            covImage = warpRes.covImage
+            try:
+                multX = int(covImage.getWidth()/exposure.getWidth())
+                multY = int(covImage.getHeight()/exposure.getHeight())
+            except ZeroDivisionError:
+                continue
+            else:
+                break
+        return (multX, multY)
 
     def createTempExp(self, calexpRefList, skyInfo, visitId=0):
         """Create a tempExp from inputs
@@ -176,6 +208,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         totGoodPix = 0
         didSetMetadata = False
         modelPsf = self.config.modelPsf.apply() if self.config.doPsfMatch else None
+        multX, multY = self._getCovMultiplier(calexpRefList, modelPsf, skyInfo)
+        coaddTempCov = afwImage.ImageD(coaddTempExp.getWidth()*multX, coaddTempExp.getHeight()*multY,
+                                       numpy.inf)
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this tempExp: id=%s",
                           calExpInd+1, len(calexpRefList), calExpRef.dataId)
@@ -195,24 +230,16 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 for key, val in calExpRef.dataId.items():
                     covName += '_%s_%s'%(key, val)
                 warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
-                                                   maxBBox=skyInfo.bbox)
+                                                   maxBBox=skyInfo.bbox, multX=multX, multY=multY)
                 exposure = warpRes.exposure
                 covImage = warpRes.covImage
-                '''if exposure.getHeight() != 0 and exposure.getWidth() != 0:
-                    afwDisplay.getDisplay(0).mtv(exposure.getMaskedImage().getImage())
-                    afwDisplay.getDisplay(1).mtv(calExp.getMaskedImage().getImage())
-                    afwDisplay.getDisplay(2).mtv(calExp.getMaskedImage().getVariance())
-                    afwDisplay.getDisplay(3).mtv(exposure.getMaskedImage().getVariance())
-                    afwDisplay.getDisplay(4).mtv(covImage)
-                    view = covView(exposure, covImage, covName=covName)
-                    destArr = exposure.getMaskedImage().getImage().getArray()
-                    import pdb; pdb.set_trace()'''
                 if didSetMetadata:
                     mimg = exposure.getMaskedImage()
                     mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] / exposure.getCalib().getFluxMag0()[0])
                     del mimg
                 numGoodPix = coaddUtils.copyGoodPixels(
-                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
+                    coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask(),
+                    coaddTempCov, covImage)
                 totGoodPix += numGoodPix
                 self.log.debug("Calexp %s has %d good pixels in this patch (%.1f%%)",
                                calExpRef.dataId, numGoodPix, 100.0*numGoodPix/skyInfo.bbox.getArea())
@@ -232,4 +259,4 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         self.log.info("coaddTempExp has %d good pixels (%.1f%%)",
                       totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea())
-        return coaddTempExp if totGoodPix > 0 and didSetMetadata else None
+        return (coaddTempExp, coaddTempCov) if totGoodPix > 0 and didSetMetadata else None
