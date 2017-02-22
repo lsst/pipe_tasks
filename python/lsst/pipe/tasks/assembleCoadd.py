@@ -21,7 +21,7 @@ from __future__ import division, absolute_import
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
-import pdb
+import resource
 
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
@@ -1159,17 +1159,16 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
-        coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                              bgModelList, result.tempExpClipList,
-                                              doClip=False,
-                                              mask=badPixelMask)
-
+        coaddExp, coaddCov = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList,
+                                                        weightList, bgModelList, result.tempExpClipList,
+                                                        doClip=False,
+                                                        mask=badPixelMask)
         # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
         # do not get propagated
         maskExp = coaddExp.getMaskedImage().getMask()
         maskExp |= maskClip
 
-        return coaddExp
+        return coaddExp, coaddCov
 
     def buildDifferenceImage(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList):
         """!
@@ -1187,12 +1186,12 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         @return Difference image of unclipped and clipped coadd wrapped in an Exposure
         """
         # Build the unclipped coadd
-        coaddMean = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               bgModelList, doClip=False)
+        coaddMean, coaddCovMean = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList,
+                                                             weightList, bgModelList, doClip=False)
 
         # Build the clipped coadd
-        coaddClip = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               bgModelList, doClip=True)
+        coaddClip, coaddCovClip = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList,
+                                                             weightList, bgModelList, doClip=True)
 
         coaddDiff = coaddMean.getMaskedImage().Factory(coaddMean.getMaskedImage())
         coaddDiff -= coaddClip.getMaskedImage()

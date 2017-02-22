@@ -21,7 +21,7 @@ from __future__ import division, absolute_import
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-import numpy; numpy.set_printoptions(linewidth=300); import pdb
+import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
@@ -167,8 +167,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         multipliers. This may not always be correct but in practice the covariance pixels
         dropped by this assumption should be of negligable value.
         """
-        multX = 1
-        multY = 1
+        multXList = list()
+        multYList = list()
         for calExpRef in calexpRefList:
             calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
                                                               tract=skyInfo.tractInfo.getId())
@@ -178,13 +178,19 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             exposure = warpRes.exposure
             covImage = warpRes.covImage
             try:
-                multX = int(covImage.getWidth()/exposure.getWidth())
-                multY = int(covImage.getHeight()/exposure.getHeight())
+                multXList.append(int(covImage.getWidth()/exposure.getWidth()))
+                multYList.append(int(covImage.getHeight()/exposure.getHeight()))
             except ZeroDivisionError:
                 continue
-            else:
-                break
-        return (multX, multY)
+        if not multXList:
+            multX = 1
+        else:
+            multX = max(multXList)
+        if not multYList:
+            multY = 1
+        else:
+            multY = max(multYList)
+        return multX, multY
 
     def createTempExp(self, calexpRefList, skyInfo, visitId=0):
         """Create a tempExp from inputs
@@ -231,9 +237,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
                                                                   tract=skyInfo.tractInfo.getId())
                 calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
-                covName = 'covar'
-                for key, val in calExpRef.dataId.items():
-                    covName += '_%s_%s'%(key, val)
                 warpRes = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf, wcs=skyInfo.wcs,
                                                    maxBBox=skyInfo.bbox, multX=multX, multY=multY)
                 exposure = warpRes.exposure
