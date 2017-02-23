@@ -29,6 +29,7 @@ import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
+import lsst.afw.math as afwMath
 
 
 __all__ = ["DonutFitConfig", "DonutFitTask"]
@@ -325,31 +326,26 @@ class DonutFitTask(pipeBase.Task):
         if lam is None:
             lam = icExp.getFilter().getFilterProperty().getLambdaEff()
             self.log.info("Using filter effective wavelength of {} nm".format(lam))
-
-        donutCat = afwTable.BaseCatalog(self.schema)
+        nquarter = icExp.getDetector().getOrientation().getNQuarter()
+        self.log.info("Nquarter = {}".format(nquarter))
         select = self.selectDonuts(icSrc)
-        for isSelected, x, y, fp_x, fp_y in zip(select,
-                                                icSrc.getX(),
-                                                icSrc.getY(),
-                                                icSrc['base_FPPosition_x'],
-                                                icSrc['base_FPPosition_y']):
-            if isSelected:
-                theta_x = x * 0.168 / 3600
-                theta_y = y * 0.168 / 3600
-                subexp = self.cutoutDonut(x, y, icExp)
-                aper = HSC_aper(theta_x, theta_y, lam, self.config.padFactor)
-                zfit = ZFit(subexp, self.config.jmax, self.config.bitmask, lam, aper, xtol=1e-2)
-                print("Fitting")
-                zfit.fit()
-                zfit.report()
-                record = donutCat.addNew()
-                result = zfit.result.params.valuesdict()
-                record.set(self.r0, result['r0'])
-                for i, z in zip(range(4, self.config.jmax+1), self.z):
-                    record.set(z, result['z{}'.format(i)])
+        donutCat = icSrc.subset(select)
+        for record in donutCat:
+            x, y = record.getX(), record.getY()
+            theta_x = x * 0.168 / 3600
+            theta_y = y * 0.168 / 3600
+            subexp = afwMath.rotateImageBy90(self.cutoutDonut(x, y, icExp), nquarter)
+            aper = HSC_aper(theta_x, theta_y, lam, self.config.padFactor)
+            zfit = ZFit(subexp, self.config.jmax, self.config.bitmask, lam, aper, xtol=1e-2)
+            self.log.info("Fitting")
+            zfit.fit()
+            zfit.report()
+            result = zfit.result.params.valuesdict()
+            record.set(self.r0, result['r0'])
+            for i, z in zip(range(4, self.config.jmax+1), self.z):
+                record.set(z, result['z{}'.format(i)])
         return pipeBase.Struct(
             icExp=icExp,
-            icSrc=icSrc,
             donutCat=donutCat
         )
 
@@ -371,7 +367,7 @@ class DonutFitTask(pipeBase.Task):
                 (rej1[i] < self.config.r1cut) |
                 (rej2[i] > self.config.r2cut)):
                 select[i] = False
-        print("Selected {} of {} detected donuts.".format(sum(select), len(select)))
+        self.log.info("Selected {} of {} detected donuts.".format(sum(select), len(select)))
         return select
 
     @pipeBase.timeMethod
