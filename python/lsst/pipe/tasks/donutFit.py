@@ -258,9 +258,12 @@ class ZFit:
 
 
 class DonutFitConfig(pexConfig.Config):
-    jmax = pexConfig.Field(
-        dtype=int, default=15,
-        doc="Number of Zernike coefficients to fit",
+
+    jmax = pexConfig.ListField(
+        dtype=int, default=(4, 11, 21),
+        doc="List indicating the maximum Zernike term to fit in each fitting iteration.  The "
+            "result at the end of the previous iteration will be used as the initial guess for the "
+            "subsequent iteration."
     )
 
     lam = pexConfig.Field(
@@ -315,7 +318,7 @@ class DonutFitTask(pipeBase.Task):
         self.schema = schema
         self.r0 = schema.addField("r0", type=float)
         self.z = []
-        for i in range(4, self.config.jmax+1):
+        for i in range(4, max(self.config.jmax)+1):
             self.z.append(schema.addField("z{}".format(i), type=float))
 
     @pipeBase.timeMethod
@@ -336,14 +339,19 @@ class DonutFitTask(pipeBase.Task):
             theta_y = y * 0.168 / 3600
             subexp = afwMath.rotateImageBy90(self.cutoutDonut(x, y, icExp), nquarter)
             aper = HSC_aper(theta_x, theta_y, lam, self.config.padFactor)
-            zfit = ZFit(subexp, self.config.jmax, self.config.bitmask, lam, aper, xtol=1e-2)
-            self.log.info("Fitting")
-            zfit.fit()
-            zfit.report()
-            result = zfit.result.params.valuesdict()
-            record.set(self.r0, result['r0'])
-            for i, z in zip(range(4, self.config.jmax+1), self.z):
-                record.set(z, result['z{}'.format(i)])
+            result = None
+            for jmax in self.config.jmax:
+                self.log.info("Fitting with jmax = {}".format(jmax))
+                zfit = ZFit(subexp, jmax, self.config.bitmask, lam, aper, xtol=1e-2)
+                if result is not None:
+                    zfit.params.update(result.params)
+                zfit.fit()
+                zfit.report()
+                result = zfit.result
+            vals = result.params.valuesdict()
+            record.set(self.r0, vals['r0'])
+            for i, z in zip(range(4, max(self.config.jmax)+1), self.z):
+                record.set(z, vals['z{}'.format(i)])
         return pipeBase.Struct(
             icExp=icExp,
             donutCat=donutCat
