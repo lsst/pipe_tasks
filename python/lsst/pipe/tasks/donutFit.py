@@ -24,6 +24,11 @@ import numpy as np
 import galsim
 import lmfit
 
+from lsst.afw.display.ds9 import mtv
+import lsstDebug
+
+display = lsstDebug.Info(__name__).display
+
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
@@ -95,6 +100,7 @@ def cut_circle_interior(aper, u0, v0, r):
     @param r       Region radius in pupil coordinates.
     @returns       galsim.Aperture
     """
+    print("Cutting interior circle at ({},{})".format(u0, v0))
     aper_img = aper.illuminated
     r2 = (aper.u-u0)**2 + (aper.v-v0)**2
     aper_img[r2 < r**2] = False
@@ -112,6 +118,7 @@ def cut_circle_exterior(aper, u0, v0, r):
     @param r       Region radius in pupil coordinates.
     @returns       galsim.Aperture
     """
+    print("Cutting exterior circle at ({},{})".format(u0, v0))
     aper_img = aper.illuminated
     r2 = (aper.u-u0)**2 + (aper.v-v0)**2
     aper_img[r2 > r**2] = False
@@ -325,6 +332,7 @@ class DonutFitTask(pipeBase.Task):
     def run(self, icExp, icSrc):
         """!Fit donuts
         """
+        print("display is {}".format(display))
         lam = self.config.lam
         if lam is None:
             lam = icExp.getFilter().getFilterProperty().getLambdaEff()
@@ -334,10 +342,12 @@ class DonutFitTask(pipeBase.Task):
         select = self.selectDonuts(icSrc)
         donutCat = icSrc.subset(select)
         for record in donutCat:
-            x, y = record.getX(), record.getY()
-            theta_x = x * 0.168 / 3600
-            theta_y = y * 0.168 / 3600
-            subexp = afwMath.rotateImageBy90(self.cutoutDonut(x, y, icExp), nquarter)
+            im_x, im_y = record.getX(), record.getY()
+            fp_x, fp_y = record['base_FPPosition_x'], record['base_FPPosition_y']
+            self.log.info("Fitting donut at {}, {}".format(fp_x, fp_y))
+            theta_x = fp_x * 0.168 / 3600
+            theta_y = fp_y * 0.168 / 3600
+            subexp = afwMath.rotateImageBy90(self.cutoutDonut(im_x, im_y, icExp), nquarter)
             aper = HSC_aper(theta_x, theta_y, lam, self.config.padFactor)
             result = None
             for jmax in self.config.jmax:
@@ -347,6 +357,16 @@ class DonutFitTask(pipeBase.Task):
                     zfit.params.update(result.params)
                 zfit.fit()
                 zfit.report()
+                if display:
+                    image = zfit.image
+                    resid = np.reshape(zfit.result.residual, zfit.image.shape) * zfit.sigma
+                    model = zfit.image - resid
+                    mtv(afwImage.ImageD(image.astype(np.float64)), frame=1, title="image")
+                    mtv(afwImage.ImageD(model.astype(np.float64)), frame=2, title="model")
+                    mtv(afwImage.ImageD(resid.astype(np.float64)), frame=3, title="resid")
+                    mtv(afwImage.ImageD(aper.illuminated.astype(np.float64)),
+                        frame=4, title="aperture")
+                    raw_input("Press Enter to continue...")
                 result = zfit.result
             vals = result.params.valuesdict()
             record.set(self.r0, vals['r0'])
