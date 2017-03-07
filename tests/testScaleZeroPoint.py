@@ -24,6 +24,8 @@
 
 """Test lsst.pipe.tasks.ScaleZeroPointTask
 """
+from __future__ import division, print_function, absolute_import
+
 import unittest
 
 import lsst.afw.image as afwImage

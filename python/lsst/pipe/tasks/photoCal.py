@@ -454,7 +454,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                     x, y = m.second.getCentroid()
                     ds9.dot("o", x, y, size=4, frame=frame, ctype=ds9.GREEN)
 
-        result = afwTable.ReferenceMatchVector()
+        result = []
         for m in matches:
             if self.outputField is not None:
                 m.second.set(self.outputField, True)

@@ -254,7 +254,8 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
         @returns A BaseCatalog containing the transformed measurements.
         """
-        inputCat = dataRef.get(self.sourceType)
+        # TODO: pybind11 remove `immediate=True` once DM-9112 is resolved
+        inputCat = dataRef.get(self.sourceType, immediate=True)
         wcs = dataRef.get(self.calexpType).getWcs()
         calib = dataRef.get(self.calexpType).getCalib()
         outputCat = self.transform.run(inputCat, wcs, calib)

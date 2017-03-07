@@ -652,7 +652,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         self.log.debug("Computing coadd over %s", bbox)
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
-        maskedImageList = afwImage.vectorMaskedImageF()  # [] is rejected by afwMath.statisticsStack
+        maskedImageList = []
         for tempExpRef, imageScaler, bgInfo, altMask in zip(tempExpRefList, imageScalerList, bgInfoList,
                                                             altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
