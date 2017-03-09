@@ -19,6 +19,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+from __future__ import absolute_import, division, print_function
 from lsst.ip.isr import IsrTask
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase

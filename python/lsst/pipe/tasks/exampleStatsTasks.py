@@ -1,4 +1,3 @@
-from __future__ import division, absolute_import
 #
 # LSST Data Management System
 # Copyright 2014 LSST Corporation.
@@ -20,6 +19,7 @@ from __future__ import division, absolute_import
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+from __future__ import absolute_import, division, print_function
 from lsst.afw.image import MaskU
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig

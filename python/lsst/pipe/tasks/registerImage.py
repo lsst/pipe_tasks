@@ -23,6 +23,7 @@
 """
 This module contains a Task to register (align) multiple images.
 """
+from __future__ import absolute_import, division, print_function
 from builtins import range
 
 __all__ = ["RegisterTask", "RegisterConfig"]

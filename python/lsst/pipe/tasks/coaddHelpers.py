@@ -1,4 +1,3 @@
-from builtins import zip
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -21,6 +20,8 @@ from builtins import zip
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import absolute_import, division, print_function
+from builtins import zip
 from lsst.pipe.base import Struct
 
 """Helper functions for coaddition.

@@ -1,4 +1,3 @@
-from __future__ import division, absolute_import
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -21,6 +20,7 @@ from __future__ import division, absolute_import
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import absolute_import, division, print_function
 import numpy
 
 import lsst.pex.config as pexConfig

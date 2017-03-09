@@ -1,6 +1,3 @@
-from __future__ import print_function
-from builtins import zip
-from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010, 2011, 2012 LSST Corporation.
@@ -23,6 +20,9 @@ from builtins import range
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import absolute_import, division, print_function
+from builtins import zip
+from builtins import range
 from matplotlib import pyplot
 
 import lsst.afw.geom

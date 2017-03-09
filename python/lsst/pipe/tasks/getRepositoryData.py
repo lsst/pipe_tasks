@@ -23,6 +23,7 @@
 
 Use this as a base task for creating graphs and reports for a set of data.
 """
+from __future__ import absolute_import, division, print_function
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 

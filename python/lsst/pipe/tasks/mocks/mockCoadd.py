@@ -1,4 +1,3 @@
-from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
@@ -21,6 +20,8 @@ from builtins import range
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import absolute_import, division, print_function
+from builtins import range
 import lsst.afw.image
 import lsst.afw.geom
 import lsst.pex.config
