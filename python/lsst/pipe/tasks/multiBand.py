@@ -1,5 +1,3 @@
-from builtins import zip
-from builtins import range
 #!/usr/bin/env python
 #
 # LSST Data Management System
@@ -22,6 +20,9 @@ from builtins import range
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+from __future__ import absolute_import, division, print_function
+from builtins import zip
+from builtins import range
 import numpy
 
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer

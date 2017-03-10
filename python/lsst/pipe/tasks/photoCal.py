@@ -1,8 +1,3 @@
-from __future__ import absolute_import, division
-from __future__ import print_function
-from builtins import zip
-from builtins import input
-from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008-2016 AURA/LSST.
@@ -25,6 +20,11 @@ from builtins import range
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 # \package lsst.pipe.tasks.
+
+from __future__ import absolute_import, division, print_function
+from builtins import zip
+from builtins import input
+from builtins import range
 
 import math
 import sys

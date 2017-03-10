@@ -21,6 +21,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import absolute_import, division, print_function
 import numpy
 from lsst.pex.config import Config, Field, ListField
 from lsst.pipe.base import Task

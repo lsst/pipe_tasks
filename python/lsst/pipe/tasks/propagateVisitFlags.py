@@ -1,4 +1,3 @@
-from builtins import zip
 #!/usr/bin/env python
 #
 # LSST Data Management System
@@ -22,6 +21,8 @@ from builtins import zip
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+from __future__ import absolute_import, division, print_function
+from builtins import zip
 import numpy
 from lsst.pex.config import Config, Field, DictField
 from lsst.pipe.base import Task

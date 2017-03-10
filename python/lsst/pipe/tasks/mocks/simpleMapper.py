@@ -29,6 +29,7 @@ possible approach, but it gave him an opportunity to play around with
 prototyping a future paf-free mapper class, and it does everything it
 needs to do right now.
 """
+from __future__ import absolute_import, division, print_function
 from builtins import map
 from builtins import range
 from builtins import object
