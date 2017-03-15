@@ -64,6 +64,7 @@ class ProcessCcdConfig(pexConfig.Config):
     )
 
     def setDefaults(self):
+        self.charImage.doWriteExposure = False
         self.charImage.detection.doTempLocalBackground = False
         self.calibrate.detection.doTempLocalBackground = False
 
