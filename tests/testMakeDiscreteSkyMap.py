@@ -53,7 +53,7 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
     def testBasics(self):
         """Test construction of a discrete sky map
         """
-        butler = Butler(root=self.inPath, outputRoot=self.outPath)
+        butler = Butler(inputs=self.inPath, outputs={'root': self.outPath, 'mode': 'rw'})
         coordList = []  # list of sky coords of all corners of all calexp
         for dataId in (
             dict(visit=1, filter="g"),
