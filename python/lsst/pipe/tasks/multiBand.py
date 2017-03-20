@@ -32,7 +32,7 @@ from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
-from lsst.meas.astrom import DirectMatchTask
+from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.image as afwImage
@@ -858,6 +858,12 @@ class MeasureMergedCoaddSourcesConfig(Config):
     propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
     match = ConfigurableField(target=DirectMatchTask, doc="Matching to reference catalog")
+    doWriteMatchesDenormalized = Field(
+        dtype=bool,
+        default=False,
+        doc=("Write reference matches in denormalized format? "
+             "This format uses more disk space, but is more convenient to read."),
+    )
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     checkUnitsParseStrict = Field(
         doc="Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
@@ -1146,6 +1152,10 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
             matches = afwTable.packMatches(result.matches)
             matches.table.setMetadata(result.matchMeta)
             dataRef.put(matches, self.config.coaddName + "Coadd_srcMatch")
+            if self.config.doWriteMatchesDenormalized:
+                denormMatches = denormalizeMatches(result.matches, result.matchMeta)
+                dataRef.put(denormMatches, self.config.coaddName + "Coadd_srcMatchFull")
+
 
     def write(self, dataRef, sources):
         """!
