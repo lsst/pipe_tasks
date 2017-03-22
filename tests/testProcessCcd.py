@@ -75,7 +75,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             dataId = dict(visit=1)
             dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.items()]
             fullResult = ProcessCcdTask.parseAndRun(
-                args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
+                args=[InputDir, "--output", outPath, "--clobber-config", "--doraise",
+                      "-c", "charImage.doWriteExposure=True", "--id"] + dataIdStrList,
                 doReturnResults=True
             )
             butler = fullResult.parsedCmd.butler
