@@ -1151,10 +1151,10 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         if result.matches:
             matches = afwTable.packMatches(result.matches)
             matches.table.setMetadata(result.matchMeta)
-            dataRef.put(matches, self.config.coaddName + "Coadd_srcMatch")
+            dataRef.put(matches, self.config.coaddName + "Coadd_measMatch")
             if self.config.doWriteMatchesDenormalized:
                 denormMatches = denormalizeMatches(result.matches, result.matchMeta)
-                dataRef.put(denormMatches, self.config.coaddName + "Coadd_srcMatchFull")
+                dataRef.put(denormMatches, self.config.coaddName + "Coadd_measMatchFull")
 
 
     def write(self, dataRef, sources):
