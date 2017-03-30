@@ -416,7 +416,7 @@ class IngestTask(Task):
                 os.rename(infile, outfile)
             else:
                 raise AssertionError("Unknown mode: %s" % mode)
-            print("%s --<%s>--> %s" % (infile, mode, outfile))
+            self.log.info("%s --<%s>--> %s" % (infile, mode, outfile))
         except Exception as e:
             self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
             if not self.config.allowError:
