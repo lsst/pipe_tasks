@@ -21,12 +21,14 @@
 #
 from __future__ import absolute_import, division, print_function
 from builtins import zip
+import numpy as np
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "DatabaseSelectImagesConfig"]
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask",  "PsfWcsSelectImagesTask",
+            "DatabaseSelectImagesConfig"]
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
@@ -218,5 +220,111 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
 
         return pipeBase.Struct(
             dataRefList=dataRefList if makeDataRefList else None,
+            exposureInfoList=exposureInfoList,
+        )
+
+
+class PsfWcsSelectImagesConfig(pexConfig.Config):
+    maxEllipResidual = pexConfig.Field(
+        doc="Maximum median ellipticity residual",
+        dtype=float,
+        default=0.01
+    )
+    maxSizeScatter = pexConfig.Field(
+        doc="Maximum scatter in the size residuals",
+        dtype=float,
+        default=0.02
+    )
+    starSelection = pexConfig.Field(
+        doc="select star with this field",
+        dtype=str,
+        default='calib_psfUsed'
+    )
+    starShape = pexConfig.Field(
+        doc="name of star shape",
+        dtype=str,
+        default='base_SdssShape'
+    )
+    psfShape = pexConfig.Field(
+        doc="name of psf shape",
+        dtype=str,
+        default='base_SdssShape_psf'
+    )
+
+
+def sigmaMad(array):
+    "Return median absolute deviation scaled to normally distributed data"
+    return 1.4826*np.median(np.abs(array - np.median(array)))
+
+class PsfWcsSelectImagesTask(WcsSelectImagesTask):
+    """Select images using their Wcs and cuts on the PSF properties"""
+
+    ConfigClass = PsfWcsSelectImagesConfig
+    _DefaultName = "PsfWcsSelectImages"
+
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
+        """Select images in the selectDataList that overlap the patch and satisfy PSF quality critera.
+
+        The PSF quality criteria are based on the size and ellipticity residuals from the
+        adaptive second moments of the star and the PSF.
+
+        The criteria are:
+          - the median of the ellipticty residuals
+          - the robust scatter of the size residuals (using the median absolute deviation)
+
+        @param dataRef: Data reference for coadd/tempExp (with tract, patch)
+        @param coordList: List of Coord specifying boundary of patch
+        @param makeDataRefList: Construct a list of data references?
+        @param selectDataList: List of SelectStruct, to consider for selection
+        """
+        result = super(PsfWcsSelectImagesTask, self).runDataRef(dataRef, coordList, makeDataRefList,
+                                                                selectDataList)
+
+        dataRefList = []
+        exposureInfoList = []
+        for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
+            butler = dataRef.butlerSubset.butler
+            srcCatalog = butler.get('src',dataRef.dataId)
+            mask = srcCatalog[self.config.starSelection]
+
+            starXX = srcCatalog[self.config.starShape+'_xx'][mask]
+            starYY = srcCatalog[self.config.starShape+'_yy'][mask]
+            starXY = srcCatalog[self.config.starShape+'_xy'][mask]
+            psfXX = srcCatalog[self.config.psfShape+'_xx'][mask]
+            psfYY = srcCatalog[self.config.psfShape+'_yy'][mask]
+            psfXY = srcCatalog[self.config.psfShape+'_xy'][mask]
+
+            starSize = np.power(starXX*starYY - starXY**2, 0.25)
+            starE1 = (starXX - starYY)/(starXX + starYY)
+            starE2 = 2*starXY/(starXX + starYY)
+
+            psfSize = np.power(psfXX*psfYY - psfXY**2, 0.25)
+            psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
+            psfE2 = 2*psfXY/(psfXX + psfYY)
+
+            medianE1 = np.abs(np.median(starE1 - psfE1))
+            medianE2 = np.abs(np.median(starE2 - psfE2))
+            medianE = np.sqrt(medianE1**2 + medianE2**2)
+
+            scatterSize = sigmaMad(starSize - psfSize)
+
+            valid = True
+            if medianE1 > self.config.maxEllipResidual:
+                self.log.info("Removing visit %s because median e residual too large: %f" %
+                              (dataRef.dataId, medianE))
+                valid = False
+            elif scatterSize > self.config.maxSizeScatter:
+                self.log.info("Removing visit %s because size scatter is too large: %f" %
+                              (dataRef.dataId, scatterSize))
+                valid = False
+
+            if valid is False:
+                continue
+
+            dataRefList.append(dataRef)
+            exposureInfoList.append(exposureInfo)
+
+        return pipeBase.Struct(
+            dataRefList=dataRefList,
             exposureInfoList=exposureInfoList,
         )
