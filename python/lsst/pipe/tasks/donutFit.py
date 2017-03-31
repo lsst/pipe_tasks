@@ -151,83 +151,28 @@ def cut_ray(aper, u0, v0, angle, thickness):
                            pupil_plane_size=aper.pupil_plane_size)
 
 
-def HorizonRotAngle(visitInfo):
-    observatory = visitInfo.getObservatory()
-    lat = observatory.getLatitude()
-    lon = observatory.getLongitude()
-    radec = visitInfo.getBoresightRaDec()
-    ra = radec.getRa()
-    dec = radec.getDec()
-    era = visitInfo.getEra()
-    ha = (era + lon - ra).wrap()
-    alt = visitInfo.getBoresightAzAlt().getLatitude()
-
-    # parallactic angle
-    sinq = np.cos(lat.asRadians())*np.sin(ha.asRadians())/np.cos(alt.asRadians())
-    cosq = np.sqrt(1-sinq*sinq)
-    if dec > lat:
-        cosq = -cosq
-    q = afwGeom.Angle(np.arctan2(sinq, cosq))
-
-    bra = visitInfo.getBoresightRotAngle()
-    hra = (bra - q).wrap()
-
-    print("latitude = {}".format(lat.asDegrees()))
-    print("longitutde = {}".format(lon.asDegrees()))
-    print("ra = {}".format(ra.asDegrees()))
-    print("dec = {}".format(dec.asDegrees()))
-    print("era = {}".format(era.asDegrees()))
-    print("ha = {}".format(ha.asDegrees()))
-    print("alt = {}".format(alt.asDegrees()))
-    print("sinq = {}".format(sinq))
-    print("cosq = {}".format(cosq))
-    print("q = {}".format(q.asDegrees()))
-    print("bra = {}".format(bra.asDegrees()))
-    print("hra = {}".format(hra.asDegrees()))
-    return hra
-
-
-def HSC_aper(theta_x, theta_y, hRotAngle, lam, pad_factor):
+def HSC_aper(theta_x, theta_y, lam, pad_factor):
     """Get HSC Aperture function given field angle.
 
-    @param theta_x, theta_y   Field angle in degrees
-    @param hRotAngle          afwGeom.Angle indicating instrument rotator angle
-    @param lam                Wavelength in nm to use
-    @param pad_factor         Extra padding factor to use
+    @param theta_x, theta_y   Field angle in degrees.
     @returns                  galsim.Aperture
     """
     aper = HSC_obscured_Airy(lam, pad_factor)
     aper = clear_aper(aper)
-    # Cut out and off-center circle for the camera
     cam_x = theta_x * cam_obs_rate
     cam_y = theta_y * cam_obs_rate
     aper = cut_circle_interior(aper, cam_x, cam_y, HSC_obs_rad)
-    # Cut off edge where L1 is too small.
     lens_x = theta_x*lens_obs_rate
     lens_y = theta_y*lens_obs_rate
     aper = cut_circle_exterior(aper, lens_x, lens_y, lens_obs_rad)
-    # Add spider
-    # Coords of inner ring intersections in meters, with respect to camera center.
-    inner_coords = [np.array([0.43, 0.43]),
-                    np.array([0.43, 0.43]),
-                    np.array([-0.43, -0.43]),
-                    np.array([-0.43, -0.43])]
-    alpha = HSC_strut_angle - 45.0
-    angles = [90+alpha,
-              -alpha,
-              180-alpha,
-              270+alpha]
-
-    for inner_coord, angle in zip(inner_coords, angles):
-        ra = hRotAngle.asRadians()
-        rot = np.array([[np.cos(ra), np.sin(ra)],
-                        [-np.sin(ra), np.cos(ra)]])
-        rot_coord = np.dot(rot, inner_coord)
-        x = rot_coord[0] + cam_x
-        y = rot_coord[1] + cam_y
-        angle -= hRotAngle.asDegrees()
-        aper = cut_ray(aper, x, y, angle*np.pi/180, HSC_strut_thick)
-
+    aper = cut_ray(aper, 0.61+cam_x, cam_y,
+                   HSC_strut_angle*np.pi/180, HSC_strut_thick)
+    aper = cut_ray(aper, 0.61+cam_x, cam_y,
+                   -HSC_strut_angle*np.pi/180, HSC_strut_thick)
+    aper = cut_ray(aper, -0.61+cam_x, cam_y,
+                   (180-HSC_strut_angle)*np.pi/180, HSC_strut_thick)
+    aper = cut_ray(aper, -0.61+cam_x, cam_y,
+                   (180+HSC_strut_angle)*np.pi/180, HSC_strut_thick)
     return aper
 
 
@@ -365,11 +310,6 @@ class DonutFitConfig(pexConfig.Config):
         doc="Bitmask indicating pixels to exclude from fit [default: 130]"
     )
 
-    flip = pexConfig.Field(
-        dtype=bool, default=False,
-        doc="Flip image 180 degrees to switch intra/extra focal fitting."
-    )
-
 
 class DonutFitTask(pipeBase.Task):
 
@@ -393,15 +333,11 @@ class DonutFitTask(pipeBase.Task):
         """!Fit donuts
         """
         print("display is {}".format(display))
-        visitInfo = icExp.getInfo().getVisitInfo()
-        hRotAngle = HorizonRotAngle(visitInfo)
         lam = self.config.lam
         if lam is None:
             lam = icExp.getFilter().getFilterProperty().getLambdaEff()
             self.log.info("Using filter effective wavelength of {} nm".format(lam))
         nquarter = icExp.getDetector().getOrientation().getNQuarter()
-        if self.config.flip:
-            nquarter += 2
         self.log.info("Nquarter = {}".format(nquarter))
         select = self.selectDonuts(icSrc)
         donutCat = icSrc.subset(select)
@@ -412,7 +348,7 @@ class DonutFitTask(pipeBase.Task):
             theta_x = fp_x * 0.168 / 3600
             theta_y = fp_y * 0.168 / 3600
             subexp = afwMath.rotateImageBy90(self.cutoutDonut(im_x, im_y, icExp), nquarter)
-            aper = HSC_aper(theta_x, theta_y, hRotAngle, lam, self.config.padFactor)
+            aper = HSC_aper(theta_x, theta_y, lam, self.config.padFactor)
             result = None
             for jmax in self.config.jmax:
                 self.log.info("Fitting with jmax = {}".format(jmax))
