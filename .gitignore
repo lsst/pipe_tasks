@@ -37,7 +37,6 @@ bin/measureCoaddSources.py
 bin/mergeCoaddDetections.py
 bin/mergeCoaddMeasurements.py
 bin/processCcd.py
-bin/processDonut.py
 bin/processCoadd.py
 bin/reportImagesInPatch.py
 bin/reportImagesToCoadd.py
