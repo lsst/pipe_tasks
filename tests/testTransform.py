@@ -198,6 +198,7 @@ class TransformTestCase(lsst.utils.tests.TestCase):
         # We don't use slots in this test
         for key in forcedConfig.slots:
             setattr(forcedConfig.slots, key, None)
+        forcedConfig.copyColumns = {"id": "objectId", "parent": "parentObjectId"}
         forcedTask = measBase.ForcedMeasurementTask(schema, config=forcedConfig)
         transformConfig = TransformConfig(copyFields=("objectId", "coord_ra", "coord_dec"))
         transformTask = TransformTask(measConfig=forcedConfig,
