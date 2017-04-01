@@ -619,7 +619,13 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
         if self.config.doPsfMatch:
-            psf = self.config.modelPsf.apply()
+            # The modelPsf BBox for a psfMatchedWarp/coaddTempExp was dynamically defined by
+            # ModelPsfMatchTask as the square box bounding its spatially-variable, pre-matched WarpedPsf.
+            # Likewise, set the PSF of a PSF-Matched Coadd to the modelPsf
+            # having the maximum width (sufficient because square)
+            modelPsfList = [tempExp.getPsf() for tempExp in tempExpList]
+            modelPsfWidthList = [modelPsf.computeBBox().getWidth() for modelPsf in modelPsfList]
+            psf = modelPsfList[modelPsfWidthList.index(max(modelPsfWidthList))]
         else:
             psf = measAlg.CoaddPsf(coaddInputs.ccds, coaddExposure.getWcs())
         coaddExposure.setPsf(psf)

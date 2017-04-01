@@ -179,6 +179,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 if numGoodPix > 0 and not didSetMetadata:
                     coaddTempExp.setCalib(exposure.getCalib())
                     coaddTempExp.setFilter(exposure.getFilter())
+                    # PSF replaced with CoaddPsf after loop if and only if creating direct warp
+                    coaddTempExp.setPsf(exposure.getPsf())
                     didSetMetadata = True
             except Exception as e:
                 self.log.warn("Error processing calexp %s; skipping it: %s", calExpRef.dataId, e)
@@ -186,9 +188,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             inputRecorder.addCalExp(calExp, ccdId, numGoodPix)
 
         inputRecorder.finish(coaddTempExp, totGoodPix)
-        if totGoodPix > 0 and didSetMetadata:
-            coaddTempExp.setPsf(modelPsf if self.config.doPsfMatch else
-                                CoaddPsf(inputRecorder.coaddInputs.ccds, skyInfo.wcs))
+        if totGoodPix > 0 and didSetMetadata and not self.config.doPsfMatch:
+            coaddTempExp.setPsf(CoaddPsf(inputRecorder.coaddInputs.ccds, skyInfo.wcs))
 
         self.log.info("coaddTempExp has %d good pixels (%.1f%%)",
                       totGoodPix, 100.0*totGoodPix/skyInfo.bbox.getArea())
