@@ -418,8 +418,11 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             # to the algorithm metadata object. Depending on how many times a measurement task is run,
             # a metadata entry may be a single value or multiple values, this test ensures that in either
             # case the value can properly be extracted and compared.
-            ensureIterable = lambda x: x if isinstance(
-                x, Iterable) and not isinstance(x, basestring) else [x]
+
+            def ensureIterable(x):
+                if isinstance(x, Iterable) and not isinstance(x, basestring):
+                    return x
+                return [x]
             for nOffset in ensureIterable(meta.get('NOISE_OFFSET')):
                 self.assertIsInstance(nOffset, numbers.Number)
             for noiseSrc in ensureIterable(meta.get('NOISE_SOURCE')):
