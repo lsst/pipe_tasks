@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
+# Copyright 2008-2017 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -372,7 +372,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 residuals = lsst.afw.image.ImageD(starImage, True)
                 residuals -= psfImage
 
-                self.assertClose(starImage.getArray(), psfImage.getArray(), rtol=1E-3, atol=1E-2)
+                self.assertFloatsAlmostEqual(starImage.getArray(), psfImage.getArray(), rtol=1E-3, atol=1E-2)
                 nTested += 1
         if nTested == 0:
             print("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
