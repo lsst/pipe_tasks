@@ -198,10 +198,10 @@ class CoaddInputsTestCase(lsst.utils.tests.TestCase):
         del self.coadd
         del self.exposures
 
-    def assertPsfsNearlyEqual(self, psf1, psf2):
+    def assertPsfsAlmostEqual(self, psf1, psf2):
         im1 = psf1.computeImage()
         im2 = psf2.computeImage()
-        self.assertImagesNearlyEqual(im1, im2)
+        self.assertImagesAlmostEqual(im1, im2)
 
     def getCoaddPath(self, version):
         return os.path.join(self.dataDir,
@@ -235,9 +235,9 @@ class CoaddInputsTestCase(lsst.utils.tests.TestCase):
                 expInfo = exp.getInfo()
                 self.assertEqual(expRec.getId(), i)
                 self.assertEqual(expRec.getBBox(), exp.getBBox())
-                self.assertWcsNearlyEqualOverBBox(expRec.getWcs(), expInfo.getWcs(), expRec.getBBox())
-                self.assertPsfsNearlyEqual(expRec.getPsf(), exp.getPsf())
-                self.assertPairsNearlyEqual(expRec.getCalib().getFluxMag0(), (1.1e12, 2.2e10))
+                self.assertWcsAlmostEqualOverBBox(expRec.getWcs(), expInfo.getWcs(), expRec.getBBox())
+                self.assertPsfsAlmostEqual(expRec.getPsf(), exp.getPsf())
+                self.assertPairsAlmostEqual(expRec.getCalib().getFluxMag0(), (1.1e12, 2.2e10))
                 self.assertEqual(len(expRec.getApCorrMap()), 3)
                 self.assertEqual(set(expRec.getApCorrMap().keys()), set(expInfo.getApCorrMap().keys()))
                 self.assertFloatsAlmostEqual(np.array(expRec.getValidPolygon().getVertices()),

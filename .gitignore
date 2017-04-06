@@ -38,6 +38,7 @@ bin/mergeCoaddDetections.py
 bin/mergeCoaddMeasurements.py
 bin/processCcd.py
 bin/processCoadd.py
+bin/processDonut.py
 bin/reportImagesInPatch.py
 bin/reportImagesToCoadd.py
 bin/reportPatches.py

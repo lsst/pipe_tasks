@@ -103,7 +103,7 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
 
         predExp = simpleAdd(snap0, snap1, badPixelMask)
         predMi = predExp.getMaskedImage()
-        self.assertMaskedImagesNearlyEqual(resMi, predMi)
+        self.assertMaskedImagesAlmostEqual(resMi, predMi)
 
     def testAdditionAllGood(self):
         """Test the case where all pixels are valid
@@ -120,7 +120,7 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
 
         predMi = snap0.getMaskedImage().Factory(snap0.getMaskedImage(), True)
         predMi += snap1.getMaskedImage()
-        self.assertMaskedImagesNearlyEqual(resMi, predMi)
+        self.assertMaskedImagesAlmostEqual(resMi, predMi)
 
     def testMetadata(self):
         """Test more advanced metadata handling
@@ -183,6 +183,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()
