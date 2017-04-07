@@ -42,7 +42,7 @@ class ParseConfig(Config):
                             doc="Properties and name of translator method")
     defaults = DictField(keytype=str, itemtype=str, default={},
                          doc="Default values if header is not present")
-    hdu = Field(dtype=int, default=0, doc="HDU to read for metadata")
+    hdu = Field(dtype=int, default=-(1 << 31), doc="HDU to read for metadata") # default == INT_MIN
     extnames = ListField(dtype=str, default=[], doc="Extension names to search for")
 
 
@@ -80,7 +80,7 @@ class ParseTask(Task):
             if ext in extnames:
                 hduInfo = self.getInfoFromMetadata(md, info=phuInfo.copy())
                 # We need the HDU number when registering MEF files.
-                hduInfo["hdu"] = extnum - 1
+                hduInfo["hdu"] = extnum
                 infoList.append(hduInfo)
                 extnames.discard(ext)
         return phuInfo, infoList
