@@ -40,6 +40,7 @@ import re
 import lsst.daf.persistence
 import lsst.afw.cameraGeom
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
+from lsst.afw.cameraGeom.pupil import PupilFactory
 import lsst.afw.image.utils as afwImageUtils
 from future.utils import with_metaclass
 
@@ -453,6 +454,7 @@ def makeSimpleCamera(
         name="Simple Camera",
         detectorList=detectorList,
         transformMap=transformMap,
+        pupilFactoryClass=PupilFactory
     )
 
 
