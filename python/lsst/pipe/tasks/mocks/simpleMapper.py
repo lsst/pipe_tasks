@@ -265,6 +265,7 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
         deepMergedCoaddId_bits=SimpleMapping(BypassPersistenceType),
         deepCoadd_skyMap=SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
         deepCoadd=SkyMapping(ExposurePersistenceType),
+        deepCoaddPsfMatched=SkyMapping(ExposurePersistenceType),
         deepCoadd_calexp=SkyMapping(ExposurePersistenceType),
         deepCoadd_calexp_background=SkyMapping(CatalogPersistenceType),
         deepCoadd_icSrc=SkyMapping(SourceCatalogPersistenceType),
