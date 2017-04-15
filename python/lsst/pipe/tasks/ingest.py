@@ -126,7 +126,8 @@ class ParseTask(Task):
             func = getattr(self, t)
             try:
                 value = func(md)
-            except:
+            except Exception as e:
+                self.log.warn("%s failed to translate %s: %s", t, p, e)
                 value = None
             if value is not None:
                 info[p] = value
