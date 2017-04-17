@@ -26,8 +26,8 @@ from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
-from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata, denormalizeMatches, \
-    LoadAstrometryNetObjectsTask
+from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata, denormalizeMatches
+from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
 from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList

@@ -31,7 +31,8 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
-import lsst.meas.astrom as measAstrom
+from lsst.meas.astrom import AstrometryConfig, AstrometryTask
+from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf, \
     ObjectSizeStarSelectorTask
@@ -99,11 +100,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=True
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target=measAstrom.LoadAstrometryNetObjectsTask,
+        target=LoadAstrometryNetObjectsTask,
         doc="reference object loader",
     )
     astrometer = pexConfig.ConfigurableField(
-        target=measAstrom.AstrometryTask,
+        target=AstrometryTask,
         doc="astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
     sourceSelector = pexConfig.ConfigurableField(
@@ -597,9 +598,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     srcMatchDict = {}
 
                 # Create key,val pair where key=diaSourceId and val=refId
-                refAstromConfig = measAstrom.AstrometryConfig()
+                refAstromConfig = AstrometryConfig()
                 refAstromConfig.matcher.maxMatchDistArcSec = matchRadAsec
-                refAstrometer = measAstrom.AstrometryTask(refAstromConfig)
+                refAstrometer = AstrometryTask(refAstromConfig)
                 astromRet = refAstrometer.run(exposure=exposure, sourceCat=diaSources)
                 refMatches = astromRet.matches
                 if refMatches is None:

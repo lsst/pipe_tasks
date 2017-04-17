@@ -31,7 +31,8 @@ from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, SourceCatalog, IdFactory
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
-from lsst.meas.astrom import RefMatchTask, displayAstrometry, LoadAstrometryNetObjectsTask
+from lsst.meas.astrom import RefMatchTask, displayAstrometry
+from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
 from lsst.obs.base import ExposureIdInfo
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask

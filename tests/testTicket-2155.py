@@ -25,7 +25,7 @@ import unittest
 import os
 
 import lsst.meas.algorithms as measAlg
-from lsst.meas.astrom import ANetAstrometryTask, ANetAstrometryConfig
+from lsst.meas.extensions.astrometryNet import ANetAstrometryTask, ANetAstrometryConfig
 from lsst.meas.base import SingleFrameMeasurementTask, SingleFrameMeasurementConfig
 import lsst.utils.tests
 import lsst.afw.detection as afwDetection
