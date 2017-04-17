@@ -65,10 +65,6 @@ class ColortermTestCase(unittest.TestCase):
                              true_fluxErr_g=0.92129230974756315))
         self.colorterms = hamamatsu
 
-    def tearDown(self):
-        import lsst.meas.astrom.astrometry_net as an
-        an.finalize()
-
     def testTransformSource(self):
         """Check if we can use colour terms"""
 
