@@ -76,7 +76,7 @@ class TestForceWcs(unittest.TestCase):
             ast = astrom.run(sourceCat=sources, exposure=exposure)
             outwcs = exposure.getWcs()
             outstr = outwcs.getFitsMetadata().toString()
-            if dosip is False:
+            if not dosip:
                 self.assertEqual(inwcs, outwcs)
                 self.assertEqual(instr, outstr)
             print('inwcs:', instr)
@@ -91,6 +91,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

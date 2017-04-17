@@ -26,14 +26,13 @@ from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
-from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata,\
+from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata, denormalizeMatches, \
     LoadAstrometryNetObjectsTask
 from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import IdFactory, SourceTable
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.meas.astrom import AstrometryTask, displayAstrometry, createMatchMetadata, denormalizeMatches
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from .photoCal import PhotoCalTask

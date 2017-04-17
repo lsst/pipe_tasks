@@ -127,7 +127,7 @@ class ImageDifferenceConfig(pexConfig.Config):
     # measurement = pexConfig.ConfigurableField(
     #    target=DipoleMeasurementTask,
     #    doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
-    #)
+    # )
     measurement = pexConfig.ConfigurableField(
         target=DipoleFitTask,
         doc="Enable updated dipole fitting method.",
@@ -458,8 +458,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
                         wcsResults.wcs.pixelToSky(
                             m.second.get(inCentroidKey))) for m in wcsResults.matches]
-                    colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))
-                                          + 2.5*numpy.log10(srcToMatch[x].get("r"))
+                    colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g")) +
+                                          2.5*numpy.log10(srcToMatch[x].get("r"))
                                           for x in sids if x in srcToMatch.keys()])
                     dlong = numpy.array([r[0].asArcseconds() for s, r in zip(sids, cresiduals)
                                          if s in srcToMatch.keys()])
@@ -710,7 +710,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if display and showPixelResiduals and selectSources:
             nonKernelSources = []
             for source in selectSources:
-                if not source in kernelSources:
+                if source not in kernelSources:
                     nonKernelSources.append(source)
 
             diUtils.plotPixelResiduals(exposure,
