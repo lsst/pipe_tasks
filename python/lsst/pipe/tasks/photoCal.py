@@ -27,6 +27,7 @@ from builtins import input
 from builtins import range
 
 import math
+import random
 import sys
 
 import numpy as np
@@ -70,7 +71,18 @@ class PhotoCalConfig(RefMatchConfig):
     doWriteOutput = pexConf.Field(
         dtype=bool,
         default=True,
-        doc="Write a field name astrom_usedByPhotoCal to the schema",
+        doc="Write a field named calib_photometryUsed to the schema",
+    )
+    reserveFraction = pexConf.Field(
+        dtype=float,
+        doc="Fraction of candidates to reserve from fitting; none if <= 0",
+        default=-1.0,
+    )
+    reserveSeed = pexConf.Field(
+        dtype = int,
+        doc = "This number will be multiplied by the exposure ID "
+        "to set the random seed for reserving candidates",
+        default = 1,
     )
     fluxField = pexConf.Field(
         dtype=str,
@@ -294,10 +306,16 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         self.scatterPlot = None
         self.fig = None
         if self.config.doWriteOutput:
-            self.outputField = schema.addField("photocal_photometricStandard", type="Flag",
+            self.usedKey = schema.addField("calib_photometryUsed", type="Flag",
                                                doc="set if source was used in photometric calibration")
+            self.candidateKey = schema.addField("calib_photometryCandidate", type="Flag",
+                                               doc="set if source was used in photometric calibration")
+            self.reservedKey = schema.addField("calib_photometryReserved", type="Flag",
+                                               doc="set if source was reserved in photometric calibration")
         else:
-            self.outputField = None
+            self.usedKey = None
+            self.candidateKey = None
+            self.reservedKey = None
 
     def getSourceKeys(self, schema):
         """!Return a struct containing the source catalog keys for fields used by PhotoCalTask.
@@ -364,6 +382,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         if len(matches) == 0:
             raise ValueError("No input matches")
+
+        for m in matches:
+            if self.candidateKey is not None:
+                m.second.set(self.candidateKey, True)
 
         # Only use stars for which the flags indicate the photometry is good.
         afterFlagCutInd = [i for i, m in enumerate(matches) if checkSourceFlags(m.second, sourceKeys)]
@@ -456,8 +478,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         result = []
         for m in matches:
-            if self.outputField is not None:
-                m.second.set(self.outputField, True)
+            if self.usedKey is not None:
+                m.second.set(self.usedKey, True)
             result.append(m)
         return result
 
@@ -577,7 +599,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         )
 
     @pipeBase.timeMethod
-    def run(self, exposure, sourceCat):
+    def run(self, exposure, sourceCat, expId=0):
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.
 
@@ -648,21 +670,42 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             frame = None
 
         res = self.loadAndMatch(exposure, sourceCat)
+
+        #from res.matches, reserve a fraction of the population and mark the sources as reserved
+        reserveList = []
+
+        if self.config.reserveFraction > 0:
+            random.seed(self.config.reserveSeed*expId)
+            reserveList = random.sample(res.matches,
+                                        int((self.config.reserveFraction)*len(res.matches)))
+
+            for cand in reserveList:
+                res.matches.remove(cand)
+
+            if reserveList and self.reservedKey is not None:
+                for cand in reserveList:
+                    cand.second.set(self.reservedKey, True)
+
         matches = res.matches
+        for m in matches:
+            if self.candidateKey is not None:
+                m.second.set(self.candidateKey, True)
+
         filterName = exposure.getFilter().getName()
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
+
         matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,
                                      frame=frame)
         arrays = self.extractMagArrays(matches=matches, filterName=filterName, sourceKeys=sourceKeys)
 
-        if matches and self.outputField:
+        if matches and self.usedKey:
             try:
                 # matches[].second is a measured source, wherein we wish to set outputField.
                 # Check that the field is present in the Sources schema.
-                matches[0].second.getSchema().find(self.outputField)
+                matches[0].second.getSchema().find(self.usedKey)
             except:
                 raise RuntimeError("sources' schema does not contain the used-in-calibration flag \"%s\"" %
-                                   self.outputField)
+                                   self.usedKey)
 
         # Fit for zeropoint.  We can run the code more than once, so as to
         # give good stars that got clipped by a bad first guess a second
