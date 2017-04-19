@@ -52,16 +52,20 @@ class ParseTask(Task):
     for putting the file in the correct location and populating the registry."""
     ConfigClass = ParseConfig
 
-    def getInfo(self, filename):
+    def getInfo(self, filename, mapper=None):
         """Get information about the image from the filename and its contents
 
         Here, we open the image and parse the header, but one could also look at the filename itself
         and derive information from that, or set values from the configuration.
 
         @param filename    Name of file to inspect
+        @param mapper      Mapper used to read data
         @return File properties; list of file properties for each extension
         """
         md = afwImage.readMetadata(filename, self.config.hdu)
+        if mapper is not None:
+            md = mapper.std_raw_md(md, None)
+
         phuInfo = self.getInfoFromMetadata(md)
         if len(self.config.extnames) == 0:
             # No extensions to worry about
@@ -77,6 +81,9 @@ class ParseTask(Task):
             except:
                 self.log.warn("Error reading %s extensions %s" % (filename, extnames))
                 break
+            
+            if mapper is not None:
+                md = mapper.std_raw_md(md, None)
             ext = self.getExtensionName(md)
             if ext in extnames:
                 hduInfo = self.getInfoFromMetadata(md, info=phuInfo.copy())
@@ -468,6 +475,7 @@ class IngestTask(Task):
         """Ingest all specified files and add them to the registry"""
         filenameList = sum([glob(filename) for filename in args.files], [])
         root = args.input
+        mapper = args.butler.getMapperClass(root)()
         context = self.register.openRegistry(root, create=args.create, dryrun=args.dryrun)
         with context as registry:
             for infile in filenameList:
@@ -475,7 +483,7 @@ class IngestTask(Task):
                     self.log.info("Skipping declared bad file %s" % infile)
                     continue
                 try:
-                    fileInfo, hduInfoList = self.parse.getInfo(infile)
+                    fileInfo, hduInfoList = self.parse.getInfo(infile, mapper)
                 except Exception as e:
                     if not self.config.allowError:
                         raise
