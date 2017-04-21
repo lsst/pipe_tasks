@@ -16,7 +16,12 @@ class ObjectMaskCatalog(object):
 
     def __init__(self):
         schema = afwTable.SimpleTable.makeMinimalSchema()
-        schema.addField("radius", "Angle", "radius of mask")
+        schema.addField("type", str, "type of region (e.g. box, circle)", size=10)
+        schema.addField("radius", "Angle", "radius of mask (if type == circle")
+        schema.addField("height", "Angle", "height of mask (if type == box)")
+        schema.addField("width", "Angle", "width of mask (if type == box)")
+        schema.addField("angle", "Angle", "rotation of mask (if type == box)")
+        schema.addField("mag", float, "object's magnitude")
 
         self._catalog = afwTable.SimpleCatalog(schema)
         self._catalog.table.setMetadata(dafBase.PropertyList())
@@ -47,7 +52,7 @@ class ObjectMaskCatalog(object):
             persistable:   "PurePythonClass"
             storage:       "FitsCatalogStorage"
         }
-        and this is the only way I know to get it to read a random file type, in this case a ds9 region file
+        and this is the only way I know to get it to read a random file type, in this case a ds9 region file.
 
         This method expects to find files named as BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg
         The files should be structured as follows:
@@ -60,19 +65,26 @@ class ObjectMaskCatalog(object):
 
         wcs; fk5
 
-        circle(RA, DEC, RADIUS) # ID: 1
+        circle(RA, DEC, RADIUS)           # ID: 1, mag: 12.34
+        box(RA, DEC, XSIZE, YSIZE, THETA) # ID: 2, mag: 23.45
+        ...
+
+        The ", mag: XX.YY" is optional
 
         The commented lines must be present, with the relevant fields such as tract patch and filter filled
-        in. The coordinate system must be listed as above. Each patch is specified as a circle, with an RA,
-        DEC, and Radius specified in decimal degrees. Only circles are supported as region definitions
-        currently.
+        in. The coordinate system must be listed as above. Each patch is specified as a box or circle, with
+        RA, DEC, and dimensions specified in decimal degrees (with or without an explicit "d").
+
+        Only (axis-aligned) boxes and circles are currently supported as region definitions.
         """
 
         log = Log.getLogger("ObjectMaskCatalog")
 
         brightObjects = ObjectMaskCatalog()
         checkedWcsIsFk5 = False
+        NaN = float("NaN")*afwGeom.degrees
 
+        nFormatError = 0                      # number of format errors seen
         with open(fileName) as fd:
             for lineNo, line in enumerate(fd.readlines(), 1):
                 line = line.rstrip()
@@ -104,29 +116,75 @@ class ObjectMaskCatalog(object):
 
                 # This regular expression parses the regions file for each region to be masked,
                 # with the format as specified in the above docstring.
-                mat = re.search(r"^\s*circle(?:\s+|\s*\(\s*)"
-                                "(\d+(?:\.\d*)([d]*))" "(?:\s+|\s*,\s*)"
-                                "([+-]?\d+(?:\.\d*)([d]*))" "(?:\s+|\s*,\s*)"
-                                "(\d+(?:\.\d*))([d'\"]*)" "(?:\s*|\s*\)\s*)"
-                                "\s*#\s*ID:\s*(\d+)" "\s*$", line)
+                mat = re.search(r"^\s*(box|circle)"
+                                "(?:\s+|\s*\(\s*)"   # open paren or space
+                                     "(\d+(?:\.\d*)?([d]*))" "(?:\s+|\s*,\s*)"
+                                "([+-]?\d+(?:\.\d*)?)([d]*)" "(?:\s+|\s*,\s*)"
+                                "([+-]?\d+(?:\.\d*)?)([d]*)" "(?:\s+|\s*,\s*)?"
+                                "(?:([+-]?\d+(?:\.\d*)?)([d]*)"
+                                    "\s*,\s*"
+                                   "([+-]?\d+(?:\.\d*)?)([d]*)"
+                                ")?"
+                                "(?:\s*|\s*\)\s*)"   # close paren or space
+                                "\s*#\s*ID:\s*(\d+)" # start comment
+                                "(?:\s*,\s*mag:\s*(\d+\.\d*))?"
+                                "\s*$", line)
                 if mat:
-                    ra, raUnit, dec, decUnit, radius, radiusUnit, _id = mat.groups()
+                    _type, ra, raUnit, dec, decUnit, \
+                        param1, param1Unit, param2, param2Unit, param3, param3Unit, \
+                        _id, mag = mat.groups()
 
                     _id = int(_id)
+                    if mag is None:
+                        mag = NaN
+                    else:
+                        mag = float(mag)
+
                     ra = convertToAngle(ra, raUnit, "ra", fileName, lineNo)
                     dec = convertToAngle(dec, decUnit, "dec", fileName, lineNo)
-                    radius = convertToAngle(radius, radiusUnit, "radius", fileName, lineNo)
+
+                    radius = NaN
+                    width = NaN
+                    height = NaN
+                    angle = NaN
+
+                    if _type == "box":
+                        width = convertToAngle(param1, param1Unit, "width", fileName, lineNo)
+                        height = convertToAngle(param2, param2Unit, "height", fileName, lineNo)
+                        angle = convertToAngle(param3, param3Unit, "angle", fileName, lineNo)
+
+                        if angle != 0.0:
+                            log.warn("Rotated boxes are not supported: \"%s\" at %s:%d" % (
+                                line, fileName, lineNo))
+                            nFormatError += 1
+                    elif _type == "circle":
+                        radius = convertToAngle(param1, param1Unit, "radius", fileName, lineNo)
+
+                        if not (param2 is None and param3 is None):
+                            log.warn("Extra parameters for circle: \"%s\" at %s:%d" % (
+                                line, fileName, lineNo))
+                            nFormatError += 1
 
                     rec = brightObjects.addNew()
                     # N.b. rec["coord"] = Coord is not supported, so we have to use the setter
+                    rec["type"] = _type
                     rec["id"] = _id
+                    rec["mag"] = mag
                     rec.setCoord(afwCoord.Fk5Coord(ra, dec))
+
+                    rec["angle"] = angle
+                    rec["height"] = height
+                    rec["width"] = width
                     rec["radius"] = radius
                 else:
                     log.warn("Unexpected line \"%s\" at %s:%d" % (line, fileName, lineNo))
+                    nFormatError += 1
+
+        if nFormatError > 0:
+            raise RuntimeError("Saw %d formatting errors in %s" % (nFormatError, fileName))
 
         if not checkedWcsIsFk5:
-            raise RuntimeError("Expected to see a line specifying an fk5 wcs")
+            raise RuntimeError("Expected to see a line specifying an fk5 wcs in %s" % fileName)
 
         # This makes the deep copy contiguous in memory so that a ColumnView can be exposed to Numpy
         brightObjects._catalog = brightObjects._catalog.copy(True)
@@ -141,7 +199,7 @@ def convertToAngle(var, varUnit, what, fileName, lineNo):
     """
     var = float(var)
 
-    if varUnit in ("d", ""):
+    if varUnit in ("d", "", None):
         pass
     elif varUnit == "'":
         var /= 60.0
