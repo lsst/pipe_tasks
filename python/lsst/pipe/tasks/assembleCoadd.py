@@ -753,9 +753,24 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         for rec in brightObjectMasks:
             center = afwGeom.PointI(wcs.skyToPixel(rec.getCoord()))
-            radius = rec["radius"].asArcseconds()/plateScale   # convert to pixels
+            if rec["type"] == "box":
+                assert rec["angle"] == 0.0, ("Angle != 0 for mask object %s" % rec["id"])
+                width = rec["width"].asArcseconds()/plateScale    # convert to pixels
+                height = rec["height"].asArcseconds()/plateScale  # convert to pixels
 
-            foot = afwDetect.Footprint(center, radius, exposure.getBBox())
+                halfSize = afwGeom.ExtentI(0.5*width, 0.5*height)
+                bbox = afwGeom.Box2I(center - halfSize, center + halfSize)
+
+                bbox = afwGeom.BoxI(afwGeom.PointI(int(center[0] - 0.5*width), int(center[1] - 0.5*height)),
+                                    afwGeom.PointI(int(center[0] + 0.5*width), int(center[1] + 0.5*height)))
+                foot = afwDetect.Footprint(bbox, exposure.getBBox())
+            elif rec["type"] == "circle":
+                radius = rec["radius"].asArcseconds()/plateScale   # convert to pixels
+                foot = afwDetect.Footprint(center, radius, exposure.getBBox())
+            else:
+                self.log.warn("Unexpected region type %s at %s" % rec["type"], center)
+                continue
+
             afwDetect.setMaskFromFootprint(mask, foot, self.brightObjectBitmask)
 
     @classmethod
