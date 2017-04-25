@@ -67,7 +67,7 @@ class ParseTask(Task):
             return phuInfo, [phuInfo]
         # Look in the provided extensions
         extnames = set(self.config.extnames)
-        extnum = 1
+        extnum = 0
         infoList = []
         while len(extnames) > 0:
             extnum += 1
@@ -80,7 +80,7 @@ class ParseTask(Task):
             if ext in extnames:
                 hduInfo = self.getInfoFromMetadata(md, info=phuInfo.copy())
                 # We need the HDU number when registering MEF files.
-                hduInfo["hdu"] = extnum - 1
+                hduInfo["hdu"] = extnum
                 infoList.append(hduInfo)
                 extnames.discard(ext)
         return phuInfo, infoList
