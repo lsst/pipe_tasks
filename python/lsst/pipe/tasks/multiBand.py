@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 #
 # LSST Data Management System
@@ -812,8 +813,8 @@ class MergeDetectionsTask(MergeSourcesTask):
         for s in mergedList:
             foot = s.getFootprint()
             if growDetectedFootprints > 0:
-                foot = afwDetect.growFootprint(foot, growDetectedFootprints)
-            afwDetect.setMaskFromFootprint(mask, foot, detectedMask)
+                foot.dilate(growDetectedFootprints)
+            foot.spans.setMask(mask, detectedMask)
 
         xmin, ymin = patchBBox.getMin()
         xmax, ymax = patchBBox.getMax()
@@ -824,16 +825,19 @@ class MergeDetectionsTask(MergeSourcesTask):
         ymax -= skySourceRadius + 1
 
         skySourceFootprints = []
+        maskToSpanSet = afwGeom.SpanSet.fromMask(mask)
         for i in range(nTrialSkySourcesPerPatch):
             if len(skySourceFootprints) == nSkySourcesPerPatch:
                 break
 
             x = int(numpy.random.uniform(xmin, xmax))
             y = int(numpy.random.uniform(ymin, ymax))
-            foot = afwDetect.Footprint(afwGeom.PointI(x, y), skySourceRadius, patchBBox)
+            spans = afwGeom.SpanSet.fromShape(int(skySourceRadius),
+                                              offset=(x, y))
+            foot = afwDetect.Footprint(spans, patchBBox)
             foot.setPeakSchema(self.merged.getPeakSchema())
 
-            if not foot.overlapsMask(mask):
+            if not foot.spans.overlaps(maskToSpanSet):
                 foot.addPeak(x, y, 0)
                 foot.getPeaks()[0].set("merge_peak_%s" % self.config.skyFilterName, True)
                 skySourceFootprints.append(foot)

@@ -883,7 +883,7 @@ def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
     bbox.clip(mask.getBBox(afwImage.PARENT))
     fp = afwImage.MaskU(bbox)
     subMask = mask.Factory(mask, bbox, afwImage.PARENT)
-    afwDet.setMaskFromFootprint(fp, footprint, bitmask)
+    footprint.spans.setMask(fp, bitmask)
     return numpy.logical_and((subMask.getArray() & fp.getArray()) > 0,
                              (subMask.getArray() & ignoreMask) == 0).sum()
 
@@ -1248,7 +1248,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
                 continue
 
             for index in keepIndex:
-                afwDet.setMaskFromFootprint(maskList[index], footprint, maskClipValue)
+                footprint.spans.setMask(maskList[index], maskClipValue)
 
             clipIndices.append(numpy.array(indexList)[keepIndex])
             clipFootprints.append(footprint)
