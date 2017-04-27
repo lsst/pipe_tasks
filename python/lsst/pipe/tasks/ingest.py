@@ -11,6 +11,7 @@ except ImportError:
     import sqlite as sqlite3
 from fnmatch import fnmatch
 from glob import glob
+from contextlib import contextmanager
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
@@ -245,6 +246,15 @@ class RegistryContext(object):
         return False  # Don't suppress any exceptions
 
 
+@contextmanager
+def fakeContext():
+    """A context manager that doesn't provide any context
+
+    Useful for dry runs where we don't want to actually do anything real.
+    """
+    yield
+
+
 class RegisterTask(Task):
     """Task that will generate the registry for the Mapper"""
     ConfigClass = RegisterConfig
@@ -259,11 +269,6 @@ class RegisterTask(Task):
         @return Database connection
         """
         if dryrun:
-            from contextlib import contextmanager
-
-            @contextmanager
-            def fakeContext():
-                yield
             return fakeContext()
 
         registryName = os.path.join(directory, name)
