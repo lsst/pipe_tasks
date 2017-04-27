@@ -210,6 +210,8 @@ class RegistryContext(object):
 
         @param registryName: Name of registry file
         @param createTableFunc: Function to create tables
+        @param forceCreateTables: Force the (re-)creation of tables?
+        @param permissions: Permissions to set on database file
         """
         self.registryName = registryName
         self.permissions = permissions
