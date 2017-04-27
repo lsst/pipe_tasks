@@ -329,13 +329,17 @@ class RegisterTask(Task):
         """
         if table is None:
             table = self.config.table
-        sql = "INSERT"
-        if self.config.ignore:
-            sql += " OR IGNORE"
-        sql += " INTO %s VALUES (NULL" % table
+        sql = "INSERT INTO %s VALUES (NULL" % table
         sql += ", ?" * len(self.config.columns)
         sql += ")"
         values = [info[col] for col in self.config.columns]
+
+        if self.config.ignore:
+            sql += " WHERE NOT EXISTS (SELECT 1 FROM %s WHERE " % self.config.table
+            sql += " AND ".join(["%s=?" % (col,) for col in self.config.unique])
+            sql += ")"
+            values += [info[col] for col in self.config.unique]
+
         if dryrun:
             print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
         else:
@@ -350,9 +354,11 @@ class RegisterTask(Task):
         """
         if table is None:
             table = self.config.table
-        sql = "INSERT OR IGNORE INTO %s_visit SELECT DISTINCT " % table
+        sql = "INSERT INTO %s_visit SELECT DISTINCT " % table
         sql += ",".join(self.config.visit)
-        sql += " FROM %s" % table
+        sql += " FROM %s AS vv1" % table
+        sql += " WHERE NOT EXISTS "
+        sql += "(SELECT vv2.visit FROM %s_visit AS vv2 WHERE vv1.visit = vv2.visit)" % (table,)
         if dryrun:
             print("Would execute: %s" % sql)
         else:
