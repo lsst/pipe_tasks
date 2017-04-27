@@ -291,13 +291,13 @@ class RegisterTask(Task):
         if len(self.config.unique) > 0:
             cmd += ", unique(" + ",".join(self.config.unique) + ")"
         cmd += ")"
-        conn.execute(cmd)
+        conn.cursor().execute(cmd)
 
         cmd = "create table %s_visit (" % table
         cmd += ",".join([("%s %s" % (col, self.config.columns[col])) for col in self.config.visit])
         cmd += ", unique(" + ",".join(set(self.config.visit).intersection(set(self.config.unique))) + ")"
         cmd += ")"
-        conn.execute(cmd)
+        conn.cursor().execute(cmd)
 
         conn.commit()
 
@@ -339,7 +339,7 @@ class RegisterTask(Task):
         if dryrun:
             print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
         else:
-            conn.execute(sql, values)
+            conn.cursor().execute(sql, values)
 
     def addVisits(self, conn, dryrun=False, table=None):
         """Generate the visits table (typically 'raw_visits') from the
@@ -356,7 +356,7 @@ class RegisterTask(Task):
         if dryrun:
             print("Would execute: %s" % sql)
         else:
-            conn.execute(sql)
+            conn.cursor().execute(sql)
 
 
 class IngestConfig(Config):
