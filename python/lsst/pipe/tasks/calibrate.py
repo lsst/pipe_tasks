@@ -37,6 +37,7 @@ from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import (SingleFrameMeasurementTask, ApplyApCorrTask,
                             CatalogCalculationTask)
 from lsst.meas.deblender import SourceDeblendTask
+from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
 
 __all__ = ["CalibrateConfig", "CalibrateTask"]
@@ -156,6 +157,16 @@ class CalibrateConfig(pexConfig.Config):
     catalogCalculation = pexConfig.ConfigurableField(
         target=CatalogCalculationTask,
         doc="Subtask to run catalogCalculation plugins on catalog"
+    )
+    doInsertFakes = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Run fake sources injection task"
+    )
+    insertFakes = pexConfig.ConfigurableField(
+        target=BaseFakeSourcesTask,
+        doc="Injection of fake sources for testing purposes (must be "
+            "retargeted)"
     )
 
     def setDefaults(self):
@@ -305,7 +316,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
             # Add fields to copy from an icSource catalog
             # and a field to indicate that the source matched a source in that
-            # catalog If any fields are missing then raise an exception, but
+            # catalog. If any fields are missing then raise an exception, but
             # first find all missing fields in order to make the error message
             # more useful.
             self.calibSourceKey = self.schemaMapper.addOutputField(
@@ -335,6 +346,12 @@ class CalibrateTask(pipeBase.CmdLineTask):
         self.makeSubtask('detection', schema=self.schema)
 
         self.algMetadata = dafBase.PropertyList()
+
+        # Only create a subtask for fakes if configuration option is set
+        # N.B. the config for fake object task must be retargeted to a child
+        # of BaseFakeSourcesTask
+        if self.config.doInsertFakes:
+            self.makeSubtask("insertFakes")
 
         if self.config.doDeblend:
             self.makeSubtask("deblend", schema=self.schema)
@@ -475,6 +492,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
                                                exposureIdInfo.unusedBits)
         table = SourceTable.make(self.schema, sourceIdFactory)
         table.setMetadata(self.algMetadata)
+
+        if self.config.doInsertFakes:
+            self.insertFakes.run(exposure, background=background)
 
         detRes = self.detection.run(table=table, exposure=exposure,
                                     doSmooth=True)
