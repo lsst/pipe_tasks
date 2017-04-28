@@ -49,8 +49,6 @@ hamamatsu = ColortermLibrary(data={
     })
 })
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 def setup_module(module):
     lsst.utils.tests.init()
@@ -66,10 +64,6 @@ class ColortermTestCase(unittest.TestCase):
                         dict(g=0.0, r=-1.0, fluxErr_g=1.0, fluxErr_r=1.0, true_g=-0.09168,
                              true_fluxErr_g=0.92129230974756315))
         self.colorterms = hamamatsu
-
-    def tearDown(self):
-        import lsst.meas.astrom.astrometry_net as an
-        an.finalize()
 
     def testTransformSource(self):
         """Check if we can use colour terms"""
@@ -128,7 +122,6 @@ class ColortermTestCase(unittest.TestCase):
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

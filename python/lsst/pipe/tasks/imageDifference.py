@@ -31,7 +31,8 @@ import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
-import lsst.meas.astrom as measAstrom
+from lsst.meas.astrom import AstrometryConfig, AstrometryTask
+from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf, \
     ObjectSizeStarSelectorTask
@@ -99,11 +100,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=True
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target=measAstrom.LoadAstrometryNetObjectsTask,
+        target=LoadAstrometryNetObjectsTask,
         doc="reference object loader",
     )
     astrometer = pexConfig.ConfigurableField(
-        target=measAstrom.AstrometryTask,
+        target=AstrometryTask,
         doc="astrometry task; used to match sources to reference objects, but not to fit a WCS",
     )
     sourceSelector = pexConfig.ConfigurableField(
@@ -127,7 +128,7 @@ class ImageDifferenceConfig(pexConfig.Config):
     # measurement = pexConfig.ConfigurableField(
     #    target=DipoleMeasurementTask,
     #    doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
-    #)
+    # )
     measurement = pexConfig.ConfigurableField(
         target=DipoleFitTask,
         doc="Enable updated dipole fitting method.",
@@ -458,8 +459,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
                         wcsResults.wcs.pixelToSky(
                             m.second.get(inCentroidKey))) for m in wcsResults.matches]
-                    colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))
-                                          + 2.5*numpy.log10(srcToMatch[x].get("r"))
+                    colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g")) +
+                                          2.5*numpy.log10(srcToMatch[x].get("r"))
                                           for x in sids if x in srcToMatch.keys()])
                     dlong = numpy.array([r[0].asArcseconds() for s, r in zip(sids, cresiduals)
                                          if s in srcToMatch.keys()])
@@ -597,9 +598,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     srcMatchDict = {}
 
                 # Create key,val pair where key=diaSourceId and val=refId
-                refAstromConfig = measAstrom.AstrometryConfig()
+                refAstromConfig = AstrometryConfig()
                 refAstromConfig.matcher.maxMatchDistArcSec = matchRadAsec
-                refAstrometer = measAstrom.AstrometryTask(refAstromConfig)
+                refAstrometer = AstrometryTask(refAstromConfig)
                 astromRet = refAstrometer.run(exposure=exposure, sourceCat=diaSources)
                 refMatches = astromRet.matches
                 if refMatches is None:
@@ -710,7 +711,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if display and showPixelResiduals and selectSources:
             nonKernelSources = []
             for source in selectSources:
-                if not source in kernelSources:
+                if source not in kernelSources:
                     nonKernelSources.append(source)
 
             diUtils.plotPixelResiduals(exposure,
