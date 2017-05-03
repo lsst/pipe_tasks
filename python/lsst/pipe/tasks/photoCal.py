@@ -307,9 +307,9 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         self.fig = None
         if self.config.doWriteOutput:
             self.usedKey = schema.addField("calib_photometryUsed", type="Flag",
-                                               doc="set if source was used in photometric calibration")
+                                           doc="set if source was used in photometric calibration")
             self.candidateKey = schema.addField("calib_photometryCandidate", type="Flag",
-                                               doc="set if source was used in photometric calibration")
+                                                doc="set if source was used in photometric calibration")
             self.reservedKey = schema.addField("calib_photometryReserved", type="Flag",
                                                doc="set if source was reserved in photometric calibration")
         else:
@@ -672,19 +672,18 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         res = self.loadAndMatch(exposure, sourceCat)
 
         #from res.matches, reserve a fraction of the population and mark the sources as reserved
-        reserveList = []
 
         if self.config.reserveFraction > 0:
             random.seed(self.config.reserveSeed*expId)
             reserveList = random.sample(res.matches,
                                         int((self.config.reserveFraction)*len(res.matches)))
 
-            for cand in reserveList:
-                res.matches.remove(cand)
+            for candidate in reserveList:
+                res.matches.remove(candidate)
 
             if reserveList and self.reservedKey is not None:
-                for cand in reserveList:
-                    cand.second.set(self.reservedKey, True)
+                for candidate in reserveList:
+                    candidate.second.set(self.reservedKey, True)
 
         matches = res.matches
         for m in matches:
