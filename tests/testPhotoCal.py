@@ -107,7 +107,6 @@ class PhotoCalTest(unittest.TestCase):
         matches = pCal.matches
         print("Ref flux fields list =", pCal.arrays.refFluxFieldList)
         refFluxField = pCal.arrays.refFluxFieldList[0]
-
         # These are *all* the matches; we don't really expect to do that well.
         diff = []
         for m in matches:
@@ -124,6 +123,31 @@ class PhotoCalTest(unittest.TestCase):
         # Differences of matched objects that were used in the fit.
         self.zp = pCal.calib.getMagnitude(1.)
         self.fitdiff = pCal.arrays.srcMag + self.zp - pCal.arrays.refMag
+
+    def testFlags(self):
+        """test that all the calib_photometry flags are set to reasonable values"""
+        schema = self.srcCat.schema
+        self.config.doWriteOutput = True
+        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=schema)
+        mapper = afwTable.SchemaMapper(self.srcCat.schema, schema)
+        cat = afwTable.SourceCatalog(schema)
+        for name in self.srcCat.schema.getNames():
+            mapper.addMapping(self.srcCat.schema.find(name).key)
+        cat.extend(self.srcCat, mapper=mapper)
+
+        #   test that by default, no stars are reserved and used < candidates
+        task.run(exposure=self.exposure, sourceCat=cat)
+        candidates = cat.get("calib_photometryCandidate").sum()
+        assert(cat.get("calib_photometryReserved").sum() == 0)
+        assert(cat.get("calib_photometryUsed").sum() <= candidates)
+
+        #   set the reserve fraction, and see if the right proportion are reserved.
+        self.config.doWriteOutput = True
+        self.config.reserveFraction = .3
+        task.run(exposure=self.exposure, sourceCat=cat)
+        reserved = cat.get("calib_photometryReserved").sum()
+        assert(reserved == int(.3 * candidates))
+        assert(cat.get("calib_photometryUsed").sum() <= (candidates - reserved))
 
     def testZeroPoint(self):
         """ Test to see if we can compute a photometric zeropoint given a reference task"""

@@ -704,7 +704,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 # Check that the field is present in the Sources schema.
                 matches[0].second.getSchema().find(self.usedKey)
             except:
-                raise RuntimeError("sources' schema does not contain the used-in-calibration flag \"%s\"" %
+                raise RuntimeError("sources' schema does not contain the calib_photometryUsed flag \"%s\"" %
                                    self.usedKey)
 
         # Fit for zeropoint.  We can run the code more than once, so as to
