@@ -68,11 +68,6 @@ class PhotoCalConfig(RefMatchConfig):
         default=22.0,
         doc="Don't use objects fainter than this magnitude",
     )
-    doWriteOutput = pexConf.Field(
-        dtype=bool,
-        default=True,
-        doc="Write a field named calib_photometryUsed to the schema",
-    )
     reserveFraction = pexConf.Field(
         dtype=float,
         doc="Fraction of candidates to reserve from fitting; none if <= 0",
@@ -302,10 +297,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     def __init__(self, refObjLoader, schema=None, **kwds):
         """!Create the photometric calibration task.  See PhotoCalTask.init for documentation
         """
-        RefMatchTask.__init__(self, refObjLoader, schema=schema, **kwds)
+        RefMatchTask.__init__(self, refObjLoader, schema=None, **kwds)
         self.scatterPlot = None
         self.fig = None
-        if self.config.doWriteOutput:
+        if not schema is None:
             self.usedKey = schema.addField("calib_photometryUsed", type="Flag",
                                            doc="set if source was used in photometric calibration")
             self.candidateKey = schema.addField("calib_photometryCandidate", type="Flag",
