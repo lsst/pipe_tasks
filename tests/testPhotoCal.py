@@ -92,7 +92,6 @@ class PhotoCalTest(unittest.TestCase):
         # The test and associated data have been prepared on the basis that we
         # use the PsfFlux to perform photometry.
         self.config.fluxField = "base_PsfFlux_flux"
-        self.config.doWriteOutput = False    # schema is fixed because we already loaded the data
 
     def tearDown(self):
         del self.srcCat
@@ -127,7 +126,6 @@ class PhotoCalTest(unittest.TestCase):
     def testFlags(self):
         """test that all the calib_photometry flags are set to reasonable values"""
         schema = self.srcCat.schema
-        self.config.doWriteOutput = True
         task = PhotoCalTask(self.refObjLoader, config=self.config, schema=schema)
         mapper = afwTable.SchemaMapper(self.srcCat.schema, schema)
         cat = afwTable.SourceCatalog(schema)
@@ -142,7 +140,6 @@ class PhotoCalTest(unittest.TestCase):
         assert(cat.get("calib_photometryUsed").sum() <= candidates)
 
         #   set the reserve fraction, and see if the right proportion are reserved.
-        self.config.doWriteOutput = True
         self.config.reserveFraction = .3
         task.run(exposure=self.exposure, sourceCat=cat)
         reserved = cat.get("calib_photometryReserved").sum()
