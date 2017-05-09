@@ -258,6 +258,8 @@ def fakeContext():
 class RegisterTask(Task):
     """Task that will generate the registry for the Mapper"""
     ConfigClass = RegisterConfig
+    placeHolder = '?'  # Placeholder for parameter substitution; this value suitable for sqlite3
+    typemap = {'text': str, 'int': int, 'double': float}  # Mapping database type --> python type
 
     def openRegistry(self, directory, create=False, dryrun=False, name="registry.sqlite3"):
         """Open the registry and return the connection handle.
@@ -312,8 +314,8 @@ class RegisterTask(Task):
             return False  # Our entry could already be there, but we don't care
         cursor = conn.cursor()
         sql = "SELECT COUNT(*) FROM %s WHERE " % table
-        sql += " AND ".join(["%s=?" % col for col in self.config.unique])
-        values = [info[col] for col in self.config.unique]
+        sql += " AND ".join(["%s = %s" % (col, self.placeHolder) for col in self.config.unique])
+        values = [self.typemap[self.config.columns[col]](info[col]) for col in self.config.unique]
 
         cursor.execute(sql, values)
         if cursor.fetchone()[0] > 0:
@@ -329,14 +331,13 @@ class RegisterTask(Task):
         """
         if table is None:
             table = self.config.table
-        sql = "INSERT INTO %s VALUES (NULL" % table
-        sql += ", ?" * len(self.config.columns)
-        sql += ")"
-        values = [info[col] for col in self.config.columns]
+        sql = "INSERT INTO %s (%s) SELECT " % (table, ",".join(self.config.columns))
+        sql += ",".join([self.placeHolder] * len(self.config.columns))
+        values = [self.typemap[tt](info[col]) for col, tt in self.config.columns.items()]
 
         if self.config.ignore:
             sql += " WHERE NOT EXISTS (SELECT 1 FROM %s WHERE " % self.config.table
-            sql += " AND ".join(["%s=?" % (col,) for col in self.config.unique])
+            sql += " AND ".join(["%s=%s" % (col, self.placeHolder) for col in self.config.unique])
             sql += ")"
             values += [info[col] for col in self.config.unique]
 
