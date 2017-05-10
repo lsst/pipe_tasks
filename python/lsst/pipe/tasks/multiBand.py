@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 #
 # LSST Data Management System
@@ -34,6 +33,7 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogC
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
+from lsst.pipe.tasks.fakes import BaseFakeSourcesTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
 import lsst.afw.image as afwImage
@@ -117,6 +117,11 @@ class DetectCoaddSourcesConfig(Config):
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     mask = ListField(dtype=str, default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
                      doc="Mask planes for pixels to ignore when scaling variance")
+    doInsertFakes = Field(dtype=bool, default=False,
+                          doc="Run fake sources injection task")
+    insertFakes = ConfigurableField(target=BaseFakeSourcesTask,
+                                    doc="Injection of fake sources for testing "
+                                    "purposes (must be retargeted)")
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -250,6 +255,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
         CmdLineTask.__init__(self, **kwargs)
         if schema is None:
             schema = afwTable.SourceTable.makeMinimalSchema()
+        if self.config.doInsertFakes:
+            self.makeSubtask("insertFakes")
         self.schema = schema
         self.makeSubtask("detection", schema=self.schema)
 
@@ -285,6 +292,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
         if self.config.doScaleVariance:
             scaleVariance(exposure.getMaskedImage(), self.config.mask, log=self.log)
         backgrounds = afwMath.BackgroundList()
+        if self.config.doInsertFakes:
+            self.insertFakes.run(exposure, background=backgrounds)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.makeSourceCatalog(table, exposure)
         sources = detections.sources
