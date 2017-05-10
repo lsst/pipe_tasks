@@ -92,7 +92,6 @@ class PhotoCalTest(unittest.TestCase):
         # The test and associated data have been prepared on the basis that we
         # use the PsfFlux to perform photometry.
         self.config.fluxField = "base_PsfFlux_flux"
-        self.config.doWriteOutput = False    # schema is fixed because we already loaded the data
 
     def tearDown(self):
         del self.srcCat
@@ -102,7 +101,7 @@ class PhotoCalTest(unittest.TestCase):
 
     def _runTask(self):
         """All the common setup to actually test the results"""
-        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=self.srcCat.schema)
+        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=None)
         pCal = task.run(exposure=self.exposure, sourceCat=self.srcCat)
         matches = pCal.matches
         print("Ref flux fields list =", pCal.arrays.refFluxFieldList)
@@ -124,6 +123,47 @@ class PhotoCalTest(unittest.TestCase):
         # Differences of matched objects that were used in the fit.
         self.zp = pCal.calib.getMagnitude(1.)
         self.fitdiff = pCal.arrays.srcMag + self.zp - pCal.arrays.refMag
+
+    def testFlags(self):
+        """test that all the calib_photometry flags are set to reasonable values"""
+        schema = self.srcCat.schema
+        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=schema)
+        mapper = afwTable.SchemaMapper(self.srcCat.schema, schema)
+        cat = afwTable.SourceCatalog(schema)
+        for name in self.srcCat.schema.getNames():
+            mapper.addMapping(self.srcCat.schema.find(name).key)
+        cat.extend(self.srcCat, mapper=mapper)
+
+        #   test that by default, no stars are reserved and used < candidates
+        task.run(exposure=self.exposure, sourceCat=cat)
+        candidates = 0
+        used = 0
+        reserved = 0
+        for source in cat:
+            if source.get("calib_photometryCandidate"):
+                candidates += 1
+            if source.get("calib_photometryUsed"):
+                used += 1
+            if source.get("calib_photometryReserved"):
+                reserved += 1
+        self.assertLessEqual(used, candidates)
+        self.assertEqual(reserved, 0)
+
+        #   set the reserve fraction, and see if the right proportion are reserved.
+        self.config.reserveFraction = .3
+        task.run(exposure=self.exposure, sourceCat=cat)
+        candidates = 0
+        reserved = 0
+        used = 0
+        for source in cat:
+            if source.get("calib_photometryCandidate"):
+                candidates += 1
+            if source.get("calib_photometryUsed"):
+                used += 1
+            if source.get("calib_photometryReserved"):
+                reserved += 1
+        self.assertEqual(reserved, int(.3 * candidates))
+        self.assertLessEqual(used, (candidates - reserved))
 
     def testZeroPoint(self):
         """ Test to see if we can compute a photometric zeropoint given a reference task"""
