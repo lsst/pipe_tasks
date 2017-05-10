@@ -11,6 +11,7 @@ except ImportError:
     import sqlite as sqlite3
 from fnmatch import fnmatch
 from glob import glob
+from contextlib import contextmanager
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
@@ -209,6 +210,8 @@ class RegistryContext(object):
 
         @param registryName: Name of registry file
         @param createTableFunc: Function to create tables
+        @param forceCreateTables: Force the (re-)creation of tables?
+        @param permissions: Permissions to set on database file
         """
         self.registryName = registryName
         self.permissions = permissions
@@ -245,9 +248,20 @@ class RegistryContext(object):
         return False  # Don't suppress any exceptions
 
 
+@contextmanager
+def fakeContext():
+    """A context manager that doesn't provide any context
+
+    Useful for dry runs where we don't want to actually do anything real.
+    """
+    yield
+
+
 class RegisterTask(Task):
     """Task that will generate the registry for the Mapper"""
     ConfigClass = RegisterConfig
+    placeHolder = '?'  # Placeholder for parameter substitution; this value suitable for sqlite3
+    typemap = {'text': str, 'int': int, 'double': float}  # Mapping database type --> python type
 
     def openRegistry(self, directory, create=False, dryrun=False, name="registry.sqlite3"):
         """Open the registry and return the connection handle.
@@ -259,11 +273,6 @@ class RegisterTask(Task):
         @return Database connection
         """
         if dryrun:
-            from contextlib import contextmanager
-
-            @contextmanager
-            def fakeContext():
-                yield
             return fakeContext()
 
         registryName = os.path.join(directory, name)
@@ -286,13 +295,13 @@ class RegisterTask(Task):
         if len(self.config.unique) > 0:
             cmd += ", unique(" + ",".join(self.config.unique) + ")"
         cmd += ")"
-        conn.execute(cmd)
+        conn.cursor().execute(cmd)
 
         cmd = "create table %s_visit (" % table
         cmd += ",".join([("%s %s" % (col, self.config.columns[col])) for col in self.config.visit])
         cmd += ", unique(" + ",".join(set(self.config.visit).intersection(set(self.config.unique))) + ")"
         cmd += ")"
-        conn.execute(cmd)
+        conn.cursor().execute(cmd)
 
         conn.commit()
 
@@ -307,8 +316,8 @@ class RegisterTask(Task):
             return False  # Our entry could already be there, but we don't care
         cursor = conn.cursor()
         sql = "SELECT COUNT(*) FROM %s WHERE " % table
-        sql += " AND ".join(["%s=?" % col for col in self.config.unique])
-        values = [info[col] for col in self.config.unique]
+        sql += " AND ".join(["%s = %s" % (col, self.placeHolder) for col in self.config.unique])
+        values = [self.typemap[self.config.columns[col]](info[col]) for col in self.config.unique]
 
         cursor.execute(sql, values)
         if cursor.fetchone()[0] > 0:
@@ -324,17 +333,20 @@ class RegisterTask(Task):
         """
         if table is None:
             table = self.config.table
-        sql = "INSERT"
+        sql = "INSERT INTO %s (%s) SELECT " % (table, ",".join(self.config.columns))
+        sql += ",".join([self.placeHolder] * len(self.config.columns))
+        values = [self.typemap[tt](info[col]) for col, tt in self.config.columns.items()]
+
         if self.config.ignore:
-            sql += " OR IGNORE"
-        sql += " INTO %s VALUES (NULL" % table
-        sql += ", ?" * len(self.config.columns)
-        sql += ")"
-        values = [info[col] for col in self.config.columns]
+            sql += " WHERE NOT EXISTS (SELECT 1 FROM %s WHERE " % self.config.table
+            sql += " AND ".join(["%s=%s" % (col, self.placeHolder) for col in self.config.unique])
+            sql += ")"
+            values += [info[col] for col in self.config.unique]
+
         if dryrun:
             print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
         else:
-            conn.execute(sql, values)
+            conn.cursor().execute(sql, values)
 
     def addVisits(self, conn, dryrun=False, table=None):
         """Generate the visits table (typically 'raw_visits') from the
@@ -345,13 +357,15 @@ class RegisterTask(Task):
         """
         if table is None:
             table = self.config.table
-        sql = "INSERT OR IGNORE INTO %s_visit SELECT DISTINCT " % table
+        sql = "INSERT INTO %s_visit SELECT DISTINCT " % table
         sql += ",".join(self.config.visit)
-        sql += " FROM %s" % table
+        sql += " FROM %s AS vv1" % table
+        sql += " WHERE NOT EXISTS "
+        sql += "(SELECT vv2.visit FROM %s_visit AS vv2 WHERE vv1.visit = vv2.visit)" % (table,)
         if dryrun:
             print("Would execute: %s" % sql)
         else:
-            conn.execute(sql)
+            conn.cursor().execute(sql)
 
 
 class IngestConfig(Config):
