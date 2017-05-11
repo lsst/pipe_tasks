@@ -39,7 +39,8 @@ from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGauss
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
-    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, DecorrelateALKernelTask
+    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, DecorrelateALKernelTask, \
+    ZogyImagePsfMatchConfig, ZogyImagePsfMatchTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 
@@ -120,6 +121,15 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="""Decorrelate effects of A&L kernel convolution on image difference, only if doSubtract is True.
         If this option is enabled, then detection.thresholdValue should be set to 5.0 (rather than the
         default of 5.5).""",
+    )
+    subtractAlgorithm = pexConfig.ChoiceField(
+        dtype=str,
+        doc="""Algorithm to use for PSF matching and subtraction.""",
+        default="AL",
+        allowed={
+            "AL": """Use Alard&Lupton algorithm, optionally with decorrelation afterburner""",
+            "ZOGY": """Use Zackay, et al. (2016) [ZOGY] algorithm"""
+        }
     )
     detection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
@@ -319,232 +329,244 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateExposure = template.exposure
             templateSources = template.sources
 
-            # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
-            ctr = afwGeom.Box2D(exposure.getBBox()).getCenter()
-            psfAttr = PsfAttributes(sciencePsf, afwGeom.Point2I(ctr))
-            scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+            if self.config.subtractAlgorithm == 'ZOGY':
+                self.log.info('Running Zogy algorithm')
+                config = ZogyImagePsfMatchConfig()
+                task = ZogyImagePsfMatchTask(config=config)
+                subtractRes = task.subtractExposures(templateExposure, exposure,
+                                                     doWarping=True,
+                                                     spatiallyVarying=False)
+                subtractedExposure = subtractRes.subtractedExposure
 
-            # sigma of PSF of template image before warping
-            ctr = afwGeom.Box2D(templateExposure.getBBox()).getCenter()
-            psfAttr = PsfAttributes(templateExposure.getPsf(), afwGeom.Point2I(ctr))
-            templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+            elif self.config.subtractAlgorithm == 'AL':
+                # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
+                ctr = afwGeom.Box2D(exposure.getBBox()).getCenter()
+                psfAttr = PsfAttributes(sciencePsf, afwGeom.Point2I(ctr))
+                scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
 
-            # if requested, convolve the science exposure with its PSF
-            # (properly, this should be a cross-correlation, but our code does not yet support that)
-            # compute scienceSigmaPost: sigma of science exposure with pre-convolution, if done,
-            # else sigma of original science exposure
-            if self.config.doPreConvolve:
-                convControl = afwMath.ConvolutionControl()
-                # cannot convolve in place, so make a new MI to receive convolved image
-                srcMI = exposure.getMaskedImage()
-                destMI = srcMI.Factory(srcMI.getDimensions())
-                srcPsf = sciencePsf
-                if self.config.useGaussianForPreConvolution:
-                    # convolve with a simplified PSF model: a double Gaussian
-                    kWidth, kHeight = sciencePsf.getLocalKernel().getDimensions()
-                    preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
+                # sigma of PSF of template image before warping
+                ctr = afwGeom.Box2D(templateExposure.getBBox()).getCenter()
+                psfAttr = PsfAttributes(templateExposure.getPsf(), afwGeom.Point2I(ctr))
+                templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+
+                # if requested, convolve the science exposure with its PSF
+                # (properly, this should be a cross-correlation, but our code does not yet support that)
+                # compute scienceSigmaPost: sigma of science exposure with pre-convolution, if done,
+                # else sigma of original science exposure
+                if self.config.doPreConvolve:
+                    convControl = afwMath.ConvolutionControl()
+                    # cannot convolve in place, so make a new MI to receive convolved image
+                    srcMI = exposure.getMaskedImage()
+                    destMI = srcMI.Factory(srcMI.getDimensions())
+                    srcPsf = sciencePsf
+                    if self.config.useGaussianForPreConvolution:
+                        # convolve with a simplified PSF model: a double Gaussian
+                        kWidth, kHeight = sciencePsf.getLocalKernel().getDimensions()
+                        preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
+                    else:
+                        # convolve with science exposure's PSF model
+                        preConvPsf = srcPsf
+                    afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
+                    exposure.setMaskedImage(destMI)
+                    scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
                 else:
-                    # convolve with science exposure's PSF model
-                    preConvPsf = srcPsf
-                afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
-                exposure.setMaskedImage(destMI)
-                scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
-            else:
-                scienceSigmaPost = scienceSigmaOrig
+                    scienceSigmaPost = scienceSigmaOrig
 
-            # If requested, find sources in the image
-            if self.config.doSelectSources:
-                if not sensorRef.datasetExists("src"):
-                    self.log.warn("Src product does not exist; running detection, measurement, selection")
-                    # Run own detection and measurement; necessary in nightly processing
-                    selectSources = self.subtract.getSelectSources(
-                        exposure,
-                        sigma=scienceSigmaPost,
-                        doSmooth=not self.doPreConvolve,
-                        idFactory=idFactory,
-                    )
-                else:
-                    self.log.info("Source selection via src product")
-                    # Sources already exist; for data release processing
-                    selectSources = sensorRef.get("src")
+                # If requested, find sources in the image
+                if self.config.doSelectSources:
+                    if not sensorRef.datasetExists("src"):
+                        self.log.warn("Src product does not exist; running detection, measurement, selection")
+                        # Run own detection and measurement; necessary in nightly processing
+                        selectSources = self.subtract.getSelectSources(
+                            exposure,
+                            sigma=scienceSigmaPost,
+                            doSmooth=not self.doPreConvolve,
+                            idFactory=idFactory,
+                        )
+                    else:
+                        self.log.info("Source selection via src product")
+                        # Sources already exist; for data release processing
+                        selectSources = sensorRef.get("src")
 
-                # Number of basis functions
-                nparam = len(makeKernelBasisList(self.subtract.config.kernel.active,
-                                                 referenceFwhmPix=scienceSigmaPost * FwhmPerSigma,
-                                                 targetFwhmPix=templateSigma * FwhmPerSigma))
+                    # Number of basis functions
+                    nparam = len(makeKernelBasisList(self.subtract.config.kernel.active,
+                                                     referenceFwhmPix=scienceSigmaPost * FwhmPerSigma,
+                                                     targetFwhmPix=templateSigma * FwhmPerSigma))
 
-                if self.config.doAddMetrics:
-                    # Modify the schema of all Sources
-                    kcQa = KernelCandidateQa(nparam)
-                    selectSources = kcQa.addToSchema(selectSources)
+                    if self.config.doAddMetrics:
+                        # Modify the schema of all Sources
+                        kcQa = KernelCandidateQa(nparam)
+                        selectSources = kcQa.addToSchema(selectSources)
 
-                if self.config.kernelSourcesFromRef:
-                    # match exposure sources to reference catalog
-                    astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
-                    matches = astromRet.matches
-                elif templateSources:
-                    # match exposure sources to template sources
-                    mc = afwTable.MatchControl()
-                    mc.findOnlyClosest = False
-                    matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds,
-                                                  mc)
-                else:
-                    raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False," +
-                                       "but template sources not available. Cannot match science " +
-                                       "sources with template sources. Run process* on data from " +
-                                       "which templates are built.")
+                    if self.config.kernelSourcesFromRef:
+                        # match exposure sources to reference catalog
+                        astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
+                        matches = astromRet.matches
+                    elif templateSources:
+                        # match exposure sources to template sources
+                        mc = afwTable.MatchControl()
+                        mc.findOnlyClosest = False
+                        matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds,
+                                                      mc)
+                    else:
+                        raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False," +
+                                           "but template sources not available. Cannot match science " +
+                                           "sources with template sources. Run process* on data from " +
+                                           "which templates are built.")
 
-                kernelSources = self.sourceSelector.selectStars(exposure, selectSources,
-                                                                matches=matches).starCat
+                    kernelSources = self.sourceSelector.selectStars(exposure, selectSources,
+                                                                    matches=matches).starCat
 
-                random.shuffle(kernelSources, random.random)
-                controlSources = kernelSources[::self.config.controlStepSize]
-                kernelSources = [k for i, k in enumerate(kernelSources) if i % self.config.controlStepSize]
+                    random.shuffle(kernelSources, random.random)
+                    controlSources = kernelSources[::self.config.controlStepSize]
+                    kernelSources = [k for i, k in enumerate(kernelSources) if i % self.config.controlStepSize]
 
-                if self.config.doSelectDcrCatalog:
-                    redSelector = DiaCatalogSourceSelectorTask(
-                        DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
-                    redSources = redSelector.selectStars(exposure, selectSources, matches=matches).starCat
-                    controlSources.extend(redSources)
+                    if self.config.doSelectDcrCatalog:
+                        redSelector = DiaCatalogSourceSelectorTask(
+                            DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
+                        redSources = redSelector.selectStars(exposure, selectSources, matches=matches).starCat
+                        controlSources.extend(redSources)
 
-                    blueSelector = DiaCatalogSourceSelectorTask(
-                        DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
-                    blueSources = blueSelector.selectStars(exposure, selectSources, matches=matches).starCat
-                    controlSources.extend(blueSources)
+                        blueSelector = DiaCatalogSourceSelectorTask(
+                            DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
+                        blueSources = blueSelector.selectStars(exposure, selectSources, matches=matches).starCat
+                        controlSources.extend(blueSources)
 
-                if self.config.doSelectVariableCatalog:
-                    varSelector = DiaCatalogSourceSelectorTask(
-                        DiaCatalogSourceSelectorConfig(includeVariable=True))
-                    varSources = varSelector.selectStars(exposure, selectSources, matches=matches).starCat
-                    controlSources.extend(varSources)
+                    if self.config.doSelectVariableCatalog:
+                        varSelector = DiaCatalogSourceSelectorTask(
+                            DiaCatalogSourceSelectorConfig(includeVariable=True))
+                        varSources = varSelector.selectStars(exposure, selectSources, matches=matches).starCat
+                        controlSources.extend(varSources)
 
-                self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)"
-                              % (len(kernelSources), len(selectSources), len(controlSources)))
-            allresids = {}
-            if self.config.doUseRegister:
-                self.log.info("Registering images")
+                    self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)"
+                                  % (len(kernelSources), len(selectSources), len(controlSources)))
+                allresids = {}
+                if self.config.doUseRegister:
+                    self.log.info("Registering images")
 
-                if templateSources is None:
-                    # Run detection on the template, which is
-                    # temporarily background-subtracted
-                    templateSources = self.subtract.getSelectSources(
-                        templateExposure,
-                        sigma=templateSigma,
-                        doSmooth=True,
-                        idFactory=idFactory
-                    )
+                    if templateSources is None:
+                        # Run detection on the template, which is
+                        # temporarily background-subtracted
+                        templateSources = self.subtract.getSelectSources(
+                            templateExposure,
+                            sigma=templateSigma,
+                            doSmooth=True,
+                            idFactory=idFactory
+                        )
 
-                # Third step: we need to fit the relative astrometry.
-                #
-                wcsResults = self.fitAstrometry(templateSources, templateExposure, selectSources)
-                warpedExp = self.register.warpExposure(templateExposure, wcsResults.wcs,
-                                                       exposure.getWcs(), exposure.getBBox())
-                templateExposure = warpedExp
+                    # Third step: we need to fit the relative astrometry.
+                    #
+                    wcsResults = self.fitAstrometry(templateSources, templateExposure, selectSources)
+                    warpedExp = self.register.warpExposure(templateExposure, wcsResults.wcs,
+                                                           exposure.getWcs(), exposure.getBBox())
+                    templateExposure = warpedExp
 
-                # Create debugging outputs on the astrometric
-                # residuals as a function of position.  Persistence
-                # not yet implemented; expected on (I believe) #2636.
-                if self.config.doDebugRegister:
-                    # Grab matches to reference catalog
-                    srcToMatch = {x.second.getId(): x.first for x in matches}
+                    # Create debugging outputs on the astrometric
+                    # residuals as a function of position.  Persistence
+                    # not yet implemented; expected on (I believe) #2636.
+                    if self.config.doDebugRegister:
+                        # Grab matches to reference catalog
+                        srcToMatch = {x.second.getId(): x.first for x in matches}
 
-                    refCoordKey = wcsResults.matches[0].first.getTable().getCoordKey()
-                    inCentroidKey = wcsResults.matches[0].second.getTable().getCentroidKey()
-                    sids = [m.first.getId() for m in wcsResults.matches]
-                    positions = [m.first.get(refCoordKey) for m in wcsResults.matches]
-                    residuals = [m.first.get(refCoordKey).getOffsetFrom(wcsResults.wcs.pixelToSky(
-                        m.second.get(inCentroidKey))) for m in wcsResults.matches]
-                    allresids = dict(zip(sids, zip(positions, residuals)))
-
-                    cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
-                        wcsResults.wcs.pixelToSky(
+                        refCoordKey = wcsResults.matches[0].first.getTable().getCoordKey()
+                        inCentroidKey = wcsResults.matches[0].second.getTable().getCentroidKey()
+                        sids = [m.first.getId() for m in wcsResults.matches]
+                        positions = [m.first.get(refCoordKey) for m in wcsResults.matches]
+                        residuals = [m.first.get(refCoordKey).getOffsetFrom(wcsResults.wcs.pixelToSky(
                             m.second.get(inCentroidKey))) for m in wcsResults.matches]
-                    colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g")) +
-                                          2.5*numpy.log10(srcToMatch[x].get("r"))
-                                          for x in sids if x in srcToMatch.keys()])
-                    dlong = numpy.array([r[0].asArcseconds() for s, r in zip(sids, cresiduals)
-                                         if s in srcToMatch.keys()])
-                    dlat = numpy.array([r[1].asArcseconds() for s, r in zip(sids, cresiduals)
-                                        if s in srcToMatch.keys()])
-                    idx1 = numpy.where(colors < self.sourceSelector.config.grMin)
-                    idx2 = numpy.where((colors >= self.sourceSelector.config.grMin) &
-                                       (colors <= self.sourceSelector.config.grMax))
-                    idx3 = numpy.where(colors > self.sourceSelector.config.grMax)
-                    rms1Long = IqrToSigma * \
-                        (numpy.percentile(dlong[idx1], 75)-numpy.percentile(dlong[idx1], 25))
-                    rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75)-numpy.percentile(dlat[idx1], 25))
-                    rms2Long = IqrToSigma * \
-                        (numpy.percentile(dlong[idx2], 75)-numpy.percentile(dlong[idx2], 25))
-                    rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75)-numpy.percentile(dlat[idx2], 25))
-                    rms3Long = IqrToSigma * \
-                        (numpy.percentile(dlong[idx3], 75)-numpy.percentile(dlong[idx3], 25))
-                    rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75)-numpy.percentile(dlat[idx3], 25))
-                    self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx1]),
-                                                                                 rms1Long,
-                                                                                 numpy.median(dlat[idx1]),
-                                                                                 rms1Lat))
-                    self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx2]),
-                                                                                  rms2Long,
-                                                                                  numpy.median(dlat[idx2]),
-                                                                                  rms2Lat))
-                    self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx3]),
-                                                                                rms3Long,
-                                                                                numpy.median(dlat[idx3]),
-                                                                                rms3Lat))
+                        allresids = dict(zip(sids, zip(positions, residuals)))
 
-                    self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
-                    self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))
-                    self.metadata.add("RegisterRedLongOffsetMedian", numpy.median(dlong[idx3]))
-                    self.metadata.add("RegisterBlueLongOffsetStd", rms1Long)
-                    self.metadata.add("RegisterGreenLongOffsetStd", rms2Long)
-                    self.metadata.add("RegisterRedLongOffsetStd", rms3Long)
+                        cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
+                            wcsResults.wcs.pixelToSky(
+                                m.second.get(inCentroidKey))) for m in wcsResults.matches]
+                        colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g")) +
+                                              2.5*numpy.log10(srcToMatch[x].get("r"))
+                                              for x in sids if x in srcToMatch.keys()])
+                        dlong = numpy.array([r[0].asArcseconds() for s, r in zip(sids, cresiduals)
+                                             if s in srcToMatch.keys()])
+                        dlat = numpy.array([r[1].asArcseconds() for s, r in zip(sids, cresiduals)
+                                            if s in srcToMatch.keys()])
+                        idx1 = numpy.where(colors < self.sourceSelector.config.grMin)
+                        idx2 = numpy.where((colors >= self.sourceSelector.config.grMin) &
+                                           (colors <= self.sourceSelector.config.grMax))
+                        idx3 = numpy.where(colors > self.sourceSelector.config.grMax)
+                        rms1Long = IqrToSigma * \
+                            (numpy.percentile(dlong[idx1], 75)-numpy.percentile(dlong[idx1], 25))
+                        rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75)-numpy.percentile(dlat[idx1], 25))
+                        rms2Long = IqrToSigma * \
+                            (numpy.percentile(dlong[idx2], 75)-numpy.percentile(dlong[idx2], 25))
+                        rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75)-numpy.percentile(dlat[idx2], 25))
+                        rms3Long = IqrToSigma * \
+                            (numpy.percentile(dlong[idx3], 75)-numpy.percentile(dlong[idx3], 25))
+                        rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75)-numpy.percentile(dlat[idx3], 25))
+                        self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx1]),
+                                                                                     rms1Long,
+                                                                                     numpy.median(dlat[idx1]),
+                                                                                     rms1Lat))
+                        self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx2]),
+                                                                                      rms2Long,
+                                                                                      numpy.median(dlat[idx2]),
+                                                                                      rms2Lat))
+                        self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx3]),
+                                                                                    rms3Long,
+                                                                                    numpy.median(dlat[idx3]),
+                                                                                    rms3Lat))
 
-                    self.metadata.add("RegisterBlueLatOffsetMedian", numpy.median(dlat[idx1]))
-                    self.metadata.add("RegisterGreenLatOffsetMedian", numpy.median(dlat[idx2]))
-                    self.metadata.add("RegisterRedLatOffsetMedian", numpy.median(dlat[idx3]))
-                    self.metadata.add("RegisterBlueLatOffsetStd", rms1Lat)
-                    self.metadata.add("RegisterGreenLatOffsetStd", rms2Lat)
-                    self.metadata.add("RegisterRedLatOffsetStd", rms3Lat)
+                        self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
+                        self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))
+                        self.metadata.add("RegisterRedLongOffsetMedian", numpy.median(dlong[idx3]))
+                        self.metadata.add("RegisterBlueLongOffsetStd", rms1Long)
+                        self.metadata.add("RegisterGreenLongOffsetStd", rms2Long)
+                        self.metadata.add("RegisterRedLongOffsetStd", rms3Long)
 
-            # warp template exposure to match exposure,
-            # PSF match template exposure to exposure,
-            # then return the difference
+                        self.metadata.add("RegisterBlueLatOffsetMedian", numpy.median(dlat[idx1]))
+                        self.metadata.add("RegisterGreenLatOffsetMedian", numpy.median(dlat[idx2]))
+                        self.metadata.add("RegisterRedLatOffsetMedian", numpy.median(dlat[idx3]))
+                        self.metadata.add("RegisterBlueLatOffsetStd", rms1Lat)
+                        self.metadata.add("RegisterGreenLatOffsetStd", rms2Lat)
+                        self.metadata.add("RegisterRedLatOffsetStd", rms3Lat)
 
-            # Return warped template...  Construct sourceKernelCand list after subtract
-            self.log.info("Subtracting images")
-            subtractRes = self.subtract.subtractExposures(
-                templateExposure=templateExposure,
-                scienceExposure=exposure,
-                candidateList=kernelSources,
-                convolveTemplate=self.config.convolveTemplate,
-                doWarping=not self.config.doUseRegister
-            )
-            subtractedExposure = subtractRes.subtractedExposure
+                # warp template exposure to match exposure,
+                # PSF match template exposure to exposure,
+                # then return the difference
 
-            if self.config.doWriteMatchedExp:
-                sensorRef.put(subtractRes.matchedExposure, self.config.coaddName + "Diff_matchedExp")
+                # Return warped template...  Construct sourceKernelCand list after subtract
+                self.log.info("Subtracting images")
+                subtractRes = self.subtract.subtractExposures(
+                    templateExposure=templateExposure,
+                    scienceExposure=exposure,
+                    candidateList=kernelSources,
+                    convolveTemplate=self.config.convolveTemplate,
+                    doWarping=not self.config.doUseRegister
+                )
+                subtractedExposure = subtractRes.subtractedExposure
 
-        if self.config.doDetection:
-            self.log.info("Computing diffim PSF")
-            if subtractedExposure is None:
-                subtractedExposure = sensorRef.get(subtractedExposureName)
+                if self.config.doWriteMatchedExp:
+                    sensorRef.put(subtractRes.matchedExposure, self.config.coaddName + "Diff_matchedExp")
 
-            # Get Psf from the appropriate input image if it doesn't exist
-            if not subtractedExposure.hasPsf():
-                if self.config.convolveTemplate:
-                    subtractedExposure.setPsf(exposure.getPsf())
-                else:
-                    if templateExposure is None:
-                        template = self.getTemplate.run(exposure, sensorRef, templateIdList=templateIdList)
-                    subtractedExposure.setPsf(template.exposure.getPsf())
+                if self.config.doDetection:
+                    self.log.info("Computing diffim PSF")
+                    if subtractedExposure is None:
+                        subtractedExposure = sensorRef.get(subtractedExposureName)
 
-        # If doSubtract is False, then subtractedExposure was fetched from disk (above), thus it may have
-        # already been decorrelated. Thus, we do not do decorrelation if doSubtract is False.
-        if self.config.doDecorrelation and self.config.doSubtract:
-            decorrResult = self.decorrelate.run(exposure, templateExposure,
-                                                subtractedExposure,
-                                                subtractRes.psfMatchingKernel)
-            subtractedExposure = decorrResult.correctedExposure
+                    # Get Psf from the appropriate input image if it doesn't exist
+                    if not subtractedExposure.hasPsf():
+                        if self.config.convolveTemplate:
+                            subtractedExposure.setPsf(exposure.getPsf())
+                        else:
+                            if templateExposure is None:
+                                template = self.getTemplate.run(exposure, sensorRef,
+                                                                templateIdList=templateIdList)
+                            subtractedExposure.setPsf(template.exposure.getPsf())
+
+                # If doSubtract is False, then subtractedExposure was fetched from disk (above),
+                # thus it may have already been decorrelated. Thus, we do not decorrelate if
+                # doSubtract is False.
+                if self.config.doDecorrelation and self.config.doSubtract:
+                    decorrResult = self.decorrelate.run(exposure, templateExposure,
+                                                        subtractedExposure,
+                                                        subtractRes.psfMatchingKernel)
+                    subtractedExposure = decorrResult.correctedExposure
 
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
