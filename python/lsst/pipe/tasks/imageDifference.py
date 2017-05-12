@@ -39,7 +39,8 @@ from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGauss
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
-    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, DecorrelateALKernelTask, \
+    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, \
+    DecorrelateALKernelTask, DecorrelateALKernelSpatialConfig, DecorrelateALKernelSpatialTask, \
     ZogyImagePsfMatchConfig, ZogyImagePsfMatchTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
@@ -335,7 +336,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 task = ZogyImagePsfMatchTask(config=config)
                 subtractRes = task.subtractExposures(templateExposure, exposure,
                                                      doWarping=True,
-                                                     spatiallyVarying=False)
+                                                     spatiallyVarying=True)
                 subtractedExposure = subtractRes.subtractedExposure
 
             elif self.config.subtractAlgorithm == 'AL':
@@ -563,10 +564,22 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # thus it may have already been decorrelated. Thus, we do not decorrelate if
                 # doSubtract is False.
                 if self.config.doDecorrelation and self.config.doSubtract:
-                    decorrResult = self.decorrelate.run(exposure, templateExposure,
-                                                        subtractedExposure,
-                                                        subtractRes.psfMatchingKernel)
-                    subtractedExposure = decorrResult.correctedExposure
+                    if False:
+                        decorrResult = self.decorrelate.run(exposure, templateExposure,
+                                                            subtractedExposure,
+                                                            subtractRes.psfMatchingKernel)
+                        subtractedExposure = decorrResult.correctedExposure
+                    else:
+                        self.log.info('Running spatial decorrelation algorithm')
+                        config = DecorrelateALKernelSpatialConfig()
+                        task = DecorrelateALKernelSpatialTask(config=config)
+                        decorrResult = task.run(exposure, templateExposure, subtractedExposure,
+                                                subtractRes.psfMatchingKernel, doPreConvolve=False,
+                                                spatiallyVarying=True)
+                        subtractedExposure = subtractRes.subtractedExposure
+
+        if self.config.doWriteSubtractedExp:
+            sensorRef.put(subtractedExposure, subtractedExposureName)
 
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
@@ -597,7 +610,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if not self.config.doDipoleFitting:
                     self.measurement.run(diaSources, subtractedExposure)
                 else:
-                    if self.config.doSubtract:
+                    if self.config.doSubtract and subtractRes.getDict().has_key('matchedExposure'):
                         self.measurement.run(diaSources, subtractedExposure, exposure,
                                              subtractRes.matchedExposure)
                     else:
@@ -673,9 +686,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     kcQa.aggregate(selectSources, self.metadata, allresids)
 
                 sensorRef.put(selectSources, self.config.coaddName + "Diff_kernelSrc")
-
-        if self.config.doWriteSubtractedExp:
-            sensorRef.put(subtractedExposure, subtractedExposureName)
 
         self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
         return pipeBase.Struct(
