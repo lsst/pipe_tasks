@@ -182,28 +182,28 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
         exposure = self.isr.runDataRef(sensorRef).exposure
 
-        charRes = self.charImage.run(
-            dataRef=sensorRef,
-            exposure=exposure,
-            doUnpersist=False,
-        )
-        exposure = charRes.exposure
+        # charRes = self.charImage.run(
+        #     dataRef=sensorRef,
+        #     exposure=exposure,
+        #     doUnpersist=False,
+        # )
+        # exposure = charRes.exposure
 
-        if self.config.doCalibrate:
-            calibRes = self.calibrate.run(
-                dataRef=sensorRef,
-                exposure=charRes.exposure,
-                background=charRes.background,
-                doUnpersist=False,
-                icSourceCat=charRes.sourceCat,
-            )
+        # if self.config.doCalibrate:
+        #     calibRes = self.calibrate.run(
+        #         dataRef=sensorRef,
+        #         exposure=charRes.exposure,
+        #         background=charRes.background,
+        #         doUnpersist=False,
+        #         icSourceCat=charRes.sourceCat,
+        #     )
 
-        return pipeBase.Struct(
-            charRes=charRes,
-            calibRes=calibRes if self.config.doCalibrate else None,
-            exposure=exposure,
-            background=calibRes.background if self.config.doCalibrate else charRes.background,
-        )
+        # return pipeBase.Struct(
+        #     charRes=charRes,
+        #     calibRes=calibRes if self.config.doCalibrate else None,
+        #     exposure=exposure,
+        #     background=calibRes.background if self.config.doCalibrate else charRes.background,
+        # )
 
     @classmethod
     def _makeArgumentParser(cls):
