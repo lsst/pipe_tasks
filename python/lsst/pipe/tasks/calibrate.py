@@ -539,7 +539,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         # compute photometric calibration
         if self.config.doPhotoCal:
             try:
-                photoRes = self.photoCal.run(exposure, sourceCat=sourceCat)
+                photoRes = self.photoCal.run(exposure, sourceCat=sourceCat, expId=exposureIdInfo.expId)
                 exposure.getCalib().setFluxMag0(photoRes.calib.getFluxMag0())
                 self.log.info("Photometric zero-point: %f" %
                               photoRes.calib.getMagnitude(1.0))

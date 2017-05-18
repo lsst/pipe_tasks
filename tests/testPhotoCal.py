@@ -29,7 +29,6 @@ import unittest
 import numpy as np
 
 from lsst.daf.persistence import Butler
-import lsst.meas.astrom as measAstrom
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
@@ -134,36 +133,57 @@ class PhotoCalTest(unittest.TestCase):
             mapper.addMapping(self.srcCat.schema.find(name).key)
         cat.extend(self.srcCat, mapper=mapper)
 
-        #   test that by default, no stars are reserved and used < candidates
+        # test that by default, no stars are reserved and all used are candidates
         task.run(exposure=self.exposure, sourceCat=cat)
-        candidates = 0
         used = 0
-        reserved = 0
         for source in cat:
-            if source.get("calib_photometryCandidate"):
-                candidates += 1
             if source.get("calib_photometryUsed"):
+                self.assertTrue(source.get("calib_photometryCandidate"))
                 used += 1
-            if source.get("calib_photometryReserved"):
-                reserved += 1
-        self.assertLessEqual(used, candidates)
-        self.assertEqual(reserved, 0)
+            self.assertFalse(source.get("calib_photometryReserved"))
+        # test that some very actually used
+        self.assertGreater(used, 0)
+
+    def testReserveFraction(self):
+        """test that a reserve fraction can be selected, and that it differs with expId"""
+        schema = self.srcCat.schema
+        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=schema)
+        mapper = afwTable.SchemaMapper(self.srcCat.schema, schema)
+        cat = afwTable.SourceCatalog(schema)
+        for name in self.srcCat.schema.getNames():
+            mapper.addMapping(self.srcCat.schema.find(name).key)
+        cat.extend(self.srcCat, mapper=mapper)
 
         #   set the reserve fraction, and see if the right proportion are reserved.
+        cat = afwTable.SourceCatalog(schema)
+        for name in self.srcCat.schema.getNames():
+            mapper.addMapping(self.srcCat.schema.find(name).key)
+        cat.extend(self.srcCat, mapper=mapper)
         self.config.reserveFraction = .3
-        task.run(exposure=self.exposure, sourceCat=cat)
+        task.run(exposure=self.exposure, sourceCat=cat, expId=12345)
         candidates = 0
-        reserved = 0
-        used = 0
+        reservedSources1 = []
         for source in cat:
             if source.get("calib_photometryCandidate"):
                 candidates += 1
-            if source.get("calib_photometryUsed"):
-                used += 1
             if source.get("calib_photometryReserved"):
-                reserved += 1
-        self.assertEqual(reserved, int(.3 * candidates))
-        self.assertLessEqual(used, (candidates - reserved))
+                reservedSources1.append(source.getId())
+        reserved = len(reservedSources1)
+        self.assertEqual(int(self.config.reserveFraction * (candidates + reserved)), reserved)
+
+        #   try again with a different id, and see if the list is different
+        cat = afwTable.SourceCatalog(schema)
+        for name in self.srcCat.schema.getNames():
+            mapper.addMapping(self.srcCat.schema.find(name).key)
+        cat.extend(self.srcCat, mapper=mapper)
+        self.config.reserveFraction = .3
+        task.run(exposure=self.exposure, sourceCat=cat, expId=67890)
+        reservedSources2 = []
+        for source in cat:
+            if source.get("calib_photometryReserved"):
+                reservedSources2.append(source.getId())
+        self.assertEqual(len(reservedSources1), len(reservedSources2))
+        self.assertNotEqual(reservedSources1, reservedSources2)
 
     def testZeroPoint(self):
         """ Test to see if we can compute a photometric zeropoint given a reference task"""
