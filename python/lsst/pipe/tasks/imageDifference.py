@@ -331,12 +331,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateSources = template.sources
 
             if self.config.subtractAlgorithm == 'ZOGY':
-                self.log.info('Running Zogy algorithm')
+                spatiallyVarying = True
+                self.log.info('Running Zogy algorithm: spatiallyVarying=%r' % spatiallyVarying)
                 config = ZogyImagePsfMatchConfig()
                 task = ZogyImagePsfMatchTask(config=config)
                 subtractRes = task.subtractExposures(templateExposure, exposure,
                                                      doWarping=True,
-                                                     spatiallyVarying=True)
+                                                     spatiallyVarying=spatiallyVarying)
                 subtractedExposure = subtractRes.subtractedExposure
 
             elif self.config.subtractAlgorithm == 'AL':
@@ -578,7 +579,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                                 spatiallyVarying=True)
                         subtractedExposure = subtractRes.subtractedExposure
 
-        if self.config.doWriteSubtractedExp:
+        if self.config.doWriteSubtractedExp:  # Added in case detection fails...
             sensorRef.put(subtractedExposure, subtractedExposureName)
 
         if self.config.doDetection:
@@ -686,6 +687,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     kcQa.aggregate(selectSources, self.metadata, allresids)
 
                 sensorRef.put(selectSources, self.config.coaddName + "Diff_kernelSrc")
+
+        if self.config.doWriteSubtractedExp:
+            sensorRef.put(subtractedExposure, subtractedExposureName)
 
         self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
         return pipeBase.Struct(
