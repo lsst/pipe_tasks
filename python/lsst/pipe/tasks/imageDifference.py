@@ -90,6 +90,10 @@ class ImageDifferenceConfig(pexConfig.Config):
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
     doAddMetrics = pexConfig.Field(dtype=bool, default=True,
                                    doc="Add columns to the source table to hold analysis metrics?")
+    doSpatiallyVarying = pexConfig.Field(dtype=bool, default=False,
+                                         doc="""If using Zogy or A&L decorrelation, perform these on a
+                                             grid across the image in order to allow for spatial
+                                             variations""")
 
     coaddName = pexConfig.Field(
         doc="coadd name: typically one of deep or goodSeeing",
@@ -331,7 +335,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateSources = template.sources
 
             if self.config.subtractAlgorithm == 'ZOGY':
-                spatiallyVarying = True
+                spatiallyVarying = self.config.doSpatiallyVarying
                 self.log.info('Running Zogy algorithm: spatiallyVarying=%r' % spatiallyVarying)
                 config = ZogyImagePsfMatchConfig()
                 task = ZogyImagePsfMatchTask(config=config)
@@ -565,19 +569,21 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # thus it may have already been decorrelated. Thus, we do not decorrelate if
                 # doSubtract is False.
                 if self.config.doDecorrelation and self.config.doSubtract:
-                    if False:
+                    if False:  # Old method
                         decorrResult = self.decorrelate.run(exposure, templateExposure,
                                                             subtractedExposure,
                                                             subtractRes.psfMatchingKernel)
                         subtractedExposure = decorrResult.correctedExposure
                     else:
-                        self.log.info('Running spatial decorrelation algorithm')
+                        spatiallyVarying = self.config.doSpatiallyVarying
+                        self.log.info('Running A&L decorrelation: spatiallyVarying=%r' %
+                                      spatiallyVarying)
                         config = DecorrelateALKernelSpatialConfig()
                         task = DecorrelateALKernelSpatialTask(config=config)
                         decorrResult = task.run(exposure, templateExposure, subtractedExposure,
                                                 subtractRes.psfMatchingKernel, doPreConvolve=False,
-                                                spatiallyVarying=True)
-                        subtractedExposure = subtractRes.subtractedExposure
+                                                spatiallyVarying=spatiallyVarying)
+                        subtractedExposure = decorrResult.correctedExposure
 
         if self.config.doWriteSubtractedExp:  # Added in case detection fails...
             sensorRef.put(subtractedExposure, subtractedExposureName)
