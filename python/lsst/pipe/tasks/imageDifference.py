@@ -90,10 +90,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
     doAddMetrics = pexConfig.Field(dtype=bool, default=True,
                                    doc="Add columns to the source table to hold analysis metrics?")
-    doSpatiallyVarying = pexConfig.Field(dtype=bool, default=False,
-                                         doc="""If using Zogy or A&L decorrelation, perform these on a
-                                             grid across the image in order to allow for spatial
-                                             variations""")
 
     coaddName = pexConfig.Field(
         doc="coadd name: typically one of deep or goodSeeing",
@@ -121,12 +117,6 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=ImagePsfMatchTask,
         doc="Warp and PSF match template to exposure, then subtract",
     )
-    decorrelate = pexConfig.ConfigurableField(
-        target=DecorrelateALKernelTask,
-        doc="""Decorrelate effects of A&L kernel convolution on image difference, only if doSubtract is True.
-        If this option is enabled, then detection.thresholdValue should be set to 5.0 (rather than the
-        default of 5.5).""",
-    )
     subtractAlgorithm = pexConfig.ChoiceField(
         dtype=str,
         doc="""Algorithm to use for PSF matching and subtraction.""",
@@ -135,6 +125,25 @@ class ImageDifferenceConfig(pexConfig.Config):
             "AL": """Use Alard&Lupton algorithm, optionally with decorrelation afterburner""",
             "ZOGY": """Use Zackay, et al. (2016) [ZOGY] algorithm"""
         }
+    )
+    decorrelate = pexConfig.ConfigurableField(
+        target=DecorrelateALKernelSpatialTask,  # DecorrelateALKernelTask,
+        doc="""Decorrelate effects of A&L PSF matching kernel convolution on image difference,
+        only if doSubtract is True and subtractAlgorithm == 'AL'. If this option is enabled,
+        then detection.thresholdValue should be set to 5.0 (rather than the default of 5.5).
+        Will use the spatially-varying version of the algorithm if doSpatiallyvarying is True.""",
+    )
+    zogy = pexConfig.ConfigurableField(
+        target=ZogyImagePsfMatchTask,
+        doc="""Task to perform Zogy image differencing (Zackay, et al (2016). Only used
+        if subtractAlgorithm == 'Zogy'. Will use the spatially-varying version of the
+        algorithm if doSpatiallyvarying is True.""",
+    )
+    doSpatiallyVarying = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="""If using Zogy or A&L decorrelation, perform these on a grid across the
+        image in order to allow for spatial variations"""
     )
     detection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
@@ -241,9 +250,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         @param[in] butler  Butler object to use in constructing reference object loaders
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
-        self.makeSubtask("subtract")
         self.makeSubtask("getTemplate")
-        self.makeSubtask("decorrelate")
+
+        if self.config.subtractAlgorithm == 'AL':
+            self.makeSubtask("subtract")
+            if self.config.doDecorrelation:
+                self.makeSubtask("decorrelate")
+
+        elif self.config.subtractAlgorithm == 'ZOGY':
+            self.makeSubtask("zogy")
 
         if self.config.doUseRegister:
             self.makeSubtask("register")
@@ -336,12 +351,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if self.config.subtractAlgorithm == 'ZOGY':
                 spatiallyVarying = self.config.doSpatiallyVarying
-                self.log.info('Running Zogy algorithm: spatiallyVarying=%r' % spatiallyVarying)
-                config = ZogyImagePsfMatchConfig()
-                task = ZogyImagePsfMatchTask(config=config)
-                subtractRes = task.subtractExposures(templateExposure, exposure,
-                                                     doWarping=True,
-                                                     spatiallyVarying=spatiallyVarying)
+                subtractRes = self.zogy.subtractExposures(templateExposure, exposure,
+                                                          doWarping=True,
+                                                          spatiallyVarying=spatiallyVarying)
                 subtractedExposure = subtractRes.subtractedExposure
 
             elif self.config.subtractAlgorithm == 'AL':
@@ -569,23 +581,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # thus it may have already been decorrelated. Thus, we do not decorrelate if
                 # doSubtract is False.
                 if self.config.doDecorrelation and self.config.doSubtract:
-                    if False:  # Old method
-                        decorrResult = self.decorrelate.run(exposure, templateExposure,
-                                                            subtractedExposure,
-                                                            subtractRes.psfMatchingKernel)
-                        subtractedExposure = decorrResult.correctedExposure
-                    else:
-                        spatiallyVarying = self.config.doSpatiallyVarying
-                        self.log.info('Running A&L decorrelation: spatiallyVarying=%r' %
-                                      spatiallyVarying)
-                        config = DecorrelateALKernelSpatialConfig()
-                        task = DecorrelateALKernelSpatialTask(config=config)
-                        decorrResult = task.run(exposure, templateExposure, subtractedExposure,
-                                                subtractRes.psfMatchingKernel, doPreConvolve=False,
-                                                spatiallyVarying=spatiallyVarying)
-                        subtractedExposure = decorrResult.correctedExposure
+                    spatiallyVarying = self.config.doSpatiallyVarying
+                    decorrResult = self.decorrelate.run(exposure, templateExposure,
+                                                        subtractedExposure,
+                                                        subtractRes.psfMatchingKernel,
+                                                        doPreConvolve=False,
+                                                        spatiallyVarying=spatiallyVarying)
+                    subtractedExposure = decorrResult.correctedExposure
 
-        if self.config.doWriteSubtractedExp:  # Added in case detection fails...
+        if self.config.doWriteSubtractedExp:  # Added in case detection fails, for debugging. REMOVE ME.
             sensorRef.put(subtractedExposure, subtractedExposureName)
 
         if self.config.doDetection:
@@ -613,11 +617,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 diaSources = results.sources
 
             if self.config.doMeasurement:
-                self.log.info("Running diaSource measurement")
+                self.log.info("Running diaSource measurement: dipoleFitting=%r" % self.config.doDipoleFitting)
                 if not self.config.doDipoleFitting:
                     self.measurement.run(diaSources, subtractedExposure)
                 else:
-                    if self.config.doSubtract and subtractRes.getDict().has_key('matchedExposure'):
+                    if self.config.doSubtract and 'matchedExposure' in subtractRes.getDict():
                         self.measurement.run(diaSources, subtractedExposure, exposure,
                                              subtractRes.matchedExposure)
                     else:
