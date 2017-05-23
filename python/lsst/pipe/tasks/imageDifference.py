@@ -83,7 +83,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     doMatchSources = pexConfig.Field(dtype=bool, default=True,
                                      doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
-    doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
                                         doc="Write warped and PSF-matched template coadd exposure?")
@@ -153,9 +152,14 @@ class ImageDifferenceConfig(pexConfig.Config):
     #    target=DipoleMeasurementTask,
     #    doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
     # )
+    doNewDipoleFitting = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Measure dipoles using new algorithm?"
+    )
     measurement = pexConfig.ConfigurableField(
         target=DipoleFitTask,
-        doc="Enable updated dipole fitting method.",
+        doc="Enable updated dipole fitting method",
     )
     getTemplate = pexConfig.ConfigurableField(
         target=GetCoaddAsTemplateTask,
@@ -273,11 +277,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            if not self.config.doDipoleFitting:
-                self.makeSubtask("measurement", schema=self.schema,
-                                 algMetadata=self.algMetadata)
-            else:
-                self.makeSubtask("measurement", schema=self.schema)
+            self.makeSubtask("measurement", schema=self.schema,
+                             algMetadata=self.algMetadata)
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
@@ -617,10 +618,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 diaSources = results.sources
 
             if self.config.doMeasurement:
-                self.log.info("Running diaSource measurement: dipoleFitting=%r" % self.config.doDipoleFitting)
-                if not self.config.doDipoleFitting:
+                doNewDipoleFitting = self.config.doNewDipoleFitting
+                self.log.info("Running diaSource measurement: newDipoleFitting=%r" % doNewDipoleFitting)
+                if not doNewDipoleFitting:
+                    # Just fit dipole in diffim
                     self.measurement.run(diaSources, subtractedExposure)
                 else:
+                    # Use (matched) template and science image (if avail.) to constrain dipole fitting
                     if self.config.doSubtract and 'matchedExposure' in subtractRes.getDict():
                         self.measurement.run(diaSources, subtractedExposure, exposure,
                                              subtractRes.matchedExposure)
