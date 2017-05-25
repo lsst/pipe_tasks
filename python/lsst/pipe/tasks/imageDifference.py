@@ -697,16 +697,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         showDipoles = lsstDebug.Info(__name__).showDipoles
         maskTransparency = lsstDebug.Info(__name__).maskTransparency
         if display:
-            import lsst.afw.display.ds9 as ds9
+            from lsst.afw.display import getDisplay
             if not maskTransparency:
                 maskTransparency = 0
-            ds9.setMaskTransparency(maskTransparency)
+            getDisplay().setMaskTransparency(maskTransparency)
 
         if display and showSubtracted:
-            ds9.mtv(subtractRes.subtractedExposure, frame=lsstDebug.frame, title="Subtracted image")
+            getDisplay(frame=lsstDebug.frame).mtv(subtractRes.subtractedExposure, title="Subtracted image")
             mi = subtractRes.subtractedExposure.getMaskedImage()
             x0, y0 = mi.getX0(), mi.getY0()
-            with ds9.Buffering():
+            with getDisplay().Buffering():
                 for s in diaSources:
                     x, y = s.getX() - x0, s.getY() - y0
                     ctype = "red" if s.get("flags.negative") else "yellow"
@@ -718,7 +718,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         ptype = "+"
                     else:
                         ptype = "o"
-                    ds9.dot(ptype, x, y, size=4, frame=lsstDebug.frame, ctype=ctype)
+                    getDisplay(frame=lsstDebug.frame).dot(ptype, x, y, size=4, ctype=ctype)
             lsstDebug.frame += 1
 
         if display and showPixelResiduals and selectSources:

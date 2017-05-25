@@ -23,7 +23,8 @@ from __future__ import absolute_import, division, print_function
 import random
 
 import lsst.afw.math as afwMath
-import lsst.afw.display.ds9 as ds9
+from lsst.afw.display import getDisplay
+import lsst.afw.display as afwDisplay
 import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
@@ -302,7 +303,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         if display:
             frame = display
             if displayExposure:
-                ds9.mtv(exposure, frame=frame, title="psf determination")
+                getDisplay(frame=frame).mtv(exposure, title="psf determination")
 
         #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         #
@@ -332,7 +333,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
                                       frame=frame)
             if displayPsfMosaic:
                 maUtils.showPsfMosaic(exposure, psf, frame=frame, showFwhm=True)
-                ds9.scale(0, 1, "linear", frame=frame)
+                getDisplay(frame=frame).scale(0, 1, "linear")
                 frame += 1
 
         return pipeBase.Struct(
@@ -353,14 +354,15 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
 
 def showPsfSpatialCells(exposure, cellSet, showBadCandidates, frame=1):
     maUtils.showPsfSpatialCells(exposure, cellSet,
-                                symb="o", ctype=ds9.CYAN, ctypeUnused=ds9.YELLOW,
+                                symb="o", ctype=afwDisplay.CYAN, ctypeUnused=afwDisplay.YELLOW,
                                 size=4, frame=frame)
     for cell in cellSet.getCellList():
         for cand in cell.begin(not showBadCandidates):  # maybe include bad candidates
             status = cand.getStatus()
-            ds9.dot('+', *cand.getSource().getCentroid(), frame=frame,
-                    ctype=ds9.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
-                    ds9.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else ds9.RED)
+            ds = getDisplay(frame=frame)
+            ds.dot('+', *cand.getSource().getCentroid(),
+                   ctype=afwDisplay.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
+                   afwDisplay.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else afwDisplay.RED)
 
 
 def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
@@ -393,8 +395,8 @@ def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
             pass
 
         mos.append(im, label,
-                   ds9.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
-                   ds9.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else ds9.RED)
+                   afwDisplay.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
+                   afwDisplay.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else afwDisplay.RED)
 
     if mos.images:
         mos.makeMosaic(frame=frame, title="Psf Candidates")

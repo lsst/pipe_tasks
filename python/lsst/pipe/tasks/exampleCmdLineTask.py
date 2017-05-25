@@ -20,7 +20,8 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from __future__ import absolute_import, division, print_function
-from lsst.afw.display.ds9 import mtv
+from lsst.afw.display import getDisplay
+import lsst.afw.display as afwDisplay
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .exampleStatsTasks import ExampleSigmaClippedStatsTask
@@ -70,7 +71,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     and \ref pipeTasks_writeCmdLineTask.
     The task reads in a "calexp" (a calibrated science \ref lsst::afw::image::Exposure "exposure"),
     computes statistics on the image plane, and logs and returns the statistics.
-    In addition, if debugging is enabled, it displays the image in ds9.
+    In addition, if debugging is enabled, it displays the image in getDisplay().
 
     The image statistics are computed using a subtask, in order to show how to call subtasks and how to
     \ref pipeBase_argumentParser_retargetSubtasks "retarget" (replace) them with variant subtasks.
@@ -138,7 +139,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         display = lsstDebug.Info(__name__).display
         if display:
             frame = 1
-            mtv(rawExp, frame=frame, title="exposure")
+            afwDisplay.getDisplay(frame=frame).mtv(rawExp, title="exposure")
 
         # return the pipe_base Struct that is returned by self.stats.run
         return self.stats.run(maskedImage)

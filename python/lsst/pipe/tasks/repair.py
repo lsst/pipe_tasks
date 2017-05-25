@@ -270,8 +270,8 @@ class RepairTask(pipeBase.Task):
 
         except Exception:
             if display:
-                import lsst.afw.display.ds9 as ds9
-                ds9.mtv(exposure0, title="Failed CR")
+                import lsst.afw.display as afwDisplay
+                getDisplay().mtv(exposure0, title="Failed CR")
             raise
 
         num = 0
@@ -282,13 +282,13 @@ class RepairTask(pipeBase.Task):
             num = len(crs)
 
             if display and displayCR:
-                import lsst.afw.display.ds9 as ds9
+                import lsst.afw.display as afwDisplay
                 import lsst.afw.display.utils as displayUtils
 
-                ds9.incrDefaultFrame()
-                ds9.mtv(exposure0, title="Post-CR")
+                getDisplay().incrDefaultFrame()
+                getDisplay().mtv(exposure0, title="Post-CR")
 
-                with ds9.Buffering():
+                with getDisplay().Buffering():
                     for cr in crs:
                         displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
 

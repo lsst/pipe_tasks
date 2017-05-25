@@ -37,7 +37,8 @@ import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 from lsst.meas.astrom import RefMatchTask, RefMatchConfig
-import lsst.afw.display.ds9 as ds9
+from lsst.afw.display import getDisplay
+import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField
 from .colorterms import ColortermLibrary
 
@@ -282,8 +283,8 @@ To investigate the \ref pipe_tasks_photocal_Debug, put something like
     import lsstDebug
     def DebugInfo(name):
         di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-        if name.endswith(".PhotoCal"):
-            di.display = 1
+        if name.endswith(".photoCal"):
+            di.displaySources = 1
 
         return di
 
@@ -389,11 +390,11 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         if len(afterFlagCut) != len(matches):
             if frame is not None:
-                with ds9.Buffering():
+                with getDisplay().Buffering():
                     for i, m in enumerate(matches):
                         if i not in afterFlagCutInd:
                             x, y = m.second.getCentroid()
-                            ds9.dot("x", x, y, size=4, frame=frame, ctype=ds9.RED)
+                            getDisplay(frame=frame).dot("x", x, y, size=4, ctype=afwDisplay.RED)
 
             matches = afterFlagCut
 
@@ -422,16 +423,16 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
             if len(afterRefCut) != len(matches):
                 if frame is not None:
-                    with ds9.Buffering():
+                    with getDisplay().Buffering():
                         for i, m in enumerate(matches):
                             if i not in afterRefCutInd:
                                 x, y = m.second.getCentroid()
-                                ds9.dot("+", x, y, size=4, frame=frame, ctype=ds9.BLUE)
+                                getDisplay(frame=frame).dot("+", x, y, size=4, ctype=afwDisplay.BLUE)
 
                                 if resolvedKey and m.first.get(resolvedKey):
-                                    ds9.dot("o", x, y, size=6, frame=frame, ctype=ds9.CYAN)
+                                    getDisplay(frame=frame).dot("o", x, y, size=6, ctype=afwDisplay.CYAN)
                                 if variableKey and m.first.get(variableKey):
-                                    ds9.dot("o", x, y, size=6, frame=frame, ctype=ds9.MAGENTA)
+                                    getDisplay(frame=frame).dot("o", x, y, size=6, ctype=afwDisplay.MAGENTA)
 
                 matches = afterRefCut
 
@@ -452,11 +453,11 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         if len(afterMagCut) != len(matches):
             if frame is not None:
-                with ds9.Buffering():
+                with getDisplay().Buffering():
                     for i, m in enumerate(matches):
                         if i not in afterMagCutInd:
                             x, y = m.second.getCentroid()
-                            ds9.dot("*", x, y, size=4, frame=frame, ctype=ds9.MAGENTA)
+                            getDisplay(frame=frame).dot("*", x, y, size=4, ctype=afwDisplay.MAGENTA)
 
             matches = afterMagCut
 
@@ -466,10 +467,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             raise RuntimeError("No sources remaining in match list after magnitude limit cuts.")
 
         if frame is not None:
-            with ds9.Buffering():
+            with getDisplay().Buffering():
                 for m in matches:
                     x, y = m.second.getCentroid()
-                    ds9.dot("o", x, y, size=4, frame=frame, ctype=ds9.GREEN)
+                    getDisplay(frame=frame).dot("o", x, y, size=4, ctype=afwDisplay.GREEN)
 
         result = []
         for m in matches:
@@ -660,7 +661,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         if displaySources:
             frame = 1
-            ds9.mtv(exposure, frame=frame, title="photocal")
+            getDisplay(frame=frame).mtv(exposure, title="photocal")
         else:
             frame = None
 
