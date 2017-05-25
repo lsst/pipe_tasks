@@ -60,7 +60,7 @@ def groupDataRefs(keys, dataRefIterable):
 
 
 def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepCoadd",
-                        tempExpDatasetType="deepCoadd_tempExp"):
+                        tempExpDatasetType="deepCoadd_directWarp"):
     """Group calibrated exposures overlapping a patch by the warped
     (temporary) exposure they contribute to.
 

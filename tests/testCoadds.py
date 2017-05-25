@@ -211,6 +211,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             raise unittest.SkipTest("meas_base could not be imported; skipping this test")
         self.mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
         self.butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)
+        self.coaddNameList = ["Coadd", "CoaddPsfMatched"]
+        self.warpNameList = ["Coadd_directWarp", "Coadd_psfMatchedWarp"]
 
     def tearDown(self):
         del self.mocksTask
@@ -241,67 +243,70 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
     @unittest.skip("Remove test until DM-5174 is complete")
     def testMasksRemoved(self):
-        image = self.butler.get(self.mocksTask.config.coaddName + 'Coadd_mock',
-                                {'filter': 'r', 'tract': 0, 'patch': '0,0'})
-        keys = image.getMaskedImage().getMask().getMaskPlaneDict().keys()
-        self.assertNotIn('CROSSTALK', keys)
-        self.assertNotIn('NOT_DEBLENDED', keys)
+        for dataProduct in self.coaddNameList:
+            image = self.butler.get(self.mocksTask.config.coaddName + dataProduct + "_mock",
+                                    {'filter': 'r', 'tract': 0, 'patch': '0,0'})
+            keys = image.getMaskedImage().getMask().getMaskPlaneDict().keys()
+            self.assertNotIn('CROSSTALK', keys)
+            self.assertNotIn('NOT_DEBLENDED', keys)
 
     def testTempExpInputs(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
-        for visit, obsVisitDict in getObsDict(self.butler, tract).items():
-            foundOneTempExp = False
-            for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
-                try:
-                    tempExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd_tempExp", visit=visit,
-                                           immediate=True)
-                    foundOneTempExp = True
-                except:
-                    continue
-                self.assertEqual(tractInfo.getWcs(), tempExp.getWcs())
-                coaddInputs = tempExp.getInfo().getCoaddInputs()
-                self.assertEqual(len(coaddInputs.visits), 1)
-                visitRecord = coaddInputs.visits[0]
-                self.assertEqual(visitRecord.getWcs(), tempExp.getWcs())
-                self.assertEqual(visitRecord.getBBox(), tempExp.getBBox())
-                self.assertGreater(len(coaddInputs.ccds), 0)
-                ccdKey = coaddInputs.ccds.getSchema().find("ccd").key
-                for ccdRecord in coaddInputs.ccds:
-                    ccd = ccdRecord.getI(ccdKey)
-                    obsRecord = obsVisitDict[ccd]
-                    self.assertEqual(obsRecord.getId(), ccdRecord.getId())
-                    self.assertEqual(obsRecord.getWcs(), ccdRecord.getWcs())
-                    self.assertEqual(obsRecord.getBBox(), ccdRecord.getBBox())
-                    self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
-            self.assertTrue(foundOneTempExp)
+        for dataProduct in self.warpNameList:
+            for visit, obsVisitDict in getObsDict(self.butler, tract).items():
+                foundOneTempExp = False
+                for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+                    try:
+                        tempExp = patchRef.get(self.mocksTask.config.coaddName + dataProduct, visit=visit,
+                                               immediate=True)
+                        foundOneTempExp = True
+                    except:
+                        continue
+                    self.assertEqual(tractInfo.getWcs(), tempExp.getWcs())
+                    coaddInputs = tempExp.getInfo().getCoaddInputs()
+                    self.assertEqual(len(coaddInputs.visits), 1)
+                    visitRecord = coaddInputs.visits[0]
+                    self.assertEqual(visitRecord.getWcs(), tempExp.getWcs())
+                    self.assertEqual(visitRecord.getBBox(), tempExp.getBBox())
+                    self.assertGreater(len(coaddInputs.ccds), 0)
+                    ccdKey = coaddInputs.ccds.getSchema().find("ccd").key
+                    for ccdRecord in coaddInputs.ccds:
+                        ccd = ccdRecord.getI(ccdKey)
+                        obsRecord = obsVisitDict[ccd]
+                        self.assertEqual(obsRecord.getId(), ccdRecord.getId())
+                        self.assertEqual(obsRecord.getWcs(), ccdRecord.getWcs())
+                        self.assertEqual(obsRecord.getBBox(), ccdRecord.getBBox())
+                        self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
+                self.assertTrue(foundOneTempExp)
 
     def testCoaddInputs(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
         obsCatalog = self.butler.get("observations", tract=tract, immediate=True)
         for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
-            coaddExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd", immediate=True)
-            self.assertEqual(tractInfo.getWcs(), coaddExp.getWcs())
-            coaddInputs = coaddExp.getInfo().getCoaddInputs()
-            try:
-                ccdVisitKey = coaddInputs.ccds.getSchema().find("visit").key
-            except:
-                print(patchRef.dataId)
-                print(coaddInputs.ccds.getSchema())
-                raise
-            for ccdRecord in coaddInputs.ccds:
-                obsRecord = obsCatalog.find(ccdRecord.getId())
-                self.assertEqual(obsRecord.getId(), ccdRecord.getId())
-                self.assertEqual(obsRecord.getWcs(), ccdRecord.getWcs())
-                self.assertEqual(obsRecord.getBBox(), ccdRecord.getBBox())
-                self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
-                self.assertIsNotNone(coaddInputs.visits.find(ccdRecord.getL(ccdVisitKey)))
-            for visitRecord in coaddInputs.visits:
-                nCcds = len([ccdRecord for ccdRecord in coaddInputs.ccds
-                             if ccdRecord.getL(ccdVisitKey) == visitRecord.getId()])
-                self.assertGreaterEqual(nCcds, 1)
-                self.assertLessEqual(nCcds, 2)
+            for dataProduct in self.coaddNameList:
+                coaddExp = patchRef.get(self.mocksTask.config.coaddName + dataProduct, immediate=True)
+                self.assertEqual(tractInfo.getWcs(), coaddExp.getWcs())
+                coaddInputs = coaddExp.getInfo().getCoaddInputs()
+                try:
+                    ccdVisitKey = coaddInputs.ccds.getSchema().find("visit").key
+                except:
+                    print(patchRef.dataId)
+                    print(coaddInputs.ccds.getSchema())
+                    raise
+                for ccdRecord in coaddInputs.ccds:
+                    obsRecord = obsCatalog.find(ccdRecord.getId())
+                    self.assertEqual(obsRecord.getId(), ccdRecord.getId())
+                    self.assertEqual(obsRecord.getWcs(), ccdRecord.getWcs())
+                    self.assertEqual(obsRecord.getBBox(), ccdRecord.getBBox())
+                    self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
+                    self.assertIsNotNone(coaddInputs.visits.find(ccdRecord.getL(ccdVisitKey)))
+                for visitRecord in coaddInputs.visits:
+                    nCcds = len([ccdRecord for ccdRecord in coaddInputs.ccds
+                                 if ccdRecord.getL(ccdVisitKey) == visitRecord.getId()])
+                    self.assertGreaterEqual(nCcds, 1)
+                    self.assertLessEqual(nCcds, 2)
 
     def testPsfInstallation(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
@@ -322,6 +327,11 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 self.assertEqual(newPsf.getBBox(n), record.getBBox())
 
     def testCoaddPsf(self, tract=0):
+        """Test that stars on the coadd are well represented by the attached PSF
+
+        in both direct and PSF-matched coadds. The attached PSF is a "CoaddPsf"
+        for direct coadds and a Model Psf for PSF-matched Coadds
+        """
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
         # Start by finding objects that never appeared on the edge of an image
@@ -347,33 +357,34 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
 
         truthCatalog = self.butler.get("truth", tract=tract, immediate=True)
         truthCatalog.sort()
-        nTested = 0
-        for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
-            coaddExp = patchRef.get(self.mocksTask.config.coaddName + "Coadd", immediate=True)
-            coaddWcs = coaddExp.getWcs()
-            coaddPsf = coaddExp.getPsf()
-            coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox())
-            for objectId in pureObjectIds:
-                truthRecord = truthCatalog.find(objectId)
-                position = coaddWcs.skyToPixel(truthRecord.getCoord())
-                if not coaddBBox.contains(position):
-                    continue
-                try:
-                    psfImage = coaddPsf.computeImage(position)
-                except:
-                    continue
-                psfImageBBox = psfImage.getBBox()
-                if not coaddExp.getBBox().contains(psfImageBBox):
-                    continue
-                starImage = lsst.afw.image.ImageF(coaddExp.getMaskedImage().getImage(),
-                                                  psfImageBBox).convertD()
-                starImage /= starImage.getArray().sum()
-                psfImage /= psfImage.getArray().sum()
-                residuals = lsst.afw.image.ImageD(starImage, True)
-                residuals -= psfImage
-
-                self.assertFloatsAlmostEqual(starImage.getArray(), psfImage.getArray(), rtol=1E-3, atol=1E-2)
-                nTested += 1
+        for dataProduct in self.coaddNameList:
+            nTested = 0
+            for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+                coaddExp = patchRef.get(self.mocksTask.config.coaddName + dataProduct, immediate=True)
+                coaddWcs = coaddExp.getWcs()
+                coaddPsf = coaddExp.getPsf()
+                coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox())
+                for objectId in pureObjectIds:
+                    truthRecord = truthCatalog.find(objectId)
+                    position = coaddWcs.skyToPixel(truthRecord.getCoord())
+                    if not coaddBBox.contains(position):
+                        continue
+                    try:
+                        psfImage = coaddPsf.computeImage(position)
+                    except:
+                        continue
+                    psfImageBBox = psfImage.getBBox()
+                    if not coaddExp.getBBox().contains(psfImageBBox):
+                        continue
+                    starImage = lsst.afw.image.ImageF(coaddExp.getMaskedImage().getImage(),
+                                                      psfImageBBox).convertD()
+                    starImage /= starImage.getArray().sum()
+                    psfImage /= psfImage.getArray().sum()
+                    residuals = lsst.afw.image.ImageD(starImage, True)
+                    residuals -= psfImage
+                    self.assertFloatsAlmostEqual(starImage.getArray(), psfImage.getArray(),
+                                                 rtol=1E-3, atol=1E-2)
+                    nTested += 1
         if nTested == 0:
             print("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
                   "first try running the test again)")

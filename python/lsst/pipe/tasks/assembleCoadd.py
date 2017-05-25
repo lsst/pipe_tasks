@@ -34,7 +34,7 @@ import lsst.afw.detection as afwDet
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer, WarpType
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
 from .scaleZeroPoint import ScaleZeroPointTask
@@ -145,6 +145,12 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.badMaskPlanes = ["NO_DATA", "BAD", "CR", ]
 
+    def validate(self):
+        CoaddBaseTask.ConfigClass.validate(self)
+        if self.makeDirect and self.makePsfMatched:
+            raise ValueError("Currently, assembleCoadd can only make either Direct or PsfMatched Coadds "
+                             "at a time. Set either makeDirect or makePsfMatched to False")
+
 
 # \addtogroup LSST_task_documentation
 # \{
@@ -157,7 +163,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     """!
 \anchor AssembleCoaddTask_
 
-\brief Assemble a coadded image from a set of coadded temporary exposures.
+\brief Assemble a coadded image from a set of warps (coadded temporary exposures).
 
 \section pipe_tasks_assembleCoadd_Contents Contents
   - \ref pipe_tasks_assembleCoadd_AssembleCoaddTask_Purpose
@@ -171,26 +177,29 @@ class AssembleCoaddTask(CoaddBaseTask):
 
 \copybrief AssembleCoaddTask_
 
-We want to assemble a coadded image from a set of coadded temporary exposures (coaddTempExps).
-Each input coaddTempExp covers a patch on the sky and corresponds to a single run/visit/exposure of the
-covered patch. We provide the task with a list of coaddTempExps (selectDataList) from which it selects
-coaddTempExps that cover the specified patch (pointed at by dataRef).
-Each coaddTempExp that goes into a coadd will typically have an independent photometric zero-point.
-Therefore, we must scale each coaddTempExp to set it to a common photometric zeropoint. By default, each
-coaddTempExp has backgrounds and hence will require config.doMatchBackgrounds=True.
+We want to assemble a coadded image from a set of Warps (also called
+coadded temporary exposures or coaddTempExps.
+Each input Warp covers a patch on the sky and corresponds to a single run/visit/exposure of the
+covered patch. We provide the task with a list of Warps (selectDataList) from which it selects
+Warps that cover the specified patch (pointed at by dataRef).
+Each Warp that goes into a coadd will typically have an independent photometric zero-point.
+Therefore, we must scale each Warp to set it to a common photometric zeropoint. By default, each
+Warp has backgrounds and hence will require config.doMatchBackgrounds=True.
 When background matching is enabled, the task may be configured to automatically select a reference exposure
 (config.autoReference=True). If this is not done, we require that the input dataRef provides access to a
-coaddTempExp (dataset type coaddName + 'Coadd_tempExp') which is used as the reference exposure.
+Warp (dataset type coaddName + 'Coadd' + warpType + 'Warp') which is used as the reference exposure.
+WarpType may be one of 'direct' or 'psfMatched', and the boolean configs config.makeDirect and
+config.makePsfMatched set which of the warp types will be coadded.
 The coadd is computed as a mean with optional outlier rejection.
-Criteria for outlier rejection are set in \ref AssembleCoaddConfig. Finally, coaddTempExps can have bad 'NaN'
+Criteria for outlier rejection are set in \ref AssembleCoaddConfig. Finally, Warps can have bad 'NaN'
 pixels which received no input from the source calExps. We interpolate over these bad (NaN) pixels.
 
 AssembleCoaddTask uses several sub-tasks. These are
 <DL>
   <DT>\ref ScaleZeroPointTask_ "ScaleZeroPointTask"</DT>
-  <DD> create and use an imageScaler object to scale the photometric zeropoint for each coaddTempExp</DD>
+  <DD> create and use an imageScaler object to scale the photometric zeropoint for each Warp</DD>
   <DT>\ref MatchBackgroundsTask_ "MatchBackgroundsTask"</DT>
-  <DD> match background in a coaddTempExp to a reference exposure (and select the reference exposure if one is
+  <DD> match background in a Warp to a reference exposure (and select the reference exposure if one is
   not provided).</DD>
   <DT>\ref InterpImageTask_ "InterpImageTask"</DT>
   <DD>interpolate across bad pixels (NaN) in the final coadd</DD>
@@ -214,12 +223,12 @@ the documetation for the subtasks for further information.
 
 \section pipe_tasks_assembleCoadd_AssembleCoaddTask_Example	A complete example of using AssembleCoaddTask
 
-AssembleCoaddTask assembles a set of warped coaddTempExp images into a coadded image. The AssembleCoaddTask
+AssembleCoaddTask assembles a set of warped images into a coadded image. The AssembleCoaddTask
 can be invoked by running assembleCoadd.py with the flag '--legacyCoadd'. Usage of assembleCoadd.py expects
 a data reference to the tract patch and filter to be coadded (specified using
 '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]') along with a list of
-coaddTempExps to attempt to coadd (specified using
-'--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]'). Only the coaddTempExps
+Warps to attempt to coadd (specified using
+'--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]'). Only the Warps
 that cover the specified tract and patch will be coadded. A list of the available optional
 arguments can be obtained by calling assembleCoadd.py with the --help command line argument:
 \code
@@ -242,7 +251,7 @@ We can perform all of these steps by running
 \code
 $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
 \endcode
-This will produce warped coaddTempExps for each visit. To coadd the warped data, we call assembleCoadd.py as
+This will produce warped exposures for each visit. To coadd the warped data, we call assembleCoadd.py as
 follows:
 \code
 assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24\endcode
@@ -278,24 +287,31 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                    mask.getMaskPlaneDict().keys())
             del mask
 
+        if self.config.makeDirect:
+            self.warpType = WarpType.DIRECT
+        elif self.config.makePsfMatched:
+            self.warpType = WarpType.PSF_MATCHED
+        else:
+            raise ValueError("Neither makeDirect nor makePsfMatched configs are True")
+
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
         """!
-        \brief Assemble a coadd from a set of coaddTempExp
+        \brief Assemble a coadd from a set of Warps
 
-        Coadd a set of coaddTempExps. Compute weights to be applied to each coaddTempExp and find scalings to
-        match the photometric zeropoint to a reference coaddTempExp. Optionally, match backgrounds across
-        coaddTempExps if the background has not already been removed. Assemble the coaddTempExps using
+        Coadd a set of Warps. Compute weights to be applied to each Warp and find scalings to
+        match the photometric zeropoint to a reference Warp. Optionally, match backgrounds across
+        Warps if the background has not already been removed. Assemble the Warps using
         \ref assemble. Interpolate over NaNs and optionally write the coadd to disk. Return the coadded
         exposure.
 
         \anchor runParams
-        \param[in] dataRef: Data reference defining the patch for coaddition and the reference coaddTempExp
+        \param[in] dataRef: Data reference defining the patch for coaddition and the reference Warp
                         (if config.autoReference=False). Used to access the following data products:
                         - [in] self.config.coaddName + "Coadd_skyMap"
-                        - [in] self.config.coaddName + "Coadd_tempExp" (optionally)
+                        - [in] self.config.coaddName + "Coadd_ + <warpType> + "Warp" (optionally)
                         - [out] self.config.coaddName + "Coadd"
-        \param[in] selectDataList[in]: List of data references to coaddTempExps. Data to be coadded will be
+        \param[in] selectDataList[in]: List of data references to Warps. Data to be coadded will be
                                    selected from this list based on overlap with the patch defined by dataRef.
 
         \return a pipeBase.Struct with fields:
@@ -310,7 +326,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
         inputData = self.prepareInputs(tempExpRefList)
-        self.log.info("Found %d %s", len(inputData.tempExpRefList), self.getTempExpDatasetName())
+        self.log.info("Found %d %s", len(inputData.tempExpRefList),
+                      self.getTempExpDatasetName(self.warpType))
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
@@ -340,23 +357,25 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             self.setBrightObjectMasks(coaddExp, dataRef.dataId, brightObjectMasks)
 
         if self.config.doWrite:
-            self.writeCoaddOutput(dataRef, coaddExp)
+            self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
+            dataRef.put(coaddExp, self.getCoaddDatasetName(self.warpType))
 
         return pipeBase.Struct(coaddExposure=coaddExp)
 
     def getTempExpRefList(self, patchRef, calExpRefList):
         """!
-        \brief Generate list of coaddTempExp data references corresponding to exposures that lie within the
+        \brief Generate list data references corresponding to warped exposures that lie within the
         patch to be coadded.
 
         \param[in] patchRef: Data reference for patch
         \param[in] calExpRefList: List of data references for input calexps
-        \return List of coaddTempExp data references
+        \return List of Warp/CoaddTempExp data references
         """
         butler = patchRef.getButler()
-        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(),
-                                        self.getTempExpDatasetName())
-        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(), g, groupData.keys) for
+        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(self.warpType),
+                                        self.getTempExpDatasetName(self.warpType))
+        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(self.warpType),
+                                          g, groupData.keys) for
                           g in groupData.groups.keys()]
         return tempExpRefList
 
@@ -364,7 +383,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         """!
         \brief Construct an image scaler for the background reference frame
 
-        Each coaddTempExp has a different background level. A reference background level must be chosen before
+        Each Warp has a different background level. A reference background level must be chosen before
         coaddition. If config.autoReference=True, \ref backgroundMatching will pick the reference level and
         this routine is a no-op and None is returned. Otherwise, use the
         \ref ScaleZeroPointTask_ "scaleZeroPoint" subtask to compute an imageScaler object for the provided
@@ -377,11 +396,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             return None
 
         # We've been given the data reference
-        dataset = self.getTempExpDatasetName()
+        dataset = self.getTempExpDatasetName(self.warpType)
         if not dataRef.datasetExists(dataset):
             raise RuntimeError("Could not find reference exposure %s %s." % (dataset, dataRef.dataId))
 
-        refExposure = dataRef.get(self.getTempExpDatasetName(), immediate=True)
+        refExposure = dataRef.get(self.getTempExpDatasetName(self.warpType), immediate=True)
         refImageScaler = self.scaleZeroPoint.computeImageScaler(
             exposure=refExposure,
             dataRef=dataRef,
@@ -393,9 +412,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \brief Prepare the input warps for coaddition by measuring the weight for each warp and the scaling
         for the photometric zero point.
 
-        Each coaddTempExp has its own photometric zeropoint and background variance. Before coadding these
-        coaddTempExps together, compute a scale factor to normalize the photometric zeropoint and compute the
-        weight for each coaddTempExp.
+        Each Warp has its own photometric zeropoint and background variance. Before coadding these
+        Warps together, compute a scale factor to normalize the photometric zeropoint and compute the
+        weight for each Warp.
 
         \param[in] refList: List of data references to tempExp
         \return Struct:
@@ -415,7 +434,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         tempExpRefList = []
         weightList = []
         imageScalerList = []
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         for tempExpRef in refList:
             if not tempExpRef.datasetExists(tempExpName):
                 self.log.warn("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
@@ -455,16 +474,16 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         """!
         \brief Perform background matching on the prepared inputs
 
-        Each coaddTempExp has a different background level that must be normalized to a reference level
+        Each Warp has a different background level that must be normalized to a reference level
         before coaddition. If no reference is provided, the background matcher selects one. If the background
-        matching is performed sucessfully, recompute the weight to be applied to the coaddTempExp to be
+        matching is performed sucessfully, recompute the weight to be applied to the Warp (coaddTempExp) to be
         consistent with the scaled background.
 
         \param[in] inputData: Struct from prepareInputs() with tempExpRefList, weightList, imageScalerList
-        \param[in] refExpDataRef: Data reference for background reference tempExp, or None
-        \param[in] refImageScaler: Image scaler for background reference tempExp, or None
+        \param[in] refExpDataRef: Data reference for background reference Warp, or None
+        \param[in] refImageScaler: Image scaler for background reference Warp, or None
         \return Struct:
-        - tempExprefList: List of data references to tempExp
+        - tempExprefList: List of data references to warped exposures (coaddTempExps)
         - weightList: List of weightings
         - imageScalerList: List of image scalers
         - backgroundInfoList: result from background matching
@@ -475,7 +494,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 imageScalerList=inputData.imageScalerList,
                 refExpDataRef=refExpDataRef if not self.config.autoReference else None,
                 refImageScaler=refImageScaler,
-                expDatasetType=self.getTempExpDatasetName(),
+                expDatasetType=self.getTempExpDatasetName(self.warpType),
             ).backgroundInfoList
         except Exception as e:
             self.log.fatal("Cannot match backgrounds: %s", e)
@@ -535,7 +554,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         rejection if config.doSigmaClip=True). Set the edge bits the the coadd mask based on the weight map.
 
         \param[in] skyInfo: Patch geometry information, from getSkyInfo
-        \param[in] tempExpRefList: List of data references to tempExp
+        \param[in] tempExpRefList: List of data references to Warps (previously called CoaddTempExps)
         \param[in] imageScalerList: List of image scalers
         \param[in] weightList: List of weights
         \param[in] bgInfoList: List of background data from background matching, or None
@@ -544,7 +563,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] mask: Mask to ignore when coadding
         \return coadded exposure
         """
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
         if mask is None:
             mask = self.getBadPixelMask()
@@ -601,7 +620,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] weightList: List of weights
         """
         assert len(tempExpRefList) == len(weightList), "Length mismatch"
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         # We load a single pixel of each coaddTempExp, because we just want to get at the metadata
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
@@ -618,7 +637,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         for tempExp, weight in zip(tempExpList, weightList):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
-        if self.config.doPsfMatch:
+        if self.warpType == WarpType.PSF_MATCHED:
             # The modelPsf BBox for a psfMatchedWarp/coaddTempExp was dynamically defined by
             # ModelPsfMatchTask as the square box bounding its spatially-variable, pre-matched WarpedPsf.
             # Likewise, set the PSF of a PSF-Matched Coadd to the modelPsf
@@ -655,7 +674,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] statsCtrl: Statistics control object for coadd
         """
         self.log.debug("Computing coadd over %s", bbox)
-        tempExpName = self.getTempExpDatasetName()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         maskedImageList = []
         for tempExpRef, imageScaler, bgInfo, altMask in zip(tempExpRefList, imageScalerList, bgInfoList,
@@ -779,7 +798,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \brief Create an argument parser
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_tempExp",
+        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_directWarp",
                                help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=AssembleCoaddDataIdContainer)
         parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
@@ -830,15 +849,15 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
         """
         keysCoadd = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd",
                                              level=self.level)
-        keysCoaddTempExp = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd_tempExp",
-                                                    level=self.level)
+        keysCoaddTempExp = namespace.butler.getKeys(datasetType=namespace.config.coaddName +
+                                                    "Coadd_directWarp", level=self.level)
 
         if namespace.config.doMatchBackgrounds:
             if namespace.config.autoReference:  # matcher will pick it's own reference image
                 datasetType = namespace.config.coaddName + "Coadd"
                 validKeys = keysCoadd
             else:
-                datasetType = namespace.config.coaddName + "Coadd_tempExp"
+                datasetType = namespace.config.coaddName + "Coadd_directWarp"
                 validKeys = keysCoaddTempExp
         else:  # bkg subtracted coadd
             datasetType = namespace.config.coaddName + "Coadd"
@@ -855,7 +874,7 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
                     if namespace.config.autoReference:
                         # user probably meant: autoReference = False
                         namespace.config.autoReference = False
-                        datasetType = namespace.config.coaddName + "Coadd_tempExp"
+                        datasetType = namespace.config.coaddName + "Coadd_directWarp"
                         print("Switching config.autoReference to False; applies only to background Matching.")
                         break
 
@@ -1195,7 +1214,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         clipIndices = []
 
         # build a list with a mask for each visit which can be modified with clipping information
-        tempExpClipList = [tmpExpRef.get(self.getTempExpDatasetName(),
+        tempExpClipList = [tmpExpRef.get(self.getTempExpDatasetName(self.warpType),
                                          immediate=True).getMaskedImage().getMask() for
                            tmpExpRef in tempExpRefList]
 

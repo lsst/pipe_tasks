@@ -21,12 +21,14 @@
 #
 from __future__ import absolute_import, division, print_function
 import numpy
+from enum import Enum
 
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
+import lsst.log as log
 
 from lsst.afw.fits import FitsError
 from lsst.coadd.utils import CoaddDataIdContainer
@@ -38,7 +40,12 @@ try:
 except ImportError:
     applyMosaicResults = None
 
-__all__ = ["CoaddBaseTask", "getSkyInfo"]
+__all__ = ["CoaddBaseTask", "getSkyInfo", "WarpType"]
+
+
+class WarpType(Enum):
+        DIRECT = 'direct'
+        PSF_MATCHED = 'psfMatched'
 
 
 class CoaddBaseConfig(pexConfig.Config):
@@ -62,13 +69,38 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
         target=CoaddInputRecorderTask
     )
-    doPsfMatch = pexConfig.Field(dtype=bool, doc="Match to modelPsf?", default=False)
+    doPsfMatch = pexConfig.Field(
+        dtype=bool,
+        doc="Match to modelPsf? Deprecated. Sets makePsfMatched=True, makeDirect=False",
+        default=False
+    )
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype=bool,
         doc="Apply meas_mosaic ubercal results to input calexps?",
         default=False
     )
+    makeDirect = pexConfig.Field(
+        doc="Make direct Warp/Coadds",
+        dtype=bool,
+        default=True,
+    )
+    makePsfMatched = pexConfig.Field(
+        doc="Make Psf-Matched Warp/Coadd?",
+        dtype=bool,
+        default=False,
+    )
+
+    def validate(self):
+        pexConfig.Config.validate(self)
+        if not self.makePsfMatched and not self.makeDirect:
+            raise RuntimeError("At least one of config.makePsfMatched and config.makeDirect must be True")
+        if self.doPsfMatch:
+            # Courtesy backwards compatibility.
+            # Configs do not have loggers
+            log.warn("Config doPsfMatch deprecated. Setting makePsfMatched=True and makeDirect=False")
+            self.makePsfMatched = True
+            self.makeDirect = False
 
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
@@ -156,11 +188,44 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             applyMosaicResults(dataRef, calexp=exposure)
         return exposure
 
-    def getCoaddDatasetName(self):
-        return self.config.coaddName + "Coadd"
+    def getCoaddDatasetName(self, warpType=WarpType.DIRECT):
+        """Return coadd name for given warpType and task config
 
-    def getTempExpDatasetName(self):
-        return self.config.coaddName + "Coadd_tempExp"
+        Parameters
+        ----------
+        warpType : WarpType Enum
+            Either WarpType.DIRECT or WarpType.PSF_MATCHED
+
+        Returns
+        -------
+        CoaddDatasetName : `string`
+        """
+        suffix = "" if warpType == WarpType.DIRECT else warpType.value[0].upper() + warpType.value[1:]
+        return self.config.coaddName + "Coadd" + suffix
+
+    def getTempExpDatasetName(self, warpType=WarpType.DIRECT):
+        """Return warp name for given warpType and task config
+
+        Parameters
+        ----------
+        warpType : WarpType Enum
+            Either WarpType.DIRECT or WarpType.PSF_MATCHED
+
+        Returns
+        -------
+        WarpDatasetName : `string`
+        """
+        return self.config.coaddName + "Coadd_" + warpType.value + "Warp"
+
+    def getWarpTypeList(self):
+        """Return list of requested warp types per the config.
+        """
+        warpTypeList = []
+        if self.config.makeDirect:
+            warpTypeList.append(WarpType.DIRECT)
+        if self.config.makePsfMatched:
+            warpTypeList.append(WarpType.PSF_MATCHED)
+        return warpTypeList
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -188,20 +253,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         \brief Convenience method to provide the bitmask from the mask plane names
         """
         return afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
-
-    def writeCoaddOutput(self, dataRef, obj, suffix=None):
-        """!
-        \brief Write a coadd product through the butler
-
-        \param[in]      dataRef  data reference for coadd
-        \param[in,out]  obj      coadd product to write
-        \param[in]      suffix   suffix to apply to coadd dataset name
-        """
-        objName = self.getCoaddDatasetName()
-        if suffix is not None:
-            objName += "_" + suffix
-        self.log.info("Persisting %s" % objName)
-        dataRef.put(obj, objName)
 
 
 class SelectDataIdContainer(pipeBase.DataIdContainer):

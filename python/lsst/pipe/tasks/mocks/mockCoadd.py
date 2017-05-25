@@ -220,7 +220,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         truth = self.buildTruthCatalog(butler, skyMap=skyMap)
         simSrcCatalog = self.buildInputImages(butler, obsCatalog=observations, truthCatalog=truth)
 
-    def makeCoaddTask(self, cls):
+    def makeCoaddTask(self, cls, assemblePsfMatched=False):
         """Helper function to create a Coadd task with configuration appropriate for the simulations.
 
         MockCoaddTask does not include MakeCoaddTempExpTask or AssembleCoaddTask as subtasks, because
@@ -234,9 +234,20 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         config.select.retarget(MockSelectImagesTask)
         if cls == MakeCoaddTempExpTask:
             config.bgSubtracted = True
-            config.doPsfMatch = False
+            config.makeDirect = True
+            config.makePsfMatched = True
+            config.modelPsf.defaultFwhm = 9
+            config.modelPsf.addWing = False
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].scaleByFwhm = False
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].kernelSize = 25
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellX = 64
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellY = 64
+
         elif cls == AssembleCoaddTask:
             config.doMatchBackgrounds = False
+            if assemblePsfMatched:
+                config.makePsfMatched = True
+                config.makeDirect = False
         return cls(config)
 
     def iterPatchRefs(self, butler, tractInfo):
@@ -254,20 +265,23 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         """Run the coadd tasks (MakeCoaddTempExp and AssembleCoadd) on the mock data.
 
         Must be run after buildInputImages.
+        Makes both direct and PSF-matched coadds
         """
         if skyMap is None:
             skyMap = butler.get(self.config.coaddName + "Coadd_skyMap")
         tractInfo = skyMap[tract]
         makeCoaddTempExpTask = self.makeCoaddTask(MakeCoaddTempExpTask)
         assembleCoaddTask = self.makeCoaddTask(AssembleCoaddTask)
+        assemblePsfMatchedCoaddTask = self.makeCoaddTask(AssembleCoaddTask, assemblePsfMatched=True)
         for patchRef in self.iterPatchRefs(butler, tractInfo):
             makeCoaddTempExpTask.run(patchRef)
         for patchRef in self.iterPatchRefs(butler, tractInfo):
             assembleCoaddTask.run(patchRef)
+            assemblePsfMatchedCoaddTask.run(patchRef)
 
     def buildMockCoadd(self, butler, truthCatalog=None, skyMap=None, tract=0):
-        """Directly create a simulation of the coadd, using the CoaddPsf of the coadd exposure
-        and the truth catalog.
+        """Directly create a simulation of the coadd, using the CoaddPsf (and ModelPsf)
+        of the direct (and psfMatched) coadd exposure and the truth catalog.
 
         Must be run after buildCoadd.
         """
@@ -279,16 +293,16 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         tractWcs = tractInfo.getWcs()
         for patchRef in self.iterPatchRefs(butler, tractInfo):
             # TODO: pybind11 remove `immediate=True` once DM-9112 is resolved
-            exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
-            exposure.getMaskedImage().getImage().set(0.0)
-            coaddPsf = lsst.meas.algorithms.CoaddPsf(
-                exposure.getInfo().getCoaddInputs().ccds, exposure.getWcs()
-            )
-            exposure.setPsf(coaddPsf)
-            for truthRecord in truthCatalog:
-                self.mockObject.drawSource(truthRecord, exposure, buffer=0)
-            patchRef.put(exposure, self.config.coaddName + "Coadd_mock")
-
+            for dataProduct in ["Coadd", "CoaddPsfMatched"]:
+                exposure = patchRef.get(self.config.coaddName + dataProduct, immediate=True)
+                exposure.getMaskedImage().getImage().set(0.0)
+                coaddPsf = lsst.meas.algorithms.CoaddPsf(
+                    exposure.getInfo().getCoaddInputs().ccds, exposure.getWcs()
+                )
+                exposure.setPsf(coaddPsf)
+                for truthRecord in truthCatalog:
+                    self.mockObject.drawSource(truthRecord, exposure, buffer=0)
+                patchRef.put(exposure, self.config.coaddName + dataProduct + "_mock")
 
 def run(root):
     """Convenience function to create and run MockCoaddTask with default settings.
