@@ -44,12 +44,23 @@ __all__ = ["CoaddBaseTask", "getSkyInfo", "WarpType"]
 
 
 class WarpType(Enum):
-        DIRECT = 'direct'
-        PSF_MATCHED = 'psfMatched'
+    """!Available Warp Types.
+
+    WarpType identifies the types of convolutions applied to Warps (previously CoaddTempExps).
+    Only two types are available: direct (for regular Warps/Coadds) and psfMatched
+    (for Warps/Coadds with homogenized PSFs). We expect to add a third type, likelihood,
+    for generating likelihood Coadds with Warps that have been correlated with their own PSF.
+    """
+    DIRECT = 'direct'
+    PSF_MATCHED = 'psfMatched'
 
 
 class CoaddBaseConfig(pexConfig.Config):
-    """Config for CoaddBaseTask
+    """!Configuration parameters for CoaddBaseTask
+
+    \anchor CoaddBaseConfig_
+
+    \brief Configuration parameters shared between MakeCoaddTempExp and AssembleCoadd
     """
     coaddName = pexConfig.Field(
         doc="Coadd name: typically one of deep or goodSeeing.",
@@ -112,7 +123,7 @@ class CoaddTaskRunner(pipeBase.TaskRunner):
 
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
-    """Base class for coaddition.
+    """!Base class for coaddition.
 
     Subclasses must specify _DefaultName
     """

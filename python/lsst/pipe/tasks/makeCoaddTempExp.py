@@ -58,9 +58,162 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         default=True,
     )
 
+## \addtogroup LSST_task_documentation
+## \{
+## \page MakeCoaddTempExpTask
+## \ref MakeCoaddTempExpTask_ "MakeCoaddTempExpTask"
+## \copybrief MakeCoaddTempExpTask
+## \}
+
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
-    """Task to produce <coaddName>Coadd_<warpType>Warp images
+    """!Warp and optionally PSF-Match calexps onto an a common projection.
+
+    @anchor MakeCoaddTempExpTask_
+
+    @section pipe_tasks_makeCoaddTempExp_Contents  Contents
+
+     - @ref pipe_tasks_makeCoaddTempExp_Purpose
+     - @ref pipe_tasks_makeCoaddTempExp_Initialize
+     - @ref pipe_tasks_makeCoaddTempExp_IO
+     - @ref pipe_tasks_makeCoaddTempExp_Config
+     - @ref pipe_tasks_makeCoaddTempExp_Debug
+     - @ref pipe_tasks_makeCoaddTempExp_Example
+
+    @section pipe_tasks_makeCoaddTempExp_Purpose  Description
+
+    Warp and optionally PSF-Match calexps onto a common projection, by
+    performing the following operations:
+    - Group calexps by visit/run
+    - For each visit, generate a Warp by calling method @ref makeTempExp.
+      makeTempExp loops over the visit's calexps calling @ref WarpAndPsfMatch
+      on each visit
+
+    The result is a `directWarp` (and/or optionally a `psfMatchedWarp`).
+
+    @section pipe_tasks_makeCoaddTempExp_Initialize  Task Initialization
+
+    @copydoc \_\_init\_\_
+
+    This task has no special keyword arguments.
+
+    @section pipe_tasks_makeCoaddTempExp_IO  Invoking the Task
+
+    This task is primarily designed to be run from the command line.
+
+    The main method is `run`, which takes a single butler data reference for the patch(es)
+    to process.
+
+    @copydoc run
+
+    @copydoc WarpType
+
+    @section pipe_tasks_makeCoaddTempExp_Config  Configuration parameters
+
+    See @ref MakeCoaddTempExpConfig and parameters inherited from
+    @link lsst.pipe.tasks.coaddBase.CoaddBaseConfig CoaddBaseConfig @endlink
+
+    @subsection pipe_tasks_MakeCoaddTempExp_psfMatching Guide to PSF-Matching Configs
+
+    To make `psfMatchedWarps`, select `config.makePsfMatched=True`. The subtask
+    @link lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask ModelPsfMatchTask @endlink
+    is responsible for the PSF-Matching, and its config is accessed via `config.warpAndPsfMatch.psfMatch`.
+    The optimal configuration depends on aspects of dataset: the pixel scale, average PSF FWHM and
+    dimensions of the PSF kernel. These configs include the requested model PSF, the matching kernel size,
+    padding of the science PSF thumbnail and spatial sampling frequency of the PSF.
+
+    *Config Guidelines*: The user must specify the size of the model PSF to which to match by setting
+    `config.modelPsf.defaultFwhm` in units of pixels. The appropriate values depends on science case.
+    In general, for a set of input images, this config should equal the FWHM of the visit
+    with the worst seeing. The smallest it should be set to is the median FWHM. The defaults
+    of the other config options offer a reasonable starting point.
+    The following list presents the most common problems that arise from a misconfigured
+    @link lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask ModelPsfMatchTask @endlink
+    and corresponding solutions. All assume the default Alard-Lupton kernel, with configs accessed via
+    ```config.warpAndPsfMatch.psfMatch.kernel['AL']```. Each item in the list is formatted as:
+    Problem: Explanation. *Solution*
+
+    *Troublshooting PSF-Matching Configuration:*
+    - Matched PSFs look boxy: The matching kernel is too small. _Increase the matching kernel size.
+        For example:_
+
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].kernelSize=27  # default 21
+
+        Note that increasing the kernel size also increases runtime.
+    - Matched PSFs look ugly (dipoles, quadropoles, donuts): unable to find good solution
+        for matching kernel. _Provide the matcher with more data by either increasing
+        the spatial sampling by decreasing the spatial cell size,_
+
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellX = 64  # default 128
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellY = 64  # default 128
+
+        _or increasing the padding around the Science PSF, for example:_
+
+            config.warpAndPsfMatch.psfMatch.autoPadPsfTo=1.6  # default 1.4
+
+        Increasing `autoPadPsfTo` increases the minimum ratio of input PSF dimensions to the
+        matching kernel dimensions, thus increasing the number of pixels available to fit
+        after convolving the PSF with the matching kernel.
+        Optionally, for debugging the effects of padding, the level of padding may be manually
+        controlled by setting turning off the automatic padding and setting the number
+        of pixels by which to pad the PSF:
+
+            config.warpAndPsfMatch.psfMatch.doAutoPadPsf = False  # default True
+            config.warpAndPsfMatch.psfMatch.padPsfBy = 6  # pixels. default 0
+
+    - Deconvolution: Matching a large PSF to a smaller PSF produces
+        a telltale noise pattern which looks like ripples or a brain.
+        _Increase the size of the requested model PSF. For example:_
+
+            config.modelPsf.defaultFwhm = 11  # Gaussian sigma in units of pixels.
+
+    - High frequency (sometimes checkered) noise: The matching basis functions are too small.
+        _Increase the width of the Gaussian basis functions. For example:_
+
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].alardSigGauss=[1.5, 3.0, 6.0]
+            # from default [0.7, 1.5, 3.0]
+
+
+    @section pipe_tasks_makeCoaddTempExp_Debug  Debug variables
+
+    MakeCoaddTempExpTask has no debug output, but its subtasks do.
+
+    @section pipe_tasks_makeCoaddTempExp_Example   A complete example of using MakeCoaddTempExpTask
+
+    This example uses the package ci_hsc to show how MakeCoaddTempExp fits
+    into the larger Data Release Processing.
+    Set up by running:
+
+        setup ci_hsc
+        cd $CI_HSC_DIR
+        # if not built already:
+        python $(which scons)  # this will take a while
+
+    The following assumes that `processCcd.py` and `makeSkyMap.py` have previously been run
+    (e.g. by building `ci_hsc` above) to generate a repository of calexps and an
+    output respository with the desired SkyMap. The command,
+
+        makeCoaddTempExp.py $CI_HSC_DIR/DATA --rerun ci_hsc \
+         --id patch=5,4 tract=0 filter=HSC-I \
+         --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 \
+         --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24 \
+         --config doApplyUberCal=False makePsfMatched=True modelPsf.defaultFwhm=11
+
+    writes a direct and PSF-Matched Warp to
+    - `$CI_HSC_DIR/DATA/rerun/ci_hsc/deepCoadd/HSC-I/0/5,4/warp-HSC-I-0-5,4-903988.fits` and
+    - `$CI_HSC_DIR/DATA/rerun/ci_hsc/deepCoadd/HSC-I/0/5,4/psfMatchedWarp-HSC-I-0-5,4-903988.fits`
+        respectively.
+
+    @note PSF-Matching in this particular dataset would benefit from adding
+    `--configfile ./matchingConfig.py` to
+    the command line arguments where `matchingConfig.py` is defined by:
+
+        echo "
+        config.warpAndPsfMatch.psfMatch.kernel['AL'].kernelSize=27
+        config.warpAndPsfMatch.psfMatch.kernel['AL'].alardSigGauss=[1.5, 3.0, 6.0]" > matchingConfig.py
+
+
+    Add the option `--help` to see more options.
     """
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
@@ -71,9 +224,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
     @pipeBase.timeMethod
     def run(self, patchRef, selectDataList=[]):
-        """Produce <coaddName>Coadd_<warpType>Warp images
-
-        <coaddName>Coadd_<warpType>Warp images are produced by warping and optionally PSF-matching.
+        """!Produce <coaddName>Coadd_<warpType>Warp images by warping and optionally PSF-matching.
 
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
