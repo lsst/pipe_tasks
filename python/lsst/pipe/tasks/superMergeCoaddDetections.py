@@ -61,7 +61,7 @@ def getInputSchema(self, DatasetClass, butler=None, schema=None):
     return schema
 
 
-class MergeDetectionsConfig(Config):
+class MergeCoaddDetectionsConfig(Config):
     priorityList = ListField(
         dtype=str, default=[],
         doc="Priority-ordered list of bands for the merge.")
@@ -124,8 +124,8 @@ class MergeDetectionsConfig(Config):
             raise RuntimeError("No priority list provided")
 
 
-class MergeDetectionsTask(SuperTask):
-    ConfigClass = MergeDetectionsConfig
+class MergeCoaddDetectionsTask(SuperTask):
+    ConfigClass = MergeCoaddDetectionsConfig
     _DefaultName = "mergeCoaddDetections"
 
     def __init__(self, butler=None, schema=None, **kwargs):
