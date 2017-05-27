@@ -34,7 +34,7 @@ from lsst.obs.base import repodb
 from .multiBand import CullPeaksConfig, getShortFilterName
 
 
-def makeMergedIdFactory(self, dataset, butler):
+def makeMergedIdFactory(dataset, butler):
     """Return an IdFactory for SourceCatalogs that includes the Coadd ID.
 
     The actual parameters used in the IdFactory are provided by
@@ -45,7 +45,7 @@ def makeMergedIdFactory(self, dataset, butler):
     return IdFactory.makeSource(expId, 64 - expBits)
 
 
-def getInputSchema(self, DatasetClass, butler=None, schema=None):
+def getInputSchema(DatasetClass, butler=None, schema=None):
     """Obtain the input schema either directly or froma  butler reference.
 
     Parameters
@@ -63,7 +63,9 @@ def getInputSchema(self, DatasetClass, butler=None, schema=None):
 
 class MergeCoaddDetectionsConfig(Config):
     priorityList = ListField(
-        dtype=str, default=[],
+        # Default is HSC-specific; should be set to [] here and picked up
+        # by per-camera overrides
+        dtype=str, default=["HSC-I", "HSC-R", "HSC-Z", "HSC-Y", "HSC-G",],
         doc="Priority-ordered list of bands for the merge.")
     minNewPeak = Field(
         dtype=float, default=1,
@@ -156,7 +158,7 @@ class MergeCoaddDetectionsTask(SuperTask):
         """Return a set of discrete work packages that can be run independently
         via runQuantum.
         """
-        quanta = {}
+        quanta = []
         byTractAndPatch = {}
         for inputCatalog in repoGraph.datasets[self.InputCatalog]:
             byTractAndPatch.setdefault(
@@ -180,12 +182,14 @@ class MergeCoaddDetectionsTask(SuperTask):
     def runQuantum(self, quantum, butler):
         """Merge coadd detection catalogs using a Butler for inputs and outputs.
         """
-        inputCatalogs = {dataset.filter.name: dataset.get(butler)
-                         for dataset in quantum.inputs[self.InputCatalog]}
+        inputCatalogs = {
+            dataset.filter.name: dataset.get(butler)
+            for dataset in quantum.inputs[self.InputCatalog]
+        }
         outputCatalogDataset, = quantum.outputs[self.OutputCatalog]
         idFactory = makeMergedIdFactory(outputCatalogDataset, butler)
         skyMap = butler.get("deepCoadd_skyMap")
-        tractInfo = skyMap.findTract(outputCatalogDataset.tract.number)
+        tractInfo = skyMap[outputCatalogDataset.tract.number]
         tractWcs = tractInfo.getWcs()
         patchBBox = tractInfo[outputCatalogDataset.patch.x,
                               outputCatalogDataset.patch.y].getOuterBBox()
@@ -279,8 +283,8 @@ class MergeCoaddDetectionsTask(SuperTask):
         """
         mergeDet = SourceCatalog(self.schema)
         peak = PeakCatalog(self.merged.getPeakSchema())
-        return {self.config.coaddName + "Coadd_mergeDet": mergeDet,
-                self.config.coaddName + "Coadd_peak": peak}
+        return {"deepCoadd_mergeDet": mergeDet,
+                "deepCoadd_peak": peak}
 
     def getSkySourceFootprints(self, mergedList, patchBBox,
                                growDetectedFootprints=0):
@@ -341,7 +345,5 @@ class MergeCoaddDetectionsTask(SuperTask):
         return skySourceFootprints
 
     def getDatasetClasses(self):
-        return dict(
-            inputs={self.InputCatalog.name: self.InputCatalog},
-            outputs={self.OutputCatalog.name: self.OutputCatalog}
-        )
+        return ({self.InputCatalog.name: self.InputCatalog},
+                {self.OutputCatalog.name: self.OutputCatalog})
