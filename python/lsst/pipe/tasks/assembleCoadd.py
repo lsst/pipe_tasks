@@ -50,6 +50,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
 \brief Configuration parameters for the \ref AssembleCoaddTask_ "AssembleCoaddTask"
     """
+    warpName = pexConfig.Field(
+        doc="Warp name: one of 'direct' or 'psfMatched'",
+        dtype=str,
+        default="direct",
+    )
     subregionSize = pexConfig.ListField(
         dtype=int,
         doc="Width, height of stack subregion size; "
@@ -109,7 +114,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc="Match backgrounds of coadd temp exposures before coadding them? "
         "If False, the coadd temp expsosures must already have been background subtracted or matched",
         dtype=bool,
-        default=True,
+        default=False,
     )
     autoReference = pexConfig.Field(
         doc="Automatically select the coadd temp exposure to use as a reference for background matching? "
@@ -149,12 +154,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.badMaskPlanes = ["NO_DATA", "BAD", "CR", ]
-
-    def validate(self):
-        CoaddBaseTask.ConfigClass.validate(self)
-        if self.makeDirect and self.makePsfMatched:
-            raise ValueError("Currently, assembleCoadd can only make either Direct or PsfMatched Coadds "
-                             "at a time. Set either makeDirect or makePsfMatched to False")
 
 
 # \addtogroup LSST_task_documentation
@@ -292,12 +291,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                    mask.getMaskPlaneDict().keys())
             del mask
 
-        if self.config.makeDirect:
-            self.warpType = "direct"
-        elif self.config.makePsfMatched:
-            self.warpType = "psfMatched"
-        else:
-            raise ValueError("Neither makeDirect nor makePsfMatched configs are True")
+        self.warpType = self.config.warpName
+
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
@@ -343,10 +338,12 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 self.log.warn("No valid background models")
                 return
 
+        ingredients = self.makeExtraInputs(dataRef, selectDataList)
         coaddExp = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                                  inputData.weightList,
                                  inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
-                                 doClip=self.config.doSigmaClip)
+                                 doClip=self.config.doSigmaClip,
+                                 ingredients=ingredients)
         if self.config.doMatchBackgrounds:
             self.addBackgroundMatchingMetadata(coaddExp, inputData.tempExpRefList,
                                                inputData.backgroundInfoList)
@@ -366,6 +363,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             dataRef.put(coaddExp, self.getCoaddDatasetName(self.warpType))
 
         return pipeBase.Struct(coaddExposure=coaddExp)
+
+    def makeExtraInputs(self, dataRef, selectDataList):
+        pass
 
     def getTempExpRefList(self, patchRef, calExpRefList):
         """!
@@ -546,7 +546,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None,
-                 altMaskList=None, doClip=False, mask=None):
+                 altMaskList=None, doClip=False, mask=None, ingredients=None):
         """!
         \anchor AssembleCoaddTask.assemble_
 
@@ -585,7 +585,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             statsCtrl.setMaskPropagationThreshold(bit, threshold)
 
         if doClip:
-            statsFlags = afwMath.MEANCLIP
+            statsFlags = afwMath.MEDIAN
         else:
             statsFlags = afwMath.MEAN
 
@@ -803,7 +803,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \brief Create an argument parser
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_directWarp",
+        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_" +
+                               cls.ConfigClass().warpName + "Warp",
                                help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=AssembleCoaddDataIdContainer)
         parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
@@ -1329,3 +1330,327 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
             tmpExpMask |= maskVisitClip
 
         return bigFootprintsCoadd
+
+
+class RobustAssembleCoaddConfig(AssembleCoaddConfig):
+    assembleCoaddPsfMatched = pexConfig.ConfigurableField(
+        target=AssembleCoaddTask,
+        doc="Task to assemble clean, artifact-free, PSF-matched Coadd",
+    )
+    clipDetection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect sources on difference between psfMatched warp and median psf-matched coadd")
+    minClipFootOverlap = pexConfig.Field(
+        doc="Minimum fractional overlap of clipped footprint with visit DETECTED to be clipped",
+        dtype=float,
+        default=0.6
+    )
+    minClipFootOverlapSingle = pexConfig.Field(
+        doc="Minimum fractional overlap of clipped footprint with visit DETECTED to be "
+        "clipped when only one visit overlaps",
+        dtype=float,
+        default=0.5
+    )
+    minClipFootOverlapDouble = pexConfig.Field(
+        doc="Minimum fractional overlap of clipped footprints with visit DETECTED to be "
+        "clipped when two visits overlap",
+        dtype=float,
+        default=0.45
+    )
+    maxClipFootOverlapDouble = pexConfig.Field(
+        doc="Maximum fractional overlap of clipped footprints with visit DETECTED when "
+        "considering two visits",
+        dtype=float,
+        default=0.15
+    )
+    minBigOverlap = pexConfig.Field(
+        doc="Minimum number of pixels in footprint to use DETECTED mask from the single visits "
+        "when labeling clipped footprints",
+        dtype=int,
+        default=100
+    )
+
+    def setDefaults(self):
+        # The numeric values for these configuration parameters were empirically determined, future work
+        # may further refine them.
+        AssembleCoaddConfig.setDefaults(self)
+        self.clipDetection.doTempLocalBackground = False
+        self.clipDetection.reEstimateBackground = False
+        self.clipDetection.returnOriginalFootprints = False
+        self.clipDetection.thresholdPolarity = "both"
+        self.clipDetection.thresholdValue = 2
+        self.clipDetection.nSigmaToGrow = 2
+        self.clipDetection.minPixels = 4
+        self.clipDetection.isotropicGrow = True
+        self.clipDetection.thresholdType = "pixel_stdev"
+        self.sigmaClip = 1.5
+        self.clipIter = 3
+        self.assembleCoaddPsfMatched.warpName = 'psfMatched'
+        self.assembleCoaddPsfMatched.doSigmaClip = False  # change to median when available
+
+class RobustAssembleCoaddTask(AssembleCoaddTask):
+    ConfigClass = RobustAssembleCoaddConfig
+    _DefaultName = "robustAssembleCoadd"
+
+    def __init__(self, *args, **kwargs):
+        """!
+        \brief Initialize the task and make the \ref SourceDetectionTask_ "clipDetection" subtask.
+        """
+        AssembleCoaddTask.__init__(self, *args, **kwargs)
+        schema = afwTable.SourceTable.makeMinimalSchema()
+        self.makeSubtask("clipDetection", schema=schema)
+        self.makeSubtask("assembleCoaddPsfMatched")
+
+    def makeExtraInputs(self, dataRef, selectDataList):
+        try:
+            # Get a PSF-Matched MEDIAN Coadd
+            templateCoadd = dataRef.get('deepCoaddPsfMatched')
+        except Exception as e:
+            templateCoadd = self.assembleCoaddPsfMatched.run(dataRef, selectDataList).coaddExposure
+        return pipeBase.Struct(templateCoadd=templateCoadd)
+
+
+    def _snrToBinary(self, arrIn, threshold=5, clipNeg=False):
+        arr = numpy.copy(arrIn)
+        arr[numpy.where(arrIn < threshold)] = 0
+        arr[numpy.where(arrIn >= threshold)] = 1
+        if clipNeg:
+            arr[numpy.where(arrIn <= -threshold)] = 1
+        return arr
+
+    def computeMaskList(self, templateCoadd, tempExpRefList, imageScalerList):
+        overlap = []  # hold the overlap with each visit
+        maskList = []  # which visit mask match
+        indexList = []  # index of visit in global list
+        differenceImageDict = {}
+        print("Creating Differences")
+        for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
+            warp = warpRef.get(self.getTempExpDatasetName('psfMatched'), immediate=True)
+            imageScaler.scaleMaskedImage(warp.getMaskedImage())
+            diff = warp.Factory(warp)
+            mi = diff.getMaskedImage()
+            mi -= templateCoadd.getMaskedImage()
+            #mi.writeFits('%s.fits'%(warpRef.dataId['visit']))
+            differenceImageDict[warpRef.dataId['visit']] = mi
+
+        print("Generating Count Map")
+        imList = []
+        keyList = []
+        varList = []
+        for key, mi in differenceImageDict.iteritems():
+            keyList.append(key)
+            imList.append(mi.getImage().getArray())
+            varList.append(mi.getVariance().getArray())
+
+        # not enough memory to do this in stack. Convert to bool bitmap first. 
+        del differenceImageDict
+        cube = numpy.array(imList)
+        cubeVar = numpy.array(varList)
+        cubeSNR = cube/numpy.sqrt(cubeVar)
+        del imList
+        del varList
+
+        count_pos = self._snrToBinary(cubeSNR, threshold=5, clipNeg=True)
+        sum_count_pos = numpy.nansum(count_pos, axis=0)
+
+        print("Generating MaskList")
+        maskList = []
+        for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
+            diff = warpRef.get(self.getTempExpDatasetName('psfMatched'), immediate=True)
+            imageScaler.scaleMaskedImage(diff.getMaskedImage())
+            mi = diff.getMaskedImage()
+            mi -= templateCoadd.getMaskedImage()
+            im = mi.getImage()
+            mask = mi.getMask()
+            var = mi.getVariance()
+            mask.addMaskPlane("CLIPPED")
+            snrIm = im.Factory(1./numpy.sqrt(var.getArray()))
+            snrIm *= im
+            snrArr = self._snrToBinary(snrIm.array, threshold=5, clipNeg=True)
+            #import pdb; pdb.set_trace()
+
+            noDataValue = mask.addMaskPlane("NO_DATA")
+            nans = numpy.zeros_like(snrArr, dtype=afwImage.MaskPixel)
+            nans[numpy.where(numpy.isnan(snrArr))] = 2**noDataValue
+            nansMask = afwImage.makeMaskFromArray(nans.astype(afwImage.MaskPixel))
+
+            snrArr[numpy.where(numpy.isnan(snrArr))] = 0
+            outliers = afwImage.makeMaskFromArray(snrArr.astype(afwImage.MaskPixel))
+            newSpans = afwGeom.SpanSet.fromMask(outliers)
+            splitSpans = newSpans.split()
+            #for each newSpan'
+
+            warp = warpRef.get(self.getTempExpDatasetName('direct'), immediate=True)
+            warpMask = warp.getMaskedImage().getMask()
+            warpMask |= nansMask
+            _ = warpMask.addMaskPlane("CLIPPED")
+            maskClipValue = warpMask.getMaskPlane("CLIPPED")
+            #maskClip = afwImage.Mask(outliers.getBBox())
+            #maskClipValue = maskClip.getMaskPlane("CLIPPED")
+            clipSpans = []
+            for i, span in enumerate(splitSpans):
+                x, y = span.indices()
+                counts = sum_count_pos[x, y]
+                percentOneEpoch = float(len(counts[numpy.where((counts == 1) | (counts == 2)) ]))/float(len(counts))
+                if percentOneEpoch > 0.50:
+                    clipSpans.append(span)
+            biggerClipSpans = [s.dilated(5, afwGeom.Stencil.BOX) for s in clipSpans]         
+            warpMask.setXY0(0, 0)
+            _ = [s.clippedTo(warpMask.getBBox()).setMask(warpMask, 2**maskClipValue) for s in biggerClipSpans]
+            warpMask.setXY0(im.getXY0())
+            maskList.append(warpMask)
+        
+        return maskList
+
+        """
+            exp = diff
+            mask = exp.getMask()
+            continue
+            maskClipValue = mask.getPlaneBitMask("CLIPPED")
+            maskDetValue = mask.getPlaneBitMask("DETECTED")
+            fpSet = self.clipDetection.detectFootprints(exp, doSmooth=True, clearMask=True)
+            # Merge positive and negative together footprints together
+            # fpSet.positive.merge(fpSet.negative)
+            footprints = fpSet.positive
+            self.log.info('Found %d potential clipped objects', len(footprints.getFootprints()))
+            ignoreMask = self.getBadPixelMask()
+
+            clipFootprints = []
+            clipIndices = []
+
+            tmpExpMask = warpRef.get(self.getTempExpDatasetName(self.warpType),
+                                     immediate=True).getMaskedImage().getMask()
+
+            for footprint in footprints.getFootprints():
+                nPixel = footprint.getArea()
+                ignore = countMaskFromFootprint(tmpExpMask, footprint, ignoreMask, 0x0)
+                overlapDet = countMaskFromFootprint(tmpExpMask, footprint, maskDetValue, ignoreMask)
+                totPixel = nPixel - ignore
+
+                # If we have more bad pixels than detection skip
+                if ignore > overlapDet or totPixel <= 0.5*nPixel or overlapDet == 0:
+                    continue
+                overlap.append(overlapDet/float(totPixel))
+                maskList.append(tmpExpMask)
+                indexList.append(i)
+
+                overlap = numpy.array(overlap)
+                if not len(overlap):
+                    continue
+
+                keep = False   # Should this footprint be marked as clipped?
+                keepIndex = []  # Which tempExps does the clipped footprint belong to
+
+                # If footprint only has one overlap use a lower threshold
+                if len(overlap) == 1:
+                    if overlap[0] > self.config.minClipFootOverlapSingle:
+                        keep = True
+                        keepIndex = [0]
+                else:
+                    # This is the general case where only visit should be clipped
+                    clipIndex = numpy.where(overlap > self.config.minClipFootOverlap)[0]
+                    if len(clipIndex) == 1:
+                        keep = True
+                        keepIndex = [clipIndex[0]]
+
+                    # Test if there are clipped objects that overlap two different visits
+                    clipIndex = numpy.where(overlap > self.config.minClipFootOverlapDouble)[0]
+                    if len(clipIndex) == 2 and len(overlap) > 3:
+                        clipIndexComp = numpy.where(overlap < self.config.minClipFootOverlapDouble)[0]
+                        if numpy.max(overlap[clipIndexComp]) < self.config.maxClipFootOverlapDouble:
+                            keep = True
+                            keepIndex = clipIndex
+
+                if not keep:
+                    continue
+
+                for index in keepIndex:
+                    footprint.spans.setMask(maskList[index], maskClipValue)
+
+                clipIndices.append(numpy.array(indexList)[keepIndex])
+                clipFootprints.append(footprint)
+        """
+
+
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList,
+                 ingredients, *args, **kwargs):
+        """!
+        \brief Assemble the coadd for a region
+
+        Compute the difference of coadds created with and without outlier rejection to identify coadd pixels
+        that have outlier values in some individual visits. Detect clipped regions on the difference image and
+        mark these regions on the one or two individual coaddTempExps where they occur if there is significant
+        overlap between the clipped region and a source.
+        This leaves us with a set of footprints from the difference image that have been identified as having
+        occured on just one or two individual visits. However, these footprints were generated from a
+        difference image. It is conceivable for a large diffuse source to have become broken up into multiple
+        footprints acrosss the coadd difference in this process.
+        Determine the clipped region from all overlapping footprints from the detected sources in each visit -
+        these are big footprints.
+        Combine the small and big clipped footprints and mark them on a new bad mask plane
+        Generate the coadd using \ref AssembleCoaddTask.assemble_ "AssembleCoaddTask.assemble" without outlier
+        removal. Clipped footprints will no longer make it into the coadd because they are marked in the new
+        bad mask plane.
+
+        N.b. *args and **kwargs are passed but ignored in order to match the call signature expected by the
+        parent task.
+
+        @param skyInfo: Patch geometry information, from getSkyInfo
+        @param tempExpRefList: List of data reference to tempExp
+        @param imageScalerList: List of image scalers
+        @param weightList: List of weights
+        @param bgModelList: List of background models from background matching
+        return coadd exposure
+        """
+        templateCoadd = ingredients.templateCoadd
+        maskList = self.computeMaskList(templateCoadd, tempExpRefList, imageScalerList)
+
+        badMaskPlanes = self.config.badMaskPlanes[:]
+        badMaskPlanes.append("CLIPPED")
+        badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
+        coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                             bgModelList, maskList,
+                                             doClip=False,
+                                             mask=badPixelMask)
+        return coaddExp
+
+        # # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
+        # # do not get propagated
+        # maskExp = coaddExp.getMaskedImage().getMask()
+        # maskExp |= maskClip
+
+        # return coaddExp
+
+        # result = self.detectClip(exp, tempExpRefList)
+
+        # self.log.info('Found %d clipped objects', len(result.clipFootprints))
+
+        # # Go to individual visits for big footprints
+        # maskClipValue = mask.getPlaneBitMask("CLIPPED")
+        # maskDetValue = mask.getPlaneBitMask("DETECTED") | mask.getPlaneBitMask("DETECTED_NEGATIVE")
+        # bigFootprints = self.detectClipBig(result.tempExpClipList, result.clipFootprints, result.clipIndices,
+        #                                    maskClipValue, maskDetValue)
+
+        # # Create mask of the current clipped footprints
+        # maskClip = mask.Factory(mask.getBBox(afwImage.PARENT))
+        # afwDet.setMaskFromFootprintList(maskClip, result.clipFootprints, maskClipValue)
+
+        # maskClipBig = maskClip.Factory(mask.getBBox(afwImage.PARENT))
+        # afwDet.setMaskFromFootprintList(maskClipBig, bigFootprints, maskClipValue)
+        # maskClip |= maskClipBig
+
+        # # Assemble coadd from base class, but ignoring CLIPPED pixels (doClip is false)
+        # badMaskPlanes = self.config.badMaskPlanes[:]
+        # badMaskPlanes.append("CLIPPED")
+        # badPixelMask = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
+        # coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+        #                                       bgModelList, result.tempExpClipList,
+        #                                       doClip=False,
+        #                                       mask=badPixelMask)
+
+        # # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
+        # # do not get propagated
+        # maskExp = coaddExp.getMaskedImage().getMask()
+        # maskExp |= maskClip
+
+        # return coaddExp

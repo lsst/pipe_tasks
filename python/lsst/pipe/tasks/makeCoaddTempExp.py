@@ -29,6 +29,7 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from .coaddBase import CoaddBaseTask
+import lsst.meas.algorithms as measAlg
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
@@ -42,6 +43,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         target=WarpAndPsfMatchTask,
         doc="Task to warp and PSF-match calexp",
     )
+    modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     doWrite = pexConfig.Field(
         doc="persist <coaddName>Coadd_<warpType>Warp",
         dtype=bool,
@@ -61,6 +63,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         doc="Configuration for CoaddPsf",
         dtype=CoaddPsfConfig,
     )
+
 
 ## \addtogroup LSST_task_documentation
 ## \{
