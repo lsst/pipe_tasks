@@ -26,7 +26,6 @@ import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
-import lsst.meas.algorithms as measAlg
 import lsst.log as log
 
 from lsst.afw.fits import FitsError
@@ -72,7 +71,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Match to modelPsf? Deprecated. Sets makePsfMatched=True, makeDirect=False",
         default=False
     )
-    modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype=bool,
         doc="Apply meas_mosaic ubercal results to input calexps?",
