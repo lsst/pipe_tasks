@@ -84,6 +84,8 @@ class ImageDifferenceConfig(pexConfig.Config):
                                      doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
+    doWriteWarpedTemplate = pexConfig.Field(dtype=bool, default=False,
+                                            doc="Write warped template? (Zogy only)")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
                                         doc="Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
@@ -356,6 +358,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                                           doWarping=True,
                                                           spatiallyVarying=spatiallyVarying)
                 subtractedExposure = subtractRes.subtractedExposure
+                if self.config.doWriteWarpedTemplate:
+                    sensorRef.put(subtractRes.warpedExposure, self.config.coaddName + "Diff_warpedExp")
+                if self.config.doWriteMatchedExp:
+                    sensorRef.put(subtractRes.matchedExposure, self.config.coaddName + "Diff_matchedExp")
 
             elif self.config.subtractAlgorithm == 'AL':
                 # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
