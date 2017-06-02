@@ -30,7 +30,8 @@ import lsst.utils.tests
 from lsst.utils import getPackageDir
 from lsst.obs.base import ExposureIdInfo
 from lsst.log import Log
-from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
+
 
 class PsfFlagTestCase(lsst.utils.tests.TestCase):
 
@@ -109,8 +110,10 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         # reserveLists should be the same
         self.assertEqual(reservedSources1, reservedSources2)
 
+
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()
