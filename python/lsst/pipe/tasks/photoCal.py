@@ -33,7 +33,6 @@ import numpy as np
 
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
-import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.math as afwMath
 from lsst.meas.astrom import RefMatchTask, RefMatchConfig
