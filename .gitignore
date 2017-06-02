@@ -46,3 +46,4 @@ bin/reportTaskTiming.py
 bin/transformCoaddMeasurement.py
 bin/transformForcedSrcMeasurement.py
 bin/transformSrcMeasurement.py
+bin/ingestImagesPgsql.py
