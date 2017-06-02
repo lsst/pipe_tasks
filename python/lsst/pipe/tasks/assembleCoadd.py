@@ -782,14 +782,14 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
                 bbox = afwGeom.BoxI(afwGeom.PointI(int(center[0] - 0.5*width), int(center[1] - 0.5*height)),
                                     afwGeom.PointI(int(center[0] + 0.5*width), int(center[1] + 0.5*height)))
-                foot = afwDetect.Footprint(bbox, exposure.getBBox())
+                spans = afwGeom.Spanset(bbox)
             elif rec["type"] == "circle":
                 radius = rec["radius"].asArcseconds()/plateScale   # convert to pixels
-                foot = afwDetect.Footprint(center, radius, exposure.getBBox())
+                spans = afwGeom.Spanset.fromShape(radius, offset=center)
             else:
                 self.log.warn("Unexpected region type %s at %s" % rec["type"], center)
                 continue
-
+            foot = afwDetect.Footprint(spans, exposure.getBBox())
             afwDetect.setMaskFromFootprint(mask, foot, self.brightObjectBitmask)
 
     @classmethod
