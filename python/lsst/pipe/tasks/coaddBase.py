@@ -21,7 +21,6 @@
 #
 from __future__ import absolute_import, division, print_function
 import numpy
-from enum import Enum
 
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
@@ -40,19 +39,7 @@ try:
 except ImportError:
     applyMosaicResults = None
 
-__all__ = ["CoaddBaseTask", "getSkyInfo", "WarpType"]
-
-
-class WarpType(Enum):
-    """!Available Warp Types.
-
-    WarpType identifies the types of convolutions applied to Warps (previously CoaddTempExps).
-    Only two types are available: direct (for regular Warps/Coadds) and psfMatched
-    (for Warps/Coadds with homogenized PSFs). We expect to add a third type, likelihood,
-    for generating likelihood Coadds with Warps that have been correlated with their own PSF.
-    """
-    DIRECT = 'direct'
-    PSF_MATCHED = 'psfMatched'
+__all__ = ["CoaddBaseTask", "getSkyInfo"]
 
 
 class CoaddBaseConfig(pexConfig.Config):
@@ -199,43 +186,43 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             applyMosaicResults(dataRef, calexp=exposure)
         return exposure
 
-    def getCoaddDatasetName(self, warpType=WarpType.DIRECT):
+    def getCoaddDatasetName(self, warpType="direct"):
         """Return coadd name for given warpType and task config
 
         Parameters
         ----------
-        warpType : WarpType Enum
-            Either WarpType.DIRECT or WarpType.PSF_MATCHED
+        warpType : string
+            Either 'direct' or 'psfMatched'
 
         Returns
         -------
         CoaddDatasetName : `string`
         """
-        suffix = "" if warpType == WarpType.DIRECT else warpType.value[0].upper() + warpType.value[1:]
+        suffix = "" if warpType == "direct" else warpType[0].upper() + warpType[1:]
         return self.config.coaddName + "Coadd" + suffix
 
-    def getTempExpDatasetName(self, warpType=WarpType.DIRECT):
+    def getTempExpDatasetName(self, warpType="direct"):
         """Return warp name for given warpType and task config
 
         Parameters
         ----------
-        warpType : WarpType Enum
-            Either WarpType.DIRECT or WarpType.PSF_MATCHED
+        warpType : string
+            Either 'direct' or 'psfMatched'
 
         Returns
         -------
         WarpDatasetName : `string`
         """
-        return self.config.coaddName + "Coadd_" + warpType.value + "Warp"
+        return self.config.coaddName + "Coadd_" + warpType + "Warp"
 
     def getWarpTypeList(self):
         """Return list of requested warp types per the config.
         """
         warpTypeList = []
         if self.config.makeDirect:
-            warpTypeList.append(WarpType.DIRECT)
+            warpTypeList.append("direct")
         if self.config.makePsfMatched:
-            warpTypeList.append(WarpType.PSF_MATCHED)
+            warpTypeList.append("psfMatched")
         return warpTypeList
 
     @classmethod

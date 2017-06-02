@@ -34,7 +34,7 @@ import lsst.afw.detection as afwDet
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer, WarpType
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
 from .scaleZeroPoint import ScaleZeroPointTask
@@ -288,9 +288,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             del mask
 
         if self.config.makeDirect:
-            self.warpType = WarpType.DIRECT
+            self.warpType = "direct"
         elif self.config.makePsfMatched:
-            self.warpType = WarpType.PSF_MATCHED
+            self.warpType = "psfMatched"
         else:
             raise ValueError("Neither makeDirect nor makePsfMatched configs are True")
 
@@ -637,7 +637,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         for tempExp, weight in zip(tempExpList, weightList):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
         coaddInputs.visits.sort()
-        if self.warpType == WarpType.PSF_MATCHED:
+        if self.warpType == "psfMatched":
             # The modelPsf BBox for a psfMatchedWarp/coaddTempExp was dynamically defined by
             # ModelPsfMatchTask as the square box bounding its spatially-variable, pre-matched WarpedPsf.
             # Likewise, set the PSF of a PSF-Matched Coadd to the modelPsf

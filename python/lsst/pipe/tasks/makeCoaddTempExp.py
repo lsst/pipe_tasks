@@ -28,7 +28,7 @@ import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 from lsst.meas.algorithms import CoaddPsf
-from .coaddBase import CoaddBaseTask, WarpType
+from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
@@ -106,7 +106,10 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
     @copydoc run
 
-    @copydoc WarpType
+    WarpType identifies the types of convolutions applied to Warps (previously CoaddTempExps).
+    Only two types are available: direct (for regular Warps/Coadds) and psfMatched
+    (for Warps/Coadds with homogenized PSFs). We expect to add a third type, likelihood,
+    for generating likelihood Coadds with Warps that have been correlated with their own PSF.
 
     @section pipe_tasks_makeCoaddTempExp_Config  Configuration parameters
 
@@ -242,9 +245,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         # DataRefs to return are of type *_directWarp unless only *_psfMatchedWarp requested
         if self.config.makePsfMatched and not self.config.makeDirect:
-            primaryWarpDataset = self.getTempExpDatasetName(WarpType.PSF_MATCHED)
+            primaryWarpDataset = self.getTempExpDatasetName("psfMatched")
         else:
-            primaryWarpDataset = self.getTempExpDatasetName(WarpType.DIRECT)
+            primaryWarpDataset = self.getTempExpDatasetName("direct")
 
         calExpRefList = self.selectExposures(patchRef, skyInfo, selectDataList=selectDataList)
         if len(calExpRefList) == 0:
@@ -350,7 +353,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             try:
                 numGoodPix = {warpType: 0 for warpType in warpTypeList}
                 for warpType in warpTypeList:
-                    exposure = warpedAndMatched.getDict()[warpType.value]
+                    exposure = warpedAndMatched.getDict()[warpType]
                     if exposure is None:
                         continue
                     coaddTempExp = coaddTempExps[warpType]
@@ -364,7 +367,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     totGoodPix[warpType] += numGoodPix[warpType]
                     self.log.debug("Calexp %s has %d good pixels in this patch (%.1f%%) for %s",
                                    calExpRef.dataId, numGoodPix[warpType],
-                                   100.0*numGoodPix[warpType]/skyInfo.bbox.getArea(), warpType.value)
+                                   100.0*numGoodPix[warpType]/skyInfo.bbox.getArea(), warpType)
                     if numGoodPix[warpType] > 0 and not didSetMetadata[warpType]:
                         coaddTempExp.setCalib(exposure.getCalib())
                         coaddTempExp.setFilter(exposure.getFilter())
@@ -381,11 +384,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         for warpType in warpTypeList:
             self.log.info("%sWarp has %d good pixels (%.1f%%)",
-                          warpType.value, totGoodPix[warpType], 100.0*totGoodPix[warpType]/skyInfo.bbox.getArea())
+                          warpType, totGoodPix[warpType], 100.0*totGoodPix[warpType]/skyInfo.bbox.getArea())
 
             if totGoodPix[warpType] > 0 and didSetMetadata[warpType]:
                 inputRecorder[warpType].finish(coaddTempExps[warpType], totGoodPix[warpType])
-                if warpType == WarpType.DIRECT:
+                if warpType == "direct":
                     coaddTempExps[warpType].setPsf(
                         CoaddPsf(inputRecorder[warpType].coaddInputs.ccds, skyInfo.wcs))
             else:
