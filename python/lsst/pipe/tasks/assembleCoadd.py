@@ -782,10 +782,10 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
                 bbox = afwGeom.BoxI(afwGeom.PointI(int(center[0] - 0.5*width), int(center[1] - 0.5*height)),
                                     afwGeom.PointI(int(center[0] + 0.5*width), int(center[1] + 0.5*height)))
-                spans = afwGeom.Spanset(bbox)
+                spans = afwGeom.SpanSet(bbox)
             elif rec["type"] == "circle":
                 radius = rec["radius"].asArcseconds()/plateScale   # convert to pixels
-                spans = afwGeom.Spanset.fromShape(radius, offset=center)
+                spans = afwGeom.SpanSet.fromShape(radius, offset=center)
             else:
                 self.log.warn("Unexpected region type %s at %s" % rec["type"], center)
                 continue
