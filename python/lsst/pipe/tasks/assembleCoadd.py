@@ -789,7 +789,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             else:
                 self.log.warn("Unexpected region type %s at %s" % rec["type"], center)
                 continue
-            spans.setMask(mask, self.brightObjectBitmask)
+            spans.clippedTo(mask.getBBox()).setMask(mask, self.brightObjectBitmask)
 
     @classmethod
     def _makeArgumentParser(cls):
