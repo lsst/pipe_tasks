@@ -789,8 +789,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             else:
                 self.log.warn("Unexpected region type %s at %s" % rec["type"], center)
                 continue
-            foot = afwDetect.Footprint(spans, exposure.getBBox())
-            afwDetect.setMaskFromFootprint(mask, foot, self.brightObjectBitmask)
+            spans.setMask(mask, self.brightObjectBitmask)
+
 
     @classmethod
     def _makeArgumentParser(cls):
