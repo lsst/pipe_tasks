@@ -55,13 +55,6 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
     def getTargetList(parsedCmd):
         return [parsedCmd.butler]
 
-    def precall(self, parsedCmd):
-        # We overload to disable writing/checking of schemas and configs.
-        # There's only one SkyMap per rerun anyway, so the config is redundant,
-        # and checking it means we can't overwrite or append to one once we've
-        # written it.
-        return True
-
     def __call__(self, butler):
         task = self.TaskClass(config=self.config, log=self.log)
         if self.doRaise:
@@ -137,11 +130,17 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         return pipeBase.ArgumentParser(name=cls._DefaultName)
 
     def _getConfigName(self):
-        """Return the name of the config dataset
+        """Disable persistence of config
+
+        There's only one SkyMap per rerun anyway, so the config is redundant,
+        and checking it means we can't overwrite or append to one once we've
+        written it.
         """
-        return "%s_makeSkyMap_config" % (self.config.coaddName,)
+        return None
 
     def _getMetadataName(self):
-        """Return the name of the metadata dataset
+        """Disable persistence of metadata
+
+        There's nothing worth persisting.
         """
-        return "%s_makeSkyMap_metadata" % (self.config.coaddName,)
+        return None
