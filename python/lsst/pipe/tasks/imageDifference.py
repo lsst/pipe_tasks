@@ -39,7 +39,8 @@ from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGauss
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
-    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, DecorrelateALKernelTask
+    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, \
+    DecorrelateALKernelTask, DecorrelateALKernelSpatialConfig, DecorrelateALKernelSpatialTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 
@@ -81,7 +82,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     doMatchSources = pexConfig.Field(dtype=bool, default=True,
                                      doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
-    doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
                                         doc="Write warped and PSF-matched template coadd exposure?")
@@ -116,10 +116,18 @@ class ImageDifferenceConfig(pexConfig.Config):
         doc="Warp and PSF match template to exposure, then subtract",
     )
     decorrelate = pexConfig.ConfigurableField(
-        target=DecorrelateALKernelTask,
-        doc="""Decorrelate effects of A&L kernel convolution on image difference, only if doSubtract is True.
-        If this option is enabled, then detection.thresholdValue should be set to 5.0 (rather than the
-        default of 5.5).""",
+        target=DecorrelateALKernelSpatialTask,
+        doc="""Decorrelate effects of A&L kernel convolution on image difference,
+        only if doSubtract is True.  If this option is enabled, then
+        detection.thresholdValue should be set to 5.0 (rather than the
+        default of 5.5). Will use the spatially-varying version of
+        the algorithm if doSpatiallyVarying is True.""",
+    )
+    doSpatiallyVarying = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="""If using Zogy or A&L decorrelation, perform these on a grid across the
+        image in order to allow for spatial variations"""
     )
     detection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
@@ -129,9 +137,14 @@ class ImageDifferenceConfig(pexConfig.Config):
     #    target=DipoleMeasurementTask,
     #    doc="Final source measurement on low-threshold detections; dipole fitting enabled.",
     # )
+    doNewDipoleFitting = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Measure dipoles using new algorithm?"
+    )
     measurement = pexConfig.ConfigurableField(
         target=DipoleFitTask,
-        doc="Enable updated dipole fitting method.",
+        doc="Enable updated dipole fitting method",
     )
     getTemplate = pexConfig.ConfigurableField(
         target=GetCoaddAsTemplateTask,
@@ -243,7 +256,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
         if self.config.doMeasurement:
-            if not self.config.doDipoleFitting:
+            if not self.config.doNewDipoleFitting:
                 self.makeSubtask("measurement", schema=self.schema,
                                  algMetadata=self.algMetadata)
             else:
@@ -541,9 +554,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         # If doSubtract is False, then subtractedExposure was fetched from disk (above), thus it may have
         # already been decorrelated. Thus, we do not do decorrelation if doSubtract is False.
         if self.config.doDecorrelation and self.config.doSubtract:
+            spatiallyVarying = self.config.doSpatiallyVarying
             decorrResult = self.decorrelate.run(exposure, templateExposure,
                                                 subtractedExposure,
-                                                subtractRes.psfMatchingKernel)
+                                                subtractRes.psfMatchingKernel,
+                                                doPreConvolve=False,
+                                                spatiallyVarying=spatiallyVarying)
             subtractedExposure = decorrResult.correctedExposure
 
         if self.config.doDetection:
@@ -571,11 +587,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 diaSources = results.sources
 
             if self.config.doMeasurement:
-                self.log.info("Running diaSource measurement")
-                if not self.config.doDipoleFitting:
+                doNewDipoleFitting = self.config.doNewDipoleFitting
+                self.log.info("Running diaSource measurement: newDipoleFitting=%r" % doNewDipoleFitting)
+                if doNewDipoleFitting:
+                    # Just fit dipole in diffim
                     self.measurement.run(diaSources, subtractedExposure)
                 else:
-                    if self.config.doSubtract:
+                    # Use (matched) template and science image (if avail.) to constrain dipole fitting
+                    if self.config.doSubtract and 'matchedExposure' in subtractRes.getDict():
                         self.measurement.run(diaSources, subtractedExposure, exposure,
                                              subtractRes.matchedExposure)
                     else:
