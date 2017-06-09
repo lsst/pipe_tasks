@@ -321,10 +321,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 self.log.warn("No valid background models")
                 return
 
+        nImage = afwImage.ImageU(skyInfo.bbox)
         coaddExp = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                                  inputData.weightList,
                                  inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
-                                 doClip=self.config.doSigmaClip)
+                                 doClip=self.config.doSigmaClip, nImage=nImage)
         if self.config.doMatchBackgrounds:
             self.addBackgroundMatchingMetadata(coaddExp, inputData.tempExpRefList,
                                                inputData.backgroundInfoList)
@@ -341,6 +342,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         if self.config.doWrite:
             self.writeCoaddOutput(dataRef, coaddExp)
+            if not nImage is None:
+                self.writeNImage(dataRef, nImage)
 
         return pipeBase.Struct(coaddExposure=coaddExp)
 
@@ -408,7 +411,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         statsCtrl.setNumIter(self.config.clipIter)
         statsCtrl.setAndMask(self.getBadPixelMask())
         statsCtrl.setNanSafe(True)
-
         # compute tempExpRefList: a list of tempExpRef that actually exist
         # and weightList: a list of the weight of the associated coadd tempExp
         # and imageScalerList: a list of scale factors for the associated coadd tempExp
@@ -522,7 +524,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None,
-                 altMaskList=None, doClip=False, mask=None):
+                 altMaskList=None, doClip=False, mask=None, nImage=None):
         """!
         \anchor AssembleCoaddTask.assemble_
 
@@ -581,12 +583,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             try:
                 self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
-                                       weightList, bgInfoList, altMaskList, statsFlags, statsCtrl)
+                                       weightList, bgInfoList, altMaskList, statsFlags, statsCtrl, nImage=nImage)
             except Exception as e:
                 self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
-
         return coaddExposure
 
     def assembleMetadata(self, coaddExposure, tempExpRefList, weightList):
@@ -634,7 +635,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         coaddExposure.getInfo().setApCorrMap(apCorrMap)
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
-                          bgInfoList, altMaskList, statsFlags, statsCtrl):
+                          bgInfoList, altMaskList, statsFlags, statsCtrl, nImage=None):
         """!
         \brief Assemble the coadd for a sub-region.
 
@@ -658,11 +659,12 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         tempExpName = self.getTempExpDatasetName()
         coaddMaskedImage = coaddExposure.getMaskedImage()
         maskedImageList = []
+        if not nImage is None:
+            nSubImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
         for tempExpRef, imageScaler, bgInfo, altMask in zip(tempExpRefList, imageScalerList, bgInfoList,
                                                             altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             maskedImage = exposure.getMaskedImage()
-
             if altMask:
                 altMaskSub = altMask.Factory(altMask, bbox, afwImage.PARENT)
                 maskedImage.getMask().swap(altMaskSub)
@@ -677,7 +679,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 maskedImage += backgroundImage.Factory(backgroundImage, bbox, afwImage.PARENT, False)
                 var = maskedImage.getVariance()
                 var += (bgInfo.fitRMS)**2
-
+            if not nImage is None:
+                array = nSubImage.getArray()
+                array += (maskedImage.getMask().getArray() & statsCtrl.getAndMask() == 0)
             if self.config.removeMaskPlanes:
                 mask = maskedImage.getMask()
                 for maskPlane in self.config.removeMaskPlanes:
@@ -691,8 +695,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         with self.timer("stack"):
             coaddSubregion = afwMath.statisticsStack(
                 maskedImageList, statsFlags, statsCtrl, weightList)
-
         coaddMaskedImage.assign(coaddSubregion, bbox)
+        if not nImage is None:
+            nImage.assign(nSubImage, bbox)
 
     def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):
         """!
@@ -1064,7 +1069,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList, *args, **kwargs):
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList, nImage=None, *args, **kwargs):
         """!
         \brief Assemble the coadd for a region
 
@@ -1122,7 +1127,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                                               bgModelList, result.tempExpClipList,
                                               doClip=False,
-                                              mask=badPixelMask)
+                                              mask=badPixelMask,
+                                              nImage=nImage)
 
         # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
         # do not get propagated
