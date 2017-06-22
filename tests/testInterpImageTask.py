@@ -64,7 +64,7 @@ class interpolationTestCase(unittest.TestCase):
         # We'll set the BAD bit in pixels we wish to interpolate over
         #
         pixelPlane = "BAD"
-        badBit = afwImage.MaskU.getPlaneBitMask(pixelPlane)
+        badBit = afwImage.Mask.getPlaneBitMask(pixelPlane)
         #
         # Set bad columns near left and right sides of image
         #

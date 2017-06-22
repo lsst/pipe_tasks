@@ -93,7 +93,7 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         config.doRepair = False
         config.doDiffIm = False
         config.badMaskPlanes = ("BAD", "SAT", "NO_DATA", "CR")
-        badPixelMask = afwImage.MaskU.getPlaneBitMask(config.badMaskPlanes)
+        badPixelMask = afwImage.MaskX.getPlaneBitMask(config.badMaskPlanes)
         task = SnapCombineTask(config=config)
 
         snap0 = makeRandomExposure(25, 25, 10000, 5000, badPixelMask)

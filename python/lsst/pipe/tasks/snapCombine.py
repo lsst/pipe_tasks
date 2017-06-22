@@ -262,7 +262,7 @@ class SnapCombineTask(pipeBase.Task):
 
         weightMap = combinedMi.getImage().Factory(combinedMi.getBBox())
         weight = 1.0
-        badPixelMask = afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes)
+        badPixelMask = afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
         addToCoadd(combinedMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
         addToCoadd(combinedMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
 

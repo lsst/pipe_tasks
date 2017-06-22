@@ -60,8 +60,9 @@ class BaseFakeSourcesTask(with_metaclass(abc.ABCMeta, lsst.pipe.base.Task)):
         multiple times by the run() method.
         """
         lsst.pipe.base.Task.__init__(self, **kwargs)
-        lsst.afw.image.MaskU.addMaskPlane(self.config.maskPlaneName)
-        self.bitmask = lsst.afw.image.MaskU.getPlaneBitMask(self.config.maskPlaneName)
+        lsst.afw.image.Mask[lsst.afw.image.MaskPixel].addMaskPlane(self.config.maskPlaneName)
+        self.bitmask = lsst.afw.image.Mask[lsst.afw.image.MaskPixel]\
+            .getPlaneBitMask(self.config.maskPlaneName)
 
     @abc.abstractmethod
     def run(self, exposure, background):
