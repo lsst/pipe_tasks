@@ -215,8 +215,6 @@ class SnapCombineTask(pipeBase.Task):
                 # Useful diagnostic for the degree of astrometric shift between snaps.
                 diffKern = diffRet.psfMatchingKernel
                 width, height = diffKern.getDimensions()
-                # TBD...
-                #psfAttr = measAlg.PsfAttributes(diffKern, width//2, height//2)
 
             else:
                 diffExp = afwImage.ExposureF(snap0, True)

@@ -34,7 +34,7 @@ import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, PsfAttributes, SingleGaussianPsf, \
+from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, \
     ObjectSizeStarSelectorTask
 from lsst.ip.diffim import ImagePsfMatchTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
@@ -320,14 +320,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateSources = template.sources
 
             # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
-            ctr = afwGeom.Box2D(exposure.getBBox()).getCenter()
-            psfAttr = PsfAttributes(sciencePsf, afwGeom.Point2I(ctr))
-            scienceSigmaOrig = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+            scienceSigmaOrig = sciencePsf.computeShape().getDeterminantRadius()
 
             # sigma of PSF of template image before warping
-            ctr = afwGeom.Box2D(templateExposure.getBBox()).getCenter()
-            psfAttr = PsfAttributes(templateExposure.getPsf(), afwGeom.Point2I(ctr))
-            templateSigma = psfAttr.computeGaussianWidth(psfAttr.ADAPTIVE_MOMENT)
+            templateSigma = templateExposure.getPsf().computeShape().getDeterminantRadius()
 
             # if requested, convolve the science exposure with its PSF
             # (properly, this should be a cross-correlation, but our code does not yet support that)
