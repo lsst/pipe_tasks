@@ -257,7 +257,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         for iPatchX in range(nPatchX):
             for iPatchY in range(nPatchY):
                 patchRef = butler.dataRef(self.config.coaddName + "Coadd",
-                                          tract=tractInfo.getId(), patch="%d,%d" % (iPatchX, iPatchY),
+                                          tract=tractInfo.getId(), patch="%dx%d" % (iPatchX, iPatchY),
                                           filter='r')
                 yield patchRef
 

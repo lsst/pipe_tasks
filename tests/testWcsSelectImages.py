@@ -112,7 +112,7 @@ def createPatch(
     patch = DummyPatch(xy0, dims)
     tract = DummyTract(patchId, patch, wcs)
     skymap = DummySkyMap(tractId, tract)
-    dataRef = DummyDataRef({'tract': tractId, 'patch': ",".join(map(str, patchId))}, deepCoadd_skyMap=skymap)
+    dataRef = DummyDataRef({'tract': tractId, 'patch': "x".join(map(str, patchId))}, deepCoadd_skyMap=skymap)
     return dataRef
 
 
