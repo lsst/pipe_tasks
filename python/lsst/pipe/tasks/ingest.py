@@ -29,6 +29,8 @@ class IngestArgumentParser(InputOnlyArgumentParser):
         self.add_argument("--mode", choices=["move", "copy", "link", "skip"], default="link",
                           help="Mode of delivering the files to their destination")
         self.add_argument("--create", action="store_true", help="Create new registry (clobber old)?")
+        self.add_argument("--ignore-ingested", dest="ignoreIngested", action="store_true",
+                          help="Ignore files that have already been ingested")
         self.add_id_argument("--badId", "raw", "Data identifier for bad data", doMakeDataRefList=False)
         self.add_argument("--badFile", nargs="*", default=[],
                           help="Names of bad files (no path; wildcards allowed)")
@@ -485,6 +487,9 @@ class IngestTask(Task):
                     self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
                     continue
                 if self.register.check(registry, fileInfo):
+                    if args.ignoreIngested:
+                        continue
+
                     self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
                 outfile = self.parse.getDestination(args.butler, fileInfo, infile)
                 ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
