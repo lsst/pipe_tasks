@@ -373,7 +373,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
         tract = int(dataId['tract'])
         if tract < 0 or tract >= 128:
             raise RuntimeError('tract not in range [0,128)')
-        patchX, patchY = (int(c) for c in dataId['patch'].split(','))
+        patchX, patchY = (int(c) for c in dataId['patch'].split('x'))
         for p in (patchX, patchY):
             if p < 0 or p >= 2**13:
                 raise RuntimeError('patch component not in range [0, 8192)')
