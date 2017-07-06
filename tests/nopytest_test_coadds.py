@@ -258,7 +258,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
     def testMasksRemoved(self):
         for dataProduct in self.coaddNameList:
             image = self.butler.get(self.mocksTask.config.coaddName + dataProduct + "_mock",
-                                    {'filter': 'r', 'tract': 0, 'patch': '0,0'})
+                                    {'filter': 'r', 'tract': 0, 'patch': '0_0'})
             keys = image.getMaskedImage().getMask().getMaskPlaneDict().keys()
             self.assertNotIn('CROSSTALK', keys)
             self.assertNotIn('NOT_DEBLENDED', keys)
@@ -453,7 +453,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         ref_schema = self.butler.get("deepCoadd_ref_schema").schema
         coadd_forced_schema = self.butler.get("deepCoadd_forced_src_schema").schema
         ccd_forced_schema = self.butler.get("forced_src_schema").schema
-        patchList = ['0,0', '0,1', '1,0', '1,1']
+        patchList = ['0_0', '0_1', '1_0', '1_1']
         for patch in patchList:
             det = self.butler.get("deepCoadd_det", filter='r', tract=0, patch=patch)
             self.assertSchemasEqual(det.schema, det_schema)
@@ -474,7 +474,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         """Test to see if algMetadata is persisted correctly from MeasureMergedCoaddSourcesTask.
 
         This test fails with a NotFoundError if the algorithm metadata is not persisted"""
-        patchList = ['0,0', '0,1', '1,0', '1,1']
+        patchList = ['0_0', '0_1', '1_0', '1_1']
         for patch in patchList:
             cat = self.butler.get("deepCoadd_meas", filter='r', tract=0, patch=patch)
             meta = cat.getTable().getMetadata()

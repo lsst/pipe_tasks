@@ -269,7 +269,7 @@ def getSkyInfo(coaddName, patchRef):
     tractInfo = skyMap[tractId]
 
     # patch format is "xIndex,yIndex"
-    patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
+    patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split("_"))
     patchInfo = tractInfo.getPatchInfo(patchIndex)
 
     return pipeBase.Struct(
