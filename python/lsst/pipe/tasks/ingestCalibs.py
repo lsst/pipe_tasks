@@ -28,7 +28,8 @@ class CalibsParseTask(ParseTask):
         """
         md = afwImage.readMetadata(filename, self.config.hdu)
         if not md.exists("OBSTYPE"):
-            raise RuntimeError("Unable to find the required header keyword OBSTYPE")
+            raise RuntimeError("Unable to find the required header keyword OBSTYPE in %s, hdu %d" %
+                               (filename, self.config.hdu))
         obstype = md.get("OBSTYPE").strip().lower()
         if "flat" in obstype:
             obstype = "flat"
@@ -220,8 +221,9 @@ class IngestCalibsTask(IngestTask):
                 else:
                     calibType = args.calibType
                 if calibType not in self.register.config.tables:
-                    self.log.warn(str("Skipped adding %s of observation type '%s' to registry" %
-                                      (infile, calibType)))
+                    self.log.warn(str("Skipped adding %s of observation type '%s' to registry "
+                                      "(must be one of %s)" %
+                                      (infile, calibType, ", ".join(self.register.config.tables))))
                     continue
                 if args.mode != 'skip':
                     outfile = self.parse.getDestination(args.butler, fileInfo, infile)
