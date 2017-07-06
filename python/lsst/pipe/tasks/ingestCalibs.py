@@ -28,7 +28,8 @@ class CalibsParseTask(ParseTask):
         """
         md = afwImage.readMetadata(filename, self.config.hdu)
         if not md.exists("OBSTYPE"):
-            raise RuntimeError("Unable to find the required header keyword OBSTYPE")
+            raise RuntimeError("Unable to find the required header keyword OBSTYPE in %s, hdu %d" %
+                               (filename, self.config.hdu))
         obstype = md.get("OBSTYPE").strip().lower()
         if "flat" in obstype:
             obstype = "flat"
@@ -210,7 +211,7 @@ class IngestCalibsTask(IngestTask):
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
-        calibRoot = args.calib if args.calib is not None else "."
+        calibRoot = args.calib if args.calib is not None else args.output
         filenameList = sum([glob(filename) for filename in args.files], [])
         with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun) as registry:
             for infile in filenameList:
@@ -220,8 +221,9 @@ class IngestCalibsTask(IngestTask):
                 else:
                     calibType = args.calibType
                 if calibType not in self.register.config.tables:
-                    self.log.warn(str("Skipped adding %s of observation type '%s' to registry" %
-                                      (infile, calibType)))
+                    self.log.warn(str("Skipped adding %s of observation type '%s' to registry "
+                                      "(must be one of %s)" %
+                                      (infile, calibType, ", ".join(self.register.config.tables))))
                     continue
                 if args.mode != 'skip':
                     outfile = self.parse.getDestination(args.butler, fileInfo, infile)
