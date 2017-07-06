@@ -72,7 +72,7 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         skyMap = patchRef.get(self.config.coaddName + "Coadd_skyMap")
 
         tractId = patchRef.dataId["tract"]
-        patchIndex = [int(val) for val in patchRef.dataId["patch"].split(",")]
+        patchIndex = [int(val) for val in patchRef.dataId["patch"].split("_")]
         tractInfo = skyMap[tractId]
         wcs = tractInfo.getWcs()
         patchInfo = tractInfo.getPatchInfo(patchIndex)
