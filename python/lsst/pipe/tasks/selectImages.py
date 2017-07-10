@@ -228,13 +228,12 @@ class PsfWcsSelectImagesConfig(pexConfig.Config):
     maxEllipResidual = pexConfig.Field(
         doc="Maximum median ellipticity residual",
         dtype=float,
-        default=0.006,
+        default=0.007,
         optional=True,
     )
     maxSizeScatter = pexConfig.Field(
         doc="Maximum scatter in the size residuals",
         dtype=float,
-        default=0.015,
         optional=True,
     )
     maxScaledSizeScatter = pexConfig.Field(
