@@ -228,12 +228,14 @@ class PsfWcsSelectImagesConfig(pexConfig.Config):
     maxEllipResidual = pexConfig.Field(
         doc="Maximum median ellipticity residual",
         dtype=float,
-        default=0.006
+        default=0.006,
+        optional=True,
     )
     maxSizeScatter = pexConfig.Field(
         doc="Maximum scatter in the size residuals",
         dtype=float,
-        default=0.015
+        default=0.015,
+        optional=True,
     )
     starSelection = pexConfig.Field(
         doc="select star with this field",
@@ -309,11 +311,11 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             scatterSize = sigmaMad(starSize - psfSize)
 
             valid = True
-            if medianE1 > self.config.maxEllipResidual:
+            if self.config.maxEllipResidual and medianE1 > self.config.maxEllipResidual:
                 self.log.info("Removing visit %s because median e residual too large: %f" %
                               (dataRef.dataId, medianE))
                 valid = False
-            elif scatterSize > self.config.maxSizeScatter:
+            elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
                 self.log.info("Removing visit %s because size scatter is too large: %f" %
                               (dataRef.dataId, scatterSize))
                 valid = False
