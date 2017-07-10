@@ -477,30 +477,33 @@ class IngestTask(Task):
         context = self.register.openRegistry(root, create=args.create, dryrun=args.dryrun)
         with context as registry:
             for infile in filenameList:
-                if self.isBadFile(infile, args.badFile):
-                    self.log.info("Skipping declared bad file %s" % infile)
-                    continue
                 try:
-                    fileInfo, hduInfoList = self.parse.getInfo(infile)
-                except Exception as e:
-                    if not self.config.allowError:
-                        raise
-                    self.log.warn("Error parsing %s (%s); skipping" % (infile, e))
-                    continue
-                if self.isBadId(fileInfo, args.badId.idList):
-                    self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
-                    continue
-                if self.register.check(registry, fileInfo):
-                    if args.ignoreIngested:
+                    if self.isBadFile(infile, args.badFile):
+                        self.log.info("Skipping declared bad file %s" % infile)
                         continue
+                    try:
+                        fileInfo, hduInfoList = self.parse.getInfo(infile)
+                    except Exception as e:
+                        if not self.config.allowError:
+                            raise
+                        self.log.warn("Error parsing %s (%s); skipping" % (infile, e))
+                        continue
+                    if self.isBadId(fileInfo, args.badId.idList):
+                        self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
+                        continue
+                    if self.register.check(registry, fileInfo):
+                        if args.ignoreIngested:
+                            continue
 
-                    self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
-                outfile = self.parse.getDestination(args.butler, fileInfo, infile)
-                ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
-                if not ingested:
-                    continue
-                for info in hduInfoList:
-                    self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+                        self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
+                    outfile = self.parse.getDestination(args.butler, fileInfo, infile)
+                    ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
+                    if not ingested:
+                        continue
+                    for info in hduInfoList:
+                        self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+                except Exception as exc:
+                    self.log.warn("Failed to ingest file %s: %s", infile, exc)
             self.register.addVisits(registry, dryrun=args.dryrun)
 
 
