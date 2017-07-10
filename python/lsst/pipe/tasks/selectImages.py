@@ -321,16 +321,16 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
 
             valid = True
             if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
-                self.log.info("Removing visit %s because median e residual too large: %f" %
-                              (dataRef.dataId, medianE))
+                self.log.info("Removing visit %s because median e residual too large: %f vs %f" %
+                              (dataRef.dataId, medianE, self.config.maxEllipResidual))
                 valid = False
             elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
-                self.log.info("Removing visit %s because size scatter is too large: %f" %
-                              (dataRef.dataId, scatterSize))
+                self.log.info("Removing visit %s because size scatter is too large: %f vs %f" %
+                              (dataRef.dataId, scatterSize, self.config.maxSizeScatter))
                 valid = False
             elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
-                self.log.info("Removing visit %s because scaled size scatter is too large: %f" %
-                              (dataRef.dataId, scaledScatterSize))
+                self.log.info("Removing visit %s because scaled size scatter is too large: %f vs %f" %
+                              (dataRef.dataId, scaledScatterSize, self.config.maxScaledSizeScatter))
                 valid = False
 
             if valid is False:
