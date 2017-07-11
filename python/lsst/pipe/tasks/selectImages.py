@@ -228,12 +228,19 @@ class PsfWcsSelectImagesConfig(pexConfig.Config):
     maxEllipResidual = pexConfig.Field(
         doc="Maximum median ellipticity residual",
         dtype=float,
-        default=0.006
+        default=0.007,
+        optional=True,
     )
     maxSizeScatter = pexConfig.Field(
         doc="Maximum scatter in the size residuals",
         dtype=float,
-        default=0.015
+        optional=True,
+    )
+    maxScaledSizeScatter = pexConfig.Field(
+        doc="Maximum scatter in the size residuals, scaled by the median size",
+        dtype=float,
+        default=0.009,
+        optional=True,
     )
     starSelection = pexConfig.Field(
         doc="select star with this field",
@@ -271,6 +278,8 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         The criteria are:
           - the median of the ellipticty residuals
           - the robust scatter of the size residuals (using the median absolute deviation)
+          - the robust scatter of the size residuals scaled by the square of
+            the median size
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
         @param coordList: List of Coord specifying boundary of patch
@@ -297,6 +306,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             starSize = np.power(starXX*starYY - starXY**2, 0.25)
             starE1 = (starXX - starYY)/(starXX + starYY)
             starE2 = 2*starXY/(starXX + starYY)
+            medianSize = np.median(starSize)
 
             psfSize = np.power(psfXX*psfYY - psfXY**2, 0.25)
             psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
@@ -307,15 +317,20 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             medianE = np.sqrt(medianE1**2 + medianE2**2)
 
             scatterSize = sigmaMad(starSize - psfSize)
+            scaledScatterSize = scatterSize/medianSize**2
 
             valid = True
-            if medianE1 > self.config.maxEllipResidual:
-                self.log.info("Removing visit %s because median e residual too large: %f" %
-                              (dataRef.dataId, medianE))
+            if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
+                self.log.info("Removing visit %s because median e residual too large: %f vs %f" %
+                              (dataRef.dataId, medianE, self.config.maxEllipResidual))
                 valid = False
-            elif scatterSize > self.config.maxSizeScatter:
-                self.log.info("Removing visit %s because size scatter is too large: %f" %
-                              (dataRef.dataId, scatterSize))
+            elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
+                self.log.info("Removing visit %s because size scatter is too large: %f vs %f" %
+                              (dataRef.dataId, scatterSize, self.config.maxSizeScatter))
+                valid = False
+            elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
+                self.log.info("Removing visit %s because scaled size scatter is too large: %f vs %f" %
+                              (dataRef.dataId, scaledScatterSize, self.config.maxScaledSizeScatter))
                 valid = False
 
             if valid is False:
