@@ -52,29 +52,30 @@ class TestFakes(lsst.utils.tests.TestCase):
         bitmask points to the correct plane
         '''
         maskPlaneName = "FAKE"
-        maskKeysBefore = list(lsst.afw.image.MaskU().getMaskPlaneDict())
+        maskKeysBefore = list(lsst.afw.image.Mask().getMaskPlaneDict())
         trialInstance = TrialFakeSourcesTask()
-        maskKeysAfter = list(lsst.afw.image.MaskU().getMaskPlaneDict())
+        maskKeysAfter = list(lsst.afw.image.Mask().getMaskPlaneDict())
         maskPlaneName = trialInstance.config.maskPlaneName
         self.assertNotIn(maskPlaneName, maskKeysBefore)
         self.assertIn(maskPlaneName, maskKeysAfter)
-        self.assertEqual(trialInstance.bitmask, lsst.afw.image.MaskU.getPlaneBitMask(maskPlaneName))
-        lsst.afw.image.MaskU.removeMaskPlane(maskPlaneName)
+        self.assertEqual(trialInstance.bitmask, lsst.afw.image.Mask[lsst.afw.image.MaskPixel]\
+                         .getPlaneBitMask(maskPlaneName))
+        lsst.afw.image.Mask[lsst.afw.image.MaskPixel].removeMaskPlane(maskPlaneName)
         del trialInstance
 
-    def testFakeMaskUsed(self):
+    def testFakeMasksed(self):
         '''
         Test that if the FAKE mask plane exists, it is used, and that the instance's bitmask
         points to the correct plane
         '''
         maskPlaneName = "FAKE"
-        lsst.afw.image.MaskU().addMaskPlane(maskPlaneName)
-        maskKeysBefore = list(lsst.afw.image.MaskU().getMaskPlaneDict())
+        lsst.afw.image.Mask[lsst.afw.image.MaskPixel].addMaskPlane(maskPlaneName)
+        maskKeysBefore = list(lsst.afw.image.Mask().getMaskPlaneDict())
         self.assertIn(maskPlaneName, maskKeysBefore)
-        maskPlaneBitMask = lsst.afw.image.MaskU.getPlaneBitMask(maskPlaneName)
+        maskPlaneBitMask = lsst.afw.image.Mask[lsst.afw.image.MaskPixel].getPlaneBitMask(maskPlaneName)
         trialInstance = TrialFakeSourcesTask()
         self.assertEqual(maskPlaneBitMask, trialInstance.bitmask)
-        lsst.afw.image.MaskU.removeMaskPlane(maskPlaneName)
+        lsst.afw.image.Mask[lsst.afw.image.MaskPixel].removeMaskPlane(maskPlaneName)
         del trialInstance
 
 

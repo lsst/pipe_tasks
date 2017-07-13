@@ -42,7 +42,7 @@ def makeTestImage(xsize=200, ysize=100, nCR=15):
 
     img = afwImage.makeImageFromArray(randArr)
     var = afwImage.ImageF(img, True)  # copy constructor
-    mask = afwImage.MaskU(xsize, ysize)
+    mask = afwImage.Mask(xsize, ysize)
 
     xind = numpy.random.randint(0, xsize, nCR)
     yind = numpy.random.randint(0, ysize, nCR)

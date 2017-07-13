@@ -817,7 +817,7 @@ class MergeDetectionsTask(MergeSourcesTask):
         # merged by this task).
         #
         patchBBox = skyInfo.patchInfo.getOuterBBox()
-        mask = afwImage.MaskU(patchBBox)
+        mask = afwImage.Mask(patchBBox)
         detectedMask = mask.getPlaneBitMask("DETECTED")
         for s in mergedList:
             foot = s.getFootprint()

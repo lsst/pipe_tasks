@@ -73,9 +73,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
 
         self.sctrl = afwMath.StatisticsControl()
         self.sctrl.setNanSafe(True)
-        self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(["NO_DATA", "DETECTED",
-                                                              "DETECTED_NEGATIVE", "SAT",
-                                                              "BAD", "INTRP", "CR"]))
+        self.sctrl.setAndMask(afwImage.Mask.getPlaneBitMask(["NO_DATA", "DETECTED", "DETECTED_NEGATIVE",
+                                                             "SAT", "BAD", "INTRP", "CR"]))
 
     def tearDown(self):
         self.vanilla = None

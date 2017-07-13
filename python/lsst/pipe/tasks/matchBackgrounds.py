@@ -48,7 +48,7 @@ class MatchBackgroundsConfig(pexConfig.Config):
     badMaskPlanes = pexConfig.ListField(
         doc="Names of mask planes to ignore while estimating the background",
         dtype=str, default=["NO_DATA", "DETECTED", "DETECTED_NEGATIVE", "SAT", "BAD", "INTRP", "CR"],
-        itemCheck=lambda x: x in afwImage.MaskU().getMaskPlaneDict(),
+        itemCheck=lambda x: x in afwImage.Mask().getMaskPlaneDict(),
     )
     gridStatistic = pexConfig.ChoiceField(
         dtype=str,
@@ -148,7 +148,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
 
         self.sctrl = afwMath.StatisticsControl()
-        self.sctrl.setAndMask(afwImage.MaskU.getPlaneBitMask(self.config.badMaskPlanes))
+        self.sctrl.setAndMask(afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes))
         self.sctrl.setNanSafe(True)
 
     @pipeBase.timeMethod

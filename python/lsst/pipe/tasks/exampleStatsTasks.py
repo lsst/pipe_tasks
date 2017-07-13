@@ -20,7 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from __future__ import absolute_import, division, print_function
-from lsst.afw.image import MaskU
+import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -110,7 +110,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         """
         pipeBase.Task.__init__(self, *args, **kwargs)
 
-        self._badPixelMask = MaskU.getPlaneBitMask(self.config.badMaskPlanes)
+        self._badPixelMask = afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
 
         self._statsControl = afwMath.StatisticsControl()
         self._statsControl.setNumSigmaClip(self.config.numSigmaClip)

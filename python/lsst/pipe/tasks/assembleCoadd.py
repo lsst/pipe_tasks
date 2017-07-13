@@ -279,7 +279,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         self.makeSubtask("scaleZeroPoint")
 
         if self.config.doMaskBrightObjects:
-            mask = afwImage.MaskU()
+            mask = afwImage.Mask()
             try:
                 self.brightObjectBitmask = 1 << mask.addMaskPlane(self.config.brightObjectMaskName)
             except pexExceptions.LsstCppException:
@@ -576,7 +576,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         statsCtrl.setWeighted(True)
         statsCtrl.setCalcErrorFromInputVariance(True)
         for plane, threshold in self.config.maskPropagationThresholds.items():
-            bit = afwImage.MaskU.getMaskPlane(plane)
+            bit = afwImage.Mask.getMaskPlane(plane)
             statsCtrl.setMaskPropagationThreshold(bit, threshold)
 
         if doClip:
@@ -899,7 +899,7 @@ def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
     """
     bbox = footprint.getBBox()
     bbox.clip(mask.getBBox(afwImage.PARENT))
-    fp = afwImage.MaskU(bbox)
+    fp = afwImage.Mask(bbox)
     subMask = mask.Factory(mask, bbox, afwImage.PARENT)
     footprint.spans.setMask(fp, bitmask)
     return numpy.logical_and((subMask.getArray() & fp.getArray()) > 0,
@@ -1136,7 +1136,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # Assemble coadd from base class, but ignoring CLIPPED pixels (doClip is false)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
-        badPixelMask = afwImage.MaskU.getPlaneBitMask(badMaskPlanes)
+        badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                                               bgModelList, result.tempExpClipList,
                                               doClip=False,
