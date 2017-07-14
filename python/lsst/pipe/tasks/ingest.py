@@ -30,7 +30,7 @@ class IngestArgumentParser(InputOnlyArgumentParser):
                           help="Mode of delivering the files to their destination")
         self.add_argument("--create", action="store_true", help="Create new registry (clobber old)?")
         self.add_argument("--ignore-ingested", dest="ignoreIngested", action="store_true",
-                          help="Ignore files that have already been ingested")
+                          help="Don't register files that have already been registered")
         self.add_id_argument("--badId", "raw", "Data identifier for bad data", doMakeDataRefList=False)
         self.add_argument("--badFile", nargs="*", default=[],
                           help="Names of bad files (no path; wildcards allowed)")
@@ -421,8 +421,12 @@ class IngestTask(Task):
                     # Silently ignore mkdir failures due to race conditions
                     if not os.path.isdir(outdir):
                         raise
-            if self.config.clobber and os.path.lexists(outfile):
-                os.unlink(outfile)
+            if os.path.lexists(outfile):
+                if self.config.clobber:
+                    os.unlink(outfile)
+                else:
+                    raise RuntimeError("File %s already exists; consider --config clobber=True" % outfile)
+
             if mode == "copy":
                 assertCanCopy(infile, outfile)
                 shutil.copyfile(infile, outfile)
