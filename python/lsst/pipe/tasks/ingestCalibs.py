@@ -192,6 +192,8 @@ class IngestCalibsArgumentParser(InputOnlyArgumentParser):
                           help="Type of the calibration data to be ingested;" +
                                " if omitted, the type is determined from" +
                                " the file header information")
+        self.add_argument("--ignore-ingested", dest="ignoreIngested", action="store_true",
+                          help="Don't register files that have already been registered")
         self.add_argument("files", nargs="+", help="Names of file")
 
 
@@ -232,6 +234,11 @@ class IngestCalibsTask(IngestTask):
                         self.log.warn(str("Failed to ingest %s of observation type '%s'" %
                                           (infile, calibType)))
                         continue
+                if self.register.check(registry, fileInfo, table=calibType):
+                    if args.ignoreIngested:
+                        continue
+
+                    self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun,
                                          create=args.create, table=calibType)
