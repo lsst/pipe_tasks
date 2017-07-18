@@ -214,7 +214,7 @@ class IngestCalibsTask(IngestTask):
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
         calibRoot = args.calib if args.calib is not None else args.output
-        filenameList = sum([glob(filename) for filename in args.files], [])
+        filenameList = self.expandFiles(args.files)
         with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun) as registry:
             for infile in filenameList:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
