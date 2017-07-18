@@ -466,9 +466,28 @@ class IngestTask(Task):
                 return True
         return False
 
+    def expandFiles(self, fileNameList):
+        """!Expand a set of filenames and globs, returning a list of filenames
+
+        \param fileNameList A list of files and glob patterns
+
+        N.b. globs obey Posix semantics, so a pattern that matches nothing is returned unchanged
+        """
+        filenameList = []
+        for globPattern in fileNameList:
+            files = glob(globPattern)
+
+            if not files:               # posix behaviour is to return pattern unchanged
+                self.log.warn("%s doesn't match any file" % globPattern)
+                continue
+
+            filenameList.extend(files)
+
+        return filenameList
+
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
-        filenameList = sum([glob(filename) for filename in args.files], [])
+        filenameList = self.expandFiles(args.files)
         root = args.input
         context = self.register.openRegistry(root, create=args.create, dryrun=args.dryrun)
         with context as registry:
