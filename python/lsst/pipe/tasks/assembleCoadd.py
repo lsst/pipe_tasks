@@ -34,6 +34,7 @@ import lsst.afw.detection as afwDet
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
+import lsst.log as log
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
@@ -57,19 +58,24 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         length=2,
         default=(2000, 2000),
     )
+    statistic = pexConfig.Field(
+        dtype=str,
+        doc="Main stacking statistic for aggregating over the epochs.",
+        default="MEANCLIP",
+    )
     doSigmaClip = pexConfig.Field(
         dtype=bool,
-        doc="Perform sigma clipped outlier rejection? If False then compute a simple mean.",
-        default=True,
+        doc="Perform sigma clipped outlier rejection with MEANCLIP statistic? (DEPRECATED)",
+        default=False,
     )
     sigmaClip = pexConfig.Field(
         dtype=float,
-        doc="Sigma for outlier rejection; ignored if doSigmaClip false.",
+        doc="Sigma for outlier rejection; ignored if non-clipping statistic selected.",
         default=3.0,
     )
     clipIter = pexConfig.Field(
         dtype=int,
-        doc="Number of iterations of outlier rejection; ignored if doSigmaClip false.",
+        doc="Number of iterations of outlier rejection; ignored if non-clipping statistic selected.",
         default=2,
     )
     scaleZeroPoint = pexConfig.ConfigurableField(
@@ -155,8 +161,19 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         if self.makeDirect and self.makePsfMatched:
             raise ValueError("Currently, assembleCoadd can only make either Direct or PsfMatched Coadds "
                              "at a time. Set either makeDirect or makePsfMatched to False")
+        if self.doSigmaClip and self.statistic != "MEANCLIP":
+            log.warn('doSigmaClip deprecated. To replicate behavior, setting statistic to "MEANCLIP"')
+            self.statistic = "MEANCLIP"
+        if self.doInterp and self.statistic not in ['MEAN', 'MEDIAN', 'MEANCLIP', 'VARIANCE', 'VARIANCECLIP']:
+            raise ValueError("Must set doInterp=False for statistic=%s, which does not "
+                             "compute and set a non-zero coadd variance estimate." % (self.statistic))
 
-
+        unstackableStats = ['NOTHING', 'ERROR', 'ORMASK']
+        if not hasattr(afwMath.Property, self.statistic) or self.statistic in unstackableStats:
+            stackableStats = [str(k) for k in afwMath.Property.__members__.keys()
+                              if str(k) not in unstackableStats]
+            raise ValueError("statistic %s is not allowed. Please choose one of %s."
+                             % (self.statistic, stackableStats))
 # \addtogroup LSST_task_documentation
 # \{
 # \page AssembleCoaddTask
@@ -345,8 +362,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         coaddExp = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                                  inputData.weightList,
-                                 inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
-                                 doClip=self.config.doSigmaClip)
+                                 inputData.backgroundInfoList if self.config.doMatchBackgrounds else None)
         if self.config.doMatchBackgrounds:
             self.addBackgroundMatchingMetadata(coaddExp, inputData.tempExpRefList,
                                                inputData.backgroundInfoList)
@@ -546,7 +562,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None,
-                 altMaskList=None, doClip=False, mask=None):
+                 altMaskList=None, mask=None):
         """!
         \anchor AssembleCoaddTask.assemble_
 
@@ -555,8 +571,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         Assemble the coadd using the provided list of coaddTempExps. Since the full coadd covers a patch (a
         large area), the assembly is performed over small areas on the image at a time in order to
         conserve memory usage. Iterate over subregions within the outer bbox of the patch using
-        \ref assembleSubregion to mean-stack the corresponding subregions from the coaddTempExps (with outlier
-        rejection if config.doSigmaClip=True). Set the edge bits the the coadd mask based on the weight map.
+        \ref assembleSubregion to stack the corresponding subregions from the coaddTempExps with the
+        statistic specified. Set the edge bits the coadd mask based on the weight map.
 
         \param[in] skyInfo: Patch geometry information, from getSkyInfo
         \param[in] tempExpRefList: List of data references to Warps (previously called CoaddTempExps)
@@ -564,7 +580,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] weightList: List of weights
         \param[in] bgInfoList: List of background data from background matching, or None
         \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
-        \param[in] doClip: Use clipping when codding?
         \param[in] mask: Mask to ignore when coadding
         \return coadded exposure
         """
@@ -584,10 +599,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             bit = afwImage.Mask.getMaskPlane(plane)
             statsCtrl.setMaskPropagationThreshold(bit, threshold)
 
-        if doClip:
-            statsFlags = afwMath.MEANCLIP
-        else:
-            statsFlags = afwMath.MEAN
+        statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
 
         if bgInfoList is None:
             bgInfoList = [None]*len(tempExpRefList)
@@ -665,9 +677,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         For each coaddTempExp, check for (and swap in) an alternative mask if one is passed. If background
         matching is enabled, add the background and background variance from each coaddTempExp. Remove mask
-        planes listed in config.removeMaskPlanes, Finally, mean-stack
-        the actual exposures using \ref afwMath.statisticsStack "statisticsStack" with outlier rejection if
-        config.doSigmaClip=True. Assign the stacked subregion back to the coadd.
+        planes listed in config.removeMaskPlanes, Finally, stack the actual exposures using
+        \ref afwMath.statisticsStack "statisticsStack" with the statistic specified
+        by statsFlags. Typically, the statsFlag will be one of afwMath.MEAN for a mean-stack or
+        afwMath.MEANCLIP for outlier rejection using an N-sigma clipped mean where N and iterations
+        are specified by statsCtrl.  Assign the stacked subregion back to the coadd.
 
         \param[in] coaddExposure: The target image for the coadd
         \param[in] bbox: Sub-region to coadd
@@ -676,7 +690,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] weightList: List of weights
         \param[in] bgInfoList: List of background data from background matching
         \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
-        \param[in] statsFlags: Statistic for coadd
+        \param[in] statsFlags: afwMath.Property object for statistic for coadd
         \param[in] statsCtrl: Statistics control object for coadd
         """
         self.log.debug("Computing coadd over %s", bbox)
@@ -966,6 +980,19 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
         self.clipDetection.thresholdType = "pixel_stdev"
         self.sigmaClip = 1.5
         self.clipIter = 3
+        self.statistic = "MEAN"
+
+    def validate(self):
+        if self.doSigmaClip:
+            log.warn("Additional Sigma-clipping not allowed in Safe-clipped Coadds. "
+                     "Ignoring doSigmaClip.")
+            self.doSigmaClip = False
+        if self.statistic != "MEAN":
+            raise ValueError("Only MEAN statistic allowed for final stacking in SafeClipAssembleCoadd "
+                             "(%s chosen). Please set statistic to MEAN."
+                             % (self.statistic))
+        AssembleCoaddTask.ConfigClass.validate(self)
+
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -1139,14 +1166,12 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         afwDet.setMaskFromFootprintList(maskClipBig, bigFootprints, maskClipValue)
         maskClip |= maskClipBig
 
-        # Assemble coadd from base class, but ignoring CLIPPED pixels (doClip is false)
+        # Assemble coadd from base class, but ignoring CLIPPED pixels
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                              bgModelList, result.tempExpClipList,
-                                              doClip=False,
-                                              mask=badPixelMask)
+                                              bgModelList, result.tempExpClipList, mask=badPixelMask)
 
         # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
         # do not get propagated
@@ -1170,13 +1195,21 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         @param bgModelList: List of background models from background matching
         @return Difference image of unclipped and clipped coadd wrapped in an Exposure
         """
-        # Build the unclipped coadd
-        coaddMean = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               bgModelList, doClip=False)
+        # Clone and upcast self.config because current self.config is frozen
+        config = AssembleCoaddConfig()
+        # getattr necessary because subtasks do not survive Config.toDict()
+        configIntersection = {k: getattr(self.config, k)
+                              for k, v in self.config.toDict().items() if (k in config.keys())}
+        config.update(**configIntersection)
 
-        # Build the clipped coadd
-        coaddClip = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               bgModelList, doClip=True)
+        # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
+        config.statistic = 'MEAN'
+        task = AssembleCoaddTask(config=config)
+        coaddMean = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList)
+
+        config.statistic = 'MEANCLIP'
+        task = AssembleCoaddTask(config=config)
+        coaddClip = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList)
 
         coaddDiff = coaddMean.getMaskedImage().Factory(coaddMean.getMaskedImage())
         coaddDiff -= coaddClip.getMaskedImage()
