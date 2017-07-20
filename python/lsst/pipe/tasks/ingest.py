@@ -340,7 +340,7 @@ class RegisterTask(Task):
         values = [self.typemap[tt](info[col]) for col, tt in self.config.columns.items()]
 
         if self.config.ignore:
-            sql += " WHERE NOT EXISTS (SELECT 1 FROM %s WHERE " % self.config.table
+            sql += " WHERE NOT EXISTS (SELECT 1 FROM %s WHERE " % table
             sql += " AND ".join(["%s=%s" % (col, self.placeHolder) for col in self.config.unique])
             sql += ")"
             values += [info[col] for col in self.config.unique]
