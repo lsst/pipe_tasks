@@ -141,6 +141,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     brightObjectMaskName = pexConfig.Field(dtype=str, default="BRIGHT_OBJECT",
                                            doc="Name of mask bit used for bright objects")
 
+    coaddPsf = pexConfig.ConfigField(
+        doc="Configuration for CoaddPsf",
+        dtype=measAlg.CoaddPsfConfig,
+    )
+
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.badMaskPlanes = ["NO_DATA", "BAD", "CR", ]
@@ -646,7 +651,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             modelPsfWidthList = [modelPsf.computeBBox().getWidth() for modelPsf in modelPsfList]
             psf = modelPsfList[modelPsfWidthList.index(max(modelPsfWidthList))]
         else:
-            psf = measAlg.CoaddPsf(coaddInputs.ccds, coaddExposure.getWcs())
+            psf = measAlg.CoaddPsf(coaddInputs.ccds, coaddExposure.getWcs(),
+                                   self.config.coaddPsf.makeControl())
         coaddExposure.setPsf(psf)
         apCorrMap = measAlg.makeCoaddApCorrMap(coaddInputs.ccds, coaddExposure.getBBox(afwImage.PARENT),
                                                coaddExposure.getWcs())

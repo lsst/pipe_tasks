@@ -27,7 +27,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
-from lsst.meas.algorithms import CoaddPsf
+from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -56,6 +56,10 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         doc="Work with a background subtracted calexp?",
         dtype=bool,
         default=True,
+    )
+    coaddPsf = pexConfig.ConfigField(
+        doc="Configuration for CoaddPsf",
+        dtype=CoaddPsfConfig,
     )
 
 ## \addtogroup LSST_task_documentation
@@ -390,7 +394,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 inputRecorder[warpType].finish(coaddTempExps[warpType], totGoodPix[warpType])
                 if warpType == "direct":
                     coaddTempExps[warpType].setPsf(
-                        CoaddPsf(inputRecorder[warpType].coaddInputs.ccds, skyInfo.wcs))
+                        CoaddPsf(inputRecorder[warpType].coaddInputs.ccds, skyInfo.wcs,
+                                 self.config.coaddPsf.makeControl()))
             else:
                 # No good pixels. Exposure still empty
                 coaddTempExps[warpType] = None
