@@ -26,8 +26,7 @@ from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.table as afwTable
-from lsst.meas.astrom import (AstrometryTask, displayAstrometry,
-                              createMatchMetadata, denormalizeMatches)
+from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches
 from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
 from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
@@ -425,11 +424,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
         elif exposure is None:
             raise RuntimeError("doUnpersist false; exposure must be provided")
 
-        if self.config.doWrite and self.config.doAstrometry:
-            matchMeta = createMatchMetadata(exposure, border=self.pixelMargin)
-        else:
-            matchMeta = None
-
         exposureIdInfo = dataRef.get("expIdInfo")
 
         calRes = self.calibrate(
@@ -446,7 +440,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
                 background=calRes.background,
                 sourceCat=calRes.sourceCat,
                 astromMatches=calRes.astromMatches,
-                matchMeta=matchMeta,
+                matchMeta=calRes.matchMeta,
             )
 
         return calRes
@@ -523,6 +517,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         # perform astrometry calibration:
         # fit an improved WCS and update the exposure's WCS in place
         astromMatches = None
+        matchMeta = None
         if self.config.doAstrometry:
             try:
                 astromRes = self.astrometry.run(
@@ -530,6 +525,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
                     sourceCat=sourceCat,
                 )
                 astromMatches = astromRes.matches
+                matchMeta = astromRes.matchMeta
             except Exception as e:
                 if self.config.requireAstrometry:
                     raise
@@ -566,6 +562,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             background=background,
             sourceCat=sourceCat,
             astromMatches=astromMatches,
+            matchMeta=matchMeta,
         )
 
     def writeOutputs(self, dataRef, exposure, background, sourceCat,
