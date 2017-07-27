@@ -42,11 +42,6 @@ class WarpAndPsfMatchConfig(pexConfig.Config):
         dtype=afwMath.Warper.ConfigClass,
         doc="warper configuration",
     )
-    matchThenWarp = pexConfig.Field(
-        dtype=bool,
-        doc="Reverse order of warp and match operations to replicate legacy coadd temporary exposures",
-        default=False,
-    )
 
 
 class WarpAndPsfMatchTask(pipeBase.Task):
@@ -61,7 +56,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
 
     def run(self, exposure, wcs, modelPsf=None, maxBBox=None, destBBox=None,
             makeDirect=True, makePsfMatched=False):
-        """Warp and PSF-match exposure (if modelPsf is not None)
+        """Warp and optionally PSF-match exposure
 
         Parameters
         ----------
@@ -99,49 +94,28 @@ class WarpAndPsfMatchTask(pipeBase.Task):
         if not makePsfMatched and not makeDirect:
             self.log.warn("Neither makeDirect nor makePsfMatched requested")
 
-        if self.config.matchThenWarp:
-            # Legacy order of operations:
-            # PSF-matching is performed before warping, which is incorrect.
-            # a position-dependent warping (as is used in the general case) will
-            # re-introduce a position-dependent PSF.
-            if makePsfMatched:
+        # Warp PSF before overwriting exposure
+        xyTransform = afwImage.XYTransformFromWcsPair(wcs, exposure.getWcs())
+        psfWarped = WarpedPsf(exposure.getPsf(), xyTransform)
+
+        if makePsfMatched and maxBBox is not None:
+            # grow warped region to provide sufficient area for PSF-matching
+            pixToGrow = 2 * max(self.psfMatch.kConfig.sizeCellX,
+                                self.psfMatch.kConfig.sizeCellY)
+            # replace with copy
+            maxBBox = afwGeom.Box2I(maxBBox)
+            maxBBox.grow(pixToGrow)
+
+        with self.timer("warp"):
+            exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
+            exposure.setPsf(psfWarped)
+
+        if makePsfMatched:
+            try:
                 exposurePsfMatched = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-                with self.timer("warp"):
-                    exposurePsfMatched = self.warper.warpExposure(wcs, exposurePsfMatched,
-                                                                  maxBBox=maxBBox, destBBox=destBBox)
-            else:
+            except Exception as e:
                 exposurePsfMatched = None
-
-            if makeDirect:
-                # also make an unmatched temp exp
-                with self.timer("warp"):
-                    exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
-            else:
-                exposure = None
-
-        else:
-            # Warp PSF before overwriting exposure
-            xyTransform = afwImage.XYTransformFromWcsPair(wcs, exposure.getWcs())
-            psfWarped = WarpedPsf(exposure.getPsf(), xyTransform)
-
-            if makePsfMatched and maxBBox is not None:
-                # grow warped region to provide sufficient area for PSF-matching
-                pixToGrow = 2 * max(self.psfMatch.kConfig.sizeCellX,
-                                    self.psfMatch.kConfig.sizeCellY)
-                # replace with copy
-                maxBBox = afwGeom.Box2I(maxBBox)
-                maxBBox.grow(pixToGrow)
-
-            with self.timer("warp"):
-                exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
-                exposure.setPsf(psfWarped)
-
-            if makePsfMatched:
-                try:
-                    exposurePsfMatched = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
-                except Exception as e:
-                    exposurePsfMatched = None
-                    self.log.info("Cannot PSF-Match: %s" % (e))
+                self.log.info("Cannot PSF-Match: %s" % (e))
 
         return pipeBase.Struct(
             direct=exposure if makeDirect else None,
