@@ -76,6 +76,7 @@ class TestFakes(lsst.utils.tests.TestCase):
         trialInstance = TrialFakeSourcesTask()
         self.assertEqual(maskPlaneBitMask, trialInstance.bitmask)
         lsst.afw.image.Mask[lsst.afw.image.MaskPixel].removeMaskPlane(maskPlaneName)
+        self.assertNotIn(maskPlaneName, maskKeysBefore)
         del trialInstance
 
 
