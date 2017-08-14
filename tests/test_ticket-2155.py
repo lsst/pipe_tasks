@@ -32,7 +32,7 @@ import lsst.afw.detection as afwDetection
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
-import testFindAstrometryNetDataDir as helper
+import test_findAstrometryNetDataDir as helper
 
 
 class TestForceWcs(unittest.TestCase):
