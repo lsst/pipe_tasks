@@ -116,6 +116,15 @@ def getObsTestConfig(TaskClass):
 
 
 class FakeProcessingTestCase(lsst.utils.tests.TestCase):
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        Need to remove 'FAKE' from the MaskPlaneDict for future tests
+        """
+        lsst.afw.image.Mask[lsst.afw.image.MaskPixel].removeMaskPlane('FAKE')
+
+
     def testFakeProcessing(self):
         # Set the random seed for predictability
         np.random.seed(500)
