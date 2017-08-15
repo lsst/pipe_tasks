@@ -63,7 +63,7 @@ class TestFakes(lsst.utils.tests.TestCase):
         lsst.afw.image.Mask[lsst.afw.image.MaskPixel].removeMaskPlane(maskPlaneName)
         del trialInstance
 
-    def testFakeMasksed(self):
+    def testFakeMasked(self):
         '''
         Test that if the FAKE mask plane exists, it is used, and that the instance's bitmask
         points to the correct plane

@@ -125,6 +125,8 @@ class FakeProcessingTestCase(lsst.utils.tests.TestCase):
             else "{}-ProcessCcd".format(OutputName)
         dataId = dict(visit=1)
         dataIdStrList = ["{}={}".format(*item) for item in dataId.items()]
+        mask = None
+        maskPlaneName = "FAKE"
 
         try:
             # Set the configurations for running the fake object piepline
@@ -145,12 +147,15 @@ class FakeProcessingTestCase(lsst.utils.tests.TestCase):
 
             exposure = pCcdResult.resultList[0].result.calibRes.exposure
             mask = exposure.getMaskedImage().getMask()
-            maskBit = 2**mask.getMaskPlaneDict()['FAKE']
+            maskBit = 2**mask.getMaskPlaneDict()[maskPlaneName]
             fakeMask = np.bitwise_and(mask.getArray(), maskBit)
             self.assertGreater(fakeMask.sum(), 0)
 
         # Clean up temporary directories if needed
         finally:
+            if mask:
+                # Remove FAKE so as not to contaminate later tests
+                lsst.afw.image.Mask[lsst.afw.image.MaskPixel].removeMaskPlane(maskPlaneName)
             if OutputName is None:
                 shutil.rmtree(outPath)
             else:
