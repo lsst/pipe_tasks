@@ -271,7 +271,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
             try:
                 md = ref.get("calexp_md", immediate=True)
                 wcs = afwImage.makeWcs(md)
-                data = SelectStruct(dataRef=ref, wcs=wcs, dims=(md.get("NAXIS1"), md.get("NAXIS2")))
+                data = SelectStruct(dataRef=ref, wcs=wcs, bbox=afwImage.bboxFromMetadata(md))
             except FitsError as e:
                 namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))
                 continue

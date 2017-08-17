@@ -164,8 +164,8 @@ def _extractKeyValue(dataList, keys=None):
 class SelectStruct(pipeBase.Struct):
     """A container for data to be passed to the WcsSelectImagesTask"""
 
-    def __init__(self, dataRef, wcs, dims):
-        super(SelectStruct, self).__init__(dataRef=dataRef, wcs=wcs, dims=dims)
+    def __init__(self, dataRef, wcs, bbox):
+        super(SelectStruct, self).__init__(dataRef=dataRef, wcs=wcs, bbox=bbox)
 
 
 class WcsSelectImagesTask(BaseSelectImagesTask):
@@ -199,11 +199,10 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         for data in selectDataList:
             dataRef = data.dataRef
             imageWcs = data.wcs
-            nx, ny = data.dims
+            imageBox = data.bbox
 
-            imageBox = afwGeom.Box2D(afwGeom.Point2D(0, 0), afwGeom.Extent2D(nx, ny))
             try:
-                imageCorners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
+                imageCorners = [imageWcs.pixelToSky(pix) for pix in afwGeom.Box2D(imageBox).getCorners()]
             except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
                 # Protecting ourselves from awful Wcs solutions in input images
                 self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)

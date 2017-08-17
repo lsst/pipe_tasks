@@ -128,7 +128,8 @@ def createImage(
     center = center.clone()  # Ensure user doesn't need it, because we're mangling it
     center.rotate(rotateAxis, rotateAngle)
     wcs = afwImage.makeWcs(center, crpix, scale.asDegrees(), 0.0, 0.0, scale.asDegrees())
-    return SelectStruct(DummyDataRef(dataId), wcs, (dims[0], dims[1]))
+    return SelectStruct(DummyDataRef(dataId), wcs, afwGeom.Box2I(afwGeom.Point2I(0, 0),
+                                                                 afwGeom.Extent2I(dims[0], dims[1])))
 
 
 class WcsSelectImagesTestCase(unittest.TestCase):

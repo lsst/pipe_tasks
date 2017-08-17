@@ -140,7 +140,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             md = dataRef.get("calexp_md", immediate=True)
             wcs = afwImage.makeWcs(md)
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
-            boxI = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(md.get("NAXIS1"), md.get("NAXIS2")))
+            boxI = afwImage.bboxFromMetadata(md)
             boxD = afwGeom.Box2D(boxI)
             points.extend(tuple(wcs.pixelToSky(corner).getVector()) for corner in boxD.getCorners())
         if len(points) == 0:
