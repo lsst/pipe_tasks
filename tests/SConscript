@@ -2,4 +2,4 @@
 import os
 from lsst.sconsUtils import scripts, env
 
-scripts.BasicSConscript.tests()
+scripts.BasicSConscript.tests(pySingles=['testCoadds.py'])
