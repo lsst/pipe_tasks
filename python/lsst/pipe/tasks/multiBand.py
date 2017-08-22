@@ -761,7 +761,8 @@ class MergeDetectionsTask(MergeSourcesTask):
 
         \param[in] catalog Source catalog
         """
-        keys = [item.key for item in self.merged.getPeakSchema().extract("merge.peak.*").values()]
+        keys = [item.key for item in self.merged.getPeakSchema().extract("merge_peak_*").values()]
+        assert len(keys) > 0, "Error finding flags that associate peaks with their detection bands."
         totalPeaks = 0
         culledPeaks = 0
         for parentSource in catalog:
