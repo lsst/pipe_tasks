@@ -536,7 +536,7 @@ class CullPeaksConfig(Config):
         AND (rank >= rankSufficient)
         AND (rank >= rankConsider OR rank >= rankNormalizedConsider)
 
-    To disable peak culling, simply set nBandsSafe=1.
+    To disable peak culling, simply set nBandsSufficient=1.
     """
 
     nBandsSufficient = RangeField(dtype=int, default=2, min=1,
@@ -775,8 +775,7 @@ class MergeDetectionsTask(MergeSourcesTask):
             totalPeaks += familySize
             for rank, peak in enumerate(oldPeaks):
                 if ((rank < self.config.cullPeaks.rankSufficient) or
-                    (self.config.cullPeaks.nBandsSufficient > 1 and
-                     sum([peak.get(k) for k in keys]) >= self.config.cullPeaks.nBandsSufficient) or
+                    (sum([peak.get(k) for k in keys]) >= self.config.cullPeaks.nBandsSufficient) or
                     (rank < self.config.cullPeaks.rankConsidered and
                      rank < self.config.cullPeaks.rankNormalizedConsidered * familySize)):
                     keptPeaks.append(peak)
