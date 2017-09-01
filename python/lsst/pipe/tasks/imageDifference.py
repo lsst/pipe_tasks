@@ -33,19 +33,25 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
-from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, \
     ObjectSizeStarSelectorTask
-from lsst.ip.diffim import DipoleAnalysis, \
+from lsst.ip.diffim import ImagePsfMatchTask, ZogyImagePsfMatchTask, DipoleAnalysis, \
     SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
     KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
     GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, \
-    DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry
+    DecorrelateALKernelSpatialTask, RegisterTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 IqrToSigma = 0.741
+
+subtractAlgorithmRegistry = pexConfig.makeRegistry(
+    doc="A registry of subtraction algorithms for use as a subtask in imageDifference",
+)
+
+subtractAlgorithmRegistry.register('al', ImagePsfMatchTask)
+subtractAlgorithmRegistry.register('zogy', ZogyImagePsfMatchTask)
 
 
 class ImageDifferenceConfig(pexConfig.Config):
