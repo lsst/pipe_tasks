@@ -3,6 +3,8 @@
 *.so
 *.os
 *.pyc
+pytest_session.txt
+.cache
 /*.fits
 *_wrap.cc
 *Lib.py
