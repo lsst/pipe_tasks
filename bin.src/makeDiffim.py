@@ -21,14 +21,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-# Workaround for a problem in the lsstimport module.  This module sets
-# RTLD_GLOBAL for all LSST imports, which is necessary for RTTI, but
-# causes scipy to fail when loading numpy.  Importing scipy beforehand
-# avoids this problem.
-try:
-    import scipy.stats
-except ImportError:
-    pass
-from lsst.ip.diffim.imageDifference import ImageDifferenceTask
+from lsst.ip.diffim.makeDiffim import MakeDiffimTask
 
-ImageDifferenceTask.parseAndRun()
+MakeDiffimTask.parseAndRun()
