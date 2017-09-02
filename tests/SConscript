@@ -2,4 +2,5 @@
 import os
 from lsst.sconsUtils import scripts, env
 
-scripts.BasicSConscript.tests(pySingles=['nopytest_test_coadds.py'])
+scripts.BasicSConscript.tests(pySingles=['nopytest_test_coadds.py'],
+                              pyList=[])
