@@ -418,19 +418,19 @@ def makeSimpleCamera(
     @param[in] plateScale: plate scale in arcsec/mm; 20.0 is for LSST
     @param[in] radialDistortion: radial distortion, in mm/rad^2
         (the r^3 coefficient of the radial distortion polynomial
-        that converts PUPIL in radians to FOCAL_PLANE in mm);
+        that converts FIELD_ANGLE in radians to FOCAL_PLANE in mm);
         0.925 is the value Dave Monet measured for lsstSim data
 
     Each detector will have one amplifier (with no raw information).
     """
     pScaleRad = lsst.afw.geom.arcsecToRad(plateScale)
     radialDistortCoeffs = [0.0, 1.0/pScaleRad, 0.0, radialDistortion/pScaleRad]
-    focalPlaneToPupil = lsst.afw.geom.RadialXYTransform(radialDistortCoeffs)
+    focalPlaneToFieldAngle = lsst.afw.geom.makeRadialTransform(radialDistortCoeffs)
     nativeSys = lsst.afw.cameraGeom.FOCAL_PLANE
     transforms = {
-        lsst.afw.cameraGeom.PUPIL: focalPlaneToPupil,
+        lsst.afw.cameraGeom.FIELD_ANGLE: focalPlaneToFieldAngle,
     }
-    transformMap = lsst.afw.cameraGeom.CameraTransformMap(nativeSys, transforms)
+    transformMap = lsst.afw.cameraGeom.TransformMap(nativeSys, transforms)
 
     detectorList = []
     ccdBBox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(), lsst.afw.geom.Extent2I(sizeX, sizeY))

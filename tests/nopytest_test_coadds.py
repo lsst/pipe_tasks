@@ -40,12 +40,12 @@ different problem that's revealed when we're not trying to cache the mock data b
 tests (but set REUSE_DATAREPO back to True when done debugging, or this test will be very
 slow).
 
-NOTE: This test should not be run with other tests using pytest, and should
+WARNING: This test should not be run with other tests using pytest, and should
 not be discoverable automatically by pytest. The reason for this is that the
 tests rely on 200 MB of data generated on module load, using a single
 directory visible to all the tests. When run in parallel with pytest-xdist
 this data will be created for every sub-process, leading to excessive disk
-usage and excessive test execution times.
+usage, excessive test execution times and possible failure.
 """
 from __future__ import division, print_function, absolute_import
 from builtins import zip
