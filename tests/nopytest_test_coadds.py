@@ -81,64 +81,8 @@ from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTa
 DATAREPO_ROOT = os.path.join(os.path.dirname(__file__), ".tests", "testCoadds-data")
 
 
-def setup_module(module):
+def setup_module():
     lsst.utils.tests.init()
-
-    if os.path.exists(DATAREPO_ROOT):
-        print("Deleting existing repo: %r" % (DATAREPO_ROOT,))
-        shutil.rmtree(DATAREPO_ROOT)
-
-    if not haveMeasBase:
-        raise unittest.SkipTest("meas_base could not be imported")
-
-    # Create a task that creates simulated images and builds a coadd from them
-    mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
-
-    # Create an instance of DetectCoaddSourcesTask to measure on the coadd.
-    # There's no noise in these images, so we set a direct-value threshold,
-    # and the background weighting (when using Approximate) to False
-
-    detectConfig = DetectCoaddSourcesTask.ConfigClass()
-    detectConfig.detection.thresholdType = "value"
-    detectConfig.detection.thresholdValue = 0.01
-    detectConfig.detection.background.weighting = False
-    detectTask = DetectCoaddSourcesTask(config=detectConfig)
-
-    butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
-
-    mocksTask.buildAllInputs(butler)
-
-    addMaskPlanes(butler)
-    mocksTask.buildCoadd(butler)
-    mocksTask.buildMockCoadd(butler)
-    detectTask.writeSchemas(butler)
-    # Now run the seperate multiband tasks on the Coadd to make the reference
-    # catalog for the forced photometry tests.
-    runTaskOnPatches(butler, detectTask, mocksTask)
-
-    mergeDetConfig = MergeDetectionsTask.ConfigClass()
-    mergeDetConfig.priorityList = ['r', ]
-    mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=butler)
-    mergeDetTask.writeSchemas(butler)
-    runTaskOnPatchList(butler, mergeDetTask, mocksTask)
-
-    measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
-    measMergedConfig.measurement.slots.shape = "base_SdssShape"
-    measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
-    measMergedConfig.propagateFlags.flags = {}  # Disable flag propagation: no flags to propagate
-    measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
-    measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=butler)
-    measMergedTask.writeSchemas(butler)
-    runTaskOnPatches(butler, measMergedTask, mocksTask)
-
-    mergeMeasConfig = MergeMeasurementsTask.ConfigClass()
-    mergeMeasConfig.priorityList = ['r', ]
-    mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=butler)
-    mergeMeasTask.writeSchemas(butler)
-    runTaskOnPatchList(butler, mergeMeasTask, mocksTask)
-
-    runForcedPhotCoaddTask(butler, mocksTask)
-    runForcedPhotCcdTask(butler)
 
 
 def getCalexpIds(butler, tract=0):
@@ -213,9 +157,68 @@ def runForcedPhotCcdTask(butler):
 
 class CoaddsTestCase(lsst.utils.tests.TestCase):
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
+        lsst.utils.tests.init()
+
+        # Do not delete on class teardown so as to keep around for debugging
+        if os.path.exists(DATAREPO_ROOT):
+            print("Deleting existing repo: %r" % (DATAREPO_ROOT,))
+            shutil.rmtree(DATAREPO_ROOT)
+
         if not haveMeasBase:
-            raise unittest.SkipTest("meas_base could not be imported; skipping this test")
+            raise unittest.SkipTest("meas_base could not be imported")
+
+        # Create a task that creates simulated images and builds a coadd from them
+        mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
+
+        # Create an instance of DetectCoaddSourcesTask to measure on the coadd.
+        # There's no noise in these images, so we set a direct-value threshold,
+        # and the background weighting (when using Approximate) to False
+
+        detectConfig = DetectCoaddSourcesTask.ConfigClass()
+        detectConfig.detection.thresholdType = "value"
+        detectConfig.detection.thresholdValue = 0.01
+        detectConfig.detection.background.weighting = False
+        detectTask = DetectCoaddSourcesTask(config=detectConfig)
+
+        butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
+
+        mocksTask.buildAllInputs(butler)
+
+        addMaskPlanes(butler)
+        mocksTask.buildCoadd(butler)
+        mocksTask.buildMockCoadd(butler)
+        detectTask.writeSchemas(butler)
+        # Now run the seperate multiband tasks on the Coadd to make the reference
+        # catalog for the forced photometry tests.
+        runTaskOnPatches(butler, detectTask, mocksTask)
+
+        mergeDetConfig = MergeDetectionsTask.ConfigClass()
+        mergeDetConfig.priorityList = ['r', ]
+        mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=butler)
+        mergeDetTask.writeSchemas(butler)
+        runTaskOnPatchList(butler, mergeDetTask, mocksTask)
+
+        measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
+        measMergedConfig.measurement.slots.shape = "base_SdssShape"
+        measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
+        measMergedConfig.propagateFlags.flags = {}  # Disable flag propagation: no flags to propagate
+        measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
+        measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=butler)
+        measMergedTask.writeSchemas(butler)
+        runTaskOnPatches(butler, measMergedTask, mocksTask)
+
+        mergeMeasConfig = MergeMeasurementsTask.ConfigClass()
+        mergeMeasConfig.priorityList = ['r', ]
+        mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=butler)
+        mergeMeasTask.writeSchemas(butler)
+        runTaskOnPatchList(butler, mergeMeasTask, mocksTask)
+
+        runForcedPhotCoaddTask(butler, mocksTask)
+        runForcedPhotCcdTask(butler)
+
+    def setUp(self):
         self.mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
         self.butler = lsst.daf.persistence.Butler(DATAREPO_ROOT)
         self.coaddNameList = ["Coadd", "CoaddPsfMatched"]
@@ -485,6 +488,5 @@ class MatchMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 
 if __name__ == "__main__":
-    import sys
-    setup_module(sys.modules[__name__])
+    setup_module()
     unittest.main()
