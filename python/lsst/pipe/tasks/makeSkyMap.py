@@ -57,6 +57,8 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
 
     def __call__(self, butler):
         task = self.TaskClass(config=self.config, log=self.log)
+        results = None  # in case the task fails
+        exitStatus = 0  # exit status for shell
         if self.doRaise:
             results = task.run(butler)
         else:
@@ -64,11 +66,19 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
                 results = task.run(butler)
             except Exception as e:
                 task.log.fatal("Failed: %s" % e)
+                exitStatus = 1
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
         task.writeMetadata(butler)
         if self.doReturnResults:
-            return results
+            return pipeBase.Struct(
+                exitStatus=exitStatus,
+                result=results,
+            )
+        else:
+            return pipeBase.Struct(
+                exitStatus=exitStatus,
+            )
 
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
