@@ -25,7 +25,6 @@ from builtins import range
 import numpy
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
-import lsst.afw.detection as afwDetect
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
