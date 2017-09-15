@@ -50,6 +50,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
 \brief Configuration parameters for the \ref AssembleCoaddTask_ "AssembleCoaddTask"
     """
+    warpType = pexConfig.Field(
+        doc="Warp name: one of 'direct' or 'psfMatched'",
+        dtype=str,
+        default="direct",
+    )
     subregionSize = pexConfig.ListField(
         dtype=int,
         doc="Width, height of stack subregion size; "
@@ -157,9 +162,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
-        if self.makeDirect and self.makePsfMatched:
-            raise ValueError("Currently, assembleCoadd can only make either Direct or PsfMatched Coadds "
-                             "at a time. Set either makeDirect or makePsfMatched to False")
+        if self.doPsfMatch:
+            # Backwards compatibility.
+            # Configs do not have loggers
+            log.warn("Config doPsfMatch deprecated. Setting warpType='psfMatched'")
+            self.warpType = 'psfMatched'
         if self.doSigmaClip and self.statistic != "MEANCLIP":
             log.warn('doSigmaClip deprecated. To replicate behavior, setting statistic to "MEANCLIP"')
             self.statistic = "MEANCLIP"
@@ -308,12 +315,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                    mask.getMaskPlaneDict().keys())
             del mask
 
-        if self.config.makeDirect:
-            self.warpType = "direct"
-        elif self.config.makePsfMatched:
-            self.warpType = "psfMatched"
-        else:
-            raise ValueError("Neither makeDirect nor makePsfMatched configs are True")
+        self.warpType = self.config.warpType
+
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
@@ -816,7 +819,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \brief Create an argument parser
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_directWarp",
+        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_" +
+                               cls.ConfigClass().warpType + "Warp",
                                help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=AssembleCoaddDataIdContainer)
         parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",

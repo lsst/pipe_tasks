@@ -27,7 +27,6 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
-import lsst.log as log
 
 from lsst.afw.fits import FitsError
 from lsst.coadd.utils import CoaddDataIdContainer
@@ -78,27 +77,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Apply meas_mosaic ubercal results to input calexps?",
         default=False
     )
-    makeDirect = pexConfig.Field(
-        doc="Make direct Warp/Coadds",
-        dtype=bool,
-        default=True,
-    )
-    makePsfMatched = pexConfig.Field(
-        doc="Make Psf-Matched Warp/Coadd?",
-        dtype=bool,
-        default=False,
-    )
-
-    def validate(self):
-        pexConfig.Config.validate(self)
-        if not self.makePsfMatched and not self.makeDirect:
-            raise RuntimeError("At least one of config.makePsfMatched and config.makeDirect must be True")
-        if self.doPsfMatch:
-            # Courtesy backwards compatibility.
-            # Configs do not have loggers
-            log.warn("Config doPsfMatch deprecated. Setting makePsfMatched=True and makeDirect=False")
-            self.makePsfMatched = True
-            self.makeDirect = False
 
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
@@ -214,16 +192,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         WarpDatasetName : `string`
         """
         return self.config.coaddName + "Coadd_" + warpType + "Warp"
-
-    def getWarpTypeList(self):
-        """Return list of requested warp types per the config.
-        """
-        warpTypeList = []
-        if self.config.makeDirect:
-            warpTypeList.append("direct")
-        if self.config.makePsfMatched:
-            warpTypeList.append("psfMatched")
-        return warpTypeList
 
     @classmethod
     def _makeArgumentParser(cls):

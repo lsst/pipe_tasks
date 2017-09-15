@@ -27,6 +27,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
+import lsst.log as log
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from .coaddBase import CoaddBaseTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
@@ -61,6 +62,27 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         doc="Configuration for CoaddPsf",
         dtype=CoaddPsfConfig,
     )
+    makeDirect = pexConfig.Field(
+        doc="Make direct Warp/Coadds",
+        dtype=bool,
+        default=True,
+    )
+    makePsfMatched = pexConfig.Field(
+        doc="Make Psf-Matched Warp/Coadd?",
+        dtype=bool,
+        default=False,
+    )
+
+    def validate(self):
+        CoaddBaseTask.ConfigClass.validate(self)
+        if not self.makePsfMatched and not self.makeDirect:
+            raise RuntimeError("At least one of config.makePsfMatched and config.makeDirect must be True")
+        if self.doPsfMatch:
+            # Backwards compatibility.
+            log.warn("Config doPsfMatch deprecated. Setting makePsfMatched=True and makeDirect=False")
+            self.makePsfMatched = True
+            self.makeDirect = False
+
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -409,3 +431,13 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         exp.getMaskedImage().set(numpy.nan, afwImage.Mask\
                                  .getPlaneBitMask("NO_DATA"), numpy.inf)
         return exp
+
+    def getWarpTypeList(self):
+        """Return list of requested warp types per the config.
+        """
+        warpTypeList = []
+        if self.config.makeDirect:
+            warpTypeList.append("direct")
+        if self.config.makePsfMatched:
+            warpTypeList.append("psfMatched")
+        return warpTypeList
