@@ -41,7 +41,7 @@ from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from lsst.meas.algorithms import SourceDetectionTask
 
-__all__ = ["AssembleCoaddTask", "SafeClipAssembleCoaddTask"]
+__all__ = ["AssembleCoaddTask", "SafeClipAssembleCoaddTask", "CompareWarpAssembleCoaddTask"]
 
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
@@ -362,9 +362,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 self.log.warn("No valid background models")
                 return
 
+        supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
         coaddExp = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                                  inputData.weightList,
-                                 inputData.backgroundInfoList if self.config.doMatchBackgrounds else None)
+                                 inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
+                                 supplementaryData=supplementaryData)
         if self.config.doMatchBackgrounds:
             self.addBackgroundMatchingMetadata(coaddExp, inputData.tempExpRefList,
                                                inputData.backgroundInfoList)
@@ -384,6 +386,16 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             dataRef.put(coaddExp, self.getCoaddDatasetName(self.warpType))
 
         return pipeBase.Struct(coaddExposure=coaddExp)
+
+    def makeSupplementaryData(self, dataRef, selectDataList):
+        """!
+        \brief Make additional inputs to assemble() specific to subclasses.
+
+        Available to be implemented by subclasses only if they need the
+        coadd dataRef for performing preliminary processing before
+        assembling the coadd.
+        """
+        pass
 
     def getTempExpRefList(self, patchRef, calExpRefList):
         """!
@@ -564,7 +576,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None,
-                 altMaskList=None, mask=None):
+                 altMaskList=None, mask=None, supplementaryData=None):
         """!
         \anchor AssembleCoaddTask.assemble_
 
@@ -583,6 +595,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] bgInfoList: List of background data from background matching, or None
         \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
         \param[in] mask: Mask to ignore when coadding
+        \param[in] supplementaryData: pipeBase.Struct with additional data products needed to assemble coadd.
+                        Only used by subclasses that implement makeSupplementaryData and override assemble.
         \return coadded exposure
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
@@ -1365,3 +1379,335 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
             tmpExpMask |= maskVisitClip
 
         return bigFootprintsCoadd
+
+
+class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
+    assembleStaticSkyModel = pexConfig.ConfigurableField(
+        target=AssembleCoaddTask,
+        doc="Task to assemble an artifact-free, PSF-matched Coadd to serve as a"
+            " naive/first-iteration model of the static sky.",
+    )
+    chiThreshold = pexConfig.RangeField(
+        doc="Detection threshold (sigma) for artifacts in warp diff "
+            "(chi-image of PSF-Matched warp minus the model of the static sky)",
+        dtype=float,
+        default=5,
+        min=0,
+    )
+    minPixels = pexConfig.Field(
+        doc="Minimum number of pixels in a region (in a warp diff chi-image) "
+            "above chiThreshold to trigger masking. "
+            "Detected artifacts with fewer than the specified number of pixels will be ignored.",
+        dtype=int,
+        default=1
+    )
+    doMaskNegative = pexConfig.Field(
+        doc="Also mask outlier regions of flux less than the static sky model?",
+        dtype=bool,
+        default=True
+    )
+    temporalThreshold = pexConfig.Field(
+        doc="Unitless fraction of number of epochs to classify as an artifact/outlier source versus"
+            " a source that is intrinsically variable or difficult to subtract cleanly. "
+            "If outlier region in warp-diff Chi-image is mostly (defined by spatialThreshold) "
+            "an outlier in less than temporalThreshold * number of epochs, then mask. "
+            "Otherwise, do not mask.",
+        dtype=float,
+        default=0.075
+    )
+    spatialThreshold = pexConfig.Field(
+        doc="Unitless fraction of pixels defining how much of the outlier region has to meet the "
+            "temporal criteria",
+        dtype=float,
+        default=0.5
+    )
+    growMaskBy = pexConfig.Field(
+        doc="Number of pixels by which to grow the masks on artifacts.",
+        dtype=int,
+        default=5
+    )
+
+    def setDefaults(self):
+        AssembleCoaddConfig.setDefaults(self)
+        self.assembleStaticSkyModel.warpType = 'psfMatched'
+        self.assembleStaticSkyModel.statistic = 'MEDIAN'
+        self.assembleStaticSkyModel.doWrite = False
+
+
+class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
+    """!
+    \anchor CompareWarpAssembleCoaddTask_
+
+    \brief Assemble a compareWarp coadded image from a set of warps
+    by masking artifacts detected by comparing PSF-matched warps
+
+    \section pipe_tasks_assembleCoadd_Contents Contents
+      - \ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Purpose
+      - \ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Initialize
+      - \ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Run
+      - \ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Config
+      - \ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Debug
+      - \ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Example
+
+    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Purpose Description
+
+    \copybrief CompareWarpAssembleCoaddTask
+
+    In \ref AssembleCoaddTask_ "AssembleCoaddTask", we compute the coadd as an clipped mean (i.e. we clip
+    outliers).
+    The problem with doing this is that when computing the coadd PSF at a given location, individual visit
+    PSFs from visits with outlier pixels contribute to the coadd PSF and cannot be treated correctly.
+    In this task, we correct for this behavior by creating a new badMaskPlane 'CLIPPED' which marks
+    pixels in the individual warps suspected to contain an artifact.
+    We populate this plane on the input warps by comparing PSF-matched warps with a PSF-matched median coadd
+    which serves as a model of the static sky. Any group of pixels that deviates from the PSF-matched
+    median coadd by more than config.chiThreshold sigma, is an artifact candidate. The candidates are then
+    filtered to remove variable sources and sources that are difficult to subtract such as bright stars.
+    This filter is configured using the config parameters temporalThreshold and spatialThreshold.
+    The temporalThreshold is the maximum fraction of epochs that the deviation can
+    appear in and still be considered an artifact. The spatialThreshold is the maximum fraction of pixels in
+    the footprint of the deviation that appear in other epochs (where other epochs is defined by the
+    temporalThreshold). If the deviant region meets this criteria of having a significant percentage of pixels
+    that deviate in only a few epochs, it is grown by growMaskBy and bits set in the 'CLIPPED' plane.
+    These regions will not contribute to the final coadd.
+    Furthermore, any routine to determine the coadd PSF can now be cognizant of clipped regions.
+    Note that the algorithm implemented by this task is preliminary and works correctly for HSC data.
+    Parameter modifications and or considerable redesigning of the algorithm is likley required for other
+    surveys.
+
+    CompareWarpAssembleCoaddTask sub-classes
+    \ref AssembleCoaddTask_ "AssembleCoaddTask" and instantiates  \ref AssembleCoaddTask_ "AssembleCoaddTask"
+    as a subtask to generate the TemplateCoadd (the model of the static sky)
+
+    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Initialize       Task initialization
+    \copydoc \_\_init\_\_
+
+    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Run       Invoking the Task
+    \copydoc run
+
+    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Config       Configuration parameters
+    See \ref CompareWarpAssembleCoaddConfig
+
+    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Debug       Debug variables
+    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
+    flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py
+    files.
+    CompareWarpAssembleCoaddTask has no debug variables of its own.
+
+    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Example A complete example of using CompareWarpAssembleCoaddTask
+
+    CompareWarpAssembleCoaddTask assembles a set of warped images into a coadded image.
+    The CompareWarpAssembleCoaddTask is invoked by running assembleCoadd.py with the flag
+    '--compareWarpCoadd'.
+    Usage of assembleCoadd.py expects a data reference to the tract patch and filter to be coadded
+    (specified using '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]') along
+    with a list of coaddTempExps to attempt to coadd (specified using
+    '--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]').
+    Only the warps that cover the specified tract and patch will be coadded.
+    A list of the available optional arguments can be obtained by calling assembleCoadd.py with the --help
+    command line argument:
+    \code
+    assembleCoadd.py --help
+    \endcode
+    To demonstrate usage of the CompareWarpAssembleCoaddTask in the larger context of multi-band processing, we
+    will generate the HSC-I & -R band coadds from HSC engineering test data provided in the ci_hsc package. To
+    begin, assuming that the lsst stack has been already set up, we must set up the obs_subaru and ci_hsc
+    packages.
+    This defines the environment variable $CI_HSC_DIR and points at the location of the package. The raw HSC
+    data live in the $CI_HSC_DIR/raw directory. To begin assembling the coadds, we must first
+    <DL>
+      <DT>processCcd</DT>
+      <DD> process the individual ccds in $CI_HSC_RAW to produce calibrated exposures</DD>
+      <DT>makeSkyMap</DT>
+      <DD> create a skymap that covers the area of the sky present in the raw exposures</DD>
+      <DT>makeCoaddTempExp</DT>
+      <DD> warp the individual calibrated exposures to the tangent plane of the coadd</DD>
+    </DL>
+    We can perform all of these steps by running
+    \code
+    $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
+    \endcode
+    This will produce warped coaddTempExps for each visit. To coadd the warped data, we call assembleCoadd.py
+    as follows:
+    \code
+    assembleCoadd.py --compareWarpCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
+    --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
+    --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
+    --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
+    --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
+    --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
+    --selectId visit=903988 ccd=24
+    \endcode
+    This will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I
+    """
+    ConfigClass = CompareWarpAssembleCoaddConfig
+    _DefaultName = "compareWarpAssembleCoadd"
+
+    def __init__(self, *args, **kwargs):
+        """!
+        \brief Initialize the task and make the \ref AssembleCoadd_ "assembleStaticSkyModel" subtask.
+        """
+        AssembleCoaddTask.__init__(self, *args, **kwargs)
+        self.makeSubtask("assembleStaticSkyModel")
+
+    def makeSupplementaryData(self, dataRef, selectDataList):
+        """!
+        \brief Make inputs specific to Subclass
+
+        Generate a templateCoadd to use as a native model of static sky to subtract from warps.
+        """
+        templateCoadd = self.assembleStaticSkyModel.run(dataRef, selectDataList).coaddExposure
+        return pipeBase.Struct(templateCoadd=templateCoadd)
+
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList,
+                 supplementaryData, *args, **kwargs):
+        """!
+        \brief Assemble the coadd
+
+        Requires additional inputs Struct `supplementaryData` to contain a `templateCoadd` that serves
+        as the model of the static sky.
+
+        Find artifacts and apply them to the warps' masks creating a list of alternative masks with a
+        new "CLIPPED" plane and updated "NO_DATA" plane.
+        Then pass these alternative masks to the base class's assemble method.
+
+        @param skyInfo: Patch geometry information
+        @param tempExpRefList: List of data references to warps
+        @param imageScalerList: List of image scalers
+        @param weightList: List of weights
+        @param bgModelList: List of background models from background matching
+        @param supplementaryData: PipeBase.Struct containing a templateCoadd
+
+        return coadd exposure
+        """
+        templateCoadd = supplementaryData.templateCoadd
+        spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
+        maskList = self.computeAltMaskList(tempExpRefList, spanSetMaskList)
+        badMaskPlanes = self.config.badMaskPlanes[:]
+        badMaskPlanes.append("CLIPPED")
+        badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
+
+        coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                              bgModelList, maskList, mask=badPixelMask)
+        return coaddExp
+
+    def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
+        """!
+        \brief Find artifacts
+
+        Loop through warps twice. The first loop builds a map with the count of how many
+        epochs each pixel deviates from the templateCoadd by more than config.chiThreshold sigma.
+        The second loop takes each difference image and filters the artifacts detected
+        in each using count map to filter out variable sources and sources that are difficult to
+        subtract cleanly.
+
+        @param templateCoadd: Exposure to serve as model of static sky
+        @param tempExpRefList: List of data references to warps
+        @param imageScalerList: List of image scalers
+        """
+
+        self.log.debug("Generating Count Image. First loop through warps")
+        epochCountImage = afwImage.ImageU(templateCoadd.getBBox())
+        for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
+            mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
+            chiIm = self._makeChiIm(mi)
+            chiOneMap = self._snrToBinaryIm(chiIm)
+            epochCountImage += chiOneMap
+
+        self.log.debug("Generating Mask List. Second loop through warps")
+        spanSetArtifactList = []
+        spanSetNoDataMaskList = []
+
+        maxNumEpochs = int(max(1, self.config.temporalThreshold*len(tempExpRefList)))
+        for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
+            mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
+            chiIm = self._makeChiIm(mi)
+            chiOneMap = self._snrToBinaryArr(chiIm.array)
+            outliers = afwImage.makeMaskFromArray(chiOneMap.astype(afwImage.MaskPixel))
+            outliers.setXY0(mi.getXY0())
+            spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
+
+            # PSF-Matched warps have less available area (~the matching kernel) because the calexps
+            # undergo a second convolution. Pixels with data in the direct warp
+            # but not in the PSF-matched warp will not have their artifacts detected.
+            # NaNs from the PSF-matched warp therefore must be masked in the direct warp
+            nans = numpy.where(numpy.isnan(chiIm.array), 1, 0)
+            nansMask = afwImage.makeMaskFromArray(nans.astype(afwImage.MaskPixel))
+            nansMask.setXY0(chiIm.getXY0())
+            spanSetNoDataMask = afwGeom.SpanSet.fromMask(nansMask).split()
+
+            filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage,
+                                                        maxNumEpochs=maxNumEpochs)
+            dilatedSpanSetList = [s.dilated(self.config.growMaskBy, afwGeom.Stencil.CIRCLE)
+                                  for s in filteredSpanSetList]
+            spanSetArtifactList.append(dilatedSpanSetList)
+            spanSetNoDataMaskList.append(spanSetNoDataMask)
+        return pipeBase.Struct(artifacts=spanSetArtifactList,
+                               noData=spanSetNoDataMaskList)
+
+    def computeAltMaskList(self, tempExpRefList, maskSpanSets):
+        """!
+        \brief Apply artifact span set lists to masks
+
+        @param tempExpRefList: List of data references to warps
+        @param maskSpanSets: Struct containing artifact and noData spanSet lists to apply
+
+        return List of alternative masks
+
+        Add artifact span set list as "CLIPPED" plane and NaNs to existing "NO_DATA" plane
+        """
+        spanSetMaskList = maskSpanSets.artifacts
+        spanSetNoDataList = maskSpanSets.noData
+        altMaskList = []
+        for warpRef, artifacts, noData in zip(tempExpRefList, spanSetMaskList, spanSetNoDataList):
+            warp = warpRef.get(self.getTempExpDatasetName(self.config.warpType), immediate=True)
+            mask = warp.maskedImage.mask
+            maskClipValue = mask.addMaskPlane("CLIPPED")
+            noDataValue = mask.addMaskPlane("NO_DATA")
+            for artifact in artifacts:
+                artifact.clippedTo(mask.getBBox()).setMask(mask, 2**maskClipValue)
+            for noDataRegion in noData:
+                noDataRegion.clippedTo(mask.getBBox()).setMask(mask, 2**noDataValue)
+            altMaskList.append(mask)
+        return altMaskList
+
+    def _filterArtifacts(self, spanSetList, epochCountImage, maxNumEpochs=None, minPixels=None):
+        if minPixels is None:
+            minPixels = self.config.minPixels
+        maskSpanSetList = []
+        x0, y0 = epochCountImage.getXY0()
+        for i, span in enumerate(spanSetList):
+            y, x = span.indices()
+            if len(y) < minPixels:
+                continue
+            counts = epochCountImage.array[[y1 - y0 for y1 in y], [x1 - x0 for x1 in x]]
+            idx = numpy.where((counts > 0) & (counts <= maxNumEpochs))
+            percentBelowThreshold = len(idx[0]) / len(counts)
+            if percentBelowThreshold > self.config.spatialThreshold:
+                maskSpanSetList.append(span)
+        return maskSpanSetList
+
+    def _snrToBinaryArr(self, arrIn):
+        with numpy.errstate(invalid='ignore'):
+            arr = numpy.where(arrIn >= self.config.chiThreshold, 1, 0)
+            if self.config.doMaskNegative:
+                arr[numpy.where(arrIn <= -self.config.chiThreshold)] = 1
+        return arr
+
+    def _snrToBinaryIm(self, im):
+        arr = self._snrToBinaryArr(im.array)
+        return afwImage.ImageU(arr.astype(numpy.uint16), xy0=im.getXY0())
+
+    def _makeChiIm(self, maskedImage):
+        chiIm = maskedImage.image.Factory(1./numpy.sqrt(maskedImage.variance.array))
+        chiIm *= maskedImage.image
+        chiIm.setXY0(maskedImage.getXY0())
+        return chiIm
+
+    def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
+        # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
+        warp = warpRef.get(self.getTempExpDatasetName('psfMatched'), immediate=True)
+        imageScaler.scaleMaskedImage(warp.getMaskedImage())
+        mi = warp.getMaskedImage()
+        mi -= templateCoadd.getMaskedImage()
+        return mi
