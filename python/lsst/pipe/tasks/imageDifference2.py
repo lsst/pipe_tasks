@@ -64,9 +64,9 @@ class ImageDifferenceConfig(pexConfig.Config):
 
     def setDefaults(self):
         # Add filtered flux measurement, the correct measurement for pre-convolved images.
-        # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
+        # Enable all measurements, regardless of doPreConvolve, as it makes data harvesting easier.
         # To change that you must modify algorithms.names in the task's applyOverrides method,
-        # after the user has set doPreConvolved.
+        # after the user has set doPreConvolve.
         self.processDiffim.measurement.algorithms.names.add('base_PeakLikelihoodFlux')
 
     def validate(self):
@@ -176,7 +176,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             selectSourceResult = mdResult.selectSourceResult
             selectSources = selectSourceResult.selectSources
         pdResult = self.processDiffim.doProcessDiffim(subtractedExposure, exposure, matchedExposure,
-                                                      self.makeDiffim.config.doPreConvolve,
+                                                      isPreConvolved=self.makeDiffim.config.doPreConvolve,
+                                                      isDecorrelated=self.makeDiffim.config.doDecorrelation,
                                                       selectSources=selectSources,
                                                       idFactory=idFactory, sensorRef=sensorRef)
         diaSources = pdResult.sources
