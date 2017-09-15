@@ -246,8 +246,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         elif cls == AssembleCoaddTask:
             config.doMatchBackgrounds = False
             if assemblePsfMatched:
-                config.makePsfMatched = True
-                config.makeDirect = False
+                config.warpType = 'psfMatched'
         return cls(config)
 
     def iterPatchRefs(self, butler, tractInfo):

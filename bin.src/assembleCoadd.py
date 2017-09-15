@@ -21,12 +21,14 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from __future__ import print_function
-from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask, SafeClipAssembleCoaddTask
+from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask, SafeClipAssembleCoaddTask,\
+    CompareWarpAssembleCoaddTask
 import sys
 import argparse
 
 parser = argparse.ArgumentParser(add_help=False)
 parser.add_argument('--legacyCoadd', action='store_true', default=False)
+parser.add_argument('--warpCompareCoadd', action='store_true', default=False)
 parser.add_argument('-h', '--help', action='store_true', default=False)
 result, extra = parser.parse_known_args(sys.argv)
 
@@ -44,6 +46,8 @@ if result.help:
     # The appropriate one should be printed
     if result.legacyCoadd:
         AssembleCoaddTask.parseAndRun(args=['--help']+extra[1:])
+    elif result.warpCompareCoadd:
+        CompareWarpAssembleCoaddTask.parseAndRun(args=['--help'] + extra[1:])
     else:
         SafeClipAssembleCoaddTask.parseAndRun(args=['--help']+extra[1:])
 
@@ -61,5 +65,7 @@ if result.legacyCoadd:
     '''
     print(legacy_message)
     AssembleCoaddTask.parseAndRun(args=extra[1:])
+elif result.warpCompareCoadd:
+    CompareWarpAssembleCoaddTask.parseAndRun(args=extra[1:])
 else:
     SafeClipAssembleCoaddTask.parseAndRun(args=extra[1:])
