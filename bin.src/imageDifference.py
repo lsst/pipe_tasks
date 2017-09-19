@@ -29,6 +29,6 @@ try:
     import scipy.stats
 except ImportError:
     pass
-from lsst.pipe.tasks.imageDifference import ImageDifferenceTask
+from lsst.ip.diffim.imageDifference import ImageDifferenceTask
 
 ImageDifferenceTask.parseAndRun()
