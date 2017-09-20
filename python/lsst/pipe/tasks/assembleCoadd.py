@@ -1485,6 +1485,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         self.assembleStaticSkyModel.warpType = 'psfMatched'
         self.assembleStaticSkyModel.statistic = 'MEDIAN'
         self.assembleStaticSkyModel.doWrite = False
+        self.statistic = 'MEAN'
 
 
 ## \addtogroup LSST_task_documentation
@@ -1672,6 +1673,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         epochCountImage = afwImage.ImageU(templateCoadd.getBBox())
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
+            if mi is None:
+                continue
             chiIm = self._makeChiIm(mi)
             chiOneMap = self._snrToBinaryIm(chiIm)
             epochCountImage += chiOneMap
@@ -1683,11 +1686,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         maxNumEpochs = int(max(1, self.config.temporalThreshold*len(tempExpRefList)))
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
-            chiIm = self._makeChiIm(mi)
-            chiOneMap = self._snrToBinaryArr(chiIm.array)
-            outliers = afwImage.makeMaskFromArray(chiOneMap.astype(afwImage.MaskPixel))
-            outliers.setXY0(mi.getXY0())
-            spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
+            if mi is not None:
+                chiIm = self._makeChiIm(mi)
+                chiOneMap = self._snrToBinaryArr(chiIm.array)
+                outliers = afwImage.makeMaskFromArray(chiOneMap.astype(afwImage.MaskPixel))
+                outliers.setXY0(mi.getXY0())
+                spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
+            else:
+                chiIm = afwImage.ImageF(templateCoadd.getBBox(), numpy.nan)
+                spanSetList = []
 
             # PSF-Matched warps have less available area (~the matching kernel) because the calexps
             # undergo a second convolution. Pixels with data in the direct warp
@@ -1768,7 +1775,12 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
+        warpName = self.getTempExpDatasetName('psfMatched')
+        if not warpRef.datasetExists(warpName):
+            self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
+            return None
         warp = warpRef.get(self.getTempExpDatasetName('psfMatched'), immediate=True)
+        # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
         mi -= templateCoadd.getMaskedImage()
