@@ -186,9 +186,9 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.detection.thresholdType = "pixel_stdev"
 
         # Add filtered flux measurement, the correct measurement for pre-convolved images.
-        # Enable all measurements, regardless of doPreConvolved, as it makes data harvesting easier.
+        # Enable all measurements, regardless of doPreConvolve, as it makes data harvesting easier.
         # To change that you must modify algorithms.names in the task's applyOverrides method,
-        # after the user has set doPreConvolved.
+        # after the user has set doPreConvolve.
         self.measurement.algorithms.names.add('base_PeakLikelihoodFlux')
 
         # For shuffling the control sample
@@ -320,10 +320,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateSources = template.sources
 
             if self.config.subtract.name == 'zogy':
-                spatiallyVarying = self.config.doSpatiallyVarying
                 subtractRes = self.subtract.subtractExposures(templateExposure, exposure,
                                                               doWarping=True,
-                                                              spatiallyVarying=spatiallyVarying)
+                                                              spatiallyVarying=self.config.doSpatiallyVarying,
+                                                              doPreConvolve=self.config.doPreConvolve)
                 subtractedExposure = subtractRes.subtractedExposure
 
             elif self.config.subtract.name == 'al':
@@ -337,6 +337,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # (properly, this should be a cross-correlation, but our code does not yet support that)
                 # compute scienceSigmaPost: sigma of science exposure with pre-convolution, if done,
                 # else sigma of original science exposure
+                preConvPsf = None
                 if self.config.doPreConvolve:
                     convControl = afwMath.ConvolutionControl()
                     # cannot convolve in place, so make a new MI to receive convolved image
@@ -547,11 +548,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # thus it may have already been decorrelated. Thus, we do not decorrelate if
                 # doSubtract is False.
                 if self.config.doDecorrelation and self.config.doSubtract:
-                    spatiallyVarying = self.config.doSpatiallyVarying
+                    preConvKernel = None
+                    if preConvPsf is not None:
+                        preConvKernel = preConvPsf.getLocalKernel()
                     decorrResult = self.decorrelate.run(exposure, templateExposure,
                                                         subtractedExposure,
                                                         subtractRes.psfMatchingKernel,
-                                                        spatiallyVarying=spatiallyVarying)
+                                                        spatiallyVarying=self.config.doSpatiallyVarying,
+                                                        preConvKernel=preConvKernel)
                     subtractedExposure = decorrResult.correctedExposure
 
             # END (if subtractAlgorithm == 'AL')
