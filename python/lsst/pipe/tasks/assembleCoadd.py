@@ -372,7 +372,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         # nImage is created if it is requested by self.config.  Otherwise, None.
         retStruct = self.assemble(
             skyInfo, inputData.tempExpRefList, inputData.imageScalerList, inputData.weightList,
-            inputData.backgroundInfoList if self.config.doMatchBackgrounds else None
+            inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
+            supplementaryData=supplementaryData
         )
         if self.config.doMatchBackgrounds:
             self.addBackgroundMatchingMetadata(retStruct.coaddExposure, inputData.tempExpRefList,
@@ -1600,7 +1601,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         @param bgModelList: List of background models from background matching
         @param supplementaryData: PipeBase.Struct containing a templateCoadd
 
-        return coadd exposure
+        return pipeBase.Struct with coaddExposure, nImage if requested
         """
         templateCoadd = supplementaryData.templateCoadd
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
@@ -1609,9 +1610,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                              bgModelList, maskList, mask=badPixelMask)
-        return coaddExp
+        retStruct = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                               bgModelList, maskList, mask=badPixelMask)
+        return retStruct
 
     def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
         """!
