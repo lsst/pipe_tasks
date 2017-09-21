@@ -67,6 +67,7 @@ class ProcessCcdConfig(pexConfig.Config):
         self.charImage.doWriteExposure = False
         self.charImage.detection.doTempLocalBackground = False
         self.calibrate.detection.doTempLocalBackground = False
+        self.calibrate.deblend.maxFootprintSize=2000
 
 ## \addtogroup LSST_task_documentation
 ## \{
