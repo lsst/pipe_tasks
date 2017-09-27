@@ -665,7 +665,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         res = self.loadAndMatch(exposure, sourceCat)
 
-        # from res.matches, reserve a fraction of the population and mark the sources reserved
+        # from res.matches, reserve a fraction of the sources from res.matches and mark the sources reserved
 
         if self.config.reserveFraction > 0:
             # Note that the seed can't be set to 0, so guard against an improper expId.

@@ -46,7 +46,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         del self.exposure
 
     def testFlags(self):
-        # test that all of the flags are defined and there is no reservation by default
+        # Test that all of the flags are defined and there is no reservation by default
         # also test that used sources are a subset of candidate sources
         task = CharacterizeImageTask()
         results = task.characterize(self.exposure)
@@ -62,8 +62,9 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(reserved, 0)
 
     def testReserveFraction(self):
-        # test that a fraction of the possible candidates can be reserved
-        # and that different expIds can produce a different reserveLists
+        """ Test that a fraction of the possible candidates can be reserved.
+        """
+        # Note that different expIds can produce a different reserveLists
         task = CharacterizeImageTask()
         # set the reserve fraction, and see if the right proportion are reserved.
         task.measurePsf.config.reserveFraction = .3
@@ -77,7 +78,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
             if source.get("calib_psfReserved"):
                 reservedSources1.append(source.getId())
         reserved = len(reservedSources1)
-        self.assertEqual(reserved, int(.3 * (candidates + reserved)))
+        self.assertEqual(reserved, int(.3*(candidates + reserved)))
 
         # try again with a different id, and see if the list is different
         # but the number of reserved sources is the same
@@ -92,7 +93,8 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         self.assertNotEqual(reservedSources1, reservedSources2)
 
     def testReserveSeedReproducible(self):
-        # test that the same seed twice will produce the same reserve set
+        """ test that the same seed twice will produce the same reserve set.
+        """
         task = CharacterizeImageTask()
         task.measurePsf.config.reserveFraction = .3
         results = task.characterize(self.exposure)

@@ -141,7 +141,7 @@ class PhotoCalTest(unittest.TestCase):
                 self.assertTrue(source.get("calib_photometryCandidate"))
                 used += 1
             self.assertFalse(source.get("calib_photometryReserved"))
-        # test that some very actually used
+        # test that some are actually used
         self.assertGreater(used, 0)
 
     def testReserveFraction(self):

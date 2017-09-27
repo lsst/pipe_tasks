@@ -281,7 +281,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             random = afwMath.Random(seed=self.config.reserveSeed*(expId if expId else 1))
             reserveList = []
             n = len(psfCandidateList)
-            for i in range(int(n * self.config.reserveFraction)):
+            for i in range(int(n*self.config.reserveFraction)):
                 index = random.uniformInt(n)
                 n -= 1
                 candidate = psfCandidateList[index]
