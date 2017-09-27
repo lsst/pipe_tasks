@@ -498,7 +498,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
                 matches = self.ref_match.loadAndMatch(exposure=exposure, sourceCat=sourceCat).matches
             else:
                 matches = None
-            measPsfRes = self.measurePsf.run(exposure=exposure, sources=sourceCat, matches=matches)
+            measPsfRes = self.measurePsf.run(exposure=exposure, sources=sourceCat, matches=matches,
+                                             expId=exposureIdInfo.expId)
         self.display("measure_iter", exposure=exposure, sourceCat=sourceCat)
 
         return pipeBase.Struct(

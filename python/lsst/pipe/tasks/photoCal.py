@@ -27,15 +27,14 @@ from builtins import input
 from builtins import range
 
 import math
-import random
 import sys
 
 import numpy as np
 
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
-import lsst.afw.table as afwTable
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
+import lsst.afw.math as afwMath
 from lsst.meas.astrom import RefMatchTask, RefMatchConfig
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField
@@ -74,10 +73,10 @@ class PhotoCalConfig(RefMatchConfig):
         default=-1.0,
     )
     reserveSeed = pexConf.Field(
-        dtype = int,
-        doc = "This number will be multiplied by the exposure ID "
+        dtype=int,
+        doc="This number will be multiplied by the exposure ID "
         "to set the random seed for reserving candidates",
-        default = 1,
+        default=1,
     )
     fluxField = pexConf.Field(
         dtype=str,
@@ -666,15 +665,19 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
 
         res = self.loadAndMatch(exposure, sourceCat)
 
-        #from res.matches, reserve a fraction of the population and mark the sources as reserved
+        # from res.matches, reserve a fraction of the sources from res.matches and mark the sources reserved
 
         if self.config.reserveFraction > 0:
-            random.seed(self.config.reserveSeed*expId)
-            reserveList = random.sample(res.matches,
-                                        int((self.config.reserveFraction)*len(res.matches)))
-
-            for candidate in reserveList:
+            # Note that the seed can't be set to 0, so guard against an improper expId.
+            random = afwMath.Random(seed=self.config.reserveSeed*(expId if expId else 1))
+            reserveList = []
+            n = len(res.matches)
+            for i in range(int(n*self.config.reserveFraction)):
+                index = random.uniformInt(n)
+                n -= 1
+                candidate = res.matches[index]
                 res.matches.remove(candidate)
+                reserveList.append(candidate)
 
             if reserveList and self.reservedKey is not None:
                 for candidate in reserveList:

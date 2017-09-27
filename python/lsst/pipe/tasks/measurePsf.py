@@ -20,7 +20,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from __future__ import absolute_import, division, print_function
-import random
 
 import lsst.afw.math as afwMath
 import lsst.afw.display.ds9 as ds9
@@ -278,12 +277,16 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         reserveList = []
 
         if self.config.reserveFraction > 0:
-            random.seed(self.config.reserveSeed*expId)
-            reserveList = random.sample(psfCandidateList,
-                                        int((self.config.reserveFraction)*len(psfCandidateList)))
-
-            for cand in reserveList:
-                psfCandidateList.remove(cand)
+            # Note that the seed can't be set to 0, so guard against an improper expId.
+            random = afwMath.Random(seed=self.config.reserveSeed*(expId if expId else 1))
+            reserveList = []
+            n = len(psfCandidateList)
+            for i in range(int(n*self.config.reserveFraction)):
+                index = random.uniformInt(n)
+                n -= 1
+                candidate = psfCandidateList[index]
+                psfCandidateList.remove(candidate)
+                reserveList.append(candidate)
 
             if reserveList and self.reservedKey is not None:
                 for cand in reserveList:
