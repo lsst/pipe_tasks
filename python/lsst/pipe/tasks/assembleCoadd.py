@@ -185,13 +185,14 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                               if str(k) not in unstackableStats]
             raise ValueError("statistic %s is not allowed. Please choose one of %s."
                              % (self.statistic, stackableStats))
-# \addtogroup LSST_task_documentation
-# \{
-# \page AssembleCoaddTask
-# \ref AssembleCoaddTask_ "AssembleCoaddTask"
-# \copybrief AssembleCoaddTask
-# \}
 
+
+## \addtogroup LSST_task_documentation
+## \{
+## \page AssembleCoaddTask
+## \ref AssembleCoaddTask_ "AssembleCoaddTask"
+## \copybrief AssembleCoaddTask
+## \}
 class AssembleCoaddTask(CoaddBaseTask):
     """!
 \anchor AssembleCoaddTask_
@@ -287,12 +288,27 @@ $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
 This will produce warped exposures for each visit. To coadd the warped data, we call assembleCoadd.py as
 follows:
 \code
-assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24\endcode
-that will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I
+assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
+--selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
+--selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
+--selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
+--selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
+--selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
+--selectId visit=903988 ccd=24
+\endcode
+that will process the HSC-I band data. The results are written in
+`$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I`.
+
 You may also choose to run:
 \code
 scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
-assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R --selectId visit=903334 ccd=16 --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 --selectId visit=903334 ccd=100 --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 --selectId visit=903338 ccd=18 --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 --selectId visit=903342 ccd=10 --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 --selectId visit=903344 ccd=5 --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 --selectId visit=903346 ccd=6 --selectId visit=903346 ccd=12
+assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R \
+--selectId visit=903334 ccd=16 --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 \
+--selectId visit=903334 ccd=100 --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 \
+--selectId visit=903338 ccd=18 --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 \
+--selectId visit=903342 ccd=10 --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 \
+--selectId visit=903344 ccd=5 --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 \
+--selectId visit=903346 ccd=6 --selectId visit=903346 ccd=12
 \endcode
 to generate the coadd for the HSC-R band if you are interested in following multiBand Coadd processing as
 discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
@@ -321,7 +337,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             del mask
 
         self.warpType = self.config.warpType
-
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
@@ -369,11 +384,12 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 return
 
         supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
-        # nImage is created if it is requested by self.config.  Otherwise, None.
-        retStruct = self.assemble(
-            skyInfo, inputData.tempExpRefList, inputData.imageScalerList, inputData.weightList,
-            inputData.backgroundInfoList if self.config.doMatchBackgrounds else None
-        )
+
+        retStruct = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
+                                  inputData.weightList,
+                                  inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
+                                  supplementaryData=supplementaryData)
+
         if self.config.doMatchBackgrounds:
             self.addBackgroundMatchingMetadata(retStruct.coaddExposure, inputData.tempExpRefList,
                                                inputData.backgroundInfoList)
@@ -392,7 +408,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
             dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
             if retStruct.nImage is not None:
-                dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType)+'_nImage')
+                dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
 
         return retStruct
 
@@ -1042,8 +1058,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     """!
     \anchor SafeClipAssembleCoaddTask_
 
-    \brief Assemble a coadded image from a set of coadded temporary exposures, being careful to clip & flag areas
-    with potential artifacts.
+    \brief Assemble a coadded image from a set of coadded temporary exposures,
+    being careful to clip & flag areas with potential artifacts.
 
     \section pipe_tasks_assembleCoadd_Contents Contents
       - \ref pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Purpose
@@ -1093,7 +1109,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     subtasks may support debug variables. See the documetation for \ref SourceDetectionTask_ "clipDetection"
     for further information.
 
-    \section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Example	A complete example of using SafeClipAssembleCoaddTask
+    \section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Example	A complete example of using
+    SafeClipAssembleCoaddTask
 
     SafeClipAssembleCoaddTask assembles a set of warped coaddTempExp images into a coadded image.
     The SafeClipAssembleCoaddTask is invoked by running assembleCoadd.py <em>without</em> the flag
@@ -1126,16 +1143,30 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     \code
     $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
     \endcode
-    This will produce warped coaddTempExps for each visit. To coadd the wraped data, we call assembleCoadd.py
+    This will produce warped coaddTempExps for each visit. To coadd the warped data, we call assembleCoadd.py
     as follows:
     \code
-    assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24
+    assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
+    --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
+    --selectId visit=903986 ccd=100--selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
+    --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
+    --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
+    --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
+    --selectId visit=903988 ccd=24
     \endcode
-    This will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I
+    This will process the HSC-I band data. The results are written in
+    `$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I`.
+
     You may also choose to run:
     \code
     scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
-    assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R --selectId visit=903334 ccd=16 --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 --selectId visit=903334 ccd=100 --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 --selectId visit=903338 ccd=18 --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 --selectId visit=903342 ccd=10 --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 --selectId visit=903344 ccd=5 --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 --selectId visit=903346 ccd=6 --selectId visit=903346 ccd=12
+    assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R --selectId visit=903334 ccd=16 \
+    --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 --selectId visit=903334 ccd=100 \
+    --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 --selectId visit=903338 ccd=18 \
+    --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 --selectId visit=903342 ccd=10 \
+    --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 --selectId visit=903344 ccd=5 \
+    --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 --selectId visit=903346 ccd=6 \
+    --selectId visit=903346 ccd=12
     \endcode
     to generate the coadd for the HSC-R band if you are interested in following multiBand Coadd processing as
     discussed in \ref pipeTasks_multiBand.
@@ -1454,7 +1485,15 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         self.assembleStaticSkyModel.warpType = 'psfMatched'
         self.assembleStaticSkyModel.statistic = 'MEDIAN'
         self.assembleStaticSkyModel.doWrite = False
+        self.statistic = 'MEAN'
 
+
+## \addtogroup LSST_task_documentation
+## \{
+## \page CompareWarpAssembleCoaddTask
+## \ref CompareWarpAssembleCoaddTask_ "CompareWarpAssembleCoaddTask"
+## \copybrief CompareWarpAssembleCoaddTask
+## \}
 
 class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     """!
@@ -1516,7 +1555,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     files.
     CompareWarpAssembleCoaddTask has no debug variables of its own.
 
-    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Example A complete example of using CompareWarpAssembleCoaddTask
+    \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Example A complete example of using
+    CompareWarpAssembleCoaddTask
 
     CompareWarpAssembleCoaddTask assembles a set of warped images into a coadded image.
     The CompareWarpAssembleCoaddTask is invoked by running assembleCoadd.py with the flag
@@ -1531,9 +1571,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     \code
     assembleCoadd.py --help
     \endcode
-    To demonstrate usage of the CompareWarpAssembleCoaddTask in the larger context of multi-band processing, we
-    will generate the HSC-I & -R band coadds from HSC engineering test data provided in the ci_hsc package. To
-    begin, assuming that the lsst stack has been already set up, we must set up the obs_subaru and ci_hsc
+    To demonstrate usage of the CompareWarpAssembleCoaddTask in the larger context of multi-band processing,
+    we will generate the HSC-I & -R band coadds from HSC engineering test data provided in the ci_hsc package.
+    To begin, assuming that the lsst stack has been already set up, we must set up the obs_subaru and ci_hsc
     packages.
     This defines the environment variable $CI_HSC_DIR and points at the location of the package. The raw HSC
     data live in the $CI_HSC_DIR/raw directory. To begin assembling the coadds, we must first
@@ -1560,7 +1600,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
     --selectId visit=903988 ccd=24
     \endcode
-    This will process the HSC-I band data. The results are written in $CI_HSC_DIR/DATA/deepCoadd-results/HSC-I
+    This will process the HSC-I band data. The results are written in
+    `$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I`.
     """
     ConfigClass = CompareWarpAssembleCoaddConfig
     _DefaultName = "compareWarpAssembleCoadd"
@@ -1600,7 +1641,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         @param bgModelList: List of background models from background matching
         @param supplementaryData: PipeBase.Struct containing a templateCoadd
 
-        return coadd exposure
+        return pipeBase.Struct with coaddExposure, nImage if requested
         """
         templateCoadd = supplementaryData.templateCoadd
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
@@ -1609,9 +1650,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        coaddExp = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                              bgModelList, maskList, mask=badPixelMask)
-        return coaddExp
+        retStruct = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                               bgModelList, maskList, mask=badPixelMask)
+        return retStruct
 
     def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
         """!
@@ -1632,6 +1673,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         epochCountImage = afwImage.ImageU(templateCoadd.getBBox())
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
+            if mi is None:
+                continue
             chiIm = self._makeChiIm(mi)
             chiOneMap = self._snrToBinaryIm(chiIm)
             epochCountImage += chiOneMap
@@ -1643,11 +1686,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         maxNumEpochs = int(max(1, self.config.temporalThreshold*len(tempExpRefList)))
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
-            chiIm = self._makeChiIm(mi)
-            chiOneMap = self._snrToBinaryArr(chiIm.array)
-            outliers = afwImage.makeMaskFromArray(chiOneMap.astype(afwImage.MaskPixel))
-            outliers.setXY0(mi.getXY0())
-            spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
+            if mi is not None:
+                chiIm = self._makeChiIm(mi)
+                chiOneMap = self._snrToBinaryArr(chiIm.array)
+                outliers = afwImage.makeMaskFromArray(chiOneMap.astype(afwImage.MaskPixel))
+                outliers.setXY0(mi.getXY0())
+                spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
+            else:
+                chiIm = afwImage.ImageF(templateCoadd.getBBox(), numpy.nan)
+                spanSetList = []
 
             # PSF-Matched warps have less available area (~the matching kernel) because the calexps
             # undergo a second convolution. Pixels with data in the direct warp
@@ -1728,7 +1775,12 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
+        warpName = self.getTempExpDatasetName('psfMatched')
+        if not warpRef.datasetExists(warpName):
+            self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
+            return None
         warp = warpRef.get(self.getTempExpDatasetName('psfMatched'), immediate=True)
+        # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
         mi -= templateCoadd.getMaskedImage()

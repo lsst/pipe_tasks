@@ -29,7 +29,8 @@ import lsst.afw.table
 import lsst.pipe.base
 from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 from lsst.pipe.tasks.makeCoaddTempExp import MakeCoaddTempExpTask
-from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
+from lsst.pipe.tasks.assembleCoadd import (AssembleCoaddTask, SafeClipAssembleCoaddTask,
+                                           CompareWarpAssembleCoaddTask)
 from .mockObject import MockObjectTask
 from .mockObservation import MockObservationTask
 from .mockSelect import MockSelectImagesTask
@@ -243,10 +244,13 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellX = 64
             config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellY = 64
 
-        elif cls == AssembleCoaddTask:
-            config.doMatchBackgrounds = False
+        elif cls in [AssembleCoaddTask, SafeClipAssembleCoaddTask, CompareWarpAssembleCoaddTask]:
             if assemblePsfMatched:
                 config.warpType = 'psfMatched'
+            if cls != AssembleCoaddTask:
+                config.doWrite = False
+            if cls == CompareWarpAssembleCoaddTask:
+                config.assembleStaticSkyModel.select.retarget(MockSelectImagesTask)
         return cls(config)
 
     def iterPatchRefs(self, butler, tractInfo):
@@ -270,12 +274,15 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             skyMap = butler.get(self.config.coaddName + "Coadd_skyMap")
         tractInfo = skyMap[tract]
         makeCoaddTempExpTask = self.makeCoaddTask(MakeCoaddTempExpTask)
-        assembleCoaddTask = self.makeCoaddTask(AssembleCoaddTask)
+        directCoaddTaskList = []
+        for coaddTask in [SafeClipAssembleCoaddTask, CompareWarpAssembleCoaddTask, AssembleCoaddTask]:
+            directCoaddTaskList.append(self.makeCoaddTask(coaddTask))
         assemblePsfMatchedCoaddTask = self.makeCoaddTask(AssembleCoaddTask, assemblePsfMatched=True)
         for patchRef in self.iterPatchRefs(butler, tractInfo):
             makeCoaddTempExpTask.run(patchRef)
         for patchRef in self.iterPatchRefs(butler, tractInfo):
-            assembleCoaddTask.run(patchRef)
+            for directCoaddTask in directCoaddTaskList:
+                directCoaddTask.run(patchRef)
             assemblePsfMatchedCoaddTask.run(patchRef)
 
     def buildMockCoadd(self, butler, truthCatalog=None, skyMap=None, tract=0):
