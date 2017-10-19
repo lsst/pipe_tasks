@@ -107,7 +107,7 @@ class CalibrateConfig(pexConfig.Config):
     )
     icSourceFieldsToCopy = pexConfig.ListField(
         dtype=str,
-        default=("calib_psfCandidate", "calib_psfUsed", "calib_psfReserved"),
+        default=("calib_psfCandidate", "calib_psfUsed", "calib_psf_reserved"),
         doc=("Fields to copy from the icSource catalog to the output catalog "
              "for matching sources Any missing fields will trigger a "
              "RuntimeError exception. Ignored if icSourceCat is not provided.")

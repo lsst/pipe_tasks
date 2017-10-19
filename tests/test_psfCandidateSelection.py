@@ -56,62 +56,10 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
             if source.get("calib_psfUsed"):
                 used += 1
                 self.assertTrue(source.get("calib_psfCandidate"))
-            if source.get("calib_psfReserved"):
+            if source.get("calib_psf_reserved"):
                 reserved += 1
         self.assertGreater(used, 0)
         self.assertEqual(reserved, 0)
-
-    def testReserveFraction(self):
-        """ Test that a fraction of the possible candidates can be reserved.
-        """
-        # Note that different expIds can produce a different reserveLists
-        task = CharacterizeImageTask()
-        # set the reserve fraction, and see if the right proportion are reserved.
-        task.measurePsf.config.reserveFraction = .3
-        exposureIdInfo = ExposureIdInfo(12345, expBits=16)
-        results = task.characterize(self.exposure, exposureIdInfo=exposureIdInfo)
-        candidates = 0
-        reservedSources1 = []
-        for source in results.sourceCat:
-            if source.get("calib_psfCandidate"):
-                candidates += 1
-            if source.get("calib_psfReserved"):
-                reservedSources1.append(source.getId())
-        reserved = len(reservedSources1)
-        self.assertEqual(reserved, int(.3*(candidates + reserved)))
-
-        # try again with a different id, and see if the list is different
-        # but the number of reserved sources is the same
-        exposureIdInfo = ExposureIdInfo(6789, expBits=16)
-        results = task.characterize(self.exposure, exposureIdInfo=exposureIdInfo)
-        reservedSources2 = []
-        for source in results.sourceCat:
-            if source.get("calib_psfReserved"):
-                reservedSources2.append(source.getId())
-        # Length of reserveList should be the same, but specific sources may differ
-        self.assertEqual(len(reservedSources1), len(reservedSources2))
-        self.assertNotEqual(reservedSources1, reservedSources2)
-
-    def testReserveSeedReproducible(self):
-        """ test that the same seed twice will produce the same reserve set.
-        """
-        task = CharacterizeImageTask()
-        task.measurePsf.config.reserveFraction = .3
-        results = task.characterize(self.exposure)
-        reservedSources1 = []
-        for source in results.sourceCat:
-            if source.get("calib_psfReserved"):
-                reservedSources1.append(source.getId())
-
-        # try again with the same seed (the default)
-        results = task.characterize(self.exposure)
-        reservedSources2 = []
-        for source in results.sourceCat:
-            if source.get("calib_psfReserved"):
-                reservedSources2.append(source.getId())
-        # reserveLists should be the same
-        self.assertEqual(reservedSources1, reservedSources2)
-
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass
