@@ -487,9 +487,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
         table = SourceTable.make(self.schema, sourceIdFactory)
         table.setMetadata(self.algMetadata)
 
-        if self.config.doInsertFakes:
-            self.insertFakes.run(exposure, background=background)
-
         detRes = self.detection.run(table=table, exposure=exposure,
                                     doSmooth=True)
         sourceCat = detRes.sources
@@ -546,6 +543,36 @@ class CalibrateTask(pipeBase.CmdLineTask):
                 self.log.warn("Unable to perform photometric calibration "
                               "(%s): attempting to proceed" % e)
                 self.setMetadata(exposure=exposure, photoRes=None)
+
+        if self.config.doInsertFakes:
+            self.insertFakes.run(exposure, background=background)
+
+            table = SourceTable.make(self.schema, sourceIdFactory)
+            table.setMetadata(self.algMetadata)
+
+            detRes = self.detection.run(table=table, exposure=exposure,
+                                        doSmooth=True)
+            sourceCat = detRes.sources
+            if detRes.fpSets.background:
+                background.append(detRes.fpSets.background)
+            if self.config.doDeblend:
+                self.deblend.run(exposure=exposure, sources=sourceCat)
+            self.measurement.run(
+                measCat=sourceCat,
+                exposure=exposure,
+                exposureId=exposureIdInfo.expId
+            )
+            if self.config.doApCorr:
+                self.applyApCorr.run(
+                    catalog=sourceCat,
+                    apCorrMap=exposure.getInfo().getApCorrMap()
+                )
+            self.catalogCalculation.run(sourceCat)
+
+            if icSourceCat is not None and \
+                    len(self.config.icSourceFieldsToCopy) > 0:
+                self.copyIcSourceFields(icSourceCat=icSourceCat,
+                                        sourceCat=sourceCat)
 
         frame = getDebugFrame(self._display, "calibrate")
         if frame:
