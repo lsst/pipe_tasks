@@ -247,8 +247,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
 
-    def __init__(self, *args, **kwargs):
-        CoaddBaseTask.__init__(self, *args, **kwargs)
+    def __init__(self, **kwargs):
+        CoaddBaseTask.__init__(self, **kwargs)
         self.makeSubtask("warpAndPsfMatch")
 
     @pipeBase.timeMethod

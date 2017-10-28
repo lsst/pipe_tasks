@@ -251,7 +251,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
                 config.doWrite = False
             if cls == CompareWarpAssembleCoaddTask:
                 config.assembleStaticSkyModel.select.retarget(MockSelectImagesTask)
-        return cls(config)
+        return cls(config=config)
 
     def iterPatchRefs(self, butler, tractInfo):
         """Generator that iterates over the patches in a tract, yielding dataRefs.
