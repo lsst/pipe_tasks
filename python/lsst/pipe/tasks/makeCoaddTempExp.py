@@ -117,8 +117,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     @copydoc \_\_init\_\_
 
     This task has one special keyword argument: passing reuse=True will cause
-    the task to skip the creation of warps that are already present in input
-    or output the repositories.
+    the task to skip the creation of warps that are already present in the
+    output repositories.
 
     @section pipe_tasks_makeCoaddTempExp_IO  Invoking the Task
 
@@ -289,7 +289,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.items()):
             tempExpRef = getGroupDataRef(patchRef.getButler(), primaryWarpDataset,
                                          tempExpTuple, groupData.keys)
-            if self.reuse and tempExpRef.datasetExists(datasetType=primaryWarpDataset):
+            if self.reuse and tempExpRef.datasetExists(datasetType=primaryWarpDataset, write=True):
                 self.log.info("Skipping makeCoaddTempExp for %s; output already exists.", tempExpRef.dataId)
                 dataRefList.append(tempExpRef)
                 continue
