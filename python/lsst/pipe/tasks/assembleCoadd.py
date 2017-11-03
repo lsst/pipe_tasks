@@ -1669,17 +1669,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         @param imageScalerList: List of image scalers
         """
 
-        self.log.debug("Generating Count Image. First loop through warps")
+        self.log.debug("Generating Count Image, and mask lists.")
         epochCountImage = afwImage.ImageU(templateCoadd.getBBox())
-        for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
-            mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
-            if mi is None:
-                continue
-            chiIm = self._makeChiIm(mi)
-            chiOneMap = self._snrToBinaryIm(chiIm)
-            epochCountImage += chiOneMap
-
-        self.log.debug("Generating Mask List. Second loop through warps")
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
 
@@ -1688,8 +1679,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
             if mi is not None:
                 chiIm = self._makeChiIm(mi)
-                chiOneMap = self._snrToBinaryArr(chiIm.array)
-                outliers = afwImage.makeMaskFromArray(chiOneMap.astype(afwImage.MaskPixel))
+                chiOneMap = self._snrToBinaryIm(chiIm)
+                epochCountImage += chiOneMap
+                outliers = afwImage.makeMaskFromArray(chiOneMap.array.astype(afwImage.MaskPixel))
                 outliers.setXY0(mi.getXY0())
                 spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
             else:
@@ -1705,12 +1697,17 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             nansMask.setXY0(chiIm.getXY0())
             spanSetNoDataMask = afwGeom.SpanSet.fromMask(nansMask).split()
 
-            filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage,
-                                                        maxNumEpochs=maxNumEpochs)
-            dilatedSpanSetList = [s.dilated(self.config.growMaskBy, afwGeom.Stencil.CIRCLE)
-                                  for s in filteredSpanSetList]
-            spanSetArtifactList.append(dilatedSpanSetList)
+            spanSetArtifactList.append(spanSetList)
             spanSetNoDataMaskList.append(spanSetNoDataMask)
+
+        for i, spanSetList in enumerate(spanSetArtifactList):
+            if spanSetList:
+                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage,
+                                                            maxNumEpochs=maxNumEpochs)
+                dilatedSpanSetList = [s.dilated(self.config.growMaskBy, afwGeom.Stencil.CIRCLE)
+                                      for s in filteredSpanSetList]
+                spanSetArtifactList[i] = dilatedSpanSetList
+
         return pipeBase.Struct(artifacts=spanSetArtifactList,
                                noData=spanSetNoDataMaskList)
 
