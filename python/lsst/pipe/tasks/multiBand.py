@@ -290,7 +290,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
         - backgrounds: list of backgrounds
         """
         if self.config.doScaleVariance:
-            scaleVariance(exposure.getMaskedImage(), self.config.mask, log=self.log)
+            varScale = scaleVariance(exposure.getMaskedImage(), self.config.mask, log=self.log)
+            self.metadata.add("variance_scale", varScale)
         backgrounds = afwMath.BackgroundList()
         if self.config.doInsertFakes:
             self.insertFakes.run(exposure, background=backgrounds)
