@@ -22,6 +22,7 @@ from builtins import range
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+import os
 import numpy
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
@@ -34,6 +35,7 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 import lsst.log as log
+import lsstDebug
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .matchBackgrounds import MatchBackgroundsTask
@@ -1553,7 +1555,33 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
     flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py
     files.
-    CompareWarpAssembleCoaddTask has no debug variables of its own.
+
+    This task supports the following debug variables:
+    <dl>
+        <dt>`saveCountIm`
+        <dd> If True then save the Epoch Count Image as a fits file in the `figPath`
+        <dt> `saveAltMask`
+        <dd> If True then save the new masks with CLIPPED planes as fits files to the `figPath`
+        <dt> `figPath`
+        <dd> Path to save the debug fits images and figures
+    </dl>
+
+    For example, put something like:
+    @code{.py}
+        import lsstDebug
+        def DebugInfo(name):
+            di = lsstDebug.getInfo(name)
+            if name == "lsst.pipe.tasks.assembleCoadd":
+                di.saveCountIm = True
+                di.saveAltMask = True
+                di.figPath = "/desired/path/to/debugging/output/images"
+            return di
+        lsstDebug.Info = DebugInfo
+    @endcode
+    into your `debug.py` file and run `assemebleCoadd.py` with the `--debug`
+    flag.
+    Some subtasks may have their own debug variables; see individual Task
+    documentation
 
     \section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Example A complete example of using
     CompareWarpAssembleCoaddTask
@@ -1700,6 +1728,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             spanSetArtifactList.append(spanSetList)
             spanSetNoDataMaskList.append(spanSetNoDataMask)
 
+        if lsstDebug.Info(__name__).saveCountIm:
+            path = self._dataRef2DebugPath("epochCountIm", tempExpRefList[0], coaddLevel=True)
+            epochCountImage.writeFits(path)
+
         for i, spanSetList in enumerate(spanSetArtifactList):
             if spanSetList:
                 filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage,
@@ -1735,6 +1767,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             for noDataRegion in noData:
                 noDataRegion.clippedTo(mask.getBBox()).setMask(mask, 2**noDataValue)
             altMaskList.append(mask)
+            if lsstDebug.Info(__name__).saveAltMask:
+                mask.writeFits(self._dataRef2DebugPath("altMask", warpRef))
+
         return altMaskList
 
     def _filterArtifacts(self, spanSetList, epochCountImage, maxNumEpochs=None, minPixels=None):
@@ -1782,3 +1817,23 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         mi = warp.getMaskedImage()
         mi -= templateCoadd.getMaskedImage()
         return mi
+
+    def _dataRef2DebugPath(self, prefix, warpRef, coaddLevel=False):
+        """!
+        \brief Return a path to which to write debugging output
+
+        @param prefix: string, prefix for filename
+        @param warpRef: Butler dataRef
+        @param coaddLevel: bool, optional. If True, include only coadd-level keys
+                           (e.g. 'tract', 'patch', 'filter', but no 'visit')
+
+        Creates a hyphen-delimited string of dataId values for simple filenames.
+        """
+        if coaddLevel:
+            keys = warpRef.getButler().getKeys(self.getCoaddDatasetName(self.warpType))
+        else:
+            keys = warpRef.dataId.keys()
+        keyList = sorted(keys, reverse=True)
+        directory = lsstDebug.Info(__name__).figPath if lsstDebug.Info(__name__).figPath else "."
+        filename = "%s-%s.fits" % (prefix, '-'.join([str(warpRef.dataId[k]) for k in keyList]))
+        return os.path.join(directory, filename)
