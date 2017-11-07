@@ -1698,7 +1698,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         """
 
         self.log.debug("Generating Count Image, and mask lists.")
-        epochCountImage = afwImage.ImageU(templateCoadd.getBBox())
+        coaddBBox = templateCoadd.getBBox()
+        slateIm = afwImage.ImageU(coaddBBox)
+        epochCountImage = afwImage.ImageU(coaddBBox)
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
 
@@ -1708,13 +1710,19 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             if mi is not None:
                 chiIm = self._makeChiIm(mi)
                 chiOneMap = self._snrToBinaryIm(chiIm)
-                epochCountImage += chiOneMap
                 outliers = afwImage.makeMaskFromArray(chiOneMap.array.astype(afwImage.MaskPixel))
                 outliers.setXY0(mi.getXY0())
                 spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
+                dilatedSpanSetList = [s.dilated(self.config.growMaskBy,
+                                                afwGeom.Stencil.CIRCLE).clippedTo(coaddBBox)
+                                      for s in spanSetList]
+                slateIm.set(0)
+                for spans in dilatedSpanSetList:
+                    spans.setImage(slateIm, 1, doClip=True)
+                epochCountImage += slateIm
             else:
-                chiIm = afwImage.ImageF(templateCoadd.getBBox(), numpy.nan)
-                spanSetList = []
+                chiIm = afwImage.ImageF(coaddBBox, numpy.nan)
+                dilatedSpanSetList = []
 
             # PSF-Matched warps have less available area (~the matching kernel) because the calexps
             # undergo a second convolution. Pixels with data in the direct warp
@@ -1725,7 +1733,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             nansMask.setXY0(chiIm.getXY0())
             spanSetNoDataMask = afwGeom.SpanSet.fromMask(nansMask).split()
 
-            spanSetArtifactList.append(spanSetList)
+            spanSetArtifactList.append(dilatedSpanSetList)
             spanSetNoDataMaskList.append(spanSetNoDataMask)
 
         if lsstDebug.Info(__name__).saveCountIm:
@@ -1736,9 +1744,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             if spanSetList:
                 filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage,
                                                             maxNumEpochs=maxNumEpochs)
-                dilatedSpanSetList = [s.dilated(self.config.growMaskBy, afwGeom.Stencil.CIRCLE)
-                                      for s in filteredSpanSetList]
-                spanSetArtifactList[i] = dilatedSpanSetList
+                spanSetArtifactList[i] = filteredSpanSetList
 
         return pipeBase.Struct(artifacts=spanSetArtifactList,
                                noData=spanSetNoDataMaskList)
