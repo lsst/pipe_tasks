@@ -35,49 +35,18 @@ import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.math as afwMath
-from lsst.meas.astrom import RefMatchTask, RefMatchConfig
+from lsst.meas.astrom import DirectMatchTask
 import lsst.afw.display.ds9 as ds9
-from lsst.meas.algorithms import getRefFluxField
+from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from .colorterms import ColortermLibrary
 
 __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
 
-def checkSourceFlags(source, sourceKeys):
-    """!Return True if the given source has all good flags set and none of the bad flags set.
-
-    \param[in] source      SourceRecord object to process.
-    \param[in] sourceKeys  Struct of source catalog keys, as returned by PhotCalTask.getSourceKeys()
-    """
-    for k in sourceKeys.goodFlags:
-        if not source.get(k):
-            return False
-    if source.getPsfFluxFlag():
-        return False
-    for k in sourceKeys.badFlags:
-        if source.get(k):
-            return False
-    return True
-
-
-class PhotoCalConfig(RefMatchConfig):
+class PhotoCalConfig(pexConf.Config):
     """Config for PhotoCal"""
-    magLimit = pexConf.Field(
-        dtype=float,
-        default=22.0,
-        doc="Don't use objects fainter than this magnitude",
-    )
-    reserveFraction = pexConf.Field(
-        dtype=float,
-        doc="Fraction of candidates to reserve from fitting; none if <= 0",
-        default=-1.0,
-    )
-    reserveSeed = pexConf.Field(
-        dtype=int,
-        doc="This number will be multiplied by the exposure ID "
-        "to set the random seed for reserving candidates",
-        default=1,
-    )
+    match = pexConf.ConfigurableField(target=DirectMatchTask, doc="Match to reference catalog")
+    reserve = pexConf.ConfigurableField(target=ReserveSourcesTask, doc="Reserve sources from fitting")
     fluxField = pexConf.Field(
         dtype=str,
         default="slot_CalibFlux_flux",
@@ -94,17 +63,6 @@ class PhotoCalConfig(RefMatchConfig):
              "      specified reference catalog and filter.\n"
              "False: do not apply."),
         optional=True,
-    )
-    goodFlags = pexConf.ListField(
-        dtype=str,
-        default=[],
-        doc="List of source flag fields that must be set for a source to be used.",
-    )
-    badFlags = pexConf.ListField(
-        dtype=str,
-        default=["base_PixelFlags_flag_edge", "base_PixelFlags_flag_interpolated",
-                 "base_PixelFlags_flag_saturated"],
-        doc="List of source flag fields that will cause a source to be rejected when they are set.",
     )
     sigmaMax = pexConf.Field(
         dtype=float,
@@ -143,12 +101,6 @@ class PhotoCalConfig(RefMatchConfig):
         doc="Additional magnitude uncertainty to be added in quadrature with measurement errors.",
         min=0.0,
     )
-    doSelectUnresolved = pexConf.Field(
-        dtype=bool,
-        default=True,
-        doc=("Use the extendedness parameter to select objects to use in photometric calibration?\n"
-             "This applies only to the sources detected on the exposure, not the reference catalog"),
-    )
 
     def validate(self):
         pexConf.Config.validate(self)
@@ -156,6 +108,16 @@ class PhotoCalConfig(RefMatchConfig):
             raise RuntimeError("applyColorTerms=True requires photoCatName is non-None")
         if self.applyColorTerms and len(self.colorterms.data) == 0:
             raise RuntimeError("applyColorTerms=True requires colorterms be provided")
+
+    def setDefaults(self):
+        pexConf.Config.setDefaults(self)
+        self.match.sourceSelection.doFlags = True
+        self.match.sourceSelection.flags.bad = [
+            "base_PixelFlags_flag_edge",
+            "base_PixelFlags_flag_interpolated",
+            "base_PixelFlags_flag_saturated",
+        ]
+        self.match.sourceSelection.doUnresolved = True
 
 
 ## \addtogroup LSST_task_documentation
@@ -165,7 +127,7 @@ class PhotoCalConfig(RefMatchConfig):
 ##      Detect positive and negative sources on an exposure and return a new SourceCatalog.
 ## \}
 
-class PhotoCalTask(RefMatchTask):
+class PhotoCalTask(pipeBase.Task):
     r"""!
 \anchor PhotoCalTask_
 
@@ -214,17 +176,10 @@ The available variables in PhotoCalTask are:
   <DT> \c display
   <DD> If True enable other debug outputs
   <DT> \c displaySources
-  <DD> If True, display the exposure on ds9's frame 1 and overlay the source catalogue:
+  <DD> If True, display the exposure on ds9's frame 1 and overlay the source catalogue.
     <DL>
-      <DT> red x
-      <DD> Bad objects
-      <DT> blue +
-      <DD> Matched objects deemed unsuitable for photometric calibration.
-            Additional information is:
-        - a cyan o for galaxies
-        - a magenta o for variables
-      <DT> magenta *
-      <DD> Objects that failed the flux cut
+      <DT> red o
+      <DD> Reserved objects
       <DT> green o
       <DD> Objects used in the photometric calibration
     </DL>
@@ -296,20 +251,17 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     def __init__(self, refObjLoader, schema=None, **kwds):
         """!Create the photometric calibration task.  See PhotoCalTask.init for documentation
         """
-        RefMatchTask.__init__(self, refObjLoader, schema=None, **kwds)
+        pipeBase.Task.__init__(self, **kwds)
         self.scatterPlot = None
         self.fig = None
         if schema is not None:
-            self.usedKey = schema.addField("calib_photometryUsed", type="Flag",
+            self.usedKey = schema.addField("calib_photometry_used", type="Flag",
                                            doc="set if source was used in photometric calibration")
-            self.candidateKey = schema.addField("calib_photometryCandidate", type="Flag",
-                                                doc="set if source was a candidate for use in calibration")
-            self.reservedKey = schema.addField("calib_photometryReserved", type="Flag",
-                                               doc="set if source was reserved, so not used in calibration")
         else:
             self.usedKey = None
-            self.candidateKey = None
-            self.reservedKey = None
+        self.makeSubtask("match", refObjLoader=refObjLoader)
+        self.makeSubtask("reserve", columnName="calib_photometry", schema=schema,
+                         doc="set if source was reserved from photometric calibration")
 
     def getSourceKeys(self, schema):
         """!Return a struct containing the source catalog keys for fields used by PhotoCalTask.
@@ -317,165 +269,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         Returned fields include:
         - flux
         - fluxErr
-        - goodFlags: a list of keys for field names in self.config.goodFlags
-        - badFlags: a list of keys for field names in self.config.badFlags
-        - starGal: key for star/galaxy classification
         """
-        goodFlags = [schema.find(name).key for name in self.config.goodFlags]
         flux = schema.find(self.config.fluxField).key
         fluxErr = schema.find(self.config.fluxField + "Sigma").key
-        badFlags = [schema.find(name).key for name in self.config.badFlags]
-        try:
-            starGal = schema.find("base_ClassificationExtendedness_value").key
-        except KeyError:
-            starGal = None
-        return pipeBase.Struct(flux=flux, fluxErr=fluxErr, goodFlags=goodFlags, badFlags=badFlags,
-                               starGal=starGal)
-
-    def isUnresolved(self, source, starGalKey=None):
-        """!Return whether the provided source is unresolved or not
-
-        This particular implementation is designed to work with the
-        base_ClassificationExtendedness_value=0.0 or 1.0 scheme.  Because
-        of the diversity of star/galaxy classification outputs (binary
-        decision vs probabilities; signs), it's difficult to make this
-        configurable without using code.  This method should therefore
-        be overridden to use the appropriate classification output.
-
-        \param[in] source      Source to test
-        \param[in] starGalKey  Struct of schema keys for source
-        \return    boolean value for starGalKey (True indicates Unresolved)
-        """
-        return source.get(starGalKey) < 0.5 if starGalKey is not None else True
-
-    @pipeBase.timeMethod
-    def selectMatches(self, matches, sourceKeys, filterName, frame=None):
-        """!Select reference/source matches according the criteria specified in the config.
-
-        \param[in] matches ReferenceMatchVector (not modified)
-        \param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
-        \param[in] filterName  name of camera filter; used to obtain the reference flux field
-        \param[in] frame   ds9 frame number to use for debugging display
-        if frame is non-None, display information about trimmed objects on that ds9 frame:
-         - Bad:               red x
-         - Unsuitable objects: blue +  (and a cyan o if a galaxy)
-         - Failed flux cut:   magenta *
-
-        \return a \link lsst.afw.table.ReferenceMatchVector\endlink that contains only the selected matches.
-        If a schema was passed during task construction, a flag field will be set on sources
-        in the selected matches.
-
-        \throws ValueError There are no valid matches.
-        """
-        self.log.debug("Number of input matches: %d", len(matches))
-
-        if self.config.doSelectUnresolved:
-            # Select only resolved sources if asked to do so.
-            matches = [m for m in matches if self.isUnresolved(m.second, sourceKeys.starGal)]
-            self.log.debug("Number of matches after culling resolved sources: %d", len(matches))
-
-        if len(matches) == 0:
-            raise ValueError("No input matches")
-
-        for m in matches:
-            if self.candidateKey is not None:
-                m.second.set(self.candidateKey, True)
-
-        # Only use stars for which the flags indicate the photometry is good.
-        afterFlagCutInd = [i for i, m in enumerate(matches) if checkSourceFlags(m.second, sourceKeys)]
-        afterFlagCut = [matches[i] for i in afterFlagCutInd]
-        self.log.debug("Number of matches after source flag cuts: %d", len(afterFlagCut))
-
-        if len(afterFlagCut) != len(matches):
-            if frame is not None:
-                with ds9.Buffering():
-                    for i, m in enumerate(matches):
-                        if i not in afterFlagCutInd:
-                            x, y = m.second.getCentroid()
-                            ds9.dot("x", x, y, size=4, frame=frame, ctype=ds9.RED)
-
-            matches = afterFlagCut
-
-        if len(matches) == 0:
-            raise ValueError("All matches eliminated by source flags")
-
-        refSchema = matches[0].first.schema
-        try:
-            photometricKey = refSchema.find("photometric").key
-            try:
-                resolvedKey = refSchema.find("resolved").key
-            except:
-                resolvedKey = None
-
-            try:
-                variableKey = refSchema.find("variable").key
-            except:
-                variableKey = None
-        except:
-            self.log.warn("No 'photometric' flag key found in reference schema.")
-            photometricKey = None
-
-        if photometricKey is not None:
-            afterRefCutInd = [i for i, m in enumerate(matches) if m.first.get(photometricKey)]
-            afterRefCut = [matches[i] for i in afterRefCutInd]
-
-            if len(afterRefCut) != len(matches):
-                if frame is not None:
-                    with ds9.Buffering():
-                        for i, m in enumerate(matches):
-                            if i not in afterRefCutInd:
-                                x, y = m.second.getCentroid()
-                                ds9.dot("+", x, y, size=4, frame=frame, ctype=ds9.BLUE)
-
-                                if resolvedKey and m.first.get(resolvedKey):
-                                    ds9.dot("o", x, y, size=6, frame=frame, ctype=ds9.CYAN)
-                                if variableKey and m.first.get(variableKey):
-                                    ds9.dot("o", x, y, size=6, frame=frame, ctype=ds9.MAGENTA)
-
-                matches = afterRefCut
-
-        self.log.debug("Number of matches after reference catalog cuts: %d", len(matches))
-        if len(matches) == 0:
-            raise RuntimeError("No sources remain in match list after reference catalog cuts.")
-        fluxName = getRefFluxField(refSchema, filterName)
-        fluxKey = refSchema.find(fluxName).key
-        if self.config.magLimit is not None:
-            fluxLimit = fluxFromABMag(self.config.magLimit)
-
-            afterMagCutInd = [i for i, m in enumerate(matches) if (m.first.get(fluxKey) > fluxLimit and
-                                                                   m.second.getPsfFlux() > 0.0)]
-        else:
-            afterMagCutInd = [i for i, m in enumerate(matches) if m.second.getPsfFlux() > 0.0]
-
-        afterMagCut = [matches[i] for i in afterMagCutInd]
-
-        if len(afterMagCut) != len(matches):
-            if frame is not None:
-                with ds9.Buffering():
-                    for i, m in enumerate(matches):
-                        if i not in afterMagCutInd:
-                            x, y = m.second.getCentroid()
-                            ds9.dot("*", x, y, size=4, frame=frame, ctype=ds9.MAGENTA)
-
-            matches = afterMagCut
-
-        self.log.debug("Number of matches after magnitude limit cuts: %d", len(matches))
-
-        if len(matches) == 0:
-            raise RuntimeError("No sources remaining in match list after magnitude limit cuts.")
-
-        if frame is not None:
-            with ds9.Buffering():
-                for m in matches:
-                    x, y = m.second.getCentroid()
-                    ds9.dot("o", x, y, size=4, frame=frame, ctype=ds9.GREEN)
-
-        result = []
-        for m in matches:
-            if self.usedKey is not None:
-                m.second.set(self.usedKey, True)
-            result.append(m)
-        return result
+        return pipeBase.Struct(flux=flux, fluxErr=fluxErr)
 
     @pipeBase.timeMethod
     def extractMagArrays(self, matches, filterName, sourceKeys):
@@ -517,7 +314,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             ctDataAvail = len(self.config.colorterms.data) > 0
             photoCatSpecified = self.config.photoCatName is not None
             applyCTReason += " and data %s available" % ("is" if ctDataAvail else "is not")
-            applyCTReason += " and photoRefCat %s None" % ("is not" if photoCatSpecified else "is")
+            applyCTReason += " and photoRefCat %s provided" % ("is" if photoCatSpecified else "is not")
             applyColorTerms = ctDataAvail and photoCatSpecified
 
         if applyColorTerms:
@@ -583,12 +380,14 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in zip(srcFluxErrArr, srcFluxArr)])
         refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in zip(refFluxErrArr, refFluxArr)])
 
+        good = np.isfinite(srcMagArr) & np.isfinite(refMagArr)
+
         return pipeBase.Struct(
-            srcMag=srcMagArr,
-            refMag=refMagArr,
-            magErr=magErrArr,
-            srcMagErr=srcMagErrArr,
-            refMagErr=refMagErrArr,
+            srcMag=srcMagArr[good],
+            refMag=refMagArr[good],
+            magErr=magErrArr[good],
+            srcMagErr=srcMagErrArr[good],
+            refMagErr=refMagErrArr[good],
             refFluxFieldList=fluxFieldList,
         )
 
@@ -630,18 +429,10 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         \throws RuntimeError with the following strings:
 
         <DL>
-        <DT> `sources' schema does not contain the calibration object flag "XXX"`
-        <DD> The constructor added fields to the schema that aren't in the Sources
-        <DT> No input matches
-        <DD> The input match vector is empty
-        <DT> All matches eliminated by source flags
-        <DD> The flags specified by \c badFlags in the config eliminated all candidate objects
-        <DT> No sources remain in match list after reference catalog cuts
-        <DD> The reference catalogue has a column "photometric", but no matched objects have it set
-        <DT> No sources remaining in match list after magnitude limit cuts
-        <DD> All surviving matches are either too faint in the catalogue or have negative or \c NaN flux
+        <DT> No matches to use for photocal
+        <DD> No matches are available (perhaps no sources/references were selected by the matcher).
         <DT> No reference stars are available
-        <DD> No matches survive all the checks
+        <DD> No matches are available from which to extract magnitudes.
         </DL>
         """
         import lsstDebug
@@ -657,66 +448,34 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             except:
                 self.fig = pyplot.figure()
 
-        if displaySources:
-            frame = 1
-            ds9.mtv(exposure, frame=frame, title="photocal")
-        else:
-            frame = None
-
-        res = self.loadAndMatch(exposure, sourceCat)
-
-        # from res.matches, reserve a fraction of the sources from res.matches and mark the sources reserved
-
-        if self.config.reserveFraction > 0:
-            # Note that the seed can't be set to 0, so guard against an improper expId.
-            random = afwMath.Random(seed=self.config.reserveSeed*(expId if expId else 1))
-            reserveList = []
-            n = len(res.matches)
-            for i in range(int(n*self.config.reserveFraction)):
-                index = random.uniformInt(n)
-                n -= 1
-                candidate = res.matches[index]
-                res.matches.remove(candidate)
-                reserveList.append(candidate)
-
-            if reserveList and self.reservedKey is not None:
-                for candidate in reserveList:
-                    candidate.second.set(self.reservedKey, True)
-
-        matches = res.matches
-        for m in matches:
-            if self.candidateKey is not None:
-                m.second.set(self.candidateKey, True)
-
         filterName = exposure.getFilter().getName()
-        sourceKeys = self.getSourceKeys(matches[0].second.schema)
 
-        matches = self.selectMatches(matches=matches, sourceKeys=sourceKeys, filterName=filterName,
-                                     frame=frame)
+        # Match sources
+        matchResults = self.match.run(sourceCat, filterName)
+        matches = matchResults.matches
+        reserveResults = self.reserve.run([mm.second for mm in matches], expId=expId)
+        if displaySources:
+            self.displaySources(exposure, matches, reserveResults.reserved)
+        if reserveResults.reserved.sum() > 0:
+            matches = [mm for mm, use in zip(matches, reserveResults.use) if use]
+        if len(matches) == 0:
+            raise RuntimeError("No matches to use for photocal")
+        if self.usedKey is not None:
+            for mm in matches:
+                mm.second.set(self.usedKey, True)
+
+        # Prepare for fitting
+        sourceKeys = self.getSourceKeys(matches[0].second.schema)
         arrays = self.extractMagArrays(matches=matches, filterName=filterName, sourceKeys=sourceKeys)
 
-        if matches and self.usedKey:
-            try:
-                # matches[].second is a measured source, wherein we wish to set outputField.
-                # Check that the field is present in the Sources schema.
-                matches[0].second.getSchema().find(self.usedKey)
-            except:
-                raise RuntimeError("sources' schema does not contain the calib_photometryUsed flag \"%s\"" %
-                                   self.usedKey)
-
-        # Fit for zeropoint.  We can run the code more than once, so as to
-        # give good stars that got clipped by a bad first guess a second
-        # chance.
-
-        calib = Calib()
-        zp = None                           # initial guess
-        r = self.getZeroPoint(arrays.srcMag, arrays.refMag, arrays.magErr, zp0=zp)
-        zp = r.zp
+        # Fit for zeropoint
+        r = self.getZeroPoint(arrays.srcMag, arrays.refMag, arrays.magErr)
         self.log.info("Magnitude zero point: %f +/- %f from %d stars", r.zp, r.sigma, r.ngood)
 
+        # Prepare the results
         flux0 = 10**(0.4*r.zp)  # Flux of mag=0 star
         flux0err = 0.4*math.log(10)*flux0*r.sigma  # Error in flux0
-
+        calib = Calib()
         calib.setFluxMag0(flux0, flux0err)
 
         return pipeBase.Struct(
@@ -727,6 +486,31 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             sigma=r.sigma,
             ngood=r.ngood,
         )
+
+    def displaySources(self, exposure, matches, reserved, frame=1):
+        """Display sources we'll use for photocal
+
+        Sources that will be actually used will be green.
+        Sources reserved from the fit will be red.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure to display.
+        matches : `list` of `lsst.afw.table.RefMatch`
+            Matches used for photocal.
+        reserved : `numpy.ndarray` of type `bool`
+            Boolean array indicating sources that are reserved.
+        frame : `int`
+            Frame number for display.
+        """
+        ds9.mtv(exposure, frame=frame, title="photocal")
+        with ds9.Buffering():
+            for mm, rr in zip(matches, reserved):
+                x, y = mm.second.getCentroid()
+                ctype = ds9.RED if rr else ds9.GREEN
+                ds9.dot("o", x, y, size=4, frame=frame, ctype=ctype)
+
 
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
         """!Flux calibration code, returning (ZeroPoint, Distribution Width, Number of stars)
