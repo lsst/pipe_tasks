@@ -58,7 +58,7 @@ class TestFakes(lsst.utils.tests.TestCase):
         maskPlaneName = trialInstance.config.maskPlaneName
         self.assertNotIn(maskPlaneName, maskKeysBefore)
         self.assertIn(maskPlaneName, maskKeysAfter)
-        self.assertEqual(trialInstance.bitmask, lsst.afw.image.Mask[lsst.afw.image.MaskPixel]\
+        self.assertEqual(trialInstance.bitmask, lsst.afw.image.Mask[lsst.afw.image.MaskPixel]
                          .getPlaneBitMask(maskPlaneName))
         lsst.afw.image.Mask[lsst.afw.image.MaskPixel].removeMaskPlane(maskPlaneName)
         del trialInstance

@@ -51,9 +51,9 @@ class SetPrimaryFlagsTask(Task):
         )
         self.isPrimaryKey = self.schema.addField(
             "detect_isPrimary", type="Flag",
-            doc="true if source has no children and is in the inner region of a coadd patch "
-                + "and is in the inner region of a coadd tract "
-                  "and is not \"detected\" in a pseudo-filter (see config.pseudoFilterList)",
+            doc="true if source has no children and is in the inner region of a coadd patch " +
+                "and is in the inner region of a coadd tract " +
+                "and is not \"detected\" in a pseudo-filter (see config.pseudoFilterList)",
         )
 
     def run(self, sources, skyMap, tractInfo, patchInfo, includeDeblend=True):

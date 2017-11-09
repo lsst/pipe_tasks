@@ -153,6 +153,7 @@ class CoaddTempExpInputRecorder(object):
         record.setTransmissionCurve(info.getTransmissionCurve())
 
 
+
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
     visits that went into a coadd.

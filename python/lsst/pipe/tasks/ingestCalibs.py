@@ -2,9 +2,7 @@ from __future__ import absolute_import, division, print_function
 from builtins import zip
 import collections
 import datetime
-import itertools
 import sqlite3
-from glob import glob
 import lsst.afw.image as afwImage
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.pipe.base import InputOnlyArgumentParser
@@ -54,7 +52,7 @@ class CalibsParseTask(ParseTask):
         # 'tempinfo' was added as part of DM-5466 to strip Nones from info.
         # The Butler should handle this behind-the-scenes in the future.
         # Please reference DM-9873 and delete this comment once it is resolved.
-        tempinfo = {k:v for (k, v) in info.items() if v is not None}
+        tempinfo = {k: v for (k, v) in info.items() if v is not None}
         calibType = self.getCalibType(filename)
         raw = butler.get(calibType + "_filename", tempinfo)[0]
         # Ensure filename is devoid of cfitsio directions about HDUs

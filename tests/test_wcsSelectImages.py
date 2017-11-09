@@ -1,7 +1,6 @@
 from __future__ import division, print_function, absolute_import
 from builtins import map
 from builtins import object
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -93,6 +92,7 @@ class DummyDataRef(object):
     def get(self, dataType):
         return self._data[dataType]
 
+
 # Common defaults for createPatch and createImage
 CENTER = afwCoord.Coord(0*afwGeom.degrees, 90*afwGeom.degrees)
 ROTATEAXIS = afwCoord.Coord(0*afwGeom.degrees, 0*afwGeom.degrees)
@@ -166,6 +166,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

@@ -28,13 +28,11 @@
 - One must specify a patch and tract even though those arguments are ignored.
 """
 from __future__ import print_function
-import numpy
 
 import lsst.pex.config as pexConfig
 import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
-from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 
 __all__ = ["ReportPatchesTask", ]
 

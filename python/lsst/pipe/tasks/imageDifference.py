@@ -404,17 +404,21 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                     random.shuffle(kernelSources, random.random)
                     controlSources = kernelSources[::self.config.controlStepSize]
-                    kernelSources = [k for i, k in enumerate(kernelSources) if i % self.config.controlStepSize]
+                    kernelSources = [k for i, k in enumerate(kernelSources)
+                                     if i % self.config.controlStepSize]
 
                     if self.config.doSelectDcrCatalog:
                         redSelector = DiaCatalogSourceSelectorTask(
-                            DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax, grMax=99.999))
+                            DiaCatalogSourceSelectorConfig(grMin=self.sourceSelector.config.grMax,
+                                                           grMax=99.999))
                         redSources = redSelector.selectStars(exposure, selectSources, matches=matches).starCat
                         controlSources.extend(redSources)
 
                         blueSelector = DiaCatalogSourceSelectorTask(
-                            DiaCatalogSourceSelectorConfig(grMin=-99.999, grMax=self.sourceSelector.config.grMin))
-                        blueSources = blueSelector.selectStars(exposure, selectSources, matches=matches).starCat
+                            DiaCatalogSourceSelectorConfig(grMin=-99.999,
+                                                           grMax=self.sourceSelector.config.grMin))
+                        blueSources = blueSelector.selectStars(exposure, selectSources,
+                                                               matches=matches).starCat
                         controlSources.extend(blueSources)
 
                     if self.config.doSelectVariableCatalog:
@@ -477,25 +481,25 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         idx3 = numpy.where(colors > self.sourceSelector.config.grMax)
                         rms1Long = IqrToSigma * \
                             (numpy.percentile(dlong[idx1], 75)-numpy.percentile(dlong[idx1], 25))
-                        rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75)-numpy.percentile(dlat[idx1], 25))
+                        rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75) -
+                                              numpy.percentile(dlat[idx1], 25))
                         rms2Long = IqrToSigma * \
                             (numpy.percentile(dlong[idx2], 75)-numpy.percentile(dlong[idx2], 25))
-                        rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75)-numpy.percentile(dlat[idx2], 25))
+                        rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75) -
+                                              numpy.percentile(dlat[idx2], 25))
                         rms3Long = IqrToSigma * \
                             (numpy.percentile(dlong[idx3], 75)-numpy.percentile(dlong[idx3], 25))
-                        rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75)-numpy.percentile(dlat[idx3], 25))
-                        self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx1]),
-                                                                                     rms1Long,
-                                                                                     numpy.median(dlat[idx1]),
-                                                                                     rms1Lat))
-                        self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx2]),
-                                                                                      rms2Long,
-                                                                                      numpy.median(dlat[idx2]),
-                                                                                      rms2Lat))
-                        self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f" % (numpy.median(dlong[idx3]),
-                                                                                    rms3Long,
-                                                                                    numpy.median(dlat[idx3]),
-                                                                                    rms3Lat))
+                        rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75) -
+                                              numpy.percentile(dlat[idx3], 25))
+                        self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" %
+                                      (numpy.median(dlong[idx1]), rms1Long,
+                                       numpy.median(dlat[idx1]), rms1Lat))
+                        self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f" %
+                                      (numpy.median(dlong[idx2]), rms2Long,
+                                       numpy.median(dlat[idx2]), rms2Lat))
+                        self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f" %
+                                      (numpy.median(dlong[idx3]), rms3Long,
+                                       numpy.median(dlat[idx3]), rms3Lat))
 
                         self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
                         self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))

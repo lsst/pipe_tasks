@@ -429,10 +429,11 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         result = pipeBase.Struct(exposures=coaddTempExps)
         return result
 
-    def _prepareEmptyExposure(cls, skyInfo):
+    @staticmethod
+    def _prepareEmptyExposure(skyInfo):
         """Produce an empty exposure for a given patch"""
         exp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
-        exp.getMaskedImage().set(numpy.nan, afwImage.Mask\
+        exp.getMaskedImage().set(numpy.nan, afwImage.Mask
                                  .getPlaneBitMask("NO_DATA"), numpy.inf)
         return exp
 

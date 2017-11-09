@@ -26,7 +26,7 @@
 # causes scipy to fail when loading numpy.  Importing scipy beforehand
 # avoids this problem.
 try:
-    import scipy.stats
+    import scipy.stats  # noqa see comment above
 except ImportError:
     pass
 from lsst.pipe.tasks.imageDifference import Winter2013ImageDifferenceTask

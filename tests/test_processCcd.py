@@ -36,7 +36,6 @@ import numpy as np
 import lsst.utils
 import lsst.afw.geom as afwGeom
 import lsst.utils.tests
-from lsst.daf.persistence import Butler
 from lsst.ip.isr import IsrTask  # we assume obs_test uses base IsrTask here; may change in future.
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -152,7 +151,6 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                         (psfIxy, 0.14397457739362085)
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces)
-
 
                 else:
                     self.assertEqual(imMean, oldImMean)
@@ -355,6 +353,7 @@ def setup_module(module):
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
     pass
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

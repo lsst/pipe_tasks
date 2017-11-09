@@ -27,8 +27,8 @@ import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask",  "PsfWcsSelectImagesTask",
-            "DatabaseSelectImagesConfig"]
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
+           "DatabaseSelectImagesConfig"]
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
@@ -262,6 +262,7 @@ def sigmaMad(array):
     "Return median absolute deviation scaled to normally distributed data"
     return 1.4826*np.median(np.abs(array - np.median(array)))
 
+
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
     """Select images using their Wcs and cuts on the PSF properties"""
 
@@ -292,7 +293,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         exposureInfoList = []
         for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
             butler = dataRef.butlerSubset.butler
-            srcCatalog = butler.get('src',dataRef.dataId)
+            srcCatalog = butler.get('src', dataRef.dataId)
             mask = srcCatalog[self.config.starSelection]
 
             starXX = srcCatalog[self.config.starShape+'_xx'][mask]

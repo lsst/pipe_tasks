@@ -136,10 +136,10 @@ class FakeProcessingTestCase(lsst.utils.tests.TestCase):
 
             # Run ProcessCcd
             pCcdResult = ProcessCcdTask.parseAndRun(
-                            args=[InputDir, "--output", outPath,
-                                  "--clobber-config", "--doraise", "--id"] +
-                            dataIdStrList,
-                            doReturnResults=True, config=processCcdConfig)
+                args=[InputDir, "--output", outPath,
+                      "--clobber-config", "--doraise", "--id"] +
+                dataIdStrList,
+                doReturnResults=True, config=processCcdConfig)
 
             # Check the Catalog contains properly measured fake sources
             sourceCat = pCcdResult.resultList[0].result.calibRes.sourceCat

@@ -91,7 +91,7 @@ class MockObjectTask(lsst.pipe.base.Task):
 
         The return value is a Python iterable over (coord, point) pairs; the default implementation
         is actually an iterator (i.e. the function is a "generator"), but derived-class overrides may
-        return any iterable. 
+        return any iterable.
         """
         wcs = tractInfo.getWcs()
         spacing = self.config.spacing / wcs.pixelScale().asArcseconds()  # get spacing in tract pixels

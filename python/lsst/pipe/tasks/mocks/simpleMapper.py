@@ -30,7 +30,6 @@ prototyping a future paf-free mapper class, and it does everything it
 needs to do right now.
 """
 from __future__ import absolute_import, division, print_function
-from builtins import map
 from builtins import range
 from builtins import object
 
@@ -222,7 +221,7 @@ class MapperMeta(type):
             return mapping.query(dataset, self.index, level, format, dataId)
         return queryClosure
 
-    def __init__(cls, name, bases, dict_):
+    def __init__(cls, name, bases, dict_):  # noqa allow "cls" instead of "self"
         type.__init__(cls, name, bases, dict_)
         cls.keyDict = dict()
         for dataset, mapping in cls.mappings.items():
@@ -313,7 +312,8 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
         afwImageUtils.defineFilter('r', 619.42)
         self.update()
 
-    def getDefaultLevel(self): return "ccd"
+    def getDefaultLevel(self):
+        return "ccd"
 
     def getKeys(self, datasetType, level):
         if datasetType is None:
@@ -378,6 +378,7 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
                 raise RuntimeError('patch component not in range [0, 8192)')
         return (tract * 2**13 + patchX) * 2**13 + patchY
 
+    @staticmethod
     def splitCcdExposureId(ccdExposureId):
         return dict(visit=(int(ccdExposureId) // 10), ccd=(int(ccdExposureId) % 10))
 

@@ -1,7 +1,6 @@
 from __future__ import division, print_function, absolute_import
 from builtins import zip
 from builtins import range
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -224,6 +223,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

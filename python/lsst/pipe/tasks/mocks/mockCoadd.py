@@ -312,6 +312,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
                     self.mockObject.drawSource(truthRecord, exposure, buffer=0)
                 patchRef.put(exposure, self.config.coaddName + dataProduct + "_mock")
 
+
 def run(root):
     """Convenience function to create and run MockCoaddTask with default settings.
     """

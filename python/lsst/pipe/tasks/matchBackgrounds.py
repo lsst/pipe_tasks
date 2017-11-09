@@ -342,8 +342,8 @@ class MatchBackgroundsTask(pipeBase.Task):
         already has detections set. If detections have not been set/masked, sources will bias the
         background estimation.
         The 'background' of the difference image is smoothed by spline interpolation (by the Background class)
-        or by polynomial interpolation by the Approximate class. This model of difference image is added to the
-        science exposure in memory.
+        or by polynomial interpolation by the Approximate class. This model of difference image
+        is added to the science exposure in memory.
         Fit diagnostics are also calculated and returned.
 
         @param[in] refExposure: reference exposure
