@@ -334,8 +334,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             for n, record in enumerate(ccdCat):
                 self.assertIs(savedPsf.getPsf(n), record.getPsf())
                 self.assertIs(newPsf.getPsf(n), record.getPsf())
-                self.assertIs(savedPsf.getWcs(n), record.getWcs())
-                self.assertIs(newPsf.getWcs(n), record.getWcs())
+                self.assertEqual(savedPsf.getWcs(n), record.getWcs())
+                self.assertEqual(newPsf.getWcs(n), record.getWcs())
                 self.assertEqual(savedPsf.getBBox(n), record.getBBox())
                 self.assertEqual(newPsf.getBBox(n), record.getBBox())
 

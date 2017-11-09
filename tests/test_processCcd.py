@@ -255,6 +255,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             # extending the test coverage to include that is worth it.
             dataRef = inputButler.dataRef("raw", dataId=dataId)
             rawExposure = dataRef.get("raw", immediate=True)
+            camera = dataRef.get("camera")
             isrData = isrTask.readIsrData(dataRef, rawExposure)
             isrResult2 = isrTask.run(
                 rawExposure,
@@ -263,7 +264,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 flat=isrData.flat,
                 defects=isrData.defects,
                 fringes=isrData.fringes,
-                bfKernel=isrData.bfKernel
+                bfKernel=isrData.bfKernel,
+                camera=camera,
             )
             self.assertMaskedImagesEqual(
                 isrResult1.parsedCmd.butler.get("postISRCCD", dataId, immediate=True).getMaskedImage(),

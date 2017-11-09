@@ -715,8 +715,8 @@ class MergeDetectionsTask(MergeSourcesTask):
         # Convert distance to tract coordinate
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         tractWcs = skyInfo.wcs
-        peakDistance = self.config.minNewPeak / tractWcs.pixelScale().asArcseconds()
-        samePeakDistance = self.config.maxSamePeak / tractWcs.pixelScale().asArcseconds()
+        peakDistance = self.config.minNewPeak / tractWcs.getPixelScale().asArcseconds()
+        samePeakDistance = self.config.maxSamePeak / tractWcs.getPixelScale().asArcseconds()
 
         # Put catalogs, filters in priority order
         orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]

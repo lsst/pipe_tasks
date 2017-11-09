@@ -334,7 +334,7 @@ class SnapCombineTask(pipeBase.Task):
         assert wcs, "No wcs in exposure"
 
         if fwhmPix is None:
-            fwhmPix = self.config.initialPsf.fwhm / wcs.pixelScale().asArcseconds()
+            fwhmPix = self.config.initialPsf.fwhm / wcs.getPixelScale().asArcseconds()
 
         size = self.config.initialPsf.size
         model = self.config.initialPsf.model

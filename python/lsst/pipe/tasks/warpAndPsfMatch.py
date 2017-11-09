@@ -22,7 +22,6 @@
 from __future__ import absolute_import, division, print_function
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
-import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
@@ -95,7 +94,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             self.log.warn("Neither makeDirect nor makePsfMatched requested")
 
         # Warp PSF before overwriting exposure
-        xyTransform = afwImage.XYTransformFromWcsPair(wcs, exposure.getWcs())
+        xyTransform = afwGeom.makeWcsPairTransform(exposure.getWcs(), wcs)
         psfWarped = WarpedPsf(exposure.getPsf(), xyTransform)
 
         if makePsfMatched and maxBBox is not None:

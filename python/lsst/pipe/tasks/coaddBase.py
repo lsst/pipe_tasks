@@ -238,7 +238,7 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
         for ref in self.refList:
             try:
                 md = ref.get("calexp_md", immediate=True)
-                wcs = afwImage.makeWcs(md)
+                wcs = afwGeom.makeSkyWcs(md)
                 data = SelectStruct(dataRef=ref, wcs=wcs, bbox=afwImage.bboxFromMetadata(md))
             except FitsError as e:
                 namespace.log.warn("Unable to construct Wcs from %s" % (ref.dataId))

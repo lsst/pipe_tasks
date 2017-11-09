@@ -703,7 +703,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         mask = exposure.getMaskedImage().getMask()
         wcs = exposure.getWcs()
-        plateScale = wcs.pixelScale().asArcseconds()
+        plateScale = wcs.getPixelScale().asArcseconds()
 
         for rec in brightObjectMasks:
             center = afwGeom.PointI(wcs.skyToPixel(rec.getCoord()))
