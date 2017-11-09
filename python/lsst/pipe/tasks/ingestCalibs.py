@@ -3,7 +3,8 @@ from builtins import zip
 import collections
 import datetime
 import sqlite3
-import lsst.afw.image as afwImage
+
+from lsst.afw.fits import readMetadata
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.pipe.base import InputOnlyArgumentParser
 from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, IngestTask
@@ -24,7 +25,7 @@ class CalibsParseTask(ParseTask):
 
         @param filename: Input filename
         """
-        md = afwImage.readMetadata(filename, self.config.hdu)
+        md = readMetadata(filename, self.config.hdu)
         if not md.exists("OBSTYPE"):
             raise RuntimeError("Unable to find the required header keyword OBSTYPE in %s, hdu %d" %
                                (filename, self.config.hdu))
