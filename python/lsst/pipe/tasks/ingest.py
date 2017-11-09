@@ -4,11 +4,7 @@ from builtins import object
 import os
 import shutil
 import tempfile
-try:
-    import sqlite3
-except ImportError:
-    # try external pysqlite package; deprecated
-    import sqlite as sqlite3
+import sqlite3
 from fnmatch import fnmatch
 from glob import glob
 from contextlib import contextmanager
