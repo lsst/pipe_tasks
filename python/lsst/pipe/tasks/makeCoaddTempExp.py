@@ -48,11 +48,6 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype=bool,
         default=True,
     )
-    doOverwrite = pexConfig.Field(
-        doc="overwrite <coaddName>Coadd_<warpType>Warp; If False, continue if the file exists on disk",
-        dtype=bool,
-        default=True,
-    )
     bgSubtracted = pexConfig.Field(
         doc="Work with a background subtracted calexp?",
         dtype=bool,
@@ -121,7 +116,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
     @copydoc \_\_init\_\_
 
-    This task has no special keyword arguments.
+    This task has one special keyword argument: passing reuse=True will cause
+    the task to skip the creation of warps that are already present in the
+    output repositories.
 
     @section pipe_tasks_makeCoaddTempExp_IO  Invoking the Task
 
@@ -247,8 +244,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     ConfigClass = MakeCoaddTempExpConfig
     _DefaultName = "makeCoaddTempExp"
 
-    def __init__(self, *args, **kwargs):
-        CoaddBaseTask.__init__(self, *args, **kwargs)
+    def __init__(self, reuse=False, **kwargs):
+        CoaddBaseTask.__init__(self, **kwargs)
+        self.reuse = reuse
         self.makeSubtask("warpAndPsfMatch")
 
     @pipeBase.timeMethod
@@ -291,8 +289,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         for i, (tempExpTuple, calexpRefList) in enumerate(groupData.groups.items()):
             tempExpRef = getGroupDataRef(patchRef.getButler(), primaryWarpDataset,
                                          tempExpTuple, groupData.keys)
-            if not self.config.doOverwrite and tempExpRef.datasetExists(datasetType=primaryWarpDataset):
-                self.log.info("Warp %s exists; skipping", tempExpRef.dataId)
+            if self.reuse and tempExpRef.datasetExists(datasetType=primaryWarpDataset, write=True):
+                self.log.info("Skipping makeCoaddTempExp for %s; output already exists.", tempExpRef.dataId)
                 dataRefList.append(tempExpRef)
                 continue
             self.log.info("Processing Warp %d/%d: id=%s", i, len(groupData.groups), tempExpRef.dataId)
