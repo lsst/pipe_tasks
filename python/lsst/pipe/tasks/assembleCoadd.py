@@ -1454,19 +1454,23 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         dtype=int,
         default=2
     )
-    spatialThreshold = pexConfig.Field(
+    spatialThreshold = pexConfig.RangeField(
         doc="Unitless fraction of pixels defining how much of the outlier region has to meet the "
-            "temporal criteria",
+            "temporal criteria. If 0, clip all. If 1, clip none.",
         dtype=float,
-        default=0.5
+        default=0.5,
+        min=0., max=1.,
+        inclusiveMin=True, inclusiveMax=True
     )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
-        self.assembleStaticSkyModel.warpType = 'psfMatched'
-        self.assembleStaticSkyModel.statistic = 'MEDIAN'
-        self.assembleStaticSkyModel.doWrite = False
         self.statistic = 'MEAN'
+        self.assembleStaticSkyModel.warpType = 'psfMatched'
+        self.assembleStaticSkyModel.statistic = 'MEANCLIP'
+        self.assembleStaticSkyModel.sigmaClip = 1.5
+        self.assembleStaticSkyModel.clipIter = 3
+        self.assembleStaticSkyModel.doWrite = False
         self.detect.doTempLocalBackground = False
         self.detect.reEstimateBackground = False
         self.detect.returnOriginalFootprints = False
