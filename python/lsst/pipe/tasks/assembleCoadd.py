@@ -1442,24 +1442,9 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         doc="Task to assemble an artifact-free, PSF-matched Coadd to serve as a"
             " naive/first-iteration model of the static sky.",
     )
-    chiThreshold = pexConfig.RangeField(
-        doc="Detection threshold (sigma) for artifacts in warp diff "
-            "(chi-image of PSF-Matched warp minus the model of the static sky)",
-        dtype=float,
-        default=5,
-        min=0,
-    )
-    minPixels = pexConfig.Field(
-        doc="Minimum number of pixels in a region (in a warp diff chi-image) "
-            "above chiThreshold to trigger masking. "
-            "Detected artifacts with fewer than the specified number of pixels will be ignored.",
-        dtype=int,
-        default=1
-    )
-    doMaskNegative = pexConfig.Field(
-        doc="Also mask outlier regions of flux less than the static sky model?",
-        dtype=bool,
-        default=True
+    detect = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect outlier sources on difference between each psfMatched warp and static sky model"
     )
     temporalThreshold = pexConfig.Field(
         doc="Unitless fraction of number of epochs to classify as an artifact/outlier source versus"
@@ -1476,11 +1461,6 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         dtype=float,
         default=0.5
     )
-    growMaskBy = pexConfig.Field(
-        doc="Number of pixels by which to grow the masks on artifacts.",
-        dtype=int,
-        default=5
-    )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
@@ -1488,6 +1468,15 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         self.assembleStaticSkyModel.statistic = 'MEDIAN'
         self.assembleStaticSkyModel.doWrite = False
         self.statistic = 'MEAN'
+        self.detect.doTempLocalBackground = False
+        self.detect.reEstimateBackground = False
+        self.detect.returnOriginalFootprints = False
+        self.detect.thresholdPolarity = "both"
+        self.detect.thresholdValue = 5
+        self.detect.nSigmaToGrow = 2
+        self.detect.minPixels = 4
+        self.detect.isotropicGrow = True
+        self.detect.thresholdType = "pixel_stdev"
 
 
 ## \addtogroup LSST_task_documentation
@@ -1524,14 +1513,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     pixels in the individual warps suspected to contain an artifact.
     We populate this plane on the input warps by comparing PSF-matched warps with a PSF-matched median coadd
     which serves as a model of the static sky. Any group of pixels that deviates from the PSF-matched
-    median coadd by more than config.chiThreshold sigma, is an artifact candidate. The candidates are then
-    filtered to remove variable sources and sources that are difficult to subtract such as bright stars.
+    template coadd by more than config.detect.threshold sigma, is an artifact candidate.
+    The candidates are then filtered to remove variable sources and sources that are difficult to subtract
+    such as bright stars.
     This filter is configured using the config parameters temporalThreshold and spatialThreshold.
     The temporalThreshold is the maximum fraction of epochs that the deviation can
     appear in and still be considered an artifact. The spatialThreshold is the maximum fraction of pixels in
     the footprint of the deviation that appear in other epochs (where other epochs is defined by the
     temporalThreshold). If the deviant region meets this criteria of having a significant percentage of pixels
-    that deviate in only a few epochs, it is grown by growMaskBy and bits set in the 'CLIPPED' plane.
+    that deviate in only a few epochs, these pixels have the 'CLIPPED' bit set in the mask.
     These regions will not contribute to the final coadd.
     Furthermore, any routine to determine the coadd PSF can now be cognizant of clipped regions.
     Note that the algorithm implemented by this task is preliminary and works correctly for HSC data.
@@ -1640,6 +1630,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         """
         AssembleCoaddTask.__init__(self, *args, **kwargs)
         self.makeSubtask("assembleStaticSkyModel")
+        detectionSchema = afwTable.SourceTable.makeMinimalSchema()
+        self.makeSubtask("detect", schema=detectionSchema)
 
     def makeSupplementaryData(self, dataRef, selectDataList):
         """!
@@ -1706,35 +1698,34 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         maxNumEpochs = int(max(1, self.config.temporalThreshold*len(tempExpRefList)))
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
-            mi = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
-            if mi is not None:
-                chiIm = self._makeChiIm(mi)
-                chiOneMap = self._snrToBinaryIm(chiIm)
-                outliers = afwImage.makeMaskFromArray(chiOneMap.array.astype(afwImage.MaskPixel))
-                outliers.setXY0(mi.getXY0())
-                spanSetList = afwGeom.SpanSet.fromMask(outliers).split()
-                dilatedSpanSetList = [s.dilated(self.config.growMaskBy,
-                                                afwGeom.Stencil.CIRCLE).clippedTo(coaddBBox)
-                                      for s in spanSetList]
+            warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
+            if warpDiffExp is not None:
+                fpSet = self.detect.detectFootprints(warpDiffExp, doSmooth=False, clearMask=True)
+                fpSet.positive.merge(fpSet.negative)
+                footprints = fpSet.positive
                 slateIm.set(0)
-                for spans in dilatedSpanSetList:
+                spanSetList = [footprint.spans for footprint in footprints.getFootprints()]
+                for spans in spanSetList:
                     spans.setImage(slateIm, 1, doClip=True)
                 epochCountImage += slateIm
-            else:
-                chiIm = afwImage.ImageF(coaddBBox, numpy.nan)
-                dilatedSpanSetList = []
 
-            # PSF-Matched warps have less available area (~the matching kernel) because the calexps
-            # undergo a second convolution. Pixels with data in the direct warp
-            # but not in the PSF-matched warp will not have their artifacts detected.
-            # NaNs from the PSF-matched warp therefore must be masked in the direct warp
-            nans = numpy.where(numpy.isnan(chiIm.array), 1, 0)
-            nansMask = afwImage.makeMaskFromArray(nans.astype(afwImage.MaskPixel))
-            nansMask.setXY0(chiIm.getXY0())
+                # PSF-Matched warps have less available area (~the matching kernel) because the calexps
+                # undergo a second convolution. Pixels with data in the direct warp
+                # but not in the PSF-matched warp will not have their artifacts detected.
+                # NaNs from the PSF-matched warp therefore must be masked in the direct warp
+                nans = numpy.where(numpy.isnan(warpDiffExp.maskedImage.image.array), 1, 0)
+                nansMask = afwImage.makeMaskFromArray(nans.astype(afwImage.MaskPixel))
+                nansMask.setXY0(warpDiffExp.getXY0())
+            else:
+                # If the directWarp has <1% coverage, the psfMatchedWarp can have 0% and not exist
+                # In this case, mask the whole epoch
+                nansMask = afwImage.MaskX(coaddBBox, 1)
+                spanSetList = []
+
             spanSetNoDataMask = afwGeom.SpanSet.fromMask(nansMask).split()
 
-            spanSetArtifactList.append(dilatedSpanSetList)
             spanSetNoDataMaskList.append(spanSetNoDataMask)
+            spanSetArtifactList.append(spanSetList)
 
         if lsstDebug.Info(__name__).saveCountIm:
             path = self._dataRef2DebugPath("epochCountIm", tempExpRefList[0], coaddLevel=True)
@@ -1778,38 +1769,17 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         return altMaskList
 
-    def _filterArtifacts(self, spanSetList, epochCountImage, maxNumEpochs=None, minPixels=None):
-        if minPixels is None:
-            minPixels = self.config.minPixels
+    def _filterArtifacts(self, spanSetList, epochCountImage, maxNumEpochs=None):
         maskSpanSetList = []
         x0, y0 = epochCountImage.getXY0()
         for i, span in enumerate(spanSetList):
             y, x = span.indices()
-            if len(y) < minPixels:
-                continue
             counts = epochCountImage.array[[y1 - y0 for y1 in y], [x1 - x0 for x1 in x]]
             idx = numpy.where((counts > 0) & (counts <= maxNumEpochs))
             percentBelowThreshold = len(idx[0]) / len(counts)
             if percentBelowThreshold > self.config.spatialThreshold:
                 maskSpanSetList.append(span)
         return maskSpanSetList
-
-    def _snrToBinaryArr(self, arrIn):
-        with numpy.errstate(invalid='ignore'):
-            arr = numpy.where(arrIn >= self.config.chiThreshold, 1, 0)
-            if self.config.doMaskNegative:
-                arr[numpy.where(arrIn <= -self.config.chiThreshold)] = 1
-        return arr
-
-    def _snrToBinaryIm(self, im):
-        arr = self._snrToBinaryArr(im.array)
-        return afwImage.ImageU(arr.astype(numpy.uint16), xy0=im.getXY0())
-
-    def _makeChiIm(self, maskedImage):
-        chiIm = maskedImage.image.Factory(1./numpy.sqrt(maskedImage.variance.array))
-        chiIm *= maskedImage.image
-        chiIm.setXY0(maskedImage.getXY0())
-        return chiIm
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
@@ -1822,7 +1792,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
         mi -= templateCoadd.getMaskedImage()
-        return mi
+        return warp
 
     def _dataRef2DebugPath(self, prefix, warpRef, coaddLevel=False):
         """!
