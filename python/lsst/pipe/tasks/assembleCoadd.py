@@ -38,7 +38,6 @@ import lsst.log as log
 import lsstDebug
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
-from .matchBackgrounds import MatchBackgroundsTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from lsst.meas.algorithms import SourceDetectionTask
@@ -97,21 +96,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         target=InterpImageTask,
         doc="Task to interpolate (and extrapolate) over NaN pixels",
     )
-    matchBackgrounds = pexConfig.ConfigurableField(
-        target=MatchBackgroundsTask,
-        doc="Task to match backgrounds",
-    )
-    maxMatchResidualRatio = pexConfig.Field(
-        doc="Maximum ratio of the mean squared error of the background matching model to the variance "
-        "of the difference in backgrounds",
-        dtype=float,
-        default=1.1
-    )
-    maxMatchResidualRMS = pexConfig.Field(
-        doc="Maximum RMS of residuals of the background offset fit in matchBackgrounds.",
-        dtype=float,
-        default=1.0
-    )
     doWrite = pexConfig.Field(
         doc="Persist coadd?",
         dtype=bool,
@@ -121,19 +105,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc="Create image of number of contributing exposures for each pixel",
         dtype=bool,
         default=False,
-    )
-    doMatchBackgrounds = pexConfig.Field(
-        doc="Match backgrounds of coadd temp exposures before coadding them? "
-        "If False, the coadd temp expsosures must already have been background subtracted or matched",
-        dtype=bool,
-        default=False,
-    )
-    autoReference = pexConfig.Field(
-        doc="Automatically select the coadd temp exposure to use as a reference for background matching? "
-        "Ignored if doMatchBackgrounds false. "
-        "If False you must specify the reference temp exposure as the data Id",
-        dtype=bool,
-        default=True,
     )
     maskPropagationThresholds = pexConfig.DictField(
         keytype=str,
@@ -219,11 +190,7 @@ Each input Warp covers a patch on the sky and corresponds to a single run/visit/
 covered patch. We provide the task with a list of Warps (selectDataList) from which it selects
 Warps that cover the specified patch (pointed at by dataRef).
 Each Warp that goes into a coadd will typically have an independent photometric zero-point.
-Therefore, we must scale each Warp to set it to a common photometric zeropoint. By default, each
-Warp has backgrounds and hence will require config.doMatchBackgrounds=True.
-When background matching is enabled, the task may be configured to automatically select a reference exposure
-(config.autoReference=True). If this is not done, we require that the input dataRef provides access to a
-Warp (dataset type coaddName + 'Coadd' + warpType + 'Warp') which is used as the reference exposure.
+Therefore, we must scale each Warp to set it to a common photometric zeropoint.
 WarpType may be one of 'direct' or 'psfMatched', and the boolean configs config.makeDirect and
 config.makePsfMatched set which of the warp types will be coadded.
 The coadd is computed as a mean with optional outlier rejection.
@@ -234,9 +201,6 @@ AssembleCoaddTask uses several sub-tasks. These are
 <DL>
   <DT>\ref ScaleZeroPointTask_ "ScaleZeroPointTask"</DT>
   <DD> create and use an imageScaler object to scale the photometric zeropoint for each Warp</DD>
-  <DT>\ref MatchBackgroundsTask_ "MatchBackgroundsTask"</DT>
-  <DD> match background in a Warp to a reference exposure (and select the reference exposure if one is
-  not provided).</DD>
   <DT>\ref InterpImageTask_ "InterpImageTask"</DT>
   <DD>interpolate across bad pixels (NaN) in the final coadd</DD>
 </DL>
@@ -322,11 +286,10 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
     def __init__(self, *args, **kwargs):
         """!
         \brief Initialize the task. Create the \ref InterpImageTask "interpImage",
-        \ref MatchBackgroundsTask "matchBackgrounds", & \ref ScaleZeroPointTask "scaleZeroPoint" subtasks.
+        & \ref ScaleZeroPointTask "scaleZeroPoint" subtasks.
         """
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
-        self.makeSubtask("matchBackgrounds")
         self.makeSubtask("scaleZeroPoint")
 
         if self.config.doMaskBrightObjects:
@@ -346,8 +309,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \brief Assemble a coadd from a set of Warps
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and find scalings to
-        match the photometric zeropoint to a reference Warp. Optionally, match backgrounds across
-        Warps if the background has not already been removed. Assemble the Warps using
+        match the photometric zeropoint to a reference Warp. Assemble the Warps using
         \ref assemble. Interpolate over NaNs and optionally write the coadd to disk. Return the coadded
         exposure.
 
@@ -378,23 +340,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
-        if self.config.doMatchBackgrounds:
-            refImageScaler = self.getBackgroundReferenceScaler(dataRef)
-            inputData = self.backgroundMatching(inputData, dataRef, refImageScaler)
-            if len(inputData.tempExpRefList) == 0:
-                self.log.warn("No valid background models")
-                return
 
         supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
 
         retStruct = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
-                                  inputData.weightList,
-                                  inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
-                                  supplementaryData=supplementaryData)
-
-        if self.config.doMatchBackgrounds:
-            self.addBackgroundMatchingMetadata(retStruct.coaddExposure, inputData.tempExpRefList,
-                                               inputData.backgroundInfoList)
+                                  inputData.weightList, supplementaryData=supplementaryData)
 
         if self.config.doInterp:
             self.interpImage.run(retStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
@@ -440,34 +390,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                                           g, groupData.keys) for
                           g in groupData.groups.keys()]
         return tempExpRefList
-
-    def getBackgroundReferenceScaler(self, dataRef):
-        """!
-        \brief Construct an image scaler for the background reference frame
-
-        Each Warp has a different background level. A reference background level must be chosen before
-        coaddition. If config.autoReference=True, \ref backgroundMatching will pick the reference level and
-        this routine is a no-op and None is returned. Otherwise, use the
-        \ref ScaleZeroPointTask_ "scaleZeroPoint" subtask to compute an imageScaler object for the provided
-        reference image and return it.
-
-        \param[in] dataRef: Data reference for the background reference frame, or None
-        \return image scaler, or None
-        """
-        if self.config.autoReference:
-            return None
-
-        # We've been given the data reference
-        dataset = self.getTempExpDatasetName(self.warpType)
-        if not dataRef.datasetExists(dataset):
-            raise RuntimeError("Could not find reference exposure %s %s." % (dataset, dataRef.dataId))
-
-        refExposure = dataRef.get(self.getTempExpDatasetName(self.warpType), immediate=True)
-        refImageScaler = self.scaleZeroPoint.computeImageScaler(
-            exposure=refExposure,
-            dataRef=dataRef,
-        )
-        return refImageScaler
 
     def prepareInputs(self, refList):
         """!
@@ -531,77 +453,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList,
                                imageScalerList=imageScalerList)
 
-    def backgroundMatching(self, inputData, refExpDataRef=None, refImageScaler=None):
-        """!
-        \brief Perform background matching on the prepared inputs
-
-        Each Warp has a different background level that must be normalized to a reference level
-        before coaddition. If no reference is provided, the background matcher selects one. If the background
-        matching is performed sucessfully, recompute the weight to be applied to the Warp (coaddTempExp) to be
-        consistent with the scaled background.
-
-        \param[in] inputData: Struct from prepareInputs() with tempExpRefList, weightList, imageScalerList
-        \param[in] refExpDataRef: Data reference for background reference Warp, or None
-        \param[in] refImageScaler: Image scaler for background reference Warp, or None
-        \return Struct:
-        - tempExprefList: List of data references to warped exposures (coaddTempExps)
-        - weightList: List of weightings
-        - imageScalerList: List of image scalers
-        - backgroundInfoList: result from background matching
-        """
-        try:
-            backgroundInfoList = self.matchBackgrounds.run(
-                expRefList=inputData.tempExpRefList,
-                imageScalerList=inputData.imageScalerList,
-                refExpDataRef=refExpDataRef if not self.config.autoReference else None,
-                refImageScaler=refImageScaler,
-                expDatasetType=self.getTempExpDatasetName(self.warpType),
-            ).backgroundInfoList
-        except Exception as e:
-            self.log.fatal("Cannot match backgrounds: %s", e)
-            raise pipeBase.TaskError("Background matching failed.")
-
-        newWeightList = []
-        newTempExpRefList = []
-        newBackgroundStructList = []
-        newScaleList = []
-        # the number of good backgrounds may be < than len(tempExpList)
-        # sync these up and correct the weights
-        for tempExpRef, bgInfo, scaler, weight in zip(inputData.tempExpRefList, backgroundInfoList,
-                                                      inputData.imageScalerList, inputData.weightList):
-            if not bgInfo.isReference:
-                # skip exposure if it has no backgroundModel
-                # or if fit was bad
-                if (bgInfo.backgroundModel is None):
-                    self.log.info("No background offset model available for %s: skipping", tempExpRef.dataId)
-                    continue
-                try:
-                    varianceRatio = bgInfo.matchedMSE / bgInfo.diffImVar
-                except Exception as e:
-                    self.log.info("MSE/Var ratio not calculable (%s) for %s: skipping",
-                                  e, tempExpRef.dataId)
-                    continue
-                if not numpy.isfinite(varianceRatio):
-                    self.log.info("MSE/Var ratio not finite (%.2f / %.2f) for %s: skipping",
-                                  bgInfo.matchedMSE, bgInfo.diffImVar, tempExpRef.dataId)
-                    continue
-                elif (varianceRatio > self.config.maxMatchResidualRatio):
-                    self.log.info("Bad fit. MSE/Var ratio %.2f > %.2f for %s: skipping",
-                                  varianceRatio, self.config.maxMatchResidualRatio, tempExpRef.dataId)
-                    continue
-                elif (bgInfo.fitRMS > self.config.maxMatchResidualRMS):
-                    self.log.info("Bad fit. RMS %.2f > %.2f for %s: skipping",
-                                  bgInfo.fitRMS, self.config.maxMatchResidualRMS, tempExpRef.dataId)
-                    continue
-            newWeightList.append(1 / (1 / weight + bgInfo.fitRMS**2))
-            newTempExpRefList.append(tempExpRef)
-            newBackgroundStructList.append(bgInfo)
-            newScaleList.append(scaler)
-
-        return pipeBase.Struct(tempExpRefList=newTempExpRefList, weightList=newWeightList,
-                               imageScalerList=newScaleList, backgroundInfoList=newBackgroundStructList)
-
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgInfoList=None,
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, mask=None, supplementaryData=None):
         """!
         \anchor AssembleCoaddTask.assemble_
@@ -618,7 +470,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] tempExpRefList: List of data references to Warps (previously called CoaddTempExps)
         \param[in] imageScalerList: List of image scalers
         \param[in] weightList: List of weights
-        \param[in] bgInfoList: List of background data from background matching, or None
         \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
         \param[in] mask: Mask to ignore when coadding
         \param[in] supplementaryData: pipeBase.Struct with additional data products needed to assemble coadd.
@@ -643,9 +494,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
 
-        if bgInfoList is None:
-            bgInfoList = [None]*len(tempExpRefList)
-
         if altMaskList is None:
             altMaskList = [None]*len(tempExpRefList)
 
@@ -664,7 +512,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             try:
                 self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
-                                       weightList, bgInfoList, altMaskList, statsFlags, statsCtrl,
+                                       weightList, altMaskList, statsFlags, statsCtrl,
                                        nImage=nImage)
             except Exception as e:
                 self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
@@ -718,12 +566,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         coaddExposure.getInfo().setApCorrMap(apCorrMap)
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
-                          bgInfoList, altMaskList, statsFlags, statsCtrl, nImage=None):
+                          altMaskList, statsFlags, statsCtrl, nImage=None):
         """!
         \brief Assemble the coadd for a sub-region.
 
-        For each coaddTempExp, check for (and swap in) an alternative mask if one is passed. If background
-        matching is enabled, add the background and background variance from each coaddTempExp. Remove mask
+        For each coaddTempExp, check for (and swap in) an alternative mask if one is passed. Remove mask
         planes listed in config.removeMaskPlanes, Finally, stack the actual exposures using
         \ref afwMath.statisticsStack "statisticsStack" with the statistic specified
         by statsFlags. Typically, the statsFlag will be one of afwMath.MEAN for a mean-stack or
@@ -735,7 +582,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] tempExpRefList: List of data reference to tempExp
         \param[in] imageScalerList: List of image scalers
         \param[in] weightList: List of weights
-        \param[in] bgInfoList: List of background data from background matching
         \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
         \param[in] statsFlags: afwMath.Property object for statistic for coadd
         \param[in] statsCtrl: Statistics control object for coadd
@@ -747,8 +593,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         maskedImageList = []
         if nImage is not None:
             subNImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
-        for tempExpRef, imageScaler, bgInfo, altMask in zip(tempExpRefList, imageScalerList, bgInfoList,
-                                                            altMaskList):
+        for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             maskedImage = exposure.getMaskedImage()
             if altMask:
@@ -756,15 +601,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 maskedImage.getMask().swap(altMaskSub)
             imageScaler.scaleMaskedImage(maskedImage)
 
-            if self.config.doMatchBackgrounds and not bgInfo.isReference:
-                backgroundModel = bgInfo.backgroundModel
-                backgroundImage = backgroundModel.getImage() if \
-                    self.matchBackgrounds.config.usePolynomial else \
-                    backgroundModel.getImageF()
-                backgroundImage.setXY0(coaddMaskedImage.getXY0())
-                maskedImage += backgroundImage.Factory(backgroundImage, bbox, afwImage.PARENT, False)
-                var = maskedImage.getVariance()
-                var += (bgInfo.fitRMS)**2
             # Add 1 for each pixel which is not excluded by the exclude mask.
             # In legacyCoadd, pixels may also be excluded by afwMath.statisticsStack.
             if nImage is not None:
@@ -785,29 +621,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         coaddMaskedImage.assign(coaddSubregion, bbox)
         if nImage is not None:
             nImage.assign(subNImage, bbox)
-
-    def addBackgroundMatchingMetadata(self, coaddExposure, tempExpRefList, backgroundInfoList):
-        """!
-        \brief Add metadata from the background matching to the coadd
-
-        \param[in] coaddExposure: Coadd
-        \param[in] tempExpRefList: List of data references for temp exps to go into coadd
-        \param[in] backgroundInfoList: List of background info, results from background matching
-        """
-        self.log.info("Adding exposure information to metadata")
-        metadata = coaddExposure.getMetadata()
-        metadata.addString("CTExp_SDQA1_DESCRIPTION",
-                           "Background matching: Ratio of matchedMSE / diffImVar")
-        for ind, (tempExpRef, backgroundInfo) in enumerate(zip(tempExpRefList, backgroundInfoList)):
-            tempExpStr = '&'.join('%s=%s' % (k, v) for k, v in tempExpRef.dataId.items())
-            if backgroundInfo.isReference:
-                metadata.addString("ReferenceExp_ID", tempExpStr)
-            else:
-                metadata.addString("CTExp_ID_%d" % (ind), tempExpStr)
-                metadata.addDouble("CTExp_SDQA1_%d" % (ind),
-                                   backgroundInfo.matchedMSE/backgroundInfo.diffImVar)
-                metadata.addDouble("CTExp_SDQA2_%d" % (ind),
-                                   backgroundInfo.fitRMS)
 
     def readBrightObjectMasks(self, dataRef):
         """Returns None on failure"""
@@ -913,43 +726,15 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
     def makeDataRefList(self, namespace):
         """!
            \brief Make self.refList from self.idList.
-
-           Interpret the config.doMatchBackgrounds, config.autoReference,
-           and whether a visit/run supplied.
-           If a visit/run is supplied, config.autoReference is automatically set to False.
-           if config.doMatchBackgrounds == false, then a visit/run will be ignored if accidentally supplied.
-
         """
-        keysCoadd = namespace.butler.getKeys(datasetType=namespace.config.coaddName + "Coadd",
-                                             level=self.level)
-        keysCoaddTempExp = namespace.butler.getKeys(datasetType=namespace.config.coaddName +
-                                                    "Coadd_directWarp", level=self.level)
-
-        if namespace.config.doMatchBackgrounds:
-            if namespace.config.autoReference:  # matcher will pick it's own reference image
-                datasetType = namespace.config.coaddName + "Coadd"
-                validKeys = keysCoadd
-            else:
-                datasetType = namespace.config.coaddName + "Coadd_directWarp"
-                validKeys = keysCoaddTempExp
-        else:  # bkg subtracted coadd
-            datasetType = namespace.config.coaddName + "Coadd"
-            validKeys = keysCoadd
+        datasetType = namespace.config.coaddName + "Coadd"
+        keysCoadd = namespace.butler.getKeys(datasetType=datasetType, level=self.level)
 
         for dataId in self.idList:
             # tract and patch are required
-            for key in validKeys:
+            for key in keysCoadd:
                 if key not in dataId:
                     raise RuntimeError("--id must include " + key)
-
-            for key in dataId:  # check if users supplied visit/run
-                if (key not in keysCoadd) and (key in keysCoaddTempExp):  # user supplied a visit/run
-                    if namespace.config.autoReference:
-                        # user probably meant: autoReference = False
-                        namespace.config.autoReference = False
-                        datasetType = namespace.config.coaddName + "Coadd_directWarp"
-                        print("Switching config.autoReference to False; applies only to background Matching.")
-                        break
 
             dataRef = namespace.butler.dataRef(
                 datasetType=datasetType,
@@ -1184,8 +969,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList,
-                 *args, **kwargs):
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
         """!
         \brief Assemble the coadd for a region
 
@@ -1211,10 +995,9 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         @param tempExpRefList: List of data reference to tempExp
         @param imageScalerList: List of image scalers
         @param weightList: List of weights
-        @param bgModelList: List of background models from background matching
         return pipeBase.Struct with coaddExposure, nImage
         """
-        exp = self.buildDifferenceImage(skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList)
+        exp = self.buildDifferenceImage(skyInfo, tempExpRefList, imageScalerList, weightList)
         mask = exp.getMaskedImage().getMask()
         mask.addMaskPlane("CLIPPED")
 
@@ -1241,7 +1024,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         retStruct = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               bgModelList, result.tempExpClipList, mask=badPixelMask)
+                                               result.tempExpClipList, mask=badPixelMask)
 
         # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
         # do not get propagated. (Remove with DM-9953)
@@ -1250,7 +1033,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
         return retStruct
 
-    def buildDifferenceImage(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList):
+    def buildDifferenceImage(self, skyInfo, tempExpRefList, imageScalerList, weightList):
         """!
         \brief Return an exposure that contains the difference between and unclipped and clipped coadds.
 
@@ -1262,7 +1045,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         @param tempExpRefList: List of data reference to tempExp
         @param imageScalerList: List of image scalers
         @param weightList: List of weights
-        @param bgModelList: List of background models from background matching
         @return Difference image of unclipped and clipped coadd wrapped in an Exposure
         """
         # Clone and upcast self.config because current self.config is frozen
@@ -1275,13 +1057,11 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
         config.statistic = 'MEAN'
         task = AssembleCoaddTask(config=config)
-        coaddMean = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList,
-                                  bgModelList).coaddExposure
+        coaddMean = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
 
         config.statistic = 'MEANCLIP'
         task = AssembleCoaddTask(config=config)
-        coaddClip = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList,
-                                  bgModelList).coaddExposure
+        coaddClip = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
 
         coaddDiff = coaddMean.getMaskedImage().Factory(coaddMean.getMaskedImage())
         coaddDiff -= coaddClip.getMaskedImage()
@@ -1662,7 +1442,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList,
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  supplementaryData, *args, **kwargs):
         """!
         \brief Assemble the coadd
@@ -1678,7 +1458,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         @param tempExpRefList: List of data references to warps
         @param imageScalerList: List of image scalers
         @param weightList: List of weights
-        @param bgModelList: List of background models from background matching
         @param supplementaryData: PipeBase.Struct containing a templateCoadd
 
         return pipeBase.Struct with coaddExposure, nImage if requested
@@ -1691,7 +1470,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
         retStruct = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               bgModelList, maskList, mask=badPixelMask)
+                                               maskList, mask=badPixelMask)
 
         # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
         # do not get propagated (Remove with DM-9953)
