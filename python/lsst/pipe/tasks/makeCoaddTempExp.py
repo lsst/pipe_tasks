@@ -67,6 +67,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype=bool,
         default=False,
     )
+    doApplySkyCorr = pexConfig.Field(dtype=bool, default=False, doc="Apply sky correction?")
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
@@ -366,6 +367,10 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             except Exception as e:
                 self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
                 continue
+
+            if self.config.doApplySkyCorr:
+                self.applySkyCorr(calExpRef, calExp)
+
             try:
                 warpedAndMatched = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf,
                                                             wcs=skyInfo.wcs, maxBBox=skyInfo.bbox,
@@ -439,3 +444,25 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         if self.config.makePsfMatched:
             warpTypeList.append("psfMatched")
         return warpTypeList
+
+    def applySkyCorr(self, dataRef, calexp):
+        """Apply correction to the sky background level
+
+        Sky corrections can be generated with the 'skyCorrection.py'
+        executable in pipe_drivers. Because the sky model used by that
+        code extends over the entire focal plane, this can produce
+        better sky subtraction.
+
+        The calexp is updated in-place.
+
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Data reference for calexp.
+        calexp : `lsst.afw.image.Exposure` or `lsst.afw.image.MaskedImage`
+            Calibrated exposure.
+        """
+        bg = dataRef.get("skyCorr")
+        if isinstance(calexp, afwImage.Exposure):
+            calexp = calexp.getMaskedImage()
+        calexp -= bg.getImage()
