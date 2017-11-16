@@ -1639,8 +1639,25 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         Generate a templateCoadd to use as a native model of static sky to subtract from warps.
         """
-        templateCoadd = self.assembleStaticSkyModel.run(dataRef, selectDataList).coaddExposure
-        return pipeBase.Struct(templateCoadd=templateCoadd)
+        templateCoadd = self.assembleStaticSkyModel.run(dataRef, selectDataList)
+
+        if templateCoadd is None:
+            warpName = (self.assembleStaticSkyModel.warpType[0].upper() +
+                        self.assembleStaticSkyModel.warpType[1:])
+            message = """No %(warpName)s warps were found to build the template coadd which is
+              required to run CompareWarpAssembleCoaddTask. To continue assembling this type of coadd,
+              first either rerun makeCoaddTempExp with config.make%(warpName)s=True or
+              coaddDriver with config.makeCoadTempExp.make%(warpName)s=True, before assembleCoadd.
+
+              Alternatively, to use another algorithm with existing warps, retarget the CoaddDriverConfig to
+              another algorithm like:
+
+                from lsst.pipe.tasks.assembleCoadd import SafeClipAssembleCoaddTask
+                config.assemble.retarget(SafeClipAssembleCoaddTask)
+            """ % {"warpName": warpName}
+            raise RuntimeError(message)
+
+        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList,
                  supplementaryData, *args, **kwargs):
