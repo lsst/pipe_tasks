@@ -1244,7 +1244,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
                                                bgModelList, result.tempExpClipList, mask=badPixelMask)
 
         # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
-        # do not get propagated
+        # do not get propagated. (Remove with DM-9953)
         maskExp = retStruct.coaddExposure.getMaskedImage().getMask()
         maskExp |= maskClip
 
@@ -1672,6 +1672,14 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         retStruct = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                                                bgModelList, maskList, mask=badPixelMask)
+
+        # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
+        # do not get propagated (Remove with DM-9953)
+        mask = retStruct.coaddExposure.maskedImage.mask
+        for maskClip in maskList:
+            maskClip &= mask.getPlaneBitMask("CLIPPED")
+            mask |= maskClip
+
         return retStruct
 
     def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
