@@ -143,7 +143,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
              "would have contributed exceeds this value."),
         default={"SAT": 0.1},
     )
-    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["CROSSTALK", "NOT_DEBLENDED"],
+    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["NOT_DEBLENDED"],
                                            doc="Mask planes to remove before coadding")
     #
     # N.b. These configuration options only set the bitplane config.brightObjectMaskName
