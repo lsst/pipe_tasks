@@ -143,7 +143,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
              "would have contributed exceeds this value."),
         default={"SAT": 0.1},
     )
-    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["CROSSTALK", "NOT_DEBLENDED"],
+    removeMaskPlanes = pexConfig.ListField(dtype=str, default=["NOT_DEBLENDED"],
                                            doc="Mask planes to remove before coadding")
     #
     # N.b. These configuration options only set the bitplane config.brightObjectMaskName
@@ -775,7 +775,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                     try:
                         mask &= ~mask.getPlaneBitMask(maskPlane)
                     except Exception as e:
-                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
+                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.args[0])
 
             maskedImageList.append(maskedImage)
 
