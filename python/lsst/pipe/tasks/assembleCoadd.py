@@ -517,6 +517,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             except Exception as e:
                 self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
+        self.setEdge(coaddMaskedImage.getMask())
+        # Despite the name, the following doesn't really deal with "EDGE" pixels: it identifies
+        # pixels that didn't receive any unmasked inputs (as occurs around the edge of the field).
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage)
 
@@ -676,6 +679,30 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 self.log.warn("Unexpected region type %s at %s" % rec["type"], center)
                 continue
             spans.clippedTo(mask.getBBox()).setMask(mask, self.brightObjectBitmask)
+
+    def setEdge(self, mask):
+        """Set EDGE bits as SENSOR_EDGE
+
+        The EDGE pixels from the individual CCDs have printed through into the
+        coadd, but EDGE means "we couldn't search for sources in this area
+        because we couldn't convolve by the PSF near the edge of the image",
+        so this mask plane needs to be converted to something else if we want
+        to keep them. We do want to be able to identify pixels near the edge
+        of the detector because they will have an inexact `CoaddPsf`. We
+        rename EDGE pixels as SENSOR_EDGE.
+
+        Parameters
+        ----------
+        mask : `lsst.afw.image.Mask`
+            Coadded exposure's mask, modified in-place.
+        """
+        mask.addMaskPlane("SENSOR_EDGE")
+        edge = mask.getPlaneBitMask("EDGE")
+        sensorEdge = mask.getPlaneBitMask("SENSOR_EDGE")
+        array = mask.getArray()
+        selected = (array & edge > 0)
+        array[selected] |= sensorEdge
+        array[selected] &= ~edge
 
     @classmethod
     def _makeArgumentParser(cls):
