@@ -593,6 +593,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         self.log.debug("Computing coadd over %s", bbox)
         tempExpName = self.getTempExpDatasetName(self.warpType)
         coaddMaskedImage = coaddExposure.getMaskedImage()
+        coaddMaskedImage.getMask().addMaskPlane("CLIPPED")
         maskedImageList = []
         if nImage is not None:
             subNImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
@@ -619,8 +620,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             maskedImageList.append(maskedImage)
 
         with self.timer("stack"):
-            coaddSubregion = afwMath.statisticsStack(
-                maskedImageList, statsFlags, statsCtrl, weightList)
+            coaddSubregion = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
+                                                     coaddMaskedImage.getMask().getPlaneBitMask("CLIPPED"),
+                                                     coaddMaskedImage.getMask().getPlaneBitMask("NO_DATA"))
         coaddMaskedImage.assign(coaddSubregion, bbox)
         if nImage is not None:
             nImage.assign(subNImage, bbox)
@@ -1050,15 +1052,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
-        retStruct = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               result.tempExpClipList, mask=badPixelMask)
-
-        # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
-        # do not get propagated. (Remove with DM-9953)
-        maskExp = retStruct.coaddExposure.getMaskedImage().getMask()
-        maskExp |= maskClip
-
-        return retStruct
+        return AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                          result.tempExpClipList, mask=badPixelMask)
 
     def buildDifferenceImage(self, skyInfo, tempExpRefList, imageScalerList, weightList):
         """!
@@ -1496,17 +1491,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        retStruct = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                               maskList, mask=badPixelMask)
-
-        # Set the coadd CLIPPED mask from the footprints since currently pixels that are masked
-        # do not get propagated (Remove with DM-9953)
-        mask = retStruct.coaddExposure.maskedImage.mask
-        for maskClip in maskList:
-            maskClip &= mask.getPlaneBitMask("CLIPPED")
-            mask |= maskClip
-
-        return retStruct
+        return AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                          maskList, mask=badPixelMask)
 
     def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
         """!
