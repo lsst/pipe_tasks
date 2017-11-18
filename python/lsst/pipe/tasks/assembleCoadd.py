@@ -1813,12 +1813,22 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return maskSpanSetList
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
+        """!
+        \brief Fetch a warp from the butler and return a warpDiff
+
+        @param warpRef: `Butler dataRef` for the warp
+        @param imageScaler: `scaleZeroPoint.ImageScaler` object
+        @param templateCoadd: Exposure to be substracted from the scaled warp
+
+        return Exposure of the image difference between the warp and template
+        """
+
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
         warpName = self.getTempExpDatasetName('psfMatched')
         if not warpRef.datasetExists(warpName):
             self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
             return None
-        warp = warpRef.get(self.getTempExpDatasetName('psfMatched'), immediate=True)
+        warp = warpRef.get(warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
