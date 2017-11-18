@@ -1446,28 +1446,31 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         target=SourceDetectionTask,
         doc="Detect outlier sources on difference between each psfMatched warp and static sky model"
     )
-    temporalThreshold = pexConfig.Field(
-        doc="Unitless fraction of number of epochs to classify as an artifact/outlier source versus"
-            " a source that is intrinsically variable or difficult to subtract cleanly. "
-            "If outlier region in warp-diff Chi-image is mostly (defined by spatialThreshold) "
-            "an outlier in less than temporalThreshold * number of epochs, then mask. "
-            "Otherwise, do not mask.",
-        dtype=float,
-        default=0.075
+    maxNumEpochs = pexConfig.Field(
+        doc="Maximum number of epochs/visits in which an artifact candidate can appear and still be masked. "
+            "For each footprint detected on the image difference between the psfMatched warp and static sky "
+            "model, if a significant fraction of pixels (defined by spatialThreshold) are residuals in more "
+            "than maxNumEpochs, the artifact candidate is persistant rather than transient and not masked.",
+        dtype=int,
+        default=2
     )
-    spatialThreshold = pexConfig.Field(
+    spatialThreshold = pexConfig.RangeField(
         doc="Unitless fraction of pixels defining how much of the outlier region has to meet the "
-            "temporal criteria",
+            "temporal criteria. If 0, clip all. If 1, clip none.",
         dtype=float,
-        default=0.5
+        default=0.5,
+        min=0., max=1.,
+        inclusiveMin=True, inclusiveMax=True
     )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
-        self.assembleStaticSkyModel.warpType = 'psfMatched'
-        self.assembleStaticSkyModel.statistic = 'MEDIAN'
-        self.assembleStaticSkyModel.doWrite = False
         self.statistic = 'MEAN'
+        self.assembleStaticSkyModel.warpType = 'psfMatched'
+        self.assembleStaticSkyModel.statistic = 'MEANCLIP'
+        self.assembleStaticSkyModel.sigmaClip = 1.5
+        self.assembleStaticSkyModel.clipIter = 3
+        self.assembleStaticSkyModel.doWrite = False
         self.detect.doTempLocalBackground = False
         self.detect.reEstimateBackground = False
         self.detect.returnOriginalFootprints = False
@@ -1721,7 +1724,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
 
-        maxNumEpochs = int(max(1, self.config.temporalThreshold*len(tempExpRefList)))
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
             if warpDiffExp is not None:
@@ -1758,8 +1760,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         for i, spanSetList in enumerate(spanSetArtifactList):
             if spanSetList:
-                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage,
-                                                            maxNumEpochs=maxNumEpochs)
+                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage)
                 spanSetArtifactList[i] = filteredSpanSetList
 
         return pipeBase.Struct(artifacts=spanSetArtifactList,
@@ -1794,25 +1795,44 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         return altMaskList
 
-    def _filterArtifacts(self, spanSetList, epochCountImage, maxNumEpochs=None):
+    def _filterArtifacts(self, spanSetList, epochCountImage):
+        """!
+        \brief Filter artifact candidates
+
+        @param spanSetList: List of SpanSets representing artifact candidates
+        @param epochCountImage: Image of accumulated number of warpDiff detections
+
+        return List of SpanSets with artifacts
+        """
+
         maskSpanSetList = []
         x0, y0 = epochCountImage.getXY0()
         for i, span in enumerate(spanSetList):
             y, x = span.indices()
             counts = epochCountImage.array[[y1 - y0 for y1 in y], [x1 - x0 for x1 in x]]
-            idx = numpy.where((counts > 0) & (counts <= maxNumEpochs))
-            percentBelowThreshold = len(idx[0]) / len(counts)
+            nCountsBelowThreshold = numpy.count_nonzero((counts > 0) & (counts <= self.config.maxNumEpochs))
+            percentBelowThreshold = nCountsBelowThreshold / len(counts)
             if percentBelowThreshold > self.config.spatialThreshold:
                 maskSpanSetList.append(span)
         return maskSpanSetList
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
+        """!
+        \brief Fetch a warp from the butler and return a warpDiff
+
+        @param warpRef: `Butler dataRef` for the warp
+        @param imageScaler: `scaleZeroPoint.ImageScaler` object
+        @param templateCoadd: Exposure to be substracted from the scaled warp
+
+        return Exposure of the image difference between the warp and template
+        """
+
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
         warpName = self.getTempExpDatasetName('psfMatched')
         if not warpRef.datasetExists(warpName):
             self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
             return None
-        warp = warpRef.get(self.getTempExpDatasetName('psfMatched'), immediate=True)
+        warp = warpRef.get(warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
