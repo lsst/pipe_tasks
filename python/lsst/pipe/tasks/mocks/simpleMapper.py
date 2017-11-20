@@ -42,6 +42,7 @@ import lsst.daf.persistence
 import lsst.afw.cameraGeom
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.image.utils as afwImageUtils
+import lsst.afw.image as afwImage
 from future.utils import with_metaclass
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
@@ -359,6 +360,7 @@ class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
         detectorId = dataId["ccd"]
         detector = self.camera[detectorId]
         item.setDetector(detector)
+        item.setFilter(afwImage.Filter("r"))
         return item
 
     def _computeCcdExposureId(self, dataId):
