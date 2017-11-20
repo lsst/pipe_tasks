@@ -906,7 +906,7 @@ class MeasureMergedCoaddSourcesConfig(Config):
     def setDefaults(self):
         Config.setDefaults(self)
         self.deblend.propagateAllPeaks = True
-        self.measurement.plugins.names |= ['base_InputCount']
+        self.measurement.plugins.names |= ['base_InputCount', 'base_Variance']
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
                                                                        'INEXACT_PSF']
 
