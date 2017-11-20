@@ -518,6 +518,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
         self.setEdge(coaddMaskedImage.getMask())
+        self.setInexactPsf(coaddMaskedImage.getMask())
         # Despite the name, the following doesn't really deal with "EDGE" pixels: it identifies
         # pixels that didn't receive any unmasked inputs (as occurs around the edge of the field).
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
@@ -705,6 +706,26 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         selected = (array & edge > 0)
         array[selected] |= sensorEdge
         array[selected] &= ~edge
+
+    def setInexactPsf(self, mask):
+        """Set INEXACT_PSF mask plane
+
+        If any of the input images isn't represented in the coadd (due to
+        clipped pixels or chip gaps), the `CoaddPsf` will be inexact. Flag
+        these pixels.
+
+        Parameters
+        ----------
+        mask : `lsst.afw.image.Mask`
+            Coadded exposure's mask, modified in-place.
+        """
+        mask.addMaskPlane("INEXACT_PSF")
+        inexactPsf = mask.getPlaneBitMask("INEXACT_PSF")
+        sensorEdge = mask.getPlaneBitMask("SENSOR_EDGE")  # chip gaps
+        clipped = mask.getPlaneBitMask("CLIPPED")  # pixels clipped from coadd
+        array = mask.getArray()
+        selected = array & (sensorEdge | clipped) > 0
+        array[selected] |= inexactPsf
 
     @classmethod
     def _makeArgumentParser(cls):
