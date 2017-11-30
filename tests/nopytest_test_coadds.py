@@ -307,6 +307,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                     self.assertEqual(obsRecord.getId(), ccdRecord.getId())
                     self.assertEqual(obsRecord.getWcs(), ccdRecord.getWcs())
                     self.assertEqual(obsRecord.getBBox(), ccdRecord.getBBox())
+                    self.assertEqual(obsRecord.get("filter"), ccdRecord.get("filter"))
                     self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
                     self.assertIsNotNone(coaddInputs.visits.find(ccdRecord.getL(ccdVisitKey)))
                 for visitRecord in coaddInputs.visits:

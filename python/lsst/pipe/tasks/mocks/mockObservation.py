@@ -92,6 +92,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         self.ccdKey = self.schema.addField("ccd", type=np.int32, doc="CCD number")
         self.visitKey = self.schema.addField("visit", type=np.int32, doc="visit number")
         self.pointingKey = lsst.afw.table.CoordKey.addFields(self.schema, "pointing", "center of visit")
+        self.filterKey = self.schema.addField("filter", type=str, doc="Bandpass filter name", size=16)
         self.rng = np.random.RandomState(self.config.seed)
 
     def run(self, butler, n, tractInfo, camera, catalog=None):
@@ -123,6 +124,7 @@ class MockObservationTask(lsst.pipe.base.Task):
                 record = catalog.addNew()
                 record.setI(self.ccdKey, detector.getId())
                 record.setI(self.visitKey, visit)
+                record.set(self.filterKey, 'r')
                 record.set(self.pointingKey, position)
                 record.setWcs(self.buildWcs(position, pa, detector))
                 record.setCalib(calib)
