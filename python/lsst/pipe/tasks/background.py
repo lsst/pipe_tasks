@@ -650,8 +650,8 @@ class FocalPlaneBackground(object):
         image = afwImage.ImageF(bbox.getDimensions()//self.config.binning)
         norm = afwImage.ImageF(image.getBBox())
         ctrl = afwMath.WarpingControl("bilinear")
-        afwMath.warpImage(image, focalPlane, toSample, ctrl)
-        afwMath.warpImage(norm, fpNorm, toSample, ctrl)
+        afwMath.warpImage(image, focalPlane, toSample.getInverse(), ctrl)
+        afwMath.warpImage(norm, fpNorm, toSample.getInverse(), ctrl)
         image /= norm
 
         mask = afwImage.Mask(image.getBBox())
