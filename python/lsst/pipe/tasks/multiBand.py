@@ -282,7 +282,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
         using \ref scaleVariance. Then invoke the \ref SourceDetectionTask_ "detection" subtask to
         detect sources.
 
-        \param[in] exposure: Exposure on which to detect
+        \param[in,out] exposure: Exposure on which to detect (may be backround-subtracted and scaled,
+                                 depending on configuration).
         \param[in] idFactory: IdFactory to set source identifiers
 
         \return a pipe.base.Struct with fields
@@ -291,7 +292,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         """
         if self.config.doScaleVariance:
             varScale = scaleVariance(exposure.getMaskedImage(), self.config.mask, log=self.log)
-            self.metadata.add("variance_scale", varScale)
+            exposure.getMetadata().add("variance_scale", varScale)
         backgrounds = afwMath.BackgroundList()
         if self.config.doInsertFakes:
             self.insertFakes.run(exposure, background=backgrounds)
