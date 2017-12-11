@@ -1289,6 +1289,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
         self.statistic = 'MEAN'
+        self.assembleStaticSkyModel.badMaskPlanes = ["NO_DATA", ]
         self.assembleStaticSkyModel.warpType = 'psfMatched'
         self.assembleStaticSkyModel.statistic = 'MEANCLIP'
         self.assembleStaticSkyModel.sigmaClip = 1.5
