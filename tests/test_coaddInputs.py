@@ -52,8 +52,7 @@ from lsst.daf.base import DateTime
 import lsst.afw.cameraGeom.testUtils
 from lsst.afw.coord import Coord, IcrsCoord
 import lsst.afw.geom
-from lsst.afw.geom import degrees, makeCdMatrix, makeSkyWcs
-from lsst.afw.geom.polygon import Polygon
+from lsst.afw.geom import degrees, makeCdMatrix, makeSkyWcs, Polygon
 import lsst.afw.image
 from lsst.afw.detection import GaussianPsf
 from lsst.afw.math import ChebyshevBoundedField
