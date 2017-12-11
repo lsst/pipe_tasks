@@ -1277,6 +1277,13 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         dtype=int,
         default=2
     )
+    maxFractionEpochs = pexConfig.RangeField(
+        doc="Fraction of local number of epochs (N) to use as maxNumEpochs. "
+            "Effective maxNumEpochs is the lesser of floor(maxNumEpochsMinFraction*N) and maxNumEpochs. ",
+        dtype=float,
+        default=0.4,
+        min=0., max=1.,
+    )
     spatialThreshold = pexConfig.RangeField(
         doc="Unitless fraction of pixels defining how much of the outlier region has to meet the "
             "temporal criteria. If 0, clip all. If 1, clip none.",
@@ -1289,6 +1296,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
         self.statistic = 'MEAN'
+        self.assembleStaticSkyModel.badMaskPlanes = ["NO_DATA", ]
         self.assembleStaticSkyModel.warpType = 'psfMatched'
         self.assembleStaticSkyModel.statistic = 'MEANCLIP'
         self.assembleStaticSkyModel.sigmaClip = 1.5
@@ -1534,12 +1542,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         coaddBBox = templateCoadd.getBBox()
         slateIm = afwImage.ImageU(coaddBBox)
         epochCountImage = afwImage.ImageU(coaddBBox)
+        nImage = afwImage.ImageU(coaddBBox)
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
 
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
             if warpDiffExp is not None:
+                nImage.array += numpy.where(numpy.isnan(warpDiffExp.image.array),
+                                            0, 1).astype(numpy.uint16)
                 fpSet = self.detect.detectFootprints(warpDiffExp, doSmooth=False, clearMask=True)
                 fpSet.positive.merge(fpSet.negative)
                 footprints = fpSet.positive
@@ -1573,7 +1584,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         for i, spanSetList in enumerate(spanSetArtifactList):
             if spanSetList:
-                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage)
+                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage, nImage)
                 spanSetArtifactList[i] = filteredSpanSetList
 
         return pipeBase.Struct(artifacts=spanSetArtifactList,
@@ -1608,12 +1619,13 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         return altMaskList
 
-    def _filterArtifacts(self, spanSetList, epochCountImage):
+    def _filterArtifacts(self, spanSetList, epochCountImage, nImage):
         """!
         \brief Filter artifact candidates
 
         @param spanSetList: List of SpanSets representing artifact candidates
         @param epochCountImage: Image of accumulated number of warpDiff detections
+        @param nImage: Image of the accumulated number of total epochs contributing
 
         return List of SpanSets with artifacts
         """
@@ -1622,9 +1634,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         x0, y0 = epochCountImage.getXY0()
         for i, span in enumerate(spanSetList):
             y, x = span.indices()
-            counts = epochCountImage.array[[y1 - y0 for y1 in y], [x1 - x0 for x1 in x]]
-            nCountsBelowThreshold = numpy.count_nonzero((counts > 0) & (counts <= self.config.maxNumEpochs))
-            percentBelowThreshold = nCountsBelowThreshold / len(counts)
+            yIdxLocal = [y1 - y0 for y1 in y]
+            xIdxLocal = [x1 - x0 for x1 in x]
+            outlierN = epochCountImage.array[yIdxLocal, xIdxLocal]
+            totalN = nImage.array[yIdxLocal, xIdxLocal]
+            effectiveMaxNumEpochs = min(self.config.maxNumEpochs,
+                                        int(self.config.maxFractionEpochs * numpy.mean(totalN)))
+            nPixelsBelowThreshold = numpy.count_nonzero((outlierN > 0) &
+                                                        (outlierN <= effectiveMaxNumEpochs))
+            percentBelowThreshold = nPixelsBelowThreshold / len(outlierN)
             if percentBelowThreshold > self.config.spatialThreshold:
                 maskSpanSetList.append(span)
         return maskSpanSetList
