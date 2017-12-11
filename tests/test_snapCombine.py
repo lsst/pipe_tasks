@@ -49,7 +49,7 @@ def makeRandomExposure(width, height, imMean, varMean, maxMask):
     imArr, maskArr, varArr = mi.getArrays()
     imArr[:, :] = np.random.poisson(imMean, size=imArr.shape)
     varArr[:, :] = np.random.poisson(varMean, size=varArr.shape)
-    maskArr[:, :] = np.random.random_integers(0, maxMask, size=maskArr.shape)
+    maskArr[:, :] = np.random.randint(0, maxMask + 1, size=maskArr.shape)
 
     return exp
 
