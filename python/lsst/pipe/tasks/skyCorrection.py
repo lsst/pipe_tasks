@@ -12,7 +12,7 @@ from lsst.pex.config import Config, Field, ConfigurableField, ConfigField
 from lsst.ctrl.pool.pool import Pool
 from lsst.ctrl.pool.parallel import BatchPoolTask
 from lsst.pipe.drivers.background import SkyMeasurementTask, FocalPlaneBackground, FocalPlaneBackgroundConfig
-
+import lsst.pipe.drivers.visualizeVisit as visualizeVisit
 
 DEBUG = False  # Debugging outputs?
 BINNING = 8  # Binning factor for debugging outputs
@@ -25,49 +25,14 @@ def makeCameraImage(camera, exposures, filename=None, binning=8):
     ----------
     camera : `lsst.afw.cameraGeom.Camera`
         Camera description.
-    exposures : `dict` mapping detector ID to `lsst.afw.image.Exposure`
-        CCD exposures, binned by `binning`.
+    exposures : `list` of `tuple` of `int` and `lsst.afw.image.Exposure`
+        List of detector ID and CCD exposures (binned by `binning`).
     filename : `str`, optional
         Output filename.
     binning : `int`
         Binning size that has been applied to images.
     """
-    class ImageSource(object):
-        """Source of images for makeImageFromCamera"""
-        def __init__(self, exposures):
-            """Constructor
-
-            Parameters
-            ----------
-            exposures : `dict` mapping detector ID to `lsst.afw.image.Exposure`
-                CCD exposures, already binned.
-            """
-            self.isTrimmed = True
-            self.exposures = exposures
-            self.background = numpy.nan
-
-        def getCcdImage(self, detector, imageFactory, binSize):
-            """Provide image of CCD to makeImageFromCamera"""
-            if detector.getId() not in self.exposures:
-                return imageFactory(1, 1), detector
-            image = self.exposures[detector.getId()]
-            if hasattr(image, "getMaskedImage"):
-                image = image.getMaskedImage()
-            if hasattr(image, "getMask"):
-                mask = image.getMask()
-                isBad = mask.getArray() & mask.getPlaneBitMask("NO_DATA") > 0
-                image = image.clone()
-                image.getImage().getArray()[isBad] = numpy.nan
-            if hasattr(image, "getImage"):
-                image = image.getImage()
-            return image, detector
-
-    image = makeImageFromCamera(
-        camera,
-        imageSource=ImageSource(dict(exp for exp in exposures if exp is not None)),
-        imageFactory=afwImage.ImageF,
-        binSize=binning
-    )
+    image = visualizeVisit.makeCameraImage(camera, dict(exp for exp in exposures if exp is not None), binning)
     if filename is not None:
         image.writeFits(filename)
     return image
