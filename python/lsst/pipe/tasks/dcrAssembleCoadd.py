@@ -26,6 +26,7 @@ import numpy
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+import lsst.afw.table as afwTable
 import lsst.coadd.utils as coaddUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -67,10 +68,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
 
     def setDefaults(self):
-        AssembleCoaddConfig.setDefaults(self)
-        self.assembleStaticSkyModel.warpType = 'direct'
-        self.assembleStaticSkyModel.statistic = 'MEDIAN'
-        self.assembleStaticSkyModel.doWrite = False
+        CompareWarpAssembleCoaddConfig.setDefaults(self)
 
 
 class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
@@ -84,15 +82,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         AssembleCoaddTask.__init__(self, *args, **kwargs)
         self.makeSubtask("assembleStaticSkyModel")
-
-    def makeSupplementaryData(self, dataRef, selectDataList):
-        """!
-        \brief Make inputs specific to Subclass
-
-        Generate a templateCoadd to use as a native model of static sky to subtract from warps.
-        """
-        retStruct = self.assembleStaticSkyModel.run(dataRef, selectDataList)
-        return retStruct
+        detectionSchema = afwTable.SourceTable.makeMinimalSchema()
+        self.makeSubtask("detect", schema=detectionSchema)
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
@@ -132,25 +123,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
-        if self.config.doMatchBackgrounds:
-            refImageScaler = self.getBackgroundReferenceScaler(dataRef)
-            inputData = self.backgroundMatching(inputData, dataRef, refImageScaler)
-            if len(inputData.tempExpRefList) == 0:
-                self.log.warn("No valid background models")
-                return
 
         supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
         # nImage is created if it is requested by self.config.  Otherwise, None.
+
         retStructGen = self.assemble(
             skyInfo, inputData.tempExpRefList, inputData.imageScalerList, inputData.weightList,
-            inputData.backgroundInfoList if self.config.doMatchBackgrounds else None,
-            supplementaryData,
+            supplementaryData=supplementaryData,
         )
         coaddExp = None
         for retStruct in retStructGen:
-            if self.config.doMatchBackgrounds:
-                self.addBackgroundMatchingMetadata(retStruct.coaddExposure, inputData.tempExpRefList,
-                                                   inputData.backgroundInfoList)
 
             if self.config.doInterp:
                 self.interpImage.run(retStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
@@ -178,8 +160,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType)+'_nImage')
         return pipeBase.Struct(coaddExposure=coaddExp, nImage=retStruct.nImage)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, bgModelList,
-                 supplementaryData, *args, **kwargs):
+    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                 altMaskList=None, supplementaryData=None, *args, **kwargs):
         """!
         \brief Assemble the coadd
 
@@ -194,7 +176,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @param tempExpRefList: List of data references to warps
         @param imageScalerList: List of image scalers
         @param weightList: List of weights
-        @param bgModelList: List of background models from background matching
         @param supplementaryData: PipeBase.Struct containing a templateCoadd
 
         return coadd exposure
@@ -206,29 +187,26 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         # badMaskPlanes.append("CLIPPED")
         # badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        templateCoadd = supplementaryData.coaddExposure
-        spanSetMaskList = CompareWarpAssembleCoaddTask.findArtifacts(self, templateCoadd,
-                                                                     tempExpRefList, imageScalerList)
-        maskList = CompareWarpAssembleCoaddTask.computeAltMaskList(self, tempExpRefList, spanSetMaskList)
+        # templateCoadd = supplementaryData.coaddExposure
+        # spanSetMaskList = CompareWarpAssembleCoaddTask.findArtifacts(self, templateCoadd,
+        #                                                              tempExpRefList, imageScalerList)
+        # maskList = CompareWarpAssembleCoaddTask.computeAltMaskList(self, tempExpRefList, spanSetMaskList)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
-        subBandImages = self.dcrDivideCoadd(templateCoadd)
+        subBandImages = self.dcrDivideCoadd(supplementaryData.templateCoadd)
 
         statsCtrl, statsFlags = self.prepareStats(skyInfo, mask=badPixelMask)
 
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
-        if bgModelList is None:
-            bgModelList = [None]*len(tempExpRefList)
 
-        if maskList is None:
-            maskList = [None]*len(tempExpRefList)
+        if altMaskList is None:
+            altMaskList = [None]*len(tempExpRefList)
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             iter = 0
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
-                                                          imageScalerList,
-                                                          weightList, bgModelList, maskList)
+                                                          imageScalerList, weightList, altMaskList)
             convergenceList = [convergenceMetric]
             convergenceCheck = convergenceMetric
             data_check = [numpy.std(model[subBBox].getImage().getArray()) for model in subBandImages]
@@ -237,11 +215,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.log.info("Iteration %s with convergence %s", iter, convergenceMetric)
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
-                                              weightList, bgModelList, maskList, statsFlags, statsCtrl,
-                                              convergenceMetric)
+                                              weightList, altMaskList, statsFlags, statsCtrl, convergenceMetric)
                     convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
-                                                                  imageScalerList,
-                                                                  weightList, bgModelList, maskList)
+                                                                  imageScalerList, weightList, altMaskList)
                     convergenceCheck = convergenceList[-1] - convergenceMetric
                     convergenceList.append(convergenceMetric)
                 except Exception as e:
@@ -252,7 +228,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 iter += 1
         dcrCoadd = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         for subFilter, coadd in enumerate(dcrCoadd):
-            yield pipeBase.Struct(coaddExposure=coadd, nImage=supplementaryData.nImage, subFilter=subFilter)
+            yield pipeBase.Struct(coaddExposure=coadd, nImage=None, subFilter=subFilter)
 
     def prepareStats(self, skyInfo, mask=None):
         if mask is None:
@@ -274,7 +250,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return (statsCtrl, statsFlags)
 
     def dcrAssembleSubregion(self, dcrModel, bbox, tempExpRefList, imageScalerList, weightList,
-                             bgInfoList, altMaskList, statsFlags, statsCtrl, convergenceMetric):
+                             altMaskList, statsFlags, statsCtrl, convergenceMetric):
         """!
         \brief Assemble the DCR coadd for a sub-region, .
 
@@ -291,7 +267,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         \param[in] tempExpRefList: List of data reference to tempExp
         \param[in] imageScalerList: List of image scalers
         \param[in] weightList: List of weights
-        \param[in] bgInfoList: List of background data from background matching
         \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
         \param[in] statsFlags: afwMath.Property object for statistic for coadd
         \param[in] statsCtrl: Statistics control object for coadd
@@ -304,9 +279,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         tempExpName = self.getTempExpDatasetName(self.warpType)
         # coaddMaskedImage = coaddExposure.getMaskedImage()
         maskedImageList2 = []
-        modelXY0 = dcrModel[0].getXY0()
-        for tempExpRef, imageScaler, bgInfo, altMask in zip(tempExpRefList, imageScalerList, bgInfoList,
-                                                            altMaskList):
+        for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox_grow)
             visitInfo = exposure.getInfo().getVisitInfo()
             maskedImage = exposure.getMaskedImage()
@@ -315,17 +288,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 altMaskSub = altMask.Factory(altMask, bbox_grow, afwImage.PARENT)
                 maskedImage.getMask().swap(altMaskSub)
             imageScaler.scaleMaskedImage(maskedImage)
-
-            if self.config.doMatchBackgrounds and not bgInfo.isReference:
-                backgroundModel = bgInfo.backgroundModel
-                backgroundImage = backgroundModel.getImage() if \
-                    self.matchBackgrounds.config.usePolynomial else \
-                    backgroundModel.getImageF()
-                backgroundImage.setXY0(modelXY0)
-                backgroundImage2 = backgroundImage.Factory(backgroundImage, bbox_grow, afwImage.PARENT, False)
-                maskedImage += backgroundImage2/self.config.dcrNSubbands
-                var = maskedImage.getVariance()
-                var += (bgInfo.fitRMS)**2  # /self.config.dcrNSubbands
 
             if self.config.removeMaskPlanes:
                 mask = maskedImage.getMask()
@@ -347,7 +309,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     maskedImageList, statsFlags, statsCtrl, weightList))
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrModel, bbox, tempExpRefList, imageScalerList,
-                                                             weightList, bgInfoList, altMaskList)
+                                                             weightList, altMaskList)
             gain = convergenceMetric/convergenceMetricNew
             convergenceMetric = convergenceMetricNew
         else:
@@ -358,7 +320,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             model.assign(subModel, bbox)
 
     def calculateConvergence(self, dcrModel, bbox, tempExpRefList, imageScalerList,
-                             weightList, bgInfoList, altMaskList):
+                             weightList, altMaskList):
         return 1.0
 
     def dcrDivideCoadd(self, coaddExposure):
