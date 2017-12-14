@@ -79,7 +79,7 @@ class interpolationTestCase(unittest.TestCase):
         mi[nBadCol+1:nBadCol+4, 0:10] = (100, badBit, 0)  # Bad right edge
         mi[-nBadCol-4:-nBadCol-1, 0:10] = (100, badBit, 0)  # more bad of columns next to bad right edge
 
-        defectList = ipIsr.getDefectListFromMask(mi, pixelPlane, growFootprints=0)
+        defectList = ipIsr.getDefectListFromMask(mi, pixelPlane)
 
         if display:
             ds9.mtv(mi, frame=0)
