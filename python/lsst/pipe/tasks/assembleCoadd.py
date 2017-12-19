@@ -136,7 +136,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
-        self.badMaskPlanes = ["NO_DATA", "BAD", "CR", ]
+        self.badMaskPlanes = ["NO_DATA", "BAD", "SAT", "EDGE"]
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
