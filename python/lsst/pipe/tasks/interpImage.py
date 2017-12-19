@@ -153,7 +153,7 @@ class InterpImageTask(pipeBase.Task):
                 raise ValueError("Provide EITHER a planeName OR a list of defects, not both")
             if planeName not in maskedImage.getMask().getMaskPlaneDict():
                 raise ValueError("maskedImage does not contain mask plane %s" % planeName)
-            defectList = ipIsr.getDefectListFromMask(maskedImage, planeName, growFootprints=0)
+            defectList = ipIsr.getDefectListFromMask(maskedImage, planeName)
 
         # set psf from exposure if provided OR using modelPsf with fwhmPixels provided
         try:
