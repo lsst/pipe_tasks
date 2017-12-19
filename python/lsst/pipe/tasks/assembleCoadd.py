@@ -133,10 +133,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc="Configuration for CoaddPsf",
         dtype=measAlg.CoaddPsfConfig,
     )
-
-    def setDefaults(self):
-        CoaddBaseTask.ConfigClass.setDefaults(self)
-        self.badMaskPlanes = ["NO_DATA", "BAD", "CR", ]
+    badMaskPlanes = pexConfig.ListField(
+        dtype=str,
+        doc="Mask planes that, if set, the associated pixel should not be included in coadd.",
+        default=("NO_DATA", "BAD", "EDGE", "SAT"),
+    )
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)

@@ -57,11 +57,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Image selection subtask.",
         target=WcsSelectImagesTask,
     )
-    badMaskPlanes = pexConfig.ListField(
-        dtype=str,
-        doc="Mask planes that, if set, the associated pixel should not be included in the coaddTempExp.",
-        default=("NO_DATA",),
-    )
     inputRecorder = pexConfig.ConfigurableField(
         doc="Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
         target=CoaddInputRecorderTask
