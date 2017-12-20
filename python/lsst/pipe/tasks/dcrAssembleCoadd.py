@@ -26,7 +26,6 @@ import numpy
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
-import lsst.afw.table as afwTable
 import lsst.coadd.utils as coaddUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -80,10 +79,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """!
         \brief Initialize the task and make the \ref AssembleCoadd_ "assembleStaticSkyModel" subtask.
         """
-        AssembleCoaddTask.__init__(self, *args, **kwargs)
-        self.makeSubtask("assembleStaticSkyModel")
-        detectionSchema = afwTable.SourceTable.makeMinimalSchema()
-        self.makeSubtask("detect", schema=detectionSchema)
+        CompareWarpAssembleCoaddTask.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
@@ -215,7 +211,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.log.info("Iteration %s with convergence %s", iter, convergenceMetric)
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
-                                              weightList, altMaskList, statsFlags, statsCtrl, convergenceMetric)
+                                              weightList, altMaskList, statsFlags, statsCtrl,
+                                              convergenceMetric)
                     convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                                   imageScalerList, weightList, altMaskList)
                     convergenceCheck = convergenceList[-1] - convergenceMetric
