@@ -17,6 +17,7 @@ from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableFie
 import lsst.pex.exceptions
 from lsst.pipe.base import Task, InputOnlyArgumentParser
 import lsst.afw.image as afwImage
+from lsst.afw.fits import DEFAULT_HDU
 
 
 class IngestArgumentParser(InputOnlyArgumentParser):
@@ -45,7 +46,7 @@ class ParseConfig(Config):
                             doc="Properties and name of translator method")
     defaults = DictField(keytype=str, itemtype=str, default={},
                          doc="Default values if header is not present")
-    hdu = Field(dtype=int, default=0, doc="HDU to read for metadata")
+    hdu = Field(dtype=int, default=DEFAULT_HDU, doc="HDU to read for metadata")
     extnames = ListField(dtype=str, default=[], doc="Extension names to search for")
 
 
