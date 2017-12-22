@@ -28,7 +28,7 @@ import numpy
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
-from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
@@ -570,21 +570,12 @@ class MergeDetectionsConfig(MergeSourcesConfig):
     skyFilterName = Field(dtype=str, default="sky",
                           doc="Name of `filter' used to label sky objects (e.g. flag merge_peak_sky is set)\n"
                           "(N.b. should be in MergeMeasurementsConfig.pseudoFilterList)")
-    skySourceRadius = Field(dtype=float, default=8,
-                            doc="Radius, in pixels, of sky objects")
-    skyGrowDetectedFootprints = Field(dtype=int, default=0,
-                                      doc="Number of pixels to grow the detected footprint mask "
-                                          "when adding sky objects")
-    nSkySourcesPerPatch = Field(dtype=int, default=100,
-                                doc="Try to add this many sky objects to the mergeDet list, which will\n"
-                                "then be measured along with the detected objects in sourceMeasurementTask")
-    nTrialSkySourcesPerPatch = Field(dtype=int, default=None, optional=True,
-                                     doc="Maximum number of trial sky object positions\n"
-                                     "(default: nSkySourcesPerPatch*nTrialSkySourcesPerPatchMultiplier)")
-    nTrialSkySourcesPerPatchMultiplier = Field(dtype=int, default=5,
-                                               doc="Set nTrialSkySourcesPerPatch to\n"
-                                               "    nSkySourcesPerPatch*nTrialSkySourcesPerPatchMultiplier\n"
-                                               "if nTrialSkySourcesPerPatch is None")
+    skyObjects = ConfigurableField(target=SkyObjectsTask, doc="Generate sky objects")
+
+    def setDefaults(self):
+        MergeSourcesConfig.setDefaults(self)
+        self.skyObjects.avoidMask = ["DETECTED"]  # Nothing else is available in our custom mask
+
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -696,11 +687,11 @@ class MergeDetectionsTask(MergeSourcesTask):
         The task will set its own self.schema attribute to the schema of the output merged catalog.
         """
         MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
+        self.makeSubtask("skyObjects")
         self.schema = self.getInputSchema(butler=butler, schema=schema)
 
         filterNames = [getShortFilterName(name) for name in self.config.priorityList]
-        if self.config.nSkySourcesPerPatch > 0:
-            filterNames += [self.config.skyFilterName]
+        filterNames += [self.config.skyFilterName]
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
 
     def mergeCatalogs(self, catalogs, patchRef):
@@ -735,19 +726,14 @@ class MergeDetectionsTask(MergeSourcesTask):
         #
         # Add extra sources that correspond to blank sky
         #
-        skySourceFootprints = self.getSkySourceFootprints(
-            mergedList, skyInfo, self.config.skyGrowDetectedFootprints)
+        skySeed = patchRef.get(self.config.coaddName + "MergedCoaddId")
+        skySourceFootprints = self.getSkySourceFootprints(mergedList, skyInfo, skySeed)
         if skySourceFootprints:
             key = mergedList.schema.find("merge_footprint_%s" % self.config.skyFilterName).key
-
             for foot in skySourceFootprints:
                 s = mergedList.addNew()
                 s.setFootprint(foot)
                 s.set(key, True)
-
-            self.log.info("Added %d sky sources (%.0f%% of requested)",
-                          len(skySourceFootprints),
-                          100*len(skySourceFootprints)/float(self.config.nSkySourcesPerPatch))
 
         # Sort Peaks from brightest to faintest
         for record in mergedList:
@@ -796,64 +782,36 @@ class MergeDetectionsTask(MergeSourcesTask):
         return {self.config.coaddName + "Coadd_mergeDet": mergeDet,
                 self.config.coaddName + "Coadd_peak": peak}
 
-    def getSkySourceFootprints(self, mergedList, skyInfo, growDetectedFootprints=0):
+    def getSkySourceFootprints(self, mergedList, skyInfo, seed):
         """!
         \brief Return a list of Footprints of sky objects which don't overlap with anything in mergedList
 
         \param mergedList  The merged Footprints from all the input bands
         \param skyInfo     A description of the patch
-        \param growDetectedFootprints     The number of pixels to grow the detected footprints
+        \param seed        Seed for the random number generator
         """
-
-        if self.config.nSkySourcesPerPatch <= 0:
-            return []
-
-        skySourceRadius = self.config.skySourceRadius
-        nSkySourcesPerPatch = self.config.nSkySourcesPerPatch
-        nTrialSkySourcesPerPatch = self.config.nTrialSkySourcesPerPatch
-        if nTrialSkySourcesPerPatch is None:
-            nTrialSkySourcesPerPatch = self.config.nTrialSkySourcesPerPatchMultiplier*nSkySourcesPerPatch
-        #
-        # We are going to find circular Footprints that don't intersect any pre-existing Footprints,
-        # and the easiest way to do this is to generate a Mask containing all the detected pixels (as
-        # merged by this task).
-        #
-        patchBBox = skyInfo.patchInfo.getOuterBBox()
-        mask = afwImage.Mask(patchBBox)
-        detectedMask = mask.getPlaneBitMask("DETECTED")
+        mask = afwImage.Mask(skyInfo.patchInfo.getOuterBBox())
+        detected = mask.getPlaneBitMask("DETECTED")
         for s in mergedList:
-            foot = s.getFootprint()
-            if growDetectedFootprints > 0:
-                foot.dilate(growDetectedFootprints)
-            foot.spans.setMask(mask, detectedMask)
+            s.getFootprint().spans.setMask(mask, detected)
 
-        xmin, ymin = patchBBox.getMin()
-        xmax, ymax = patchBBox.getMax()
-        # Avoid objects partially off the image
-        xmin += skySourceRadius + 1
-        ymin += skySourceRadius + 1
-        xmax -= skySourceRadius + 1
-        ymax -= skySourceRadius + 1
+        footprints = self.skyObjects.run(mask, seed)
+        if not footprints:
+            return footprints
 
-        skySourceFootprints = []
-        maskToSpanSet = afwGeom.SpanSet.fromMask(mask)
-        for i in range(nTrialSkySourcesPerPatch):
-            if len(skySourceFootprints) == nSkySourcesPerPatch:
-                break
+        # Need to convert the peak catalog's schema so we can set the "merge_peak_<skyFilterName>" flags
+        schema = self.merged.getPeakSchema()
+        mergeKey = schema.find("merge_peak_%s" % self.config.skyFilterName).key
+        converted = []
+        for oldFoot in footprints:
+            assert len(oldFoot.getPeaks()) == 1, "Should be a single peak only"
+            peak = oldFoot.getPeaks()[0]
+            newFoot = afwDetect.Footprint(oldFoot.spans, schema)
+            newFoot.addPeak(peak.getFx(), peak.getFy(), peak.getPeakValue())
+            newFoot.getPeaks()[0].set(mergeKey, True)
+            converted.append(newFoot)
 
-            x = int(numpy.random.uniform(xmin, xmax))
-            y = int(numpy.random.uniform(ymin, ymax))
-            spans = afwGeom.SpanSet.fromShape(int(skySourceRadius),
-                                              offset=(x, y))
-            foot = afwDetect.Footprint(spans, patchBBox)
-            foot.setPeakSchema(self.merged.getPeakSchema())
-
-            if not foot.spans.overlaps(maskToSpanSet):
-                foot.addPeak(x, y, 0)
-                foot.getPeaks()[0].set("merge_peak_%s" % self.config.skyFilterName, True)
-                skySourceFootprints.append(foot)
-
-        return skySourceFootprints
+        return converted
 
 
 class MeasureMergedCoaddSourcesConfig(Config):
