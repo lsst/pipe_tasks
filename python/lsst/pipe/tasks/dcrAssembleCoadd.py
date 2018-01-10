@@ -22,17 +22,20 @@ from __future__ import absolute_import, division, print_function
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
+from collections import namedtuple
 import numpy
+from scipy.ndimage.interpolation import shift as scipyShift
+from lsst.afw.coor.refraction import differentialRefraction
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
+import lsst.afw.image.utils as afwImageUtils
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.assembleCoadd import _subBBoxIter
-
 from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
-from lsst.pipe.tasks.assembleCoadd import AssembleCoaddConfig
+# from lsst.pipe.tasks.assembleCoadd import AssembleCoaddConfig
 from lsst.pipe.tasks.assembleCoadd import CompareWarpAssembleCoaddTask
 from lsst.pipe.tasks.assembleCoadd import CompareWarpAssembleCoaddConfig
 
@@ -40,10 +43,35 @@ __all__ = ["DcrAssembleCoaddTask"]
 
 
 class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
-    dcrBufferSize = pexConfig.Field(
+    filterName = pexConfig.Field(
+        dtype=str,
+        doc="Common name of the band-defining filter of th observations.",
+        default='g',
+    )
+    lambdaEff = pexConfig.Field(
+        dtype=float,
+        doc="Effective wavelength of the filter, in nm.",
+        default=afwImageUtils.Filter(filterName).getFilterProperty().getLambdaEff(),
+    )
+    filterWidth = pexConfig.Field(
+        dtype=float,
+        doc="FWHM of the filter transmission curve, in nm.",
+        default=lambdaEff*0.2,
+    )
+    bufferSize = pexConfig.Field(
         dtype=int,
         doc="Number of pixels to grow the subregion bounding box by.",
         default=5,
+    )
+    useFFT = pexConfig.Field(
+        dtype=bool,
+        doc="Option to use use Fourier transforms for the convolutions.",
+        default=False,
+    )
+    usePsf = pexConfig.Field(
+        dtype=bool,
+        doc="Option to use the PSF as part of the convolution; requires `useFFT=True`.",
+        default=False,
     )
     dcrNSubbands = pexConfig.Field(
         dtype=int,
@@ -57,7 +85,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     convergenceThreshold = pexConfig.Field(
         dtype=float,
-        doc="Maximum number of iterations of forward modeling.",
+        doc="Target change in convergence between iteration of forward modeling.",
         default=0.001,
     )
     assembleStaticSkyModel = pexConfig.ConfigurableField(
@@ -68,6 +96,8 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
+        if self.usePsf:
+            self.useFFT = True
 
 
 class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
@@ -270,16 +300,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         self.log.debug("Computing coadd over %s", bbox)
         bbox_grow = afwGeom.Box2I(bbox)
-        bbox_grow.grow(self.config.dcrBufferSize)
+        bbox_grow.grow(self.config.bufferSize)
         for model in dcrModel:
             bbox_grow.clip(model.getBBox())
         tempExpName = self.getTempExpDatasetName(self.warpType)
         # coaddMaskedImage = coaddExposure.getMaskedImage()
         maskedImageList2 = []
+        self.scale = None
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox_grow)
             visitInfo = exposure.getInfo().getVisitInfo()
             maskedImage = exposure.getMaskedImage()
+            if self.scale is None:
+                self.scale = exposure.getWcs().pixelScale()
+            elif exposure.getWcs().pixelScale() != self.scale:
+                self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
 
             if altMask:
                 altMaskSub = altMask.Factory(altMask, bbox_grow, afwImage.PARENT)
@@ -318,7 +353,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     def calculateConvergence(self, dcrModel, bbox, tempExpRefList, imageScalerList,
                              weightList, altMaskList):
-        return 1.0
+        tempExpName = self.getTempExpDatasetName(self.warpType)
+        averageModel = numpy.mean(dcrModel, axis=0)
+        count = 0
+        metric = 0.
+        for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
+            exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
+            visitInfo = exposure.getInfo().getVisitInfo()
+            imageVals = exposure.getMaskedImage().getImage()[bbox].getArray()
+            templateVals = self.buildMatchedTemplate(dcrModel, visitInfo)
+            diffVals = numpy.abs(imageVals - templateVals)*averageModel
+            refVals = numpy.abs(imageVals)*averageModel
+            metric += numpy.sum(diffVals)/numpy.sum(refVals)
+            count += 1
+        return metric/count
 
     def dcrDivideCoadd(self, coaddExposure):
         dcrModel = [coaddExposure.getMaskedImage().clone() for f in range(self.config.dcrNSubbands)]
@@ -337,18 +385,57 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             coaddExposure.setMaskedImage(model)
             yield coaddExposure
 
-    def convolveDcrModelPlane(self, dcrModelPlane, shift, useInverse=False):
-        pass
+    def convolveDcrModelPlane(self, dcrModelPlane, dcr, useInverse=False):
+        if self.config.useFFT:
+            raise NotImplementedError("The Fourier transform approach has not yet been written.")
+        else:
+            if useInverse:
+                shift = (-dcr.dy, -dcr.dx)
+            else:
+                shift = (dcr.dy, dcr.dx)
+            result = scipyShift(dcrModelPlane, shift)
+        return result
 
     def conditionDcrModel(self, oldDcrModel, newDcrModel, bbox, gain=1.):
         for oldModel, newModel in zip(oldDcrModel, newDcrModel):
             newModel = (oldModel[bbox] + gain*newModel)/(1. + gain)
 
-    def dcrShiftCalculate(self, maskedImage, visitInfo):
-        pass
+    def dcrShiftCalculate(self, visitInfo):
+        rotation = visitInfo.getBoresightParAngle() + visitInfo.getBoresightRotAngle()
 
-    def dcrResiduals(self, dcrModel, maskedImage, visitInfo):
-        dcrShift = self.dcrShiftCalculate(maskedImage, visitInfo)
+        dcr = namedtuple("dcr", ["dx", "dy"])
+        for wl in self.wavelengthGenerator():
+            # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
+            diffRefractAmp = differentialRefraction(wl, self.config.lambdaEff,
+                                                    elevation=visitInfo.getBoresightAzAlt().getLatitude(),
+                                                    observatory=visitInfo.getObservatory(),
+                                                    weather=visitInfo.getWeather())
+            diffRefractPix = diffRefractAmp.asArcseconds()/self.scale.asArcseconds()
+            yield dcr(dx=diffRefractPix*numpy.sin(rotation.asRadians()),
+                      dy=diffRefractPix*numpy.cos(rotation.asRadians()))
 
-        residualImages = dcrModel
+    def buildMatchedTemplate(self, dcrModel, visitInfo):
+        dcrShift = self.dcrShiftCalculate(visitInfo)
+        templateVals = numpy.sum([self.convolveDcrModelPlane(model, dcr)
+                                  for dcr, model in zip(dcrShift, dcrModel)], axis=0)
+        return templateVals
+
+    def dcrResiduals(self, dcrModel, maskedImage, visitInfo, bbox):
+        imageVals = maskedImage.getImage()[bbox].getArray()
+        dcrShift = list(self.dcrShiftCalculate(visitInfo))
+        shiftedModels = [self.convolveDcrModelPlane(model, dcr, useInverse=False)
+                         for dcr, model in zip(dcrShift, dcrModel)]
+        residualImages = []
+        for f, dcr in enumerate(dcrShift):
+            otherModelSum = numpy.zeros_like(imageVals)
+            for f2 in range(self.config.dcrNSubbands):
+                if f2 != f:
+                    otherModelSum += shiftedModels[f2]
+                residual = self.convolveDcrModelPlane(imageVals - otherModelSum, dcr, useInverse=True)
+                residualImages.append(residual)
         return residualImages
+
+    def wavelengthGenerator(self):
+        wlRef = self.config.lambdaEff
+        for wl in numpy.linspace(0., self.config.filterWidth, self.config.dcrNSubbands, endpoint=True):
+            yield wlRef - self.config.filterWidth/2. + wl
