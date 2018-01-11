@@ -28,7 +28,7 @@ import numpy
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
-from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
+from lsst.meas.algorithms import DynamicDetectionTask, SkyObjectsTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
@@ -113,7 +113,7 @@ class DetectCoaddSourcesConfig(Config):
     \brief Configuration parameters for the DetectCoaddSourcesTask
     """
     doScaleVariance = Field(dtype=bool, default=True, doc="Scale variance plane using empirical noise?")
-    detection = ConfigurableField(target=SourceDetectionTask, doc="Source detection")
+    detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     mask = ListField(dtype=str, default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
                      doc="Mask planes for pixels to ignore when scaling variance")
@@ -127,7 +127,8 @@ class DetectCoaddSourcesConfig(Config):
         Config.setDefaults(self)
         self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
-        # Coadds are made from background-subtracted CCDs, so background subtraction should be very basic
+        # Coadds are made from background-subtracted CCDs, so any background subtraction should be very basic
+        self.detection.reEstimateBackground = False
         self.detection.background.useApprox = False
         self.detection.background.binSize = 4096
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
@@ -270,11 +271,12 @@ class DetectCoaddSourcesTask(CmdLineTask):
         \param[in] patchRef: data reference for patch
         """
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
-        results = self.runDetection(exposure, self.makeIdFactory(patchRef))
+        expId = int(patchRef.get(self.config.coaddName + "CoaddId"))
+        results = self.runDetection(exposure, self.makeIdFactory(patchRef), expId=expId)
         self.write(exposure, results, patchRef)
         return results
 
-    def runDetection(self, exposure, idFactory):
+    def runDetection(self, exposure, idFactory, expId):
         """!
         \brief Run detection on an exposure.
 
@@ -285,6 +287,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         \param[in,out] exposure: Exposure on which to detect (may be backround-subtracted and scaled,
                                  depending on configuration).
         \param[in] idFactory: IdFactory to set source identifiers
+        \param[in] expId: Exposure identifier (integer) for RNG seed
 
         \return a pipe.base.Struct with fields
         - sources: catalog of detections
@@ -297,10 +300,10 @@ class DetectCoaddSourcesTask(CmdLineTask):
         if self.config.doInsertFakes:
             self.insertFakes.run(exposure, background=backgrounds)
         table = afwTable.SourceTable.make(self.schema, idFactory)
-        detections = self.detection.makeSourceCatalog(table, exposure)
+        detections = self.detection.makeSourceCatalog(table, exposure, expId=expId)
         sources = detections.sources
         fpSets = detections.fpSets
-        if fpSets.background:
+        if hasattr(fpSets, "background") and fpSets.background:
             backgrounds.append(fpSets.background)
         return Struct(sources=sources, backgrounds=backgrounds)
 
