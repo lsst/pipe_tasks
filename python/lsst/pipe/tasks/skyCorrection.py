@@ -15,7 +15,6 @@ from lsst.pipe.drivers.background import SkyMeasurementTask, FocalPlaneBackgroun
 import lsst.pipe.drivers.visualizeVisit as visualizeVisit
 
 DEBUG = False  # Debugging outputs?
-BINNING = 8  # Binning factor for debugging outputs
 
 
 def makeCameraImage(camera, exposures, filename=None, binning=8):
@@ -46,6 +45,7 @@ class SkyCorrectionConfig(Config):
     detectSigma = Field(dtype=float, default=2.0, doc="Detection PSF gaussian sigma")
     doBgModel = Field(dtype=bool, default=True, doc="Do background model subtraction?")
     doSky = Field(dtype=bool, default=True, doc="Do sky frame subtraction?")
+    binning = Field(dtype=int, default=8, doc="Binning factor for constructing focal-plane images")
 
 
 class SkyCorrectionTask(BatchPoolTask):
@@ -309,7 +309,26 @@ class SkyCorrectionTask(BatchPoolTask):
         detector = exposure.getDetector()
         bbox = exposure.getMaskedImage().getBBox()
         image = bgModel.toCcdBackground(detector, bbox).getImage()
-        return (detector.getId(), afwMath.binImage(image, BINNING))
+        return self.collectBinnedImage(exposure, image)
+
+    def collectBinnedImage(self, exposure, image):
+        """Return the binned image required for visualization
+
+        This method just helps to cut down on boilerplate.
+
+        Parameters
+        ----------
+        image : `lsst.afw.image.MaskedImage`
+            Image to go into visualisation.
+
+        Returns
+        -------
+        detId : `int`
+            Detector identifier.
+        image : `lsst.afw.image.MaskedImage`
+            Binned image.
+        """
+        return (exposure.getDetector().getId(), afwMath.binImage(image, self.config.binning))
 
     def collect(self, cache):
         """Collect exposure for potential visualisation
@@ -328,8 +347,7 @@ class SkyCorrectionTask(BatchPoolTask):
         image : `lsst.afw.image.MaskedImage`
             Binned image.
         """
-        return (cache.exposure.getDetector().getId(),
-                afwMath.binImage(cache.exposure.getMaskedImage(), BINNING))
+        return self.collectBinnedImage(cache.exposure, cache.exposure.maskedImage)
 
     def collectOriginal(self, cache, dataId):
         """Collect original image for visualisation
@@ -351,8 +369,7 @@ class SkyCorrectionTask(BatchPoolTask):
             Binned image.
         """
         exposure = cache.butler.get("calexp", dataId, immediate=True)
-        return (exposure.getDetector().getId(),
-                afwMath.binImage(exposure.getMaskedImage(), BINNING))
+        return self.collectBinnedImage(exposure, exposure.maskedImage)
 
     def collectSky(self, cache, dataId):
         """Collect original image for visualisation
@@ -373,7 +390,7 @@ class SkyCorrectionTask(BatchPoolTask):
         image : `lsst.afw.image.MaskedImage`
             Binned image.
         """
-        return (cache.exposure.getDetector().getId(), afwMath.binImage(cache.sky.getImage(), BINNING))
+        return self.collectBinnedImage(cache.exposure, cache.sky.getImage())
 
     def write(self, cache, dataId):
         """Write resultant background list
