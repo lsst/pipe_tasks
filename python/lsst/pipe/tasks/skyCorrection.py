@@ -4,6 +4,7 @@ import numpy
 
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
+import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 
 from lsst.afw.cameraGeom.utils import makeImageFromCamera
@@ -42,11 +43,19 @@ class SkyCorrectionConfig(Config):
     bgModel = ConfigField(dtype=FocalPlaneBackgroundConfig, doc="Background model")
     sky = ConfigurableField(target=SkyMeasurementTask, doc="Sky measurement")
     detection = ConfigurableField(target=measAlg.SourceDetectionTask, doc="Detection configuration")
-    detectSigma = Field(dtype=float, default=2.0, doc="Detection PSF gaussian sigma")
+    doDetection = Field(dtype=bool, default=True, doc="Detect sources (to find good sky)?")
+    detectSigma = Field(dtype=float, default=5.0, doc="Detection PSF gaussian sigma")
     doBgModel = Field(dtype=bool, default=True, doc="Do background model subtraction?")
     doSky = Field(dtype=bool, default=True, doc="Do sky frame subtraction?")
     binning = Field(dtype=int, default=8, doc="Binning factor for constructing focal-plane images")
 
+    def setDefaults(self):
+        Config.setDefaults(self)
+        self.detection.reEstimateBackground = False
+        self.detection.thresholdPolarity = "both"
+        self.detection.doTempLocalBackground = False
+        self.detection.thresholdType = "pixel_stdev"
+        self.detection.thresholdValue = 3.0
 
 class SkyCorrectionTask(BatchPoolTask):
     """Correct sky over entire focal plane"""
@@ -56,7 +65,8 @@ class SkyCorrectionTask(BatchPoolTask):
     def __init__(self, *args, **kwargs):
         BatchPoolTask.__init__(self, *args, **kwargs)
         self.makeSubtask("sky")
-        self.makeSubtask("detection")
+        # Disposable schema suppresses warning from SourceDetectionTask.__init__
+        self.makeSubtask("detection", schema=afwTable.Schema())
 
     @classmethod
     def _makeArgumentParser(cls, *args, **kwargs):
@@ -119,6 +129,8 @@ class SkyCorrectionTask(BatchPoolTask):
                 makeCameraImage(camera, exposures, "restored" + extension)
                 exposures = pool.mapToPrevious(self.collectOriginal, dataIdList)
                 makeCameraImage(camera, exposures, "original" + extension)
+                exposures = pool.mapToPrevious(self.collectMask, dataIdList)
+                makeCameraImage(camera, exposures, "mask" + extension)
 
             if self.config.doBgModel:
                 bgModel = FocalPlaneBackground.fromCamera(self.config.bgModel, camera)
@@ -174,6 +186,15 @@ class SkyCorrectionTask(BatchPoolTask):
         cache.exposure = cache.butler.get("calexp", dataId, immediate=True).clone()
         bgOld = cache.butler.get("calexpBackground", dataId, immediate=True)
         image = cache.exposure.getMaskedImage()
+
+        if self.config.doDetection:
+            # We deliberately use the specified 'detectSigma' instead of the PSF, in order to better pick up
+            # the faint wings of objects.
+            results = self.detection.detectFootprints(cache.exposure, doSmooth=True,
+                                                      sigma=self.config.detectSigma, clearMask=True)
+            if hasattr(results, "background") and results.background:
+                # Restore any background that was removed during detection
+                maskedImage += results.background.getImage()
 
         # We're removing the old background, so change the sense of all its components
         for bgData in bgOld:
@@ -391,6 +412,30 @@ class SkyCorrectionTask(BatchPoolTask):
             Binned image.
         """
         return self.collectBinnedImage(cache.exposure, cache.sky.getImage())
+
+    def collectMask(self, cache, dataId):
+        """Collect mask for visualisation
+
+        This method runs on the slave nodes.
+
+        Parameters
+        ----------
+        cache : `lsst.pipe.base.Struct`
+            Process pool cache.
+        dataId : `dict`
+            Data identifier.
+
+        Returns
+        -------
+        detId : `int`
+            Detector identifier.
+        image : `lsst.afw.image.Image`
+            Binned image.
+        """
+        # Convert Mask to floating-point image, because that's what's required for focal plane construction
+        image = afwImage.ImageF(cache.exposure.maskedImage.getBBox())
+        image.array[:] = cache.exposure.maskedImage.mask.array
+        return self.collectBinnedImage(cache.exposure, image)
 
     def write(self, cache, dataId):
         """Write resultant background list
