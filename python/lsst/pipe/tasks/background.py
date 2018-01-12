@@ -70,7 +70,6 @@ class SkyMeasurementConfig(Config):
     """Configuration for SkyMeasurementTask"""
     skyIter = Field(dtype=int, default=3, doc="k-sigma rejection iterations for sky scale")
     skyRej = Field(dtype=float, default=3.0, doc="k-sigma rejection threshold for sky scale")
-    pistonRej = Field(dtype=float, default=3.0, doc="k-sigma rejection threshold for pattern scale")
     background = ConfigField(dtype=BackgroundConfig, doc="Background measurement")
     xNumSamples = Field(dtype=int, default=4, doc="Number of samples in x for scaling sky frame")
     yNumSamples = Field(dtype=int, default=4, doc="Number of samples in y for scaling sky frame")
