@@ -272,8 +272,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     self.log.warn("Error during iteration %s while computing coadd %s: %s", iter, subBBox, e)
                     break
                 if iter > self.config.maxNIter:
+                    self.log.warn("Coadd %s reached maximum iterations. Convergence: %s",
+                                  subBBox, convergenceMetric)
                     break
                 iter += 1
+            else:
+                self.log.info("Coadd %s finished with convergence %s after %s iterations",
+                              subBBox, convergenceMetric, iter)
         dcrCoadd = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         for subFilter, coadd in enumerate(dcrCoadd):
             yield pipeBase.Struct(coaddExposure=coadd, nImage=None, subFilter=subFilter)
