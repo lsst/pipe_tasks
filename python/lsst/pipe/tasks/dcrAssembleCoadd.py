@@ -330,7 +330,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for model in dcrModel:
             bbox_grow.clip(model.getBBox())
         tempExpName = self.getTempExpDatasetName(self.warpType)
-        maskedImageList2 = []
+        maskedImageList2 = [[] for foo in range(self.config.dcrNSubbands)]
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox_grow)
             visitInfo = exposure.getInfo().getVisitInfo()
@@ -350,20 +350,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                         mask &= ~mask.getPlaneBitMask(maskPlane)
                     except Exception as e:
                         self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
-
-            maskedImageCut = maskedImage.Factory(maskedImage, bbox=bbox)
-
-            maskedImageList = self.dcrResiduals(dcrModel, maskedImageCut, visitInfo)
-            maskedImageList2.append(maskedImageList)
+            maskedImageList = self.dcrResiduals(dcrModel, maskedImage, visitInfo, bbox_grow)
+            for mi, ml in zip(maskedImageList, maskedImageList2):
+                ml.append(mi)
 
         dcrSubModelOut = []
         with self.timer("stack"):
             for maskedImageList in maskedImageList2:
-                dcrSubModelOut.append(afwMath.statisticsStack(
-                    maskedImageList, statsFlags, statsCtrl, weightList))
+                model = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList)
+                model.setXY0(bbox_grow.getBegin())
+                dcrSubModelOut.append(model)
         if self.config.doWeightGain:
-            convergenceMetricNew = self.calculateConvergence(dcrModel, bbox, tempExpRefList, imageScalerList,
-                                                             weightList, altMaskList, statsFlags, statsCtrl)
+            convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
+                                                             imageScalerList, altMaskList,
+                                                             statsFlags, statsCtrl)
             gain = convergenceMetric/convergenceMetricNew
             convergenceMetric = convergenceMetricNew
         else:
@@ -371,26 +371,38 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.conditionDcrModel(dcrModel, dcrSubModelOut, bbox_grow, gain=gain)
 
         for model, subModel in zip(dcrModel, dcrSubModelOut):
-            model.assign(subModel, bbox)
+            model.assign(subModel[bbox, afwImage.PARENT], bbox)
 
     def calculateConvergence(self, dcrModel, bbox, tempExpRefList, imageScalerList,
-                             weightList, altMaskList, statsFlags, statsCtrl):
+                             altMaskList, statsFlags, statsCtrl):
         tempExpName = self.getTempExpDatasetName(self.warpType)
-        averageModel = numpy.mean([model.getImage()[bbox].getArray() for model in dcrModel], axis=0)
+        weightList = [1.0]*self.config.dcrNSubbands
+        maskRef = dcrModel[0].getMask()
+        dcrModelCut = [model[bbox, afwImage.PARENT] for model in dcrModel]
+        modelWeights = afwMath.statisticsStack(dcrModelCut, statsFlags, statsCtrl, weightList,
+                                               maskRef.getPlaneBitMask("CLIPPED"),
+                                               maskRef.getPlaneBitMask("NO_DATA"))
         count = 0
         metric = 0.
+        metricList = []
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             if self.scale is None:
                 self.scale = exposure.getWcs().pixelScale()
+            refImage = exposure.getMaskedImage().clone()
+            refImage *= modelWeights
             visitInfo = exposure.getInfo().getVisitInfo()
-            template = self.buildMatchedTemplate(dcrModel, visitInfo, statsFlags, statsCtrl)
-            imageDiff = exposure.getMaskedImage().clone()
-            refVals = numpy.abs(imageDiff.getImage().getArray())*averageModel
-            imageDiff -= template[bbox]
-            diffVals = numpy.abs(imageDiff.getImage().getArray())*averageModel
-            metric += numpy.sum(diffVals)/numpy.sum(refVals)
+            diffImage = self.buildMatchedTemplate(dcrModel, visitInfo, statsFlags, statsCtrl, bbox)
+            diffImage *= modelWeights
+            diffImage -= refImage
+            refVals = numpy.abs(refImage.getImage().getArray())
+            diffVals = numpy.abs(diffImage.getImage().getArray())
+            inds = (numpy.isfinite(refVals))*(numpy.isfinite(diffVals))
+            singleMetric = numpy.sum(diffVals[inds])/numpy.sum(refVals[inds])
+            metric += singleMetric
+            metricList.append(singleMetric)
             count += 1
+        self.log.info("Indiviual metrics: %s", metricList)
         return metric/count
 
     def dcrDivideCoadd(self, coaddExposure):
@@ -431,7 +443,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for oldModel, newModel in zip(oldDcrModel, newDcrModel):
             # The DcrModels are MaskedImages, which only support in-place operations.
             newModel *= gain
-            newModel += oldModel[bbox]
+            newModel += oldModel[bbox, afwImage.PARENT]
             newModel /= 1. + gain
             # newModel = (oldModel[bbox] + gain*newModel)/(1. + gain)
 
@@ -449,10 +461,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             yield dcr(dx=diffRefractPix*numpy.sin(rotation.asRadians()),
                       dy=diffRefractPix*numpy.cos(rotation.asRadians()))
 
-    def buildMatchedTemplate(self, dcrModel, visitInfo, statsFlags, statsCtrl):
+    def buildMatchedTemplate(self, dcrModel, visitInfo, statsFlags, statsCtrl, bbox):
         dcrShift = self.dcrShiftCalculate(visitInfo)
         weightList = [1.0]*self.config.dcrNSubbands
-        maskedImageList = [self.convolveDcrModelPlane(model, dcr) for dcr, model in zip(dcrShift, dcrModel)]
+        maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT], dcr)
+                           for dcr, model in zip(dcrShift, dcrModel)]
         maskRef = dcrModel[0].getMask()
         templateVals = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
                                                maskRef.getPlaneBitMask("CLIPPED"),
@@ -460,18 +473,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return templateVals
 
     def dcrResiduals(self, dcrModel, maskedImage, visitInfo, bbox):
-        imageVals = maskedImage.getImage()[bbox].getArray()
         dcrShift = list(self.dcrShiftCalculate(visitInfo))
-        shiftedModels = [self.convolveDcrModelPlane(model, dcr, useInverse=False)
+        shiftedModels = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT], dcr, useInverse=False)
                          for dcr, model in zip(dcrShift, dcrModel)]
         residualImages = []
         for f, dcr in enumerate(dcrShift):
-            otherModelSum = numpy.zeros_like(imageVals)
+            mimage = maskedImage.clone()
             for f2 in range(self.config.dcrNSubbands):
                 if f2 != f:
-                    otherModelSum += shiftedModels[f2]
-                residual = self.convolveDcrModelPlane(imageVals - otherModelSum, dcr, useInverse=True)
-                residualImages.append(residual)
+                    mimage -= shiftedModels[f2]
+            residual = self.convolveDcrModelPlane(mimage, dcr, useInverse=True)
+            residual.setXY0(bbox.getBegin())
+            residualImages.append(residual)
         return residualImages
 
     def wavelengthGenerator(self):
