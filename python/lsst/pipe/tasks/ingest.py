@@ -102,7 +102,7 @@ class ParseTask(Task):
         except lsst.pex.exceptions.Exception:
             return None
 
-    def getInfoFromMetadata(self, md, info={}):
+    def getInfoFromMetadata(self, md, info=None):
         """Attempt to pull the desired information out of the header
 
         This is done through two mechanisms:
@@ -116,6 +116,8 @@ class ParseTask(Task):
         @param info    File properties, to be supplemented
         @return info
         """
+        if info is None:
+            info = {}
         for p, h in self.config.translation.items():
             if md.exists(h):
                 value = md.get(h)
