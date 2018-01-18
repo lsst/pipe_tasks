@@ -35,7 +35,7 @@ import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.math as afwMath
-from lsst.meas.astrom import DirectMatchTask
+from lsst.meas.astrom import DirectMatchTask, DirectMatchConfig
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from .colorterms import ColortermLibrary
@@ -45,7 +45,7 @@ __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
 class PhotoCalConfig(pexConf.Config):
     """Config for PhotoCal"""
-    match = pexConf.ConfigurableField(target=DirectMatchTask, doc="Match to reference catalog")
+    match = pexConf.ConfigField("Match to reference catalog", DirectMatchConfig)
     reserve = pexConf.ConfigurableField(target=ReserveSourcesTask, doc="Reserve sources from fitting")
     fluxField = pexConf.Field(
         dtype=str,
@@ -259,7 +259,8 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                                            doc="set if source was used in photometric calibration")
         else:
             self.usedKey = None
-        self.makeSubtask("match", refObjLoader=refObjLoader)
+        self.match = DirectMatchTask(self.config.match, refObjLoader=refObjLoader,
+                                     name="match", parentTask=self)
         self.makeSubtask("reserve", columnName="calib_photometry", schema=schema,
                          doc="set if source was reserved from photometric calibration")
 
