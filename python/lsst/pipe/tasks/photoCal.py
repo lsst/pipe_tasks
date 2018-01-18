@@ -35,7 +35,7 @@ import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
 import lsst.afw.math as afwMath
-from lsst.meas.astrom import DirectMatchTask, DirectMatchConfig
+from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from .colorterms import ColortermLibrary
@@ -45,7 +45,8 @@ __all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
 class PhotoCalConfig(pexConf.Config):
     """Config for PhotoCal"""
-    match = pexConf.ConfigField("Match to reference catalog", DirectMatchConfig)
+    match = pexConf.ConfigField("Match to reference catalog",
+                                DirectMatchConfigWithoutLoader)
     reserve = pexConf.ConfigurableField(target=ReserveSourcesTask, doc="Reserve sources from fitting")
     fluxField = pexConf.Field(
         dtype=str,
