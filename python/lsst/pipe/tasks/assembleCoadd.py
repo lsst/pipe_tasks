@@ -322,7 +322,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] selectDataList[in]: List of data references to Warps. Data to be coadded will be
                                    selected from this list based on overlap with the patch defined by dataRef.
 
-        \return a pipeBase.Struct with fields:
+        \return a pipeBase.Struct with fields from the last coadd assembled:
                  - coaddExposure: coadded exposure
                  - nImage: exposure count image
         """
@@ -343,26 +343,27 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
 
-        retStruct = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
-                                  inputData.weightList, supplementaryData=supplementaryData)
+        coaddGenerator = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
+                                       inputData.weightList, supplementaryData=supplementaryData)
 
-        if self.config.doInterp:
-            self.interpImage.run(retStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
-            # The variance must be positive; work around for DM-3201.
-            varArray = retStruct.coaddExposure.getMaskedImage().getVariance().getArray()
-            varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
+        for coaddStruct in coaddGenerator:
+            if self.config.doInterp:
+                self.interpImage.run(coaddStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
+                # The variance must be positive; work around for DM-3201.
+                varArray = coaddStruct.coaddExposure.getMaskedImage().getVariance().getArray()
+                varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
-        if self.config.doMaskBrightObjects:
-            brightObjectMasks = self.readBrightObjectMasks(dataRef)
-            self.setBrightObjectMasks(retStruct.coaddExposure, dataRef.dataId, brightObjectMasks)
+            if self.config.doMaskBrightObjects:
+                brightObjectMasks = self.readBrightObjectMasks(dataRef)
+                self.setBrightObjectMasks(coaddStruct.coaddExposure, dataRef.dataId, brightObjectMasks)
 
-        if self.config.doWrite:
-            self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
-            dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
-            if retStruct.nImage is not None:
-                dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
+            if self.config.doWrite:
+                self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
+                dataRef.put(coaddStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
+                if coaddStruct.nImage is not None:
+                    dataRef.put(coaddStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
 
-        return retStruct
+        return coaddStruct
 
     def makeSupplementaryData(self, dataRef, selectDataList):
         """!
@@ -474,7 +475,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \param[in] mask: Mask to ignore when coadding
         \param[in] supplementaryData: pipeBase.Struct with additional data products needed to assemble coadd.
                         Only used by subclasses that implement makeSupplementaryData and override assemble.
-        \return pipeBase.Struct with coaddExposure, nImage if requested
+        \yield pipeBase.Struct with coaddExposure, nImage if requested
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
@@ -522,7 +523,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         # Despite the name, the following doesn't really deal with "EDGE" pixels: it identifies
         # pixels that didn't receive any unmasked inputs (as occurs around the edge of the field).
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
-        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage)
+        yield pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage)
 
     def assembleMetadata(self, coaddExposure, tempExpRefList, weightList):
         """!
@@ -1100,11 +1101,13 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
         config.statistic = 'MEAN'
         task = AssembleCoaddTask(config=config)
-        coaddMean = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
+        coaddGenerator = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList)
+        coaddMean = next(coaddGenerator).coaddExposure
 
         config.statistic = 'MEANCLIP'
         task = AssembleCoaddTask(config=config)
-        coaddClip = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
+        coaddGenerator = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList)
+        coaddClip = next(coaddGenerator).coaddExposure
 
         coaddDiff = coaddMean.getMaskedImage().Factory(coaddMean.getMaskedImage())
         coaddDiff -= coaddClip.getMaskedImage()
