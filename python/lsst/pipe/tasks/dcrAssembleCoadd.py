@@ -107,6 +107,8 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
+        self.assembleStaticSkyModel.removeMaskPlanes = []
+        self.removeMaskPlanes = []
         if self.usePsf:
             self.useFFT = True
         if self.doWeightGain:
