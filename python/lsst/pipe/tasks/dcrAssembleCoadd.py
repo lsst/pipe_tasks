@@ -164,56 +164,28 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                  - coaddExposure: coadded exposure
                  - nImage: exposure count image
         """
-        skyInfo = self.getSkyInfo(dataRef)
-        calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
-        if len(calExpRefList) == 0:
-            self.log.warn("No exposures to coadd")
-            return
-        self.log.info("Coadding %d exposures", len(calExpRefList))
+        retStruct = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList)
+        for subfilter, coaddExposure in enumerate(retStruct.dcrCoadds):
+            if self.config.doWrite:
+                self.writeDcrCoadd(dataRef, coaddExposure, subfilter)
+            
+        return pipeBase.Struct(coaddExposure=retStruct.coaddExposure, nImage=retStruct.nImage)
 
-        tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
-        inputData = self.prepareInputs(tempExpRefList)
-        self.log.info("Found %d %s", len(inputData.tempExpRefList),
-                      self.getTempExpDatasetName(self.warpType))
-        if len(inputData.tempExpRefList) == 0:
-            self.log.warn("No coadd temporary exposures found")
-            return
-
-        supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
-        # nImage is created if it is requested by self.config.  Otherwise, None.
-
-        retStructGen = self.assemble(
-            skyInfo, inputData.tempExpRefList, inputData.imageScalerList, inputData.weightList,
-            supplementaryData=supplementaryData,
-        )
-        coaddExp = None
-        for retStruct in retStructGen:
-
+    def writeDcrCoadd(self, dataRef, coaddExposure, subfilter, nImage=None):
             if self.config.doInterp:
-                self.interpImage.run(retStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
+                self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
                 # The variance must be positive; work around for DM-3201.
-                varArray = retStruct.coaddExposure.getMaskedImage().getVariance().getArray()
+                varArray = coaddExposure.getMaskedImage().getVariance().getArray()
                 varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
             if self.config.doMaskBrightObjects:
                 brightObjectMasks = self.readBrightObjectMasks(dataRef)
-                self.setBrightObjectMasks(retStruct.coaddExposure, dataRef.dataId, brightObjectMasks)
+                self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
 
-            if self.config.doWrite:
-                self.log.info("Persisting dcrCoadd")
-                dataRef.put(retStruct.coaddExposure, "dcrCoadd", subfilter=retStruct.subFilter)
-
-            if coaddExp is None:
-                coaddExp = retStruct.coaddExposure
-            else:
-                mimage = coaddExp.getMaskedImage()
-                mimage += retStruct.coaddExposure.getMaskedImage()
-        if self.config.doWrite:
-            self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
-            dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
-            if retStruct.nImage is not None:
-                dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType)+'_nImage')
-        return pipeBase.Struct(coaddExposure=coaddExp, nImage=retStruct.nImage)
+            self.log.info("Persisting dcrCoadd")
+            dataRef.put(coaddExposure, "dcrCoadd", subfilter=subfilter)
+            if nImage is not None:
+                dataRef.put(nImage, self.getCoaddDatasetName(self.warpType)+'_nImage')
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, supplementaryData=None, *args, **kwargs):
@@ -291,9 +263,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             else:
                 self.log.info("Coadd %s finished with convergence %s after %s iterations",
                               subBBox, convergenceMetric, iter)
-        dcrCoadd = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
-        for subFilter, coadd in enumerate(dcrCoadd):
-            yield pipeBase.Struct(coaddExposure=coadd, nImage=None, subFilter=subFilter)
+                self.log.info("Final convergence improvement was %s", convergenceCheck)
+        dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
+        coaddExposure = self.stackCoadd(dcrCoadds)
+        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
 
     def prepareStats(self, skyInfo, mask=None):
         if mask is None:
@@ -428,16 +401,26 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             model.getImage().getArray()[:, :] /= self.config.dcrNSubbands
             model.getVariance().getArray()[:, :] /= self.config.dcrNSubbands
         return dcrModel
+    def stackCoadd(self, dcrCoadds):
+        coaddGenerator = (coadd for coadd in dcrCoadds)
+        coaddExposure = next(coaddGenerator).clone()
+        mimage = coaddExposure.getMaskedImage()
+        for coadd in coaddGenerator:
+            mimage += coadd.getMaskedImage()
+        return coaddExposure
 
-    def fillCoadd(self, dcrModel, skyInfo, tempExpRefList, weightList):
-        for model in dcrModel:
+
+    def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList):
+        dcrCoadds = []
+        for model in dcrModels:
             coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
             coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
             coaddExposure.getInfo().setCoaddInputs(self.inputRecorder.makeCoaddInputs())
             self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
             coaddUtils.setCoaddEdgeBits(model.getMask(), model.getVariance())
             coaddExposure.setMaskedImage(model)
-            yield coaddExposure
+            dcrCoadds.append(coaddExposure)
+        return dcrCoadds
 
     def convolveDcrModelPlane(self, dcrModelPlane, dcr, useInverse=False):
         if self.config.useFFT:
