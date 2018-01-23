@@ -99,6 +99,16 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Use the calculated convergence metric to accelerate forward modeling.",
         default=True,
     )
+    maxGain = pexConfig.Field(
+        dtype=float,
+        doc="Maximum convergence-weighted gain to apply between forward modeling iterations.",
+        default=2.,
+    )
+    minGain = pexConfig.Field(
+        dtype=float,
+        doc="Minimum convergence-weighted gain to apply between forward modeling iterations.",
+        default=0.5,
+    )
     assembleStaticSkyModel = pexConfig.ConfigurableField(
         target=AssembleCoaddTask,
         doc="Task to assemble an artifact-free, PSF-matched Coadd to serve as a"
@@ -367,6 +377,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                              imageScalerList, altMaskList,
                                                              statsFlags, statsCtrl)
             gain = convergenceMetric/convergenceMetricNew
+            if gain > self.config.maxGain:
+                gain = self.config.maxGain
+            if gain < self.config.minGain:
+                gain = self.config.minGain
+            self.log.info("Convergence-weighted gain used: %s", gain)
             convergenceMetric = convergenceMetricNew
         else:
             gain = 1.
