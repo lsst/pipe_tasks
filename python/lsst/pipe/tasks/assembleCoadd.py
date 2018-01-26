@@ -36,7 +36,7 @@ import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 import lsst.log as log
 import lsstDebug
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer, scaleVariance
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -82,6 +82,12 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         dtype=int,
         doc="Number of iterations of outlier rejection; ignored if non-clipping statistic selected.",
         default=2,
+    )
+    calcErrorFromInputVariance = pexConfig.Field(
+        dtype=bool,
+        doc="Calculate coadd variance from input variance by stacking statistic."
+            "Passed to StatisticsControl.setCalcErrorFromInputVariance()",
+        default=True,
     )
     scaleZeroPoint = pexConfig.ConfigurableField(
         target=ScaleZeroPointTask,
@@ -359,8 +365,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         if self.config.doWrite:
             self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
             dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
-            if retStruct.nImage is not None:
-                dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
+        if self.config.doNImage and retStruct.nImage is not None:
+            dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
 
         return retStruct
 
@@ -487,7 +493,7 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         statsCtrl.setAndMask(mask)
         statsCtrl.setNanSafe(True)
         statsCtrl.setWeighted(True)
-        statsCtrl.setCalcErrorFromInputVariance(True)
+        statsCtrl.setCalcErrorFromInputVariance(self.config.calcErrorFromInputVariance)
         for plane, threshold in self.config.maskPropagationThresholds.items():
             bit = afwImage.Mask.getMaskPlane(plane)
             statsCtrl.setMaskPropagationThreshold(bit, threshold)
@@ -1322,6 +1328,16 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         min=0., max=1.,
         inclusiveMin=True, inclusiveMax=True
     )
+    doScaleWarpVariance = pexConfig.Field(
+        doc="Rescale Warp variance plane using empirical noise?",
+        dtype=bool,
+        default=True,
+    )
+    maskScaleWarpVariance = pexConfig.ListField(
+        dtype=str,
+        default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
+        doc="Mask planes for pixels to ignore when rescaling warp variance",
+    )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
@@ -1331,6 +1347,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         self.assembleStaticSkyModel.statistic = 'MEANCLIP'
         self.assembleStaticSkyModel.sigmaClip = 1.5
         self.assembleStaticSkyModel.clipIter = 3
+        self.assembleStaticSkyModel.calcErrorFromInputVariance = False
         self.assembleStaticSkyModel.doWrite = False
         self.detect.doTempLocalBackground = False
         self.detect.reEstimateBackground = False
@@ -1667,6 +1684,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
+        if self.config.doScaleWarpVariance:
+            scaleVariance(mi, self.config.maskScaleWarpVariance,
+                          log=self.log)
         mi -= templateCoadd.getMaskedImage()
         return warp
 
