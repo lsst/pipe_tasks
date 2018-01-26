@@ -365,8 +365,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         if self.config.doWrite:
             self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
             dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
-            if retStruct.nImage is not None:
-                dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
+        if self.config.doNImage and retStruct.nImage is not None:
+            dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
 
         return retStruct
 
