@@ -99,6 +99,8 @@ def setup_module(module):
     # and the background weighting (when using Approximate) to False
 
     detectConfig = DetectCoaddSourcesTask.ConfigClass()
+    # Images have no noise, so we can't use the default DynamicDetectionTask
+    detectConfig.detection.retarget(lsst.meas.algorithms.SourceDetectionTask)
     detectConfig.detection.thresholdType = "value"
     detectConfig.detection.thresholdValue = 0.01
     detectConfig.detection.background.weighting = False
