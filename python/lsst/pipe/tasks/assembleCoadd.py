@@ -1306,18 +1306,30 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         doc="Detect outlier sources on difference between each psfMatched warp and static sky model"
     )
     maxNumEpochs = pexConfig.Field(
-        doc="Maximum number of epochs/visits in which an artifact candidate can appear and still be masked. "
+        doc="Charactistic maximum local number of epochs/visits in which an artifact candidate can appear  "
+            "and still be masked.  The effective maxNumEpochs is a broken linear function of local "
+            "number of epochs (N): min(maxFractionEpochsLow*N, maxNumEpochs + maxFractionEpochsHigh*N). "
             "For each footprint detected on the image difference between the psfMatched warp and static sky "
             "model, if a significant fraction of pixels (defined by spatialThreshold) are residuals in more "
-            "than maxNumEpochs, the artifact candidate is persistant rather than transient and not masked.",
+            "than the computed effective maxNumEpochs, the artifact candidate is deemed persistant rather "
+            "than transient and not masked.",
         dtype=int,
         default=2
     )
-    maxFractionEpochs = pexConfig.RangeField(
-        doc="Fraction of local number of epochs (N) to use as maxNumEpochs. "
-            "Effective maxNumEpochs is the lesser of floor(maxNumEpochsMinFraction*N) and maxNumEpochs. ",
+    maxFractionEpochsLow = pexConfig.RangeField(
+        doc="Fraction of local number of epochs (N) to use as effective maxNumEpochs for low N. "
+            "Effective maxNumEpochs = "
+            "min(maxFractionEpochsLow * N, maxNumEpochs + maxFractionEpochsHigh * N)",
         dtype=float,
         default=0.4,
+        min=0., max=1.,
+    )
+    maxFractionEpochsHigh = pexConfig.RangeField(
+        doc="Fraction of local number of epochs (N) to use as effective maxNumEpochs for high N. "
+            "Effective maxNumEpochs = "
+            "min(maxFractionEpochsLow * N, maxNumEpochs + maxFractionEpochsHigh * N)",
+        dtype=float,
+        default=0.03,
         min=0., max=1.,
     )
     spatialThreshold = pexConfig.RangeField(
@@ -1655,8 +1667,12 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             xIdxLocal = [x1 - x0 for x1 in x]
             outlierN = epochCountImage.array[yIdxLocal, xIdxLocal]
             totalN = nImage.array[yIdxLocal, xIdxLocal]
-            effectiveMaxNumEpochs = min(self.config.maxNumEpochs,
-                                        int(self.config.maxFractionEpochs * numpy.mean(totalN)))
+
+            # effectiveMaxNumEpochs is broken line (fraction of N) with characteristic config.maxNumEpochs
+            effMaxNumEpochsHighN = (self.config.maxNumEpochs +
+                                    self.config.maxFractionEpochsHigh*numpy.mean(totalN))
+            effMaxNumEpochsLowN = self.config.maxFractionEpochsLow * numpy.mean(totalN)
+            effectiveMaxNumEpochs = int(min(effMaxNumEpochsLowN, effMaxNumEpochsHighN))
             nPixelsBelowThreshold = numpy.count_nonzero((outlierN > 0) &
                                                         (outlierN <= effectiveMaxNumEpochs))
             percentBelowThreshold = nPixelsBelowThreshold / len(outlierN)
