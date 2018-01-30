@@ -523,7 +523,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             except Exception as e:
                 self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
-        self.setEdge(coaddMaskedImage.getMask())
         self.setInexactPsf(coaddMaskedImage.getMask())
         # Despite the name, the following doesn't really deal with "EDGE" pixels: it identifies
         # pixels that didn't receive any unmasked inputs (as occurs around the edge of the field).
@@ -600,8 +599,20 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         """
         self.log.debug("Computing coadd over %s", bbox)
         tempExpName = self.getTempExpDatasetName(self.warpType)
-        coaddMaskedImage = coaddExposure.getMaskedImage()
-        coaddMaskedImage.getMask().addMaskPlane("CLIPPED")
+        coaddExposure.mask.addMaskPlane("REJECTED")
+        coaddExposure.mask.addMaskPlane("CLIPPED")
+        coaddExposure.mask.addMaskPlane("SENSOR_EDGE")
+        # If a pixel is rejected due to a mask value other than EDGE, NO_DATA,
+        # or CLIPPED, set it to REJECTED on the coadd.
+        # If a pixel is rejected due to EDGE, set the coadd pixel to SENSOR_EDGE.
+        # if a pixel is rejected due to CLIPPED, set the coadd pixel to CLIPPED.
+        edge = afwImage.Mask.getPlaneBitMask("EDGE")
+        noData = afwImage.Mask.getPlaneBitMask("NO_DATA")
+        clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
+        toReject = statsCtrl.getAndMask() & (~noData) & (~edge) & (~clipped)
+        maskMap = [(toReject, coaddExposure.mask.getPlaneBitMask("REJECTED")),
+                   (edge, coaddExposure.mask.getPlaneBitMask("SENSOR_EDGE")),
+                   (clipped, clipped)]
         maskedImageList = []
         if nImage is not None:
             subNImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
@@ -629,9 +640,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         with self.timer("stack"):
             coaddSubregion = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
-                                                     coaddMaskedImage.getMask().getPlaneBitMask("CLIPPED"),
-                                                     coaddMaskedImage.getMask().getPlaneBitMask("NO_DATA"))
-        coaddMaskedImage.assign(coaddSubregion, bbox)
+                                                     clipped,  # also set output to CLIPPED if sigma-clipped
+                                                     maskMap)
+        coaddExposure.maskedImage.assign(coaddSubregion, bbox)
         if nImage is not None:
             nImage.assign(subNImage, bbox)
 
@@ -706,30 +717,6 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                 continue
             spans.clippedTo(mask.getBBox()).setMask(mask, self.brightObjectBitmask)
 
-    def setEdge(self, mask):
-        """Set EDGE bits as SENSOR_EDGE
-
-        The EDGE pixels from the individual CCDs have printed through into the
-        coadd, but EDGE means "we couldn't search for sources in this area
-        because we couldn't convolve by the PSF near the edge of the image",
-        so this mask plane needs to be converted to something else if we want
-        to keep them. We do want to be able to identify pixels near the edge
-        of the detector because they will have an inexact `CoaddPsf`. We
-        rename EDGE pixels as SENSOR_EDGE.
-
-        Parameters
-        ----------
-        mask : `lsst.afw.image.Mask`
-            Coadded exposure's mask, modified in-place.
-        """
-        mask.addMaskPlane("SENSOR_EDGE")
-        edge = mask.getPlaneBitMask("EDGE")
-        sensorEdge = mask.getPlaneBitMask("SENSOR_EDGE")
-        array = mask.getArray()
-        selected = (array & edge > 0)
-        array[selected] |= sensorEdge
-        array[selected] &= ~edge
-
     def setInexactPsf(self, mask):
         """Set INEXACT_PSF mask plane
 
@@ -744,10 +731,11 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         """
         mask.addMaskPlane("INEXACT_PSF")
         inexactPsf = mask.getPlaneBitMask("INEXACT_PSF")
-        sensorEdge = mask.getPlaneBitMask("SENSOR_EDGE")  # chip gaps
+        sensorEdge = mask.getPlaneBitMask("SENSOR_EDGE")  # chip edges (so PSF is discontinuous)
         clipped = mask.getPlaneBitMask("CLIPPED")  # pixels clipped from coadd
+        rejected = mask.getPlaneBitMask("REJECTED")  # pixels rejected from coadd due to masks
         array = mask.getArray()
-        selected = array & (sensorEdge | clipped) > 0
+        selected = array & (sensorEdge | clipped | rejected) > 0
         array[selected] |= inexactPsf
 
     @classmethod
