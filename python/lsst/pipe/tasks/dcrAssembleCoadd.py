@@ -456,7 +456,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             newModel *= gain
             newModel += oldModel[bbox, afwImage.PARENT]
             newModel /= 1. + gain
-            # newModel = (oldModel[bbox] + gain*newModel)/(1. + gain)
 
     def dcrShiftCalculate(self, visitInfo, wcs):
         rotation = calculateRotationAngle(visitInfo, wcs)
@@ -496,7 +495,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 if f2 != f:
                     mimage -= shiftedModels[f2]
             residual = self.convolveDcrModelPlane(mimage, dcr, useInverse=True)
-            residual.setXY0(bbox.getBegin())
             residualImages.append(residual)
         return residualImages
 
