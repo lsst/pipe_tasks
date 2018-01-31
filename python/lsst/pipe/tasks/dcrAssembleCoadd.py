@@ -83,6 +83,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Maximum number of iterations of forward modeling.",
         default=8,
     )
+    minNIter = pexConfig.Field(
+        dtype=int,
+        doc="Minimum number of iterations of forward modeling.",
+        default=3,
+    )
     convergenceThreshold = pexConfig.Field(
         dtype=float,
         doc="Target change in convergence between iteration of forward modeling.",
@@ -240,8 +245,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             convergenceCheck = convergenceMetric
             data_check = [numpy.std(model[subBBox].getImage().getArray()) for model in subBandImages]
             self.log.info("Deviation of model in coadd %s: %s", subBBox, data_check)
-            while convergenceCheck > self.config.convergenceThreshold:
-                self.log.info("Iteration %s with convergence %s", iter, convergenceMetric)
+            while (convergenceCheck > self.config.convergenceThreshold) or (iter < self.config.minNIter):
+                self.log.info("Iteration %s with convergence %s, %s improvement", iter, convergenceMetric, convergenceCheck)
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
                                               weightList, altMaskList, statsFlags, statsCtrl,
@@ -262,7 +267,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             else:
                 self.log.info("Coadd %s finished with convergence %s after %s iterations",
                               subBBox, convergenceMetric, iter)
-                self.log.info("Final convergence improvement was %s", convergenceCheck)
+            self.log.info("Final convergence improvement was %s", convergenceCheck)
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
