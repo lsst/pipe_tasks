@@ -24,11 +24,10 @@ from __future__ import absolute_import, division, print_function
 
 from collections import namedtuple
 import numpy
-from scipy.ndimage.interpolation import shift as scipyShift
+import scipy.ndimage.interpolation
 from lsst.afw.coord.refraction import differentialRefraction
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-from lsst.afw.image.maskedImage import MaskedImageF as MaskedImageF
 import lsst.afw.image.utils as afwImageUtils
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
@@ -431,7 +430,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
-    def convolveDcrModelPlane(self, dcrModelPlane, dcr, useInverse=False):
+    def convolveDcrModelPlane(self, maskedImage, dcr, useInverse=False):
         if self.config.useFFT:
             raise NotImplementedError("The Fourier transform approach has not yet been written.")
         else:
@@ -439,13 +438,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 shift = (-dcr.dy, -dcr.dx)
             else:
                 shift = (dcr.dy, dcr.dx)
-            if isinstance(dcrModelPlane, MaskedImageF):
-                # Shift each of image, mask, and variance if a masked image.
-                result = dcrModelPlane.clone()
-                for array in result.getArrays():
-                    array = scipyShift(array, shift)
-            else:
-                result = scipyShift(dcrModelPlane, shift)
+            # Shift each of image, mask, and variance if a masked image.
+            result = maskedImage.clone()
+            srcImage = result.getImage().getArray()
+            srcImage[numpy.isnan(srcImage)] = 0.
+            scrVariance = result.getVariance().getArray()
+            scrVariance[numpy.isnan(scrVariance)] = 0.
+            retImage = scipy.ndimage.interpolation.shift(srcImage, shift)
+            result.getImage().getArray()[:, :] = retImage
+            retVariance = scipy.ndimage.interpolation.shift(scrVariance, shift)
+            result.getVariance().getArray()[:, :] = retVariance
         return result
 
     def conditionDcrModel(self, oldDcrModels, newDcrModels, bbox, gain=1.):
