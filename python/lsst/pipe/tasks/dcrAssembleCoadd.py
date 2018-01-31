@@ -319,6 +319,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox_grow)
             visitInfo = exposure.getInfo().getVisitInfo()
+            wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.getMaskedImage()
             if exposure.getWcs().pixelScale() != self.pixelScale:
                 self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
@@ -335,7 +336,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                         mask &= ~mask.getPlaneBitMask(maskPlane)
                     except Exception as e:
                         self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
-            maskedImageList = self.dcrResiduals(dcrModels, maskedImage, visitInfo, bbox_grow)
+            maskedImageList = self.dcrResiduals(dcrModels, maskedImage, visitInfo, bbox_grow, wcs)
             for mi, ml in zip(maskedImageList, maskedImageList2):
                 ml.append(mi)
 
@@ -383,12 +384,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.pixelScale = exposure.getWcs().pixelScale()
             refImage = exposure.getMaskedImage().clone()
             imageScaler.scaleMaskedImage(refImage)
-            tempImage = refImage.clone().getImage().getArray()
             refImage *= modelWeights
             visitInfo = exposure.getInfo().getVisitInfo()
-            diffImage = self.buildMatchedTemplate(dcrModels, visitInfo, statsFlags, statsCtrl, bbox)
-            tempDiff = diffImage.clone().getImage().getArray()
-            tempModel = modelWeights.clone().getImage().getArray()
+            wcs = exposure.getInfo().getWcs()
+            diffImage = self.buildMatchedTemplate(dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs)
 
             diffImage *= modelWeights
             diffImage -= refImage
@@ -457,10 +456,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             newModel /= 1. + gain
             # newModel = (oldModel[bbox] + gain*newModel)/(1. + gain)
 
-    def dcrShiftCalculate(self, visitInfo):
-        rotation = visitInfo.getBoresightParAngle() + visitInfo.getBoresightRotAngle()
+    def dcrShiftCalculate(self, visitInfo, wcs):
+        rotation = calculateRotationAngle(visitInfo, wcs)
 
         dcr = namedtuple("dcr", ["dx", "dy"])
+        dcrShift = []
         for wl in self.wavelengthGenerator():
             # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
             diffRefractAmp = differentialRefraction(wl, self.lambdaEff,
@@ -468,11 +468,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                     observatory=visitInfo.getObservatory(),
                                                     weather=visitInfo.getWeather())
             diffRefractPix = diffRefractAmp.asArcseconds()/self.pixelScale.asArcseconds()
-            yield dcr(dx=diffRefractPix*numpy.sin(rotation.asRadians()),
-                      dy=diffRefractPix*numpy.cos(rotation.asRadians()))
+            dcrShift.append(dcr(dx=diffRefractPix*numpy.sin(rotation.asRadians()),
+                                dy=diffRefractPix*numpy.cos(rotation.asRadians())))
+        return dcrShift
 
-    def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox):
-        dcrShift = self.dcrShiftCalculate(visitInfo)
+    def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs):
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
         weightList = [1.0]*self.config.dcrNSubbands
         maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT], dcr)
                            for dcr, model in zip(dcrShift, dcrModels)]
@@ -482,8 +483,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                maskRef.getPlaneBitMask("NO_DATA"))
         return templateVals
 
-    def dcrResiduals(self, dcrModels, maskedImage, visitInfo, bbox):
-        dcrShift = list(self.dcrShiftCalculate(visitInfo))
+    def dcrResiduals(self, dcrModels, maskedImage, visitInfo, bbox, wcs):
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
         shiftedModels = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT], dcr, useInverse=False)
                          for dcr, model in zip(dcrShift, dcrModels)]
         residualImages = []
@@ -501,3 +502,25 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         wlRef = self.lambdaEff
         for wl in numpy.linspace(0., self.filterWidth, self.config.dcrNSubbands, endpoint=True):
             yield wlRef - self.filterWidth/2. + wl
+
+
+def calculateRotationAngle(visitInfo, wcs):
+    """Calculate the sky rotation angle of an exposure.
+
+    Parameters
+    ----------
+    exposure : lsst.afw.image.ExposureD
+        An LSST exposure object.
+
+    Returns
+    -------
+    lsst.afw.geom.Angle
+        The rotation of the image axis, East from North.
+        A rotation angle of 0 degrees is defined with North along the +y axis and East along the +x axis.
+        A rotation angle of 90 degrees is defined with North along the +x axis and East along the -y axis.
+    """
+    p_angle = visitInfo.getBoresightParAngle().asRadians()
+    cd = wcs.getCDMatrix()
+    cd_rot = (numpy.arctan2(-cd[0, 1], cd[0, 0]) + numpy.arctan2(cd[1, 0], cd[1, 1]))/2.
+    rotation_angle = afwGeom.Angle(cd_rot + p_angle)
+    return rotation_angle
