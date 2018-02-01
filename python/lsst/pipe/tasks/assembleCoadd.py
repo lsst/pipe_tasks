@@ -356,7 +356,8 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
             self.interpImage.run(retStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
             # The variance must be positive; work around for DM-3201.
             varArray = retStruct.coaddExposure.getMaskedImage().getVariance().getArray()
-            varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
+            with numpy.errstate(invalid="ignore"):
+                varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
         if self.config.doMaskBrightObjects:
             brightObjectMasks = self.readBrightObjectMasks(dataRef)
