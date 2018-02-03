@@ -150,6 +150,7 @@ class CoaddTempExpInputRecorder(object):
         record.setValidPolygon(info.getValidPolygon())
         record.setVisitInfo(info.getVisitInfo())
         record.setBBox(exposure.getBBox())
+        record.setTransmissionCurve(info.getTransmissionCurve())
 
 
 class CoaddInputRecorderTask(pipeBase.Task):
