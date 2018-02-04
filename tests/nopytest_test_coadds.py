@@ -56,6 +56,7 @@ import shutil
 import os
 import numbers
 from collections import Iterable
+import numpy as np
 
 import lsst.utils.tests
 import lsst.afw.math
@@ -286,6 +287,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                         self.assertEqual(obsRecord.getId(), ccdRecord.getId())
                         self.assertEqual(obsRecord.getWcs(), ccdRecord.getWcs())
                         self.assertEqual(obsRecord.getBBox(), ccdRecord.getBBox())
+                        self.assertIsNotNone(ccdRecord.getTransmissionCurve())
                         self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
                 self.assertTrue(foundOneTempExp)
 
@@ -311,6 +313,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                     self.assertEqual(obsRecord.getBBox(), ccdRecord.getBBox())
                     self.assertEqual(obsRecord.get("filter"), ccdRecord.get("filter"))
                     self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
+                    self.assertIsNotNone(ccdRecord.getTransmissionCurve())
                     self.assertIsNotNone(coaddInputs.visits.find(ccdRecord.getL(ccdVisitKey)))
                 for visitRecord in coaddInputs.visits:
                     nCcds = len([ccdRecord for ccdRecord in coaddInputs.ccds
@@ -398,6 +401,41 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         if nTested == 0:
             print("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
                   "first try running the test again)")
+
+    def testCoaddTransmissionCurves(self, tract=0):
+        """Test that coadded TransmissionCurves agree with those of the inputs."""
+        skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
+        tractInfo = skyMap[tract]
+        truthCatalog = self.butler.get("truth", tract=tract, immediate=True)
+        wavelengths = np.linspace(4000, 7000, 10)
+        for dataProduct in self.coaddNameList:
+            nTested = 0
+            for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+                coaddExp = patchRef.get(self.mocksTask.config.coaddName + dataProduct, immediate=True)
+                coaddWcs = coaddExp.getWcs()
+                coaddTransmissionCurve = coaddExp.getInfo().getTransmissionCurve()
+                coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox())
+                inputs = coaddExp.getInfo().getCoaddInputs().ccds
+                for truthRecord in truthCatalog:
+                    coaddPosition = coaddWcs.skyToPixel(truthRecord.getCoord())
+                    if not coaddBBox.contains(coaddPosition):
+                        continue
+                    summedThroughput = np.zeros(wavelengths.shape, dtype=float)
+                    weightSum = 0.0
+                    for sensorRecord in inputs.subsetContaining(truthRecord.getCoord(),
+                                                                includeValidPolygon=True):
+                        sensorPosition = sensorRecord.getWcs().skyToPixel(truthRecord.getCoord())
+                        sensorTransmission = sensorRecord.getTransmissionCurve()
+                        weight = sensorRecord.get("weight")
+                        summedThroughput += sensorTransmission.sampleAt(sensorPosition, wavelengths)*weight
+                        weightSum += weight
+                    if weightSum == 0.0:
+                        continue
+                    summedThroughput /= weightSum
+                    coaddThroughput = coaddTransmissionCurve.sampleAt(coaddPosition, wavelengths)
+                    self.assertFloatsAlmostEqual(coaddThroughput, summedThroughput, rtol=1E-10)
+                    nTested += 1
+            self.assertGreater(nTested, 5)
 
     def testSchemaConsistency(self):
         """Test that _schema catalogs are consistent with the data catalogs.

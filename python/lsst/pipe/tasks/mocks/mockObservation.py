@@ -33,6 +33,7 @@ import lsst.afw.math
 import lsst.afw.detection
 import lsst.pipe.base
 from lsst.meas.base.apCorrRegistry import getApCorrNameSet
+from lsst.meas.algorithms.testUtils import makeRandomTransmissionCurve
 
 
 class MockObservationConfig(lsst.pex.config.Config):
@@ -131,6 +132,7 @@ class MockObservationTask(lsst.pipe.base.Task):
                 record.setVisitInfo(visitInfo)
                 record.setPsf(self.buildPsf(detector))
                 record.setApCorrMap(self.buildApCorrMap(detector))
+                record.setTransmissionCurve(self.buildTransmissionCurve(detector))
                 record.setBBox(detector.getBBox())
                 detectorId = detector.getId()
                 obj = butler.get("ccdExposureId", visit=visit, ccd=detectorId, immediate=True)
@@ -247,3 +249,8 @@ class MockObservationTask(lsst.pipe.base.Task):
             apCorrMap.set(name + "_flux", makeRandomBoundedField())
             apCorrMap.set(name + "_fluxSigma", makeRandomBoundedField())
         return apCorrMap
+
+    def buildTransmissionCurve(self, detector):
+        """Build a random spacially-varying TransmissionCurve."""
+        bbox = detector.getBBox()
+        return makeRandomTransmissionCurve(rng=self.rng, maxRadius=max(bbox.getWidth(), bbox.getHeight()))
