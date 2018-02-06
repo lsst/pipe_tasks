@@ -1583,6 +1583,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return pipeBase.Struct with coaddExposure, nImage if requested
         """
         templateCoadd = supplementaryData.templateCoadd
+        templateCoadd.writeFits(self._dataRef2DebugPath("templateCoadd", tempExpRefList[0], coaddLevel=True))
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
@@ -1732,11 +1733,17 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         warp = warpRef.get(warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
+
+        warp.writeFits(self._dataRef2DebugPath("scaledWarp", warpRef, coaddLevel=False))
+
         mi = warp.getMaskedImage()
         if self.config.doScaleWarpVariance:
             scaleVariance(mi, self.config.maskScaleWarpVariance,
                           log=self.log)
         mi -= templateCoadd.getMaskedImage()
+
+        warp.writeFits(self._dataRef2DebugPath("diff", warpRef, coaddLevel=False))
+
         return warp
 
     def _dataRef2DebugPath(self, prefix, warpRef, coaddLevel=False):
