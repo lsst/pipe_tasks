@@ -195,6 +195,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             exposure.setWcs(obsRecord.getWcs())
             exposure.setPsf(obsRecord.getPsf())
             exposure.getInfo().setApCorrMap(obsRecord.getApCorrMap())
+            exposure.getInfo().setTransmissionCurve(obsRecord.getTransmissionCurve())
             for truthRecord in truthCatalog:
                 status = self.mockObject.drawSource(truthRecord, exposure, buffer=self.config.edgeBuffer)
                 if status:
@@ -251,6 +252,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
                 config.doWrite = False
             if cls == CompareWarpAssembleCoaddTask:
                 config.assembleStaticSkyModel.select.retarget(MockSelectImagesTask)
+            config.doAttachTransmissionCurve = True
         return cls(config=config)
 
     def iterPatchRefs(self, butler, tractInfo):

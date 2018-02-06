@@ -139,6 +139,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc="Configuration for CoaddPsf",
         dtype=measAlg.CoaddPsfConfig,
     )
+    doAttachTransmissionCurve = pexConfig.Field(
+        dtype=bool, default=False, optional=False,
+        doc=("Attach a piecewise TransmissionCurve for the coadd? "
+             "(requires all input Exposures to have TransmissionCurves).")
+    )
 
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
@@ -574,6 +579,9 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         apCorrMap = measAlg.makeCoaddApCorrMap(coaddInputs.ccds, coaddExposure.getBBox(afwImage.PARENT),
                                                coaddExposure.getWcs())
         coaddExposure.getInfo().setApCorrMap(apCorrMap)
+        if self.config.doAttachTransmissionCurve:
+            transmissionCurve = measAlg.makeCoaddTransmissionCurve(coaddExposure.getWcs(), coaddInputs.ccds)
+            coaddExposure.getInfo().setTransmissionCurve(transmissionCurve)
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
                           altMaskList, statsFlags, statsCtrl, nImage=None):

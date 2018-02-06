@@ -39,6 +39,7 @@ class CoaddInputRecorderConfig(pexConfig.Config):
     or the schemas created by earlier tasks (like MakeCoaddTempExpTask) will not contain
     the fields filled by later tasks (like AssembleCoaddTask).
     """
+
     saveEmptyCcds = pexConfig.Field(
         dtype=bool, default=False, optional=False,
         doc=("Add records for CCDs we iterated over but did not add a coaddTempExp"
@@ -62,8 +63,8 @@ class CoaddInputRecorderConfig(pexConfig.Config):
 
 
 class CoaddTempExpInputRecorder(object):
-    """A helper class for CoaddInputRecorderTask, managing the CoaddInputs object for that a single
-    CoaddTempExp.  This will contain single 'visit' record for the CoaddTempExp and a number of 'ccd'
+    """A helper class for CoaddInputRecorderTask, managing the CoaddInputs object for that single
+    CoaddTempExp.  This will contain a single 'visit' record for the CoaddTempExp and a number of 'ccd'
     records.
 
     Should generally be created by calling CoaddInputRecorderTask.makeCoaddTempExp().
@@ -149,6 +150,8 @@ class CoaddTempExpInputRecorder(object):
         record.setValidPolygon(info.getValidPolygon())
         record.setVisitInfo(info.getVisitInfo())
         record.setBBox(exposure.getBBox())
+        record.setTransmissionCurve(info.getTransmissionCurve())
+
 
 class CoaddInputRecorderTask(pipeBase.Task):
     """Subtask that handles filling a CoaddInputs object for a coadd exposure, tracking the CCDs and
