@@ -1357,6 +1357,8 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         dtype=bool,
         default=True,
     )
+    # 0.01 too high (CRs left over). 0.001 too low (too much clipping)
+    softenVariance = pexConfig.Field(dtype=float, default=0.003, doc="Softening parameter for variance")
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
@@ -1740,6 +1742,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if self.config.doScaleWarpVariance:
             scaleVariance(mi, self.config.maskScaleWarpVariance,
                           log=self.log)
+        if self.config.softenVariance > 0:
+            self.log.info("Softening variance by %f", self.config.softenVariance)
+            mi.variance.array += numpy.maximum(self.config.softenVariance*mi.image.array, 0.0)
+
         mi -= templateCoadd.getMaskedImage()
 
         warp.writeFits(self._dataRef2DebugPath("diff", warpRef, coaddLevel=False))
