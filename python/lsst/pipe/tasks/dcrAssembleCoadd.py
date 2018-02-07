@@ -247,13 +247,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, altMaskList,
                                                           statsFlags, statsCtrl)
-            self.log.info("Initial convergence of coadd %s: %s", subBBox, convergenceMetric)
+            self.log.info("Computing coadd over %s", subBBox)
+            self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
-            convergenceCheck = convergenceMetric
-            data_check = [numpy.std(model[subBBox].getImage().getArray()) for model in subBandImages]
-            self.log.info("Deviation of model in coadd %s: %s", subBBox, data_check)
+            convergenceCheck = 1.
             while (convergenceCheck > self.config.convergenceThreshold) or (iter < self.config.minNIter):
-                self.log.info("Iteration %s with convergence %s, %s improvement", iter, convergenceMetric, convergenceCheck)
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
                                               weightList, altMaskList, statsFlags, statsCtrl,
@@ -261,7 +259,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                                   imageScalerList, weightList, altMaskList,
                                                                   statsFlags, statsCtrl)
-                    convergenceCheck = convergenceList[-1] - convergenceMetric
+                    convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                     convergenceList.append(convergenceMetric)
                 except Exception as e:
                     self.log.warn("Error during iteration %s while computing coadd %s: %s", iter, subBBox, e)
@@ -270,11 +268,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     self.log.warn("Coadd %s reached maximum iterations. Convergence: %s",
                                   subBBox, convergenceMetric)
                     break
+                self.log.info("Iteration %s with convergence %s, %2.4f%% improvement \n",
+                              iter, convergenceMetric, 100.*convergenceCheck)
                 iter += 1
             else:
                 self.log.info("Coadd %s finished with convergence %s after %s iterations",
                               subBBox, convergenceMetric, iter)
-            self.log.info("Final convergence improvement was %s", convergenceCheck)
+            finalPercent = 100*(convergenceList[0] - convergenceMetric)/convergenceMetric
+            self.log.info("Final convergence improvement was %2.4f%% overall", finalPercent)
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
@@ -320,7 +321,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         \param[in] statsFlags: afwMath.Property object for statistic for coadd
         \param[in] statsCtrl: Statistics control object for coadd
         """
-        self.log.debug("Computing coadd over %s", bbox)
         bbox_grow = afwGeom.Box2I(bbox)
         bbox_grow.grow(self.config.bufferSize)
         for model in dcrModels:
@@ -370,7 +370,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 gain = self.config.maxGain
             if gain < self.config.minGain:
                 gain = self.config.minGain
-            self.log.info("Convergence-weighted gain used: %s", gain)
+            self.log.info("Convergence-weighted gain used: %2.4f", gain)
+            self.log.info("Based on old convergence: %2.6f, new convergence: %2.6f",
+                          convergenceMetric, convergenceMetricNew)
             convergenceMetric = convergenceMetricNew
         else:
             gain = 1.
@@ -411,6 +413,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         metric = 0.
         metricList = []
         zipIterables = zip(tempExpRefList, weightList, imageScalerList, altMaskList)
+        len_list = []
+        obsid_list = []
         for tempExpRef, expWeight, imageScaler, altMask in zipIterables:
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             if self.pixelScale is None:
@@ -428,12 +432,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             finiteInds = (numpy.isfinite(refVals))*(numpy.isfinite(diffVals))
             goodMaskInds = (refImage.getMask().getArray() & convergeMask) == convergeMask
             inds = finiteInds*goodMaskInds
+            len_list.append(numpy.sum(inds))
+            if numpy.sum(inds) == 0:
+                metricList.append(numpy.nan)
+                continue
             singleMetric = numpy.sum(diffVals[inds])/numpy.sum(refVals[inds])
             metric += singleMetric*expWeight
             metricList.append(singleMetric)
             weight += expWeight
-        self.log.info("Indiviual metrics: %s", metricList)
-        return metric/weight
+            obsid_list.append((visitInfo.getExposureId()-124)//512)
+        self.log.info("Indiviual metrics:\n%s", list(zip(obsid_list, metricList)))
+        if weight == 0:
+            return 1.
+        else:
+            return metric/weight
 
     @staticmethod
     def dcrDivideCoadd(coaddExposure, dcrNSubbands):
