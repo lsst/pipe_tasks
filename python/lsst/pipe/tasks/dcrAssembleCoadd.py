@@ -334,11 +334,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             maskedImage = exposure.getMaskedImage()
             if exposure.getWcs().pixelScale() != self.pixelScale:
                 self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
-
-            if altMask:
-                altMaskSub = altMask.Factory(altMask, bbox_grow, afwImage.PARENT)
-                maskedImage.getMask().swap(altMaskSub)
             imageScaler.scaleMaskedImage(maskedImage)
+            mask = maskedImage.getMask()
+            if altMask is not None:
+                self.applyAltMaskPlanes(mask, altMask)
 
             if self.config.removeMaskPlanes:
                 mask = maskedImage.getMask()
