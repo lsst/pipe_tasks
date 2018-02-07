@@ -35,7 +35,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.assembleCoadd import _subBBoxIter
 from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
-# from lsst.pipe.tasks.assembleCoadd import AssembleCoaddConfig
 from lsst.pipe.tasks.assembleCoadd import CompareWarpAssembleCoaddTask
 from lsst.pipe.tasks.assembleCoadd import CompareWarpAssembleCoaddConfig
 
@@ -103,6 +102,16 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Use the calculated convergence metric to accelerate forward modeling.",
         default=True,
     )
+    clampModel = pexConfig.Field(
+        dtype=float,
+        doc="Restrict new solutions from changing by more than a factor of `clampModel`.",
+        default=2.,
+    )
+    useNonNegative = pexConfig.Field(
+        dtype=bool,
+        doc="Force the model to be non-negative.",
+        default=False,
+    )
     maxGain = pexConfig.Field(
         dtype=float,
         doc="Maximum convergence-weighted gain to apply between forward modeling iterations.",
@@ -113,16 +122,18 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Minimum convergence-weighted gain to apply between forward modeling iterations.",
         default=0.5,
     )
-    assembleStaticSkyModel = pexConfig.ConfigurableField(
-        target=AssembleCoaddTask,
-        doc="Task to assemble an artifact-free, PSF-matched Coadd to serve as a"
-            " naive/first-iteration model of the static sky.",
+    convergenceMaskPlanes = pexConfig.ListField(
+        dtype=str,
+        default=["DETECTED"],
+        doc="Mask planes to use to calculate convergence."
     )
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
         self.assembleStaticSkyModel.removeMaskPlanes = []
+        self.assembleStaticSkyModel.warpType = 'direct'
         self.removeMaskPlanes = []
+        self.statistic = 'MEANCLIP'
         if self.usePsf:
             self.useFFT = True
         if self.doWeightGain:
@@ -217,11 +228,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         # badMaskPlanes = self.config.badMaskPlanes[:]
         # badMaskPlanes.append("CLIPPED")
         # badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
-
-        # templateCoadd = supplementaryData.coaddExposure
-        # spanSetMaskList = CompareWarpAssembleCoaddTask.findArtifacts(self, templateCoadd,
-        #                                                              tempExpRefList, imageScalerList)
-        # maskList = CompareWarpAssembleCoaddTask.computeAltMaskList(self, tempExpRefList, spanSetMaskList)
+        templateCoadd = supplementaryData.templateCoadd
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
@@ -346,10 +353,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         dcrSubModelOut = []
         with self.timer("stack"):
-            for maskedImageList in maskedImageList2:
                 model = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList)
                 model.setXY0(bbox_grow.getBegin())
                 dcrSubModelOut.append(model)
+            for maskedImageList, oldModel in zip(maskedImageList2, dcrModels):
+                self.clampModel(newModel, oldModel, bbox_grow,
+                                useNonNegative=self.config.useNonNegative,
+                                clamp=self.config.clampModel)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
                                                              imageScalerList, weightList, altMaskList,
@@ -367,6 +377,24 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         for model, subModel in zip(dcrModels, dcrSubModelOut):
             model.assign(subModel[bbox, afwImage.PARENT], bbox)
+
+    @staticmethod
+    def clampModel(newModel, oldModel, bbox, useNonNegative=False, clamp=2.):
+        newImage = newModel.getImage().getArray()
+        newVariance = newModel.getVariance().getArray()
+        if useNonNegative:
+            negInds = newImage < 0.
+            newImage[negInds] = 0.
+        oldImage = oldModel[bbox, afwImage.PARENT].getImage().getArray()
+        oldVariance = oldModel[bbox, afwImage.PARENT].getVariance().getArray()
+        highInds = ((numpy.abs(newImage) > numpy.abs(oldImage*clamp))*
+                    (numpy.abs(newVariance) > numpy.abs(oldVariance*clamp)))
+        newImage[highInds] = oldImage[highInds]*clamp
+        newVariance[highInds] = oldVariance[highInds]*clamp
+        lowInds = ((numpy.abs(newImage) < numpy.abs(oldImage/clamp))*
+                    (numpy.abs(newVariance) < numpy.abs(oldVariance/clamp)))
+        newImage[lowInds] = oldImage[lowInds]/clamp
+        newVariance[lowInds] = oldVariance[lowInds]/clamp
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
                              weightList, altMaskList, statsFlags, statsCtrl):
