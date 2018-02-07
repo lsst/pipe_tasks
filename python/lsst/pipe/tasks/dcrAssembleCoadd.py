@@ -352,13 +352,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         dcrSubModelOut = []
         with self.timer("stack"):
-                model = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList)
-                model.setXY0(bbox_grow.getBegin())
-                dcrSubModelOut.append(model)
             for maskedImageList, oldModel in zip(maskedImageList2, dcrModels):
+                newModel = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
+                                                   afwImage.Mask.getPlaneBitMask("CLIPPED"),
+                                                   afwImage.Mask.getPlaneBitMask("NO_DATA"))
                 self.clampModel(newModel, oldModel, bbox_grow,
                                 useNonNegative=self.config.useNonNegative,
                                 clamp=self.config.clampModel)
+                newModel.setXY0(bbox_grow.getBegin())
+                dcrSubModelOut.append(newModel)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
                                                              imageScalerList, weightList, altMaskList,
@@ -399,12 +401,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                              weightList, altMaskList, statsFlags, statsCtrl):
         tempExpName = self.getTempExpDatasetName(self.warpType)
         modelWeightList = [1.0]*self.config.dcrNSubbands
-        maskRef = dcrModels[0].getMask()
-        ignoreMask = self.getBadPixelMask()
+        convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         dcrModelCut = [model[bbox, afwImage.PARENT] for model in dcrModels]
         modelWeights = afwMath.statisticsStack(dcrModelCut, statsFlags, statsCtrl, modelWeightList,
-                                               maskRef.getPlaneBitMask("CLIPPED"),
-                                               maskRef.getPlaneBitMask("NO_DATA"))
+                                               afwImage.Mask.getPlaneBitMask("CLIPPED"),
+                                               afwImage.Mask.getPlaneBitMask("NO_DATA"))
+        modelVals = modelWeights.getImage().getArray()
         weight = 0
         metric = 0.
         metricList = []
@@ -413,19 +415,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             if self.pixelScale is None:
                 self.pixelScale = exposure.getWcs().pixelScale()
-            refImage = exposure.getMaskedImage().clone()
             imageScaler.scaleMaskedImage(refImage)
-            refImage *= modelWeights
+            refImage = exposure.getMaskedImage()
+            refVals = refImage.getImage().getArray()
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
-            diffImage = self.buildMatchedTemplate(dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs)
+            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs)
+            templateVals = templateImage.getImage().getArray()
+            diffVals = numpy.abs(refVals - templateVals)*modelVals
+            refVals =  numpy.abs(refVals)*modelVals
 
-            diffImage *= modelWeights
-            diffImage -= refImage
-            refVals = numpy.abs(refImage.getImage().getArray())
-            diffVals = numpy.abs(diffImage.getImage().getArray())
             finiteInds = (numpy.isfinite(refVals))*(numpy.isfinite(diffVals))
-            goodMaskInds = (refImage.getMask().getArray() & ignoreMask) == 0
+            goodMaskInds = (refImage.getMask().getArray() & convergeMask) == convergeMask
             inds = finiteInds*goodMaskInds
             singleMetric = numpy.sum(diffVals[inds])/numpy.sum(refVals[inds])
             metric += singleMetric*expWeight
@@ -470,7 +471,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 shift = (-dcr.dy, -dcr.dx)
             else:
                 shift = (dcr.dy, dcr.dx)
-            # Shift each of image, mask, and variance if a masked image.
+            # Shift each of image, mask, and variance
             result = maskedImage.clone()
             srcImage = result.getImage().getArray()
             srcImage[numpy.isnan(srcImage)] = 0.
@@ -510,11 +511,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         weightList = [1.0]*self.config.dcrNSubbands
         maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT], dcr)
                            for dcr, model in zip(dcrShift, dcrModels)]
-        maskRef = dcrModels[0].getMask()
-        templateVals = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
-                                               maskRef.getPlaneBitMask("CLIPPED"),
-                                               maskRef.getPlaneBitMask("NO_DATA"))
-        return templateVals
+        templateImage = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
+                                               afwImage.Mask.getPlaneBitMask("CLIPPED"),
+                                               afwImage.Mask.getPlaneBitMask("NO_DATA"))
 
     def dcrResiduals(self, dcrModels, maskedImage, visitInfo, bbox, wcs):
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
