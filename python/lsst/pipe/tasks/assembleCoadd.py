@@ -1302,6 +1302,10 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         target=SourceDetectionTask,
         doc="Detect outlier sources on difference between each psfMatched warp and static sky model"
     )
+    detectTemplate = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect sources on static sky model. Only used if doPreserveContainedBySource is True"
+    )
     maxNumEpochs = pexConfig.Field(
         doc="Charactistic maximum local number of epochs/visits in which an artifact candidate can appear  "
             "and still be masked.  The effective maxNumEpochs is a broken linear function of local "
@@ -1347,6 +1351,12 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
         doc="Mask planes for pixels to ignore when rescaling warp variance",
     )
+    doPreserveContainedBySource = pexConfig.Field(
+        doc="Rescue artifacts from clipping that completely lie within a footprint detected"
+            "on the PsfMatched Template Coadd. Replicates a behavior of SafeClip.",
+        dtype=bool,
+        default=True,
+    )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
@@ -1367,6 +1377,10 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         self.detect.minPixels = 4
         self.detect.isotropicGrow = True
         self.detect.thresholdType = "pixel_stdev"
+        self.detectTemplate.nSigmaToGrow = 2.0
+        self.detectTemplate.doTempLocalBackground = False
+        self.detectTemplate.reEstimateBackground = False
+        self.detectTemplate.returnOriginalFootprints = False
 
 
 ## \addtogroup LSST_task_documentation
@@ -1519,6 +1533,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         self.makeSubtask("assembleStaticSkyModel")
         detectionSchema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("detect", schema=detectionSchema)
+        if self.config.doPreserveContainedBySource:
+            self.makeSubtask("detectTemplate", schema=afwTable.SourceTable.makeMinimalSchema())
 
     def makeSupplementaryData(self, dataRef, selectDataList):
         """!
@@ -1598,6 +1614,11 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
 
+        if self.config.doPreserveContainedBySource:
+            templateFootprints = self.detectTemplate.detectFootprints(templateCoadd)
+        else:
+            templateFootprints = None
+
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
             if warpDiffExp is not None:
@@ -1636,7 +1657,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         for i, spanSetList in enumerate(spanSetArtifactList):
             if spanSetList:
-                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage, nImage)
+                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage, nImage,
+                                                            templateFootprints)
                 spanSetArtifactList[i] = filteredSpanSetList
 
         altMasks = []
@@ -1645,7 +1667,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                              'NO_DATA': noData})
         return altMasks
 
-    def _filterArtifacts(self, spanSetList, epochCountImage, nImage):
+    def _filterArtifacts(self, spanSetList, epochCountImage, nImage, footprintsToExclude=None):
         """!
         \brief Filter artifact candidates
 
@@ -1675,6 +1697,20 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             percentBelowThreshold = nPixelsBelowThreshold / len(outlierN)
             if percentBelowThreshold > self.config.spatialThreshold:
                 maskSpanSetList.append(span)
+
+        if self.config.doPreserveContainedBySource and footprintsToExclude is not None:
+            # If a candidate is contained by a footprint on the template coadd, do not clip
+            filteredMaskSpanSetList = []
+            for span in maskSpanSetList:
+                doKeep = True
+                for footprint in footprintsToExclude.positive.getFootprints():
+                    if footprint.spans.contains(span):
+                        doKeep = False
+                        break
+                if doKeep:
+                    filteredMaskSpanSetList.append(span)
+            maskSpanSetList = filteredMaskSpanSetList
+
         return maskSpanSetList
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
