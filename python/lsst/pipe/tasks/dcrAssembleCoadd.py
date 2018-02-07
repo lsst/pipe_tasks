@@ -232,7 +232,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
-        subBandImages = self.dcrDivideCoadd(supplementaryData.templateCoadd)
+        subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNSubbands)
 
         statsCtrl, statsFlags = self.prepareStats(skyInfo, mask=badPixelMask)
 
@@ -435,14 +435,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.log.info("Indiviual metrics: %s", metricList)
         return metric/weight
 
-    def dcrDivideCoadd(self, coaddExposure):
-        dcrModels = [coaddExposure.getMaskedImage().clone() for f in range(self.config.dcrNSubbands)]
+    @staticmethod
+    def dcrDivideCoadd(coaddExposure, dcrNSubbands):
+        dcrModels = [coaddExposure.getMaskedImage().clone() for f in range(dcrNSubbands)]
         for model in dcrModels:
-            model.getImage().getArray()[:, :] /= self.config.dcrNSubbands
-            model.getVariance().getArray()[:, :] /= self.config.dcrNSubbands
+            model.getMask().addMaskPlane("CLIPPED")
+            model.getImage().getArray()[:, :] /= dcrNSubbands
+            model.getVariance().getArray()[:, :] /= dcrNSubbands
         return dcrModels
 
-    def stackCoadd(self, dcrCoadds):
+    @staticmethod
+    def stackCoadd(dcrCoadds):
         coaddGenerator = (coadd for coadd in dcrCoadds)
         coaddExposure = next(coaddGenerator).clone()
         mimage = coaddExposure.getMaskedImage()
@@ -463,8 +466,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
-    def convolveDcrModelPlane(self, maskedImage, dcr, useInverse=False):
-        if self.config.useFFT:
+    @staticmethod
+    def convolveDcrModelPlane(maskedImage, dcr, useFFT=False, useInverse=False):
+        if useFFT:
             raise NotImplementedError("The Fourier transform approach has not yet been written.")
         else:
             if useInverse:
@@ -483,41 +487,47 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             result.getVariance().getArray()[:, :] = retVariance
         return result
 
-    def conditionDcrModel(self, oldDcrModels, newDcrModels, bbox, gain=1.):
+    @staticmethod
+    def conditionDcrModel(oldDcrModels, newDcrModels, bbox, gain=1.):
         for oldModel, newModel in zip(oldDcrModels, newDcrModels):
             # The DcrModels are MaskedImages, which only support in-place operations.
             newModel *= gain
             newModel += oldModel[bbox, afwImage.PARENT]
             newModel /= 1. + gain
 
-    def dcrShiftCalculate(self, visitInfo, wcs):
+    @staticmethod
+    def dcrShiftCalculate(visitInfo, wcs, lambdaEff, filterWidth, dcrNSubbands):
         rotation = calculateRotationAngle(visitInfo, wcs)
 
         dcr = namedtuple("dcr", ["dx", "dy"])
         dcrShift = []
-        for wl in self.wavelengthGenerator():
+        for wl in wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
             # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
-            diffRefractAmp = differentialRefraction(wl, self.lambdaEff,
+            diffRefractAmp = differentialRefraction(wl, lambdaEff,
                                                     elevation=visitInfo.getBoresightAzAlt().getLatitude(),
                                                     observatory=visitInfo.getObservatory(),
                                                     weather=visitInfo.getWeather())
-            diffRefractPix = diffRefractAmp.asArcseconds()/self.pixelScale.asArcseconds()
+            diffRefractPix = diffRefractAmp.asArcseconds()/wcs.pixelScale().asArcseconds()
             dcrShift.append(dcr(dx=diffRefractPix*numpy.sin(rotation.asRadians()),
                                 dy=diffRefractPix*numpy.cos(rotation.asRadians())))
         return dcrShift
 
     def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs):
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff, self.filterWidth, self.config.dcrNSubbands)
         weightList = [1.0]*self.config.dcrNSubbands
-        maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT], dcr)
+        maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT],
+                                                      dcr, useFFT=self.config.useFFT)
                            for dcr, model in zip(dcrShift, dcrModels)]
         templateImage = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
                                                afwImage.Mask.getPlaneBitMask("CLIPPED"),
                                                afwImage.Mask.getPlaneBitMask("NO_DATA"))
+        templateImage *= self.config.dcrNSubbands
+        return templateImage
 
     def dcrResiduals(self, dcrModels, maskedImage, visitInfo, bbox, wcs):
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
-        shiftedModels = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT], dcr, useInverse=False)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff, self.filterWidth, self.config.dcrNSubbands)
+        shiftedModels = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT],
+                                                    dcr, useInverse=False, useFFT=self.config.useFFT)
                          for dcr, model in zip(dcrShift, dcrModels)]
         residualImages = []
         for f, dcr in enumerate(dcrShift):
@@ -525,14 +535,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             for f2 in range(self.config.dcrNSubbands):
                 if f2 != f:
                     mimage -= shiftedModels[f2]
-            residual = self.convolveDcrModelPlane(mimage, dcr, useInverse=True)
+            residual = self.convolveDcrModelPlane(mimage, dcr, useInverse=True, useFFT=self.config.useFFT)
             residualImages.append(residual)
         return residualImages
 
-    def wavelengthGenerator(self):
-        wlRef = self.lambdaEff
-        for wl in numpy.linspace(0., self.filterWidth, self.config.dcrNSubbands, endpoint=True):
-            yield wlRef - self.filterWidth/2. + wl
+
+def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
+    for wl in numpy.linspace(-filterWidth/2., filterWidth/2., dcrNSubbands, endpoint=True):
+        yield lambdaEff + wl
 
 
 def calculateRotationAngle(visitInfo, wcs):
