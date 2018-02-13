@@ -238,6 +238,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
+        weightList = [1.]*len(tempExpRefList)
 
         if altMaskList is None:
             altMaskList = [None]*len(tempExpRefList)
@@ -327,6 +328,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             bbox_grow.clip(model.getBBox(afwImage.PARENT))
         tempExpName = self.getTempExpDatasetName(self.warpType)
         maskedImageList2 = [[] for foo in range(self.config.dcrNSubbands)]
+        weightList = []
+        convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox_grow)
             visitInfo = exposure.getInfo().getVisitInfo()
@@ -349,6 +353,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             maskedImageList = self.dcrResiduals(dcrModels, maskedImage, visitInfo, bbox_grow, wcs)
             for mi, ml in zip(maskedImageList, maskedImageList2):
                 ml.append(mi)
+            weightList.append(self.calculateWeight(maskedImage, convergeMask)*1e3)
 
         dcrSubModelOut = []
         with self.timer("stack"):
@@ -383,6 +388,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def clampModel(newModel, oldModel, bbox, useNonNegative=False, clamp=2.):
+    def calculateWeight(residual, goodMask):
+        residualVals = residual.getImage().getArray()
+        finiteInds = (numpy.isfinite(residualVals))
+        goodMaskInds = (residual.getMask().getArray() & goodMask) == goodMask
+        weight = 1./numpy.std(residualVals[finiteInds*goodMaskInds])
+        return weight
         newImage = newModel.getImage().getArray()
         newVariance = newModel.getVariance().getArray()
         if useNonNegative:
@@ -437,9 +448,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 metricList.append(numpy.nan)
                 continue
             singleMetric = numpy.sum(diffVals[inds])/numpy.sum(refVals[inds])
-            metric += singleMetric*expWeight
+            metric += singleMetric
             metricList.append(singleMetric)
-            weight += expWeight
+            weight += 1.
             obsid_list.append((visitInfo.getExposureId()-124)//512)
         self.log.info("Indiviual metrics:\n%s", list(zip(obsid_list, metricList)))
         if weight == 0:
