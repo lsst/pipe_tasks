@@ -537,8 +537,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                     observatory=visitInfo.getObservatory(),
                                                     weather=visitInfo.getWeather())
             diffRefractPix = diffRefractAmp.asArcseconds()/wcs.pixelScale().asArcseconds()
-            dcrShift.append(dcr(dx=diffRefractPix*numpy.sin(rotation.asRadians()),
-                                dy=diffRefractPix*numpy.cos(rotation.asRadians())))
+            dcrShift.append(dcr(dx=diffRefractPix*numpy.cos(rotation.asRadians()),
+                                dy=diffRefractPix*numpy.sin(rotation.asRadians())))
         return dcrShift
 
     def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs):
