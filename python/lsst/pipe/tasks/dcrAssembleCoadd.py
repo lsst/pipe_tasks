@@ -530,12 +530,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         dcr = namedtuple("dcr", ["dx", "dy"])
         dcrShift = []
-        for wl in wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
+        for wl0, wl1 in wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
             # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
-            diffRefractAmp = differentialRefraction(wl, lambdaEff,
+            diffRefractAmp0 = differentialRefraction(wl0, lambdaEff,
                                                     elevation=visitInfo.getBoresightAzAlt().getLatitude(),
                                                     observatory=visitInfo.getObservatory(),
                                                     weather=visitInfo.getWeather())
+            diffRefractAmp1 = differentialRefraction(wl1, lambdaEff,
+                                                    elevation=visitInfo.getBoresightAzAlt().getLatitude(),
+                                                    observatory=visitInfo.getObservatory(),
+                                                    weather=visitInfo.getWeather())
+            diffRefractAmp = (diffRefractAmp0 + diffRefractAmp1)/2.
             diffRefractPix = diffRefractAmp.asArcseconds()/wcs.pixelScale().asArcseconds()
             dcrShift.append(dcr(dx=diffRefractPix*numpy.cos(rotation.asRadians()),
                                 dy=diffRefractPix*numpy.sin(rotation.asRadians())))
@@ -560,8 +565,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
 
 def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
-    for wl in numpy.linspace(-filterWidth/2., filterWidth/2., dcrNSubbands, endpoint=True):
-        yield lambdaEff + wl
+    wlStep = filterWidth/dcrNSubbands
+    for wl in numpy.linspace(-filterWidth/2., filterWidth/2., dcrNSubbands, endpoint=False):
+        wlStart = lambdaEff + wl
+        wlEnd = wlStart + wlStep
+        yield (wlStart, wlEnd)
 
 
 def calculateRotationAngle(visitInfo, wcs):
