@@ -488,6 +488,30 @@ class AssembleCoaddTask(CoaddBaseTask):
         return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList,
                                imageScalerList=imageScalerList)
 
+    def prepareStats(self, mask=None):
+        """!
+        \brief Prepare the statistics for coadding images.
+
+        \param[in] mask: Mask to ignore when coadding
+        \return Tuple:
+        - statsCtrl: Statistics control object for coadd
+        - statsFlags: afwMath.Property object for statistic for coadd
+        """
+        if mask is None:
+            mask = self.getBadPixelMask()
+        statsCtrl = afwMath.StatisticsControl()
+        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
+        statsCtrl.setNumIter(self.config.clipIter)
+        statsCtrl.setAndMask(mask)
+        statsCtrl.setNanSafe(True)
+        statsCtrl.setWeighted(True)
+        statsCtrl.setCalcErrorFromInputVariance(self.config.calcErrorFromInputVariance)
+        for plane, threshold in self.config.maskPropagationThresholds.items():
+            bit = afwImage.Mask.getMaskPlane(plane)
+            statsCtrl.setMaskPropagationThreshold(bit, threshold)
+        statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
+        return (statsCtrl, statsFlags)
+
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, mask=None, supplementaryData=None):
         """Assemble a coadd from input warps
@@ -530,21 +554,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
-        if mask is None:
-            mask = self.getBadPixelMask()
-
-        statsCtrl = afwMath.StatisticsControl()
-        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
-        statsCtrl.setNumIter(self.config.clipIter)
-        statsCtrl.setAndMask(mask)
-        statsCtrl.setNanSafe(True)
-        statsCtrl.setWeighted(True)
-        statsCtrl.setCalcErrorFromInputVariance(self.config.calcErrorFromInputVariance)
-        for plane, threshold in self.config.maskPropagationThresholds.items():
-            bit = afwImage.Mask.getMaskPlane(plane)
-            statsCtrl.setMaskPropagationThreshold(bit, threshold)
-
-        statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
+        statsCtrl, statsFlags = self.prepareStats(mask=mask)
 
         if altMaskList is None:
             altMaskList = [None]*len(tempExpRefList)

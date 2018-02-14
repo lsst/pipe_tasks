@@ -234,7 +234,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNSubbands)
 
-        statsCtrl, statsFlags = self.prepareStats(skyInfo, mask=badPixelMask)
+        statsCtrl, statsFlags = self.prepareStats(mask=badPixelMask)
 
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
@@ -280,25 +280,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
-
-    def prepareStats(self, skyInfo, mask=None):
-        if mask is None:
-            mask = self.getBadPixelMask()
-
-        statsCtrl = afwMath.StatisticsControl()
-        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
-        statsCtrl.setNumIter(self.config.clipIter)
-        statsCtrl.setAndMask(mask)
-        statsCtrl.setNanSafe(True)
-        statsCtrl.setWeighted(True)
-        statsCtrl.setCalcErrorFromInputVariance(True)
-        for plane, threshold in self.config.maskPropagationThresholds.items():
-            bit = afwImage.Mask.getMaskPlane(plane)
-            statsCtrl.setMaskPropagationThreshold(bit, threshold)
-
-        statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
-
-        return (statsCtrl, statsFlags)
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
                              altMaskList, statsFlags, statsCtrl, convergenceMetric):
