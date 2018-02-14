@@ -183,7 +183,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for subfilter, coaddExposure in enumerate(retStruct.dcrCoadds):
             if self.config.doWrite:
                 self.writeDcrCoadd(dataRef, coaddExposure, subfilter)
-            
         return pipeBase.Struct(coaddExposure=retStruct.coaddExposure, nImage=retStruct.nImage)
 
     def writeDcrCoadd(self, dataRef, coaddExposure, subfilter, nImage=None):
@@ -317,7 +316,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.getMaskedImage()
-            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, statsFlags, statsCtrl, bbox_grow, wcs)
+            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo,
+                                                      statsFlags, statsCtrl,
+                                                      bbox_grow, wcs)
             if exposure.getWcs().pixelScale() != self.pixelScale:
                 self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
             imageScaler.scaleMaskedImage(maskedImage)
@@ -392,7 +393,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         newImage[highInds] = oldImage[highInds]*clamp
         newVariance[highInds] = oldVariance[highInds]*clamp
         lowInds = ((numpy.abs(newImage) < numpy.abs(oldImage/clamp))*
-                    (numpy.abs(newVariance) < numpy.abs(oldVariance/clamp)))
+                   (numpy.abs(newVariance) < numpy.abs(oldVariance/clamp)))
         newImage[lowInds] = oldImage[lowInds]/clamp
         newVariance[lowInds] = oldVariance[lowInds]/clamp
         return newModel
@@ -425,7 +426,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs)
             templateVals = templateImage.getImage().getArray()
             diffVals = numpy.abs(refVals - templateVals)*modelVals
-            refVals =  numpy.abs(refVals)*modelVals
+            refVals = numpy.abs(refVals)*modelVals
 
             finiteInds = (numpy.isfinite(refVals))*(numpy.isfinite(diffVals))
             goodMaskInds = (refImage.getMask().getArray() & convergeMask) == convergeMask
@@ -462,7 +463,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for coadd in coaddGenerator:
             mimage += coadd.getMaskedImage()
         return coaddExposure
-
 
     def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList):
         dcrCoadds = []
@@ -514,13 +514,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for wl0, wl1 in wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
             # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
             diffRefractAmp0 = differentialRefraction(wl0, lambdaEff,
-                                                    elevation=visitInfo.getBoresightAzAlt().getLatitude(),
-                                                    observatory=visitInfo.getObservatory(),
-                                                    weather=visitInfo.getWeather())
+                                                     elevation=visitInfo.getBoresightAzAlt().getLatitude(),
+                                                     observatory=visitInfo.getObservatory(),
+                                                     weather=visitInfo.getWeather())
             diffRefractAmp1 = differentialRefraction(wl1, lambdaEff,
-                                                    elevation=visitInfo.getBoresightAzAlt().getLatitude(),
-                                                    observatory=visitInfo.getObservatory(),
-                                                    weather=visitInfo.getWeather())
+                                                     elevation=visitInfo.getBoresightAzAlt().getLatitude(),
+                                                     observatory=visitInfo.getObservatory(),
+                                                     weather=visitInfo.getWeather())
             diffRefractAmp = (diffRefractAmp0 + diffRefractAmp1)/2.
             diffRefractPix = diffRefractAmp.asArcseconds()/wcs.pixelScale().asArcseconds()
             dcrShift.append(dcr(dx=diffRefractPix*numpy.cos(rotation.asRadians()),
@@ -528,7 +528,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return dcrShift
 
     def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs):
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff, self.filterWidth, self.config.dcrNSubbands)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff,
+                                          self.filterWidth, self.config.dcrNSubbands)
         weightList = [1.0]*self.config.dcrNSubbands
         maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT],
                                                       dcr, useFFT=self.config.useFFT)
@@ -540,9 +541,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return templateImage
 
     def dcrResiduals(self, dcrModels, residualImageIn, visitInfo, bbox, wcs):
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff, self.filterWidth, self.config.dcrNSubbands)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff,
+                                          self.filterWidth, self.config.dcrNSubbands)
         for dcr in dcrShift:
-            yield self.convolveDcrModelPlane(residualImageIn, dcr, useInverse=True, useFFT=self.config.useFFT)
+            yield self.convolveDcrModelPlane(residualImageIn, dcr,
+                                             useInverse=True,
+                                             useFFT=self.config.useFFT)
 
 
 def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
