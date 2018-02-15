@@ -277,7 +277,7 @@ def getSkyInfo(coaddName, patchRef):
     )
 
 
-def scaleVariance(maskedImage, maskPlanes, log=None):
+def scaleVariance(maskedImage, maskPlanes, log=None, backgroundScale=64):
     """!
     \brief Scale the variance in a maskedImage
 
@@ -291,17 +291,38 @@ def scaleVariance(maskedImage, maskPlanes, log=None):
     @param maskedImage  MaskedImage to operate on; variance will be scaled
     @param maskPlanes  List of mask planes for pixels to reject
     @param log  Log for reporting the renormalization factor; or None
+    @param backgroundScale  Length scale (pixels) for background subtraction
     @return renormalisation factor
     """
-    variance = maskedImage.getVariance()
-    sigNoise = maskedImage.getImage().getArray()/numpy.sqrt(variance.getArray())
-    maskVal = maskedImage.getMask().getPlaneBitMask(maskPlanes)
-    good = (maskedImage.getMask().getArray() & maskVal) == 0
-    # Robust measurement of stdev
-    q1, q3 = numpy.percentile(sigNoise[good], (25, 75))
-    stdev = 0.74*(q3 - q1)
-    ratio = stdev**2
-    if log:
-        log.info("Renormalizing variance by %f" % (ratio,))
-    variance *= ratio
-    return ratio
+    from lsst.meas.algorithms import SubtractBackgroundTask
+    bgConfig = SubtractBackgroundTask.ConfigClass()
+    bgConfig.useApprox = False
+    bgConfig.binSize = backgroundScale
+    bgConfig.undersampleStyle = 'REDUCE_INTERP_ORDER'
+    bgConfig.ignoredPixelMask = maskPlanes
+    bgTask = SubtractBackgroundTask(config=bgConfig, name="background", log=log)
+    exposure = afwImage.makeExposure(maskedImage)
+    bg = bgTask.run(exposure).background
+
+    try:
+        variance = maskedImage.getVariance()
+        sigNoise = maskedImage.getImage().getArray()/numpy.sqrt(variance.getArray())
+        maskVal = maskedImage.getMask().getPlaneBitMask(maskPlanes)
+        good = (maskedImage.getMask().getArray() & maskVal) == 0
+        # Robust measurement of stdev
+        q1, q3 = numpy.percentile(sigNoise[good], (25, 75))
+        if q1 > 0 and q3 < 2:
+            stdev = 0.74*(q3 - q1)
+        else:
+            # Something bad in the image; let's try dealing with the entire image at once
+            if log:
+                log.warn("Bad variance renormalization detected; using alternate method")
+            q1, q3 = numpy.percentile(maskedImage.image.array[good], (25, 75))
+            stdev = 0.74*(q3 - q1)/numpy.sqrt(numpy.median(maskedImage.variance.array[good]))
+        ratio = stdev**2
+        if log:
+            log.info("Renormalizing variance by %f" % (ratio,))
+        variance *= ratio
+        return ratio
+    finally:
+        maskedImage += bg.getImage()
