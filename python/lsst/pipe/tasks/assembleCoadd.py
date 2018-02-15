@@ -1408,7 +1408,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         self.assembleStaticSkyModel.badMaskPlanes = ["NO_DATA", ]
         self.assembleStaticSkyModel.warpType = 'psfMatched'
         self.assembleStaticSkyModel.statistic = 'MEANCLIP'
-        self.assembleStaticSkyModel.sigmaClip = 5
+        self.assembleStaticSkyModel.sigmaClip = 2.5
         self.assembleStaticSkyModel.clipIter = 3
         self.assembleStaticSkyModel.calcErrorFromInputVariance = False
         self.assembleStaticSkyModel.doWrite = False
