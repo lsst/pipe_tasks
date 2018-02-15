@@ -132,6 +132,7 @@ class DetectCoaddSourcesConfig(Config):
         self.detection.background.useApprox = False
         self.detection.background.binSize = 4096
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.detection.doTempWideBackground = True  # Suppress large footprints that overwhelm the deblender
 
 ## \addtogroup LSST_task_documentation
 ## \{
