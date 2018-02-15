@@ -36,10 +36,11 @@ import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 import lsst.log as log
 import lsstDebug
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer, scaleVariance
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
+from .scaleVariance import ScaleVarianceTask
 from lsst.meas.algorithms import SourceDetectionTask
 
 __all__ = ["AssembleCoaddTask", "SafeClipAssembleCoaddTask", "CompareWarpAssembleCoaddTask"]
@@ -1383,10 +1384,9 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         dtype=bool,
         default=True,
     )
-    maskScaleWarpVariance = pexConfig.ListField(
-        dtype=str,
-        default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
-        doc="Mask planes for pixels to ignore when rescaling warp variance",
+    scaleWarpVariance = pexConfig.ConfigurableField(
+        target=ScaleVarianceTask,
+        doc="Rescale variance on warps",
     )
     doPreserveContainedBySource = pexConfig.Field(
         doc="Rescue artifacts from clipping that completely lie within a footprint detected"
@@ -1579,6 +1579,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         self.makeSubtask("detect", schema=detectionSchema)
         if self.config.doPreserveContainedBySource:
             self.makeSubtask("detectTemplate", schema=afwTable.SourceTable.makeMinimalSchema())
+        if self.config.doScaleWarpVariance:
+            self.makeSubtask("scaleWarpVariance")
 
     def makeSupplementaryData(self, dataRef, selectDataList):
         """!
@@ -1809,8 +1811,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
         if self.config.doScaleWarpVariance:
-            scaleVariance(mi, self.config.maskScaleWarpVariance,
-                          log=self.log)
+            self.scaleWarpVariance.run(mi)
         mi -= templateCoadd.getMaskedImage()
         return warp
 
