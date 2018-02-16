@@ -4,19 +4,15 @@ from builtins import object
 import os
 import shutil
 import tempfile
-try:
-    import sqlite3
-except ImportError:
-    # try external pysqlite package; deprecated
-    import sqlite as sqlite3
+import sqlite3
 from fnmatch import fnmatch
 from glob import glob
 from contextlib import contextmanager
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 import lsst.pex.exceptions
+from lsst.afw.fits import readMetadata
 from lsst.pipe.base import Task, InputOnlyArgumentParser
-import lsst.afw.image as afwImage
 from lsst.afw.fits import DEFAULT_HDU
 
 
@@ -64,7 +60,7 @@ class ParseTask(Task):
         @param filename    Name of file to inspect
         @return File properties; list of file properties for each extension
         """
-        md = afwImage.readMetadata(filename, self.config.hdu)
+        md = readMetadata(filename, self.config.hdu)
         phuInfo = self.getInfoFromMetadata(md)
         if len(self.config.extnames) == 0:
             # No extensions to worry about
@@ -76,7 +72,7 @@ class ParseTask(Task):
         while len(extnames) > 0:
             extnum += 1
             try:
-                md = afwImage.readMetadata(filename, extnum)
+                md = readMetadata(filename, extnum)
             except:
                 self.log.warn("Error reading %s extensions %s" % (filename, extnames))
                 break
@@ -92,7 +88,7 @@ class ParseTask(Task):
     @staticmethod
     def getExtensionName(md):
         """ Get the name of an extension.
-        @param md: PropertySet like one obtained from afwImage.readMetadata)
+        @param md: PropertySet like one obtained from lsst.afw.fits.readMetadata)
         @return Name of the extension if it exists.  None otherwise.
         """
         try:
@@ -199,7 +195,7 @@ class RegisterConfig(Config):
     visit = ListField(dtype=str, default=["visit", "object", "date", "filter"],
                       doc="List of columns for raw_visit table")
     ignore = Field(dtype=bool, default=False, doc="Ignore duplicates in the table?")
-    permissions = Field(dtype=int, default=0o664, doc="Permissions mode for registry")  # octal 664 = rw-rw-r--
+    permissions = Field(dtype=int, default=0o664, doc="Permissions mode for registry; 0o664 = rw-rw-r--")
 
 
 class RegistryContext(object):

@@ -36,7 +36,6 @@ import numpy as np
 import lsst.utils
 import lsst.afw.geom as afwGeom
 import lsst.utils.tests
-from lsst.daf.persistence import Butler
 from lsst.ip.isr import IsrTask  # we assume obs_test uses base IsrTask here; may change in future.
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
@@ -153,7 +152,6 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces)
 
-
                 else:
                     self.assertEqual(imMean, oldImMean)
                     self.assertEqual(imStdDev, oldImStdDev)
@@ -257,6 +255,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             # extending the test coverage to include that is worth it.
             dataRef = inputButler.dataRef("raw", dataId=dataId)
             rawExposure = dataRef.get("raw", immediate=True)
+            camera = dataRef.get("camera")
             isrData = isrTask.readIsrData(dataRef, rawExposure)
             isrResult2 = isrTask.run(
                 rawExposure,
@@ -265,7 +264,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 flat=isrData.flat,
                 defects=isrData.defects,
                 fringes=isrData.fringes,
-                bfKernel=isrData.bfKernel
+                bfKernel=isrData.bfKernel,
+                camera=camera,
             )
             self.assertMaskedImagesEqual(
                 isrResult1.parsedCmd.butler.get("postISRCCD", dataId, immediate=True).getMaskedImage(),
@@ -355,6 +355,7 @@ def setup_module(module):
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
     pass
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

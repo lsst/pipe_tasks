@@ -1,7 +1,5 @@
 from __future__ import division, print_function, absolute_import
 from builtins import range
-#!/usr/bin/env python
-
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
@@ -106,7 +104,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         # If MSE is within 1% of the variance of the difference image:  SUCCESS
         self.assertLess(MSE, diffImVar * 1.01)
 
-    #-=-=-=-=-=-=Test Polynomial Fit (Approximate class)-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # -=-=-=-=-=-=Test Polynomial Fit (Approximate class)-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
     def testConfig(self):
         """Test checks on the configuration.
 
@@ -226,7 +225,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         self.matcher.config.order = 4
         self.checkAccuracy(self.vanilla, vanillaTwin)
 
-    #-=-=-=-=-=-=-=-=-=Background Interp (Splines) -=-=-=-=-=-=-=-=-
+    # -=-=-=-=-=-=-=-=-=Background Interp (Splines) -=-=-=-=-=-=-=-=-
+
     def testVanillaBackground(self):
         """Test basic matching scenario with .Background."""
         self.matcher.config.usePolynomial = False

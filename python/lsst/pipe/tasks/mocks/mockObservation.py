@@ -180,7 +180,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         fpCtr = detector.makeCameraPoint(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE)
         crpix = detector.transform(fpCtr, PIXELS).getPoint()
 
-        wcs = lsst.afw.image.makeWcs(crval, crpix, *cd.getMatrix().flatten())
+        wcs = lsst.afw.geom.makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd.getMatrix())
         return wcs
 
     def buildCalib(self):

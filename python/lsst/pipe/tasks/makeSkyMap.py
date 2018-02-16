@@ -42,8 +42,8 @@ class MakeSkyMapConfig(pexConfig.Config):
         default="dodeca",
     )
     doWrite = pexConfig.Field(
-        doc="persist the skyMap? If False then run generates the sky map and returns it, "
-        + "but does not save it to the data repository",
+        doc="persist the skyMap? If False then run generates the sky map and returns it, " +
+            "but does not save it to the data repository",
         dtype=bool,
         default=True,
     )

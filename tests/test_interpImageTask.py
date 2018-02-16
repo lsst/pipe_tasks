@@ -49,7 +49,7 @@ except NameError:
     display = False
 
 
-class interpolationTestCase(unittest.TestCase):
+class InterpolationTestCase(unittest.TestCase):
     """A test case for interpolation"""
 
     def setUp(self):
@@ -140,8 +140,6 @@ class interpolationTestCase(unittest.TestCase):
                 miInterp = mi.clone()
                 interpTask.run(miInterp, planeName=pixelPlane, fwhmPixels=self.FWHM)
                 validateInterp(miInterp, useFallbackValueAtEdge, 0)
-
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 
 def setup_module(module):

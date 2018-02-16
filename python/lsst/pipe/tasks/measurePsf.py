@@ -259,7 +259,6 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         showBadCandidates = lsstDebug.Info(__name__).showBadCandidates  # include bad candidates
         normalizeResiduals = lsstDebug.Info(__name__).normalizeResiduals  # normalise residuals by object peak
 
-        #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         #
         # Run star selector
         #
@@ -280,7 +279,6 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             if displayExposure:
                 ds9.mtv(exposure, frame=frame, title="psf determination")
 
-        #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         #
         # Determine PSF
         #
@@ -321,7 +319,6 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         """Return True if this task makes use of the "matches" argument to the run method"""
         return self.starSelector.usesMatches
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
 # Debug code
 #

@@ -67,7 +67,7 @@ class ProcessCcdConfig(pexConfig.Config):
         self.charImage.doWriteExposure = False
         self.charImage.detection.doTempLocalBackground = False
         self.calibrate.detection.doTempLocalBackground = False
-        self.calibrate.deblend.maxFootprintSize=2000
+        self.calibrate.deblend.maxFootprintSize = 2000
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -135,7 +135,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
     _DefaultName = "processCcd"
 
-    def __init__(self, butler=None, psfRefObjLoader=None, astromRefObjLoader=None, photoRefObjLoader=None, 
+    def __init__(self, butler=None, psfRefObjLoader=None, astromRefObjLoader=None, photoRefObjLoader=None,
                  **kwargs):
         """!
         @param[in] butler  The butler is passed to the refObjLoader constructor in case it is

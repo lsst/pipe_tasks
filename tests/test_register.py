@@ -1,7 +1,6 @@
 from __future__ import division, print_function, absolute_import
 from builtins import zip
 from builtins import range
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -89,8 +88,8 @@ class RegisterTestCase(unittest.TestCase):
         # Create WCSes
         centerCoord = afwCoord.IcrsCoord(0*afwGeom.degrees, 0*afwGeom.degrees)
         centerPixel = afwGeom.Point2D(self.width/2, self.height/2)
-        wcs = afwImage.makeWcs(centerCoord, centerPixel, self.pixelScale.asDegrees(), 0, 0,
-                               self.pixelScale.asDegrees())
+        cdMatrix = afwGeom.makeCdMatrix(scale=self.pixelScale)
+        wcs = afwGeom.makeSkyWcs(crpix=centerPixel, crval=centerCoord, cdMatrix=cdMatrix)
 
         # Note that one of the WCSes must be "wrong", since they are the same, but the sources are offset.
         # It is the job of the RegisterTask to align the images, despite the "wrong" WCS.
@@ -224,6 +223,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

@@ -39,8 +39,6 @@ __all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "Ex
 ##      A very simple example subtask that computes statistics of an image.
 ## \}
 
-#------------------------- ExampleSigmaClippedStatsTask -------------------------#
-
 
 class ExampleSigmaClippedStatsConfig(pexConfig.Config):
     """!Configuration for ExampleSigmaClippedStatsTask
@@ -90,7 +88,8 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     This task has no debug variables.
 
-    \section pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example of using ExampleSigmaClippedStatsTask
+    \section pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example
+    of using ExampleSigmaClippedStatsTask
 
     This code is in examples/exampleStatsTask.py (this one example runs both
     ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run as:
@@ -140,8 +139,6 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
             stdDev=stdDev,
             stdDevErr=stdDevErr,
         )
-
-#------------------------- ExampleSimpleStatsTask -------------------------#
 
 
 class ExampleSimpleStatsTask(pipeBase.Task):

@@ -26,10 +26,8 @@ from __future__ import print_function
 import numpy
 
 import lsst.pex.config as pexConfig
-import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
-from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
 
 __all__ = ["ReportImagesInPatchTask", ]

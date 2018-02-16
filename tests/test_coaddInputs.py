@@ -52,8 +52,7 @@ from lsst.daf.base import DateTime
 import lsst.afw.cameraGeom.testUtils
 from lsst.afw.coord import Coord, IcrsCoord
 import lsst.afw.geom
-from lsst.afw.geom import degrees
-from lsst.afw.geom.polygon import Polygon
+from lsst.afw.geom import degrees, makeCdMatrix, makeSkyWcs, Polygon
 import lsst.afw.image
 from lsst.afw.detection import GaussianPsf
 from lsst.afw.math import ChebyshevBoundedField
@@ -98,10 +97,12 @@ class MockExposure(object):
         exp.setDetector(detector)
 
         expInfo = exp.getInfo()
-        wcs = lsst.afw.image.makeWcs(
-            IcrsCoord(10*lsst.afw.geom.degrees, 45*lsst.afw.geom.degrees),
-            lsst.afw.geom.Point2D(5, 5),
-            5.1e-5, 0, 0, -5.1e-5,  # CD: 11, 12, 21, 22
+        scale = 5.1e-5 * degrees
+        cdMatrix = makeCdMatrix(scale=scale)
+        wcs = makeSkyWcs(
+            crpix=lsst.afw.geom.Point2D(5, 5),
+            crval=IcrsCoord(10*lsst.afw.geom.degrees, 45*lsst.afw.geom.degrees),
+            cdMatrix=cdMatrix,
         )
         expInfo.setWcs(wcs)
         expInfo.setPsf(GaussianPsf(5, 5, 2.5))
@@ -120,12 +121,13 @@ class MockExposure(object):
 
     @staticmethod
     def makeWcs():
-        wcs = lsst.afw.image.makeWcs(
-            IcrsCoord(10*lsst.afw.geom.degrees, 45*lsst.afw.geom.degrees),
-            lsst.afw.geom.Point2D(5, 5),
-            5.1e-5, 0, 0, -5.1e-5,  # CD: 11, 12, 21, 22
+        scale = 5.1e-5 * degrees
+        cdMatrix = makeCdMatrix(scale=scale)
+        return makeSkyWcs(
+            crpix = lsst.afw.geom.Point2D(5, 5),
+            crval = IcrsCoord(10*lsst.afw.geom.degrees, 45*lsst.afw.geom.degrees),
+            cdMatrix = cdMatrix,
         )
-        return wcs
 
     @staticmethod
     def makeVisitInfo():
@@ -220,9 +222,17 @@ class CoaddInputsTestCase(lsst.utils.tests.TestCase):
             print("SaveCoadd true; saved coadd as: %r" % (coaddPath,))
 
     def testReadV1Coadd(self):
-        """Read a coadd that contains version 1 CoaddInputs"""
+        """Read a coadd that contains version 1 CoaddInputs
+
+        The test code in question has FK5 WCS
+        """
         coaddPath = self.getCoaddPath(version=1)
+        print("coaddPath=", coaddPath)
         coadd = lsst.afw.image.ExposureF(coaddPath)
+        coaddWcs = coadd.getWcs()
+        # the exposure in question uses FK5 for its WCS so update the exposures
+        for exposure in self.exposures:
+            exposure.setWcs(coaddWcs)
         coaddInputs = coadd.getInfo().getCoaddInputs()
         self.assertCoaddInputsOk(coaddInputs, version=1)
 

@@ -23,11 +23,6 @@
 """Select images and report which tracts and patches they are in
 """
 from __future__ import print_function
-import collections
-import itertools
-import re
-
-import numpy
 
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig

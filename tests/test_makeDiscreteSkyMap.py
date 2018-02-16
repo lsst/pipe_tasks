@@ -25,7 +25,6 @@
 from __future__ import division, print_function, absolute_import
 
 import os.path
-import sys
 import shutil
 import unittest
 
@@ -88,8 +87,6 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
         for skyPoint in coordList:
             self.assertTrue(tractBoxD.contains(tractWcs.skyToPixel(skyPoint)))
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
     pass
@@ -97,6 +94,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

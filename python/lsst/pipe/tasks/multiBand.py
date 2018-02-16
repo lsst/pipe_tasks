@@ -203,7 +203,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
     \ref SourceDetectionTask_ "SourceDetectionTask"; see the documetation for
     \ref SourceDetectionTask_ "SourceDetectionTask" for further information.
 
-    \section pipe_tasks_multiband_DetectCoaddSourcesTask_Example	A complete example of using DetectCoaddSourcesTask
+    \section pipe_tasks_multiband_DetectCoaddSourcesTask_Example A complete example
+    of using DetectCoaddSourcesTask
 
     DetectCoaddSourcesTask is meant to be run after assembling a coadded image in a given band. The purpose of
     the task is to update the background, detect all sources in a single band and generate a set of parent
@@ -365,9 +366,9 @@ class MergeSourcesRunner(TaskRunner):
             tract = ref.dataId["tract"]
             patch = ref.dataId["patch"]
             filter = ref.dataId["filter"]
-            if not tract in refList:
+            if tract not in refList:
                 refList[tract] = {}
-            if not patch in refList[tract]:
+            if patch not in refList[tract]:
                 refList[tract][patch] = {}
             if filter in refList[tract][patch]:
                 raise RuntimeError("Multiple versions of %s" % (ref.dataId,))
@@ -714,8 +715,8 @@ class MergeDetectionsTask(MergeSourcesTask):
         # Convert distance to tract coordinate
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         tractWcs = skyInfo.wcs
-        peakDistance = self.config.minNewPeak / tractWcs.pixelScale().asArcseconds()
-        samePeakDistance = self.config.maxSamePeak / tractWcs.pixelScale().asArcseconds()
+        peakDistance = self.config.minNewPeak / tractWcs.getPixelScale().asArcseconds()
+        samePeakDistance = self.config.maxSamePeak / tractWcs.getPixelScale().asArcseconds()
 
         # Put catalogs, filters in priority order
         orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
@@ -960,13 +961,15 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     MeasureMergedCoaddSourcesTask has no debug variables of its own because it delegates all the work to
     the various sub-tasks. See the documetation for individual sub-tasks for more information.
 
-    \section pipe_tasks_multiband_MeasureMergedCoaddSourcesTask_Example	A complete example of using MeasureMergedCoaddSourcesTask
+    \section pipe_tasks_multiband_MeasureMergedCoaddSourcesTask_Example	A complete example of using
+    MeasureMergedCoaddSourcesTask
 
     After MeasureMergedCoaddSourcesTask has been run on multiple coadds, we have a set of per-band catalogs.
     The next stage in the multi-band processing procedure will merge these measurements into a suitable
     catalog for driving forced photometry.
 
-    Command-line usage of MeasureMergedCoaddSourcesTask expects a data reference to the coadds to be processed.
+    Command-line usage of MeasureMergedCoaddSourcesTask expects a data reference to the coadds
+    to be processed.
     A list of the available optional arguments can be obtained by calling measureCoaddSources.py with the
     `--help` command line argument:
     \code
@@ -1133,7 +1136,6 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                 denormMatches = denormalizeMatches(result.matches, result.matchMeta)
                 dataRef.put(denormMatches, self.config.coaddName + "Coadd_measMatchFull")
 
-
     def write(self, dataRef, sources):
         """!
         \brief Write the source catalog.
@@ -1146,8 +1148,6 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
     def getExposureId(self, dataRef):
         return int(dataRef.get(self.config.coaddName + "CoaddId"))
-
-##############################################################################################################
 
 
 class MergeMeasurementsConfig(MergeSourcesConfig):
@@ -1233,7 +1233,8 @@ class MergeMeasurementsTask(MergeSourcesTask):
 
     MergeMeasurementsTask has no debug variables.
 
-    \section pipe_tasks_multiband_MergeMeasurementsTask_Example	A complete example of using MergeMeasurementsTask
+    \section pipe_tasks_multiband_MergeMeasurementsTask_Example	A complete example
+    of using MergeMeasurementsTask
 
     MergeMeasurementsTask is meant to be run after deblending & measuring sources in every band.
     The purpose of the task is to generate a catalog of sources suitable for driving forced photometry in

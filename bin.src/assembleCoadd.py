@@ -36,7 +36,7 @@ legacy_message = '''
 Meta Arguments:
   --legacyCoadd         An option to run with the original assembleCoadd task which will
                         not attempt to do any safe clipping.  If run, the config option
-                        'config.measurement.plugins["base_PixelFlags"].masksFpAnywhere = [] 
+                        'config.measurement.plugins["base_PixelFlags"].masksFpAnywhere = []
                         must be set.
 '''
 

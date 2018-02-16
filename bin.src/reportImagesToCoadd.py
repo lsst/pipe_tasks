@@ -30,7 +30,6 @@ import lsst.pex.config as pexConfig
 import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
-from lsst.pipe.tasks.makeSkyMap import MakeSkyMapTask
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
 
 __all__ = ["ReportImagesToCoaddTask", ]
@@ -75,7 +74,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
     def run(self, dataRef):
         """Select images across the sky and report how many are in each tract and patch
 
-        Also report quartiles of FWHM 
+        Also report quartiles of FWHM
 
         @param dataRef: data reference for sky map.
         @return: a pipeBase.Struct with fields:

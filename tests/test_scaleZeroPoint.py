@@ -32,8 +32,6 @@ import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.pipe.tasks.scaleZeroPoint import ScaleZeroPointTask
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
 
 class ScaleZeroPointTaskTestCase(unittest.TestCase):
 
@@ -88,6 +86,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

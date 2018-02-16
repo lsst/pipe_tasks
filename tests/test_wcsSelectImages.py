@@ -1,7 +1,6 @@
 from __future__ import division, print_function, absolute_import
 from builtins import map
 from builtins import object
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -29,7 +28,6 @@ import unittest
 import lsst.utils.tests
 import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
-import lsst.afw.image as afwImage
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask, SelectStruct
 from lsst.pipe.tasks.coaddBase import CoaddBaseTask
 
@@ -93,9 +91,10 @@ class DummyDataRef(object):
     def get(self, dataType):
         return self._data[dataType]
 
+
 # Common defaults for createPatch and createImage
-CENTER = afwCoord.Coord(0*afwGeom.degrees, 90*afwGeom.degrees)
-ROTATEAXIS = afwCoord.Coord(0*afwGeom.degrees, 0*afwGeom.degrees)
+CENTER = afwCoord.IcrsCoord(0*afwGeom.degrees, 90*afwGeom.degrees)
+ROTATEAXIS = afwCoord.IcrsCoord(0*afwGeom.degrees, 0*afwGeom.degrees)
 DIMS = afwGeom.Extent2I(3600, 3600)
 SCALE = 0.5*afwGeom.arcseconds
 
@@ -104,11 +103,12 @@ def createPatch(
     tractId=1, patchId=(2, 3),  # Tract and patch identifier, for dataId
     dims=DIMS,                # Patch dimensions (Extent2I)
     xy0=afwGeom.Point2I(1234, 5678),  # Patch xy0 (Point2I)
-    center=CENTER,                  # Celestial coordinates of center (Coord)
+    center=CENTER,                  # Celestial coordinates of center (IcrsCoord)
     scale=SCALE                     # Pixel scale (Angle)
 ):
     crpix = afwGeom.Point2D(xy0) + afwGeom.Extent2D(dims)*0.5
-    wcs = afwImage.makeWcs(center, crpix, scale.asDegrees(), 0.0, 0.0, scale.asDegrees())
+    cdMatrix = afwGeom.makeCdMatrix(scale=scale)
+    wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
     patch = DummyPatch(xy0, dims)
     tract = DummyTract(patchId, patch, wcs)
     skymap = DummySkyMap(tractId, tract)
@@ -118,8 +118,8 @@ def createPatch(
 
 def createImage(
     dataId={"name": "foobar"},          # Data identifier
-    center=CENTER,                      # Celestial coordinates of center (Coord)
-    rotateAxis=ROTATEAXIS,              # Rotation axis (Angle)
+    center=CENTER,                      # Celestial coordinates of center (IcrsCoord)
+    rotateAxis=ROTATEAXIS,              # Rotation axis (IcrsCoord)
     rotateAngle=0*afwGeom.degrees,      # Rotation angle/distance to move (Angle)
     dims=DIMS,                          # Image dimensions (Extent2I)
     scale=SCALE                         # Pixel scale (Angle)
@@ -127,7 +127,8 @@ def createImage(
     crpix = afwGeom.Point2D(afwGeom.Extent2D(dims)*0.5)
     center = center.clone()  # Ensure user doesn't need it, because we're mangling it
     center.rotate(rotateAxis, rotateAngle)
-    wcs = afwImage.makeWcs(center, crpix, scale.asDegrees(), 0.0, 0.0, scale.asDegrees())
+    cdMatrix = afwGeom.makeCdMatrix(scale=scale)
+    wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
     return SelectStruct(DummyDataRef(dataId), wcs, afwGeom.Box2I(afwGeom.Point2I(0, 0),
                                                                  afwGeom.Extent2I(dims[0], dims[1])))
 
@@ -152,7 +153,8 @@ class WcsSelectImagesTestCase(unittest.TestCase):
         self.check(createPatch(), createImage(scale=0.5*SCALE), True)
 
     def testDisjoint(self):
-        self.check(createPatch(), createImage(center=afwCoord.Coord(0*afwGeom.degrees, -90*afwGeom.degrees)),
+        self.check(createPatch(),
+                   createImage(center=afwCoord.IcrsCoord(0*afwGeom.degrees, -90*afwGeom.degrees)),
                    False)
 
     def testIntersect(self):
@@ -166,6 +168,7 @@ class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
 
 def setup_module(module):
     lsst.utils.tests.init()
+
 
 if __name__ == "__main__":
     lsst.utils.tests.init()

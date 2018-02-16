@@ -138,7 +138,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
                 self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
                 continue
             md = dataRef.get("calexp_md", immediate=True)
-            wcs = afwImage.makeWcs(md)
+            wcs = afwGeom.makeSkyWcs(md)
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
             boxI = afwImage.bboxFromMetadata(md)
             boxD = afwGeom.Box2D(boxI)
