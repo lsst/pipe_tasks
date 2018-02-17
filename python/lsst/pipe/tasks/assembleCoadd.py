@@ -1811,7 +1811,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
         if self.config.doScaleWarpVariance:
-            self.scaleWarpVariance.run(mi)
+            try:
+                self.scaleWarpVariance.run(mi)
+            except Exception as exc:
+                self.log.warn("Unable to rescale variance of warp (%s); leaving it as-is" % (exc,))
         mi -= templateCoadd.getMaskedImage()
         return warp
 
