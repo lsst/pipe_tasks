@@ -79,6 +79,9 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
             self.makePsfMatched = True
             self.makeDirect = False
 
+    def setDefaults(self):
+        CoaddBaseTask.ConfigClass.setDefaults(self)
+        self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize = self.matchingKernelSize
 
 ## \addtogroup LSST_task_documentation
 ## \{
