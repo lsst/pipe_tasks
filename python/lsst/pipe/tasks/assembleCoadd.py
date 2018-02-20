@@ -112,6 +112,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         dtype=bool,
         default=False,
     )
+    doUsePsfMatchedPolygons = pexConfig.Field(
+        doc="Use ValidPolygons from shrunk Psf-Matched Calexps? Should be set to True by CompareWarp only.",
+        dtype=bool,
+        default=False,
+    )
     maskPropagationThresholds = pexConfig.DictField(
         keytype=str,
         itemtype=float,
@@ -563,6 +568,10 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
 
         for tempExp, weight in zip(tempExpList, weightList):
             self.inputRecorder.addVisitToCoadd(coaddInputs, tempExp, weight)
+
+        if self.config.doUsePsfMatchedPolygons:
+            self.shrinkValidPolygons(coaddInputs)
+
         coaddInputs.visits.sort()
         if self.warpType == "psfMatched":
             # The modelPsf BBox for a psfMatchedWarp/coaddTempExp was dynamically defined by
@@ -660,16 +669,44 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
         \brief Apply in place alt mask formatted as SpanSets to a mask
 
         @param mask: original mask
-        @param altMaskSpans: Dictionary containing spanSet lists to apply.
+        @param altMaskSpans: Dict containing spanSet lists to apply.
                              Each element contains the new mask plane name
                              (e.g. "CLIPPED and/or "NO_DATA") as the key,
                              and list of SpanSets to apply to the mask
         """
+        if self.config.doUsePsfMatchedPolygons:
+            if ("NO_DATA" in altMaskSpans) and ("NO_DATA" in self.config.badMaskPlanes):
+                # Clear away any other masks outside the validPolygons. These pixels are no longer
+                # contributing to inexact PSFs, and will still be rejected because of NO_DATA
+                # self.config.doUsePsfMatchedPolygons should be True only in CompareWarpAssemble
+                # This mask-clearing step must only occur *before* applying the new masks below
+                for spanSet in altMaskSpans['NO_DATA']:
+                    spanSet.clippedTo(mask.getBBox()).clearMask(mask, self.getBadPixelMask())
+
         for plane, spanSetList in altMaskSpans.items():
             maskClipValue = mask.addMaskPlane(plane)
             for spanSet in spanSetList:
                 spanSet.clippedTo(mask.getBBox()).setMask(mask, 2**maskClipValue)
         return mask
+
+    def shrinkValidPolygons(self, coaddInputs):
+        """!
+        \brief Shrink coaddInputs' ccds' ValidPolygons in place
+
+        @param coaddInputs: original mask
+
+        Either modify each ccd's validPolygon in place, or if CoaddInputs does not
+        have a validPolygon, create one from its bbox.
+        """
+        for ccd in coaddInputs.ccds:
+            polyOrig = ccd.getValidPolygon()
+            validPolyBBox = polyOrig.getBBox() if polyOrig else ccd.getBBox()
+            validPolyBBox.grow(-self.config.matchingKernelSize//2)
+            if polyOrig:
+                validPolygon = polyOrig.intersectionSingle(validPolyBBox)
+            else:
+                validPolygon = afwGeom.polygon.Polygon(afwGeom.Box2D(validPolyBBox))
+            ccd.setValidPolygon(validPolygon)
 
     def readBrightObjectMasks(self, dataRef):
         """Returns None on failure"""
@@ -1361,6 +1398,13 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
         self.statistic = 'MEAN'
+        self.doUsePsfMatchedPolygons = True
+
+        # Real EDGE removed by psfMatched NO_DATA border half the width of the matching kernel
+        # CompareWarp applies psfMatched EDGE pixels to directWarps before assembling
+        if "EDGE" in self.badMaskPlanes:
+            self.badMaskPlanes.remove('EDGE')
+        self.removeMaskPlanes.append('EDGE')
         self.assembleStaticSkyModel.badMaskPlanes = ["NO_DATA", ]
         self.assembleStaticSkyModel.warpType = 'psfMatched'
         self.assembleStaticSkyModel.statistic = 'MEANCLIP'
@@ -1588,8 +1632,29 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        return AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                          spanSetMaskList, mask=badPixelMask)
+        result = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                            spanSetMaskList, mask=badPixelMask)
+
+        # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
+        # Psf-Matching moves the real edge inwards
+        self.applyAltEdgeMask(result.coaddExposure.maskedImage.mask, spanSetMaskList)
+        return result
+
+    def applyAltEdgeMask(self, mask, altMaskList):
+        """!
+        \brief Propagate alt EDGE mask to SENSOR_EDGE AND INEXACT_PSF planes
+
+        @param mask: original mask
+        @param altMaskList:  List of Dicts containing spanSet lists.
+                             Each element contains the new mask plane name
+                             (e.g. "CLIPPED and/or "NO_DATA") as the key,
+                             and list of SpanSets to apply to the mask.
+        """
+        maskValue = mask.getPlaneBitMask(["SENSOR_EDGE", "INEXACT_PSF"])
+        for visitMask in altMaskList:
+            if "EDGE" not in visitMask:
+                for spanSet in visitMask['EDGE']:
+                    spanSet.clippedTo(mask.getBBox()).setMask(mask, maskValue)
 
     def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
         """!
@@ -1613,6 +1678,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         nImage = afwImage.ImageU(coaddBBox)
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
+        spanSetEdgeList = []
+
+        # mask of the warp diffs should = that of only the warp
+        templateCoadd.mask.clearAllMaskPlanes()
 
         if self.config.doPreserveContainedBySource:
             templateFootprints = self.detectTemplate.detectFootprints(templateCoadd)
@@ -1640,16 +1709,21 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 nans = numpy.where(numpy.isnan(warpDiffExp.maskedImage.image.array), 1, 0)
                 nansMask = afwImage.makeMaskFromArray(nans.astype(afwImage.MaskPixel))
                 nansMask.setXY0(warpDiffExp.getXY0())
+                edgeMask = warpDiffExp.mask
+                spanSetEdgeMask = afwGeom.SpanSet.fromMask(edgeMask,
+                                                           edgeMask.getPlaneBitMask("EDGE")).split()
             else:
                 # If the directWarp has <1% coverage, the psfMatchedWarp can have 0% and not exist
                 # In this case, mask the whole epoch
                 nansMask = afwImage.MaskX(coaddBBox, 1)
                 spanSetList = []
+                spanSetEdgeMask = []
 
             spanSetNoDataMask = afwGeom.SpanSet.fromMask(nansMask).split()
 
             spanSetNoDataMaskList.append(spanSetNoDataMask)
             spanSetArtifactList.append(spanSetList)
+            spanSetEdgeList.append(spanSetEdgeMask)
 
         if lsstDebug.Info(__name__).saveCountIm:
             path = self._dataRef2DebugPath("epochCountIm", tempExpRefList[0], coaddLevel=True)
@@ -1662,9 +1736,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 spanSetArtifactList[i] = filteredSpanSetList
 
         altMasks = []
-        for artifacts, noData in zip(spanSetArtifactList, spanSetNoDataMaskList):
+        for artifacts, noData, edge in zip(spanSetArtifactList, spanSetNoDataMaskList, spanSetEdgeList):
             altMasks.append({'CLIPPED': artifacts,
-                             'NO_DATA': noData})
+                             'NO_DATA': noData,
+                             'EDGE': edge})
         return altMasks
 
     def _filterArtifacts(self, spanSetList, epochCountImage, nImage, footprintsToExclude=None):
