@@ -674,6 +674,15 @@ discussed in \ref pipeTasks_multiBand (but note that normally, one would use the
                              (e.g. "CLIPPED and/or "NO_DATA") as the key,
                              and list of SpanSets to apply to the mask
         """
+        if self.config.doUsePsfMatchedPolygons:
+            if ("NO_DATA" in altMaskSpans) and ("NO_DATA" in self.config.badMaskPlanes):
+                # Clear away any other masks outside the validPolygons. These pixels are no longer
+                # contributing to inexact PSFs, and will still be rejected because of NO_DATA
+                # self.config.doUsePsfMatchedPolygons should be True only in CompareWarpAssemble
+                # This mask-clearing step must only occur *before* applying the new masks below
+                for spanSet in altMaskSpans['NO_DATA']:
+                    spanSet.clippedTo(mask.getBBox()).clearMask(mask, self.getBadPixelMask())
+
         for plane, spanSetList in altMaskSpans.items():
             maskClipValue = mask.addMaskPlane(plane)
             for spanSet in spanSetList:
@@ -1623,8 +1632,29 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        return AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                          spanSetMaskList, mask=badPixelMask)
+        result = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                            spanSetMaskList, mask=badPixelMask)
+
+        # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
+        # Psf-Matching moves the real edge inwards
+        self.applyAltEdgeMask(result.coaddExposure.maskedImage.mask, spanSetMaskList)
+        return result
+
+    def applyAltEdgeMask(self, mask, altMaskList):
+        """!
+        \brief Propagate alt EDGE mask to SENSOR_EDGE AND INEXACT_PSF planes
+
+        @param mask: original mask
+        @param altMaskList:  List of Dicts containing spanSet lists.
+                             Each element contains the new mask plane name
+                             (e.g. "CLIPPED and/or "NO_DATA") as the key,
+                             and list of SpanSets to apply to the mask.
+        """
+        maskValue = mask.getPlaneBitMask(["SENSOR_EDGE", "INEXACT_PSF"])
+        for visitMask in altMaskList:
+            if "EDGE" not in visitMask:
+                for spanSet in visitMask['EDGE']:
+                    spanSet.clippedTo(mask.getBBox()).setMask(mask, maskValue)
 
     def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
         """!
