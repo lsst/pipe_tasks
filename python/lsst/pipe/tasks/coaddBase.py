@@ -77,6 +77,12 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Apply meas_mosaic ubercal results to input calexps?",
         default=False
     )
+    matchingKernelSize = pexConfig.Field(
+        dtype=int,
+        doc="Size in pixels of matching kernel. Must be odd.",
+        default=21,
+        check=lambda x: x % 2 == 1
+    )
 
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
