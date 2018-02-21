@@ -32,6 +32,7 @@ from lsst.afw.fits import FitsError
 from lsst.coadd.utils import CoaddDataIdContainer
 from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
+from .scaleVariance import ScaleVarianceTask
 
 try:
     from lsst.meas.mosaic import applyMosaicResults
@@ -294,20 +295,14 @@ def scaleVariance(maskedImage, maskPlanes, log=None):
     the observed variance in the image. This is not perfect (because we're
     not tracking the covariance) but it's simple and is often good enough.
 
+    \deprecated Use the ScaleVarianceTask instead.
+
     @param maskedImage  MaskedImage to operate on; variance will be scaled
     @param maskPlanes  List of mask planes for pixels to reject
     @param log  Log for reporting the renormalization factor; or None
     @return renormalisation factor
     """
-    variance = maskedImage.getVariance()
-    sigNoise = maskedImage.getImage().getArray()/numpy.sqrt(variance.getArray())
-    maskVal = maskedImage.getMask().getPlaneBitMask(maskPlanes)
-    good = (maskedImage.getMask().getArray() & maskVal) == 0
-    # Robust measurement of stdev
-    q1, q3 = numpy.percentile(sigNoise[good], (25, 75))
-    stdev = 0.74*(q3 - q1)
-    ratio = stdev**2
-    if log:
-        log.info("Renormalizing variance by %f" % (ratio,))
-    variance *= ratio
-    return ratio
+    config = ScaleVarianceTask.ConfigClass()
+    config.maskPlanes = maskPlanes
+    task = ScaleVarianceTask(config=config, name="scaleVariance", log=log)
+    return task.run(maskedImage)

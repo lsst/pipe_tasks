@@ -31,7 +31,8 @@ from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeFi
 from lsst.meas.algorithms import DynamicDetectionTask, SkyObjectsTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.pipe.tasks.coaddBase import getSkyInfo, scaleVariance
+from lsst.pipe.tasks.coaddBase import getSkyInfo
+from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.fakes import BaseFakeSourcesTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
@@ -113,10 +114,9 @@ class DetectCoaddSourcesConfig(Config):
     \brief Configuration parameters for the DetectCoaddSourcesTask
     """
     doScaleVariance = Field(dtype=bool, default=True, doc="Scale variance plane using empirical noise?")
+    scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
-    mask = ListField(dtype=str, default=["DETECTED", "BAD", "SAT", "NO_DATA", "INTRP"],
-                     doc="Mask planes for pixels to ignore when scaling variance")
     doInsertFakes = Field(dtype=bool, default=False,
                           doc="Run fake sources injection task")
     insertFakes = ConfigurableField(target=BaseFakeSourcesTask,
@@ -132,6 +132,7 @@ class DetectCoaddSourcesConfig(Config):
         self.detection.background.useApprox = False
         self.detection.background.binSize = 4096
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
+        self.detection.doTempWideBackground = True  # Suppress large footprints that overwhelm the deblender
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -261,6 +262,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
             self.makeSubtask("insertFakes")
         self.schema = schema
         self.makeSubtask("detection", schema=self.schema)
+        if self.config.doScaleVariance:
+            self.makeSubtask("scaleVariance")
 
     def run(self, patchRef):
         """!
@@ -282,7 +285,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         \brief Run detection on an exposure.
 
         First scale the variance plane to match the observed variance
-        using \ref scaleVariance. Then invoke the \ref SourceDetectionTask_ "detection" subtask to
+        using \ref ScaleVarianceTask. Then invoke the \ref SourceDetectionTask_ "detection" subtask to
         detect sources.
 
         \param[in,out] exposure: Exposure on which to detect (may be backround-subtracted and scaled,
@@ -295,7 +298,7 @@ class DetectCoaddSourcesTask(CmdLineTask):
         - backgrounds: list of backgrounds
         """
         if self.config.doScaleVariance:
-            varScale = scaleVariance(exposure.getMaskedImage(), self.config.mask, log=self.log)
+            varScale = self.scaleVariance.run(exposure.maskedImage)
             exposure.getMetadata().add("variance_scale", varScale)
         backgrounds = afwMath.BackgroundList()
         if self.config.doInsertFakes:
