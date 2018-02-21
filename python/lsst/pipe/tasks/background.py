@@ -328,7 +328,8 @@ class SkyMeasurementTask(Task):
             residuals = imageSamples - solution*skySamples
             lq, uq = numpy.percentile(residuals[mask], [25, 75])
             stdev = 0.741*(uq - lq)  # Robust stdev from IQR
-            bad = numpy.abs(residuals) > self.config.skyRej*stdev
+            with numpy.errstate(invalid="ignore"):  # suppress NAN warnings
+                bad = numpy.abs(residuals) > self.config.skyRej*stdev
             mask[bad] = False
 
         return solve(mask)
