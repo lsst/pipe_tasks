@@ -302,23 +302,23 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         \param[in] statsFlags: afwMath.Property object for statistic for coadd
         \param[in] statsCtrl: Statistics control object for coadd
         """
-        bbox_grow = afwGeom.Box2I(bbox)
-        bbox_grow.grow(self.config.bufferSize)
+        bboxGrow = afwGeom.Box2I(bbox)
+        bboxGrow.grow(self.config.bufferSize)
         for model in dcrModels:
-            bbox_grow.clip(model.getBBox(afwImage.PARENT))
+            bboxGrow.clip(model.getBBox(afwImage.PARENT))
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
         weightList = []
         convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
 
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
-            exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox_grow)
+            exposure = tempExpRef.get(tempExpName + "_sub", bbox=bboxGrow)
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.getMaskedImage()
             templateImage = self.buildMatchedTemplate(dcrModels, visitInfo,
                                                       statsFlags, statsCtrl,
-                                                      bbox_grow, wcs)
+                                                      bboxGrow, wcs)
             if exposure.getWcs().pixelScale() != self.pixelScale:
                 self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
             imageScaler.scaleMaskedImage(maskedImage)
@@ -335,7 +335,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                         self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
             maskedImage -= templateImage
             weightList.append(self.calculateWeight(maskedImage, convergeMask)*1e3)
-            residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bbox_grow, wcs))
+            residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
 
         dcrSubModelOut = []
         with self.timer("stack"):
@@ -345,7 +345,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                    afwImage.Mask.getPlaneBitMask("CLIPPED"),
                                                    afwImage.Mask.getPlaneBitMask("NO_DATA"))
 
-                newModel = self.clampModel(residual, oldModel, bbox_grow,
+                residual.setXY0(bboxGrow.getBegin())
+                newModel = self.clampModel(residual, oldModel, bboxGrow,
                                            useNonNegative=self.config.useNonNegative,
                                            clamp=self.config.clampModel)
                 dcrSubModelOut.append(newModel)
@@ -364,7 +365,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             convergenceMetric = convergenceMetricNew
         else:
             gain = 1.
-        self.conditionDcrModel(dcrModels, dcrSubModelOut, bbox_grow, gain=gain)
+        self.conditionDcrModel(dcrModels, dcrSubModelOut, bboxGrow, gain=gain)
 
         for model, subModel in zip(dcrModels, dcrSubModelOut):
             model.assign(subModel[bbox, afwImage.PARENT], bbox)
