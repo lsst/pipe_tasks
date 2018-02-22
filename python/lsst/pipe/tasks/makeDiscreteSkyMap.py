@@ -89,6 +89,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
         butler, dataRefList = args
         task = self.TaskClass(config=self.config, log=self.log)
         result = None  # in case the task fails
+        exitStatus = 0  # exit status for shell
         if self.doRaise:
             result = task.run(butler, dataRefList)
         else:
@@ -96,6 +97,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
                 result = task.run(butler, dataRefList)
             except Exception as e:
                 task.log.fatal("Failed: %s" % e)
+                exitStatus = 1
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
         for dataRef in dataRefList:
@@ -106,6 +108,11 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
                 dataRefList=dataRefList,
                 metadata=task.metadata,
                 result=result,
+                exitStatus=exitStatus,
+            )
+        else:
+            return pipeBase.Struct(
+                exitStatus=exitStatus,
             )
 
 
