@@ -231,6 +231,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         if altMaskList is None:
             altMaskList = [None]*len(tempExpRefList)
+        baseMask = templateCoadd.getMask()
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             iter = 0
             self.pixelScale = None
@@ -245,7 +246,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
                                               weightList, altMaskList, statsFlags, statsCtrl,
-                                              convergenceMetric)
+                                              convergenceMetric, baseMask)
                     convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                                   imageScalerList, weightList, altMaskList,
                                                                   statsFlags, statsCtrl)
@@ -271,7 +272,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
-                             altMaskList, statsFlags, statsCtrl, convergenceMetric):
+                             altMaskList, statsFlags, statsCtrl, convergenceMetric, baseMask):
         """!
         \brief Assemble the DCR coadd for a sub-region, .
 
@@ -308,7 +309,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             maskedImage = exposure.getMaskedImage()
             templateImage = self.buildMatchedTemplate(dcrModels, visitInfo,
                                                       statsFlags, statsCtrl,
-                                                      bboxGrow, wcs)
+                                                      bboxGrow, wcs,
+                                                      mask=baseMask)
             if exposure.getWcs().pixelScale() != self.pixelScale:
                 self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
             imageScaler.scaleMaskedImage(maskedImage)
@@ -414,7 +416,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             refVals = refImage.getImage().getArray()
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
-            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs)
+            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo,
+                                                      statsFlags, statsCtrl,
+                                                      bbox, wcs)
             templateVals = templateImage.getImage().getArray()
             diffVals = numpy.abs(refVals - templateVals)*modelVals
             refVals = numpy.abs(refVals)*modelVals
@@ -441,7 +445,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     def dcrDivideCoadd(coaddExposure, dcrNSubbands):
         dcrModels = [coaddExposure.getMaskedImage().clone() for f in range(dcrNSubbands)]
         for model in dcrModels:
-            model.getMask().addMaskPlane("CLIPPED")
+            modelImage = model.getImage().getArray()
+            nanInds = numpy.isnan(modelImage)
+            modelImage[nanInds] = 0.
+            mask = model.getMask()
+            mask &= ~mask.getPlaneBitMask("CLIPPED")
+            mask.getArray()[nanInds] = mask.getPlaneBitMask("NO_DATA")
             model.getImage().getArray()[:, :] /= dcrNSubbands
             model.getVariance().getArray()[:, :] /= dcrNSubbands
         return dcrModels
@@ -468,7 +477,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return dcrCoadds
 
     @staticmethod
-    def convolveDcrModelPlane(maskedImage, dcr, useFFT=False, useInverse=False):
+    def convolveDcrModelPlane(maskedImage, dcr, bbox=None, useFFT=False, useInverse=False):
         if useFFT:
             raise NotImplementedError("The Fourier transform approach has not yet been written.")
         else:
@@ -477,11 +486,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             else:
                 shift = (dcr.dy, dcr.dx)
             # Shift each of image, mask, and variance
-            result = maskedImage.clone()
+            if bbox is None:
+                result = maskedImage.clone()
+            else:
+                result = maskedImage[bbox, afwImage.PARENT].clone()
+            mask = result.getMask()
+            mask &= ~mask.getPlaneBitMask("CLIPPED")
             srcImage = result.getImage().getArray()
-            srcImage[numpy.isnan(srcImage)] = 0.
             scrVariance = result.getVariance().getArray()
-            scrVariance[numpy.isnan(scrVariance)] = 0.
+            nanInds = numpy.isnan(srcImage) #| numpy.isnan(scrVariance)
+            mask.getArray()[nanInds] = mask.getPlaneBitMask("NO_DATA")
+            result.setMask(shiftMask(mask, dcr, useInverse=useInverse))
+
+            srcImage[nanInds] = 0.
+            # scrVariance[nanInds] = numpy.inf
             retImage = scipy.ndimage.interpolation.shift(srcImage, shift)
             result.getImage().getArray()[:, :] = retImage
             retVariance = scipy.ndimage.interpolation.shift(scrVariance, shift)
@@ -518,26 +536,48 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                 dy=diffRefractPix*numpy.sin(rotation.asRadians())))
         return dcrShift
 
-    def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs):
-        weightList = [1.0]*self.config.dcrNSubbands
-        maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT],
-                                                      dcr, useFFT=self.config.useFFT)
-                           for dcr, model in zip(dcrShift, dcrModels)]
-        templateImage = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
-                                               afwImage.Mask.getPlaneBitMask("CLIPPED"),
-                                               afwImage.Mask.getPlaneBitMask("NO_DATA"))
-        templateImage *= self.config.dcrNSubbands
+    def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs, mask=None):
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
                                           self.config.filterWidth, self.config.dcrNSubbands)
+        templateImage = afwImage.MaskedImageF(bbox)
+        for dcr, model in zip(dcrShift, dcrModels):
+            templateImage += self.convolveDcrModelPlane(model, dcr, bbox=bbox, useFFT=self.config.useFFT)
+        if mask is not None:
+            templateImage.setMask(mask[bbox, afwImage.PARENT])
         return templateImage
 
     def dcrResiduals(self, dcrModels, residualImageIn, visitInfo, bbox, wcs):
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
                                           self.config.filterWidth, self.config.dcrNSubbands)
         for dcr in dcrShift:
-            yield self.convolveDcrModelPlane(residualImageIn, dcr,
+            yield self.convolveDcrModelPlane(residualImageIn, dcr, bbox=bbox,
                                              useInverse=True,
                                              useFFT=self.config.useFFT)
+
+
+def shiftMask(mask, shift, useInverse=False):
+    if useInverse:
+        dx0 = -numpy.ceil(shift.dx)
+        dy0 = -numpy.ceil(shift.dy)
+    else:
+        dx0 = numpy.floor(shift.dx)
+        dy0 = numpy.floor(shift.dy)
+
+    bboxFull = mask.getBBox()
+    retMask = mask.Factory(bboxFull)
+
+    bufferXSize = numpy.abs(dx0) + 1
+    bufferYSize = numpy.abs(dy0) + 1
+    bboxBase = mask.getBBox()
+    bboxBase.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
+
+    for x0 in range(2):
+        for y0 in range(2):
+            bbox = mask.getBBox()
+            bbox.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
+            bbox.shift(afwGeom.Extent2I(dx0 + x0, dy0 + y0))
+            retMask[bbox, afwImage.PARENT] |= mask[bboxBase, afwImage.PARENT]
+    return retMask
 
 
 def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
