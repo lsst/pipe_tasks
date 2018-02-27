@@ -102,6 +102,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Restrict new solutions from changing by more than a factor of `clampModel`.",
         default=2.,
     )
+    clampFrequency = pexConfig.Field(
+        dtype=float,
+        doc="Restrict solutions from changing by more than a factor of `clampModel` between frequencies.",
+        default=2.,
+    )
     useNonNegative = pexConfig.Field(
         dtype=bool,
         doc="Force the model to be non-negative.",
@@ -350,6 +355,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                            useNonNegative=self.config.useNonNegative,
                                            clamp=self.config.clampModel)
                 dcrSubModelOut.append(newModel)
+        self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask, clamp=self.config.clampFrequency)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
                                                              imageScalerList, weightList, altMaskList,
@@ -398,6 +404,29 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         newImage[lowInds] = oldImage[lowInds]/clamp
         newVariance[lowInds] = oldVariance[lowInds]/clamp
         return newModel
+
+    @staticmethod
+    def regularizeModel(dcrModels, bbox, mask, clamp=2.):
+        nModels = len(dcrModels)
+        templateImage = afwImage.MaskedImageF(bbox)
+        excess = numpy.zeros_like(templateImage.getImage().getArray())
+        for model in dcrModels:
+            templateImage += model[bbox, afwImage.PARENT]
+        templateImageVals = templateImage.getImage().getArray()/nModels
+        backgroundInds = mask[bbox, afwImage.PARENT].getArray() == 0
+        noiseLevel = 3.*numpy.std(templateImageVals[backgroundInds])
+        for model in dcrModels:
+            modelVals = model.getImage().getArray()
+            highInds = (modelVals > (templateImageVals*clamp + noiseLevel))
+            excess[highInds] += modelVals[highInds] - templateImageVals[highInds]*clamp
+            modelVals[highInds] = templateImageVals[highInds]*clamp
+            lowInds = (modelVals < templateImageVals/clamp - noiseLevel)
+            excess[lowInds] += modelVals[lowInds] - templateImageVals[lowInds]/clamp
+            modelVals[lowInds] = templateImageVals[lowInds]/clamp
+        excess /= nModels
+        for model in dcrModels:
+            modelVals = model.getImage().getArray()
+            modelVals += excess
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
                              weightList, altMaskList, statsFlags, statsCtrl):
