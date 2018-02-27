@@ -92,6 +92,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Use the calculated convergence metric to accelerate forward modeling.",
         default=True,
     )
+    doAirmassWeight = pexConfig.Field(
+        dtype=bool,
+        doc="Weight exposures by airmass.",
+        default=True,
+    )
     clampModel = pexConfig.Field(
         dtype=float,
         doc="Restrict new solutions from changing by more than a factor of `clampModel`.",
@@ -326,7 +331,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     except Exception as e:
                         self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
             maskedImage -= templateImage
-            weightList.append(self.calculateWeight(maskedImage, convergeMask)*1e3)
+            obsWeight = self.calculateWeight(maskedImage, convergeMask)*1e3
+            if self.config.doAirmassWeight:
+                obsWeight *= visitInfo.getBoresightAirmass()
+            weightList.append(obsWeight)
             residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
 
         dcrSubModelOut = []
