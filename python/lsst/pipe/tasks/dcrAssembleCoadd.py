@@ -143,7 +143,8 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         self.assembleStaticSkyModel.removeMaskPlanes = []
         self.assembleStaticSkyModel.warpType = 'direct'
         self.removeMaskPlanes = []
-        self.statistic = 'MEANCLIP'
+        self.warpType = 'direct'
+        self.statistic = 'MEAN'
         if self.usePsf:
             self.useFFT = True
         if self.doWeightGain:
@@ -189,7 +190,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.doInterp:
                 self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
                 # The variance must be positive; work around for DM-3201.
-                varArray = coaddExposure.getMaskedImage().getVariance().getArray()
+                varArray = coaddExposure.getVariance().getArray()
                 varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
             if self.config.doMaskBrightObjects:
@@ -243,7 +244,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             altMaskList = [None]*len(tempExpRefList)
         baseMask = templateCoadd.getMask()
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
-            iter = 0
+            modelIter = 0
             self.pixelScale = None
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, altMaskList,
@@ -252,7 +253,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
             convergenceCheck = 1.
-            while (convergenceCheck > self.config.convergenceThreshold) or (iter < self.config.minNIter):
+            while (convergenceCheck > self.config.convergenceThreshold) or (modelIter < self.config.minNIter):
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
                                               weightList, altMaskList, statsFlags, statsCtrl,
@@ -263,18 +264,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                     convergenceList.append(convergenceMetric)
                 except Exception as e:
-                    self.log.warn("Error during iteration %s while computing coadd %s: %s", iter, subBBox, e)
+                    self.log.warn("Error during iteration %s while computing coadd %s: %s", subBBox, e)
                     break
-                if iter > self.config.maxNIter:
+                if modelIter > self.config.maxNIter:
                     self.log.warn("Coadd %s reached maximum iterations. Convergence: %s",
                                   subBBox, convergenceMetric)
                     break
                 self.log.info("Iteration %s with convergence %s, %2.4f%% improvement \n",
-                              iter, convergenceMetric, 100.*convergenceCheck)
-                iter += 1
+                              modelIter, convergenceMetric, 100.*convergenceCheck)
+                modelIter += 1
             else:
                 self.log.info("Coadd %s finished with convergence %s after %s iterations",
-                              subBBox, convergenceMetric, iter)
+                              subBBox, convergenceMetric, modelIter)
             finalPercent = 100*(convergenceList[0] - convergenceMetric)/convergenceMetric
             self.log.info("Final convergence improvement was %2.4f%% overall", finalPercent)
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
@@ -349,7 +350,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 residual = afwMath.statisticsStack(residualsList, statsFlags, statsCtrl, weightList,
                                                    afwImage.Mask.getPlaneBitMask("CLIPPED"),
                                                    afwImage.Mask.getPlaneBitMask("NO_DATA"))
-
                 residual.setXY0(bboxGrow.getBegin())
                 newModel = self.clampModel(residual, oldModel, bboxGrow,
                                            useNonNegative=self.config.useNonNegative,
@@ -387,9 +387,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     @staticmethod
     def clampModel(residual, oldModel, bbox, useNonNegative=False, clamp=2.):
         newModel = residual
-        newModel += oldModel
+        newModel += oldModel[bbox, afwImage.PARENT]
         newImage = newModel.getImage().getArray()
+        finiteInds = numpy.isfinite(newImage)
+        newImage[~finiteInds] = 0.
         newVariance = newModel.getVariance().getArray()
+        newVariance[~finiteInds] = 0.
         if useNonNegative:
             negInds = newImage < 0.
             newImage[negInds] = 0.
