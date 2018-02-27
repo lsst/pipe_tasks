@@ -177,9 +177,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
         cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) *
               lsst.afw.geom.LinearTransform.makeRotation(pa))
-        fpCtr = detector.makeCameraPoint(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE)
-        crpix = detector.transform(fpCtr, PIXELS).getPoint()
-
+        crpix = detector.transform(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE, PIXELS)
         wcs = lsst.afw.geom.makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd.getMatrix())
         return wcs
 
