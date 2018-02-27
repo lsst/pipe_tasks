@@ -47,16 +47,6 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Common name of the band-defining filter of th observations.",
         default='g',
     )
-    lambdaEff = pexConfig.Field(
-        dtype=float,
-        doc="Effective wavelength of the filter, in nm.",
-        default=0.,
-    )
-    filterWidth = pexConfig.Field(
-        dtype=float,
-        doc="FWHM of the filter transmission curve, in nm.",
-        default=0.,
-    )
     bufferSize = pexConfig.Field(
         dtype=int,
         doc="Number of pixels to grow the subregion bounding box by.",
@@ -127,6 +117,16 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         default=["DETECTED"],
         doc="Mask planes to use to calculate convergence."
     )
+    lambdaEff = pexConfig.Field(
+        dtype=float,
+        doc="Effective center wavelength of the filter, in nm. This will be replaced in DM-13668.",
+        default=478.,
+    )
+    filterWidth = pexConfig.Field(
+        dtype=float,
+        doc="Width of the filter, in nm. This will be replaced in DM-13668",
+        default=147.,
+    )
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
@@ -144,16 +144,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     ConfigClass = DcrAssembleCoaddConfig
     _DefaultName = "dcrAssembleCoadd"
-
-    def __init__(self, *args, **kwargs):
-        """!
-        \brief Initialize the task and make the \ref AssembleCoadd_ "assembleStaticSkyModel" subtask.
-        """
-        CompareWarpAssembleCoaddTask.__init__(self, *args, **kwargs)
-
-        # Note that we can only call afwImageUtils.Filter after the butler has been initialized.
-        self.lambdaEff = afwImageUtils.Filter(self.config.filterName).getFilterProperty().getLambdaEff()
-        self.filterWidth = self.lambdaEff*0.2
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
@@ -529,8 +519,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return dcrShift
 
     def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs):
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff,
-                                          self.filterWidth, self.config.dcrNSubbands)
         weightList = [1.0]*self.config.dcrNSubbands
         maskedImageList = [self.convolveDcrModelPlane(model[bbox, afwImage.PARENT],
                                                       dcr, useFFT=self.config.useFFT)
@@ -539,11 +527,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                afwImage.Mask.getPlaneBitMask("CLIPPED"),
                                                afwImage.Mask.getPlaneBitMask("NO_DATA"))
         templateImage *= self.config.dcrNSubbands
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
+                                          self.config.filterWidth, self.config.dcrNSubbands)
         return templateImage
 
     def dcrResiduals(self, dcrModels, residualImageIn, visitInfo, bbox, wcs):
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.lambdaEff,
-                                          self.filterWidth, self.config.dcrNSubbands)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
+                                          self.config.filterWidth, self.config.dcrNSubbands)
         for dcr in dcrShift:
             yield self.convolveDcrModelPlane(residualImageIn, dcr,
                                              useInverse=True,
