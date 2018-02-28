@@ -44,7 +44,7 @@ __all__ = ["DcrAssembleCoaddTask"]
 class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     filterName = pexConfig.Field(
         dtype=str,
-        doc="Common name of the band-defining filter of th observations.",
+        doc="Name of the band-defining filter of the observations.",
         default='g',
     )
     bufferSize = pexConfig.Field(
@@ -186,21 +186,27 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.writeDcrCoadd(dataRef, coaddExposure, subfilter)
         return pipeBase.Struct(coaddExposure=retStruct.coaddExposure, nImage=retStruct.nImage)
 
-    def writeDcrCoadd(self, dataRef, coaddExposure, subfilter, nImage=None):
-            if self.config.doInterp:
-                self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
-                # The variance must be positive; work around for DM-3201.
-                varArray = coaddExposure.getVariance().getArray()
-                varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
+    def writeDcrCoadd(self, dataRef, coaddExposure, subfilter):
+        """!
+        \brief Persist DCR coadds using the Butler.
 
-            if self.config.doMaskBrightObjects:
-                brightObjectMasks = self.readBrightObjectMasks(dataRef)
-                self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
+        \param[in] dataRef: Data reference defining the patch for coaddition and the reference Warp
+                        - [out] "dcrCoadd"
+        \param[in] coaddExposure: pipeBase.Struct with coaddExposure
+        \param[in] subfilter: Index of the DCR plane to persist.
+        """
+        if self.config.doInterp:
+            self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
+            # The variance must be positive; work around for DM-3201.
+            varArray = coaddExposure.getVariance().getArray()
+            varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
-            self.log.info("Persisting dcrCoadd")
-            dataRef.put(coaddExposure, "dcrCoadd", subfilter=subfilter)
-            if nImage is not None:
-                dataRef.put(nImage, self.getCoaddDatasetName(self.warpType)+'_nImage')
+        if self.config.doMaskBrightObjects:
+            brightObjectMasks = self.readBrightObjectMasks(dataRef)
+            self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
+
+        self.log.info("Persisting dcrCoadd")
+        dataRef.put(coaddExposure, "dcrCoadd", subfilter=subfilter)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, supplementaryData=None, *args, **kwargs):
@@ -214,20 +220,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         new "CLIPPED" plane and updated "NO_DATA" plane.
         Then pass these alternative masks to the base class's assemble method.
 
-        @param skyInfo: Patch geometry information
-        @param tempExpRefList: List of data references to warps
-        @param imageScalerList: List of image scalers
-        @param weightList: List of weights
-        @param supplementaryData: PipeBase.Struct containing a templateCoadd
+        \param[in] skyInfo: Patch geometry information
+        \param[in] tempExpRefList: List of data references to warps
+        \param[in] imageScalerList: List of image scalers
+        \param[in] weightList: List of weights
+        \param[in] supplementaryData: PipeBase.Struct containing a templateCoadd
 
-        return coadd exposure
+        \return coadd exposure
         """
-        # templateCoadd = supplementaryData.templateCoadd
-        # spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
-        # maskList = self.computeAltMaskList(tempExpRefList, spanSetMaskList)
-        # badMaskPlanes = self.config.badMaskPlanes[:]
-        # badMaskPlanes.append("CLIPPED")
-        # badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         templateCoadd = supplementaryData.templateCoadd
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
@@ -287,22 +287,28 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """!
         \brief Assemble the DCR coadd for a sub-region, .
 
-        For each coaddTempExp, check for (and swap in) an alternative mask if one is passed. If background
-        matching is enabled, add the background and background variance from each coaddTempExp. Remove mask
-        planes listed in config.removeMaskPlanes, Finally, stack the actual exposures using
-        \ref afwMath.statisticsStack "statisticsStack" with the statistic specified
-        by statsFlags. Typically, the statsFlag will be one of afwMath.MEAN for a mean-stack or
-        afwMath.MEANCLIP for outlier rejection using an N-sigma clipped mean where N and iterations
-        are specified by statsCtrl.  Assign the stacked subregion back to the coadd.
+        Build a DCR-matched template for each input exposure, then shift the residuals according to the DCR
+        in each subfilter.
+        Stack the shifted residuals and apply them as a correction to the solution
+        from the previous iteration.
+        Restrict the new model solutions from varying by more than a factor of `clampModel`
+        from the last solution, and additionally restrict the individual subfilter models
+        from varying by more than a factor of `clampFrequency` from their average.
+        Finally, mitigate potentially oscillating solutions by averaging the new solution with the solution
+        from the previous iteration, weighted by their convergence metric.
 
-        \param[in] coaddExposure: The target image for the coadd
+        \param[in, out] dcrModels: A list of masked images, each containing
+                                   the model for one subfilter.
         \param[in] bbox: Sub-region to coadd
         \param[in] tempExpRefList: List of data reference to tempExp
         \param[in] imageScalerList: List of image scalers
-        \param[in] weightList: List of weights
+        \param[in, out] weightList: List of weights
         \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
+                                Each element is dict with keys = mask plane name to which to add the spans
         \param[in] statsFlags: afwMath.Property object for statistic for coadd
         \param[in] statsCtrl: Statistics control object for coadd
+        \param[in] convergenceMetric: Quality of fit metric for the matched templates of the input images.
+        \param[in] baseMask: Mask of the initial template coadd.
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.config.bufferSize)
@@ -313,21 +319,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         weightList = []
         convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
 
-        for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
+        for tempExpRef, imageScaler, altMaskSpans in zip(tempExpRefList, imageScalerList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bboxGrow)
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.getMaskedImage()
-            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo,
-                                                      statsFlags, statsCtrl,
-                                                      bboxGrow, wcs,
-                                                      mask=baseMask)
+            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, bboxGrow, wcs, mask=baseMask)
             if exposure.getWcs().pixelScale() != self.pixelScale:
                 self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
             imageScaler.scaleMaskedImage(maskedImage)
             mask = maskedImage.getMask()
-            if altMask is not None:
-                self.applyAltMaskPlanes(mask, altMask)
+            if altMaskSpans is not None:
+                self.applyAltMaskPlanes(mask, altMaskSpans)
 
             if self.config.removeMaskPlanes:
                 mask = maskedImage.getMask()
@@ -368,7 +371,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.log.info("Convergence-weighted gain used: %2.4f", gain)
             self.log.info("Based on old convergence: %2.6f, new convergence: %2.6f",
                           convergenceMetric, convergenceMetricNew)
-            convergenceMetric = convergenceMetricNew
         else:
             gain = 1.
         self.conditionDcrModel(dcrModels, dcrSubModelOut, bboxGrow, gain=gain)
@@ -378,6 +380,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def calculateWeight(residual, goodMask):
+        """!
+        \brief Calculate the weight of an exposure based on the goodness of fit of the matched template.
+
+        \param[in] residual: residual masked image after subtracting a DCR-matched template.
+        \param[in] goodMask: Mask plane to evaluate the goodness of fit of the residual over.
+
+        \return weight: Goodness of fit metric of the residual image.
+        """
         residualVals = residual.getImage().getArray()
         finiteInds = (numpy.isfinite(residualVals))
         goodMaskInds = (residual.getMask().getArray() & goodMask) == goodMask
@@ -386,6 +396,19 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def clampModel(residual, oldModel, bbox, useNonNegative=False, clamp=2.):
+        """!
+        \brief Restrict large variations in the model between iterations.
+
+        \param[in, out] residual: stacked residual masked image after subtracting DCR-matched templates.
+                                  To save memory, the residual is modified in-place.
+        \param[in] oldModel: The model from the previous iteration.
+        \param[in] bbox: Sub-region to coadd
+        \param[in] useNonNegative: option to force solution to be positive definite.
+        \param[in] clamp: Maximum factor the new image is allowed to deviate from the last iteration.
+
+        \return newModel: masked image, equal to the sum of the oldModel and residual,
+                          with extreme values clipped
+        """
         newModel = residual
         newModel += oldModel[bbox, afwImage.PARENT]
         newImage = newModel.getImage().getArray()
@@ -410,6 +433,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def regularizeModel(dcrModels, bbox, mask, clamp=2.):
+        """!
+        \brief Restrict large variations in the model between subfilters.
+
+        \param[in, out] dcrModels: A list of masked images, each containing
+                                   the model for one subfilter.
+        \param[in] bbox: Sub-region to coadd
+        \param[in] mask: reference mask to use for all model planes.
+        \param[in] clamp: Maximum factor each plane is allowed to deviate from the average.
+        """
         nModels = len(dcrModels)
         templateImage = afwImage.MaskedImageF(bbox)
         excess = numpy.zeros_like(templateImage.getImage().getArray())
@@ -433,6 +465,22 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
                              weightList, altMaskList, statsFlags, statsCtrl):
+        """!
+        \brief Calculate a quality of fit metric for the matched templates of the input images.
+
+        \param[in] dcrModels: A list of masked images, each containing
+                              the model for one subfilter.
+        \param[in] bbox: Sub-region to coadd
+        \param[in] tempExpRefList: List of data reference to tempExp
+        \param[in] imageScalerList: List of image scalers
+        \param[in] weightList: List of weights
+        \param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
+                                Each element is dict with keys = mask plane name to which to add the spans
+        \param[in] statsFlags: afwMath.Property object for statistic for coadd
+        \param[in] statsCtrl: Statistics control object for coadd
+
+        \return Quality of fit metric for all input exposures, within the sub-region.
+        """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         modelWeightList = [1.0]*self.config.dcrNSubbands
         convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
@@ -456,9 +504,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             refVals = refImage.getImage().getArray()
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
-            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo,
-                                                      statsFlags, statsCtrl,
-                                                      bbox, wcs)
+            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, bbox, wcs)
             templateVals = templateImage.getImage().getArray()
             diffVals = numpy.abs(refVals - templateVals)*modelVals
             refVals = numpy.abs(refVals)*modelVals
@@ -483,6 +529,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def dcrDivideCoadd(coaddExposure, dcrNSubbands):
+        """!
+        \brief Divide a coadd into equal subfilter coadds.
+
+        \param[in] coaddExposure: The target image for the coadd
+        \param[in] dcrNSubbands: The number of subfilters to divide the coadd into.
+
+        \return dcrModels: A list of masked images, each containing
+                           the model for one subfilter.
+        """
         dcrModels = [coaddExposure.getMaskedImage().clone() for f in range(dcrNSubbands)]
         for model in dcrModels:
             modelImage = model.getImage().getArray()
@@ -497,6 +552,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def stackCoadd(dcrCoadds):
+        """!
+        \brief Add a list of sub-band coadds together.
+
+        \param[in] dcrCoadds: A list of coadd exposures, each exposure containing
+                              the model for one subfilter.
+
+        \return A single coadd exposure that is the sum of the sub-bands.
+        """
         coaddGenerator = (coadd for coadd in dcrCoadds)
         coaddExposure = next(coaddGenerator).clone()
         mimage = coaddExposure.getMaskedImage()
@@ -505,6 +568,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return coaddExposure
 
     def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList):
+        """!
+        \brief Create a list of coadd exposures from a list of masked images.
+
+        \param[in] dcrModels: A list of masked images, each containing
+                              the model for one subfilter.
+        \param[in] skyInfo: Patch geometry information, from getSkyInfo
+        \param[in] tempExpRefList: List of data reference to tempExp
+        \param[in] weightList: List of weights
+
+        \return List of coaddExposures.
+        """
         dcrCoadds = []
         for model in dcrModels:
             coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
@@ -518,6 +592,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def convolveDcrModelPlane(maskedImage, dcr, bbox=None, useFFT=False, useInverse=False):
+        """!
+        \brief Shift a masked image.
+
+        \param[in] maskedImage: the input masked image to shift.
+        \param[in] dcr: shift calculated with `dcrShiftCalculate`.
+        \param[in] bbox: Sub-region of the masked image to shift.
+        \param[in] useFFT: Option to perform the convolution with an FFT.
+        \param[in] useInverse: Use the reverse of `dcr` for the shift.
+
+        \return A masked image, with the pixels within the bounding box shifted.
+        """
         if useFFT:
             raise NotImplementedError("The Fourier transform approach has not yet been written.")
         else:
@@ -534,7 +619,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             mask &= ~mask.getPlaneBitMask("CLIPPED")
             srcImage = result.getImage().getArray()
             scrVariance = result.getVariance().getArray()
-            nanInds = numpy.isnan(srcImage) #| numpy.isnan(scrVariance)
+            nanInds = numpy.isnan(srcImage)
             mask.getArray()[nanInds] = mask.getPlaneBitMask("NO_DATA")
             result.setMask(shiftMask(mask, dcr, useInverse=useInverse))
 
@@ -548,6 +633,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def conditionDcrModel(oldDcrModels, newDcrModels, bbox, gain=1.):
+        """!
+        \brief Average the current solution with the solution from the last iteration to reduce oscillations.
+
+        \param[in] oldDcrModels: A list of masked images, each containing
+                                the model for one subfilter from the previous iteration.
+        \param[in, out] newDcrModels: A list of masked images, each containing
+                                      the model for one subfilter from the current iteration.
+        \param[in] bbox: Sub-region of the coadd
+        \param[in] gain: Additional weight to apply to the model from the current iteration.
+        """
         for oldModel, newModel in zip(oldDcrModels, newDcrModels):
             # The DcrModels are MaskedImages, which only support in-place operations.
             newModel *= gain
@@ -556,6 +651,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @staticmethod
     def dcrShiftCalculate(visitInfo, wcs, lambdaEff, filterWidth, dcrNSubbands):
+        """!
+        \brief Calculate the shift in pixels of an exposure due to DCR.
+
+        \param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
+        \param[in] wcs: lsst.afw.image.Wcs wcs for the exposure.
+        \param[in] lambdaEff: Effective center wavelength of the filter, in nm.
+        \param[in] filterWidth: Width of the filter, in nm.
+        \param[in] dcrNSubbands: Number of subfilters to divide the full band into.
+
+        \return named tuple `dcr` containing the shift due to DCR, in pixels.
+        """
         rotation = calculateRotationAngle(visitInfo, wcs)
 
         dcr = namedtuple("dcr", ["dx", "dy"])
@@ -576,7 +682,19 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                 dy=diffRefractPix*numpy.sin(rotation.asRadians())))
         return dcrShift
 
-    def buildMatchedTemplate(self, dcrModels, visitInfo, statsFlags, statsCtrl, bbox, wcs, mask=None):
+    def buildMatchedTemplate(self, dcrModels, visitInfo, bbox, wcs, mask=None):
+        """!
+        \brief Create a DCR-matched template for an exposure.
+
+        \param[in] dcrModels: A list of masked images, each containing
+                              the model for one subfilter.
+        \param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
+        \param[in] bbox: Sub-region of the coadd to use for the template.
+        \param[in] wcs: lsst.afw.image.Wcs wcs for the exposure.
+        \param[in] mask: reference mask to use for the template image.
+
+        \return The DCR-matched template, as a maskedImage.
+        """
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
                                           self.config.filterWidth, self.config.dcrNSubbands)
         templateImage = afwImage.MaskedImageF(bbox)
@@ -586,16 +704,36 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             templateImage.setMask(mask[bbox, afwImage.PARENT])
         return templateImage
 
-    def dcrResiduals(self, dcrModels, residualImageIn, visitInfo, bbox, wcs):
+    def dcrResiduals(self, dcrModels, residual, visitInfo, bbox, wcs):
+        """!
+        \brief Prepare a residual image for stacking in each subfilter by applying the reverse DCR shifts.
+
+        \param[in] dcrModels: A list of masked images, each containing
+                              the model for one subfilter.
+        \param[in] residual: The residual masked image for one exposure,
+                             after subtracting the matched template
+        \param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
+        \param[in] bbox: Sub-region of the coadd to shift.
+        \param[in] wcs: lsst.afw.image.Wcs wcs for the exposure.
+
+        \return next shifted residual, as a maskedImage.
+        """
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
                                           self.config.filterWidth, self.config.dcrNSubbands)
         for dcr in dcrShift:
-            yield self.convolveDcrModelPlane(residualImageIn, dcr, bbox=bbox,
-                                             useInverse=True,
-                                             useFFT=self.config.useFFT)
+            yield self.convolveDcrModelPlane(residual, dcr, bbox=bbox,
+                                             useInverse=True, useFFT=self.config.useFFT)
 
 
 def shiftMask(mask, shift, useInverse=False):
+    """!
+    \breif Shift a mask and grow each mask plane by one pixel.
+
+    \param[in] shift: shift calculated with `dcrShiftCalculate`.
+    \param[in] useInverse: Use the reverse of `shift` for the shift.
+
+    \return the shifted mask.
+    """
     if useInverse:
         dx0 = -numpy.ceil(shift.dx)
         dy0 = -numpy.ceil(shift.dy)
@@ -621,6 +759,15 @@ def shiftMask(mask, shift, useInverse=False):
 
 
 def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
+    """!
+    \brief Iterate over the wavelength endpoints of subfilters.
+
+    \param[in] lambdaEff: The effective wavelength of the full filter, in nm.
+    \param[in] filterWidth: The full width of the filter, in nm.
+    \param[in] dcrNSubbands: The number of subfilters to divide the bandpass into.
+
+    \return next set of wavelength endpoints for a subfilter, in nm.
+    """
     wlStep = filterWidth/dcrNSubbands
     for wl in numpy.linspace(-filterWidth/2., filterWidth/2., dcrNSubbands, endpoint=False):
         wlStart = lambdaEff + wl
