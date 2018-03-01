@@ -28,7 +28,6 @@ import scipy.ndimage.interpolation
 from lsst.afw.coord.refraction import differentialRefraction
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.afw.image.utils as afwImageUtils
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pex.config as pexConfig
@@ -325,7 +324,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.getMaskedImage()
             templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, bboxGrow, wcs, mask=baseMask)
-            if exposure.getWcs().pixelScale() != self.pixelScale:
+            if exposure.getWcs().getPixelScale() != self.pixelScale:
                 self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
             imageScaler.scaleMaskedImage(maskedImage)
             mask = maskedImage.getMask()
@@ -498,8 +497,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for tempExpRef, expWeight, imageScaler, altMask in zipIterables:
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             if self.pixelScale is None:
-                self.pixelScale = exposure.getWcs().pixelScale()
             imageScaler.scaleMaskedImage(refImage)
+                self.pixelScale = exposure.getWcs().getPixelScale()
             refImage = exposure.getMaskedImage()
             refVals = refImage.getImage().getArray()
             visitInfo = exposure.getInfo().getVisitInfo()
@@ -655,7 +654,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         \brief Calculate the shift in pixels of an exposure due to DCR.
 
         \param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
-        \param[in] wcs: lsst.afw.image.Wcs wcs for the exposure.
+        \param[in] wcs: lsst.afw.geom.skyWcs.skyWcs.SkyWcs wcs for the exposure.
         \param[in] lambdaEff: Effective center wavelength of the filter, in nm.
         \param[in] filterWidth: Width of the filter, in nm.
         \param[in] dcrNSubbands: Number of subfilters to divide the full band into.
@@ -677,7 +676,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                      observatory=visitInfo.getObservatory(),
                                                      weather=visitInfo.getWeather())
             diffRefractAmp = (diffRefractAmp0 + diffRefractAmp1)/2.
-            diffRefractPix = diffRefractAmp.asArcseconds()/wcs.pixelScale().asArcseconds()
+            diffRefractPix = diffRefractAmp.asArcseconds()/wcs.getPixelScale().asArcseconds()
             dcrShift.append(dcr(dx=diffRefractPix*numpy.cos(rotation.asRadians()),
                                 dy=diffRefractPix*numpy.sin(rotation.asRadians())))
         return dcrShift
@@ -690,7 +689,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                               the model for one subfilter.
         \param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
         \param[in] bbox: Sub-region of the coadd to use for the template.
-        \param[in] wcs: lsst.afw.image.Wcs wcs for the exposure.
+        \param[in] wcs: lsst.afw.geom.skyWcs.skyWcs.SkyWcs wcs for the exposure.
         \param[in] mask: reference mask to use for the template image.
 
         \return The DCR-matched template, as a maskedImage.
@@ -714,7 +713,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                              after subtracting the matched template
         \param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
         \param[in] bbox: Sub-region of the coadd to shift.
-        \param[in] wcs: lsst.afw.image.Wcs wcs for the exposure.
+        \param[in] wcs: lsst.afw.geom.skyWcs.skyWcs.SkyWcs wcs for the exposure.
 
         \return next shifted residual, as a maskedImage.
         """
@@ -791,7 +790,7 @@ def calculateRotationAngle(visitInfo, wcs):
         A rotation angle of 90 degrees is defined with North along the +x axis and East along the -y axis.
     """
     p_angle = visitInfo.getBoresightParAngle().asRadians()
-    cd = wcs.getCDMatrix()
+    cd = wcs.getCdMatrix()
     cd_rot = (numpy.arctan2(-cd[0, 1], cd[0, 0]) + numpy.arctan2(cd[1, 0], cd[1, 1]))/2.
     rotation_angle = afwGeom.Angle(cd_rot + p_angle)
     return rotation_angle
