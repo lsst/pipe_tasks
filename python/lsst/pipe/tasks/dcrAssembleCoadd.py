@@ -620,7 +620,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             scrVariance = result.getVariance().getArray()
             nanInds = numpy.isnan(srcImage)
             mask.getArray()[nanInds] = mask.getPlaneBitMask("NO_DATA")
-            result.setMask(shiftMask(mask, dcr, useInverse=useInverse))
+            result.setMask(DcrAssembleCoaddTask.shiftMask(mask, dcr, useInverse=useInverse))
 
             srcImage[nanInds] = 0.
             # scrVariance[nanInds] = numpy.inf
@@ -646,7 +646,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             # The DcrModels are MaskedImages, which only support in-place operations.
             newModel *= gain
             newModel += oldModel[bbox, afwImage.PARENT]
-            newModel /= 1. + gain
+            newModel.getImage().getArray()[:, :] /= 1. + gain
+            newModel.getVariance().getArray()[:, :] /= 1. + gain
 
     @staticmethod
     def dcrShiftCalculate(visitInfo, wcs, lambdaEff, filterWidth, dcrNSubbands):
@@ -661,7 +662,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         \return named tuple `dcr` containing the shift due to DCR, in pixels.
         """
-        rotation = calculateRotationAngle(visitInfo, wcs)
+        rotation = DcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
 
         dcr = namedtuple("dcr", ["dx", "dy"])
         dcrShift = []
@@ -723,38 +724,60 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             yield self.convolveDcrModelPlane(residual, dcr, bbox=bbox,
                                              useInverse=True, useFFT=self.config.useFFT)
 
+    @staticmethod
+    def calculateRotationAngle(visitInfo, wcs):
+        """Calculate the sky rotation angle of an exposure.
 
-def shiftMask(mask, shift, useInverse=False):
-    """!
-    \breif Shift a mask and grow each mask plane by one pixel.
+        Parameters
+        ----------
+        exposure : lsst.afw.image.ExposureD
+            An LSST exposure object.
 
-    \param[in] shift: shift calculated with `dcrShiftCalculate`.
-    \param[in] useInverse: Use the reverse of `shift` for the shift.
+        Returns
+        -------
+        lsst.afw.geom.Angle
+            The rotation of the image axis, East from North.
+            A rotation angle of 0 degrees is defined with North along the +y axis and East along the +x axis.
+            A rotation angle of 90 degrees is defined with North along the +x axis and East along the -y axis.
+        """
+        parAngle = visitInfo.getBoresightParAngle().asRadians()
+        cd = wcs.getCdMatrix()
+        cdAngle = (numpy.arctan2(-cd[0, 1], cd[0, 0]) + numpy.arctan2(cd[1, 0], cd[1, 1]))/2.
+        rotAngle = afwGeom.Angle(cdAngle + parAngle)
+        return rotAngle
 
-    \return the shifted mask.
-    """
-    if useInverse:
-        dx0 = -numpy.ceil(shift.dx)
-        dy0 = -numpy.ceil(shift.dy)
-    else:
-        dx0 = numpy.floor(shift.dx)
-        dy0 = numpy.floor(shift.dy)
+    @staticmethod
+    def shiftMask(mask, shift, useInverse=False):
+        """!
+        \brief Shift a mask and grow each mask plane by one pixel.
 
-    bboxFull = mask.getBBox()
-    retMask = mask.Factory(bboxFull)
+        \param[in] shift: shift calculated with `dcrShiftCalculate`.
+        \param[in] useInverse: Use the reverse of `shift` for the shift.
 
-    bufferXSize = numpy.abs(dx0) + 1
-    bufferYSize = numpy.abs(dy0) + 1
-    bboxBase = mask.getBBox()
-    bboxBase.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
+        \return the shifted mask.
+        """
+        if useInverse:
+            dx0 = -numpy.ceil(shift.dx)
+            dy0 = -numpy.ceil(shift.dy)
+        else:
+            dx0 = numpy.floor(shift.dx)
+            dy0 = numpy.floor(shift.dy)
 
-    for x0 in range(2):
-        for y0 in range(2):
-            bbox = mask.getBBox()
-            bbox.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
-            bbox.shift(afwGeom.Extent2I(dx0 + x0, dy0 + y0))
-            retMask[bbox, afwImage.PARENT] |= mask[bboxBase, afwImage.PARENT]
-    return retMask
+        bboxFull = mask.getBBox()
+        retMask = mask.Factory(bboxFull)
+
+        bufferXSize = numpy.abs(dx0) + 1
+        bufferYSize = numpy.abs(dy0) + 1
+        bboxBase = mask.getBBox()
+        bboxBase.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
+
+        for x0 in range(2):
+            for y0 in range(2):
+                bbox = mask.getBBox()
+                bbox.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
+                bbox.shift(afwGeom.Extent2I(dx0 + x0, dy0 + y0))
+                retMask[bbox, afwImage.PARENT] |= mask[bboxBase, afwImage.PARENT]
+        return retMask
 
 
 def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
@@ -772,25 +795,3 @@ def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
         wlStart = lambdaEff + wl
         wlEnd = wlStart + wlStep
         yield (wlStart, wlEnd)
-
-
-def calculateRotationAngle(visitInfo, wcs):
-    """Calculate the sky rotation angle of an exposure.
-
-    Parameters
-    ----------
-    exposure : lsst.afw.image.ExposureD
-        An LSST exposure object.
-
-    Returns
-    -------
-    lsst.afw.geom.Angle
-        The rotation of the image axis, East from North.
-        A rotation angle of 0 degrees is defined with North along the +y axis and East along the +x axis.
-        A rotation angle of 90 degrees is defined with North along the +x axis and East along the -y axis.
-    """
-    p_angle = visitInfo.getBoresightParAngle().asRadians()
-    cd = wcs.getCdMatrix()
-    cd_rot = (numpy.arctan2(-cd[0, 1], cd[0, 0]) + numpy.arctan2(cd[1, 0], cd[1, 1]))/2.
-    rotation_angle = afwGeom.Angle(cd_rot + p_angle)
-    return rotation_angle
