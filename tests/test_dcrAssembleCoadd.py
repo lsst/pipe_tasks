@@ -23,6 +23,8 @@ from __future__ import absolute_import, division, print_function
 from collections import namedtuple
 from astropy import units as u
 import numpy as np
+import scipy.ndimage.interpolation
+from scipy.ndimage.morphology import binary_dilation as dilate
 import unittest
 
 from lsst.afw.coord import Coord, IcrsCoord, Observatory, Weather
@@ -41,6 +43,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.config.lambdaEff = 478.
         self.config.filterWidth = 147.
         self.config.filterName = 'g'
+        badMaskPlanes = self.config.badMaskPlanes[:]
+        badMaskPlanes.append("CLIPPED")
         size = 40
         psfSize = 2
         nSrc = 5
@@ -69,6 +73,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                 image += f*np.outer(yVals, xVals)
             imageSum += image
             model.getVariance().getArray()[:, :] = image
+            model.mask.addMaskPlane("CLIPPED")
             self.dcrModels.append(model)
         maskVals = np.zeros_like(imageSum)
         maskVals[imageSum > 5*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
@@ -143,6 +148,55 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             self.assertFloatsAlmostEqual(model.getImage().getArray(), refModel.getImage().getArray())
             self.assertFloatsAlmostEqual(model.getVariance().getArray(), refModel.getVariance().getArray())
             self.assertFloatsAlmostEqual(model.getMask().getArray(), refModel.getMask().getArray())
+
+    def testShiftImagePlane(self):
+        rotAngle = Angle(0.)
+        azimuth = 200.*afwGeom.degrees
+        elevation = 75.*afwGeom.degrees
+        visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
+        wcs = self.makeDummyWcs(rotAngle, visitInfo=visitInfo)
+        dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
+                                                          self.config.lambdaEff,
+                                                          self.config.filterWidth,
+                                                          self.config.dcrNSubbands)
+        newMaskedImage = DcrAssembleCoaddTask.convolveDcrModelPlane(self.dcrModels[0], dcrShift[0],
+                                                                    bbox=self.bbox,
+                                                                    useFFT=False,
+                                                                    useInverse=False)
+        shift = (dcrShift[0].dy, dcrShift[0].dx)
+        refImage = scipy.ndimage.interpolation.shift(self.dcrModels[0].getImage().getArray(), shift)
+        refVariance = scipy.ndimage.interpolation.shift(self.dcrModels[0].getVariance().getArray(), shift)
+        self.assertFloatsAlmostEqual(newMaskedImage.getImage().getArray(), refImage)
+        self.assertFloatsAlmostEqual(newMaskedImage.getVariance().getArray(), refVariance)
+
+    def testShiftMaskPlane(self):
+        rotAngle = Angle(0.)
+        azimuth = 200.*afwGeom.degrees
+        elevation = 75.*afwGeom.degrees
+        visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
+        wcs = self.makeDummyWcs(rotAngle, visitInfo=visitInfo)
+        dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
+                                                          self.config.lambdaEff,
+                                                          self.config.filterWidth,
+                                                          self.config.dcrNSubbands)
+        model = self.dcrModels[0]
+        shiftedMask = DcrAssembleCoaddTask.shiftMask(model.getMask(), dcrShift[0],
+                                                     useInverse=False)
+        newMask = DcrAssembleCoaddTask.shiftMask(shiftedMask, dcrShift[0],
+                                                 useInverse=True)
+        detectMask = afwImage.Mask.getPlaneBitMask('DETECTED')
+
+        bufferXSize = np.ceil(np.abs(dcrShift[0].dx)) + 1
+        bufferYSize = np.ceil(np.abs(dcrShift[0].dy)) + 1
+        bboxClip = self.dcrModels[0].getMask().getBBox()
+        bboxClip.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
+
+        convolutionStruct = np.array([[True, True, True], [True, True, True], [True, True, True]])
+        maskRefCheck = dilate(model[bboxClip].getMask().getArray() == detectMask,
+                              iterations=1, structure=convolutionStruct)
+        newMaskCheck = newMask[bboxClip].getArray() == detectMask
+
+        self.assertFloatsEqual(newMaskCheck, maskRefCheck)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
