@@ -1654,7 +1654,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         """
         maskValue = mask.getPlaneBitMask(["SENSOR_EDGE", "INEXACT_PSF"])
         for visitMask in altMaskList:
-            if "EDGE" not in visitMask:
+            if "EDGE" in visitMask:
                 for spanSet in visitMask['EDGE']:
                     spanSet.clippedTo(mask.getBBox()).setMask(mask, maskValue)
 
