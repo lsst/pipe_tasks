@@ -497,9 +497,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for tempExpRef, expWeight, imageScaler, altMask in zipIterables:
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             if self.pixelScale is None:
-            imageScaler.scaleMaskedImage(refImage)
                 self.pixelScale = exposure.getWcs().getPixelScale()
             refImage = exposure.getMaskedImage()
+            imageScaler.scaleMaskedImage(refImage)
             refVals = refImage.getImage().getArray()
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
