@@ -128,8 +128,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                     dcr(dx=-0.018151534656568987, dy=-0.010503116422151829),
                     dcr(dx=0.36985291822812622, dy=0.21400990785188412)]
         for shiftOld, shiftNew in zip(refShift, dcrShift):
-            self.assertFloatsAlmostEqual(shiftOld.dx, shiftNew.dx)
-            self.assertFloatsAlmostEqual(shiftOld.dy, shiftNew.dy)
+            self.assertFloatsAlmostEqual(shiftOld.dx, shiftNew.dx, rtol=1e-6, atol=1e-8)
+            self.assertFloatsAlmostEqual(shiftOld.dy, shiftNew.dy, rtol=1e-6, atol=1e-8)
 
     def testRotationAngle(self):
         cdRotAngle = Angle(0.)
