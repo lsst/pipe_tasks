@@ -36,6 +36,8 @@ from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCo
 
 
 class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
+    """! A test case for the DCR-aware image coaddition algorithm.
+    """
 
     def setUp(self):
         self.config = DcrAssembleCoaddConfig()
@@ -82,6 +84,13 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.mask = self.dcrModels[0].getMask()
 
     def makeDummyWcs(self, rotAngle, visitInfo=None):
+        """! Make a World Coordinate System object for testing.
+
+        @param[in] rotAngle: rotation of the CD matrix, East from North as a lsst.afw.geom.Angle
+        @param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
+
+        @return wcs, a lsst.afw.geom.skyWcs.skyWcs.SkyWcs object.
+        """
         if visitInfo is None:
             crval = IcrsCoord(Angle(0.), Angle(0.))
         else:
@@ -92,6 +101,14 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         return wcs
 
     def makeDummyVisitInfo(self, azimuth, elevation):
+        """! Make a self-consistent visitInfo object for testing.
+
+        For simplicity, the simulated observation is assumed to be taken on the local meridian.
+        @param[in] azimuth: azimuth angle of the simulated observation, as a lsst.afw.geom.Angle
+        @param[in] elevation: elevation angle of the simulated observation, as a lsst.afw.geom.Angle
+
+        @return visitInfo: lsst.afw.image.VisitInfo for the exposure.
+        """
         lsstLat = -30.244639*afwGeom.degrees
         lsstLon = -70.749417*afwGeom.degrees
         lsstAlt = 2663.
@@ -114,7 +131,11 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                                        )
         return visitInfo
 
-    def testShift(self):
+    def testDcrShiftCalculation(self):
+        """! Test that the shift in pixels due to DCR is consistently computed.
+
+        The shift is compared to pre-computed values.
+        """
         dcr = namedtuple("dcr", ["dx", "dy"])
         rotAngle = Angle(0.)
         azimuth = 30.*afwGeom.degrees
@@ -133,6 +154,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             self.assertFloatsAlmostEqual(shiftOld.dy, shiftNew.dy, rtol=1e-6, atol=1e-8)
 
     def testRotationAngle(self):
+        """! Test that he sky rotation angle is consistently computed.
+
+        The rotation is compared to pre-computed values.
+        """
         cdRotAngle = Angle(0.)
         azimuth = 130.*afwGeom.degrees
         elevation = 70.*afwGeom.degrees
@@ -166,6 +191,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             self.assertMaskedImagesEqual(model, refModel)
 
     def testShiftImagePlane(self):
+        """! Verify the shift calculation for the image and variance planes.
+
+        The shift of the mask plane is tested separately since it is calculated differently.
+        """
         rotAngle = Angle(0.)
         azimuth = 200.*afwGeom.degrees
         elevation = 75.*afwGeom.degrees
@@ -186,6 +215,11 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(newMaskedImage.getVariance().getArray(), refVariance)
 
     def testShiftMaskPlane(self):
+        """! Verify the shift calculation for the mask plane.
+
+        The shift of the image and variance planes are tested separately
+        since they are calculated differently.
+        """
         rotAngle = Angle(0.)
         azimuth = 200.*afwGeom.degrees
         elevation = 75.*afwGeom.degrees
@@ -207,6 +241,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         bboxClip = self.dcrModels[0].getMask().getBBox()
         bboxClip.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
 
+        # Shifting the mask grows each mask plane by one pixel in the direction of the shift,
+        #  so a shift followed by the reverse shift should be the same as a dilation by one pixel.
         convolutionStruct = np.array([[True, True, True], [True, True, True], [True, True, True]])
         maskRefCheck = dilate(model[bboxClip].getMask().getArray() == detectMask,
                               iterations=1, structure=convolutionStruct)
