@@ -142,13 +142,28 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         refAngle = Angle(-0.9344289857053072)
         self.assertAnglesNearlyEqual(refAngle, rotAngle)
 
-    def testConditionDcrModel(self):
+    def testConditionDcrModelNoChange(self):
+        """! Conditioning should not change the model if it is identical to the reference.
+
+        This additionally tests that the variance and mask planes do not change.
+        """
         refModels = [model.clone() for model in self.dcrModels]
-        DcrAssembleCoaddTask.conditionDcrModel(refModels, self.dcrModels, self.bbox)
+        DcrAssembleCoaddTask.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
         for model, refModel in zip(self.dcrModels, refModels):
-            self.assertFloatsAlmostEqual(model.getImage().getArray(), refModel.getImage().getArray())
-            self.assertFloatsAlmostEqual(model.getVariance().getArray(), refModel.getVariance().getArray())
-            self.assertFloatsAlmostEqual(model.getMask().getArray(), refModel.getMask().getArray())
+            self.assertMaskedImagesEqual(model, refModel)
+
+    def testConditionDcrModelWithChange(self):
+        """! Verify the effect of conditioning when the model changes by a known amount.
+
+        This additionally tests that the variance and mask planes do not change.
+        """
+        refModels = [model.clone() for model in self.dcrModels]
+        for model in self.dcrModels:
+            model.getImage().getArray()[:, :] *= 3.
+        DcrAssembleCoaddTask.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
+        for model, refModel in zip(self.dcrModels, refModels):
+            refModel.getImage().getArray()[:, :] *= 2.
+            self.assertMaskedImagesEqual(model, refModel)
 
     def testShiftImagePlane(self):
         rotAngle = Angle(0.)
