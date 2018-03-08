@@ -79,6 +79,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         maskVals[imageSum > 5*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
         for model in self.dcrModels:
             model.getMask().getArray()[:, :] = maskVals
+        self.mask = self.dcrModels[0].getMask()
 
     def makeDummyWcs(self, rotAngle, visitInfo=None):
         if visitInfo is None:
@@ -197,6 +198,37 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         newMaskCheck = newMask[bboxClip].getArray() == detectMask
 
         self.assertFloatsEqual(newMaskCheck, maskRefCheck)
+
+    def testRegularizationLargeClamp(self):
+        """! Frequency regularization should leave the models unchanged if all the clamp factor is large.
+
+        This also tests that noise-like pixels are not regularized.
+        """
+        modelRefs = [model.clone() for model in self.dcrModels]
+        DcrAssembleCoaddTask.regularizeModel(self.dcrModels, self.bbox, self.mask, nSigma=3., clamp=2.)
+        for model, modelRef in zip(self.dcrModels, modelRefs):
+            self.assertMaskedImagesEqual(model, modelRef)
+
+    def testRegularizationSmallClamp(self):
+        """! Test that large variations between model planes are reduced.
+
+        This also tests that noise-like pixels are not regularized.
+        """
+        nSigma = 3.
+        clamp = 1.1
+        modelRefs = [model.clone() for model in self.dcrModels]
+        templateImage = np.sum([model.getImage().getArray() for model in self.dcrModels], axis=0)
+        backgroundInds = self.mask.getArray() == 0
+        noiseLevel = nSigma*np.std(templateImage[backgroundInds])
+
+        DcrAssembleCoaddTask.regularizeModel(self.dcrModels, self.bbox, self.mask, nSigma=nSigma, clamp=clamp)
+        for model, modelRef in zip(self.dcrModels, modelRefs):
+            self.assertFloatsAlmostEqual(model.getMask().getArray(), modelRef.getMask().getArray())
+            self.assertFloatsAlmostEqual(model.getVariance().getArray(), modelRef.getVariance().getArray())
+            imageDiffHigh = model.getImage().getArray() - (templateImage*clamp + noiseLevel)
+            self.assertLessEqual(np.max(imageDiffHigh), 0.)
+            imageDiffLow = model.getImage().getArray() - (templateImage/clamp - noiseLevel)
+            self.assertGreaterEqual(np.max(imageDiffLow), 0.)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

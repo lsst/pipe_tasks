@@ -101,6 +101,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Restrict new solutions from changing by more than a factor of `clampModel`.",
         default=2.,
     )
+    regularizeSigma = pexConfig.Field(
+        dtype=float,
+        doc="Set the threshold to exclude noise-like pixels from frequency regularization.",
+        default=3.,
+    )
     clampFrequency = pexConfig.Field(
         dtype=float,
         doc="Restrict solutions from changing by more than a factor of `clampModel` between frequencies.",
@@ -357,7 +362,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                            useNonNegative=self.config.useNonNegative,
                                            clamp=self.config.clampModel)
                 dcrSubModelOut.append(newModel)
-        self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask, clamp=self.config.clampFrequency)
+        self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask,
+                             nSigma=self.config.regularizeSigma,
+                             clamp=self.config.clampFrequency)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
                                                              imageScalerList, weightList, altMaskList,
@@ -431,9 +438,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return newModel
 
     @staticmethod
-    def regularizeModel(dcrModels, bbox, mask, clamp=2.):
         """!
         \brief Restrict large variations in the model between subfilters.
+    def regularizeModel(dcrModels, bbox, mask, nSigma, clamp=2.):
 
         \param[in, out] dcrModels: A list of masked images, each containing
                                    the model for one subfilter.
@@ -442,21 +449,19 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         \param[in] clamp: Maximum factor each plane is allowed to deviate from the average.
         """
         nModels = len(dcrModels)
-        templateImage = afwImage.MaskedImageF(bbox)
-        excess = numpy.zeros_like(templateImage.getImage().getArray())
-        for model in dcrModels:
-            templateImage += model[bbox, afwImage.PARENT]
-        templateImageVals = templateImage.getImage().getArray()/nModels
+        templateImage = numpy.mean([model[bbox, afwImage.PARENT].getImage().getArray()
+                                    for model in dcrModels], axis=0)
+        excess = numpy.zeros_like(templateImage)
         backgroundInds = mask[bbox, afwImage.PARENT].getArray() == 0
-        noiseLevel = 3.*numpy.std(templateImageVals[backgroundInds])
+        noiseLevel = nSigma*numpy.std(templateImage[backgroundInds])
         for model in dcrModels:
             modelVals = model.getImage().getArray()
-            highInds = (modelVals > (templateImageVals*clamp + noiseLevel))
-            excess[highInds] += modelVals[highInds] - templateImageVals[highInds]*clamp
-            modelVals[highInds] = templateImageVals[highInds]*clamp
-            lowInds = (modelVals < templateImageVals/clamp - noiseLevel)
-            excess[lowInds] += modelVals[lowInds] - templateImageVals[lowInds]/clamp
-            modelVals[lowInds] = templateImageVals[lowInds]/clamp
+            highInds = (modelVals > (templateImage*clamp + noiseLevel))
+            excess[highInds] += modelVals[highInds] - templateImage[highInds]*clamp
+            modelVals[highInds] = templateImage[highInds]*clamp
+            lowInds = (modelVals < templateImage/clamp - noiseLevel)
+            excess[lowInds] += modelVals[lowInds] - templateImage[lowInds]/clamp
+            modelVals[lowInds] = templateImage[lowInds]/clamp
         excess /= nModels
         for model in dcrModels:
             modelVals = model.getImage().getArray()
