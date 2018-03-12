@@ -1,2 +1,0 @@
-EXAMPLE_PATH = examples python/lsst/pipe/tasks/
-MARKDOWN_SUPPORT = YES
