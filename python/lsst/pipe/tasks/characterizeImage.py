@@ -485,7 +485,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         detRes = self.detection.run(table=table, exposure=exposure, doSmooth=True)
         sourceCat = detRes.sources
         if detRes.fpSets.background:
-            background.append(detRes.fpSets.background)
+            for bg in detRes.fpSets.background:
+                background.append(bg)
 
         if self.config.doDeblend:
             self.deblend.run(exposure=exposure, sources=sourceCat)

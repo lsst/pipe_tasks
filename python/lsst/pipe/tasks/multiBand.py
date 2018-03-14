@@ -308,7 +308,8 @@ class DetectCoaddSourcesTask(CmdLineTask):
         sources = detections.sources
         fpSets = detections.fpSets
         if hasattr(fpSets, "background") and fpSets.background:
-            backgrounds.append(fpSets.background)
+            for bg in fpSets.background:
+                backgrounds.append(bg)
         return Struct(sources=sources, backgrounds=backgrounds)
 
     def write(self, exposure, results, patchRef):
