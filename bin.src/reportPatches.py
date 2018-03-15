@@ -30,7 +30,6 @@
 from __future__ import print_function
 
 import lsst.pex.config as pexConfig
-import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 
@@ -80,9 +79,7 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
             (raRange[1], decRange[1]),
             (raRange[0], decRange[1]),
         ]
-        coordList = [
-            afwCoord.IcrsCoord(afwGeom.Angle(ra, afwGeom.degrees), afwGeom.Angle(dec, afwGeom.degrees))
-            for ra, dec in raDecList]
+        coordList = [afwGeom.SpherePoint(ra, dec, afwGeom.degrees) for ra, dec in raDecList]
         tractPatchList = skyMap.findTractPatchList(coordList)
         for tractInfo, patchInfoList in tractPatchList:
             for patchInfo in patchInfoList:

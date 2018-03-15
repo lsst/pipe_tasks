@@ -2,7 +2,6 @@ from __future__ import absolute_import, division, print_function
 from builtins import object
 import re
 import lsst.daf.base as dafBase
-import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 from lsst.log import Log
@@ -170,7 +169,7 @@ class ObjectMaskCatalog(object):
                     rec["type"] = _type
                     rec["id"] = _id
                     rec["mag"] = mag
-                    rec.setCoord(afwCoord.Fk5Coord(ra, dec))
+                    rec.setCoord(afwGeom.SpherePoint(ra, dec))
 
                     rec["angle"] = angle
                     rec["height"] = height

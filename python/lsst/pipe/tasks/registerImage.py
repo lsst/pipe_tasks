@@ -114,7 +114,7 @@ class RegisterTask(Task):
             self.log.debug("Registration WCS RMS iteration %d: %f pixels",
                            i, sipFit.getScatterInPixels())
             wcs = sipFit.getNewWcs()
-            dr = [m.first.get(refCoordKey).angularSeparation(
+            dr = [m.first.get(refCoordKey).separation(
                 wcs.pixelToSky(m.second.get(inCentroidKey))).asArcseconds() for
                 m in copyMatches]
             dr = numpy.array(dr)

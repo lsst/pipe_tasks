@@ -50,7 +50,6 @@ import lsst.utils.tests
 import lsst.pex.exceptions
 from lsst.daf.base import DateTime
 import lsst.afw.cameraGeom.testUtils
-from lsst.afw.coord import Coord, IcrsCoord
 import lsst.afw.geom
 from lsst.afw.geom import degrees, makeCdMatrix, makeSkyWcs, Polygon
 import lsst.afw.image
@@ -101,7 +100,7 @@ class MockExposure(object):
         cdMatrix = makeCdMatrix(scale=scale)
         wcs = makeSkyWcs(
             crpix=lsst.afw.geom.Point2D(5, 5),
-            crval=IcrsCoord(10*lsst.afw.geom.degrees, 45*lsst.afw.geom.degrees),
+            crval=lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
             cdMatrix=cdMatrix,
         )
         expInfo.setWcs(wcs)
@@ -125,7 +124,7 @@ class MockExposure(object):
         cdMatrix = makeCdMatrix(scale=scale)
         return makeSkyWcs(
             crpix = lsst.afw.geom.Point2D(5, 5),
-            crval = IcrsCoord(10*lsst.afw.geom.degrees, 45*lsst.afw.geom.degrees),
+            crval = lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
             cdMatrix = cdMatrix,
         )
 
@@ -138,8 +137,8 @@ class MockExposure(object):
             DateTime(65321.1, DateTime.MJD, DateTime.TAI),
             12345.1,
             45.1*lsst.afw.geom.degrees,
-            IcrsCoord(23.1*degrees, 73.2*degrees),
-            Coord(134.5*degrees, 33.3*degrees),
+            lsst.afw.geom.SpherePoint(23.1, 73.2, degrees),
+            lsst.afw.geom.SpherePoint(134.5, 33.3, degrees),
             1.73,
             73.2*degrees,
             lsst.afw.image.RotType.SKY,

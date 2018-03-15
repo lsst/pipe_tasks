@@ -26,7 +26,6 @@ from builtins import object
 import unittest
 
 import lsst.utils.tests
-import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask, SelectStruct
 from lsst.pipe.tasks.coaddBase import CoaddBaseTask
@@ -93,8 +92,8 @@ class DummyDataRef(object):
 
 
 # Common defaults for createPatch and createImage
-CENTER = afwCoord.IcrsCoord(0*afwGeom.degrees, 90*afwGeom.degrees)
-ROTATEAXIS = afwCoord.IcrsCoord(0*afwGeom.degrees, 0*afwGeom.degrees)
+CENTER = afwGeom.SpherePoint(0, 90, afwGeom.degrees)
+ROTATEAXIS = afwGeom.SpherePoint(0, 0, afwGeom.degrees)
 DIMS = afwGeom.Extent2I(3600, 3600)
 SCALE = 0.5*afwGeom.arcseconds
 
@@ -103,7 +102,7 @@ def createPatch(
     tractId=1, patchId=(2, 3),  # Tract and patch identifier, for dataId
     dims=DIMS,                # Patch dimensions (Extent2I)
     xy0=afwGeom.Point2I(1234, 5678),  # Patch xy0 (Point2I)
-    center=CENTER,                  # Celestial coordinates of center (IcrsCoord)
+    center=CENTER,                  # ICRS sky position of center (lsst.afw.geom.SpherePoint)
     scale=SCALE                     # Pixel scale (Angle)
 ):
     crpix = afwGeom.Point2D(xy0) + afwGeom.Extent2D(dims)*0.5
@@ -118,15 +117,14 @@ def createPatch(
 
 def createImage(
     dataId={"name": "foobar"},          # Data identifier
-    center=CENTER,                      # Celestial coordinates of center (IcrsCoord)
-    rotateAxis=ROTATEAXIS,              # Rotation axis (IcrsCoord)
+    center=CENTER,                      # ICRS sky position of center (lsst.afw.geom.SpherePoint)
+    rotateAxis=ROTATEAXIS,              # Rotation axis (lsst.afw.geom.SpherePoint)
     rotateAngle=0*afwGeom.degrees,      # Rotation angle/distance to move (Angle)
     dims=DIMS,                          # Image dimensions (Extent2I)
     scale=SCALE                         # Pixel scale (Angle)
 ):
     crpix = afwGeom.Point2D(afwGeom.Extent2D(dims)*0.5)
-    center = center.clone()  # Ensure user doesn't need it, because we're mangling it
-    center.rotate(rotateAxis, rotateAngle)
+    center = center.rotated(rotateAxis, rotateAngle)
     cdMatrix = afwGeom.makeCdMatrix(scale=scale)
     wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
     return SelectStruct(DummyDataRef(dataId), wcs, afwGeom.Box2I(afwGeom.Point2I(0, 0),
@@ -154,7 +152,7 @@ class WcsSelectImagesTestCase(unittest.TestCase):
 
     def testDisjoint(self):
         self.check(createPatch(),
-                   createImage(center=afwCoord.IcrsCoord(0*afwGeom.degrees, -90*afwGeom.degrees)),
+                   createImage(center=afwGeom.SpherePoint(0, -90, afwGeom.degrees)),
                    False)
 
     def testIntersect(self):
