@@ -50,8 +50,8 @@ import lsst.utils.tests
 import lsst.pex.exceptions
 from lsst.daf.base import DateTime
 import lsst.afw.cameraGeom.testUtils
+from lsst.afw.coord import Observatory, Weather
 import lsst.afw.geom
-from lsst.afw.geom import degrees, makeCdMatrix, makeSkyWcs, Polygon
 import lsst.afw.image
 from lsst.afw.detection import GaussianPsf
 from lsst.afw.math import ChebyshevBoundedField
@@ -96,9 +96,9 @@ class MockExposure(object):
         exp.setDetector(detector)
 
         expInfo = exp.getInfo()
-        scale = 5.1e-5 * degrees
-        cdMatrix = makeCdMatrix(scale=scale)
-        wcs = makeSkyWcs(
+        scale = 5.1e-5*lsst.afw.geom.degrees
+        cdMatrix = lsst.afw.geom.makeCdMatrix(scale=scale)
+        wcs = lsst.afw.geom.makeSkyWcs(
             crpix=lsst.afw.geom.Point2D(5, 5),
             crval=lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
             cdMatrix=cdMatrix,
@@ -109,7 +109,7 @@ class MockExposure(object):
         calib.setFluxMag0(1.1e12, 2.2e10)
         expInfo.setCalib(calib)
         expInfo.setApCorrMap(self.makeApCorrMap())
-        expInfo.setValidPolygon(Polygon(lsst.afw.geom.Box2D(bbox).getCorners()))
+        expInfo.setValidPolygon(lsst.afw.geom.Polygon(lsst.afw.geom.Box2D(bbox).getCorners()))
         if self.version > 1:
             expInfo.setVisitInfo(self.makeVisitInfo())
 
@@ -120,9 +120,9 @@ class MockExposure(object):
 
     @staticmethod
     def makeWcs():
-        scale = 5.1e-5 * degrees
-        cdMatrix = makeCdMatrix(scale=scale)
-        return makeSkyWcs(
+        scale = 5.1e-5*lsst.afw.geom.degrees
+        cdMatrix = lsst.afw.geom.makeCdMatrix(scale=scale)
+        return lsst.afw.geom.makeSkyWcs(
             crpix = lsst.afw.geom.Point2D(5, 5),
             crval = lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
             cdMatrix = cdMatrix,
@@ -137,13 +137,13 @@ class MockExposure(object):
             DateTime(65321.1, DateTime.MJD, DateTime.TAI),
             12345.1,
             45.1*lsst.afw.geom.degrees,
-            lsst.afw.geom.SpherePoint(23.1, 73.2, degrees),
-            lsst.afw.geom.SpherePoint(134.5, 33.3, degrees),
+            lsst.afw.geom.SpherePoint(23.1, 73.2, lsst.afw.geom.degrees),
+            lsst.afw.geom.SpherePoint(134.5, 33.3, lsst.afw.geom.degrees),
             1.73,
-            73.2*degrees,
+            73.2*lsst.afw.geom.degrees,
             lsst.afw.image.RotType.SKY,
-            lsst.afw.coord.Observatory(11.1*degrees, 22.2*degrees, 0.333),
-            lsst.afw.coord.Weather(1.1, 2.2, 34.5),
+            Observatory(11.1*lsst.afw.geom.degrees, 22.2*lsst.afw.geom.degrees, 0.333),
+            Weather(1.1, 2.2, 34.5),
         )
 
     @staticmethod
