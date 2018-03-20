@@ -161,7 +161,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     _DefaultName = "dcrAssembleCoadd"
 
     @pipeBase.timeMethod
-    def run(self, dataRef, selectDataList=[]):
+    def run(self, dataRef, selectDataList=[], tempExpRefList=None):
         """! Assemble a coadd from a set of Warps.
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and find scalings to
@@ -183,11 +183,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                  - coaddExposure: coadded exposure
                  - nImage: exposure count image
         """
-        retStruct = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList)
+        retStruct = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList,
+                                          tempExpRefList=tempExpRefList)
         for subfilter, coaddExposure in enumerate(retStruct.dcrCoadds):
             if self.config.doWrite:
                 self.writeDcrCoadd(dataRef, coaddExposure, subfilter)
-        return pipeBase.Struct(coaddExposure=retStruct.coaddExposure, nImage=retStruct.nImage)
+        return pipeBase.Struct(coaddExposure=retStruct.coaddExposure, nImage=retStruct.nImage,
+                               dcrCoadds=retStruct.dcrCoadds)
 
     def writeDcrCoadd(self, dataRef, coaddExposure, subfilter):
         """! Persist DCR coadds using the Butler.
