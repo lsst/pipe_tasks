@@ -41,10 +41,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
     def setUp(self):
         self.config = DcrAssembleCoaddConfig()
-        self.config.dcrNSubbands = 3
+        self.config.dcrNumSubbands = 3
         self.config.lambdaEff = 478.
         self.config.filterWidth = 147.
-        self.config.filterName = 'g'
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         size = 40
@@ -64,7 +63,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.pixelScale = 0.2*afwGeom.arcseconds
 
         imageSum = np.zeros((size, size))
-        for subfilter in range(self.config.dcrNSubbands):
+        for subfilter in range(self.config.dcrNumSubbands):
             flux = (self.randGen.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             model = afwImage.MaskedImageF(self.bbox)
             image = model.getImage().getArray()
@@ -145,7 +144,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
-                                                          self.config.dcrNSubbands)
+                                                          self.config.dcrNumSubbands)
         refShift = [dcr(dx=-0.55832265311722795, dy=-0.32306512577396451),
                     dcr(dx=-0.018151534656568987, dy=-0.010503116422151829),
                     dcr(dx=0.36985291822812622, dy=0.21400990785188412)]
@@ -203,7 +202,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
-                                                          self.config.dcrNSubbands)
+                                                          self.config.dcrNumSubbands)
         newMaskedImage = DcrAssembleCoaddTask.convolveDcrModelPlane(self.dcrModels[0], dcrShift[0],
                                                                     bbox=self.bbox,
                                                                     useFFT=False,
@@ -228,7 +227,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
-                                                          self.config.dcrNSubbands)
+                                                          self.config.dcrNumSubbands)
         model = self.dcrModels[0]
         shiftedMask = DcrAssembleCoaddTask.shiftMask(model.getMask(), dcrShift[0],
                                                      useInverse=False)

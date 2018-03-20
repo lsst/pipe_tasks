@@ -23,7 +23,7 @@ from __future__ import absolute_import, division, print_function
 #
 
 from collections import namedtuple
-import numpy
+import numpy as np
 import scipy.ndimage.interpolation
 from lsst.afw.coord.refraction import differentialRefraction
 import lsst.afw.geom as afwGeom
@@ -32,89 +32,77 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.pipe.tasks.assembleCoadd import _subBBoxIter
-from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
-from lsst.pipe.tasks.assembleCoadd import CompareWarpAssembleCoaddTask
-from lsst.pipe.tasks.assembleCoadd import CompareWarpAssembleCoaddConfig
+from .assembleCoadd import _subBBoxIter
+from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
 
-__all__ = ["DcrAssembleCoaddTask"]
+__all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
 
 class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
-    filterName = pexConfig.Field(
-        dtype=str,
-        doc="Name of the band-defining filter of the observations.",
-        default='g',
-    )
     bufferSize = pexConfig.Field(
         dtype=int,
-        doc="Number of pixels to grow the subregion bounding box by.",
+        doc="Number of pixels to grow the subregion bounding box by to account for DCR at the edge.",
         default=5,
     )
     useFFT = pexConfig.Field(
         dtype=bool,
-        doc="Option to use use Fourier transforms for the convolutions.",
+        doc="Use Fourier transforms for the convolution?",
         default=False,
     )
     usePsf = pexConfig.Field(
         dtype=bool,
-        doc="Option to use the PSF as part of the convolution; requires `useFFT=True`.",
+        doc="Convolve models with the PSF of the exposures? Requires `useFFT=True`.",
         default=False,
     )
-    dcrNSubbands = pexConfig.Field(
+    dcrNumSubbands = pexConfig.Field(
         dtype=int,
         doc="Number of sub-bands to forward model chromatic effects to fit the supplied exposures.",
         default=3,
     )
-    maxNIter = pexConfig.Field(
+    maxNumIter = pexConfig.Field(
         dtype=int,
         doc="Maximum number of iterations of forward modeling.",
         default=8,
     )
-    minNIter = pexConfig.Field(
+    minNumIter = pexConfig.Field(
         dtype=int,
         doc="Minimum number of iterations of forward modeling.",
         default=3,
     )
     convergenceThreshold = pexConfig.Field(
         dtype=float,
-        doc="Target change in convergence between iteration of forward modeling.",
+        doc="Target relative change in convergence between iterations of forward modeling.",
         default=0.001,
     )
     useConvergence = pexConfig.Field(
         dtype=bool,
-        doc="Turn on or off the convergence test as a forward modeling end condition.",
+        doc="Use convergence test as a forward modeling end condition.",
         default=True,
     )
     doWeightGain = pexConfig.Field(
         dtype=bool,
-        doc="Use the calculated convergence metric to accelerate forward modeling.",
+        doc="Use the calculated convergence metric to accelerate forward modeling?",
         default=True,
     )
     doAirmassWeight = pexConfig.Field(
         dtype=bool,
-        doc="Weight exposures by airmass.",
+        doc="Weight exposures by airmass? Useful if there are relatively few high-airmass observations.",
         default=True,
     )
-    clampModel = pexConfig.Field(
+    modelClampFactor = pexConfig.Field(
         dtype=float,
-        doc="Restrict new solutions from changing by more than a factor of `clampModel`.",
+        doc="Maximum relative change of the model allowed between iterations.",
         default=2.,
     )
     regularizeSigma = pexConfig.Field(
         dtype=float,
-        doc="Set the threshold to exclude noise-like pixels from frequency regularization.",
+        doc="Threshold to exclude noise-like pixels from frequency regularization.",
         default=3.,
     )
     clampFrequency = pexConfig.Field(
         dtype=float,
-        doc="Restrict solutions from changing by more than a factor of `clampModel` between frequencies.",
+        doc="Maximum relative change of the model allowed between subfilters.",
         default=2.,
-    )
-    useNonNegative = pexConfig.Field(
-        dtype=bool,
-        doc="Force the model to be non-negative.",
-        default=False,
     )
     maxGain = pexConfig.Field(
         dtype=float,
@@ -203,7 +191,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
             # The variance must be positive; work around for DM-3201.
             varArray = coaddExposure.getVariance().getArray()
-            varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
+            varArray[:] = np.where(varArray > 0, varArray, np.inf)
 
         if self.config.doMaskBrightObjects:
             brightObjectMasks = self.readBrightObjectMasks(dataRef)
@@ -235,7 +223,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
-        subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNSubbands)
+        subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNumSubbands)
 
         statsCtrl, statsFlags = self.prepareStats(mask=badPixelMask)
 
@@ -256,7 +244,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
             convergenceCheck = 1.
-            while (convergenceCheck > self.config.convergenceThreshold) or (modelIter < self.config.minNIter):
+            while ((convergenceCheck > self.config.convergenceThreshold) or
+                   (modelIter < self.config.minNumIter)):
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
                                               weightList, altMaskList, statsFlags, statsCtrl,
@@ -269,7 +258,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 except Exception as e:
                     self.log.warn("Error during iteration %s while computing coadd %s: %s", subBBox, e)
                     break
-                if modelIter > self.config.maxNIter:
+                if modelIter > self.config.maxNumIter:
                     self.log.warn("Coadd %s reached maximum iterations. Convergence: %s",
                                   subBBox, convergenceMetric)
                     break
@@ -293,7 +282,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         in each subfilter.
         Stack the shifted residuals and apply them as a correction to the solution
         from the previous iteration.
-        Restrict the new model solutions from varying by more than a factor of `clampModel`
+        Restrict the new model solutions from varying by more than a factor of `modelClampFactor`
         from the last solution, and additionally restrict the individual subfilter models
         from varying by more than a factor of `clampFrequency` from their average.
         Finally, mitigate potentially oscillating solutions by averaging the new solution with the solution
@@ -357,8 +346,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                    afwImage.Mask.getPlaneBitMask("NO_DATA"))
                 residual.setXY0(bboxGrow.getBegin())
                 newModel = self.clampModel(residual, oldModel, bboxGrow,
-                                           useNonNegative=self.config.useNonNegative,
-                                           clamp=self.config.clampModel)
+                                           clamp=self.config.modelClampFactor)
                 dcrSubModelOut.append(newModel)
         self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask,
                              nSigma=self.config.regularizeSigma,
@@ -392,20 +380,19 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @return weight: Goodness of fit metric of the residual image.
         """
         residualVals = residual.getImage().getArray()
-        finiteInds = (numpy.isfinite(residualVals))
+        finiteInds = (np.isfinite(residualVals))
         goodMaskInds = (residual.getMask().getArray() & goodMask) == goodMask
-        weight = 1./numpy.std(residualVals[finiteInds*goodMaskInds])
+        weight = 1./np.std(residualVals[finiteInds*goodMaskInds])
         return weight
 
     @staticmethod
-    def clampModel(residual, oldModel, bbox, useNonNegative=False, clamp=2.):
+    def clampModel(residual, oldModel, bbox, clamp=2.):
         """! Restrict large variations in the model between iterations.
 
         @param[in, out] residual: stacked residual masked image after subtracting DCR-matched templates.
                                   To save memory, the residual is modified in-place.
         @param[in] oldModel: The model from the previous iteration.
         @param[in] bbox: Sub-region to coadd
-        @param[in] useNonNegative: option to force solution to be positive definite.
         @param[in] clamp: Maximum factor the new image is allowed to deviate from the last iteration.
 
         @return newModel: masked image, equal to the sum of the oldModel and residual,
@@ -414,21 +401,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         newModel = residual
         newModel += oldModel[bbox, afwImage.PARENT]
         newImage = newModel.getImage().getArray()
-        finiteInds = numpy.isfinite(newImage)
+        finiteInds = np.isfinite(newImage)
         newImage[~finiteInds] = 0.
         newVariance = newModel.getVariance().getArray()
         newVariance[~finiteInds] = 0.
-        if useNonNegative:
-            negInds = newImage < 0.
-            newImage[negInds] = 0.
         oldImage = oldModel[bbox, afwImage.PARENT].getImage().getArray()
         oldVariance = oldModel[bbox, afwImage.PARENT].getVariance().getArray()
-        highInds = ((numpy.abs(newImage) > numpy.abs(oldImage*clamp))*
-                    (numpy.abs(newVariance) > numpy.abs(oldVariance*clamp)))
+        highInds = ((np.abs(newImage) > np.abs(oldImage*clamp))*
+                    (np.abs(newVariance) > np.abs(oldVariance*clamp)))
         newImage[highInds] = oldImage[highInds]*clamp
         newVariance[highInds] = oldVariance[highInds]*clamp
-        lowInds = ((numpy.abs(newImage) < numpy.abs(oldImage/clamp))*
-                   (numpy.abs(newVariance) < numpy.abs(oldVariance/clamp)))
+        lowInds = ((np.abs(newImage) < np.abs(oldImage/clamp))*
+                   (np.abs(newVariance) < np.abs(oldVariance/clamp)))
         newImage[lowInds] = oldImage[lowInds]/clamp
         newVariance[lowInds] = oldVariance[lowInds]/clamp
         return newModel
@@ -446,11 +430,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @param[in] clamp: Maximum factor each plane is allowed to deviate from the average.
         """
         nModels = len(dcrModels)
-        templateImage = numpy.mean([model[bbox, afwImage.PARENT].getImage().getArray()
-                                    for model in dcrModels], axis=0)
-        excess = numpy.zeros_like(templateImage)
+        templateImage = np.mean([model[bbox, afwImage.PARENT].getImage().getArray()
+                                 for model in dcrModels], axis=0)
+        excess = np.zeros_like(templateImage)
         backgroundInds = mask[bbox, afwImage.PARENT].getArray() == 0
-        noiseLevel = nSigma*numpy.std(templateImage[backgroundInds])
+        noiseLevel = nSigma*np.std(templateImage[backgroundInds])
         for model in dcrModels:
             modelVals = model.getImage().getArray()
             highInds = (modelVals > (templateImage*clamp + noiseLevel))
@@ -482,7 +466,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @return Quality of fit metric for all input exposures, within the sub-region.
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
-        modelWeightList = [1.0]*self.config.dcrNSubbands
+        modelWeightList = [1.0]*self.config.dcrNumSubbands
         convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         dcrModelCut = [model[bbox, afwImage.PARENT] for model in dcrModels]
         modelWeights = afwMath.statisticsStack(dcrModelCut, statsFlags, statsCtrl, modelWeightList,
@@ -506,17 +490,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             wcs = exposure.getInfo().getWcs()
             templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, bbox, wcs)
             templateVals = templateImage.getImage().getArray()
-            diffVals = numpy.abs(refVals - templateVals)*modelVals
-            refVals = numpy.abs(refVals)*modelVals
+            diffVals = np.abs(refVals - templateVals)*modelVals
+            refVals = np.abs(refVals)*modelVals
 
-            finiteInds = (numpy.isfinite(refVals))*(numpy.isfinite(diffVals))
+            finiteInds = (np.isfinite(refVals))*(np.isfinite(diffVals))
             goodMaskInds = (refImage.getMask().getArray() & convergeMask) == convergeMask
             inds = finiteInds*goodMaskInds
-            len_list.append(numpy.sum(inds))
-            if numpy.sum(inds) == 0:
-                metricList.append(numpy.nan)
+            len_list.append(np.sum(inds))
+            if np.sum(inds) == 0:
+                metricList.append(np.nan)
                 continue
-            singleMetric = numpy.sum(diffVals[inds])/numpy.sum(refVals[inds])
+            singleMetric = np.sum(diffVals[inds])/np.sum(refVals[inds])
             metric += singleMetric
             metricList.append(singleMetric)
             weight += 1.
@@ -528,25 +512,25 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             return metric/weight
 
     @staticmethod
-    def dcrDivideCoadd(coaddExposure, dcrNSubbands):
+    def dcrDivideCoadd(coaddExposure, dcrNumSubbands):
         """! Divide a coadd into equal subfilter coadds.
 
         @param[in] coaddExposure: The target image for the coadd
-        @param[in] dcrNSubbands: The number of subfilters to divide the coadd into.
+        @param[in] dcrNumSubbands: The number of subfilters to divide the coadd into.
 
         @return dcrModels: A list of masked images, each containing
                            the model for one subfilter.
         """
-        dcrModels = [coaddExposure.getMaskedImage().clone() for f in range(dcrNSubbands)]
+        dcrModels = [coaddExposure.getMaskedImage().clone() for f in range(dcrNumSubbands)]
         for model in dcrModels:
             modelImage = model.getImage().getArray()
-            nanInds = numpy.isnan(modelImage)
+            nanInds = np.isnan(modelImage)
             modelImage[nanInds] = 0.
             mask = model.getMask()
             mask &= ~mask.getPlaneBitMask("CLIPPED")
             mask.getArray()[nanInds] = mask.getPlaneBitMask("NO_DATA")
-            model.getImage().getArray()[:, :] /= dcrNSubbands
-            model.getVariance().getArray()[:, :] /= dcrNSubbands
+            model.getImage().getArray()[:, :] /= dcrNumSubbands
+            model.getVariance().getArray()[:, :] /= dcrNumSubbands
         return dcrModels
 
     @staticmethod
@@ -615,7 +599,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             mask &= ~mask.getPlaneBitMask("CLIPPED")
             srcImage = result.getImage().getArray()
             scrVariance = result.getVariance().getArray()
-            nanInds = numpy.isnan(srcImage)
+            nanInds = np.isnan(srcImage)
             mask.getArray()[nanInds] = mask.getPlaneBitMask("NO_DATA")
             result.setMask(DcrAssembleCoaddTask.shiftMask(mask, dcr, useInverse=useInverse))
 
@@ -646,14 +630,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             newModel.getVariance().getArray()[:, :] /= 1. + gain
 
     @staticmethod
-    def dcrShiftCalculate(visitInfo, wcs, lambdaEff, filterWidth, dcrNSubbands):
+    def dcrShiftCalculate(visitInfo, wcs, lambdaEff, filterWidth, dcrNumSubbands):
         """! Calculate the shift in pixels of an exposure due to DCR.
 
         @param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
         @param[in] wcs: lsst.afw.geom.skyWcs.skyWcs.SkyWcs wcs for the exposure.
         @param[in] lambdaEff: Effective center wavelength of the filter, in nm.
         @param[in] filterWidth: Width of the filter, in nm.
-        @param[in] dcrNSubbands: Number of subfilters to divide the full band into.
+        @param[in] dcrNumSubbands: Number of subfilters to divide the full band into.
 
         @return named tuple `dcr` containing the shift due to DCR, in pixels.
         """
@@ -661,7 +645,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         dcr = namedtuple("dcr", ["dx", "dy"])
         dcrShift = []
-        for wl0, wl1 in wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
+        for wl0, wl1 in wavelengthGenerator(lambdaEff, filterWidth, dcrNumSubbands):
             # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
             diffRefractAmp0 = differentialRefraction(wl0, lambdaEff,
                                                      elevation=visitInfo.getBoresightAzAlt().getLatitude(),
@@ -673,8 +657,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                      weather=visitInfo.getWeather())
             diffRefractAmp = (diffRefractAmp0 + diffRefractAmp1)/2.
             diffRefractPix = diffRefractAmp.asArcseconds()/wcs.getPixelScale().asArcseconds()
-            dcrShift.append(dcr(dx=diffRefractPix*numpy.cos(rotation.asRadians()),
-                                dy=diffRefractPix*numpy.sin(rotation.asRadians())))
+            dcrShift.append(dcr(dx=diffRefractPix*np.cos(rotation.asRadians()),
+                                dy=diffRefractPix*np.sin(rotation.asRadians())))
         return dcrShift
 
     def buildMatchedTemplate(self, dcrModels, visitInfo, bbox, wcs, mask=None):
@@ -690,7 +674,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @return The DCR-matched template, as a maskedImage.
         """
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
-                                          self.config.filterWidth, self.config.dcrNSubbands)
+                                          self.config.filterWidth, self.config.dcrNumSubbands)
         templateImage = afwImage.MaskedImageF(bbox)
         for dcr, model in zip(dcrShift, dcrModels):
             templateImage += self.convolveDcrModelPlane(model, dcr, bbox=bbox, useFFT=self.config.useFFT)
@@ -712,7 +696,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @return next shifted residual, as a maskedImage.
         """
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
-                                          self.config.filterWidth, self.config.dcrNSubbands)
+                                          self.config.filterWidth, self.config.dcrNumSubbands)
         for dcr in dcrShift:
             yield self.convolveDcrModelPlane(residual, dcr, bbox=bbox,
                                              useInverse=True, useFFT=self.config.useFFT)
@@ -722,7 +706,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """! Calculate the sky rotation angle of an exposure.
 
         @param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
-        @param[in] wcs: , wcs for the exposure.
+        @param[in] wcs: lsst.afw.geom.skyWcs.skyWcs.SkyWcs, wcs for the exposure.
 
         @return The rotation of the image axis, East from North as a lsst.afw.geom.Angle
             A rotation angle of 0 degrees is defined with North along the +y axis and East along the +x axis.
@@ -730,7 +714,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         parAngle = visitInfo.getBoresightParAngle().asRadians()
         cd = wcs.getCdMatrix()
-        cdAngle = (numpy.arctan2(-cd[0, 1], cd[0, 0]) + numpy.arctan2(cd[1, 0], cd[1, 1]))/2.
+        cdAngle = (np.arctan2(-cd[0, 1], cd[0, 0]) + np.arctan2(cd[1, 0], cd[1, 1]))/2.
         rotAngle = afwGeom.Angle(cdAngle + parAngle)
         return rotAngle
 
@@ -744,17 +728,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @return the shifted mask.
         """
         if useInverse:
-            dx0 = -numpy.ceil(shift.dx)
-            dy0 = -numpy.ceil(shift.dy)
+            dx0 = -np.ceil(shift.dx)
+            dy0 = -np.ceil(shift.dy)
         else:
-            dx0 = numpy.floor(shift.dx)
-            dy0 = numpy.floor(shift.dy)
+            dx0 = np.floor(shift.dx)
+            dy0 = np.floor(shift.dy)
 
         bboxFull = mask.getBBox()
         retMask = mask.Factory(bboxFull)
 
-        bufferXSize = numpy.abs(dx0) + 1
-        bufferYSize = numpy.abs(dy0) + 1
+        bufferXSize = np.abs(dx0) + 1
+        bufferYSize = np.abs(dy0) + 1
         bboxBase = mask.getBBox()
         bboxBase.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
 
@@ -767,17 +751,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return retMask
 
 
-def wavelengthGenerator(lambdaEff, filterWidth, dcrNSubbands):
-    """! tIterate over the wavelength endpoints of subfilters.
+def wavelengthGenerator(lambdaEff, filterWidth, dcrNumSubbands):
+    """! Iterate over the wavelength endpoints of subfilters.
 
     @param[in] lambdaEff: The effective wavelength of the full filter, in nm.
     @param[in] filterWidth: The full width of the filter, in nm.
-    @param[in] dcrNSubbands: The number of subfilters to divide the bandpass into.
+    @param[in] dcrNumSubbands: The number of subfilters to divide the bandpass into.
 
     @return next set of wavelength endpoints for a subfilter, in nm.
     """
-    wlStep = filterWidth/dcrNSubbands
-    for wl in numpy.linspace(-filterWidth/2., filterWidth/2., dcrNSubbands, endpoint=False):
+    wlStep = filterWidth/dcrNumSubbands
+    for wl in np.linspace(-filterWidth/2., filterWidth/2., dcrNumSubbands, endpoint=False):
         wlStart = lambdaEff + wl
         wlEnd = wlStart + wlStep
         yield (wlStart, wlEnd)
