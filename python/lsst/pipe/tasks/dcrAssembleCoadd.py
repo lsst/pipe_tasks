@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 #
 # LSST Data Management System
-# Copyright 2008-2016 AURA/LSST.
+# Copyright 2017-2018 University of Washington.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).

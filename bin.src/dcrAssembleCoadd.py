@@ -1,8 +1,8 @@
-#!/Users/sullivan/LSST/code/lsstsw/miniconda/bin/python
+#!/usr/bin/env python
 
 #
 # LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# Copyright 2017-2018 University of Washington.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
