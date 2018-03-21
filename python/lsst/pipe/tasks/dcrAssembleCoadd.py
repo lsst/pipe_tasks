@@ -31,7 +31,6 @@ import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from .assembleCoadd import _subBBoxIter
 from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
 
 __all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
@@ -233,7 +232,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if altMaskList is None:
             altMaskList = [None]*len(tempExpRefList)
         baseMask = templateCoadd.getMask()
-        for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
+        for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, altMaskList,
