@@ -236,7 +236,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         baseMask = templateCoadd.getMask()
         for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
-            self.pixelScale = None
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, altMaskList,
                                                           statsFlags, statsCtrl)
@@ -316,8 +315,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.getMaskedImage()
             templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, bboxGrow, wcs, mask=baseMask)
-            if exposure.getWcs().getPixelScale() != self.pixelScale:
-                self.log.warn("Incompatible pixel scale for %s %s", tempExpName, tempExpRef.dataId)
             imageScaler.scaleMaskedImage(maskedImage)
             mask = maskedImage.getMask()
             if altMaskSpans is not None:
@@ -481,8 +478,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         obsid_list = []
         for tempExpRef, expWeight, imageScaler, altMask in zipIterables:
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
-            if self.pixelScale is None:
-                self.pixelScale = exposure.getWcs().getPixelScale()
             refImage = exposure.getMaskedImage()
             imageScaler.scaleMaskedImage(refImage)
             refVals = refImage.getImage().getArray()

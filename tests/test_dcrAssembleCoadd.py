@@ -60,7 +60,6 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         yLoc = self.randGen.random(nSrc)*(size - 2*edgeDist) + edgeDist
         self.dcrModels = []
         self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(size, size))
-        self.pixelScale = 0.2*afwGeom.arcseconds
 
         imageSum = np.zeros((size, size))
         for subfilter in range(self.config.dcrNumSubbands):
@@ -82,7 +81,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             model.getMask().getArray()[:, :] = maskVals
         self.mask = self.dcrModels[0].getMask()
 
-    def makeDummyWcs(self, rotAngle, visitInfo=None):
+    def makeDummyWcs(self, rotAngle, pixelScale, visitInfo=None):
         """! Make a World Coordinate System object for testing.
 
         @param[in] rotAngle: rotation of the CD matrix, East from North as a lsst.afw.geom.Angle
@@ -95,7 +94,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         else:
             crval = visitInfo.getBoresightRaDec()
         crpix = afwGeom.Box2D(self.bbox).getCenter()
-        cd_matrix = makeCdMatrix(scale=self.pixelScale, orientation=rotAngle, flipX=True)
+        cd_matrix = makeCdMatrix(scale=pixelScale, orientation=rotAngle, flipX=True)
         wcs = makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd_matrix)
         return wcs
 
@@ -139,8 +138,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         rotAngle = Angle(0.)
         azimuth = 30.*afwGeom.degrees
         elevation = 65.*afwGeom.degrees
+        pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(rotAngle, pixelScale, visitInfo=visitInfo)
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
@@ -160,8 +160,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         cdRotAngle = Angle(0.)
         azimuth = 130.*afwGeom.degrees
         elevation = 70.*afwGeom.degrees
+        pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(cdRotAngle, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(cdRotAngle, pixelScale, visitInfo=visitInfo)
         rotAngle = DcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
         refAngle = Angle(-0.9344289857053072)
         self.assertAnglesNearlyEqual(refAngle, rotAngle)
@@ -197,8 +198,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         rotAngle = Angle(0.)
         azimuth = 200.*afwGeom.degrees
         elevation = 75.*afwGeom.degrees
+        pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(rotAngle, pixelScale, visitInfo=visitInfo)
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
@@ -222,8 +224,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         rotAngle = Angle(0.)
         azimuth = 200.*afwGeom.degrees
         elevation = 75.*afwGeom.degrees
+        pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(rotAngle, pixelScale, visitInfo=visitInfo)
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
