@@ -22,7 +22,6 @@ from __future__ import absolute_import, division, print_function
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
-from collections import namedtuple
 import numpy as np
 import scipy.ndimage.interpolation
 from lsst.afw.coord.refraction import differentialRefraction
@@ -582,9 +581,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             raise NotImplementedError("The Fourier transform approach has not yet been written.")
         else:
             if useInverse:
-                shift = (-dcr.dy, -dcr.dx)
+                shift = (-dcr.getY(), -dcr.getX())
             else:
-                shift = (dcr.dy, dcr.dx)
+                shift = (dcr.getY(), dcr.getX())
             # Shift each of image, mask, and variance
             if bbox is None:
                 result = maskedImage.clone()
@@ -638,7 +637,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         rotation = DcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
 
-        dcr = namedtuple("dcr", ["dx", "dy"])
         dcrShift = []
         for wl0, wl1 in wavelengthGenerator(lambdaEff, filterWidth, dcrNumSubbands):
             # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
@@ -652,8 +650,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                      weather=visitInfo.getWeather())
             diffRefractAmp = (diffRefractAmp0 + diffRefractAmp1)/2.
             diffRefractPix = diffRefractAmp.asArcseconds()/wcs.getPixelScale().asArcseconds()
-            dcrShift.append(dcr(dx=diffRefractPix*np.cos(rotation.asRadians()),
-                                dy=diffRefractPix*np.sin(rotation.asRadians())))
+            dcrShift.append(afwGeom.Extent2D(diffRefractPix*np.cos(rotation.asRadians()),
+                                             diffRefractPix*np.sin(rotation.asRadians())))
         return dcrShift
 
     def buildMatchedTemplate(self, dcrModels, visitInfo, bbox, wcs, mask=None):
@@ -723,11 +721,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         @return the shifted mask.
         """
         if useInverse:
-            dx0 = -np.ceil(shift.dx)
-            dy0 = -np.ceil(shift.dy)
+            dx0 = -np.ceil(shift.getX())
+            dy0 = -np.ceil(shift.getY())
         else:
-            dx0 = np.floor(shift.dx)
-            dy0 = np.floor(shift.dy)
+            dx0 = np.floor(shift.getX())
+            dy0 = np.floor(shift.getY())
 
         bboxFull = mask.getBBox()
         retMask = mask.Factory(bboxFull)

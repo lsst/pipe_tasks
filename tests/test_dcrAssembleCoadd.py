@@ -20,7 +20,6 @@ from __future__ import absolute_import, division, print_function
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 
-from collections import namedtuple
 from astropy import units as u
 import numpy as np
 import scipy.ndimage.interpolation
@@ -134,7 +133,6 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         The shift is compared to pre-computed values.
         """
-        dcr = namedtuple("dcr", ["dx", "dy"])
         rotAngle = Angle(0.)
         azimuth = 30.*afwGeom.degrees
         elevation = 65.*afwGeom.degrees
@@ -145,12 +143,12 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
                                                           self.config.dcrNumSubbands)
-        refShift = [dcr(dx=-0.55832265311722795, dy=-0.32306512577396451),
-                    dcr(dx=-0.018151534656568987, dy=-0.010503116422151829),
-                    dcr(dx=0.36985291822812622, dy=0.21400990785188412)]
+        refShift = [afwGeom.Extent2D(-0.55832265311722795, -0.32306512577396451),
+                    afwGeom.Extent2D(-0.018151534656568987, -0.010503116422151829),
+                    afwGeom.Extent2D(0.36985291822812622, 0.21400990785188412)]
         for shiftOld, shiftNew in zip(refShift, dcrShift):
-            self.assertFloatsAlmostEqual(shiftOld.dx, shiftNew.dx, rtol=1e-6, atol=1e-8)
-            self.assertFloatsAlmostEqual(shiftOld.dy, shiftNew.dy, rtol=1e-6, atol=1e-8)
+            self.assertFloatsAlmostEqual(shiftOld.getX(), shiftNew.getX(), rtol=1e-6, atol=1e-8)
+            self.assertFloatsAlmostEqual(shiftOld.getY(), shiftNew.getY(), rtol=1e-6, atol=1e-8)
 
     def testRotationAngle(self):
         """! Test that he sky rotation angle is consistently computed.
@@ -209,7 +207,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                                                                     bbox=self.bbox,
                                                                     useFFT=False,
                                                                     useInverse=False)
-        shift = (dcrShift[0].dy, dcrShift[0].dx)
+        shift = (dcrShift[0].getY(), dcrShift[0].getX())
         refImage = scipy.ndimage.interpolation.shift(self.dcrModels[0].getImage().getArray(), shift)
         refVariance = scipy.ndimage.interpolation.shift(self.dcrModels[0].getVariance().getArray(), shift)
         self.assertFloatsAlmostEqual(newMaskedImage.getImage().getArray(), refImage)
@@ -238,8 +236,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                                                  useInverse=True)
         detectMask = afwImage.Mask.getPlaneBitMask('DETECTED')
 
-        bufferXSize = np.ceil(np.abs(dcrShift[0].dx)) + 1
-        bufferYSize = np.ceil(np.abs(dcrShift[0].dy)) + 1
+        bufferXSize = np.ceil(np.abs(dcrShift[0].getX())) + 1
+        bufferYSize = np.ceil(np.abs(dcrShift[0].getY())) + 1
         bboxClip = self.dcrModels[0].getMask().getBBox()
         bboxClip.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
 
