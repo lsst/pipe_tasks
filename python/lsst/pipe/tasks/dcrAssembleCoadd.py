@@ -225,7 +225,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNumSubbands)
 
-        statsCtrl, statsFlags = self.prepareStats(mask=badPixelMask)
+        stats = self.prepareStats(mask=badPixelMask)
 
         subregionSizeArr = self.config.subregionSize
         subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
@@ -238,7 +238,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             modelIter = 0
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, altMaskList,
-                                                          statsFlags, statsCtrl)
+                                                          stats.flags, stats.ctrl)
             self.log.info("Computing coadd over %s", subBBox)
             self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
@@ -247,11 +247,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                    (modelIter < self.config.minNumIter)):
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
-                                              weightList, altMaskList, statsFlags, statsCtrl,
+                                              weightList, altMaskList, stats.flags, stats.ctrl,
                                               convergenceMetric, baseMask)
                     convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                                   imageScalerList, weightList, altMaskList,
-                                                                  statsFlags, statsCtrl)
+                                                                  stats.flags, stats.ctrl)
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                     convergenceList.append(convergenceMetric)
                 except Exception as e:
