@@ -360,17 +360,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         retStruct = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                                   inputData.weightList, supplementaryData=supplementaryData)
 
-        if self.config.doInterp:
-            self.interpImage.run(retStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
-            # The variance must be positive; work around for DM-3201.
-            varArray = retStruct.coaddExposure.getMaskedImage().getVariance().getArray()
-            with numpy.errstate(invalid="ignore"):
-                varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
-
-        if self.config.doMaskBrightObjects:
-            brightObjectMasks = self.readBrightObjectMasks(dataRef)
-            self.setBrightObjectMasks(retStruct.coaddExposure, dataRef.dataId, brightObjectMasks)
-
+        self.processResults(retStruct.coaddExposure, dataRef)
         if self.config.doWrite:
             self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
             dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
@@ -378,6 +368,18 @@ class AssembleCoaddTask(CoaddBaseTask):
             dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
 
         return retStruct
+
+    def processResults(self, coaddExposure, dataRef):
+        if self.config.doInterp:
+            self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
+            # The variance must be positive; work around for DM-3201.
+            varArray = coaddExposure.getMaskedImage().getVariance().getArray()
+            with numpy.errstate(invalid="ignore"):
+                varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
+
+        if self.config.doMaskBrightObjects:
+            brightObjectMasks = self.readBrightObjectMasks(dataRef)
+            self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
 
     def makeSupplementaryData(self, dataRef, selectDataList):
         """Make additional inputs to assemble() specific to subclasses.

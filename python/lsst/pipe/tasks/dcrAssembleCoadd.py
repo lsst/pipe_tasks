@@ -169,34 +169,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                  - coaddExposure: coadded exposure
                  - nImage: exposure count image
         """
-        retStruct = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList,
-                                          tempExpRefList=tempExpRefList)
-        for subfilter, coaddExposure in enumerate(retStruct.dcrCoadds):
+        results = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList,
+                                        tempExpRefList=tempExpRefList)
+        for subfilter, coaddExposure in enumerate(results.dcrCoadds):
+            self.processResults(coaddExposure, dataRef)
             if self.config.doWrite:
-                self.writeDcrCoadd(dataRef, coaddExposure, subfilter)
-        return pipeBase.Struct(coaddExposure=retStruct.coaddExposure, nImage=retStruct.nImage,
-                               dcrCoadds=retStruct.dcrCoadds)
-
-    def writeDcrCoadd(self, dataRef, coaddExposure, subfilter):
-        """! Persist DCR coadds using the Butler.
-
-        @param[in] dataRef: Data reference defining the patch for coaddition and the reference Warp
-                        - [out] "dcrCoadd"
-        @param[in] coaddExposure: pipeBase.Struct with coaddExposure
-        @param[in] subfilter: Index of the DCR plane to persist.
-        """
-        if self.config.doInterp:
-            self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
-            # The variance must be positive; work around for DM-3201.
-            varArray = coaddExposure.getVariance().getArray()
-            varArray[:] = np.where(varArray > 0, varArray, np.inf)
-
-        if self.config.doMaskBrightObjects:
-            brightObjectMasks = self.readBrightObjectMasks(dataRef)
-            self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
-
-        self.log.info("Persisting dcrCoadd")
-        dataRef.put(coaddExposure, "dcrCoadd", subfilter=subfilter)
+                self.log.info("Persisting dcrCoadd")
+                dataRef.put(coaddExposure, "dcrCoadd", subfilter=subfilter)
+        return pipeBase.Struct(coaddExposure=results.coaddExposure, nImage=results.nImage,
+                               dcrCoadds=results.dcrCoadds)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, supplementaryData=None, *args, **kwargs):
