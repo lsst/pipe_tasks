@@ -30,7 +30,6 @@ import numpy as np
 import lsst.utils.tests
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
-import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.afw.display.ds9 as ds9
 from lsst.pipe.base import Struct
@@ -86,7 +85,7 @@ class RegisterTestCase(unittest.TestCase):
         inputArray[(yInput).astype(int), (xInput).astype(int)] = 1
 
         # Create WCSes
-        centerCoord = afwCoord.IcrsCoord(0*afwGeom.degrees, 0*afwGeom.degrees)
+        centerCoord = afwGeom.SpherePoint(0, 0, afwGeom.degrees)
         centerPixel = afwGeom.Point2D(self.width/2, self.height/2)
         cdMatrix = afwGeom.makeCdMatrix(scale=self.pixelScale)
         wcs = afwGeom.makeSkyWcs(crpix=centerPixel, crval=centerCoord, cdMatrix=cdMatrix)

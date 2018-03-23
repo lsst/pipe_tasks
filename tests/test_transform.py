@@ -52,8 +52,8 @@ import tempfile
 import unittest
 
 import lsst.utils
-import lsst.afw.coord as afwCoord
 import lsst.afw.table as afwTable
+import lsst.afw.geom as afwGeom
 import lsst.daf.persistence as dafPersist
 import lsst.meas.base as measBase
 import lsst.utils.tests
@@ -162,7 +162,7 @@ class TransformTestCase(lsst.utils.tests.TestCase):
         # containing a source at an arbitrary position.
         inCat = afwTable.SourceCatalog(schema)
         r = inCat.addNew()
-        r.setCoord(afwCoord.Coord("00:00:00", "11:11:11"))
+        r.setCoord(afwGeom.SpherePoint(0.0, 11.19, afwGeom.degrees))
         r[PLUGIN_NAME] = 1.0
 
         wcs, calib = Placeholder(), Placeholder()

@@ -61,7 +61,7 @@ class BaseExposureInfo(pipeBase.Struct):
 
         The object has the following fields:
         - dataId: data ID of exposure (a dict)
-        - coordList: a list of corner coordinates of the exposure (list of afwCoord.IcrsCoord)
+        - coordList: ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
         plus any others items that are desired
         """
         super(BaseExposureInfo, self).__init__(dataId=dataId, coordList=coordList)
@@ -84,7 +84,7 @@ class BaseSelectImagesTask(pipeBase.Task):
         - exposureInfoList: a list of exposure information objects (subclasses of BaseExposureInfo),
             which have at least the following fields:
             - dataId: data ID dictionary
-            - coordList: coordinates of the corner of the exposure (list of afwCoord.IcrsCoord)
+            - coordList: ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
         """
         raise NotImplementedError()
 
@@ -184,7 +184,7 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         If "convexHull" is found to be too slow, we can revise this.
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of Coord specifying boundary of patch
+        @param coordList: List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
         @param makeDataRefList: Construct a list of data references?
         @param selectDataList: List of SelectStruct, to consider for selection
         """
@@ -282,7 +282,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             the median size
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of Coord specifying boundary of patch
+        @param coordList: List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
         @param makeDataRefList: Construct a list of data references?
         @param selectDataList: List of SelectStruct, to consider for selection
         """

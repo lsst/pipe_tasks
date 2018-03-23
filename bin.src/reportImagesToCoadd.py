@@ -27,7 +27,6 @@ from builtins import zip
 import numpy
 
 import lsst.pex.config as pexConfig
-import lsst.afw.coord as afwCoord
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
@@ -95,9 +94,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
                 (raRange[1], decRange[1]),
                 (raRange[0], decRange[1]),
             ]
-            coordList = [
-                afwCoord.IcrsCoord(afwGeom.Angle(ra, afwGeom.degrees), afwGeom.Angle(dec, afwGeom.degrees))
-                for ra, dec in raDecList]
+            coordList = [afwGeom.SpherePoint(ra, dec, afwGeom.degrees) for ra, dec in raDecList]
 
         exposureInfoList = self.select.runDataRef(
             dataRef=dataRef,

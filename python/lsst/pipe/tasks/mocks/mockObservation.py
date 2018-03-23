@@ -149,7 +149,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         @param[in] n: number of pointings
         @param[in] tractInfo: skymap tract (a lsst.skymap.TractInfo)
         @return a Python iterable over (coord, angle) pairs:
-        - coord is an object position (an lsst.afw.coord.Coord)
+        - coord is an ICRS object position (an lsst.afw.geom.SpherePoint)
         - angle is a position angle (???) (an lsst.afw.geom.Angle)
 
         The default implementation returns an iterator (i.e. the function is a "generator"),
@@ -169,7 +169,7 @@ class MockObservationTask(lsst.pipe.base.Task):
     def buildWcs(self, position, pa, detector):
         """Build a simple TAN Wcs with no distortion and exactly-aligned CCDs.
 
-        @param[in] position: object position on sky (an lsst.afw.coord.Coord)
+        @param[in] position: ICRS object position on sky (on lsst.afw.geom.SpherePoint)
         @param[in] pa: position angle (an lsst.afw.geom.Angle)
         @param[in] detector: detector information (an lsst.afw.cameraGeom.Detector)
         """
