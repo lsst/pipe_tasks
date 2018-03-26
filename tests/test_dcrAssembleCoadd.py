@@ -26,7 +26,7 @@ import scipy.ndimage.interpolation
 from scipy.ndimage.morphology import binary_dilation as dilate
 import unittest
 
-from lsst.afw.coord import Coord, IcrsCoord, Observatory, Weather
+from lsst.afw.coord import Observatory, Weather
 import lsst.afw.geom as afwGeom
 from lsst.afw.geom import Angle, makeCdMatrix, makeSkyWcs
 import lsst.afw.image as afwImage
@@ -89,7 +89,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         @return wcs, a lsst.afw.geom.skyWcs.skyWcs.SkyWcs object.
         """
         if visitInfo is None:
-            crval = IcrsCoord(Angle(0.), Angle(0.))
+            crval = afwGeom.SpherePoint(0., 0.)
         else:
             crval = visitInfo.getBoresightRaDec()
         crpix = afwGeom.Box2D(self.bbox).getCenter()
@@ -119,8 +119,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         ra = lsstLon + np.sin(azimuth.asRadians())*(Angle(np.pi/2.) - elevation)/np.cos(lsstLat.asRadians())
         dec = lsstLat + np.cos(azimuth.asRadians())*(Angle(np.pi/2.) - elevation)
         visitInfo = afwImage.VisitInfo(era=era,
-                                       boresightRaDec=IcrsCoord(ra, dec),
-                                       boresightAzAlt=Coord(azimuth, elevation),
+                                       boresightRaDec=afwGeom.SpherePoint(ra, dec),
+                                       boresightAzAlt=afwGeom.SpherePoint(azimuth, elevation),
                                        boresightAirmass=airmass,
                                        boresightRotAngle=Angle(0.),
                                        observatory=lsstObservatory,
