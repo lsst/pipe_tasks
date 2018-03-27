@@ -887,6 +887,13 @@ class MeasureMergedCoaddSourcesConfig(Config):
 ## \}
 
 
+class MeasureMergedCoaddSourcesRunner(ButlerInitializedTaskRunner):
+    """Get the psfCache setting into MeasureMergedCoaddSourcesTask"""
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        return ButlerInitializedTaskRunner.getTargetList(parsedCmd, psfCache=parsedCmd.psfCache)
+
+
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
     """!
     \anchor MeasureMergedCoaddSourcesTask_
@@ -999,7 +1006,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     """
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
-    RunnerClass = ButlerInitializedTaskRunner
+    RunnerClass = MeasureMergedCoaddSourcesRunner
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")  # The IDs we already have are of this type
 
@@ -1009,6 +1016,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         parser.add_id_argument("--id", "deepCoadd_calexp",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=r",
                                ContainerClass=ExistingCoaddDataIdContainer)
+        parser.add_argument("--psfCache", type=int, default=100, help="Size of CoaddPsf cache")
         return parser
 
     def __init__(self, butler=None, schema=None, peakSchema=None, refObjLoader=None, **kwargs):
@@ -1055,7 +1063,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         if self.config.doRunCatalogCalculation:
             self.makeSubtask("catalogCalculation", schema=self.schema)
 
-    def run(self, patchRef):
+    def run(self, patchRef, psfCache=100):
         """!
         \brief Deblend and measure.
 
@@ -1066,6 +1074,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         Finally, write the deblended sources and measurements out.
         """
         exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
+        exposure.getPsf().setCacheCapacity(psfCache)
         sources = self.readSources(patchRef)
         if self.config.doDeblend:
             self.deblend.run(exposure, sources)
