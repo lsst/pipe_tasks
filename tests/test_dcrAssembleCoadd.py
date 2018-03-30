@@ -35,7 +35,7 @@ from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCo
 
 
 class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
-    """! A test case for the DCR-aware image coaddition algorithm.
+    """A test case for the DCR-aware image coaddition algorithm.
     """
 
     def setUp(self):
@@ -80,13 +80,22 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             model.getMask().getArray()[:, :] = maskVals
         self.mask = self.dcrModels[0].getMask()
 
-    def makeDummyWcs(self, rotAngle, pixelScale, visitInfo=None):
-        """! Make a World Coordinate System object for testing.
+    def makeDummyWcs(self, rotAngle, pixelScale, crval):
+        """Make a World Coordinate System object for testing.
 
-        @param[in] rotAngle: rotation of the CD matrix, East from North as a lsst.afw.geom.Angle
-        @param[in] visitInfo: lsst.afw.image.VisitInfo for the exposure.
+        Parameters
+        ----------
+        rotAngle : lsst.afw.geom.Angle
+            rotation of the CD matrix, East from North
+        pixelScale : lsst.afw.geom.Angle
+            Pixel scale of the projection.
+        crval : lsst.afw.geom.SpherePoint
+            Coordinates of the reference pixel of the wcs.
 
-        @return wcs, a lsst.afw.geom.skyWcs.skyWcs.SkyWcs object.
+        Returns
+        -------
+        lsst.afw.geom.skyWcs.skyWcs.SkyWcs
+            A wcs that matches the inputs.
         """
         if visitInfo is None:
             crval = afwGeom.SpherePoint(0., 0.)
@@ -98,13 +107,21 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         return wcs
 
     def makeDummyVisitInfo(self, azimuth, elevation):
-        """! Make a self-consistent visitInfo object for testing.
+        """Make a self-consistent visitInfo object for testing.
 
         For simplicity, the simulated observation is assumed to be taken on the local meridian.
-        @param[in] azimuth: azimuth angle of the simulated observation, as a lsst.afw.geom.Angle
-        @param[in] elevation: elevation angle of the simulated observation, as a lsst.afw.geom.Angle
 
-        @return visitInfo: lsst.afw.image.VisitInfo for the exposure.
+        Parameters
+        ----------
+        azimuth : lsst.afw.geom.Angle
+            Azimuth angle of the simulated observation.
+        elevation : lsst.afw.geom.Angle
+            Elevation angle of the simulated observation.
+
+        Returns
+        -------
+        lsst.afw.image.VisitInfo
+            VisitInfo for the exposure.
         """
         lsstLat = -30.244639*afwGeom.degrees
         lsstLon = -70.749417*afwGeom.degrees
@@ -129,7 +146,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         return visitInfo
 
     def testDcrShiftCalculation(self):
-        """! Test that the shift in pixels due to DCR is consistently computed.
+        """Test that the shift in pixels due to DCR is consistently computed.
 
         The shift is compared to pre-computed values.
         """
@@ -151,7 +168,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             self.assertFloatsAlmostEqual(shiftOld.getY(), shiftNew.getY(), rtol=1e-6, atol=1e-8)
 
     def testRotationAngle(self):
-        """! Test that he sky rotation angle is consistently computed.
+        """Test that he sky rotation angle is consistently computed.
 
         The rotation is compared to pre-computed values.
         """
@@ -166,7 +183,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.assertAnglesNearlyEqual(refAngle, rotAngle)
 
     def testConditionDcrModelNoChange(self):
-        """! Conditioning should not change the model if it is identical to the reference.
+        """Conditioning should not change the model if it is identical to the reference.
 
         This additionally tests that the variance and mask planes do not change.
         """
@@ -176,7 +193,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             self.assertMaskedImagesEqual(model, refModel)
 
     def testConditionDcrModelWithChange(self):
-        """! Verify the effect of conditioning when the model changes by a known amount.
+        """Verify the effect of conditioning when the model changes by a known amount.
 
         This additionally tests that the variance and mask planes do not change.
         """
@@ -189,7 +206,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             self.assertMaskedImagesEqual(model, refModel)
 
     def testShiftImagePlane(self):
-        """! Verify the shift calculation for the image and variance planes.
+        """Verify the shift calculation for the image and variance planes.
 
         The shift of the mask plane is tested separately since it is calculated differently.
         """
@@ -214,7 +231,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(newMaskedImage.getVariance().getArray(), refVariance)
 
     def testShiftMaskPlane(self):
-        """! Verify the shift calculation for the mask plane.
+        """Verify the shift calculation for the mask plane.
 
         The shift of the image and variance planes are tested separately
         since they are calculated differently.
@@ -251,7 +268,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.assertFloatsEqual(newMaskCheck, maskRefCheck)
 
     def testRegularizationLargeClamp(self):
-        """! Frequency regularization should leave the models unchanged if all the clamp factor is large.
+        """Frequency regularization should leave the models unchanged if all the clamp factor is large.
 
         This also tests that noise-like pixels are not regularized.
         """
@@ -261,7 +278,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             self.assertMaskedImagesEqual(model, modelRef)
 
     def testRegularizationSmallClamp(self):
-        """! Test that large variations between model planes are reduced.
+        """Test that large variations between model planes are reduced.
 
         This also tests that noise-like pixels are not regularized.
         """
