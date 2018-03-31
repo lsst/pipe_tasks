@@ -64,21 +64,21 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         for subfilter in range(self.config.dcrNumSubbands):
             flux = (self.randGen.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             model = afwImage.MaskedImageF(self.bbox)
-            image = model.getImage().getArray()
             image += self.randGen.random((size, size))*noiseLevel
+            image = model.image.array
             for x, y, f in zip(xLoc, yLoc, flux):
                 xVals = np.exp(-np.power(np.arange(size) - x, 2.)/(2*np.power(psfSize, 2.)))
                 yVals = np.exp(-np.power(np.arange(size) - y, 2.)/(2*np.power(psfSize, 2.)))
                 image += f*np.outer(yVals, xVals)
             imageSum += image
-            model.getVariance().getArray()[:, :] = image
+            model.variance.array[:] = image
             model.mask.addMaskPlane("CLIPPED")
             self.dcrModels.append(model)
         maskVals = np.zeros_like(imageSum)
         maskVals[imageSum > 5*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
         for model in self.dcrModels:
-            model.getMask().getArray()[:, :] = maskVals
-        self.mask = self.dcrModels[0].getMask()
+            model.mask.array[:] = maskVals
+        self.mask = self.dcrModels[0].mask
 
     def makeDummyWcs(self, rotAngle, pixelScale, crval):
         """Make a World Coordinate System object for testing.
@@ -199,10 +199,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         """
         refModels = [model.clone() for model in self.dcrModels]
         for model in self.dcrModels:
-            model.getImage().getArray()[:, :] *= 3.
+            model.image.array[:] *= 3.
         DcrAssembleCoaddTask.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
         for model, refModel in zip(self.dcrModels, refModels):
-            refModel.getImage().getArray()[:, :] *= 2.
+            refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(model, refModel)
 
     def testShiftImagePlane(self):
@@ -225,10 +225,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                                                                     useFFT=False,
                                                                     useInverse=False)
         shift = (dcrShift[0].getY(), dcrShift[0].getX())
-        refImage = scipy.ndimage.interpolation.shift(self.dcrModels[0].getImage().getArray(), shift)
-        refVariance = scipy.ndimage.interpolation.shift(self.dcrModels[0].getVariance().getArray(), shift)
-        self.assertFloatsAlmostEqual(newMaskedImage.getImage().getArray(), refImage)
-        self.assertFloatsAlmostEqual(newMaskedImage.getVariance().getArray(), refVariance)
+        refImage = scipy.ndimage.interpolation.shift(self.dcrModels[0].image.array, shift)
+        refVariance = scipy.ndimage.interpolation.shift(self.dcrModels[0].variance.array, shift)
+        self.assertFloatsAlmostEqual(newMaskedImage.image.array, refImage)
+        self.assertFloatsAlmostEqual(newMaskedImage.variance.array, refVariance)
 
     def testShiftMaskPlane(self):
         """Verify the shift calculation for the mask plane.
@@ -247,23 +247,21 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                                                           self.config.filterWidth,
                                                           self.config.dcrNumSubbands)
         model = self.dcrModels[0]
-        shiftedMask = DcrAssembleCoaddTask.shiftMask(model.getMask(), dcrShift[0],
-                                                     useInverse=False)
-        newMask = DcrAssembleCoaddTask.shiftMask(shiftedMask, dcrShift[0],
-                                                 useInverse=True)
+        shiftedMask = DcrAssembleCoaddTask.shiftMask(model.mask, dcrShift[0], useInverse=False)
+        newMask = DcrAssembleCoaddTask.shiftMask(shiftedMask, dcrShift[0], useInverse=True)
         detectMask = afwImage.Mask.getPlaneBitMask('DETECTED')
 
         bufferXSize = np.ceil(np.abs(dcrShift[0].getX())) + 1
         bufferYSize = np.ceil(np.abs(dcrShift[0].getY())) + 1
-        bboxClip = self.dcrModels[0].getMask().getBBox()
+        bboxClip = self.dcrModels[0].mask.getBBox()
         bboxClip.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
 
         # Shifting the mask grows each mask plane by one pixel in the direction of the shift,
         #  so a shift followed by the reverse shift should be the same as a dilation by one pixel.
         convolutionStruct = np.array([[True, True, True], [True, True, True], [True, True, True]])
-        maskRefCheck = dilate(model[bboxClip].getMask().getArray() == detectMask,
+        maskRefCheck = dilate(model[bboxClip].mask.array == detectMask,
                               iterations=1, structure=convolutionStruct)
-        newMaskCheck = newMask[bboxClip].getArray() == detectMask
+        newMaskCheck = newMask[bboxClip].array == detectMask
 
         self.assertFloatsEqual(newMaskCheck, maskRefCheck)
 
@@ -285,17 +283,17 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         nSigma = 3.
         clamp = 1.1
         modelRefs = [model.clone() for model in self.dcrModels]
-        templateImage = np.sum([model.getImage().getArray() for model in self.dcrModels], axis=0)
-        backgroundInds = self.mask.getArray() == 0
+        templateImage = np.sum([model.image.array for model in self.dcrModels], axis=0)
+        backgroundInds = self.mask.array == 0
         noiseLevel = nSigma*np.std(templateImage[backgroundInds])
 
         DcrAssembleCoaddTask.regularizeModel(self.dcrModels, self.bbox, self.mask, nSigma=nSigma, clamp=clamp)
         for model, modelRef in zip(self.dcrModels, modelRefs):
-            self.assertFloatsAlmostEqual(model.getMask().getArray(), modelRef.getMask().getArray())
-            self.assertFloatsAlmostEqual(model.getVariance().getArray(), modelRef.getVariance().getArray())
-            imageDiffHigh = model.getImage().getArray() - (templateImage*clamp + noiseLevel)
+            self.assertFloatsAlmostEqual(model.mask.array, modelRef.mask.array)
+            self.assertFloatsAlmostEqual(model.variance.array, modelRef.variance.array)
+            imageDiffHigh = model.image.array - (templateImage*clamp + noiseLevel)
             self.assertLessEqual(np.max(imageDiffHigh), 0.)
-            imageDiffLow = model.getImage().getArray() - (templateImage/clamp - noiseLevel)
+            imageDiffLow = model.image.array - (templateImage/clamp - noiseLevel)
             self.assertGreaterEqual(np.max(imageDiffLow), 0.)
 
 
