@@ -45,7 +45,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.config.filterWidth = 147.
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
-        size = 40
+        xSize = 40
+        ySize = 42
         psfSize = 2
         nSrc = 5
         seed = 5
@@ -55,20 +56,20 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         sourceSigma = 20.
         fluxRange = 2.
         edgeDist = self.config.bufferSize
-        xLoc = self.randGen.random(nSrc)*(size - 2*edgeDist) + edgeDist
-        yLoc = self.randGen.random(nSrc)*(size - 2*edgeDist) + edgeDist
+        xLoc = self.randGen.random(nSrc)*(xSize - 2*edgeDist) + edgeDist
+        yLoc = self.randGen.random(nSrc)*(ySize - 2*edgeDist) + edgeDist
         self.dcrModels = []
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(size, size))
+        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(xSize, ySize))
 
-        imageSum = np.zeros((size, size))
+        imageSum = np.zeros((ySize, xSize))
         for subfilter in range(self.config.dcrNumSubbands):
             flux = (self.randGen.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             model = afwImage.MaskedImageF(self.bbox)
-            image += self.randGen.random((size, size))*noiseLevel
             image = model.image.array
+            image += self.randGen.random((ySize, xSize))*noiseLevel
             for x, y, f in zip(xLoc, yLoc, flux):
-                xVals = np.exp(-np.power(np.arange(size) - x, 2.)/(2*np.power(psfSize, 2.)))
-                yVals = np.exp(-np.power(np.arange(size) - y, 2.)/(2*np.power(psfSize, 2.)))
+                xVals = np.exp(-np.power(np.arange(xSize) - x, 2.)/(2*np.power(psfSize, 2.)))
+                yVals = np.exp(-np.power(np.arange(ySize) - y, 2.)/(2*np.power(psfSize, 2.)))
                 image += f*np.outer(yVals, xVals)
             imageSum += image
             model.variance.array[:] = image
@@ -97,10 +98,6 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         lsst.afw.geom.skyWcs.skyWcs.SkyWcs
             A wcs that matches the inputs.
         """
-        if visitInfo is None:
-            crval = afwGeom.SpherePoint(0., 0.)
-        else:
-            crval = visitInfo.getBoresightRaDec()
         crpix = afwGeom.Box2D(self.bbox).getCenter()
         cd_matrix = makeCdMatrix(scale=pixelScale, orientation=rotAngle, flipX=True)
         wcs = makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd_matrix)
@@ -155,7 +152,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         elevation = 65.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, pixelScale, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
@@ -177,7 +174,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         elevation = 70.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(cdRotAngle, pixelScale, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(cdRotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         rotAngle = DcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
         refAngle = Angle(-0.9344289857053072)
         self.assertAnglesNearlyEqual(refAngle, rotAngle)
@@ -215,7 +212,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         elevation = 75.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, pixelScale, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
@@ -241,7 +238,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         elevation = 75.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, pixelScale, visitInfo=visitInfo)
+        wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
                                                           self.config.lambdaEff,
                                                           self.config.filterWidth,
