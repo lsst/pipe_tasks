@@ -50,23 +50,22 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         psfSize = 2
         nSrc = 5
         seed = 5
-        self.randGen = np.random
-        self.randGen.seed(seed)
+        self.rng = np.random
+        self.rng.seed(seed)
         noiseLevel = 5
         sourceSigma = 20.
         fluxRange = 2.
-        edgeDist = self.config.bufferSize
-        xLoc = self.randGen.random(nSrc)*(xSize - 2*edgeDist) + edgeDist
-        yLoc = self.randGen.random(nSrc)*(ySize - 2*edgeDist) + edgeDist
+        xLoc = self.rng.random(nSrc)*(xSize - 2*self.config.bufferSize) + self.config.bufferSize
+        yLoc = self.rng.random(nSrc)*(ySize - 2*self.config.bufferSize) + self.config.bufferSize
         self.dcrModels = []
         self.bbox = afwGeom.Box2I(afwGeom.Point2I(12345, 67890), afwGeom.Extent2I(xSize, ySize))
 
         imageSum = np.zeros((ySize, xSize))
         for subfilter in range(self.config.dcrNumSubbands):
-            flux = (self.randGen.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
+            flux = (self.rng.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             model = afwImage.MaskedImageF(self.bbox)
             image = model.image.array
-            image += self.randGen.random((ySize, xSize))*noiseLevel
+            image += self.rng.random((ySize, xSize))*noiseLevel
             for x, y, f in zip(xLoc, yLoc, flux):
                 xVals = np.exp(-np.power(np.arange(xSize) - x, 2.)/(2*np.power(psfSize, 2.)))
                 yVals = np.exp(-np.power(np.arange(ySize) - y, 2.)/(2*np.power(psfSize, 2.)))
@@ -177,7 +176,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         wcs = self.makeDummyWcs(cdRotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         rotAngle = DcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
         refAngle = Angle(-0.9344289857053072)
-        self.assertAnglesNearlyEqual(refAngle, rotAngle)
+        self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=Angle(1e-6))
 
     def testConditionDcrModelNoChange(self):
         """Conditioning should not change the model if it is identical to the reference.
@@ -228,39 +227,35 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(newMaskedImage.variance.array, refVariance)
 
     def testShiftMaskPlane(self):
-        """Verify the shift calculation for the mask plane.
+        """Verify the shift calculation for the mask plane for large and small shifts.
 
         The shift of the image and variance planes are tested separately
         since they are calculated differently.
         """
-        rotAngle = Angle(0.)
-        azimuth = 200.*afwGeom.degrees
-        elevation = 75.*afwGeom.degrees
-        pixelScale = 0.2*afwGeom.arcseconds
-        visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
-                                                          self.config.lambdaEff,
-                                                          self.config.filterWidth,
-                                                          self.config.dcrNumSubbands)
+        shiftAmps = [0.3, 1., self.config.bufferSize]
+        shiftPhis = [phi for phi in np.pi*self.rng.random(len(shiftAmps))]
+        dcrShifts = [afwGeom.Extent2D(np.cos(phi), np.sin(phi))*amp
+                     for amp, phi in zip(shiftAmps, shiftPhis)]
         model = self.dcrModels[0]
-        shiftedMask = DcrAssembleCoaddTask.shiftMask(model.mask, dcrShift[0], useInverse=False)
-        newMask = DcrAssembleCoaddTask.shiftMask(shiftedMask, dcrShift[0], useInverse=True)
-        detectMask = afwImage.Mask.getPlaneBitMask('DETECTED')
+        for dcrShift in dcrShifts:
+            shiftedMask = DcrAssembleCoaddTask.shiftMask(model.mask, dcrShift, useInverse=False)
+            newMask = DcrAssembleCoaddTask.shiftMask(shiftedMask, dcrShift, useInverse=True)
+            detectMask = afwImage.Mask.getPlaneBitMask('DETECTED')
 
-        bufferXSize = np.ceil(np.abs(dcrShift[0].getX())) + 1
-        bufferYSize = np.ceil(np.abs(dcrShift[0].getY())) + 1
-        bboxClip = self.dcrModels[0].mask.getBBox()
-        bboxClip.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
+            bufferXSize = np.ceil(np.abs(dcrShift.getX()))
+            bufferYSize = np.ceil(np.abs(dcrShift.getY()))
+            bboxClip = self.dcrModels[0].mask.getBBox()
+            # The simple comparison will not be accurate for edge pixels that fall off the image when shifted
+            bboxClip.grow(afwGeom.Extent2I(-bufferXSize*2, -bufferYSize*2))
 
-        # Shifting the mask grows each mask plane by one pixel in the direction of the shift,
-        #  so a shift followed by the reverse shift should be the same as a dilation by one pixel.
-        convolutionStruct = np.array([[True, True, True], [True, True, True], [True, True, True]])
-        maskRefCheck = dilate(model[bboxClip, afwImage.PARENT].mask.array == detectMask,
-                              iterations=1, structure=convolutionStruct)
-        newMaskCheck = newMask[bboxClip, afwImage.PARENT].array == detectMask
+            # Shifting the mask grows each mask plane by one pixel in the direction of the shift,
+            #  so a shift followed by the reverse shift should be the same as a dilation by one pixel.
+            convolutionStruct = np.array([[True, True, True], [True, True, True], [True, True, True]])
+            maskRefCheck = dilate(model[bboxClip, afwImage.PARENT].mask.array == detectMask,
+                                  iterations=1, structure=convolutionStruct)
+            newMaskCheck = newMask[bboxClip, afwImage.PARENT].array == detectMask
 
-        self.assertFloatsEqual(newMaskCheck, maskRefCheck)
+            self.assertFloatsEqual(newMaskCheck, maskRefCheck)
 
     def testRegularizationLargeClamp(self):
         """Frequency regularization should leave the models unchanged if all the clamp factor is large.
