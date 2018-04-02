@@ -59,7 +59,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         xLoc = self.randGen.random(nSrc)*(xSize - 2*edgeDist) + edgeDist
         yLoc = self.randGen.random(nSrc)*(ySize - 2*edgeDist) + edgeDist
         self.dcrModels = []
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(xSize, ySize))
+        self.bbox = afwGeom.Box2I(afwGeom.Point2I(12345, 67890), afwGeom.Extent2I(xSize, ySize))
 
         imageSum = np.zeros((ySize, xSize))
         for subfilter in range(self.config.dcrNumSubbands):
@@ -256,9 +256,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         # Shifting the mask grows each mask plane by one pixel in the direction of the shift,
         #  so a shift followed by the reverse shift should be the same as a dilation by one pixel.
         convolutionStruct = np.array([[True, True, True], [True, True, True], [True, True, True]])
-        maskRefCheck = dilate(model[bboxClip].mask.array == detectMask,
+        maskRefCheck = dilate(model[bboxClip, afwImage.PARENT].mask.array == detectMask,
                               iterations=1, structure=convolutionStruct)
-        newMaskCheck = newMask[bboxClip].array == detectMask
+        newMaskCheck = newMask[bboxClip, afwImage.PARENT].array == detectMask
 
         self.assertFloatsEqual(newMaskCheck, maskRefCheck)
 
