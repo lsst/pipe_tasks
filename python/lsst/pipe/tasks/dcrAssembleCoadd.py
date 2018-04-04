@@ -359,21 +359,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                    afwImage.Mask.getPlaneBitMask("CLIPPED"),
                                                    afwImage.Mask.getPlaneBitMask("NO_DATA"))
                 residual.setXY0(bboxGrow.getBegin())
-                newModel = self.clampModel(residual, oldModel, bboxGrow,
-                                           clamp=self.config.modelClampFactor)
+                newModel = self.clampModel(residual, oldModel, bboxGrow)
                 dcrSubModelOut.append(newModel)
-        self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask,
-                             nSigma=self.config.regularizeSigma,
-                             clamp=self.config.clampFrequency)
+        self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
                                                              imageScalerList, weightList, altMaskList,
                                                              statsFlags, statsCtrl)
-            gain = convergenceMetric/convergenceMetricNew
-            if gain > self.config.maxGain:
-                gain = self.config.maxGain
-            if gain < self.config.minGain:
-                gain = self.config.minGain
+            gain = min(max(convergenceMetric/convergenceMetricNew, self.config.minGain), self.config.maxGain)
             self.log.info("Convergence-weighted gain used: %2.4f", gain)
             self.log.info("Based on old convergence: %2.6f, new convergence: %2.6f",
                           convergenceMetric, convergenceMetricNew)
@@ -384,8 +377,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for model, subModel in zip(dcrModels, dcrSubModelOut):
             model.assign(subModel[bbox, afwImage.PARENT], bbox)
 
-    @staticmethod
-    def calculateWeight(residual, goodMask):
+    def calculateWeight(self, residual, goodMask):
         """Calculate the weight of an exposure based on the goodness of fit of the matched template.
 
         Parameters
@@ -401,13 +393,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Goodness of fit metric of the residual image.
         """
         residualVals = residual.image.array
-        finiteInds = (np.isfinite(residualVals))
-        goodMaskInds = (residual.mask.array & goodMask) == goodMask
-        weight = 1./np.std(residualVals[finiteInds & goodMaskInds])
+        finitePixels = np.isfinite(residualVals)
+        goodMaskPixels = (residual.mask.array & goodMask) == goodMask
+        weight = 1./np.std(residualVals[finitePixels & goodMaskPixels])
         return weight
 
-    @staticmethod
-    def clampModel(residual, oldModel, bbox, clamp=2.):
+    def clampModel(self, residual, oldModel, bbox):
         """Restrict large variations in the model between iterations.
 
         Parameters
@@ -419,8 +410,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Description
         bbox : lsst.afw.geom.box.Box2I
             Sub-region to coadd
-        clamp : float, optional
-            Maximum factor the new image is allowed to deviate from the last iteration.
 
         Returns
         -------
@@ -431,24 +420,23 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         newModel += oldModel[bbox, afwImage.PARENT]
         newImage = newModel.image.array
         newVariance = newModel.variance.array
-        nonFiniteInds = ~(np.isfinite(newImage) | np.isfinite(newVariance))
-        newModel.mask.array[nonFiniteInds] = newModel.mask.getPlaneBitMask("NO_DATA")
-        newImage[nonFiniteInds] = 0.
-        newVariance[nonFiniteInds] = 0.
+        nonFinitePixels = ~(np.isfinite(newImage) | np.isfinite(newVariance))
+        newModel.mask.array[nonFinitePixels] = newModel.mask.getPlaneBitMask("NO_DATA")
+        newImage[nonFinitePixels] = 0.
+        newVariance[nonFinitePixels] = 0.
         oldImage = oldModel[bbox, afwImage.PARENT].image.array
         oldVariance = oldModel[bbox, afwImage.PARENT].variance.array
-        highInds = ((np.abs(newImage) > np.abs(oldImage*clamp))*
-                    (np.abs(newVariance) > np.abs(oldVariance*clamp)))
-        newImage[highInds] = oldImage[highInds]*clamp
-        newVariance[highInds] = oldVariance[highInds]*clamp
-        lowInds = ((np.abs(newImage) < np.abs(oldImage/clamp))*
-                   (np.abs(newVariance) < np.abs(oldVariance/clamp)))
-        newImage[lowInds] = oldImage[lowInds]/clamp
-        newVariance[lowInds] = oldVariance[lowInds]/clamp
+        highPixels = ((np.abs(newImage) > np.abs(oldImage*self.config.modelClampFactor))*
+                      (np.abs(newVariance) > np.abs(oldVariance*self.config.modelClampFactor)))
+        newImage[highPixels] = oldImage[highPixels]*self.config.modelClampFactor
+        newVariance[highPixels] = oldVariance[highPixels]*self.config.modelClampFactor
+        lowPixels = ((np.abs(newImage) < np.abs(oldImage/self.config.modelClampFactor))*
+                     (np.abs(newVariance) < np.abs(oldVariance/self.config.modelClampFactor)))
+        newImage[lowPixels] = oldImage[lowPixels]/self.config.modelClampFactor
+        newVariance[lowPixels] = oldVariance[lowPixels]/self.config.modelClampFactor
         return newModel
 
-    @staticmethod
-    def regularizeModel(dcrModels, bbox, mask, nSigma, clamp=2.):
+    def regularizeModel(self, dcrModels, bbox, mask):
         """Restrict large variations in the model between subfilters.
 
         Clipped flux is accumulated from all subfilters, and divided evenly to each afterwards.
@@ -461,29 +449,24 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Sub-region to coadd
         mask : lsst.afw.image.mask
             Reference mask to use for all model planes.
-        nSigma : float
-            Threshold to exclude noise-like pixels from frequency regularization
-        clamp : float, optional
-            Maximum factor each plane is allowed to deviate from the average.
         """
         nModels = len(dcrModels)
         templateImage = np.mean([model[bbox, afwImage.PARENT].image.array
                                  for model in dcrModels], axis=0)
         excess = np.zeros_like(templateImage)
-        backgroundInds = mask[bbox, afwImage.PARENT].array == 0
-        noiseLevel = nSigma*np.std(templateImage[backgroundInds])
+        backgroundPixels = mask[bbox, afwImage.PARENT].array == 0
+        noiseLevel = self.config.regularizeSigma*np.std(templateImage[backgroundPixels])
         for model in dcrModels:
             modelVals = model.image.array
-            highInds = (modelVals > (templateImage*clamp + noiseLevel))
-            excess[highInds] += modelVals[highInds] - templateImage[highInds]*clamp
-            modelVals[highInds] = templateImage[highInds]*clamp
-            lowInds = (modelVals < templateImage/clamp - noiseLevel)
-            excess[lowInds] += modelVals[lowInds] - templateImage[lowInds]/clamp
-            modelVals[lowInds] = templateImage[lowInds]/clamp
+            highPixels = (modelVals > (templateImage*self.config.clampFrequency + noiseLevel))
+            excess[highPixels] += modelVals[highPixels] - templateImage[highPixels]*self.config.clampFrequency
+            modelVals[highPixels] = templateImage[highPixels]*self.config.clampFrequency
+            lowPixels = (modelVals < templateImage/self.config.clampFrequency - noiseLevel)
+            excess[lowPixels] += modelVals[lowPixels] - templateImage[lowPixels]/self.config.clampFrequency
+            modelVals[lowPixels] = templateImage[lowPixels]/self.config.clampFrequency
         excess /= nModels
         for model in dcrModels:
-            modelVals = model.image.array
-            modelVals += excess
+            model.image.array += excess
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
                              weightList, altMaskList, statsFlags, statsCtrl):
@@ -638,8 +621,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
-    @staticmethod
-    def convolveDcrModelPlane(maskedImage, dcr, bbox=None, useFFT=False, useInverse=False):
+    def convolveDcrModelPlane(self, maskedImage, dcr, bbox=None, useInverse=False):
         """Shift a masked image.
 
         Parameters
@@ -665,7 +647,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         NotImplementedError
             The Fourier transform approach has not yet been written.
         """
-        if useFFT:
+        if self.config.useFFT:
             raise NotImplementedError("The Fourier transform approach has not yet been written.")
         else:
             if useInverse:
@@ -681,11 +663,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             mask &= ~mask.getPlaneBitMask("CLIPPED")
             srcImage = result.image.array
             scrVariance = result.variance.array
-            nanInds = np.isnan(srcImage)
-            mask.array[nanInds] = mask.getPlaneBitMask("NO_DATA")
-            result.setMask(DcrAssembleCoaddTask.shiftMask(mask, dcr, useInverse=useInverse))
+            badPixels = np.isnan(srcImage)
+            mask.array[badPixels] = mask.getPlaneBitMask("NO_DATA")
+            result.setMask(self.shiftMask(mask, dcr, useInverse=useInverse))
 
-            srcImage[nanInds] = 0.
+            srcImage[badPixels] = 0.
             # scrVariance[nanInds] = numpy.inf
             retImage = scipy.ndimage.interpolation.shift(srcImage, shift)
             result.image.array[:] = retImage
@@ -715,8 +697,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             newModel.image.array[:] /= 1. + gain
             newModel.variance.array[:] /= 1. + gain
 
-    @staticmethod
-    def dcrShiftCalculate(visitInfo, wcs, lambdaEff, filterWidth, dcrNumSubbands):
+    def dcrShiftCalculate(self, visitInfo, wcs):
         """Calculate the shift in pixels of an exposure due to DCR.
 
         Parameters
@@ -725,28 +706,24 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Metadata for the exposure.
         wcs : lsst.afw.geom.skyWcs.skyWcs.SkyWcs
             Coordinate system definition (wcs) for the exposure.
-        lambdaEff : float
-            Effective center wavelength of the filter, in nm.
-        filterWidth : float
-            Width of the filter, in nm.
-        dcrNumSubbands : int
-            Number of subfilters to divide the full band into.
 
         Returns
         -------
         lsst.afw.geom.Extent2I
             The 2D shift due to DCR, in pixels.
         """
-        rotation = DcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
+        rotation = self.calculateRotationAngle(visitInfo, wcs)
 
         dcrShift = []
-        for wl0, wl1 in wavelengthGenerator(lambdaEff, filterWidth, dcrNumSubbands):
-            # Note that refract_amp can be negative, since it's relative to the midpoint of the full band
-            diffRefractAmp0 = differentialRefraction(wl0, lambdaEff,
+        for wl0, wl1 in wavelengthGenerator(self.config.lambdaEff,
+                                            self.config.filterWidth,
+                                            self.config.dcrNumSubbands):
+            # Note that diffRefractAmp can be negative, since it's relative to the midpoint of the full band
+            diffRefractAmp0 = differentialRefraction(wl0, self.config.lambdaEff,
                                                      elevation=visitInfo.getBoresightAzAlt().getLatitude(),
                                                      observatory=visitInfo.getObservatory(),
                                                      weather=visitInfo.getWeather())
-            diffRefractAmp1 = differentialRefraction(wl1, lambdaEff,
+            diffRefractAmp1 = differentialRefraction(wl1, self.config.lambdaEff,
                                                      elevation=visitInfo.getBoresightAzAlt().getLatitude(),
                                                      observatory=visitInfo.getObservatory(),
                                                      weather=visitInfo.getWeather())
@@ -777,11 +754,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         lsst.afw.image.maskedImageF
             The DCR-matched template
         """
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
-                                          self.config.filterWidth, self.config.dcrNumSubbands)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
         templateImage = afwImage.MaskedImageF(bbox)
         for dcr, model in zip(dcrShift, dcrModels):
-            templateImage += self.convolveDcrModelPlane(model, dcr, bbox=bbox, useFFT=self.config.useFFT)
+            templateImage += self.convolveDcrModelPlane(model, dcr, bbox=bbox)
         if mask is not None:
             templateImage.setMask(mask[bbox, afwImage.PARENT])
         return templateImage
@@ -807,14 +783,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         lsst.afw.image.maskedImageF
             The residual image for the next subfilter, shifted for DCR.
         """
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs, self.config.lambdaEff,
-                                          self.config.filterWidth, self.config.dcrNumSubbands)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
         for dcr in dcrShift:
-            yield self.convolveDcrModelPlane(residual, dcr, bbox=bbox,
-                                             useInverse=True, useFFT=self.config.useFFT)
+            yield self.convolveDcrModelPlane(residual, dcr, bbox=bbox, useInverse=True)
 
-    @staticmethod
-    def calculateRotationAngle(visitInfo, wcs):
+    def calculateRotationAngle(self, visitInfo, wcs):
         """Calculate the sky rotation angle of an exposure.
 
         Parameters
@@ -838,8 +811,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         rotAngle = afwGeom.Angle(cdAngle + parAngle)
         return rotAngle
 
-    @staticmethod
-    def shiftMask(mask, shift, useInverse=False):
+    def shiftMask(self, mask, shift, useInverse=False):
         """Shift a mask and grow each mask plane by one pixel.
 
         Parameters

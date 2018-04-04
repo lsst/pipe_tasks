@@ -34,7 +34,7 @@ import lsst.utils.tests
 from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCoaddConfig
 
 
-class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
+class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
     """A test case for the DCR-aware image coaddition algorithm.
     """
 
@@ -152,10 +152,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
-                                                          self.config.lambdaEff,
-                                                          self.config.filterWidth,
-                                                          self.config.dcrNumSubbands)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
         refShift = [afwGeom.Extent2D(-0.55832265311722795, -0.32306512577396451),
                     afwGeom.Extent2D(-0.018151534656568987, -0.010503116422151829),
                     afwGeom.Extent2D(0.36985291822812622, 0.21400990785188412)]
@@ -174,7 +171,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(cdRotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        rotAngle = DcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
+        rotAngle = self.calculateRotationAngle(visitInfo, wcs)
         refAngle = Angle(-0.9344289857053072)
         self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=Angle(1e-6))
 
@@ -184,7 +181,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         This additionally tests that the variance and mask planes do not change.
         """
         refModels = [model.clone() for model in self.dcrModels]
-        DcrAssembleCoaddTask.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
+        self.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
         for model, refModel in zip(self.dcrModels, refModels):
             self.assertMaskedImagesEqual(model, refModel)
 
@@ -196,7 +193,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         refModels = [model.clone() for model in self.dcrModels]
         for model in self.dcrModels:
             model.image.array[:] *= 3.
-        DcrAssembleCoaddTask.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
+        self.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
         for model, refModel in zip(self.dcrModels, refModels):
             refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(model, refModel)
@@ -206,20 +203,16 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         The shift of the mask plane is tested separately since it is calculated differently.
         """
+        self.config.useFFT = False
         rotAngle = Angle(0.)
         azimuth = 200.*afwGeom.degrees
         elevation = 75.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        dcrShift = DcrAssembleCoaddTask.dcrShiftCalculate(visitInfo, wcs,
-                                                          self.config.lambdaEff,
-                                                          self.config.filterWidth,
-                                                          self.config.dcrNumSubbands)
-        newMaskedImage = DcrAssembleCoaddTask.convolveDcrModelPlane(self.dcrModels[0], dcrShift[0],
-                                                                    bbox=self.bbox,
-                                                                    useFFT=False,
-                                                                    useInverse=False)
+        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
+        newMaskedImage = self.convolveDcrModelPlane(self.dcrModels[0], dcrShift[0],
+                                                    bbox=self.bbox, useInverse=False)
         shift = (dcrShift[0].getY(), dcrShift[0].getX())
         refImage = scipy.ndimage.interpolation.shift(self.dcrModels[0].image.array, shift)
         refVariance = scipy.ndimage.interpolation.shift(self.dcrModels[0].variance.array, shift)
@@ -238,8 +231,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
                      for amp, phi in zip(shiftAmps, shiftPhis)]
         model = self.dcrModels[0]
         for dcrShift in dcrShifts:
-            shiftedMask = DcrAssembleCoaddTask.shiftMask(model.mask, dcrShift, useInverse=False)
-            newMask = DcrAssembleCoaddTask.shiftMask(shiftedMask, dcrShift, useInverse=True)
+            shiftedMask = self.shiftMask(model.mask, dcrShift, useInverse=False)
+            newMask = self.shiftMask(shiftedMask, dcrShift, useInverse=True)
             detectMask = afwImage.Mask.getPlaneBitMask('DETECTED')
 
             bufferXSize = np.ceil(np.abs(dcrShift.getX()))
@@ -262,8 +255,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         This also tests that noise-like pixels are not regularized.
         """
+        self.config.regularizeSigma = 3.
+        self.config.clampFrequency = 2.
         modelRefs = [model.clone() for model in self.dcrModels]
-        DcrAssembleCoaddTask.regularizeModel(self.dcrModels, self.bbox, self.mask, nSigma=3., clamp=2.)
+        self.regularizeModel(self.dcrModels, self.bbox, self.mask)
         for model, modelRef in zip(self.dcrModels, modelRefs):
             self.assertMaskedImagesEqual(model, modelRef)
 
@@ -272,20 +267,20 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         This also tests that noise-like pixels are not regularized.
         """
-        nSigma = 3.
-        clamp = 1.1
+        self.config.regularizeSigma = 3.
+        self.config.clampFrequency = 1.1
         modelRefs = [model.clone() for model in self.dcrModels]
         templateImage = np.sum([model.image.array for model in self.dcrModels], axis=0)
         backgroundInds = self.mask.array == 0
-        noiseLevel = nSigma*np.std(templateImage[backgroundInds])
+        noiseLevel = self.config.regularizeSigma*np.std(templateImage[backgroundInds])
 
-        DcrAssembleCoaddTask.regularizeModel(self.dcrModels, self.bbox, self.mask, nSigma=nSigma, clamp=clamp)
+        self.regularizeModel(self.dcrModels, self.bbox, self.mask)
         for model, modelRef in zip(self.dcrModels, modelRefs):
             self.assertFloatsAlmostEqual(model.mask.array, modelRef.mask.array)
             self.assertFloatsAlmostEqual(model.variance.array, modelRef.variance.array)
-            imageDiffHigh = model.image.array - (templateImage*clamp + noiseLevel)
+            imageDiffHigh = model.image.array - (templateImage*self.config.clampFrequency + noiseLevel)
             self.assertLessEqual(np.max(imageDiffHigh), 0.)
-            imageDiffLow = model.image.array - (templateImage/clamp - noiseLevel)
+            imageDiffLow = model.image.array - (templateImage/self.config.clampFrequency - noiseLevel)
             self.assertGreaterEqual(np.max(imageDiffLow), 0.)
 
 
