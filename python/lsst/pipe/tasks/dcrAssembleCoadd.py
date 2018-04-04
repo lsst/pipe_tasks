@@ -498,47 +498,58 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         modelWeightList = [1.0]*self.config.dcrNumSubbands
-        convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         dcrModelCut = [model[bbox, afwImage.PARENT] for model in dcrModels]
-        modelWeights = afwMath.statisticsStack(dcrModelCut, statsFlags, statsCtrl, modelWeightList,
-                                               afwImage.Mask.getPlaneBitMask("CLIPPED"),
-                                               afwImage.Mask.getPlaneBitMask("NO_DATA"))
-        modelVals = modelWeights.image.array
+        modelSum = afwMath.statisticsStack(dcrModelCut, statsFlags, statsCtrl, modelWeightList,
+                                           afwImage.Mask.getPlaneBitMask("CLIPPED"),
+                                           afwImage.Mask.getPlaneBitMask("NO_DATA"))
+        significanceImage = np.abs(modelSum.image.array)
         weight = 0
         metric = 0.
-        metricList = []
+        metricList = {}
         zipIterables = zip(tempExpRefList, weightList, imageScalerList, altMaskList)
-        len_list = []
-        obsid_list = []
         for tempExpRef, expWeight, imageScaler, altMask in zipIterables:
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
-            refImage = exposure.maskedImage
-            imageScaler.scaleMaskedImage(refImage)
-            refVals = refImage.image.array
-            visitInfo = exposure.getInfo().getVisitInfo()
-            wcs = exposure.getInfo().getWcs()
-            templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, bbox, wcs)
-            templateVals = templateImage.image.array
-            diffVals = np.abs(refVals - templateVals)*modelVals
-            refVals = np.abs(refVals)*modelVals
-
-            finiteInds = (np.isfinite(refVals))*(np.isfinite(diffVals))
-            goodMaskInds = (refImage.mask.array & convergeMask) == convergeMask
-            inds = finiteInds*goodMaskInds
-            len_list.append(np.sum(inds))
-            if np.sum(inds) == 0:
-                metricList.append(np.nan)
-                continue
-            singleMetric = np.sum(diffVals[inds])/np.sum(refVals[inds])
-            metric += singleMetric
-            metricList.append(singleMetric)
-            weight += 1.
-            obsid_list.append((visitInfo.getExposureId()-124)//512)
-        self.log.info("Indiviual metrics:\n%s", list(zip(obsid_list, metricList)))
+            imageScaler.scaleMaskedImage(exposure.maskedImage)
+            singleMetric = self.calculateSingleConvergence(exposure, dcrModels, significanceImage)
+            metric += singleMetric*expWeight
+            metricList[tempExpRef.dataId["visit"]] = singleMetric
+            weight += expWeight
+        self.log.info("Individual metrics:\n%s", metricList)
         if weight == 0:
             return 1.
         else:
             return metric/weight
+
+    def calculateSingleConvergence(self, exposure, dcrModels, significanceImage):
+        """Calculate a quality of fit metric for a matched template of a single exposure.
+
+        Parameters
+        ----------
+        exposure : lsst.afw.image.exposure.exposure.ExposureF
+            The input warped exposure to evaluate.
+        dcrModels : list of lsst.afw.image.maskedImageF
+            A list of masked images, each containing the model for one subfilter.
+        significanceImage : `np.ndarray`
+            Array of weights for each pixel corresponding to its significance for the convergence calculation.
+
+        Returns
+        -------
+        `float`
+            Quality of fit metric for one exposure, within the sub-region.
+        """
+        convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+        templateImage = self.buildMatchedTemplate(dcrModels, exposure.getInfo().getVisitInfo(),
+                                                  exposure.getBBox(), exposure.getInfo().getWcs())
+        diffVals = np.abs(exposure.maskedImage.image.array - templateImage.image.array)*significanceImage
+        refVals = np.abs(exposure.maskedImage.image.array)*significanceImage
+
+        finitePixels = np.isfinite(refVals) & np.isfinite(diffVals)
+        goodMaskPixels = (exposure.maskedImage.mask.array & convergeMask) == convergeMask
+        usePixels = finitePixels & goodMaskPixels
+        if np.sum(usePixels) == 0:
+            metric = 0.
+        metric = np.sum(diffVals[usePixels])/np.sum(refVals[usePixels])
+        return metric
 
     @staticmethod
     def dcrDivideCoadd(coaddExposure, dcrNumSubbands):
