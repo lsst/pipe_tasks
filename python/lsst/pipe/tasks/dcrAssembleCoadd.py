@@ -248,26 +248,34 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
                                               weightList, altMaskList, stats.flags, stats.ctrl,
                                               convergenceMetric, baseMask)
-                    convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
-                                                                  imageScalerList, weightList, altMaskList,
-                                                                  stats.flags, stats.ctrl)
-                    convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
-                    convergenceList.append(convergenceMetric)
+                    if self.config.useConvergence:
+                        convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
+                                                                      imageScalerList, weightList,
+                                                                      altMaskList, stats.flags, stats.ctrl)
+                        convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
+                        convergenceList.append(convergenceMetric)
                 except Exception as e:
                     self.log.warn("Error during iteration %s while computing coadd %s: %s", subBBox, e)
                     break
                 if modelIter > self.config.maxNumIter:
-                    self.log.warn("Coadd %s reached maximum iterations. Convergence: %s",
-                                  subBBox, convergenceMetric)
+                    if self.config.useConvergence:
+                        self.log.warn("Coadd %s reached maximum iterations. Convergence: %s",
+                                      subBBox, convergenceMetric)
                     break
-                self.log.info("Iteration %s with convergence %s, %2.4f%% improvement \n",
-                              modelIter, convergenceMetric, 100.*convergenceCheck)
+
+                if self.config.useConvergence:
+                    self.log.info("Iteration %s with convergence %s, %2.4f%% improvement",
+                                  modelIter, convergenceMetric, 100.*convergenceCheck)
                 modelIter += 1
             else:
-                self.log.info("Coadd %s finished with convergence %s after %s iterations",
-                              subBBox, convergenceMetric, modelIter)
-            finalPercent = 100*(convergenceList[0] - convergenceMetric)/convergenceMetric
-            self.log.info("Final convergence improvement was %2.4f%% overall", finalPercent)
+                if self.config.useConvergence:
+                    self.log.info("Coadd %s finished with convergence %s after %s iterations",
+                                  subBBox, convergenceMetric, modelIter)
+                else:
+                    self.log.info("Coadd %s finished after %s iterations", subBBox, modelIter)
+            if self.config.useConvergence:
+                self.log.info("Final convergence improvement was %2.4f%% overall",
+                              100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
