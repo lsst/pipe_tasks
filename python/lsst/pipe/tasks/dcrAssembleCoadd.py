@@ -234,6 +234,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
             convergenceCheck = 1.
+            self.subfilterVariance = None
             while (convergenceCheck > self.config.convergenceThreshold or
                    modelIter < self.config.minNumIter):
                 try:
@@ -341,7 +342,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 obsWeight *= visitInfo.getBoresightAirmass()
             weightList.append(obsWeight)
             residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
-
         dcrSubModelOut = []
         with self.timer("stack"):
             for oldModel in dcrModels:
@@ -352,6 +352,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 residual.setXY0(bboxGrow.getBegin())
                 newModel = self.clampModel(residual, oldModel, bboxGrow)
                 dcrSubModelOut.append(newModel)
+        self.setModelVariance(dcrSubModelOut)
         self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
@@ -416,16 +417,29 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         newImage[nonFinitePixels] = 0.
         newVariance[nonFinitePixels] = 0.
         oldImage = oldModel[bbox, afwImage.PARENT].image.array
-        oldVariance = oldModel[bbox, afwImage.PARENT].variance.array
-        highPixels = ((np.abs(newImage) > np.abs(oldImage*self.config.modelClampFactor))*
-                      (np.abs(newVariance) > np.abs(oldVariance*self.config.modelClampFactor)))
+        highPixels = np.abs(newImage) > np.abs(oldImage*self.config.modelClampFactor)
         newImage[highPixels] = oldImage[highPixels]*self.config.modelClampFactor
-        newVariance[highPixels] = oldVariance[highPixels]*self.config.modelClampFactor
-        lowPixels = ((np.abs(newImage) < np.abs(oldImage/self.config.modelClampFactor))*
-                     (np.abs(newVariance) < np.abs(oldVariance/self.config.modelClampFactor)))
+        lowPixels = np.abs(newImage) < np.abs(oldImage/self.config.modelClampFactor)
         newImage[lowPixels] = oldImage[lowPixels]/self.config.modelClampFactor
-        newVariance[lowPixels] = oldVariance[lowPixels]/self.config.modelClampFactor
         return newModel
+
+    def setModelVariance(self, dcrModels):
+        """Set the subfilter variance planes from the results of the first iteration.
+
+        We are not solving for the variance, so we need to shift the variance plane
+        only once. Otherwise, Otherwise, regions with high variance will bleed into
+        neighboring pixels with each successive iteration.
+
+        Parameters
+        ----------
+        dcrModels : list of lsst.afw.image.maskedImageF
+            A list of masked images, each containing the model for one subfilter.
+        """
+        if self.subfilterVariance is None:
+            self.subfilterVariance = [mi.variance.array for mi in dcrModels]
+        else:
+            for mi, variance in zip(dcrModels, self.subfilterVariance):
+                mi.variance.array[:] = variance
 
     def regularizeModel(self, dcrModels, bbox, mask):
         """Restrict large variations in the model between subfilters.
@@ -665,14 +679,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             mask = result.mask
             mask &= ~mask.getPlaneBitMask("CLIPPED")
             srcImage = result.image.array
-            badPixels = np.isnan(srcImage)
+            badImagePixels = np.isnan(srcImage)
             srcVariance = result.variance.array
-            mask.array[badPixels] = mask.getPlaneBitMask("NO_DATA")
+            badVariancePixels = np.isnan(srcVariance)
+            mask.array[badImagePixels] = mask.getPlaneBitMask("NO_DATA")
             result.setMask(self.shiftMask(mask, dcr, useInverse=useInverse))
 
-            srcImage[badPixels] = 0.
+            srcImage[badImagePixels] = 0.
             retImage = scipy.ndimage.interpolation.shift(srcImage, shift)
             result.image.array[:] = retImage
+            srcVariance[badVariancePixels] = 0
             retVariance = scipy.ndimage.interpolation.shift(srcVariance, shift)
             result.variance.array[:] = retVariance
         return result
