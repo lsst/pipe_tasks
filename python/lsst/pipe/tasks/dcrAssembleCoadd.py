@@ -117,16 +117,6 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         default=["DETECTED"],
         doc="Mask planes to use to calculate convergence."
     )
-    lambdaEff = pexConfig.Field(
-        dtype=float,
-        doc="Effective center wavelength of the filter, in nm. This will be replaced in DM-13668.",
-        default=478.,
-    )
-    filterWidth = pexConfig.Field(
-        dtype=float,
-        doc="Width of the filter, in nm. This will be replaced in DM-13668",
-        default=147.,
-    )
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
@@ -230,6 +220,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if altMaskList is None:
             altMaskList = [None]*len(tempExpRefList)
         baseMask = templateCoadd.mask
+        self.filterInfo = templateCoadd.getFilter()
+        if np.isnan(self.filterInfo.getFilterProperty().getLambdaMin()):
+            raise NotImplementedError("No minimum/maximum wavelength information found"
+                                      " in the filter definition! Please add lambdaMin and lambdaMax"
+                                      " to the Mapper class in your obs package.")
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
@@ -720,17 +715,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The 2D shift due to DCR, in pixels.
         """
         rotation = self.calculateRotationAngle(visitInfo, wcs)
-
         dcrShift = []
-        for wl0, wl1 in wavelengthGenerator(self.config.lambdaEff,
-                                            self.config.filterWidth,
-                                            self.config.dcrNumSubbands):
+        lambdaEff = self.filterInfo.getFilterProperty().getLambdaEff()
+        for wl0, wl1 in self.wavelengthGenerator():
             # Note that diffRefractAmp can be negative, since it's relative to the midpoint of the full band
-            diffRefractAmp0 = differentialRefraction(wl0, self.config.lambdaEff,
+            diffRefractAmp0 = differentialRefraction(wl0, lambdaEff,
                                                      elevation=visitInfo.getBoresightAzAlt().getLatitude(),
                                                      observatory=visitInfo.getObservatory(),
                                                      weather=visitInfo.getWeather())
-            diffRefractAmp1 = differentialRefraction(wl1, self.config.lambdaEff,
+            diffRefractAmp1 = differentialRefraction(wl1, lambdaEff,
                                                      elevation=visitInfo.getBoresightAzAlt().getLatitude(),
                                                      observatory=visitInfo.getObservatory(),
                                                      weather=visitInfo.getWeather())
@@ -858,26 +851,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 retMask[bbox, afwImage.PARENT] |= mask[bboxBase, afwImage.PARENT]
         return retMask
 
+    def wavelengthGenerator(self):
+        """Iterate over the wavelength endpoints of subfilters.
 
-def wavelengthGenerator(lambdaEff, filterWidth, dcrNumSubbands):
-    """Iterate over the wavelength endpoints of subfilters.
-
-    Parameters
-    ----------
-    lambdaEff : `float`
-        The effective wavelength of the full filter, in nm.
-    filterWidth : `float`
-        The full width of the filter, in nm.
-    dcrNumSubbands : `int`
-        The number of subfilters to divide the bandpass into.
-
-    Yields
-    ------
-    Tuple of two `floats`
-        The next set of wavelength endpoints for a subfilter, in nm.
-    """
-    wlStep = filterWidth/dcrNumSubbands
-    for wl in np.linspace(-filterWidth/2., filterWidth/2., dcrNumSubbands, endpoint=False):
-        wlStart = lambdaEff + wl
-        wlEnd = wlStart + wlStep
-        yield (wlStart, wlEnd)
+        Yields
+        ------
+        Tuple of two `floats`
+            The next set of wavelength endpoints for a subfilter, in nm.
+        """
+        lambdaMin = self.filterInfo.getFilterProperty().getLambdaMin()
+        lambdaMax = self.filterInfo.getFilterProperty().getLambdaMax()
+        wlStep = (lambdaMax - lambdaMin)/self.config.dcrNumSubfilters
+        for wl in np.linspace(lambdaMin, lambdaMax, self.config.dcrNumSubfilters, endpoint=False):
+            yield (wl, wl + wlStep)

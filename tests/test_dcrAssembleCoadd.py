@@ -40,8 +40,11 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
     def setUp(self):
         self.config = DcrAssembleCoaddConfig()
-        self.config.lambdaEff = 478.
-        self.config.filterWidth = 147.
+        lambdaEff = 476.31  # Use LSST g band values for the test.
+        lambdaMin = 405
+        lambdaMax = 552
+        afwImage.utils.defineFilter("gTest", lambdaEff, lambdaMin=lambdaMin, lambdaMax=lambdaMax)
+        self.filterInfo = afwImage.Filter("gTest")
         self.config.dcrNumSubfilters = 3
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
@@ -154,9 +157,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
-        refShift = [afwGeom.Extent2D(-0.55832265311722795, -0.32306512577396451),
-                    afwGeom.Extent2D(-0.018151534656568987, -0.010503116422151829),
-                    afwGeom.Extent2D(0.36985291822812622, 0.21400990785188412)]
+        refShift = [afwGeom.Extent2D(-0.5363512808, -0.3103517169),
+                    afwGeom.Extent2D(0.001887293861, 0.001092054612),
+                    afwGeom.Extent2D(0.3886592703, 0.2248919247)]
         for shiftOld, shiftNew in zip(refShift, dcrShift):
             self.assertFloatsAlmostEqual(shiftOld.getX(), shiftNew.getX(), rtol=1e-6, atol=1e-8)
             self.assertFloatsAlmostEqual(shiftOld.getY(), shiftNew.getY(), rtol=1e-6, atol=1e-8)
