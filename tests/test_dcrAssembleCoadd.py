@@ -40,9 +40,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
     def setUp(self):
         self.config = DcrAssembleCoaddConfig()
-        self.config.dcrNumSubbands = 3
         self.config.lambdaEff = 478.
         self.config.filterWidth = 147.
+        self.config.dcrNumSubfilters = 3
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         xSize = 40
@@ -53,6 +53,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         self.rng = np.random
         self.rng.seed(seed)
         noiseLevel = 5
+        detectionSigma = 5.
         sourceSigma = 20.
         fluxRange = 2.
         xLoc = self.rng.random(nSrc)*(xSize - 2*self.config.bufferSize) + self.config.bufferSize
@@ -61,7 +62,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         self.bbox = afwGeom.Box2I(afwGeom.Point2I(12345, 67890), afwGeom.Extent2I(xSize, ySize))
 
         imageSum = np.zeros((ySize, xSize))
-        for subfilter in range(self.config.dcrNumSubbands):
+        for subfilter in range(self.config.dcrNumSubfilters):
             flux = (self.rng.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             model = afwImage.MaskedImageF(self.bbox)
             image = model.image.array
@@ -75,7 +76,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             model.mask.addMaskPlane("CLIPPED")
             self.dcrModels.append(model)
         maskVals = np.zeros_like(imageSum)
-        maskVals[imageSum > 5*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
+        maskVals[imageSum > detectionSigma*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
         for model in self.dcrModels:
             model.mask.array[:] = maskVals
         self.mask = self.dcrModels[0].mask
