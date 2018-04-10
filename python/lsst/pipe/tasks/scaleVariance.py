@@ -178,6 +178,7 @@ class ScaleVarianceTask(Task):
         factor : `float`
             Variance rescaling factor.
         """
+        maskVal = maskedImage.mask.getPlaneBitMask(self.config.maskPlanes)
         isGood = ((maskedImage.mask.array & maskVal) == 0) & (maskedImage.variance.array > 0)
         # Robust measurement of stdev
         q1, q3 = np.percentile(maskedImage.image.array[isGood], (25, 75))
