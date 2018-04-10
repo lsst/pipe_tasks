@@ -114,11 +114,11 @@ class ScaleVarianceTask(Task):
         """
         with self.subtractedBackground(maskedImage):
             factor = self.pixelBased(maskedImage)
-            if factor > self.config.limit:
+            if np.isnan(factor) or factor > self.config.limit:
                 self.log.warn("Pixel-based variance rescaling factor (%f) exceeds configured limit (%f); "
                               "trying image-based method", factor, self.config.limit)
                 factor = self.imageBased(maskedImage)
-                if factor > self.config.limit:
+                if np.isnan(factor) or factor > self.config.limit:
                     raise RuntimeError("Variance rescaling factor (%f) exceeds configured limit (%f)" %
                                        (factor, self.config.limit))
             self.log.info("Renormalizing variance by %f" % (factor,))
