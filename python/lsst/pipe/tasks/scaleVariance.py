@@ -114,11 +114,11 @@ class ScaleVarianceTask(Task):
         """
         with self.subtractedBackground(maskedImage):
             factor = self.pixelBased(maskedImage)
-            if factor > self.config.limit:
+            if np.isnan(factor) or factor > self.config.limit:
                 self.log.warn("Pixel-based variance rescaling factor (%f) exceeds configured limit (%f); "
                               "trying image-based method", factor, self.config.limit)
                 factor = self.imageBased(maskedImage)
-                if factor > self.config.limit:
+                if np.isnan(factor) or factor > self.config.limit:
                     raise RuntimeError("Variance rescaling factor (%f) exceeds configured limit (%f)" %
                                        (factor, self.config.limit))
             self.log.info("Renormalizing variance by %f" % (factor,))
@@ -150,7 +150,7 @@ class ScaleVarianceTask(Task):
         variance = maskedImage.variance
         snr = maskedImage.image.array/np.sqrt(variance.array)
         maskVal = maskedImage.mask.getPlaneBitMask(self.config.maskPlanes)
-        isGood = (maskedImage.mask.array & maskVal) == 0
+        isGood = ((maskedImage.mask.array & maskVal) == 0) & (maskedImage.variance.array > 0)
         # Robust measurement of stdev using inter-quartile range
         q1, q3 = np.percentile(snr[isGood], (25, 75))
         stdev = 0.74*(q3 - q1)
@@ -178,7 +178,8 @@ class ScaleVarianceTask(Task):
         factor : `float`
             Variance rescaling factor.
         """
-        isGood = (maskedImage.mask.array & maskVal) == 0
+        maskVal = maskedImage.mask.getPlaneBitMask(self.config.maskPlanes)
+        isGood = ((maskedImage.mask.array & maskVal) == 0) & (maskedImage.variance.array > 0)
         # Robust measurement of stdev
         q1, q3 = np.percentile(maskedImage.image.array[isGood], (25, 75))
         ratio = 0.74*(q3 - q1)/np.sqrt(np.median(maskedImage.variance.array[isGood]))
