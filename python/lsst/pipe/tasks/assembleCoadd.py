@@ -1681,6 +1681,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
         spanSetEdgeList = []
+        badPixelMask = self.getBadPixelMask()
 
         # mask of the warp diffs should = that of only the warp
         templateCoadd.mask.clearAllMaskPlanes()
@@ -1693,8 +1694,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
             warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
             if warpDiffExp is not None:
-                nImage.array += numpy.where(numpy.isnan(warpDiffExp.image.array),
-                                            0, 1).astype(numpy.uint16)
+                # This nImage only approximates the final nImage because it uses the PSF-matched mask
+                nImage.array += (numpy.isfinite(warpDiffExp.image.array) *
+                                 ((warpDiffExp.mask.array & badPixelMask) == 0)).astype(numpy.uint16)
                 fpSet = self.detect.detectFootprints(warpDiffExp, doSmooth=False, clearMask=True)
                 fpSet.positive.merge(fpSet.negative)
                 footprints = fpSet.positive
