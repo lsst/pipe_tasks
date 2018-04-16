@@ -1394,6 +1394,24 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         dtype=bool,
         default=True,
     )
+    doPrefilterArtifacts = pexConfig.Field(
+        doc="Ignore artifact candidates that are mostly covered by the bad pixel mask, "
+            "because they will be excluded anyway. This prevents them from contributing "
+            "to the outlier epoch count image and potentially being labeled as persistant."
+            "'Mostly' is defined by the config 'prefilterArtifactsRatio'.",
+        dtype=bool,
+        default=True
+    )
+    prefilterArtifactsMaskPlanes = pexConfig.ListField(
+        doc="Prefilter artifact candidates that are mostly covered by these bad mask planes.",
+        dtype=str,
+        default=('NO_DATA', 'BAD', 'SAT', 'SUSPECT'),
+    )
+    prefilterArtifactsRatio = pexConfig.Field(
+        doc="Prefilter artifact candidates with less than this fraction overlapping good pixels",
+        dtype=float,
+        default=0.05
+    )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
@@ -1702,6 +1720,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 footprints = fpSet.positive
                 slateIm.set(0)
                 spanSetList = [footprint.spans for footprint in footprints.getFootprints()]
+
+                # Remove artifacts due to defects before they contribute to the epochCountImage
+                if self.config.doPrefilterArtifacts:
+                    spanSetList = self._prefilterArtifacts(spanSetList, warpDiffExp)
                 for spans in spanSetList:
                     spans.setImage(slateIm, 1, doClip=True)
                 epochCountImage += slateIm
@@ -1745,6 +1767,32 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                              'NO_DATA': noData,
                              'EDGE': edge})
         return altMasks
+
+    def _prefilterArtifacts(self, spanSetList, exp):
+        """!
+        \brief Remove artifact candidates covered by bad mask plane
+
+        Any future editing of the candidate list that does not depend on
+        temporal information should go in this method.
+
+        @param spanSetList: List of SpanSets representing artifact candidates
+        @param exp: Exposure containing mask planes used to prefilter
+
+        return List of SpanSets with artifacts
+        """
+        badPixelMask = exp.mask.getPlaneBitMask(self.config.prefilterArtifactsMaskPlanes)
+        goodArr = (exp.mask.array & badPixelMask) == 0
+        returnSpanSetList = []
+        bbox = exp.getBBox()
+        x0, y0 = exp.getXY0()
+        for i, span in enumerate(spanSetList):
+            y, x = span.clippedTo(bbox).indices()
+            yIndexLocal = numpy.array(y) - y0
+            xIndexLocal = numpy.array(x) - x0
+            goodRatio = numpy.count_nonzero(goodArr[yIndexLocal, xIndexLocal])/span.getArea()
+            if goodRatio > self.config.prefilterArtifactsRatio:
+                returnSpanSetList.append(span)
+        return returnSpanSetList
 
     def _filterArtifacts(self, spanSetList, epochCountImage, nImage, footprintsToExclude=None):
         """!
