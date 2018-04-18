@@ -1723,7 +1723,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
                 # Remove artifacts due to defects before they contribute to the epochCountImage
                 if self.config.doPrefilterArtifacts:
-                    spanSetList = self._prefilterArtifacts(spanSetList, warpDiffExp)
+                    spanSetList = self.prefilterArtifacts(spanSetList, warpDiffExp)
                 for spans in spanSetList:
                     spans.setImage(slateIm, 1, doClip=True)
                 epochCountImage += slateIm
@@ -1757,8 +1757,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         for i, spanSetList in enumerate(spanSetArtifactList):
             if spanSetList:
-                filteredSpanSetList = self._filterArtifacts(spanSetList, epochCountImage, nImage,
-                                                            templateFootprints)
+                filteredSpanSetList = self.filterArtifacts(spanSetList, epochCountImage, nImage,
+                                                           templateFootprints)
                 spanSetArtifactList[i] = filteredSpanSetList
 
         altMasks = []
@@ -1768,7 +1768,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                              'EDGE': edge})
         return altMasks
 
-    def _prefilterArtifacts(self, spanSetList, exp):
+    def prefilterArtifacts(self, spanSetList, exp):
         """!
         \brief Remove artifact candidates covered by bad mask plane
 
@@ -1794,7 +1794,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 returnSpanSetList.append(span)
         return returnSpanSetList
 
-    def _filterArtifacts(self, spanSetList, epochCountImage, nImage, footprintsToExclude=None):
+    def filterArtifacts(self, spanSetList, epochCountImage, nImage, footprintsToExclude=None):
         """!
         \brief Filter artifact candidates
 
