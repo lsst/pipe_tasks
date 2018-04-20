@@ -215,9 +215,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.applyAltEdgeMask(templateCoadd.mask, spanSetMaskList)
 
         stats = self.prepareStats(mask=badPixelMask)
+        if self.config.doAirmassWeight:
+            tempExpName = self.getTempExpDatasetName(self.warpType)
+            for visit, tempExpRef in enumerate(tempExpRefList):
+                visitInfo = tempExpRef.get(tempExpName + "_visitInfo")
+                weightList[visit] *= visitInfo.getBoresightAirmass()
 
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
-        weightList = [1.]*len(tempExpRefList)
 
         baseMask = templateCoadd.mask
         self.filterInfo = templateCoadd.getFilter()
@@ -317,7 +321,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             bboxGrow.clip(model.getBBox())
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
-        weightList = []
         maskMap = self.setRejectedMaskMapping(statsCtrl)
         clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
 
@@ -338,10 +341,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     except Exception as e:
                         self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
             maskedImage -= templateImage
-            obsWeight = self.calculateWeight(maskedImage, convergeMask)
-            if self.config.doAirmassWeight:
-                obsWeight *= visitInfo.getBoresightAirmass()
-            weightList.append(obsWeight)
             residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
         dcrSubModelOut = []
         with self.timer("stack"):
@@ -369,27 +368,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         for model, subModel in zip(dcrModels, dcrSubModelOut):
             model.assign(subModel[bbox, afwImage.PARENT], bbox)
-
-    def calculateWeight(self, residual, goodMask):
-        """Calculate the weight of an exposure based on the goodness of fit of the matched template.
-
-        Parameters
-        ----------
-        residual : lsst.afw.image.maskedImageF
-            Residual masked image after subtracting a DCR-matched template.
-        goodMask : int
-            Bitmask over which to evaluate the goodness of fit of the residual over.
-
-        Returns
-        -------
-        `float`
-            Goodness of fit metric of the residual image.
-        """
-        residualVals = residual.image.array
-        finitePixels = np.isfinite(residualVals)
-        goodMaskPixels = (residual.mask.array & goodMask) == goodMask
-        weight = 1./np.std(residualVals[finitePixels & goodMaskPixels])
-        return weight
 
     def clampModel(self, residual, oldModel, bbox):
         """Restrict large variations in the model between iterations.
