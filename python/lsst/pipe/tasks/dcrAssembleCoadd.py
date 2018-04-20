@@ -534,8 +534,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         templateImage = self.buildMatchedTemplate(dcrModels, exposure.getInfo().getVisitInfo(),
                                                   exposure.getBBox(), exposure.getInfo().getWcs())
-        diffVals = np.abs(exposure.maskedImage.image.array - templateImage.image.array)*significanceImage
-        refVals = np.abs(exposure.maskedImage.image.array)*significanceImage
+        diffVals = np.abs(exposure.image.array - templateImage.image.array)*significanceImage
+        refVals = np.abs(templateImage.image.array)*significanceImage
 
         finitePixels = np.isfinite(refVals) & np.isfinite(diffVals)
         if altMaskSpans is not None:
