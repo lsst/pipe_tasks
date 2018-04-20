@@ -253,21 +253,23 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                         convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                         convergenceList.append(convergenceMetric)
                 except Exception as e:
-                    self.log.fatal("Error during iteration %s while computing coadd %s: %s",
-                                   modelIter, subBBox, e)
+                    self.log.fatal("Cannot compute coadd %s: %s", subBBox, e.args[0])
+                    break
                 if modelIter > self.config.maxNumIter:
                     if self.config.useConvergence:
-                        self.log.warn("Coadd %s reached maximum iterations. Convergence: %s",
-                                      subBBox, convergenceMetric)
+                        self.log.warn("Coadd %s reached maximum iterations before reaching"
+                                      " desired convergence improvement of %s.",
+                                      " Final convergence improvement: %s",
+                                      subBBox, self.config.convergenceThreshold, convergenceCheck)
                     break
 
                 if self.config.useConvergence:
-                    self.log.info("Iteration %s with convergence %s, %2.4f%% improvement",
+                    self.log.info("Iteration %s with convergence metric %s, %2.4f%% improvement",
                                   modelIter, convergenceMetric, 100.*convergenceCheck)
                 modelIter += 1
             else:
                 if self.config.useConvergence:
-                    self.log.info("Coadd %s finished with convergence %s after %s iterations",
+                    self.log.info("Coadd %s finished with convergence metric %s after %s iterations",
                                   subBBox, convergenceMetric, modelIter)
                 else:
                     self.log.info("Coadd %s finished after %s iterations", subBBox, modelIter)
@@ -339,7 +341,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     try:
                         maskedImage.mask &= ~maskedImage.mask.getPlaneBitMask(maskPlane)
                     except Exception as e:
-                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
+                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.args[0])
             maskedImage -= templateImage
             residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
         dcrSubModelOut = []
