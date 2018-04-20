@@ -30,6 +30,7 @@ from lsst.afw.coord import Observatory, Weather
 import lsst.afw.geom as afwGeom
 from lsst.afw.geom import Angle, makeCdMatrix, makeSkyWcs
 import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 import lsst.utils.tests
 from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCoaddConfig
 
@@ -261,8 +262,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         """
         self.config.regularizeSigma = 3.
         self.config.clampFrequency = 2.
+        statsCtrl = afwMath.StatisticsControl()
         modelRefs = [model.clone() for model in self.dcrModels]
-        self.regularizeModel(self.dcrModels, self.bbox, self.mask)
+        self.regularizeModel(self.dcrModels, self.bbox, self.mask, statsCtrl)
         for model, modelRef in zip(self.dcrModels, modelRefs):
             self.assertMaskedImagesEqual(model, modelRef)
 
@@ -273,12 +275,13 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         """
         self.config.regularizeSigma = 3.
         self.config.clampFrequency = 1.1
+        statsCtrl = afwMath.StatisticsControl()
         modelRefs = [model.clone() for model in self.dcrModels]
         templateImage = np.sum([model.image.array for model in self.dcrModels], axis=0)
         backgroundInds = self.mask.array == 0
         noiseLevel = self.config.regularizeSigma*np.std(templateImage[backgroundInds])
 
-        self.regularizeModel(self.dcrModels, self.bbox, self.mask)
+        self.regularizeModel(self.dcrModels, self.bbox, self.mask, statsCtrl)
         for model, modelRef in zip(self.dcrModels, modelRefs):
             self.assertFloatsAlmostEqual(model.mask.array, modelRef.mask.array)
             self.assertFloatsAlmostEqual(model.variance.array, modelRef.variance.array)

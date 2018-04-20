@@ -173,7 +173,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                dcrCoadds=results.dcrCoadds)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                 altMaskList=None, supplementaryData=None):
+                 supplementaryData=None):
         """Assemble the coadd.
 
         Requires additional inputs Struct `supplementaryData` to contain a `templateCoadd` that serves
@@ -193,8 +193,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The image scalars correct for the zero point of the exposures.
         weightList : list of floats
             The weight to give each input exposure in the coadd
-        altMaskList : List of Dicts containing spanSet lists, or None
-            Each element is dict with keys = mask plane name to which to add the spans
         supplementaryData : PipeBase.Struct
             A templateCoadd constructed from the full band.
 
@@ -207,18 +205,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - dcrCoadds: list of coadded exposures for each subfilter
         """
         templateCoadd = supplementaryData.templateCoadd
+        spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNumSubfilters)
+        # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
+        # Psf-Matching moves the real edge inwards
+        self.applyAltEdgeMask(templateCoadd.mask, spanSetMaskList)
 
         stats = self.prepareStats(mask=badPixelMask)
 
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
         weightList = [1.]*len(tempExpRefList)
 
-        if altMaskList is None:
-            altMaskList = [None]*len(tempExpRefList)
         baseMask = templateCoadd.mask
         self.filterInfo = templateCoadd.getFilter()
         if np.isnan(self.filterInfo.getFilterProperty().getLambdaMin()):
@@ -228,7 +228,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
             convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
-                                                          imageScalerList, weightList, altMaskList,
+                                                          imageScalerList, weightList, spanSetMaskList,
                                                           stats.flags, stats.ctrl)
             self.log.info("Computing coadd over %s", subBBox)
             self.log.info("Initial convergence : %s", convergenceMetric)
@@ -239,12 +239,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                    modelIter < self.config.minNumIter):
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
-                                              weightList, altMaskList, stats.flags, stats.ctrl,
+                                              weightList, spanSetMaskList, stats.flags, stats.ctrl,
                                               convergenceMetric, baseMask)
                     if self.config.useConvergence:
                         convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                                       imageScalerList, weightList,
-                                                                      altMaskList, stats.flags, stats.ctrl)
+                                                                      spanSetMaskList,
+                                                                      stats.flags, stats.ctrl)
                         convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                         convergenceList.append(convergenceMetric)
                 except Exception as e:
@@ -274,7 +275,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
-                             altMaskList, statsFlags, statsCtrl, convergenceMetric, baseMask):
+                             spanSetMaskList, statsFlags, statsCtrl, convergenceMetric, baseMask):
         """Assemble the DCR coadd for a sub-region.
 
         Build a DCR-matched template for each input exposure, then shift the residuals according to the DCR
@@ -299,7 +300,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The image scalars correct for the zero point of the exposures.
         weightList : list of floats
             The weight to give each input exposure in the coadd
-        altMaskList : List of Dicts containing spanSet lists, or None
+        spanSetMaskList : List of Dicts containing spanSet lists, or None
             Each element is dict with keys = mask plane name to which to add the spans
         statsFlags : lsst.afw.math.Property
             Statistics settings for coaddition.
@@ -317,23 +318,23 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
         weightList = []
-        convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+        maskMap = self.setRejectedMaskMapping(statsCtrl)
+        clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
 
-        for tempExpRef, imageScaler, altMaskSpans in zip(tempExpRefList, imageScalerList, altMaskList):
+        for tempExpRef, imageScaler, altMaskSpans in zip(tempExpRefList, imageScalerList, spanSetMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bboxGrow)
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.maskedImage
             templateImage = self.buildMatchedTemplate(dcrModels, visitInfo, bboxGrow, wcs, mask=baseMask)
             imageScaler.scaleMaskedImage(maskedImage)
-            mask = maskedImage.mask
             if altMaskSpans is not None:
-                self.applyAltMaskPlanes(mask, altMaskSpans)
+                self.applyAltMaskPlanes(maskedImage.mask, altMaskSpans)
 
             if self.config.removeMaskPlanes:
                 for maskPlane in self.config.removeMaskPlanes:
                     try:
-                        mask &= ~mask.getPlaneBitMask(maskPlane)
+                        maskedImage.mask &= ~maskedImage.mask.getPlaneBitMask(maskPlane)
                     except Exception as e:
                         self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.message)
             maskedImage -= templateImage
@@ -347,16 +348,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             for oldModel in dcrModels:
                 residualsList = [next(residualGenerator) for residualGenerator in residualGeneratorList]
                 residual = afwMath.statisticsStack(residualsList, statsFlags, statsCtrl, weightList,
-                                                   afwImage.Mask.getPlaneBitMask("CLIPPED"),
-                                                   afwImage.Mask.getPlaneBitMask("NO_DATA"))
+                                                   clipped,  # also set output to CLIPPED if sigma-clipped
+                                                   maskMap)
                 residual.setXY0(bboxGrow.getBegin())
                 newModel = self.clampModel(residual, oldModel, bboxGrow)
                 dcrSubModelOut.append(newModel)
         self.setModelVariance(dcrSubModelOut)
-        self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask)
+        self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask, statsCtrl)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
-                                                             imageScalerList, weightList, altMaskList,
+                                                             imageScalerList, weightList, spanSetMaskList,
                                                              statsFlags, statsCtrl)
             gain = min(max(convergenceMetric/convergenceMetricNew, self.config.minGain), self.config.maxGain)
             self.log.info("Convergence-weighted gain used: %2.4f", gain)
@@ -441,7 +442,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             for mi, variance in zip(dcrModels, self.subfilterVariance):
                 mi.variance.array[:] = variance
 
-    def regularizeModel(self, dcrModels, bbox, mask):
+    def regularizeModel(self, dcrModels, bbox, mask, statsCtrl):
         """Restrict large variations in the model between subfilters.
 
         Any flux subtracted by the restriction is accumulated from all subfilters,
@@ -455,12 +456,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Sub-region to coadd
         mask : lsst.afw.image.mask
             Reference mask to use for all model planes.
+        statsCtrl : lsst.afw.math.StatisticsControl
+            Statistics control object for coadd
         """
         nModels = len(dcrModels)
         templateImage = np.mean([model[bbox, afwImage.PARENT].image.array
                                  for model in dcrModels], axis=0)
         excess = np.zeros_like(templateImage)
-        backgroundPixels = mask[bbox, afwImage.PARENT].array == 0
+        convergeMask = mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+        backgroundPixels = mask[bbox, afwImage.PARENT].array & (statsCtrl.getAndMask() ^ convergeMask) == 0
         noiseLevel = self.config.regularizeSigma*np.std(templateImage[backgroundPixels])
         for model in dcrModels:
             modelVals = model.image.array
@@ -475,7 +479,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             model.image.array += excess
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
-                             weightList, altMaskList, statsFlags, statsCtrl):
+                             weightList, spanSetMaskList, statsFlags, statsCtrl):
         """Calculate a quality of fit metric for the matched templates of the input images.
 
         Parameters
@@ -490,7 +494,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The image scalars correct for the zero point of the exposures.
         weightList : list of floats
             The weight to give each input exposure in the coadd
-        altMaskList : List of Dicts containing spanSet lists, or None
+        spanSetMaskList : List of Dicts containing spanSet lists, or None
             Each element is dict with keys = mask plane name to which to add the spans
         statsFlags : lsst.afw.math.Property
             Statistics settings for coaddition.
@@ -502,21 +506,24 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         `float`
             Quality of fit metric for all input exposures, within the sub-region.
         """
+        maskMap = self.setRejectedMaskMapping(statsCtrl)
+        clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
         tempExpName = self.getTempExpDatasetName(self.warpType)
         modelWeightList = [1.0]*self.config.dcrNumSubfilters
         dcrModelCut = [model[bbox, afwImage.PARENT] for model in dcrModels]
         modelSum = afwMath.statisticsStack(dcrModelCut, statsFlags, statsCtrl, modelWeightList,
-                                           afwImage.Mask.getPlaneBitMask("CLIPPED"),
-                                           afwImage.Mask.getPlaneBitMask("NO_DATA"))
+                                           clipped,
+                                           maskMap)
         significanceImage = np.abs(modelSum.image.array)
         weight = 0
         metric = 0.
         metricList = {}
-        zipIterables = zip(tempExpRefList, weightList, imageScalerList, altMaskList)
-        for tempExpRef, expWeight, imageScaler, altMask in zipIterables:
+        zipIterables = zip(tempExpRefList, weightList, imageScalerList, spanSetMaskList)
+        for tempExpRef, expWeight, imageScaler, altMaskSpans in zipIterables:
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             imageScaler.scaleMaskedImage(exposure.maskedImage)
-            singleMetric = self.calculateSingleConvergence(exposure, dcrModels, significanceImage)
+            singleMetric = self.calculateSingleConvergence(exposure, dcrModels, significanceImage, statsCtrl,
+                                                           altMaskSpans=altMaskSpans)
             metric += singleMetric*expWeight
             metricList[tempExpRef.dataId["visit"]] = singleMetric
             weight += expWeight
@@ -526,7 +533,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         else:
             return metric/weight
 
-    def calculateSingleConvergence(self, exposure, dcrModels, significanceImage):
+    def calculateSingleConvergence(self, exposure, dcrModels, significanceImage, statsCtrl,
+                                   altMaskSpans=None):
         """Calculate a quality of fit metric for a matched template of a single exposure.
 
         Parameters
@@ -550,8 +558,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         refVals = np.abs(exposure.maskedImage.image.array)*significanceImage
 
         finitePixels = np.isfinite(refVals) & np.isfinite(diffVals)
-        goodMaskPixels = (exposure.maskedImage.mask.array & convergeMask) == convergeMask
-        usePixels = finitePixels & goodMaskPixels
+        if altMaskSpans is not None:
+            self.applyAltMaskPlanes(exposure.mask, altMaskSpans)
+        goodMaskPixels = exposure.mask.array & statsCtrl.getAndMask() == 0
+        convergeMaskPixels = exposure.mask.array & convergeMask > 0
+        usePixels = finitePixels & goodMaskPixels & convergeMaskPixels
         if np.sum(usePixels) == 0:
             metric = 0.
         metric = np.sum(diffVals[usePixels])/np.sum(refVals[usePixels])
@@ -581,7 +592,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         maskedImage.image.array /= dcrNumSubfilters
         maskedImage.variance.array /= dcrNumSubfilters
         maskedImage.mask.array[badPixels] = maskedImage.mask.getPlaneBitMask("NO_DATA")
-        maskedImage.mask &= ~maskedImage.mask.getPlaneBitMask("CLIPPED")
         dcrModels = [maskedImage, ]
         for subfilter in range(1, dcrNumSubfilters):
             dcrModels.append(maskedImage.clone())
@@ -677,7 +687,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             else:
                 result = maskedImage[bbox, afwImage.PARENT].clone()
             mask = result.mask
-            mask &= ~mask.getPlaneBitMask("CLIPPED")
             srcImage = result.image.array
             badImagePixels = np.isnan(srcImage)
             srcVariance = result.variance.array
