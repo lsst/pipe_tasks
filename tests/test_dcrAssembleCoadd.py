@@ -47,6 +47,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         afwImage.utils.defineFilter("gTest", lambdaEff, lambdaMin=lambdaMin, lambdaMax=lambdaMax)
         self.filterInfo = afwImage.Filter("gTest")
         self.config.dcrNumSubfilters = 3
+        self.bufferSize = 5
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         xSize = 40
@@ -60,8 +61,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         detectionSigma = 5.
         sourceSigma = 20.
         fluxRange = 2.
-        xLoc = self.rng.random(nSrc)*(xSize - 2*self.config.bufferSize) + self.config.bufferSize
-        yLoc = self.rng.random(nSrc)*(ySize - 2*self.config.bufferSize) + self.config.bufferSize
+        xLoc = self.rng.random(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize
+        yLoc = self.rng.random(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize
         self.dcrModels = []
         self.bbox = afwGeom.Box2I(afwGeom.Point2I(12345, 67890), afwGeom.Extent2I(xSize, ySize))
 
@@ -230,7 +231,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         The shift of the image and variance planes are tested separately
         since they are calculated differently.
         """
-        shiftAmps = [0.3, 1., self.config.bufferSize]
+        shiftAmps = [0.3, 1., self.bufferSize - 1]
         shiftPhis = [phi for phi in np.pi*self.rng.random(len(shiftAmps))]
         dcrShifts = [afwGeom.Extent2D(np.cos(phi), np.sin(phi))*amp
                      for amp, phi in zip(shiftAmps, shiftPhis)]

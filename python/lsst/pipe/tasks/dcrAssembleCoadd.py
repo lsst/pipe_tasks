@@ -37,11 +37,6 @@ __all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
 
 class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
-    bufferSize = pexConfig.Field(
-        dtype=int,
-        doc="Number of pixels to grow the subregion bounding box by to account for DCR at the edge.",
-        default=5,
-    )
     useFFT = pexConfig.Field(
         dtype=bool,
         doc="Use Fourier transforms for the convolution?",
@@ -80,7 +75,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     doWeightGain = pexConfig.Field(
         dtype=bool,
         doc="Use the calculated convergence metric to accelerate forward modeling?",
-        default=True,
+        default=False,
     )
     doAirmassWeight = pexConfig.Field(
         dtype=bool,
@@ -172,6 +167,33 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return pipeBase.Struct(coaddExposure=results.coaddExposure, nImage=results.nImage,
                                dcrCoadds=results.dcrCoadds)
 
+    def prepareDcrInputs(self, templateCoadd, tempExpRefList, weightList):
+        """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
+
+        Sets the properties `filterInfo` and `bufferSize`.
+
+        Parameters
+        ----------
+        templateCoadd : lsst.afw.image.exposure.exposure.ExposureF
+            The initial coadd exposure before accounting for DCR.
+        tempExpRefList : List of ButlerDataRefs
+            The data references to the input warped exposures.
+        weightList : list of floats
+            The weight to give each input exposure in the coadd
+            Will be modified in place if `doAirmassWeight` is set.
+        """
+        self.filterInfo = templateCoadd.getFilter()
+        tempExpName = self.getTempExpDatasetName(self.warpType)
+        dcrShifts = []
+        for visitNum, tempExpRef in enumerate(tempExpRefList):
+            visitInfo = tempExpRef.get(tempExpName + "_visitInfo")
+            airmass = visitInfo.getBoresightAirmass()
+            if self.config.doAirmassWeight:
+                weightList[visitNum] *= airmass
+            dcrShifts.append(np.max(np.abs(self.dcrShiftCalculate(visitInfo,
+                                                                  templateCoadd.getInfo().getWcs()))))
+        self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
+
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  supplementaryData=None):
         """Assemble the coadd.
@@ -215,16 +237,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.applyAltEdgeMask(templateCoadd.mask, spanSetMaskList)
 
         stats = self.prepareStats(mask=badPixelMask)
-        if self.config.doAirmassWeight:
-            tempExpName = self.getTempExpDatasetName(self.warpType)
-            for visit, tempExpRef in enumerate(tempExpRefList):
-                visitInfo = tempExpRef.get(tempExpName + "_visitInfo")
-                weightList[visit] *= visitInfo.getBoresightAirmass()
+        self.prepareDcrInputs(templateCoadd, tempExpRefList, weightList)
 
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
 
         baseMask = templateCoadd.mask
-        self.filterInfo = templateCoadd.getFilter()
         if np.isnan(self.filterInfo.getFilterProperty().getLambdaMin()):
             raise NotImplementedError("No minimum/maximum wavelength information found"
                                       " in the filter definition! Please add lambdaMin and lambdaMax"
@@ -258,7 +275,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 if modelIter > self.config.maxNumIter:
                     if self.config.useConvergence:
                         self.log.warn("Coadd %s reached maximum iterations before reaching"
-                                      " desired convergence improvement of %s.",
+                                      " desired convergence improvement of %s."
                                       " Final convergence improvement: %s",
                                       subBBox, self.config.convergenceThreshold, convergenceCheck)
                     break
@@ -318,7 +335,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Mask of the initial template coadd.
         """
         bboxGrow = afwGeom.Box2I(bbox)
-        bboxGrow.grow(self.config.bufferSize)
+        bboxGrow.grow(self.bufferSize)
         for model in dcrModels:
             bboxGrow.clip(model.getBBox())
         tempExpName = self.getTempExpDatasetName(self.warpType)
