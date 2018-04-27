@@ -19,8 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from __future__ import absolute_import, division, print_function
-from builtins import object
 import numpy
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
@@ -31,7 +29,7 @@ from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
 __all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask"]
 
 
-class ImageScaler(object):
+class ImageScaler:
     """A class that scales an image
 
     This version uses a single scalar. Fancier versions may use a spatially varying scale.

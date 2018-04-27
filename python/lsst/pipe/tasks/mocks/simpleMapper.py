@@ -29,10 +29,6 @@ possible approach, but it gave him an opportunity to play around with
 prototyping a future paf-free mapper class, and it does everything it
 needs to do right now.
 """
-from __future__ import absolute_import, division, print_function
-from builtins import range
-from builtins import object
-
 import os
 import shutil
 import re
@@ -42,12 +38,11 @@ import lsst.afw.cameraGeom
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.image.utils as afwImageUtils
 import lsst.afw.image as afwImage
-from future.utils import with_metaclass
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
 
 
-class PersistenceType(object):
+class PersistenceType:
     """Base class of a hierarchy used by SimpleMapper to defined different kinds of types of objects
     to persist.
 
@@ -148,7 +143,7 @@ class PeakCatalogPersistenceType(CatalogPersistenceType):
     cpp = "PeakCatalog"
 
 
-class SimpleMapping(object):
+class SimpleMapping:
     """Mapping object used to implement SimpleMapper, similar in intent to lsst.daf.peristence.Mapping.
     """
 
@@ -234,7 +229,7 @@ class MapperMeta(type):
         cls.keyDict.update(mapping.keys)
 
 
-class SimpleMapper(with_metaclass(MapperMeta, lsst.daf.persistence.Mapper)):
+class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
     """
     An extremely simple mapper for an imaginary camera for use in integration tests.
 

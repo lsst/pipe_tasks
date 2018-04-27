@@ -1,6 +1,4 @@
-from __future__ import absolute_import, division, print_function
 from past.builtins import basestring
-from builtins import object
 import os
 import shutil
 import tempfile
@@ -198,7 +196,7 @@ class RegisterConfig(Config):
     permissions = Field(dtype=int, default=0o664, doc="Permissions mode for registry; 0o664 = rw-rw-r--")
 
 
-class RegistryContext(object):
+class RegistryContext:
     """Context manager to provide a registry
 
     An existing registry is copied, so that it may continue

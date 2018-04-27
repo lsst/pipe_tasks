@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
@@ -41,10 +40,6 @@ genuine SourceRecords, we directly populate a catalog following the
 TrivialMeasurement schema, then check that it is transformed properly by the
 TrivialMeasurementTransform.
 """
-from __future__ import division, print_function, absolute_import
-
-from builtins import zip
-from builtins import object
 import contextlib
 import os
 import shutil
@@ -69,7 +64,7 @@ PLUGIN_NAME = "base_TrivialMeasurement"
 # of times it is accessed.
 
 
-class Placeholder(object):
+class Placeholder:
 
     def __init__(self):
         self.count = 0
@@ -109,7 +104,7 @@ class TrivialMeasurementTransform(measBase.transforms.MeasurementTransform):
         outColumns[self.key] = -1.0 * inColumns[self.name]
 
 
-class TrivialMeasurementBase(object):
+class TrivialMeasurementBase:
 
     """Default values for a trivial measurement plugin, subclassed below"""
     @staticmethod

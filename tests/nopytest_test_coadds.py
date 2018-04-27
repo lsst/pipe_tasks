@@ -47,8 +47,6 @@ directory visible to all the tests. When run in parallel with pytest-xdist
 this data will be created for every sub-process, leading to excessive disk
 usage, excessive test execution times and possible failure.
 """
-from __future__ import division, print_function, absolute_import
-from builtins import zip
 from past.builtins import basestring
 
 import unittest

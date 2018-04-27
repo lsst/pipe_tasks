@@ -19,8 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from __future__ import absolute_import, division, print_function
-from builtins import object
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -62,7 +60,7 @@ class CoaddInputRecorderConfig(pexConfig.Config):
     )
 
 
-class CoaddTempExpInputRecorder(object):
+class CoaddTempExpInputRecorder:
     """A helper class for CoaddInputRecorderTask, managing the CoaddInputs object for that single
     CoaddTempExp.  This will contain a single 'visit' record for the CoaddTempExp and a number of 'ccd'
     records.

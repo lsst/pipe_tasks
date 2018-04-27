@@ -22,7 +22,6 @@
 #
 """Select images for a given coadd patch
 """
-from __future__ import print_function
 import numpy
 
 import lsst.pex.config as pexConfig

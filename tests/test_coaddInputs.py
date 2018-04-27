@@ -39,8 +39,6 @@ because CoaddInputRecorderTask had bugs:
     tests/data/testCoaddInputs_coadd_with_version_1_data.fits
 - Save the data file to the repository (but do not save any other changes).
 """
-
-from __future__ import absolute_import, division, print_function
 import os.path
 import unittest
 
@@ -60,7 +58,7 @@ from lsst.pipe.tasks.coaddInputRecorder import CoaddInputRecorderTask
 SaveCoadd = False  # if True then save coadd even if test passes (always saved if a test fails)
 
 
-class MockExposure(object):
+class MockExposure:
 
     """Factory to make simple mock exposures suitable to put in a coadd
 
@@ -156,7 +154,7 @@ class MockExposure(object):
         return apCorrMap
 
 
-class MockCoadd(object):
+class MockCoadd:
 
     """Class to make a mock coadd
     """

@@ -19,9 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-
-from __future__ import absolute_import, division, print_function
-from builtins import zip
 from lsst.pipe.base import Struct
 
 """Helper functions for coaddition.

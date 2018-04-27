@@ -19,10 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from __future__ import absolute_import, division, print_function
-
-from builtins import zip
-
 import lsst.afw.math as afwMath
 import lsst.afw.display.ds9 as ds9
 import lsst.meas.algorithms as measAlg

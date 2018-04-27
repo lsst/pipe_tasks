@@ -19,7 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-from __future__ import absolute_import, division, print_function
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg

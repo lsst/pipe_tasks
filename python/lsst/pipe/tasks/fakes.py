@@ -19,14 +19,11 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-
-from __future__ import absolute_import, division, print_function
 import abc
 
 import lsst.pex.config
 import lsst.pipe.base
 import lsst.afw.image
-from future.utils import with_metaclass
 
 
 class BaseFakeSourcesConfig(lsst.pex.config.Config):
@@ -36,7 +33,7 @@ class BaseFakeSourcesConfig(lsst.pex.config.Config):
     )
 
 
-class BaseFakeSourcesTask(with_metaclass(abc.ABCMeta, lsst.pipe.base.Task)):
+class BaseFakeSourcesTask(lsst.pipe.base.Task, metaclass=abc.ABCMeta):
     """An abstract base class for subtasks that inject fake sources into images to test completeness and
     other aspects of the processing.
 
