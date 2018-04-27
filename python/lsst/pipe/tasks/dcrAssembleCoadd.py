@@ -117,6 +117,8 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
         self.assembleStaticSkyModel.warpType = 'direct'
         self.warpType = 'direct'
+        self.assembleStaticSkyModel.warpType = self.warpType
+        self.assembleStaticSkyModel.doNImage = self.doNImage
         self.statistic = 'MEAN'
         if self.usePsf:
             self.useFFT = True
@@ -156,17 +158,19 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The Struct contains the following fields:
             - coaddExposure: coadded exposure
             - nImage: exposure count image
+            - dcrCoadds: list of coadded exposures for each subfilter
+            - dcrNImages: list of exposure count images for each subfilter
+
         """
         results = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList,
                                         tempExpRefList=tempExpRefList)
-        for subfilter, coaddExposure in enumerate(results.dcrCoadds):
-            self.processResults(coaddExposure, dataRef)
+        for subfilter in range(self.config.dcrNumSubfilters):
+            self.processResults(results.dcrCoadds[subfilter], dataRef)
             if self.config.doWrite:
                 self.log.info("Persisting dcrCoadd")
-        return pipeBase.Struct(coaddExposure=results.coaddExposure, nImage=results.nImage,
-                               dcrCoadds=results.dcrCoadds)
                 dataRef.put(results.dcrCoadds[subfilter], "dcrCoadd", subfilter=subfilter,
                             numSubfilters=self.config.dcrNumSubfilters)
+        return results
 
     def prepareDcrInputs(self, templateCoadd, tempExpRefList, weightList):
         """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
@@ -239,8 +243,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         stats = self.prepareStats(mask=badPixelMask)
         self.prepareDcrInputs(templateCoadd, tempExpRefList, weightList)
-
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
+        # if nImage is requested, create a zero one which can be passed to assembleSubregion
+        if self.config.doNImage:
+            dcrNImages = [afwImage.ImageU(skyInfo.bbox) for subfilter in range(self.config.dcrNumSubfilters)]
+            self.calculateNImage(dcrNImages, skyInfo.bbox, tempExpRefList, spanSetMaskList, stats.ctrl)
+        else:
+            dcrNImages = None
 
         baseMask = templateCoadd.mask
         if np.isnan(self.filterInfo.getFilterProperty().getLambdaMin()):
@@ -296,7 +305,45 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         coaddExposure = self.stackCoadd(dcrCoadds)
-        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=None, dcrCoadds=dcrCoadds)
+        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=supplementaryData.nImage,
+                               dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
+
+    def calculateNImage(self, dcrNImages, bbox, tempExpRefList, spanSetMaskList, statsCtrl):
+        """Calculate the number of exposures contributing to each subfilter.
+
+        Parameters
+        ----------
+        dcrNImages : list of list of lsst.afw.image.imageU
+            List of exposure count images for each subfilter
+        bbox : lsst.afw.geom.box.Box2I
+            Bounding box of the patch to coadd.
+        tempExpRefList : List of ButlerDataRefs
+            The data references to the input warped exposures.
+        spanSetMaskList : List of Dicts containing spanSet lists, or None
+            Each element is dict with keys = mask plane name to which to add the spans
+        statsCtrl : lsst.afw.math.StatisticsControl
+            Statistics control object for coadd
+        """
+        subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
+        for subBBox in self._subBBoxIter(bbox, subregionSize):
+            bboxGrow = afwGeom.Box2I(subBBox)
+            bboxGrow.grow(self.bufferSize)
+            bboxGrow.clip(bbox)
+            subNImages = [afwImage.ImageU(bboxGrow) for subfilter in range(self.config.dcrNumSubfilters)]
+            tempExpName = self.getTempExpDatasetName(self.warpType)
+            for tempExpRef, altMaskSpans in zip(tempExpRefList, spanSetMaskList):
+                exposure = tempExpRef.get(tempExpName + "_sub", bbox=bboxGrow)
+                visitInfo = exposure.getInfo().getVisitInfo()
+                wcs = exposure.getInfo().getWcs()
+                mask = exposure.mask
+                if altMaskSpans is not None:
+                    self.applyAltMaskPlanes(mask, altMaskSpans)
+                dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
+                for dcr, subNImage in zip(dcrShift, subNImages):
+                    shiftedMask = self.shiftMask(mask, dcr, useInverse=True)
+                    subNImage.array[shiftedMask.array & statsCtrl.getAndMask() == 0] += 1
+            for subfilter, subNImage in enumerate(subNImages):
+                dcrNImages[subfilter].assign(subNImage[subBBox, afwImage.PARENT], subBBox)
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
                              spanSetMaskList, statsFlags, statsCtrl, convergenceMetric, baseMask):
@@ -566,8 +613,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         metric = np.sum(diffVals[usePixels])/np.sum(refVals[usePixels])
         return metric
 
-    @staticmethod
-    def dcrDivideCoadd(coaddExposure, dcrNumSubfilters):
+    def dcrDivideCoadd(self, coaddExposure, dcrNumSubfilters):
         """Divide a coadd into equal subfilter coadds.
 
         Parameters
@@ -595,8 +641,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrModels.append(maskedImage.clone())
         return dcrModels
 
-    @staticmethod
-    def stackCoadd(dcrCoadds):
+    def stackCoadd(self, dcrCoadds):
         """Add a list of sub-band coadds together.
 
         Parameters
