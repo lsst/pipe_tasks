@@ -31,12 +31,30 @@ import lsst.afw.geom as afwGeom
 from lsst.afw.geom import Angle, makeCdMatrix, makeSkyWcs
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+from lsst.meas.algorithms.testUtils import plantSources
 import lsst.utils.tests
 from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCoaddConfig
 
 
 class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
     """A test case for the DCR-aware image coaddition algorithm.
+
+    Attributes
+    ----------
+    bbox : lsst.afw.geom.box.Box2I
+        Bounding box of the test model.
+    bufferSize : int
+        Distance from the inner edge of the bounding box to avoid placing test sources in the model images.
+    config : lsst.pipe.tasks.dcrAssembleCoadd.DcrAssembleCoaddConfig
+        Configuration parameters to initialize the task.
+    dcrModels : list of lsst.afw.image.maskedImageF
+        A list of masked images, each containing the model for one subfilter.
+    filterInfo : lsst.afw.image.filter.Filter
+        Dummy filter object for testing.
+    mask : lsst.afw.image.mask
+        Reference mask of the unshifted model.
+    rng : np.random
+        Pre-initialized random number generator.
     """
 
     def setUp(self):
@@ -61,25 +79,23 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         detectionSigma = 5.
         sourceSigma = 20.
         fluxRange = 2.
-        xLoc = self.rng.random(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize
-        yLoc = self.rng.random(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize
+        x0 = 12345
+        y0 = 67890
+        xLoc = self.rng.random(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize + x0
+        yLoc = self.rng.random(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize + y0
         self.dcrModels = []
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(12345, 67890), afwGeom.Extent2I(xSize, ySize))
+        self.bbox = afwGeom.Box2I(afwGeom.Point2I(x0, y0), afwGeom.Extent2I(xSize, ySize))
 
         imageSum = np.zeros((ySize, xSize))
         for subfilter in range(self.config.dcrNumSubfilters):
             flux = (self.rng.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
-            model = afwImage.MaskedImageF(self.bbox)
-            image = model.image.array
-            image += self.rng.random((ySize, xSize))*noiseLevel
-            for x, y, f in zip(xLoc, yLoc, flux):
-                xVals = np.exp(-np.power(np.arange(xSize) - x, 2.)/(2*np.power(psfSize, 2.)))
-                yVals = np.exp(-np.power(np.arange(ySize) - y, 2.)/(2*np.power(psfSize, 2.)))
-                image += f*np.outer(yVals, xVals)
-            imageSum += image
-            model.variance.array[:] = image
+            sigmas = [psfSize for src in range(nSrc)]
+            coordList = [[x, y, counts, sigma] for x, y, counts, sigma in zip(xLoc, yLoc, flux, sigmas)]
+            model = plantSources(self.bbox, 10, 0, coordList, addPoissonNoise=False)
+            model.image.array += self.rng.random((ySize, xSize))*noiseLevel
+            imageSum += model.image.array
             model.mask.addMaskPlane("CLIPPED")
-            self.dcrModels.append(model)
+            self.dcrModels.append(model.maskedImage)
         maskVals = np.zeros_like(imageSum)
         maskVals[imageSum > detectionSigma*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
         for model in self.dcrModels:
