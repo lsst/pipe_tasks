@@ -163,9 +163,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.processResults(coaddExposure, dataRef)
             if self.config.doWrite:
                 self.log.info("Persisting dcrCoadd")
-                dataRef.put(coaddExposure, "dcrCoadd", subfilter=subfilter)
         return pipeBase.Struct(coaddExposure=results.coaddExposure, nImage=results.nImage,
                                dcrCoadds=results.dcrCoadds)
+                dataRef.put(results.dcrCoadds[subfilter], "dcrCoadd", subfilter=subfilter,
+                            numSubfilters=self.config.dcrNumSubfilters)
 
     def prepareDcrInputs(self, templateCoadd, tempExpRefList, weightList):
         """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
