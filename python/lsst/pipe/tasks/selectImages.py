@@ -25,9 +25,10 @@ import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
+from lsst.geom import convexHull
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
-           "DatabaseSelectImagesConfig"]
+           "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask"]
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
@@ -338,4 +339,120 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         return pipeBase.Struct(
             dataRefList=dataRefList,
             exposureInfoList=exposureInfoList,
+        )
+
+
+class BestSeeingWcsSelectImageConfig(WcsSelectImagesTask.ConfigClass):
+    """Base configuration for BestSeeingSelectImagesTask.
+    """
+    nImagesMax = pexConfig.Field(
+        dtype=int,
+        doc="Maximum number of images to select",
+        default=5)
+    maxPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Maximum PSF FWHM (in pixels) to select",
+        default=5.,
+        optional=True)
+    minPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Minimum PSF FWHM (in pixels) to select",
+        default=0.,
+        optional=True)
+
+
+class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
+    """Select the best-seeing images up to a maximum number using their Wcs.
+    """
+    ConfigClass = BestSeeingWcsSelectImageConfig
+
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
+        """Select images in the selectDataList that overlap the patch.
+
+        Parameters
+        ----------
+        coordList : `list` of `lsst.afw.geom.SpherePoint`
+            List of ICRS sky coordinates specifying boundary of patch
+        selectDataList : `list` of `SelectStruct`
+            List of SelectStruct, to consider for selection
+        makeDataRefList : `boolean`, optional
+            Construct a list of data references? Default `True`.
+
+        Returns
+        -------
+        pipe.base.Struct with filtered exposureList and dataRefList
+        (if makeDataRefList is True).
+
+        Notes
+        -----
+        We use the "convexHull" function in the geom package to define
+        polygons on the celestial sphere, and test the polygon of the
+        patch for overlap with the polygon of the image.
+
+        We use "convexHull" instead of generating a SphericalConvexPolygon
+        directly because the standard for the inputs to SphericalConvexPolygon
+        are pretty high and we don't want to be responsible for reaching them.
+        If "convexHull" is found to be too slow, we can revise this.
+
+        """
+        if self.config.nImagesMax <= 0:
+            raise RuntimeError(f"nImagesMax must be greater than zero: {self.config.nImagesMax}")
+
+        psfSizes = []
+        dataRefList = []
+        exposureInfoList = []
+
+        patchVertices = [coord.getVector() for coord in coordList]
+        patchPoly = convexHull(patchVertices)
+
+        for data in selectDataList:
+            dataRef = data.dataRef
+            imageWcs = data.wcs
+            cal = dataRef.get("calexp", immediate=True)
+            psfSize = cal.getPsf().computeShape().getDeterminantRadius()
+            nx, ny = cal.getDimensions()
+
+            imageBox = afwGeom.Box2D(afwGeom.Point2D(0, 0), afwGeom.Extent2D(nx, ny))
+            try:
+                imageCorners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
+            except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
+                # Protecting ourselves from awful Wcs solutions in input images
+                self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
+                continue
+
+            imagePoly = convexHull([coord.getVector() for coord in imageCorners])
+            if imagePoly is None:
+                self.log.debug("Unable to create polygon from image %s: deselecting", dataRef.dataId)
+                continue
+
+            if patchPoly.intersects(imagePoly):
+                # "intersects" also covers "contains" or "is contained by",
+                # so there is no guarantee the whole area is covered
+
+                # if min/max PSF values are defined, remove images out of bounds
+                sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
+                if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
+                    continue
+                if self.config.minPsfFwhm and sizeFwhm > self.config.minPsfFwhm:
+                    continue
+                psfSizes.append(psfSize)
+                dataRefList.append(dataRef)
+                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, imageCorners))
+
+        if len(psfSizes) > self.config.nImagesMax:
+            sortedIndices = np.argsort(psfSizes)[:self.config.nImagesMax]
+            filteredDataRefList = [dataRefList[i] for i in sortedIndices]
+            filteredExposureInfoList = [exposureInfoList[i] for i in sortedIndices]
+            self.log.info(f"{len(sortedIndices)} images selected with FWHM "
+                          f"range of {psfSizes[sortedIndices[0]]}--{psfSizes[sortedIndices[-1]]} pixels")
+
+        else:
+            self.log.info(f"{len(psfSizes)} images selected with FWHM range "
+                          f"of {psfSizes[0]}--{psfSizes[-1]} pixels")
+            filteredDataRefList = dataRefList
+            filteredExposureInfoList = exposureInfoList
+
+        return pipeBase.Struct(
+            dataRefList=filteredDataRefList if makeDataRefList else None,
+            exposureInfoList=filteredExposureInfoList,
         )
