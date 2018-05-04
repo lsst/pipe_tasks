@@ -27,8 +27,6 @@
   a proper implementation will report all tracts and patches that overlap each image
 - One must specify a patch and tract even though those arguments are ignored.
 """
-from __future__ import print_function
-
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase

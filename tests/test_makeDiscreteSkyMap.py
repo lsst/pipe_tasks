@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 #
 # LSST Data Management System
 # Copyright 2012 LSST Corporation.
@@ -21,9 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-
-from __future__ import division, print_function, absolute_import
-
 import os.path
 import shutil
 import unittest

@@ -1,6 +1,3 @@
-from __future__ import division, print_function, absolute_import
-from builtins import map
-from builtins import object
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
@@ -31,7 +28,7 @@ from lsst.pipe.tasks.selectImages import WcsSelectImagesTask, SelectStruct
 from lsst.pipe.tasks.coaddBase import CoaddBaseTask
 
 
-class KeyValue(object):
+class KeyValue:
 
     """Mixin to provide __getitem__ of key/value pair"""
 
@@ -45,7 +42,7 @@ class KeyValue(object):
         return self._value
 
 
-class DummyPatch(object):
+class DummyPatch:
 
     """Quacks like a lsst.skymap.PatchInfo"""
 
@@ -79,7 +76,7 @@ class DummySkyMap(KeyValue):
         super(DummySkyMap, self).__init__(tractId, tract)
 
 
-class DummyDataRef(object):
+class DummyDataRef:
 
     """Quacks like a lsst.daf.persistence.ButlerDataRef"""
 

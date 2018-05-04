@@ -22,9 +22,6 @@
 #
 """Select images and report which tracts and patches they are in
 """
-from __future__ import print_function
-from builtins import zip
-from builtins import object
 import collections
 import re
 
@@ -41,7 +38,7 @@ class ReportTaskTimingConfig(pexConfig.Config):
     pass
 
 
-class ResourceInfo(object):
+class ResourceInfo:
     # note: UTime, STime and MaxRss were renamed to UserTime, SystemTime and MaxResidentSetSize;
     # list both so the code can report time for both older and newer runs
     _BaseNameList = ("CpuTime", "UserTime", "SystemTime", "MaxResidentSetSize", "UTime", "STime", "MaxRss")

@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-from builtins import object
 import re
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
@@ -7,7 +5,7 @@ import lsst.afw.table as afwTable
 from lsst.log import Log
 
 
-class ObjectMaskCatalog(object):
+class ObjectMaskCatalog:
     """Class to support bright object masks
 
     N.b. I/O is done by providing a readFits method which fools the butler.

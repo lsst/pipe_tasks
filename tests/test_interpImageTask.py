@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 # LSST Data Management System
 # Copyright 2008-2015 AURA/LSST.
@@ -30,8 +29,6 @@ or
    python
    >>> import testInterpImageTask; testInterpImageTask.run()
 """
-from __future__ import division, print_function, absolute_import
-
 import unittest
 
 import numpy as np

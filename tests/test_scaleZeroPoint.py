@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 #
 # LSST Data Management System
 # Copyright 2008, 2009, 2010 LSST Corporation.
@@ -21,11 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-
-"""Test lsst.pipe.tasks.ScaleZeroPointTask
-"""
-from __future__ import division, print_function, absolute_import
-
 import unittest
 
 import lsst.afw.image as afwImage

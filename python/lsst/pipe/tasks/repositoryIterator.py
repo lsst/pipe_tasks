@@ -23,9 +23,6 @@
 
 Helpful while creating them or harvesting data from them.
 """
-from __future__ import absolute_import, division, print_function
-from builtins import zip
-from builtins import object
 import itertools
 
 import numpy
@@ -54,7 +51,7 @@ def _getDTypeList(keyTuple, valTuple):
     return typeList
 
 
-class SourceData(object):
+class SourceData:
     """Accumulate a set of measurements from a set of source tables
 
     To use:
@@ -214,7 +211,7 @@ class SourceData(object):
         self._tempDataList = None
 
 
-class RepositoryInfo(object):
+class RepositoryInfo:
     """Information about one data repository
 
     Constructed by RepositoryIterator and used by SourceData.
@@ -229,7 +226,7 @@ class RepositoryInfo(object):
         self.name = name
 
 
-class RepositoryIterator(object):
+class RepositoryIterator:
     """Iterate over a set of data repositories that use a naming convention based on parameter values
     """
 

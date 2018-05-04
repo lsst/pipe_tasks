@@ -19,10 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-from __future__ import absolute_import, division, print_function
-
-from builtins import zip
-
 import lsst.afw.math as afwMath
 import lsst.afw.display.ds9 as ds9
 import lsst.meas.algorithms as measAlg
@@ -32,10 +28,22 @@ import lsst.pipe.base as pipeBase
 
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = measAlg.starSelectorRegistry.makeField("Star selection algorithm", default="objectSize")
-    psfDeterminer = measAlg.psfDeterminerRegistry.makeField("PSF Determination algorithm", default="pca")
-    reserve = pexConfig.ConfigurableField(target=measAlg.ReserveSourcesTask,
-                                          doc="Reserve sources from fitting")
+    starSelector = measAlg.starSelectorRegistry.makeField(
+        "Star selection algorithm",
+        default="objectSize"
+    )
+    makePsfCandidates = pexConfig.ConfigurableField(
+        target=measAlg.MakePsfCandidatesTask,
+        doc="Task to make psf candidates from selected stars.",
+    )
+    psfDeterminer = measAlg.psfDeterminerRegistry.makeField(
+        "PSF Determination algorithm",
+        default="pca"
+    )
+    reserve = pexConfig.ConfigurableField(
+        target=measAlg.ReserveSourcesTask,
+        doc="Reserve sources from fitting"
+    )
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -223,6 +231,7 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
             self.candidateKey = None
             self.usedKey = None
         self.makeSubtask("starSelector", schema=schema)
+        self.makeSubtask("makePsfCandidates")
         self.makeSubtask("psfDeterminer", schema=schema)
         self.makeSubtask("reserve", columnName="calib_psf", schema=schema,
                          doc="set if source was reserved from PSF determination")
@@ -262,8 +271,9 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
         #
         # Run star selector
         #
-        selectionResult = self.starSelector.run(exposure=exposure, sourceCat=sources, matches=matches)
-        reserveResult = self.reserve.run(selectionResult.starCat, expId=expId)
+        stars = self.starSelector.run(sourceCat=sources, matches=matches, exposure=exposure)
+        selectionResult = self.makePsfCandidates.run(stars.starCat, exposure=exposure)
+        reserveResult = self.reserve.run(selectionResult.goodStarCat, expId=expId)
         psfCandidateList = [cand for cand, use
                             in zip(selectionResult.psfCandidates, reserveResult.use) if use]
 

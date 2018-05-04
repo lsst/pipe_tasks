@@ -22,7 +22,6 @@
 """
 Tasks for transforming raw measurement outputs to calibrated quantities.
 """
-from __future__ import absolute_import, division, print_function
 import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase

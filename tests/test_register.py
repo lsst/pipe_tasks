@@ -1,6 +1,3 @@
-from __future__ import division, print_function, absolute_import
-from builtins import zip
-from builtins import range
 #
 # LSST Data Management System
 # Copyright 2008-2013 LSST Corporation.
