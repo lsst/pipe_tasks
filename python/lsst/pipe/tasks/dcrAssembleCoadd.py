@@ -1,11 +1,10 @@
 from __future__ import absolute_import, division, print_function
-
+# This file is part of pipe_tasks.
 #
 # LSST Data Management System
-# Copyright 2017-2018 University of Washington.
-#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
+# See COPYRIGHT file at the top of the source tree.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,7 +13,7 @@ from __future__ import absolute_import, division, print_function
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
