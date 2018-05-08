@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy as np
+import lsst.sphgeom
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
@@ -172,27 +173,24 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
     def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
         """Select images in the selectDataList that overlap the patch
 
-        We use the "convexHull" function in the geom package to define
+        We use the "convexHull" method of lsst.sphgeom.ConvexPolygon to define
         polygons on the celestial sphere, and test the polygon of the
         patch for overlap with the polygon of the image.
 
-        We use "convexHull" instead of generating a SphericalConvexPolygon
-        directly because the standard for the inputs to SphericalConvexPolygon
+        We use "convexHull" instead of generating a ConvexPolygon
+        directly because the standard for the inputs to ConvexPolygon
         are pretty high and we don't want to be responsible for reaching them.
-        If "convexHull" is found to be too slow, we can revise this.
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
         @param coordList: List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
         @param makeDataRefList: Construct a list of data references?
         @param selectDataList: List of SelectStruct, to consider for selection
         """
-        from lsst.geom import convexHull
-
         dataRefList = []
         exposureInfoList = []
 
         patchVertices = [coord.getVector() for coord in coordList]
-        patchPoly = convexHull(patchVertices)
+        patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
 
         for data in selectDataList:
             dataRef = data.dataRef
@@ -206,7 +204,7 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
                 self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
                 continue
 
-            imagePoly = convexHull([coord.getVector() for coord in imageCorners])
+            imagePoly = lsst.sphgeom.ConvexPolygon.convexHull([coord.getVector() for coord in imageCorners])
             if imagePoly is None:
                 self.log.debug("Unable to create polygon from image %s: deselecting", dataRef.dataId)
                 continue

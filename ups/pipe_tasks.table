@@ -17,7 +17,7 @@ setupOptional(ip_diffim)
 setupOptional(coadd_utils)
 setupOptional(coadd_chisquared)
 setupOptional(skymap)
-setupOptional(geom)
+setupOptional(sphgeom)
 
 setupOptional(obs_test) # for unit tests
 setupOptional(matplotlib)
