@@ -19,8 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import numpy
-
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage

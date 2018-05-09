@@ -71,8 +71,8 @@ class ParseTask(Task):
             extnum += 1
             try:
                 md = readMetadata(filename, extnum)
-            except:
-                self.log.warn("Error reading %s extensions %s" % (filename, extnames))
+            except Exception as e:
+                self.log.warn("Error reading %s extensions %s: %s" % (filename, extnames, e))
                 break
             ext = self.getExtensionName(md)
             if ext in extnames:
@@ -414,7 +414,7 @@ class IngestTask(Task):
             if not os.path.isdir(outdir):
                 try:
                     os.makedirs(outdir)
-                except:
+                except OSError:
                     # Silently ignore mkdir failures due to race conditions
                     if not os.path.isdir(outdir):
                         raise

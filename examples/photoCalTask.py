@@ -128,7 +128,6 @@ def run():
     print("RMS error is %.3fmmsg (robust %.3f, Calib says %.3f)" % (np.std(delta), 0.741*(q75 - q25),
                                                                     2.5/np.log(10)*fm0Err/fm0))
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 if __name__ == "__main__":
     import argparse
@@ -140,7 +139,7 @@ if __name__ == "__main__":
 
     if args.debug:
         try:
-            import debug
+            import debug  # noqa F401
         except ImportError as e:
             print("Could not import debug: %s" % (e,))
 

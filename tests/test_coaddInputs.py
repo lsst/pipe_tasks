@@ -121,9 +121,9 @@ class MockExposure:
         scale = 5.1e-5*lsst.afw.geom.degrees
         cdMatrix = lsst.afw.geom.makeCdMatrix(scale=scale)
         return lsst.afw.geom.makeSkyWcs(
-            crpix = lsst.afw.geom.Point2D(5, 5),
-            crval = lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
-            cdMatrix = cdMatrix,
+            crpix=lsst.afw.geom.Point2D(5, 5),
+            crval=lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
+            cdMatrix=cdMatrix,
         )
 
     @staticmethod

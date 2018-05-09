@@ -103,9 +103,9 @@ class CoaddTempExpInputRecorder:
         record.setL(self.task.ccdVisitKey, self.visitRecord.getId())
         try:
             record.setI(self.task.ccdCcdKey, calExp.getDetector().getId())
-        except:
-            self.task.log.warn("Error getting detector serial number in visit %d; using -1"
-                               % self.visitRecord.getId())
+        except Exception as e:
+            self.task.log.warn("Error getting detector serial number in visit %d; using -1; error=%s"
+                               % (self.visitRecord.getId(), e))
             record.setI(self.task.ccdCcdKey, -1)
         record.setI(self.task.ccdGoodPixKey, nGoodPix)
         if calExp is not None:
@@ -149,7 +149,6 @@ class CoaddTempExpInputRecorder:
         record.setVisitInfo(info.getVisitInfo())
         record.setBBox(exposure.getBBox())
         record.setTransmissionCurve(info.getTransmissionCurve())
-
 
 
 class CoaddInputRecorderTask(pipeBase.Task):

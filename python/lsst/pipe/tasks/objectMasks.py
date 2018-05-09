@@ -44,7 +44,7 @@ class ObjectMaskCatalog:
 
         This method is called "readFits" to fool the butler. The corresponding mapper entry looks like
         brightObjectMask: {
-            template:      "deepCoadd/BrightObjectMasks/%(tract)d/BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg"
+            template:      "deepCoadd/BrightObjectMasks/%(tract)d/BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg"  # noqa E501
             python:        "lsst.obs.subaru.objectMasks.ObjectMaskCatalog"
             persistable:   "PurePythonClass"
             storage:       "FitsCatalogStorage"
@@ -115,15 +115,15 @@ class ObjectMaskCatalog:
                 # with the format as specified in the above docstring.
                 mat = re.search(r"^\s*(box|circle)"
                                 "(?:\s+|\s*\(\s*)"   # open paren or space
-                                     "(\d+(?:\.\d*)?([d]*))" "(?:\s+|\s*,\s*)"
+                                "(\d+(?:\.\d*)?([d]*))" "(?:\s+|\s*,\s*)"
                                 "([+-]?\d+(?:\.\d*)?)([d]*)" "(?:\s+|\s*,\s*)"
                                 "([+-]?\d+(?:\.\d*)?)([d]*)" "(?:\s+|\s*,\s*)?"
                                 "(?:([+-]?\d+(?:\.\d*)?)([d]*)"
-                                    "\s*,\s*"
-                                   "([+-]?\d+(?:\.\d*)?)([d]*)"
+                                "\s*,\s*"
+                                "([+-]?\d+(?:\.\d*)?)([d]*)"
                                 ")?"
                                 "(?:\s*|\s*\)\s*)"   # close paren or space
-                                "\s*#\s*ID:\s*(\d+)" # start comment
+                                "\s*#\s*ID:\s*(\d+)"  # start comment
                                 "(?:\s*,\s*mag:\s*(\d+\.\d*))?"
                                 "\s*$", line)
                 if mat:

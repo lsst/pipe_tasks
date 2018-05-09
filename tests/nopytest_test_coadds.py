@@ -264,11 +264,13 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             for visit, obsVisitDict in getObsDict(self.butler, tract).items():
                 foundOneTempExp = False
                 for patchRef in self.mocksTask.iterPatchRefs(self.butler, tractInfo):
+                    datasetType = self.mocksTask.config.coaddName + dataProduct
                     try:
-                        tempExp = patchRef.get(self.mocksTask.config.coaddName + dataProduct, visit=visit,
-                                               immediate=True)
+                        tempExp = patchRef.get(datasetType, visit=visit, immediate=True)
                         foundOneTempExp = True
-                    except:
+                    except Exception as e:
+                        print("testTempExpInputs patchRef.get failed with datasetType=%r, visit=%r: %s" %
+                              (datasetType, visit, e))
                         continue
                     self.assertEqual(tractInfo.getWcs(), tempExp.getWcs())
                     coaddInputs = tempExp.getInfo().getCoaddInputs()
@@ -299,7 +301,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 coaddInputs = coaddExp.getInfo().getCoaddInputs()
                 try:
                     ccdVisitKey = coaddInputs.ccds.getSchema().find("visit").key
-                except:
+                except Exception:
                     print(patchRef.dataId)
                     print(coaddInputs.ccds.getSchema())
                     raise
@@ -381,7 +383,9 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                         continue
                     try:
                         psfImage = coaddPsf.computeImage(position)
-                    except:
+                    except Exception as e:
+                        print("testCoaddPsf coaddPsf.computeImage failed on position=%s: %s" %
+                              (position, e))
                         continue
                     psfImageBBox = psfImage.getBBox()
                     if not coaddExp.getBBox().contains(psfImageBBox):

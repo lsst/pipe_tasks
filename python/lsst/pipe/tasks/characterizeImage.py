@@ -43,103 +43,103 @@ __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 class CharacterizeImageConfig(pexConfig.Config):
     """!Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Measure PSF? If False then for all subsequent operations use either existing PSF "
-              "model when present, or install simple PSF model when not (see installSimplePsf "
-              "config options)"
+        dtype=bool,
+        default=True,
+        doc="Measure PSF? If False then for all subsequent operations use either existing PSF "
+            "model when present, or install simple PSF model when not (see installSimplePsf "
+            "config options)"
     )
     doWrite = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Persist results?",
+        dtype=bool,
+        default=True,
+        doc="Persist results?",
     )
     doWriteExposure = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Write icExp and icExpBackground in addition to icSrc? Ignored if doWrite False.",
+        dtype=bool,
+        default=True,
+        doc="Write icExp and icExpBackground in addition to icSrc? Ignored if doWrite False.",
     )
     psfIterations = pexConfig.RangeField(
-        dtype = int,
-        default = 2,
-        min = 1,
-        doc = "Number of iterations of detect sources, measure sources, "
-              "estimate PSF. If useSimplePsf is True then 2 should be plenty; "
-              "otherwise more may be wanted.",
+        dtype=int,
+        default=2,
+        min=1,
+        doc="Number of iterations of detect sources, measure sources, "
+            "estimate PSF. If useSimplePsf is True then 2 should be plenty; "
+            "otherwise more may be wanted.",
     )
     background = pexConfig.ConfigurableField(
-        target = SubtractBackgroundTask,
-        doc = "Configuration for initial background estimation",
+        target=SubtractBackgroundTask,
+        doc="Configuration for initial background estimation",
     )
     detection = pexConfig.ConfigurableField(
-        target = SourceDetectionTask,
-        doc = "Detect sources"
+        target=SourceDetectionTask,
+        doc="Detect sources"
     )
     doDeblend = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Run deblender input exposure"
+        dtype=bool,
+        default=True,
+        doc="Run deblender input exposure"
     )
     deblend = pexConfig.ConfigurableField(
-        target = SourceDeblendTask,
-        doc = "Split blended source into their components"
+        target=SourceDeblendTask,
+        doc="Split blended source into their components"
     )
     measurement = pexConfig.ConfigurableField(
-        target = SingleFrameMeasurementTask,
-        doc = "Measure sources"
+        target=SingleFrameMeasurementTask,
+        doc="Measure sources"
     )
     doApCorr = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Run subtasks to measure and apply aperture corrections"
+        dtype=bool,
+        default=True,
+        doc="Run subtasks to measure and apply aperture corrections"
     )
     measureApCorr = pexConfig.ConfigurableField(
-        target = MeasureApCorrTask,
-        doc = "Subtask to measure aperture corrections"
+        target=MeasureApCorrTask,
+        doc="Subtask to measure aperture corrections"
     )
     applyApCorr = pexConfig.ConfigurableField(
-        target = ApplyApCorrTask,
-        doc = "Subtask to apply aperture corrections"
+        target=ApplyApCorrTask,
+        doc="Subtask to apply aperture corrections"
     )
     # If doApCorr is False, and the exposure does not have apcorrections already applied, the
     # active plugins in catalogCalculation almost certainly should not contain the characterization plugin
     catalogCalculation = pexConfig.ConfigurableField(
-        target = CatalogCalculationTask,
-        doc = "Subtask to run catalogCalculation plugins on catalog"
+        target=CatalogCalculationTask,
+        doc="Subtask to run catalogCalculation plugins on catalog"
     )
     useSimplePsf = pexConfig.Field(
-        dtype = bool,
-        default = True,
-        doc = "Replace the existing PSF model with a simplified version that has the same sigma "
-              "at the start of each PSF determination iteration? Doing so makes PSF determination "
-              "converge more robustly and quickly.",
+        dtype=bool,
+        default=True,
+        doc="Replace the existing PSF model with a simplified version that has the same sigma "
+        "at the start of each PSF determination iteration? Doing so makes PSF determination "
+        "converge more robustly and quickly.",
     )
     installSimplePsf = pexConfig.ConfigurableField(
-        target = InstallGaussianPsfTask,
-        doc = "Install a simple PSF model",
+        target=InstallGaussianPsfTask,
+        doc="Install a simple PSF model",
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target = LoadAstrometryNetObjectsTask,
-        doc = "reference object loader",
+        target=LoadAstrometryNetObjectsTask,
+        doc="reference object loader",
     )
     ref_match = pexConfig.ConfigurableField(
-        target = RefMatchTask,
-        doc = "Task to load and match reference objects. Only used if measurePsf can use matches. "
-              "Warning: matching will only work well if the initial WCS is accurate enough "
-              "to give good matches (roughly: good to 3 arcsec across the CCD).",
+        target=RefMatchTask,
+        doc="Task to load and match reference objects. Only used if measurePsf can use matches. "
+        "Warning: matching will only work well if the initial WCS is accurate enough "
+        "to give good matches (roughly: good to 3 arcsec across the CCD).",
     )
     measurePsf = pexConfig.ConfigurableField(
-        target = MeasurePsfTask,
-        doc = "Measure PSF",
+        target=MeasurePsfTask,
+        doc="Measure PSF",
     )
     repair = pexConfig.ConfigurableField(
-        target = RepairTask,
-        doc = "Remove cosmic rays",
+        target=RepairTask,
+        doc="Remove cosmic rays",
     )
     checkUnitsParseStrict = pexConfig.Field(
-        doc = "Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
-        dtype = str,
-        default = "raise",
+        doc="Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
+        dtype=str,
+        default="raise",
     )
 
     def setDefaults(self):
@@ -344,9 +344,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         exposureIdInfo = dataRef.get("expIdInfo")
 
         charRes = self.characterize(
-            exposure = exposure,
-            exposureIdInfo = exposureIdInfo,
-            background = background,
+            exposure=exposure,
+            exposureIdInfo=exposureIdInfo,
+            background=background,
         )
 
         if self.config.doWrite:
@@ -402,9 +402,9 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         psfIterations = self.config.psfIterations if self.config.doMeasurePsf else 1
         for i in range(psfIterations):
             dmeRes = self.detectMeasureAndEstimatePsf(
-                exposure = exposure,
-                exposureIdInfo = exposureIdInfo,
-                background = background,
+                exposure=exposure,
+                exposureIdInfo=exposureIdInfo,
+                background=background,
             )
 
             psf = dmeRes.exposure.getPsf()
@@ -423,7 +423,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
         self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
-                             exposureId = exposureIdInfo.expId)
+                             exposureId=exposureIdInfo.expId)
         if self.config.doApCorr:
             apCorrMap = self.measureApCorr.run(exposure=dmeRes.exposure, catalog=dmeRes.sourceCat).apCorrMap
             dmeRes.exposure.getInfo().setApCorrMap(apCorrMap)
@@ -502,10 +502,10 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.display("measure_iter", exposure=exposure, sourceCat=sourceCat)
 
         return pipeBase.Struct(
-            exposure = exposure,
-            sourceCat = sourceCat,
-            background = background,
-            psfCellSet = measPsfRes.cellSet,
+            exposure=exposure,
+            sourceCat=sourceCat,
+            background=background,
+            psfCellSet=measPsfRes.cellSet,
         )
 
     def getSchemaCatalogs(self):

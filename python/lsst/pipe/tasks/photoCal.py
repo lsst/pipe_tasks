@@ -27,8 +27,7 @@ import numpy as np
 
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
-from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
-import lsst.afw.math as afwMath
+from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, Calib
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
@@ -441,7 +440,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             from matplotlib import pyplot
             try:
                 self.fig.clf()
-            except:
+            except Exception:
                 self.fig = pyplot.figure()
 
         filterName = exposure.getFilter().getName()
@@ -506,7 +505,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 x, y = mm.second.getCentroid()
                 ctype = ds9.RED if rr else ds9.GREEN
                 ds9.dot("o", x, y, size=4, frame=frame, ctype=ctype)
-
 
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
         """!Flux calibration code, returning (ZeroPoint, Distribution Width, Number of stars)
