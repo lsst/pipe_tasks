@@ -79,10 +79,10 @@ class InterpImageTask(pipeBase.Task):
     def _setFallbackValue(self, mi=None):
         """Set the edge fallbackValue for interpolation
 
-        \param[in] mi  input maksedImage on which to calculate the statistics
+        @param[in] mi  input maksedImage on which to calculate the statistics
                        Must be provided if fallbackValueType != "USER".
 
-        \return fallbackValue  The value set/computed based on the fallbackValueType
+        @return fallbackValue  The value set/computed based on the fallbackValueType
                                and negativeFallbackAllowed config parameters
         """
         if self.config.fallbackValueType != 'USER':
@@ -126,13 +126,13 @@ class InterpImageTask(pipeBase.Task):
         passed in by the caller, or the default defaultFwhm set in
         measAlg.GaussianPsfFactory if None).
 
-        \param[in,out] image       MaskedImage OR Exposure to be interpolated
-        \param[in]     planeName   name of mask plane over which to interpolate
+        @param[in,out] image       MaskedImage OR Exposure to be interpolated
+        @param[in]     planeName   name of mask plane over which to interpolate
                                    If None, must provide a defects list.
-        \param[in]     fwhmPixels  FWHM of core star (pixels)
+        @param[in]     fwhmPixels  FWHM of core star (pixels)
                                    If None the default is used, where the default
                                    is set to the exposure psf if available
-        \param[in]     defects     List of defects of type measAlg.DefectListT
+        @param[in]     defects     List of defects of type measAlg.DefectListT
                                    over which to interpolate.
         """
         try:

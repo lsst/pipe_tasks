@@ -42,9 +42,9 @@ __all__ = ["CoaddBaseTask", "getSkyInfo"]
 class CoaddBaseConfig(pexConfig.Config):
     """!Configuration parameters for CoaddBaseTask
 
-    \anchor CoaddBaseConfig_
+    @anchor CoaddBaseConfig_
 
-    \brief Configuration parameters shared between MakeCoaddTempExp and AssembleCoadd
+    @brief Configuration parameters shared between MakeCoaddTempExp and AssembleCoadd
     """
     coaddName = pexConfig.Field(
         doc="Coadd name: typically one of deep or goodSeeing.",
@@ -106,17 +106,17 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
 
     def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
         """!
-        \brief Select exposures to coadd
+        @brief Select exposures to coadd
 
-        Get the corners of the bbox supplied in skyInfo using \ref afwGeom.Box2D and convert the pixel
-        positions of the bbox corners to sky coordinates using \ref skyInfo.wcs.pixelToSky. Use the
-        \ref WcsSelectImagesTask_ "WcsSelectImagesTask" to select exposures that lie inside the patch
+        Get the corners of the bbox supplied in skyInfo using @ref afwGeom.Box2D and convert the pixel
+        positions of the bbox corners to sky coordinates using @ref skyInfo.wcs.pixelToSky. Use the
+        @ref WcsSelectImagesTask_ "WcsSelectImagesTask" to select exposures that lie inside the patch
         indicated by the dataRef.
 
-        \param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
+        @param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
                              plus the camera-specific filter key (e.g. "filter" or "band")
-        \param[in] skyInfo   geometry for the patch; output from getSkyInfo
-        \return    a list of science exposures to coadd, as butler data references
+        @param[in] skyInfo   geometry for the patch; output from getSkyInfo
+        @return    a list of science exposures to coadd, as butler data references
         """
         if skyInfo is None:
             skyInfo = self.getSkyInfo(patchRef)
@@ -126,12 +126,12 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
 
     def getSkyInfo(self, patchRef):
         """!
-        \brief Use \ref getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
+        @brief Use @ref getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
         of the patch.
 
-        \param[in] patchRef  data reference for sky map. Must include keys "tract" and "patch"
+        @param[in] patchRef  data reference for sky map. Must include keys "tract" and "patch"
 
-        \return pipe_base Struct containing:
+        @return pipe_base Struct containing:
         - skyMap: sky map
         - tractInfo: information for chosen tract of sky map
         - patchInfo: information about chosen patch of tract
@@ -220,14 +220,14 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
 
     def getBadPixelMask(self):
         """!
-        \brief Convenience method to provide the bitmask from the mask plane names
+        @brief Convenience method to provide the bitmask from the mask plane names
         """
         return afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
 
 
 class SelectDataIdContainer(pipeBase.DataIdContainer):
     """!
-    \brief A dataId container for inputs to be selected.
+    @brief A dataId container for inputs to be selected.
 
     Read the header (including the size and Wcs) for all specified
     inputs and pass those along, ultimately for the SelectImagesTask.
@@ -252,12 +252,12 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
 
 def getSkyInfo(coaddName, patchRef):
     """!
-    \brief Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
+    @brief Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
 
-    \param[in]  coaddName  coadd name; typically one of deep or goodSeeing
-    \param[in]  patchRef   data reference for sky map. Must include keys "tract" and "patch"
+    @param[in]  coaddName  coadd name; typically one of deep or goodSeeing
+    @param[in]  patchRef   data reference for sky map. Must include keys "tract" and "patch"
 
-    \return pipe_base Struct containing:
+    @return pipe_base Struct containing:
     - skyMap: sky map
     - tractInfo: information for chosen tract of sky map
     - patchInfo: information about chosen patch of tract
@@ -283,7 +283,7 @@ def getSkyInfo(coaddName, patchRef):
 
 def scaleVariance(maskedImage, maskPlanes, log=None):
     """!
-    \brief Scale the variance in a maskedImage
+    @brief Scale the variance in a maskedImage
 
     The variance plane in a convolved or warped image (or a coadd derived
     from warped images) does not accurately reflect the noise properties of
@@ -292,7 +292,7 @@ def scaleVariance(maskedImage, maskPlanes, log=None):
     the observed variance in the image. This is not perfect (because we're
     not tracking the covariance) but it's simple and is often good enough.
 
-    \deprecated Use the ScaleVarianceTask instead.
+    @deprecated Use the ScaleVarianceTask instead.
 
     @param maskedImage  MaskedImage to operate on; variance will be scaled
     @param maskPlanes  List of mask planes for pixels to reject

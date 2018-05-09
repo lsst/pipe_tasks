@@ -45,61 +45,61 @@ class MeasurePsfConfig(pexConfig.Config):
         doc="Reserve sources from fitting"
     )
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page MeasurePsfTask
-## \ref MeasurePsfTask_ "MeasurePsfTask"
-## \copybrief MeasurePsfTask
-## \}
+## @addtogroup LSST_task_documentation
+## @{
+## @page MeasurePsfTask
+## @ref MeasurePsfTask_ "MeasurePsfTask"
+## @copybrief MeasurePsfTask
+## @}
 
 
 class MeasurePsfTask(pipeBase.Task):
     r"""!
-\anchor MeasurePsfTask_
+@anchor MeasurePsfTask_
 
-\brief Measure the PSF
+@brief Measure the PSF
 
-\section pipe_tasks_measurePsf_Contents Contents
+@section pipe_tasks_measurePsf_Contents Contents
 
- - \ref pipe_tasks_measurePsf_Purpose
- - \ref pipe_tasks_measurePsf_Initialize
- - \ref pipe_tasks_measurePsf_IO
- - \ref pipe_tasks_measurePsf_Config
- - \ref pipe_tasks_measurePsf_Debug
- - \ref pipe_tasks_measurePsf_Example
+ - @ref pipe_tasks_measurePsf_Purpose
+ - @ref pipe_tasks_measurePsf_Initialize
+ - @ref pipe_tasks_measurePsf_IO
+ - @ref pipe_tasks_measurePsf_Config
+ - @ref pipe_tasks_measurePsf_Debug
+ - @ref pipe_tasks_measurePsf_Example
 
-\section pipe_tasks_measurePsf_Purpose	Description
+@section pipe_tasks_measurePsf_Purpose	Description
 
 A task that selects stars from a catalog of sources and uses those to measure the PSF.
 
 The star selector is a subclass of
-\ref lsst.meas.algorithms.starSelector.BaseStarSelectorTask "lsst.meas.algorithms.BaseStarSelectorTask"
+@ref lsst.meas.algorithms.starSelector.BaseStarSelectorTask "lsst.meas.algorithms.BaseStarSelectorTask"
 and the PSF determiner is a sublcass of
-\ref lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask "lsst.meas.algorithms.BasePsfDeterminerTask"
+@ref lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask "lsst.meas.algorithms.BasePsfDeterminerTask"
 
-\warning
+@warning
 There is no establised set of configuration parameters for these algorithms, so once you start modifying
-parameters (as we do in \ref pipe_tasks_measurePsf_Example) your code is no longer portable.
+parameters (as we do in @ref pipe_tasks_measurePsf_Example) your code is no longer portable.
 
-\section pipe_tasks_measurePsf_Initialize	Task initialisation
+@section pipe_tasks_measurePsf_Initialize	Task initialisation
 
-\copydoc \_\_init\_\_
+@copydoc \_\_init\_\_
 
-\section pipe_tasks_measurePsf_IO		Invoking the Task
+@section pipe_tasks_measurePsf_IO		Invoking the Task
 
-\copydoc run
+@copydoc run
 
-\section pipe_tasks_measurePsf_Config       Configuration parameters
+@section pipe_tasks_measurePsf_Config       Configuration parameters
 
-See \ref MeasurePsfConfig.
+See @ref MeasurePsfConfig.
 
-\section pipe_tasks_measurePsf_Debug		Debug variables
+@section pipe_tasks_measurePsf_Debug		Debug variables
 
-The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
-flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
+The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
+flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py files.
 
 <DL>
-  <DT> \c display
+  <DT> @c display
   <DD> If True, display debugging plots
   <DT> displayExposure
   <DD> display the Exposure + spatialCells
@@ -117,69 +117,69 @@ flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for
 
 Additionally you can enable any debug outputs that your chosen star selector and psf determiner support.
 
-\section pipe_tasks_measurePsf_Example	A complete example of using MeasurePsfTask
+@section pipe_tasks_measurePsf_Example	A complete example of using MeasurePsfTask
 
-This code is in \link measurePsfTask.py\endlink in the examples directory, and can be run as \em e.g.
-\code
+This code is in @link measurePsfTask.py@endlink in the examples directory, and can be run as @em e.g.
+@code
 examples/measurePsfTask.py --ds9
-\endcode
-\dontinclude measurePsfTask.py
+@endcode
+@dontinclude measurePsfTask.py
 
 The example also runs SourceDetectionTask and SourceMeasurementTask;
-see \ref meas_algorithms_measurement_Example for more explanation.
+see @ref meas_algorithms_measurement_Example for more explanation.
 
 Import the tasks (there are some other standard imports; read the file to see them all):
 
-\skip SourceDetectionTask
-\until MeasurePsfTask
+@skip SourceDetectionTask
+@until MeasurePsfTask
 
 We need to create the tasks before processing any data as the task constructor
 can add an extra column to the schema, but first we need an almost-empty
 Schema:
 
-\skipline makeMinimalSchema
+@skipline makeMinimalSchema
 
 We can now call the constructors for the tasks we need to find and characterize candidate
 PSF stars:
 
-\skip SourceDetectionTask.ConfigClass
-\until measureTask
+@skip SourceDetectionTask.ConfigClass
+@until measureTask
 
 Note that we've chosen a minimal set of measurement plugins: we need the
-outputs of \c base_SdssCentroid, \c base_SdssShape and \c base_CircularApertureFlux as
-inputs to the PSF measurement algorithm, while \c base_PixelFlags identifies
+outputs of @c base_SdssCentroid, @c base_SdssShape and @c base_CircularApertureFlux as
+inputs to the PSF measurement algorithm, while @c base_PixelFlags identifies
 and flags bad sources (e.g. with pixels too close to the edge) so they can be
 removed later.
 
 Now we can create and configure the task that we're interested in:
 
-\skip MeasurePsfTask
-\until measurePsfTask
+@skip MeasurePsfTask
+@until measurePsfTask
 
 We're now ready to process the data (we could loop over multiple exposures/catalogues using the same
 task objects).  First create the output table:
 
-\skipline afwTable
+@skipline afwTable
 
 And process the image:
 
-\skip sources =
-\until result
+@skip sources =
+@until result
 
 We can then unpack and use the results:
 
-\skip psf
-\until cellSet
+@skip psf
+@until cellSet
 
-If you specified \c --ds9 you can see the PSF candidates:
+If you specified @c --ds9 you can see the PSF candidates:
 
-\skip display
-\until RED
+@skip display
+@until RED
 
 <HR>
 
-To investigate the \ref pipe_tasks_measurePsf_Debug, put something like
-\code{.py}
+To investigate the @ref pipe_tasks_measurePsf_Debug, put something like
+@code{.py}
     import lsstDebug
     def DebugInfo(name):
         di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
@@ -196,8 +196,8 @@ To investigate the \ref pipe_tasks_measurePsf_Debug, put something like
         return di
 
     lsstDebug.Info = DebugInfo
-\endcode
-into your debug.py file and run measurePsfTask.py with the \c --debug flag.
+@endcode
+into your debug.py file and run measurePsfTask.py with the @c --debug flag.
     """
     ConfigClass = MeasurePsfConfig
     _DefaultName = "measurePsf"
@@ -205,13 +205,13 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
     def __init__(self, schema=None, **kwargs):
         """!Create the detection task.  Most arguments are simply passed onto pipe.base.Task.
 
-        \param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
-        \param **kwargs Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
+        @param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
+        @param **kwargs Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
 
         If schema is not None, 'calib.psf.candidate' and 'calib.psf.used' fields will be added to
         identify which stars were employed in the PSF estimation.
 
-        \note This task can add fields to the schema, so any code calling this task must ensure that
+        @note This task can add fields to the schema, so any code calling this task must ensure that
         these fields are indeed present in the input table.
         """
 
@@ -240,19 +240,19 @@ into your debug.py file and run measurePsfTask.py with the \c --debug flag.
     def run(self, exposure, sources, expId=0, matches=None):
         """!Measure the PSF
 
-        \param[in,out]   exposure   Exposure to process; measured PSF will be added.
-        \param[in,out]   sources    Measured sources on exposure; flag fields will be set marking
+        @param[in,out]   exposure   Exposure to process; measured PSF will be added.
+        @param[in,out]   sources    Measured sources on exposure; flag fields will be set marking
                                     stars chosen by the star selector and the PSF determiner if a schema
                                     was passed to the task constructor.
-        \param[in]       expId      Exposure id used for generating random seed.
-        \param[in]  matches         A list of lsst.afw.table.ReferenceMatch objects
-                                    (\em i.e. of lsst.afw.table.Match
-                                    with \c first being of type lsst.afw.table.SimpleRecord and \c second
+        @param[in]       expId      Exposure id used for generating random seed.
+        @param[in]  matches         A list of lsst.afw.table.ReferenceMatch objects
+                                    (@em i.e. of lsst.afw.table.Match
+                                    with @c first being of type lsst.afw.table.SimpleRecord and @c second
                                     type lsst.afw.table.SourceRecord --- the reference object and detected
-                                    object respectively) as returned by \em e.g. the AstrometryTask.
+                                    object respectively) as returned by @em e.g. the AstrometryTask.
                                     Used by star selectors that choose to refer to an external catalog.
 
-        \return a pipe.base.Struct with fields:
+        @return a pipe.base.Struct with fields:
          - psf: The measured PSF (also set in the input exposure)
          - cellSet: an lsst.afw.math.SpatialCellSet containing the PSF candidates
             as returned by the psf determiner.

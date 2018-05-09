@@ -470,7 +470,7 @@ class IngestTask(Task):
     def expandFiles(self, fileNameList):
         """!Expand a set of filenames and globs, returning a list of filenames
 
-        \param fileNameList A list of files and glob patterns
+        @param fileNameList A list of files and glob patterns
 
         N.b. globs obey Posix semantics, so a pattern that matches nothing is returned unchanged
         """
