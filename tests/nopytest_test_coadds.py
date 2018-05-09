@@ -152,8 +152,7 @@ def addMaskPlanes(butler):
     calexpDataIds = getCalexpIds(butler)
     # Loop over each of the calexp and add the CROSSTALK and NOT_DEBLENDED mask planes
     for Id in calexpDataIds:
-        # TODO: pybind11 remvoe `immediate=True` once DM-9112 is resolved
-        image = butler.get('calexp', Id, immediate=True)
+        image = butler.get('calexp', Id)
         mask = image.getMaskedImage().getMask()
         mask.addMaskPlane("CROSSTALK")
         mask.addMaskPlane("NOT_DEBLENDED")

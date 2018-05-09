@@ -54,8 +54,7 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
             dict(visit=2, filter="g"),
             dict(visit=3, filter="r"),
         ):
-            # TODO: pybind11 remove `immediate=True` once DM-9112 is resolved
-            rawImage = butler.get("raw", dataId, immediate=True)
+            rawImage = butler.get("raw", dataId)
             # fake calexp by simply copying raw data; the task just cares about its bounding box
             # (which is slightly larger for raw, but that doesn't matter for this test)
             calexp = rawImage

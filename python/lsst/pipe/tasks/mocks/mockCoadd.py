@@ -297,9 +297,8 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         tractInfo = skyMap[tract]
         tractWcs = tractInfo.getWcs()
         for patchRef in self.iterPatchRefs(butler, tractInfo):
-            # TODO: pybind11 remove `immediate=True` once DM-9112 is resolved
             for dataProduct in ["Coadd", "CoaddPsfMatched"]:
-                exposure = patchRef.get(self.config.coaddName + dataProduct, immediate=True)
+                exposure = patchRef.get(self.config.coaddName + dataProduct)
                 exposure.getMaskedImage().getImage().set(0.0)
                 coaddPsf = lsst.meas.algorithms.CoaddPsf(
                     exposure.getInfo().getCoaddInputs().ccds, exposure.getWcs()
