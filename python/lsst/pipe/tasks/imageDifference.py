@@ -236,7 +236,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.schema = afwTable.SourceTable.makeMinimalSchema()
 
         if self.config.doSelectSources:
-            self.makeSubtask("sourceSelector", schema=self.schema)
+            self.makeSubtask("sourceSelector")
             self.makeSubtask('refObjLoader', butler=butler)
             self.makeSubtask("astrometer", refObjLoader=self.refObjLoader)
 
@@ -397,8 +397,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                            "sources with template sources. Run process* on data from " +
                                            "which templates are built.")
 
-                    kernelSources = self.sourceSelector.selectStars(exposure, selectSources,
-                                                                    matches=matches).starCat
+                    kernelSources = self.sourceSelector.run(selectSources, exposure=exposure,
+                                                            matches=matches).sourceCat
 
                     random.shuffle(kernelSources, random.random)
                     controlSources = kernelSources[::self.config.controlStepSize]
