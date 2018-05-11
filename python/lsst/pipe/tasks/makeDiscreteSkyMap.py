@@ -21,7 +21,7 @@
 #
 import sys
 import traceback
-import lsst.geom
+import lsst.sphgeom
 
 import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
@@ -148,11 +148,11 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
             boxI = afwImage.bboxFromMetadata(md)
             boxD = afwGeom.Box2D(boxI)
-            points.extend(tuple(wcs.pixelToSky(corner).getVector()) for corner in boxD.getCorners())
+            points.extend(wcs.pixelToSky(corner).getVector() for corner in boxD.getCorners())
         if len(points) == 0:
             raise RuntimeError("No data found from which to compute convex hull")
         self.log.info("Computing spherical convex hull")
-        polygon = lsst.geom.convexHull(points)
+        polygon = lsst.sphgeom.ConvexPolygon.convexHull(points)
         if polygon is None:
             raise RuntimeError(
                 "Failed to compute convex hull of the vertices of all calexp bounding boxes; "
@@ -174,9 +174,11 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             skyMapConfig.decList.extend(oldSkyMap.config.decList)
             skyMapConfig.radiusList.extend(oldSkyMap.config.radiusList)
         skyMapConfig.update(**self.config.skyMap.toDict())
-        skyMapConfig.raList.append(circle.center[0])
-        skyMapConfig.decList.append(circle.center[1])
-        skyMapConfig.radiusList.append(circle.radius + self.config.borderSize)
+        circleCenter = lsst.sphgeom.LonLat(circle.getCenter())
+        skyMapConfig.raList.append(circleCenter[0].asDegrees())
+        skyMapConfig.decList.append(circleCenter[1].asDegrees())
+        circleRadiusDeg = circle.getOpeningAngle().asDegrees()
+        skyMapConfig.radiusList.append(circleRadiusDeg + self.config.borderSize)
         skyMap = DiscreteSkyMap(skyMapConfig)
 
         for tractInfo in skyMap:
