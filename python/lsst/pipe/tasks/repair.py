@@ -54,59 +54,59 @@ class RepairConfig(pexConfig.Config):
         self.interp.fallbackValueType = "MEANCLIP"
         self.interp.negativeFallbackAllowed = True
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page RepairTask
-## \ref RepairTask_ "RepairTask"
-## \copybrief RepairTask
-## \}
+## @addtogroup LSST_task_documentation
+## @{
+## @page RepairTask
+## @ref RepairTask_ "RepairTask"
+## @copybrief RepairTask
+## @}
 
 
 class RepairTask(pipeBase.Task):
     r"""!
-    \anchor RepairTask_
+    @anchor RepairTask_
 
-    \brief Interpolate over defects in an exposure and handle cosmic rays
+    @brief Interpolate over defects in an exposure and handle cosmic rays
 
-    \section pipe_tasks_repair_Contents Contents
+    @section pipe_tasks_repair_Contents Contents
 
-     - \ref pipe_tasks_repair_Purpose
-     - \ref pipe_tasks_repair_Initialize
-     - \ref pipe_tasks_repair_IO
-     - \ref pipe_tasks_repair_Config
-     - \ref pipe_tasks_repair_Debug
-     - \ref pipe_tasks_repair_Example
+     - @ref pipe_tasks_repair_Purpose
+     - @ref pipe_tasks_repair_Initialize
+     - @ref pipe_tasks_repair_IO
+     - @ref pipe_tasks_repair_Config
+     - @ref pipe_tasks_repair_Debug
+     - @ref pipe_tasks_repair_Example
 
-    \section pipe_tasks_repair_Purpose Description
+    @section pipe_tasks_repair_Purpose Description
 
-    \copybrief RepairTask
+    @copybrief RepairTask
 
     This task operates on an lsst.afw.image.Exposure in place to interpolate over a set of
     lsst.meas.algorithms.Defect objects.
     It will also, optionally, find and interpolate any cosmic rays in the lsst.afw.image.Exposure.
 
-    \section pipe_tasks_repair_Initialize Task initialization
+    @section pipe_tasks_repair_Initialize Task initialization
 
     See: lsst.pipe.base.task.Task.__init__
 
-    \section pipe_tasks_repair_IO Inputs/Outputs to the run method
+    @section pipe_tasks_repair_IO Inputs/Outputs to the run method
 
-    \copydoc run
+    @copydoc run
 
-    \section pipe_tasks_repair_Config Configuration parameters
+    @section pipe_tasks_repair_Config Configuration parameters
 
-    See \ref RepairConfig
+    See @ref RepairConfig
 
-    \section pipe_tasks_repair_Debug Debug variables
+    @section pipe_tasks_repair_Debug Debug variables
 
-    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
-    flag \c -d to import \b debug.py from your \c PYTHONPATH; see <a
+    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
+    flag @c -d to import @b debug.py from your @c PYTHONPATH; see <a
     href="http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html">
-    Using lsstDebug to control debugging output</a> for more about \b debug.py files.
+    Using lsstDebug to control debugging output</a> for more about @b debug.py files.
 
     The available variables in RepairTask are:
     <DL>
-      <DT> \c display
+      <DT> @c display
       <DD> A dictionary containing debug point names as keys with frame number as value. Valid keys are:
         <DL>
           <DT> repair.before
@@ -114,46 +114,46 @@ class RepairTask(pipeBase.Task):
           <DT> repair.after
           <DD> display image after cosmic ray and defect correction
         </DL>
-      <DT> \c displayCR
+      <DT> @c displayCR
       <DD> If True, display the exposure on ds9's frame 1 and overlay bounding boxes around detects CRs.
     </DL>
-    \section pipe_tasks_repair_Example A complete example of using RepairTask
+    @section pipe_tasks_repair_Example A complete example of using RepairTask
 
-    This code is in runRepair.py in the examples directory, and can be run as \em e.g.
-    \code
+    This code is in runRepair.py in the examples directory, and can be run as @em e.g.
+    @code
     examples/runRepair.py
-    \endcode
-    \dontinclude runRepair.py
+    @endcode
+    @dontinclude runRepair.py
     Import the task.  There are other imports.  Read the source file for more info.
-    \skipline RepairTask
+    @skipline RepairTask
 
     For this example, we manufacture a test image to run on.
 
     First, create a pure Poisson noise image and a Psf to go with it.  The mask plane
     and variance can be constructed at the same time.
-    \skip poisson
-    \until mask
+    @skip poisson
+    @until mask
 
     Inject some cosmic rays and generate the Exposure.  Exposures are MaskedImages (image + mask + variance)
     with other metadata (e.g. Psf and Wcs objects).
-    \skip some CRs
-    \until setPsf
+    @skip some CRs
+    @until setPsf
 
     Defects are represented as bad columns of random lengths.  A defect list must be constructed to pass
     on to the RepairTask.
-    \bug This is addressed in <a href="https://jira.lsstcorp.org/browse/DM-963"> DM-963</a>
+    @bug This is addressed in <a href="https://jira.lsstcorp.org/browse/DM-963"> DM-963</a>
 
-    \skip addDefects
-    \until push_back
+    @skip addDefects
+    @until push_back
 
     Finally, the exposure can be repaired.  Create an instance of the task and run it.  The exposure
     is modified in place.
-    \skip RepairTask
-    \until repair.run
+    @skip RepairTask
+    @until repair.run
 
     <HR>
-    To investigate the \ref pipe_tasks_repair_Debug, put something like
-    \code{.py}
+    To investigate the @ref pipe_tasks_repair_Debug, put something like
+    @code{.py}
     import lsstDebug
     def DebugInfo(name):
         di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
@@ -163,8 +163,8 @@ class RepairTask(pipeBase.Task):
         return di
 
     lsstDebug.Info = DebugInfo
-    \endcode
-    into your debug.py file and run runRepair.py with the \c --debug flag.
+    @endcode
+    into your debug.py file and run runRepair.py with the @c --debug flag.
 
 
     Conversion notes:
@@ -182,13 +182,13 @@ class RepairTask(pipeBase.Task):
     def run(self, exposure, defects=None, keepCRs=None):
         """!Repair an Exposure's defects and cosmic rays
 
-        \param[in, out] exposure  lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.
+        @param[in, out] exposure  lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.
                                   Modified in place.
-        \param[in]      defects   an lsst.meas.algorithms.DefectListT object.  If None, do no
+        @param[in]      defects   an lsst.meas.algorithms.DefectListT object.  If None, do no
                                   defect correction.
-        \param[in]      keepCRs   don't interpolate over the CR pixels (defer to RepairConfig if None)
+        @param[in]      keepCRs   don't interpolate over the CR pixels (defer to RepairConfig if None)
 
-        \throws AssertionError with the following strings:
+        @throws AssertionError with the following strings:
 
         <DL>
           <DT> No exposure provided
@@ -218,8 +218,8 @@ class RepairTask(pipeBase.Task):
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
 
-        \param[in,out] exposure Exposure to process
-        \param[in]     keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
+        @param[in,out] exposure Exposure to process
+        @param[in]     keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display

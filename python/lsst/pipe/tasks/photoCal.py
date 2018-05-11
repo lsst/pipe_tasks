@@ -19,7 +19,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-# \package lsst.pipe.tasks.
+# @package lsst.pipe.tasks.
 import math
 import sys
 
@@ -27,8 +27,7 @@ import numpy as np
 
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
-from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, fluxFromABMag, Calib
-import lsst.afw.math as afwMath
+from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, Calib
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
@@ -115,62 +114,62 @@ class PhotoCalConfig(pexConf.Config):
         self.match.sourceSelection.doUnresolved = True
 
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page photoCalTask
-## \ref PhotoCalTask_ "PhotoCalTask"
+## @addtogroup LSST_task_documentation
+## @{
+## @page photoCalTask
+## @ref PhotoCalTask_ "PhotoCalTask"
 ##      Detect positive and negative sources on an exposure and return a new SourceCatalog.
-## \}
+## @}
 
 class PhotoCalTask(pipeBase.Task):
     r"""!
-\anchor PhotoCalTask_
+@anchor PhotoCalTask_
 
-\brief Calculate the zero point of an exposure given a lsst.afw.table.ReferenceMatchVector.
+@brief Calculate the zero point of an exposure given a lsst.afw.table.ReferenceMatchVector.
 
-\section pipe_tasks_photocal_Contents Contents
+@section pipe_tasks_photocal_Contents Contents
 
- - \ref pipe_tasks_photocal_Purpose
- - \ref pipe_tasks_photocal_Initialize
- - \ref pipe_tasks_photocal_IO
- - \ref pipe_tasks_photocal_Config
- - \ref pipe_tasks_photocal_Debug
- - \ref pipe_tasks_photocal_Example
+ - @ref pipe_tasks_photocal_Purpose
+ - @ref pipe_tasks_photocal_Initialize
+ - @ref pipe_tasks_photocal_IO
+ - @ref pipe_tasks_photocal_Config
+ - @ref pipe_tasks_photocal_Debug
+ - @ref pipe_tasks_photocal_Example
 
-\section pipe_tasks_photocal_Purpose	Description
+@section pipe_tasks_photocal_Purpose	Description
 
-\copybrief PhotoCalTask
+@copybrief PhotoCalTask
 
 Calculate an Exposure's zero-point given a set of flux measurements of stars matched to an input catalogue.
 The type of flux to use is specified by PhotoCalConfig.fluxField.
 
 The algorithm clips outliers iteratively, with parameters set in the configuration.
 
-\note This task can adds fields to the schema, so any code calling this task must ensure that
-these columns are indeed present in the input match list; see \ref pipe_tasks_photocal_Example
+@note This task can adds fields to the schema, so any code calling this task must ensure that
+these columns are indeed present in the input match list; see @ref pipe_tasks_photocal_Example
 
-\section pipe_tasks_photocal_Initialize	Task initialisation
+@section pipe_tasks_photocal_Initialize	Task initialisation
 
-\copydoc \_\_init\_\_
+@copydoc \_\_init\_\_
 
-\section pipe_tasks_photocal_IO		Inputs/Outputs to the run method
+@section pipe_tasks_photocal_IO		Inputs/Outputs to the run method
 
-\copydoc run
+@copydoc run
 
-\section pipe_tasks_photocal_Config       Configuration parameters
+@section pipe_tasks_photocal_Config       Configuration parameters
 
-See \ref PhotoCalConfig
+See @ref PhotoCalConfig
 
-\section pipe_tasks_photocal_Debug		Debug variables
+@section pipe_tasks_photocal_Debug		Debug variables
 
-The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
-flag \c -d to import \b debug.py from your \c PYTHONPATH; see \ref baseDebug for more about \b debug.py files.
+The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
+flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py files.
 
 The available variables in PhotoCalTask are:
 <DL>
-  <DT> \c display
+  <DT> @c display
   <DD> If True enable other debug outputs
-  <DT> \c displaySources
+  <DT> @c displaySources
   <DD> If True, display the exposure on ds9's frame 1 and overlay the source catalogue.
     <DL>
       <DT> red o
@@ -178,56 +177,56 @@ The available variables in PhotoCalTask are:
       <DT> green o
       <DD> Objects used in the photometric calibration
     </DL>
-  <DT> \c scatterPlot
+  <DT> @c scatterPlot
   <DD> Make a scatter plot of flux v. reference magnitude as a function of reference magnitude.
     - good objects in blue
     - rejected objects in red
-  (if \c scatterPlot is 2 or more, prompt to continue after each iteration)
+  (if @c scatterPlot is 2 or more, prompt to continue after each iteration)
 </DL>
 
-\section pipe_tasks_photocal_Example	A complete example of using PhotoCalTask
+@section pipe_tasks_photocal_Example	A complete example of using PhotoCalTask
 
-This code is in \link examples/photoCalTask.py\endlink, and can be run as \em e.g.
-\code
+This code is in @link examples/photoCalTask.py@endlink, and can be run as @em e.g.
+@code
 examples/photoCalTask.py
-\endcode
-\dontinclude photoCalTask.py
+@endcode
+@dontinclude photoCalTask.py
 
 Import the tasks (there are some other standard imports; read the file for details)
-\skipline from lsst.pipe.tasks.astrometry
-\skipline measPhotocal
+@skipline from lsst.pipe.tasks.astrometry
+@skipline measPhotocal
 
 We need to create both our tasks before processing any data as the task constructors
-can add extra columns to the schema which we get from the input catalogue, \c scrCat:
-\skipline getSchema
+can add extra columns to the schema which we get from the input catalogue, @c scrCat:
+@skipline getSchema
 
 Astrometry first:
-\skip AstrometryTask.ConfigClass
-\until aTask
-(that \c filterMap line is because our test code doesn't use a filter that the reference catalogue recognises,
-so we tell it to use the \c r band)
+@skip AstrometryTask.ConfigClass
+@until aTask
+(that @c filterMap line is because our test code doesn't use a filter that the reference catalogue recognises,
+so we tell it to use the @c r band)
 
 Then photometry:
-\skip measPhotocal
-\until pTask
+@skip measPhotocal
+@until pTask
 
 If the schema has indeed changed we need to add the new columns to the source table
 (yes; this should be easier!)
-\skip srcCat
-\until srcCat = cat
+@skip srcCat
+@until srcCat = cat
 
 We're now ready to process the data (we could loop over multiple exposures/catalogues using the same
 task objects):
-\skip matches
-\until result
+@skip matches
+@until result
 
 We can then unpack and use the results:
-\skip calib
-\until np.log
+@skip calib
+@until np.log
 
 <HR>
-To investigate the \ref pipe_tasks_photocal_Debug, put something like
-\code{.py}
+To investigate the @ref pipe_tasks_photocal_Debug, put something like
+@code{.py}
     import lsstDebug
     def DebugInfo(name):
         di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
@@ -237,8 +236,8 @@ To investigate the \ref pipe_tasks_photocal_Debug, put something like
         return di
 
     lsstDebug.Info = DebugInfo
-\endcode
-into your debug.py file and run photoCalTask.py with the \c --debug flag.
+@endcode
+into your debug.py file and run photoCalTask.py with the @c --debug flag.
     """
     ConfigClass = PhotoCalConfig
     _DefaultName = "photoCal"
@@ -274,17 +273,17 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
     def extractMagArrays(self, matches, filterName, sourceKeys):
         """!Extract magnitude and magnitude error arrays from the given matches.
 
-        \param[in] matches Reference/source matches, a \link lsst::afw::table::ReferenceMatchVector\endlink
-        \param[in] filterName  Name of filter being calibrated
-        \param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
+        @param[in] matches Reference/source matches, a @link lsst::afw::table::ReferenceMatchVector@endlink
+        @param[in] filterName  Name of filter being calibrated
+        @param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
 
-        \return Struct containing srcMag, refMag, srcMagErr, refMagErr, and magErr numpy arrays
+        @return Struct containing srcMag, refMag, srcMagErr, refMagErr, and magErr numpy arrays
         where magErr is an error in the magnitude; the error in srcMag - refMag
         If nonzero, config.magErrFloor will be added to magErr *only* (not srcMagErr or refMagErr), as
         magErr is what is later used to determine the zero point.
         Struct also contains refFluxFieldList: a list of field names of the reference catalog used for fluxes
         (1 or 2 strings)
-        \note These magnitude arrays are the \em inputs to the photometric calibration, some may have been
+        @note These magnitude arrays are the @em inputs to the photometric calibration, some may have been
         discarded by clipping while estimating the calibration (https://jira.lsstcorp.org/browse/DM-813)
         """
         srcFluxArr = np.array([m.second.get(sourceKeys.flux) for m in matches])
@@ -392,15 +391,15 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.
 
-        \param[in]  exposure  Exposure upon which the sources in the matches were detected.
-        \param[in]  sourceCat  A catalog of sources to use in the calibration
-        (\em i.e. a list of lsst.afw.table.Match with
-        \c first being of type lsst.afw.table.SimpleRecord and \c second type lsst.afw.table.SourceRecord ---
+        @param[in]  exposure  Exposure upon which the sources in the matches were detected.
+        @param[in]  sourceCat  A catalog of sources to use in the calibration
+        (@em i.e. a list of lsst.afw.table.Match with
+        @c first being of type lsst.afw.table.SimpleRecord and @c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
         (will not be modified  except to set the outputField if requested.).
 
-        \return Struct of:
-         - calib -------  \link lsst::afw::image::Calib\endlink object containing the zero point
+        @return Struct of:
+         - calib -------  @link lsst::afw::image::Calib@endlink object containing the zero point
          - arrays ------ Magnitude arrays returned be PhotoCalTask.extractMagArrays
          - matches ----- Final ReferenceMatchVector, as returned by PhotoCalTask.selectMatches.
          - zp ---------- Photometric zero point (mag)
@@ -411,18 +410,18 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         used to generate debugging plots).
 
         The reference objects:
-         - Must include a field \c photometric; True for objects which should be considered as
+         - Must include a field @c photometric; True for objects which should be considered as
             photometric standards
-         - Must include a field \c flux; the flux used to impose a magnitude limit and also to calibrate
+         - Must include a field @c flux; the flux used to impose a magnitude limit and also to calibrate
             the data to (unless a color term is specified, in which case ColorTerm.primary is used;
             See https://jira.lsstcorp.org/browse/DM-933)
-         - May include a field \c stargal; if present, True means that the object is a star
-         - May include a field \c var; if present, True means that the object is variable
+         - May include a field @c stargal; if present, True means that the object is a star
+         - May include a field @c var; if present, True means that the object is variable
 
         The measured sources:
         - Must include PhotoCalConfig.fluxField; the flux measurement to be used for calibration
 
-        \throws RuntimeError with the following strings:
+        @throws RuntimeError with the following strings:
 
         <DL>
         <DT> No matches to use for photocal
@@ -441,7 +440,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
             from matplotlib import pyplot
             try:
                 self.fig.clf()
-            except:
+            except Exception:
                 self.fig = pyplot.figure()
 
         filterName = exposure.getFilter().getName()
@@ -507,7 +506,6 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
                 ctype = ds9.RED if rr else ds9.GREEN
                 ds9.dot("o", x, y, size=4, frame=frame, ctype=ctype)
 
-
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
         """!Flux calibration code, returning (ZeroPoint, Distribution Width, Number of stars)
 
@@ -520,7 +518,7 @@ into your debug.py file and run photoCalTask.py with the \c --debug flag.
         residuals with a tight core and asymmetrical outliers will start in the core.  We use the width of
         this core to set our maximum sigma (see 2.)
 
-        \return Struct of:
+        @return Struct of:
          - zp ---------- Photometric zero point (mag)
          - sigma ------- Standard deviation of fit of zero point (mag)
          - ngood ------- Number of sources used to fit zero point

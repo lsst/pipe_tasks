@@ -299,7 +299,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             if imageScaler is not None:
                 try:
                     imageScaler.scaleMaskedImage(maskedImage)
-                except:
+                except Exception:
                     # need to put a place holder in Arr
                     varList.append(numpy.nan)
                     meanBkgdLevelList.append(numpy.nan)

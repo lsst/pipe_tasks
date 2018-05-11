@@ -81,6 +81,7 @@ def runRepair(exp, defectList):
     repair = RepairTask(name="RepairTask")
     repair.run(exp, defects=defectList)
 
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Demonstrate the use of RepairTask")
@@ -95,7 +96,7 @@ if __name__ == "__main__":
 
     if args.debug:
         try:
-            import debug
+            import debug  # noqa F401
         except ImportError as e:
             print(e, file=sys.stderr)
 

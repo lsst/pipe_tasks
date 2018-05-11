@@ -121,7 +121,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         center = wcs.skyToPixel(record.getCoord())
         try:
             psfImage = exposure.getPsf().computeImage(center).convertF()
-        except:
+        except Exception:
             return 0
         psfBBox = psfImage.getBBox()
         overlap = exposure.getBBox()

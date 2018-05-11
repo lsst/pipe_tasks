@@ -25,7 +25,6 @@ import unittest
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.utils import getPackageDir
-from lsst.obs.base import ExposureIdInfo
 from lsst.log import Log
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 
@@ -57,6 +56,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
                 reserved += 1
         self.assertGreater(used, 0)
         self.assertEqual(reserved, 0)
+
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass

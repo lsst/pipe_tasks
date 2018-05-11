@@ -39,8 +39,8 @@ def plotObservations(catalog, wcs):
                 xo, yo = wcs.skyToPixel(coord)
                 x.append(xo)
                 y.append(yo)
-            except:
-                print("WARNING: point %d, %d failed" % (xi, yi))
+            except Exception as e:
+                print("WARNING: point %d, %d failed: error=%s" % (xi, yi, e))
         pyplot.fill(x, y, facecolor='r', alpha=0.1, edgecolor=None)
 
 

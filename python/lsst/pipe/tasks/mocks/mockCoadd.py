@@ -217,7 +217,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         skyMap = self.buildSkyMap(butler)
         observations = self.buildObservationCatalog(butler, skyMap=skyMap)
         truth = self.buildTruthCatalog(butler, skyMap=skyMap)
-        simSrcCatalog = self.buildInputImages(butler, obsCatalog=observations, truthCatalog=truth)
+        self.buildInputImages(butler, obsCatalog=observations, truthCatalog=truth)
 
     def makeCoaddTask(self, cls, assemblePsfMatched=False):
         """Helper function to create a Coadd task with configuration appropriate for the simulations.
@@ -295,11 +295,9 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         if skyMap is None:
             skyMap = butler.get(self.config.coaddName + "Coadd_skyMap")
         tractInfo = skyMap[tract]
-        tractWcs = tractInfo.getWcs()
         for patchRef in self.iterPatchRefs(butler, tractInfo):
-            # TODO: pybind11 remove `immediate=True` once DM-9112 is resolved
             for dataProduct in ["Coadd", "CoaddPsfMatched"]:
-                exposure = patchRef.get(self.config.coaddName + dataProduct, immediate=True)
+                exposure = patchRef.get(self.config.coaddName + dataProduct)
                 exposure.getMaskedImage().getImage().set(0.0)
                 coaddPsf = lsst.meas.algorithms.CoaddPsf(
                     exposure.getInfo().getCoaddInputs().ccds, exposure.getWcs()

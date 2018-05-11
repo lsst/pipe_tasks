@@ -605,8 +605,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
         @param[in] astromMatches  list of source/refObj matches from the
             astrometry solver
         """
-        sourceWriteFlags = 0 if self.config.doWriteHeavyFootprintsInSources \
-            else afwTable.SOURCE_IO_NO_HEAVY_FOOTPRINTS
         dataRef.put(sourceCat, "src")
         if self.config.doWriteMatches and astromMatches is not None:
             normalizedMatches = afwTable.packMatches(astromMatches)

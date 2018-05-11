@@ -27,7 +27,6 @@ import sys
 import numpy as np
 
 import lsst.utils
-import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.display.ds9 as ds9
@@ -99,8 +98,7 @@ def run(display=False):
     measureTask.measure(exposure, sources)
 
     result = measurePsfTask.run(exposure, sources)
-    psf = result.psf
-    cellSet = result.cellSet
+    print("psf=", result.psf)
 
     if display:                         # display on ds9 (see also --debug argparse option)
         frame = 1
@@ -115,7 +113,6 @@ def run(display=False):
                 if s.get("calib.psf.used"):
                     ds9.dot('o', *xy, size=4, ctype=ds9.RED, frame=frame)
 
-#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 if __name__ == "__main__":
     import argparse
@@ -128,7 +125,7 @@ if __name__ == "__main__":
 
     if args.debug:
         try:
-            import debug
+            import debug  # noqa F401
         except ImportError as e:
             print(e, file=sys.stderr)
 

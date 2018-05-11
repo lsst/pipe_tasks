@@ -113,9 +113,9 @@ class MockObservationTask(lsst.pipe.base.Task):
 
         for position, pa in self.makePointings(n, tractInfo):
             visitInfo = lsst.afw.image.VisitInfo(
-                exposureTime = self.config.expTime,
-                date = lsst.daf.base.DateTime.now(),
-                boresightRaDec = position,
+                exposureTime=self.config.expTime,
+                date=lsst.daf.base.DateTime.now(),
+                boresightRaDec=position,
             )
             for detector in camera:
                 calib = self.buildCalib()
