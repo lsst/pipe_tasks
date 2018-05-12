@@ -125,6 +125,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
+        self.doNImage = True
         self.warpType = 'direct'
         self.assembleStaticSkyModel.warpType = self.warpType
         self.assembleStaticSkyModel.doNImage = self.doNImage
@@ -179,6 +180,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.log.info("Persisting dcrCoadd")
                 dataRef.put(results.dcrCoadds[subfilter], "dcrCoadd", subfilter=subfilter,
                             numSubfilters=self.config.dcrNumSubfilters)
+            if self.config.doNImage and results.dcrNImages is not None:
+                dataRef.put(results.dcrNImages[subfilter], "dcrCoadd_nImage", subfilter=subfilter,
+                            numSubfilters=self.config.dcrNumSubfilters)
+
         return results
 
     def prepareDcrInputs(self, templateCoadd, tempExpRefList, weightList):
@@ -245,6 +250,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - coaddExposure: coadded exposure
             - nImage: exposure count image
             - dcrCoadds: list of coadded exposures for each subfilter
+            - dcrNImages: list of exposure count images for each subfilter
         """
         templateCoadd = supplementaryData.templateCoadd
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
@@ -259,10 +265,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         stats = self.prepareStats(mask=badPixelMask)
         self.prepareDcrInputs(templateCoadd, tempExpRefList, weightList)
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
-        # if nImage is requested, create a zero one which can be passed to assembleSubregion
         if self.config.doNImage:
-            dcrNImages = [afwImage.ImageU(skyInfo.bbox) for subfilter in range(self.config.dcrNumSubfilters)]
-            self.calculateNImage(dcrNImages, skyInfo.bbox, tempExpRefList, spanSetMaskList, stats.ctrl)
+            dcrNImages = self.calculateNImage(skyInfo, tempExpRefList, spanSetMaskList, stats.ctrl)
+            nImage = afwImage.ImageU(skyInfo.bbox)
+            # Note that this nImage will be a factor of dcrNumSubfilters higher than
+            # the nImage returned by assembleCoadd for most pixels. This is because each
+            # subfilter may have a different nImage, and fractional values are not allowed.
+            for dcrNImage in dcrNImages:
+                nImage += dcrNImage
         else:
             dcrNImages = None
 
@@ -320,10 +330,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         coaddExposure = self.stackCoadd(dcrCoadds)
-        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=supplementaryData.nImage,
+        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
 
-    def calculateNImage(self, dcrNImages, bbox, tempExpRefList, spanSetMaskList, statsCtrl):
+    def calculateNImage(self, skyInfo, tempExpRefList, spanSetMaskList, statsCtrl):
         """Calculate the number of exposures contributing to each subfilter.
 
         Parameters
@@ -339,11 +349,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         statsCtrl : lsst.afw.math.StatisticsControl
             Statistics control object for coadd
         """
+        dcrNImages = [afwImage.ImageU(skyInfo.bbox) for subfilter in range(self.config.dcrNumSubfilters)]
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
-        for subBBox in self._subBBoxIter(bbox, subregionSize):
+        for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             bboxGrow = afwGeom.Box2I(subBBox)
             bboxGrow.grow(self.bufferSize)
-            bboxGrow.clip(bbox)
+            bboxGrow.clip(skyInfo.bbox)
             subNImages = [afwImage.ImageU(bboxGrow) for subfilter in range(self.config.dcrNumSubfilters)]
             tempExpName = self.getTempExpDatasetName(self.warpType)
             for tempExpRef, altMaskSpans in zip(tempExpRefList, spanSetMaskList):
@@ -359,6 +370,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     subNImage.array[shiftedMask.array & statsCtrl.getAndMask() == 0] += 1
             for subfilter, subNImage in enumerate(subNImages):
                 dcrNImages[subfilter].assign(subNImage[subBBox, afwImage.PARENT], subBBox)
+        return dcrNImages
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
                              spanSetMaskList, statsFlags, statsCtrl, convergenceMetric, baseMask):
