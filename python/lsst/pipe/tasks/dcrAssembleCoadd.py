@@ -22,9 +22,10 @@ from __future__ import absolute_import, division, print_function
 #
 
 import numpy as np
-import scipy.ndimage.interpolation
 from lsst.afw.coord.refraction import differentialRefraction
 import lsst.afw.geom as afwGeom
+from lsst.afw.geom import AffineTransform
+from lsst.afw.geom import makeTransform
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
@@ -111,10 +112,19 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         default=["DETECTED"],
         doc="Mask planes to use to calculate convergence."
     )
+    imageWarpMethod = pexConfig.Field(
+        dtype=str,
+        doc="Name of the warping kernel to use for shifting the image and variance planes.",
+        default="bilinear",
+    )
+    maskWarpMethod = pexConfig.Field(
+        dtype=str,
+        doc="Name of the warping kernel to use for shifting the mask plane.",
+        default="bilinear",
+    )
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
-        self.assembleStaticSkyModel.warpType = 'direct'
         self.warpType = 'direct'
         self.assembleStaticSkyModel.warpType = self.warpType
         self.assembleStaticSkyModel.doNImage = self.doNImage
@@ -197,6 +207,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrShifts.append(np.max(np.abs(self.dcrShiftCalculate(visitInfo,
                                                                   templateCoadd.getInfo().getWcs()))))
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
+        # Turn of the warping cache, since we set the linear interpolation length to the entire subregion
+        warpCache = 0
+        warpInterpLength = max(self.config.subregionSize)
+        self.warpCtrl = afwMath.WarpingControl(self.config.imageWarpMethod,
+                                               self.config.maskWarpMethod,
+                                               warpCache, warpInterpLength)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  supplementaryData=None):
@@ -748,30 +764,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if self.config.useFFT:
             raise NotImplementedError("The Fourier transform approach has not yet been written.")
         else:
-            if useInverse:
-                shift = (-dcr.getY(), -dcr.getX())
-            else:
-                shift = (dcr.getY(), dcr.getX())
-            # Shift each of image, mask, and variance
+            padValue = afwImage.pixel.SinglePixelF(0., maskedImage.mask.getPlaneBitMask("NO_DATA"), 0)
             if bbox is None:
-                result = maskedImage.clone()
+                bbox = maskedImage.getBBox()
+            shiftedImage = afwImage.MaskedImageF(bbox)
+            if useInverse:
+                transform = makeTransform(AffineTransform(-dcr))
             else:
-                result = maskedImage[bbox, afwImage.PARENT].clone()
-            mask = result.mask
-            srcImage = result.image.array
-            badImagePixels = np.isnan(srcImage)
-            srcVariance = result.variance.array
-            badVariancePixels = np.isnan(srcVariance)
-            mask.array[badImagePixels] = mask.getPlaneBitMask("NO_DATA")
-            result.setMask(self.shiftMask(mask, dcr, useInverse=useInverse))
-
-            srcImage[badImagePixels] = 0.
-            retImage = scipy.ndimage.interpolation.shift(srcImage, shift)
-            result.image.array[:] = retImage
-            srcVariance[badVariancePixels] = 0
-            retVariance = scipy.ndimage.interpolation.shift(srcVariance, shift)
-            result.variance.array[:] = retVariance
-        return result
+                transform = makeTransform(AffineTransform(dcr))
+            afwMath.warpImage(shiftedImage, maskedImage[bbox, afwImage.PARENT],
+                              transform, self.warpCtrl, padValue=padValue)
+        return shiftedImage
 
     @staticmethod
     def conditionDcrModel(oldDcrModels, newDcrModels, bbox, gain=1.):

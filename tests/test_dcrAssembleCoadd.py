@@ -220,27 +220,6 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(model, refModel)
 
-    def testShiftImagePlane(self):
-        """Verify the shift calculation for the image and variance planes.
-
-        The shift of the mask plane is tested separately since it is calculated differently.
-        """
-        self.config.useFFT = False
-        rotAngle = Angle(0.)
-        azimuth = 200.*afwGeom.degrees
-        elevation = 75.*afwGeom.degrees
-        pixelScale = 0.2*afwGeom.arcseconds
-        visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
-        wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
-        newMaskedImage = self.convolveDcrModelPlane(self.dcrModels[0], dcrShift[0],
-                                                    bbox=self.bbox, useInverse=False)
-        shift = (dcrShift[0].getY(), dcrShift[0].getX())
-        refImage = scipy.ndimage.interpolation.shift(self.dcrModels[0].image.array, shift)
-        refVariance = scipy.ndimage.interpolation.shift(self.dcrModels[0].variance.array, shift)
-        self.assertFloatsAlmostEqual(newMaskedImage.image.array, refImage)
-        self.assertFloatsAlmostEqual(newMaskedImage.variance.array, refVariance)
-
     def testShiftMaskPlane(self):
         """Verify the shift calculation for the mask plane for large and small shifts.
 
