@@ -88,7 +88,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     regularizeSigma = pexConfig.Field(
         dtype=float,
-        doc="Threshold to exclude noise-like pixels from frequency regularization.",
+        doc="Threshold to exclude noise-like pixels from regularization.",
         default=3.,
     )
     clampFrequency = pexConfig.Field(
@@ -416,7 +416,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                    clipped,  # also set output to CLIPPED if sigma-clipped
                                                    maskMap)
                 residual.setXY0(bboxGrow.getBegin())
-                newModel = self.clampModel(residual, oldModel, bboxGrow)
+                newModel = self.clampModel(residual, oldModel, bboxGrow, statsCtrl)
                 dcrSubModelOut.append(newModel)
         self.setModelVariance(dcrSubModelOut)
         self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask, statsCtrl)
@@ -435,7 +435,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for model, subModel in zip(dcrModels, dcrSubModelOut):
             model.assign(subModel[bbox, afwImage.PARENT], bbox)
 
-    def clampModel(self, residual, oldModel, bbox):
+    def clampModel(self, residual, oldModel, bbox, statsCtrl):
         """Restrict large variations in the model between iterations.
 
         Parameters
@@ -447,6 +447,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Description
         bbox : lsst.afw.geom.box.Box2I
             Sub-region to coadd
+        statsCtrl : lsst.afw.math.StatisticsControl
+            Statistics control object for coadd
 
         Returns
         -------
@@ -456,23 +458,27 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         newModel = residual
         newModel += oldModel[bbox, afwImage.PARENT]
         newImage = newModel.image.array
-        newVariance = newModel.variance.array
-        nonFinitePixels = ~(np.isfinite(newImage) | np.isfinite(newVariance))
-        newModel.mask.array[nonFinitePixels] = newModel.mask.getPlaneBitMask("NO_DATA")
-        newImage[nonFinitePixels] = 0.
-        newVariance[nonFinitePixels] = 0.
         oldImage = oldModel[bbox, afwImage.PARENT].image.array
-        highPixels = np.abs(newImage) > np.abs(oldImage*self.config.modelClampFactor)
-        newImage[highPixels] = oldImage[highPixels]*self.config.modelClampFactor
-        lowPixels = np.abs(newImage) < np.abs(oldImage/self.config.modelClampFactor)
-        newImage[lowPixels] = oldImage[lowPixels]/self.config.modelClampFactor
+        noiseCutoff = self.calculateNoiseCutoff(oldModel[bbox, afwImage.PARENT], statsCtrl)
+        # Catch any invalid values
+        nanPixels = np.isnan(newImage)
+        newImage[nanPixels] = 0.
+        infPixels = np.isinf(newImage)
+        newImage[infPixels] = oldImage[infPixels]*self.config.modelClampFactor
+        # Clip pixels that have very high amplitude, compared with the previous iteration.
+        clampPixels = np.abs(newImage - oldImage) > (np.abs(oldImage*(self.config.modelClampFactor - 1)) +
+                                                     noiseCutoff)
+        highPixels = newImage > oldImage
+        newImage[clampPixels & highPixels] = oldImage[clampPixels & highPixels]*self.config.modelClampFactor
+        newImage[clampPixels & ~highPixels] = oldImage[clampPixels & ~highPixels]/self.config.modelClampFactor
+
         return newModel
 
     def setModelVariance(self, dcrModels):
         """Set the subfilter variance planes from the results of the first iteration.
 
         We are not solving for the variance, so we need to shift the variance plane
-        only once. Otherwise, Otherwise, regions with high variance will bleed into
+        only once. Otherwise, regions with high variance will bleed into
         neighboring pixels with each successive iteration.
 
         Parameters
@@ -507,20 +513,43 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         templateImage = np.mean([model[bbox, afwImage.PARENT].image.array
                                  for model in dcrModels], axis=0)
         excess = np.zeros_like(templateImage)
-        convergeMask = mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
-        backgroundPixels = mask[bbox, afwImage.PARENT].array & (statsCtrl.getAndMask() ^ convergeMask) == 0
-        noiseLevel = self.config.regularizeSigma*np.std(templateImage[backgroundPixels])
         for model in dcrModels:
+            noiseCutoff = self.calculateNoiseCutoff(model, statsCtrl, mask=mask[bbox, afwImage.PARENT])
             modelVals = model.image.array
-            highPixels = (modelVals > (templateImage*self.config.clampFrequency + noiseLevel))
+            highPixels = (modelVals > (templateImage*self.config.clampFrequency + noiseCutoff))
             excess[highPixels] += modelVals[highPixels] - templateImage[highPixels]*self.config.clampFrequency
             modelVals[highPixels] = templateImage[highPixels]*self.config.clampFrequency
-            lowPixels = (modelVals < templateImage/self.config.clampFrequency - noiseLevel)
+            lowPixels = (modelVals < templateImage/self.config.clampFrequency - noiseCutoff)
             excess[lowPixels] += modelVals[lowPixels] - templateImage[lowPixels]/self.config.clampFrequency
             modelVals[lowPixels] = templateImage[lowPixels]/self.config.clampFrequency
         excess /= nModels
         for model in dcrModels:
             model.image.array += excess
+
+    def calculateNoiseCutoff(self, maskedImage, statsCtrl, mask=None):
+        """Helper function to calculate the background noise threshold of an image.
+
+        Parameters
+        ----------
+        maskedImage : lsst.afw.image.maskedImageF
+            The input image to evaluate the background noise properties.
+        statsCtrl : lsst.afw.math.StatisticsControl
+            Statistics control object for coadd
+        mask : lsst.afw.image.mask, Optional
+            Optional alternate mask
+
+        Returns
+        -------
+        float
+            The threshold value to treat pixels as noise in an image, set by self.config.regularizeSigma.
+        """
+        convergeMask = maskedImage.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+        if mask is None:
+            backgroundPixels = maskedImage.mask.array & (statsCtrl.getAndMask() ^ convergeMask) == 0
+        else:
+            backgroundPixels = mask.array & (statsCtrl.getAndMask() ^ convergeMask) == 0
+        noiseCutoff = self.config.regularizeSigma*np.std(maskedImage.image.array[backgroundPixels])
+        return noiseCutoff
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
                              weightList, spanSetMaskList, statsFlags, statsCtrl):

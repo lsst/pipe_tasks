@@ -273,7 +273,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             self.assertFloatsEqual(newMaskCheck, maskRefCheck)
 
     def testRegularizationLargeClamp(self):
-        """Frequency regularization should leave the models unchanged if all the clamp factor is large.
+        """Frequency regularization should leave the models unchanged if the clamp factor is large.
 
         This also tests that noise-like pixels are not regularized.
         """
