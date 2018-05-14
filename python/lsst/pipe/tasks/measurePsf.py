@@ -28,7 +28,7 @@ import lsst.pipe.base as pipeBase
 
 
 class MeasurePsfConfig(pexConfig.Config):
-    starSelector = measAlg.starSelectorRegistry.makeField(
+    starSelector = measAlg.sourceSelectorRegistry.makeField(
         "Star selection algorithm",
         default="objectSize"
     )
@@ -230,7 +230,7 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         else:
             self.candidateKey = None
             self.usedKey = None
-        self.makeSubtask("starSelector", schema=schema)
+        self.makeSubtask("starSelector")
         self.makeSubtask("makePsfCandidates")
         self.makeSubtask("psfDeterminer", schema=schema)
         self.makeSubtask("reserve", columnName="calib_psf", schema=schema,
@@ -272,7 +272,7 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         # Run star selector
         #
         stars = self.starSelector.run(sourceCat=sources, matches=matches, exposure=exposure)
-        selectionResult = self.makePsfCandidates.run(stars.starCat, exposure=exposure)
+        selectionResult = self.makePsfCandidates.run(stars.sourceCat, exposure=exposure)
         reserveResult = self.reserve.run(selectionResult.goodStarCat, expId=expId)
         psfCandidateList = [cand for cand, use
                             in zip(selectionResult.psfCandidates, reserveResult.use) if use]
