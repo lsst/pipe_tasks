@@ -45,17 +45,14 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         Distance from the inner edge of the bounding box to avoid placing test sources in the model images.
     config : lsst.pipe.tasks.dcrAssembleCoadd.DcrAssembleCoaddConfig
         Configuration parameters to initialize the task.
-    dcrModels : list of lsst.afw.image.maskedImageF
-        A list of masked images, each containing the model for one subfilter.
     filterInfo : lsst.afw.image.filter.Filter
         Dummy filter object for testing.
     mask : lsst.afw.image.mask
         Reference mask of the unshifted model.
-    rng : np.random
-        Pre-initialized random number generator.
     """
 
     def setUp(self):
+        """Define the filters,  DCR attributes, and the image bounding box for the tests."""
         self.config = DcrAssembleCoaddConfig()
         lambdaEff = 476.31  # Use LSST g band values for the test.
         lambdaMin = 405
@@ -68,37 +65,49 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         xSize = 40
         ySize = 42
+        x0 = 12345
+        y0 = 67890
+        self.bbox = afwGeom.Box2I(afwGeom.Point2I(x0, y0), afwGeom.Extent2I(xSize, ySize))
+
+    def makeTestImages(self):
+        """Make reproduceable PSF-convolved masked images for testing.
+
+        Returns
+        -------
+        dcrModels : list of lsst.afw.image.maskedImageF
+            A list of masked images, each containing the model for one subfilter.
+        """
+        seed = 5
+        rng = np.random
+        rng.seed(seed)
         psfSize = 2
         nSrc = 5
-        seed = 5
-        self.rng = np.random
-        self.rng.seed(seed)
         noiseLevel = 5
         detectionSigma = 5.
         sourceSigma = 20.
         fluxRange = 2.
-        x0 = 12345
-        y0 = 67890
-        xLoc = self.rng.random(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize + x0
-        yLoc = self.rng.random(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize + y0
-        self.dcrModels = []
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(x0, y0), afwGeom.Extent2I(xSize, ySize))
+        x0, y0 = self.bbox.getBegin()
+        xSize, ySize = self.bbox.getDimensions()
+        xLoc = rng.random(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize + x0
+        yLoc = rng.random(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize + y0
+        dcrModels = []
 
         imageSum = np.zeros((ySize, xSize))
         for subfilter in range(self.config.dcrNumSubfilters):
-            flux = (self.rng.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
+            flux = (rng.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             sigmas = [psfSize for src in range(nSrc)]
             coordList = [[x, y, counts, sigma] for x, y, counts, sigma in zip(xLoc, yLoc, flux, sigmas)]
             model = plantSources(self.bbox, 10, 0, coordList, addPoissonNoise=False)
-            model.image.array += self.rng.random((ySize, xSize))*noiseLevel
+            model.image.array += rng.random((ySize, xSize))*noiseLevel
             imageSum += model.image.array
             model.mask.addMaskPlane("CLIPPED")
-            self.dcrModels.append(model.maskedImage)
+            dcrModels.append(model.maskedImage)
         maskVals = np.zeros_like(imageSum)
         maskVals[imageSum > detectionSigma*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
-        for model in self.dcrModels:
+        for model in dcrModels:
             model.mask.array[:] = maskVals
-        self.mask = self.dcrModels[0].mask
+        self.mask = dcrModels[0].mask
+        return dcrModels
 
     def makeDummyWcs(self, rotAngle, pixelScale, crval):
         """Make a World Coordinate System object for testing.
@@ -200,9 +209,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        refModels = [model.clone() for model in self.dcrModels]
-        self.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
-        for model, refModel in zip(self.dcrModels, refModels):
+        dcrModels = self.makeTestImages()
+        refModels = [model.clone() for model in dcrModels]
+        self.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
+        for model, refModel in zip(dcrModels, refModels):
             self.assertMaskedImagesEqual(model, refModel)
 
     def testConditionDcrModelWithChange(self):
@@ -210,11 +220,12 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        refModels = [model.clone() for model in self.dcrModels]
-        for model in self.dcrModels:
+        dcrModels = self.makeTestImages()
+        refModels = [model.clone() for model in dcrModels]
+        for model in dcrModels:
             model.image.array[:] *= 3.
-        self.conditionDcrModel(refModels, self.dcrModels, self.bbox, gain=1.)
-        for model, refModel in zip(self.dcrModels, refModels):
+        self.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
+        for model, refModel in zip(dcrModels, refModels):
             refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(model, refModel)
 
@@ -223,12 +234,13 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This also tests that noise-like pixels are not regularized.
         """
+        dcrModels = self.makeTestImages()
         self.config.regularizeSigma = 3.
         self.config.clampFrequency = 2.
         statsCtrl = afwMath.StatisticsControl()
-        modelRefs = [model.clone() for model in self.dcrModels]
-        self.regularizeModel(self.dcrModels, self.bbox, self.mask, statsCtrl)
-        for model, modelRef in zip(self.dcrModels, modelRefs):
+        modelRefs = [model.clone() for model in dcrModels]
+        self.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
+        for model, modelRef in zip(dcrModels, modelRefs):
             self.assertMaskedImagesEqual(model, modelRef)
 
     def testRegularizationSmallClamp(self):
@@ -236,16 +248,17 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This also tests that noise-like pixels are not regularized.
         """
+        dcrModels = self.makeTestImages()
         self.config.regularizeSigma = 3.
         self.config.clampFrequency = 1.1
         statsCtrl = afwMath.StatisticsControl()
-        modelRefs = [model.clone() for model in self.dcrModels]
-        templateImage = np.sum([model.image.array for model in self.dcrModels], axis=0)
+        modelRefs = [model.clone() for model in dcrModels]
+        templateImage = np.sum([model.image.array for model in dcrModels], axis=0)
         backgroundInds = self.mask.array == 0
         noiseLevel = self.config.regularizeSigma*np.std(templateImage[backgroundInds])
 
-        self.regularizeModel(self.dcrModels, self.bbox, self.mask, statsCtrl)
-        for model, modelRef in zip(self.dcrModels, modelRefs):
+        self.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
+        for model, modelRef in zip(dcrModels, modelRefs):
             self.assertFloatsAlmostEqual(model.mask.array, modelRef.mask.array)
             self.assertFloatsAlmostEqual(model.variance.array, modelRef.variance.array)
             imageDiffHigh = model.image.array - (templateImage*self.config.clampFrequency + noiseLevel)
