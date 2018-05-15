@@ -511,6 +511,13 @@ class CalibrateTask(pipeBase.CmdLineTask):
             self.copyIcSourceFields(icSourceCat=icSourceCat,
                                     sourceCat=sourceCat)
 
+        # TODO DM-11568: this contiguous check-and-copy could go away if we
+        # reserve enough space during SourceDetection and/or SourceDeblend.
+        # NOTE: sourceSelectors require contiguous catalogs, so ensure
+        # contiguity now, so views are preserved from here on.
+        if not sourceCat.isContiguous():
+            sourceCat = sourceCat.copy(deep=True)
+
         # perform astrometry calibration:
         # fit an improved WCS and update the exposure's WCS in place
         astromMatches = None
