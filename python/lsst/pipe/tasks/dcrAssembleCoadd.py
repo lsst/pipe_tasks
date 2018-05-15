@@ -366,8 +366,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     self.applyAltMaskPlanes(mask, altMaskSpans)
                 dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
                 for dcr, subNImage in zip(dcrShift, subNImages):
-                    shiftedMask = self.shiftMask(mask, dcr, useInverse=True)
-                    subNImage.array[shiftedMask.array & statsCtrl.getAndMask() == 0] += 1
+                    shiftedImage = self.convolveDcrModelPlane(exposure.maskedImage, dcr, useInverse=True)
+                    subNImage.array[shiftedImage.mask.array & statsCtrl.getAndMask() == 0] += 1
             for subfilter, subNImage in enumerate(subNImages):
                 dcrNImages[subfilter].assign(subNImage[subBBox, afwImage.PARENT], subBBox)
         return dcrNImages
@@ -917,46 +917,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         cdAngle = (np.arctan2(-cd[0, 1], cd[0, 0]) + np.arctan2(cd[1, 0], cd[1, 1]))/2.
         rotAngle = afwGeom.Angle(cdAngle + parAngle)
         return rotAngle
-
-    def shiftMask(self, mask, shift, useInverse=False):
-        """Shift a mask and grow each mask plane by one pixel.
-
-        Parameters
-        ----------
-        mask : lsst.afw.image.mask
-            The input mask to shift.
-        shift : lsst.afw.geom.Extent2I
-            The shift due to DCR calculated with `dcrShiftCalculate`.
-        useInverse : `bool`, optional
-            Use the reverse of `shift` for the shift.
-
-        Returns
-        -------
-        lsst.afw.image.mask
-            The mask, shifted to account for DCR.
-        """
-        if useInverse:
-            dx0 = -np.ceil(shift.getX())
-            dy0 = -np.ceil(shift.getY())
-        else:
-            dx0 = np.floor(shift.getX())
-            dy0 = np.floor(shift.getY())
-
-        bboxFull = mask.getBBox()
-        retMask = mask.Factory(bboxFull)
-
-        bufferXSize = np.abs(dx0) + 1
-        bufferYSize = np.abs(dy0) + 1
-        bboxBase = mask.getBBox()
-        bboxBase.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
-
-        for x0 in range(2):
-            for y0 in range(2):
-                bbox = mask.getBBox()
-                bbox.grow(afwGeom.Extent2I(-bufferXSize, -bufferYSize))
-                bbox.shift(afwGeom.Extent2I(dx0 + x0, dy0 + y0))
-                retMask[bbox, afwImage.PARENT] |= mask[bboxBase, afwImage.PARENT]
-        return retMask
 
     def wavelengthGenerator(self):
         """Iterate over the wavelength endpoints of subfilters.

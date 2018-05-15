@@ -22,8 +22,6 @@ from __future__ import absolute_import, division, print_function
 
 from astropy import units as u
 import numpy as np
-import scipy.ndimage.interpolation
-from scipy.ndimage.morphology import binary_dilation as dilate
 import unittest
 
 from lsst.afw.coord import Observatory, Weather
@@ -219,37 +217,6 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         for model, refModel in zip(self.dcrModels, refModels):
             refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(model, refModel)
-
-    def testShiftMaskPlane(self):
-        """Verify the shift calculation for the mask plane for large and small shifts.
-
-        The shift of the image and variance planes are tested separately
-        since they are calculated differently.
-        """
-        shiftAmps = [0.3, 1., self.bufferSize - 1]
-        shiftPhis = [phi for phi in np.pi*self.rng.random(len(shiftAmps))]
-        dcrShifts = [afwGeom.Extent2D(np.cos(phi), np.sin(phi))*amp
-                     for amp, phi in zip(shiftAmps, shiftPhis)]
-        model = self.dcrModels[0]
-        for dcrShift in dcrShifts:
-            shiftedMask = self.shiftMask(model.mask, dcrShift, useInverse=False)
-            newMask = self.shiftMask(shiftedMask, dcrShift, useInverse=True)
-            detectMask = afwImage.Mask.getPlaneBitMask('DETECTED')
-
-            bufferXSize = np.ceil(np.abs(dcrShift.getX()))
-            bufferYSize = np.ceil(np.abs(dcrShift.getY()))
-            bboxClip = self.dcrModels[0].mask.getBBox()
-            # The simple comparison will not be accurate for edge pixels that fall off the image when shifted
-            bboxClip.grow(afwGeom.Extent2I(-bufferXSize*2, -bufferYSize*2))
-
-            # Shifting the mask grows each mask plane by one pixel in the direction of the shift,
-            #  so a shift followed by the reverse shift should be the same as a dilation by one pixel.
-            convolutionStruct = np.array([[True, True, True], [True, True, True], [True, True, True]])
-            maskRefCheck = dilate(model[bboxClip, afwImage.PARENT].mask.array == detectMask,
-                                  iterations=1, structure=convolutionStruct)
-            newMaskCheck = newMask[bboxClip, afwImage.PARENT].array == detectMask
-
-            self.assertFloatsEqual(newMaskCheck, maskRefCheck)
 
     def testRegularizationLargeClamp(self):
         """Frequency regularization should leave the models unchanged if the clamp factor is large.
