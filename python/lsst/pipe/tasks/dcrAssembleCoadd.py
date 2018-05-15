@@ -429,11 +429,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.applyAltMaskPlanes(maskedImage.mask, altMaskSpans)
 
             if self.config.removeMaskPlanes:
-                for maskPlane in self.config.removeMaskPlanes:
-                    try:
-                        maskedImage.mask &= ~maskedImage.mask.getPlaneBitMask(maskPlane)
-                    except Exception as e:
-                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.args[0])
+                self._removeMaskPlanes(maskedImage)
             maskedImage -= templateImage
             residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
         dcrSubModelOut = []
