@@ -137,6 +137,46 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
 
 
 class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
+    """Assemble DCR coadded images from a set of warps.
+
+    Notes
+    -----
+    As with AssembleCoaddTask, we want to assemble a coadded image from a set of
+    Warps (also called coadded temporary exposures), including the effects of
+    Differential Chromatic Refraction (DCR).
+    For full details of the mathematics and algorithm, please see
+    DMTN-037: DCR-matched template generation (https://dmtn-037.lsst.io).
+
+    This Task produces a DCR-corrected deepCoadd, as well as a dcrCoadd for
+    each subfilter used in the iterative calculation.
+    It begins by dividing the bandpass-defining filter into N equal bandwidth
+    "subfilters", and divides the flux in each pixel from an initial coadd
+    equally into each as a "dcrModel". Because the airmass and parallactic
+    angle of each individual exposure is known, we can calculate the shift
+    relative to the center of the band in each subfilter due to DCR. For each
+    exposure we apply this shift as a linear transformation to the dcrModels
+    and stack the results to produce a DCR-matched exposure. The matched
+    exposures are subtracted from the input exposures to produce a set of
+    residual images, and these residuals are reverse shifted for each
+    exposures' subfilters and stacked. The shifted and stacked residuals are
+    added to the dcrModels to produce a new estimate of the flux in each pixel
+    within each subfilter. The dcrModels are solved for iteratively, which
+    continues until the solution from a new iteration improves by less than
+    a set percentage, or a maximum number of iterations is reached.
+    Two forms of regularization are employed to reduce unphysical results.
+    First, the new solution is averaged with the solution from the previous
+    iteration, which mitigates oscillating solutions where the model
+    overshoots with alternating very high and low values.
+    Second, a common degeneracy when the data have a limited range of airmass or
+    parallactic angle values is for one subfilter to be fit with very low or
+    negative values, while another subfilter is fit with very high values. This
+    typically appears in the form of holes next to sources in one subfilter,
+    and corresponding extended wings in another. Because each subfilter has
+    a narrow bandwidth we assume that physical sources that are above the noise
+    level will not vary in flux by more than a factor of `clampFrequency`
+    between subfilters, and pixels that have flux deviations larger than that
+    factor will have the excess flux distributed evenly among all subfilters.
+    """
 
     ConfigClass = DcrAssembleCoaddConfig
     _DefaultName = "dcrAssembleCoadd"
@@ -147,8 +187,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and
         find scalings to match the photometric zeropoint to a reference Warp.
-        Optionally, match backgrounds across Warps if the background has not
-        already been removed. Assemble the Warps using @ref assemble.
+        Assemble the Warps using assemble.
         Interpolate over NaNs and optionally write the coadd to disk.
         Return the coadded exposure.
 
