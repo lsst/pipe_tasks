@@ -25,7 +25,6 @@ import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
-from lsst.geom import convexHull
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
            "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask"]
@@ -380,20 +379,23 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
 
         Returns
         -------
-        pipe.base.Struct with filtered exposureList and dataRefList
-        (if makeDataRefList is True).
+        result : `lsst.pipe.base.Struct`
+            Result struct with components:
+            - ``exposureList``: the selected exposures
+                (`list` of `lsst.pipe.tasks.selectImages.BaseExposureInfo`).
+            - ``dataRefList``: the optional data references corresponding to
+                each element of ``exposureList``
+                (`list` of `lsst.daf.persistence.ButlerDataRef`, or `None`).
 
         Notes
         -----
-        We use the "convexHull" function in the geom package to define
+        We use the "convexHull" method of lsst.sphgeom.ConvexPolygon to define
         polygons on the celestial sphere, and test the polygon of the
         patch for overlap with the polygon of the image.
 
-        We use "convexHull" instead of generating a SphericalConvexPolygon
-        directly because the standard for the inputs to SphericalConvexPolygon
+        We use "convexHull" instead of generating a ConvexPolygon
+        directly because the standard for the inputs to ConvexPolygon
         are pretty high and we don't want to be responsible for reaching them.
-        If "convexHull" is found to be too slow, we can revise this.
-
         """
         if self.config.nImagesMax <= 0:
             raise RuntimeError(f"nImagesMax must be greater than zero: {self.config.nImagesMax}")
@@ -403,7 +405,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
         exposureInfoList = []
 
         patchVertices = [coord.getVector() for coord in coordList]
-        patchPoly = convexHull(patchVertices)
+        patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
 
         for data in selectDataList:
             dataRef = data.dataRef
@@ -420,7 +422,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                 self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
                 continue
 
-            imagePoly = convexHull([coord.getVector() for coord in imageCorners])
+            imagePoly = lsst.sphgeom.ConvexPolygon.convexHull([coord.getVector() for coord in imageCorners])
             if imagePoly is None:
                 self.log.debug("Unable to create polygon from image %s: deselecting", dataRef.dataId)
                 continue
@@ -447,8 +449,11 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                           f"range of {psfSizes[sortedIndices[0]]}--{psfSizes[sortedIndices[-1]]} pixels")
 
         else:
-            self.log.info(f"{len(psfSizes)} images selected with FWHM range "
-                          f"of {psfSizes[0]}--{psfSizes[-1]} pixels")
+            if len(psfSizes) == 0:
+                self.log.info(f"0 images selected.")
+            else:
+                self.log.info(f"{len(psfSizes)} images selected with FWHM range "
+                              f"of {psfSizes[0]}--{psfSizes[-1]} pixels")
             filteredDataRefList = dataRefList
             filteredExposureInfoList = exposureInfoList
 
