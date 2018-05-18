@@ -5,6 +5,7 @@
 *.pyc
 pytest_session.txt
 .cache
+.pytest_cache
 /*.fits
 *_wrap.cc
 *Lib.py
