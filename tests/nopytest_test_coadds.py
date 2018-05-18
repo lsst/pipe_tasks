@@ -47,13 +47,13 @@ directory visible to all the tests. When run in parallel with pytest-xdist
 this data will be created for every sub-process, leading to excessive disk
 usage, excessive test execution times and possible failure.
 """
-from past.builtins import basestring
 
 import unittest
 import shutil
 import os
 import numbers
 from collections import Iterable
+
 import numpy as np
 
 import lsst.utils.tests
@@ -480,7 +480,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             # case the value can properly be extracted and compared.
 
             def ensureIterable(x):
-                if isinstance(x, Iterable) and not isinstance(x, basestring):
+                if isinstance(x, Iterable) and not isinstance(x, str):
                     return x
                 return [x]
             for nOffset in ensureIterable(meta.get('NOISE_OFFSET')):
