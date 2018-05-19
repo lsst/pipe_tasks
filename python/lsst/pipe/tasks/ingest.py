@@ -1,4 +1,3 @@
-from past.builtins import basestring
 import os
 import shutil
 import tempfile
@@ -115,7 +114,7 @@ class ParseTask(Task):
         for p, h in self.config.translation.items():
             if md.exists(h):
                 value = md.get(h)
-                if isinstance(value, basestring):
+                if isinstance(value, str):
                     value = value.strip()
                 info[p] = value
             elif p in self.config.defaults:
