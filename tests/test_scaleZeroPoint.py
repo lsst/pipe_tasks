@@ -63,8 +63,8 @@ class ScaleZeroPointTaskTestCase(unittest.TestCase):
                 self.assertAlmostEqual(outFluxMag0[0] / imageScaler._scale, inFluxMag0[0], places=4)
 
                 imageScaler.scaleMaskedImage(mi)
-                self.assertAlmostEqual(mi.get(1, 1)[0], predScale)  # check image plane scaled
-                self.assertAlmostEqual(mi.get(1, 1)[2], predScale**2)  # check variance plane scaled
+                self.assertAlmostEqual(mi.image[1, 1, afwImage.LOCAL], predScale)
+                self.assertAlmostEqual(mi.variance[1, 1, afwImage.LOCAL], predScale**2)
 
     def makeCalib(self, zeroPoint):
         calib = afwImage.Calib()

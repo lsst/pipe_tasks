@@ -71,10 +71,12 @@ class InterpolationTestCase(unittest.TestCase):
         np.random.seed(666)
         ima[:] = np.random.uniform(-1, 1, ima.shape)
 
-        mi[0:nBadCol, :] = (10, badBit, 0)  # Bad left edge
-        mi[-nBadCol:, :] = (10, badBit, 0)  # With another bad set of columns next to bad left edge
-        mi[nBadCol+1:nBadCol+4, 0:10] = (100, badBit, 0)  # Bad right edge
-        mi[-nBadCol-4:-nBadCol-1, 0:10] = (100, badBit, 0)  # more bad of columns next to bad right edge
+        mi[0:nBadCol, :, afwImage.LOCAL] = (10, badBit, 0)  # Bad left edge
+        # With another bad set of columns next to bad left edge
+        mi[-nBadCol:, :, afwImage.LOCAL] = (10, badBit, 0)
+        mi[nBadCol+1:nBadCol+4, 0:10, afwImage.LOCAL] = (100, badBit, 0)  # Bad right edge
+        # more bad of columns next to bad right edge
+        mi[-nBadCol-4:-nBadCol-1, 0:10, afwImage.LOCAL] = (100, badBit, 0)
 
         defectList = ipIsr.getDefectListFromMask(mi, pixelPlane)
 
@@ -87,7 +89,7 @@ class InterpolationTestCase(unittest.TestCase):
                 ds9.mtv(miInterp, frame=1)
             self.assertGreater(np.min(imaInterp), min(-2, 2*fallbackValue))
             self.assertGreater(max(2, 2*fallbackValue), np.max(imaInterp))
-            val0 = np.mean(miInterp.getImage()[1, :].getArray(), dtype=float)
+            val0 = np.mean(miInterp.image[1:2, :, afwImage.LOCAL].array, dtype=float)
             if useFallbackValueAtEdge:
                 self.assertAlmostEqual(val0, fallbackValue, 6)
             else:

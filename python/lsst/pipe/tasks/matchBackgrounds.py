@@ -452,7 +452,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         x0, y0 = diffMI.getXY0()
         modelValueArr = numpy.empty(len(Z))
         for i in range(len(X)):
-            modelValueArr[i] = bkgdImage.get(int(X[i]-x0), int(Y[i]-y0))
+            modelValueArr[i] = bkgdImage[int(X[i]-x0), int(Y[i]-y0), afwImage.LOCAL]
         resids = Z - modelValueArr
         rms = numpy.sqrt(numpy.mean(resids[~numpy.isnan(resids)]**2))
 

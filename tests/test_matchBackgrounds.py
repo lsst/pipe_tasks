@@ -151,8 +151,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         dzdx, dzdy, z0 = 1, 2, 0.0
         for x in range(nx):
             for y in range(ny):
-                z = testIm.get(x, y)
-                testIm.set(x, y, z + dzdx * x + dzdy * y + z0)
+                z = testIm[x, y, afwImage.LOCAL]
+                testIm[x, y, afwImage.LOCAL] = z + dzdx * x + dzdy * y + z0
         self.checkAccuracy(testExp, self.vanilla)
 
     def testLowCoverThrowExpectionApproximate(self):
@@ -190,8 +190,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         mask = testExp.getMaskedImage().getMask()
         satbit = mask.getPlaneBitMask('SAT')
         for i in range(0, 200, 20):
-            mask.set(5, i, satbit)
-            im.set(5, i, 65000)
+            mask[5, i, afwImage.LOCAL] = satbit
+            im[5, i, afwImage.LOCAL] = 65000
         self.matcher.config.binSize = 128
         self.matcher.config.order = 4
         self.checkAccuracy(self.chipGap, testExp)
@@ -205,9 +205,9 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         for x in range(0, 50):
             for y in range(0, 50):
                 if np.random.rand(1)[0] < 0.6:
-                    testIm.set(x, y, np.nan)
+                    testIm[x, y, afwImage.LOCAL] = np.nan
                 else:
-                    testIm.set(x, y, np.random.rand(1)[0]*1000)
+                    testIm[x, y, afwImage.LOCAL] = np.random.rand()*1000
 
         self.matcher.matchBackgrounds(self.vanilla, testExp)
         resultExp = testExp
@@ -242,8 +242,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         dzdx, dzdy, z0 = 1, 2, 0.0
         for x in range(nx):
             for y in range(ny):
-                z = testIm.get(x, y)
-                testIm.set(x, y, z + dzdx * x + dzdy * y + z0)
+                z = testIm[x, y, afwImage.LOCAL]
+                testIm[x, y, afwImage.LOCAL] = z + dzdx * x + dzdy * y + z0
         self.checkAccuracy(testExp, self.vanilla)
 
     def testUndersampleBackgroundPasses(self):
@@ -276,8 +276,8 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         mask = testExp.getMaskedImage().getMask()
         satbit = mask.getPlaneBitMask('SAT')
         for i in range(0, 200, 20):
-            mask.set(5, i, satbit)
-            im.set(5, i, 65000)
+            mask[5, i, afwImage.LOCAL] = satbit
+            im[5, i, afwImage.LOCAL] = 65000
         self.checkAccuracy(self.chipGap, testExp)
 
     def testChipGapHorizontalBackground(self):
