@@ -1093,6 +1093,13 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                 apCorrMap=exposure.getInfo().getApCorrMap()
             )
 
+        # TODO DM-11568: this contiguous check-and-copy could go away if we
+        # reserve enough space during SourceDetection and/or SourceDeblend.
+        # NOTE: sourceSelectors require contiguous catalogs, so ensure
+        # contiguity now, so views are preserved from here on.
+        if not sources.isContiguous():
+            sources = sources.copy(deep=True)
+
         if self.config.doRunCatalogCalculation:
             self.catalogCalculation.run(sources)
 
