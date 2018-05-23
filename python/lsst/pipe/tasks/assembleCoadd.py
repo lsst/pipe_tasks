@@ -1,9 +1,9 @@
+# This file is part of pipe_tasks.
 #
 # LSST Data Management System
-# Copyright 2008-2016 AURA/LSST.
-#
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
+# See COPYRIGHT file at the top of the source tree.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -12,7 +12,7 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the LSST License Statement and
@@ -40,14 +40,25 @@ from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .scaleVariance import ScaleVarianceTask
 from lsst.meas.algorithms import SourceDetectionTask
 
-__all__ = ["AssembleCoaddTask", "SafeClipAssembleCoaddTask", "CompareWarpAssembleCoaddTask"]
+__all__ = ["AssembleCoaddTask", "AssembleCoaddConfig", "SafeClipAssembleCoaddTask",
+           "SafeClipAssembleCoaddConfig", "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
 
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
-    """!
-@anchor AssembleCoaddConfig_
+    """Configuration parameters for the `AssembleCoaddTask`.
 
-@brief Configuration parameters for the @ref AssembleCoaddTask_ "AssembleCoaddTask"
+    Notes
+    -----
+    The `doMaskBrightObjects` and `brightObjectMaskName` configuration options
+    only set the bitplane config.brightObjectMaskName. To make this useful you
+    *must* also configure the flags.pixel algorithm, for example by adding
+
+    .. code-block:: none
+
+       config.measurement.plugins["base_PixelFlags"].masksFpCenter.append("BRIGHT_OBJECT")
+       config.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("BRIGHT_OBJECT")
+
+    to your measureCoaddSources.py and forcedPhotCoadd.py config overrides.
     """
     warpType = pexConfig.Field(
         doc="Warp name: one of 'direct' or 'psfMatched'",
@@ -125,19 +136,10 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
     )
     removeMaskPlanes = pexConfig.ListField(dtype=str, default=["NOT_DEBLENDED"],
                                            doc="Mask planes to remove before coadding")
-    #
-    # N.b. These configuration options only set the bitplane config.brightObjectMaskName
-    # To make this useful you *must* also configure the flags.pixel algorithm, for example
-    # by adding
-    #   config.measurement.plugins["base_PixelFlags"].masksFpCenter.append("BRIGHT_OBJECT")
-    #   config.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("BRIGHT_OBJECT")
-    # to your measureCoaddSources.py and forcedPhotCoadd.py config overrides
-    #
     doMaskBrightObjects = pexConfig.Field(dtype=bool, default=False,
                                           doc="Set mask and flag bits for bright objects?")
     brightObjectMaskName = pexConfig.Field(dtype=str, default="BRIGHT_OBJECT",
                                            doc="Name of mask bit used for bright objects")
-
     coaddPsf = pexConfig.ConfigField(
         doc="Configuration for CoaddPsf",
         dtype=measAlg.CoaddPsfConfig,
@@ -174,134 +176,124 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                              % (self.statistic, stackableStats))
 
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page AssembleCoaddTask
-## @ref AssembleCoaddTask_ "AssembleCoaddTask"
-## @copybrief AssembleCoaddTask
-## @}
 class AssembleCoaddTask(CoaddBaseTask):
-    """!
-@anchor AssembleCoaddTask_
+    """Assemble a coadded image from a set of warps (coadded temporary exposures).
 
-@brief Assemble a coadded image from a set of warps (coadded temporary exposures).
+    We want to assemble a coadded image from a set of Warps (also called
+    coadded temporary exposures or ``coaddTempExps``).
+    Each input Warp covers a patch on the sky and corresponds to a single
+    run/visit/exposure of the covered patch. We provide the task with a list
+    of Warps (``selectDataList``) from which it selects Warps that cover the
+    specified patch (pointed at by ``dataRef``).
+    Each Warp that goes into a coadd will typically have an independent
+    photometric zero-point. Therefore, we must scale each Warp to set it to
+    a common photometric zeropoint. WarpType may be one of 'direct' or
+    'psfMatched', and the boolean configs `config.makeDirect` and
+    `config.makePsfMatched` set which of the warp types will be coadded.
+    The coadd is computed as a mean with optional outlier rejection.
+    Criteria for outlier rejection are set in `AssembleCoaddConfig`.
+    Finally, Warps can have bad 'NaN' pixels which received no input from the
+    source calExps. We interpolate over these bad (NaN) pixels.
 
-@section pipe_tasks_assembleCoadd_Contents Contents
-  - @ref pipe_tasks_assembleCoadd_AssembleCoaddTask_Purpose
-  - @ref pipe_tasks_assembleCoadd_AssembleCoaddTask_Initialize
-  - @ref pipe_tasks_assembleCoadd_AssembleCoaddTask_Run
-  - @ref pipe_tasks_assembleCoadd_AssembleCoaddTask_Config
-  - @ref pipe_tasks_assembleCoadd_AssembleCoaddTask_Debug
-  - @ref pipe_tasks_assembleCoadd_AssembleCoaddTask_Example
+    `AssembleCoaddTask` uses several sub-tasks. These are
 
-@section pipe_tasks_assembleCoadd_AssembleCoaddTask_Purpose	Description
+    - `ScaleZeroPointTask`
+    - create and use an ``imageScaler`` object to scale the photometric zeropoint for each Warp
+    - `InterpImageTask`
+    - interpolate across bad pixels (NaN) in the final coadd
 
-@copybrief AssembleCoaddTask_
+    You can retarget these subtasks if you wish.
 
-We want to assemble a coadded image from a set of Warps (also called
-coadded temporary exposures or coaddTempExps.
-Each input Warp covers a patch on the sky and corresponds to a single run/visit/exposure of the
-covered patch. We provide the task with a list of Warps (selectDataList) from which it selects
-Warps that cover the specified patch (pointed at by dataRef).
-Each Warp that goes into a coadd will typically have an independent photometric zero-point.
-Therefore, we must scale each Warp to set it to a common photometric zeropoint.
-WarpType may be one of 'direct' or 'psfMatched', and the boolean configs config.makeDirect and
-config.makePsfMatched set which of the warp types will be coadded.
-The coadd is computed as a mean with optional outlier rejection.
-Criteria for outlier rejection are set in @ref AssembleCoaddConfig. Finally, Warps can have bad 'NaN'
-pixels which received no input from the source calExps. We interpolate over these bad (NaN) pixels.
+    Notes
+    -----
+    The `lsst.pipe.base.cmdLineTask.CmdLineTask` interface supports a
+    flag ``-d`` to import ``debug.py`` from your ``PYTHONPATH``; see
+    `baseDebug` for more about ``debug.py`` files. `AssembleCoaddTask` has
+    no debug variables of its own. Some of the subtasks may support debug
+    variables. See the documentation for the subtasks for further information.
 
-AssembleCoaddTask uses several sub-tasks. These are
-<DL>
-  <DT>@ref ScaleZeroPointTask_ "ScaleZeroPointTask"</DT>
-  <DD> create and use an imageScaler object to scale the photometric zeropoint for each Warp</DD>
-  <DT>@ref InterpImageTask_ "InterpImageTask"</DT>
-  <DD>interpolate across bad pixels (NaN) in the final coadd</DD>
-</DL>
-You can retarget these subtasks if you wish.
+    Examples
+    --------
+    `AssembleCoaddTask` assembles a set of warped images into a coadded image.
+    The `AssembleCoaddTask` can be invoked by running ``assembleCoadd.py``
+    with the flag '--legacyCoadd'. Usage of assembleCoadd.py expects two
+    inputs: a data reference to the tract patch and filter to be coadded, and
+    a list of Warps to attempt to coadd. These are specified using ``--id`` and
+    ``--selectId``, respectively:
 
-@section pipe_tasks_assembleCoadd_AssembleCoaddTask_Initialize       Task initialization
-@copydoc \_\_init\_\_
+    .. code-block:: none
 
-@section pipe_tasks_assembleCoadd_AssembleCoaddTask_Run       Invoking the Task
-@copydoc run
+       --id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]
+       --selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]
 
-@section pipe_tasks_assembleCoadd_AssembleCoaddTask_Config       Configuration parameters
-See @ref AssembleCoaddConfig_
+    Only the Warps that cover the specified tract and patch will be coadded.
+    A list of the available optional arguments can be obtained by calling
+    ``assembleCoadd.py`` with the ``--help`` command line argument:
 
-@section pipe_tasks_assembleCoadd_AssembleCoaddTask_Debug		Debug variables
-The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py files.
-AssembleCoaddTask has no debug variables of its own. Some of the subtasks may support debug variables. See
-the documetation for the subtasks for further information.
+    .. code-block:: none
 
-@section pipe_tasks_assembleCoadd_AssembleCoaddTask_Example	A complete example of using AssembleCoaddTask
+       assembleCoadd.py --help
 
-AssembleCoaddTask assembles a set of warped images into a coadded image. The AssembleCoaddTask
-can be invoked by running assembleCoadd.py with the flag '--legacyCoadd'. Usage of assembleCoadd.py expects
-a data reference to the tract patch and filter to be coadded (specified using
-'--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]') along with a list of
-Warps to attempt to coadd (specified using
-'--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]'). Only the Warps
-that cover the specified tract and patch will be coadded. A list of the available optional
-arguments can be obtained by calling assembleCoadd.py with the --help command line argument:
-@code
-assembleCoadd.py --help
-@endcode
-To demonstrate usage of the AssembleCoaddTask in the larger context of multi-band processing, we will generate
-the HSC-I & -R band coadds from HSC engineering test data provided in the ci_hsc package. To begin, assuming
-that the lsst stack has been already set up, we must set up the obs_subaru and ci_hsc packages.
-This defines the environment variable $CI_HSC_DIR and points at the location of the package. The raw HSC
-data live in the $CI_HSC_DIR/raw directory. To begin assembling the coadds, we must first
-<DL>
-  <DT>processCcd</DT>
-  <DD> process the individual ccds in $CI_HSC_RAW to produce calibrated exposures</DD>
-  <DT>makeSkyMap</DT>
-  <DD> create a skymap that covers the area of the sky present in the raw exposures</DD>
-  <DT>makeCoaddTempExp</DT>
-  <DD> warp the individual calibrated exposures to the tangent plane of the coadd</DD>
-</DL>
-We can perform all of these steps by running
-@code
-$CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
-@endcode
-This will produce warped exposures for each visit. To coadd the warped data, we call assembleCoadd.py as
-follows:
-@code
-assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
---selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
---selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
---selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
---selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
---selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
---selectId visit=903988 ccd=24
-@endcode
-that will process the HSC-I band data. The results are written in
-`$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I`.
+    To demonstrate usage of the `AssembleCoaddTask` in the larger context of
+    multi-band processing, we will generate the HSC-I & -R band coadds from
+    HSC engineering test data provided in the ``ci_hsc`` package. To begin,
+    assuming that the lsst stack has been already set up, we must set up the
+    obs_subaru and ``ci_hsc`` packages. This defines the environment variable
+    ``$CI_HSC_DIR`` and points at the location of the package. The raw HSC
+    data live in the ``$CI_HSC_DIR/raw directory``. To begin assembling the
+    coadds, we must first
 
-You may also choose to run:
-@code
-scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
-assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R \
---selectId visit=903334 ccd=16 --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 \
---selectId visit=903334 ccd=100 --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 \
---selectId visit=903338 ccd=18 --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 \
---selectId visit=903342 ccd=10 --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 \
---selectId visit=903344 ccd=5 --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 \
---selectId visit=903346 ccd=6 --selectId visit=903346 ccd=12
-@endcode
-to generate the coadd for the HSC-R band if you are interested in following multiBand Coadd processing as
-discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
-@ref SafeClipAssembleCoaddTask_ "SafeClipAssembleCoaddTask" rather than AssembleCoaddTask to make the coadd.
+    - processCcd
+    - process the individual ccds in $CI_HSC_RAW to produce calibrated exposures
+    - makeSkyMap
+    - create a skymap that covers the area of the sky present in the raw exposures
+    - makeCoaddTempExp
+    - warp the individual calibrated exposures to the tangent plane of the coadd
+
+    We can perform all of these steps by running
+
+    .. code-block:: none
+
+       $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
+
+    This will produce warped exposures for each visit. To coadd the warped
+    data, we call assembleCoadd.py as follows:
+
+    .. code-block:: none
+
+       assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
+       --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
+       --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
+       --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
+       --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
+       --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
+       --selectId visit=903988 ccd=24
+
+    that will process the HSC-I band data. The results are written in
+    ``$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I``.
+
+    You may also choose to run:
+
+    .. code-block:: none
+
+       scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
+       assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R \
+       --selectId visit=903334 ccd=16 --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 \
+       --selectId visit=903334 ccd=100 --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 \
+       --selectId visit=903338 ccd=18 --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 \
+       --selectId visit=903342 ccd=10 --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 \
+       --selectId visit=903344 ccd=5 --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 \
+       --selectId visit=903346 ccd=6 --selectId visit=903346 ccd=12
+
+    to generate the coadd for the HSC-R band if you are interested in
+    following multiBand Coadd processing as discussed in `pipeTasks_multiBand`
+    (but note that normally, one would use the `SafeClipAssembleCoaddTask`
+    rather than `AssembleCoaddTask` to make the coadd.
     """
     ConfigClass = AssembleCoaddConfig
     _DefaultName = "assembleCoadd"
 
     def __init__(self, *args, **kwargs):
-        """!
-        @brief Initialize the task. Create the @ref InterpImageTask "interpImage",
-        & @ref ScaleZeroPointTask "scaleZeroPoint" subtasks.
-        """
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
         self.makeSubtask("scaleZeroPoint")
@@ -319,26 +311,34 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
-        """!
-        @brief Assemble a coadd from a set of Warps
+        """Assemble a coadd from a set of Warps.
 
-        Coadd a set of Warps. Compute weights to be applied to each Warp and find scalings to
-        match the photometric zeropoint to a reference Warp. Assemble the Warps using
-        @ref assemble. Interpolate over NaNs and optionally write the coadd to disk. Return the coadded
-        exposure.
+        Coadd a set of Warps. Compute weights to be applied to each Warp and
+        find scalings to match the photometric zeropoint to a reference Warp.
+        Assemble the Warps using `assemble`. Interpolate over NaNs and
+        optionally write the coadd to disk. Return the coadded exposure.
 
-        @anchor runParams
-        @param[in] dataRef: Data reference defining the patch for coaddition and the reference Warp
-                        (if config.autoReference=False). Used to access the following data products:
-                        - [in] self.config.coaddName + "Coadd_skyMap"
-                        - [in] self.config.coaddName + "Coadd_ + <warpType> + "Warp" (optionally)
-                        - [out] self.config.coaddName + "Coadd"
-        @param[in] selectDataList[in]: List of data references to Warps. Data to be coadded will be
-                                   selected from this list based on overlap with the patch defined by dataRef.
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            Data reference defining the patch for coaddition and the
+            reference Warp (if ``config.autoReference=False``).
+            Used to access the following data products:
+            - ``self.config.coaddName + "Coadd_skyMap"``
+            - ``self.config.coaddName + "Coadd_ + <warpType> + "Warp"`` (optionally)
+            - ``self.config.coaddName + "Coadd"``
+        selectDataList : `list`
+            List of data references to Warps. Data to be coadded will be
+            selected from this list based on overlap with the patch defined
+            by dataRef.
 
-        @return a pipeBase.Struct with fields:
-                 - coaddExposure: coadded exposure
-                 - nImage: exposure count image
+        Returns
+        -------
+        retStruct : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - ``coaddExposure``: coadded exposure (``Exposure``).
+           - ``nImage``: exposure count image (``Image``).
         """
         skyInfo = self.getSkyInfo(dataRef)
         calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
@@ -380,23 +380,36 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
         return retStruct
 
     def makeSupplementaryData(self, dataRef, selectDataList):
-        """!
-        @brief Make additional inputs to assemble() specific to subclasses.
+        """Make additional inputs to assemble() specific to subclasses.
 
         Available to be implemented by subclasses only if they need the
         coadd dataRef for performing preliminary processing before
         assembling the coadd.
+
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            Butler dataRef for supplementary data.
+        selectDataList : `list`
+            List of data references to Warps.
         """
         pass
 
     def getTempExpRefList(self, patchRef, calExpRefList):
-        """!
-        @brief Generate list data references corresponding to warped exposures that lie within the
-        patch to be coadded.
+        """Generate list data references corresponding to warped exposures
+        that lie within the patch to be coadded.
 
-        @param[in] patchRef: Data reference for patch
-        @param[in] calExpRefList: List of data references for input calexps
-        @return List of Warp/CoaddTempExp data references
+        Parameters
+        ----------
+        patchRef : `dataRef`
+            Data reference for patch.
+        calExpRefList : `list`
+            List of data references for input calexps.
+
+        Returns
+        -------
+        tempExpRefList : `list`
+            List of Warp/CoaddTempExp data references.
         """
         butler = patchRef.getButler()
         groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(self.warpType),
@@ -407,19 +420,26 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
         return tempExpRefList
 
     def prepareInputs(self, refList):
-        """!
-        @brief Prepare the input warps for coaddition by measuring the weight for each warp and the scaling
-        for the photometric zero point.
+        """Prepare the input warps for coaddition by measuring the weight for
+        each warp and the scaling for the photometric zero point.
 
-        Each Warp has its own photometric zeropoint and background variance. Before coadding these
-        Warps together, compute a scale factor to normalize the photometric zeropoint and compute the
-        weight for each Warp.
+        Each Warp has its own photometric zeropoint and background variance.
+        Before coadding these Warps together, compute a scale factor to
+        normalize the photometric zeropoint and compute the weight for each Warp.
 
-        @param[in] refList: List of data references to tempExp
-        @return Struct:
-        - tempExprefList: List of data references to tempExp
-        - weightList: List of weightings
-        - imageScalerList: List of image scalers
+        Parameters
+        ----------
+        refList : `list`
+            List of data references to tempExp
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - ``tempExprefList``: `list` of data references to tempExp.
+           - ``weightList``: `list` of weightings.
+           - ``imageScalerList``: `list` of image scalers.
         """
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
@@ -470,26 +490,43 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, mask=None, supplementaryData=None):
-        """!
-        @anchor AssembleCoaddTask.assemble_
+        """Assemble a coadd from input warps
 
-        @brief Assemble a coadd from input warps
+        Assemble the coadd using the provided list of coaddTempExps. Since
+        the full coadd covers a patch (a large area), the assembly is
+        performed over small areas on the image at a time in order to
+        conserve memory usage. Iterate over subregions within the outer
+        bbox of the patch using `assembleSubregion` to stack the corresponding
+        subregions from the coaddTempExps with the statistic specified.
+        Set the edge bits the coadd mask based on the weight map.
 
-        Assemble the coadd using the provided list of coaddTempExps. Since the full coadd covers a patch (a
-        large area), the assembly is performed over small areas on the image at a time in order to
-        conserve memory usage. Iterate over subregions within the outer bbox of the patch using
-        @ref assembleSubregion to stack the corresponding subregions from the coaddTempExps with the
-        statistic specified. Set the edge bits the coadd mask based on the weight map.
+        Parameters
+        ----------
+        skyInfo : `lsst.pipe.base.Struct`
+            Struct with geometric information about the patch.
+        tempExpRefList : `list`
+            List of data references to Warps (previously called CoaddTempExps).
+        imageScalerList : `list`
+            List of image scalers.
+        weightList : `list`
+            List of weights
+        altMaskList : `list`, optional
+            List of alternate masks to use rather than those stored with
+            tempExp.
+        mask : `lsst.afw.image.Mask`, optional
+            Mask to ignore when coadding
+        supplementaryData : lsst.pipe.base.Struct, optional
+            Struct with additional data products needed to assemble coadd.
+            Only used by subclasses that implement `makeSupplementaryData`
+            and override `assemble`.
 
-        @param[in] skyInfo: Patch geometry information, from getSkyInfo
-        @param[in] tempExpRefList: List of data references to Warps (previously called CoaddTempExps)
-        @param[in] imageScalerList: List of image scalers
-        @param[in] weightList: List of weights
-        @param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
-        @param[in] mask: Mask to ignore when coadding
-        @param[in] supplementaryData: pipeBase.Struct with additional data products needed to assemble coadd.
-                        Only used by subclasses that implement makeSupplementaryData and override assemble.
-        @return pipeBase.Struct with coaddExposure, nImage if requested
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
+           - ``nImage``: exposure count image (``lsst.afw.image.Image``).
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
@@ -539,15 +576,18 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage)
 
     def assembleMetadata(self, coaddExposure, tempExpRefList, weightList):
-        """!
-        @brief Set the metadata for the coadd
+        """Set the metadata for the coadd.
 
-        This basic implementation simply sets the filter from the
-        first input.
+        This basic implementation sets the filter from the first input.
 
-        @param[in] coaddExposure: The target image for the coadd
-        @param[in] tempExpRefList: List of data references to tempExp
-        @param[in] weightList: List of weights
+        Parameters
+        ----------
+        coaddExposure : `lsst.afw.image.Exposure`
+            The target exposure for the coadd.
+        tempExpRefList : `list`
+            List of data references to tempExp.
+        weightList : `list`
+            List of weights.
         """
         assert len(tempExpRefList) == len(weightList), "Length mismatch"
         tempExpName = self.getTempExpDatasetName(self.warpType)
@@ -592,26 +632,39 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
 
     def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
                           altMaskList, statsFlags, statsCtrl, nImage=None):
-        """!
-        @brief Assemble the coadd for a sub-region.
+        """Assemble the coadd for a sub-region.
 
-        For each coaddTempExp, check for (and swap in) an alternative mask if one is passed. Remove mask
-        planes listed in config.removeMaskPlanes, Finally, stack the actual exposures using
-        @ref afwMath.statisticsStack "statisticsStack" with the statistic specified
-        by statsFlags. Typically, the statsFlag will be one of afwMath.MEAN for a mean-stack or
-        afwMath.MEANCLIP for outlier rejection using an N-sigma clipped mean where N and iterations
-        are specified by statsCtrl.  Assign the stacked subregion back to the coadd.
+        For each coaddTempExp, check for (and swap in) an alternative mask
+        if one is passed. Remove mask planes listed in
+        `config.removeMaskPlanes`. Finally, stack the actual exposures using
+        `lsst.afw.math.statisticsStack` with the statistic specified by
+        statsFlags. Typically, the statsFlag will be one of lsst.afw.math.MEAN for
+        a mean-stack or `lsst.afw.math.MEANCLIP` for outlier rejection using
+        an N-sigma clipped mean where N and iterations are specified by
+        statsCtrl.  Assign the stacked subregion back to the coadd.
 
-        @param[in] coaddExposure: The target image for the coadd
-        @param[in] bbox: Sub-region to coadd
-        @param[in] tempExpRefList: List of data reference to tempExp
-        @param[in] imageScalerList: List of image scalers
-        @param[in] weightList: List of weights
-        @param[in] altMaskList: List of alternate masks to use rather than those stored with tempExp, or None
-                                Each element is dict with keys = mask plane name to which to add the spans
-        @param[in] statsFlags: afwMath.Property object for statistic for coadd
-        @param[in] statsCtrl: Statistics control object for coadd
-        @param[in] nImage: optional ImageU keeps track of exposure count for each pixel
+        Parameters
+        ----------
+        coaddExposure : `lsst.afw.image.Exposure`
+            The target exposure for the coadd.
+        bbox : `lsst.afw.geom.Box`
+            Sub-region to coadd.
+        tempExpRefList : `list`
+            List of data reference to tempExp.
+        imageScalerList : `list`
+            List of image scalers.
+        weightList : `list`
+            List of weights.
+        altMaskList : `list`
+            List of alternate masks to use rather than those stored with
+            tempExp, or None.  Each element is dict with keys = mask plane
+            name to which to add the spans.
+        statsFlags : `lsst.afw.math.Property`
+            Property object for statistic for coadd.
+        statsCtrl : `lsst.afw.math.StatisticsControl`
+            Statistics control object for coadd.
+        nImage : `lsst.afw.image.ImageU`, optional
+            Keeps track of exposure count for each pixel.
         """
         self.log.debug("Computing coadd over %s", bbox)
         tempExpName = self.getTempExpDatasetName(self.warpType)
@@ -663,14 +716,21 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
             nImage.assign(subNImage, bbox)
 
     def applyAltMaskPlanes(self, mask, altMaskSpans):
-        """!
-        @brief Apply in place alt mask formatted as SpanSets to a mask
+        """Apply in place alt mask formatted as SpanSets to a mask.
 
-        @param mask: original mask
-        @param altMaskSpans: Dict containing spanSet lists to apply.
-                             Each element contains the new mask plane name
-                             (e.g. "CLIPPED and/or "NO_DATA") as the key,
-                             and list of SpanSets to apply to the mask
+        Parameters
+        ----------
+        mask : `lsst.afw.image.Mask`
+            Original mask.
+        altMaskSpans : `dict`
+            SpanSet lists to apply. Each element contains the new mask
+            plane name (e.g. "CLIPPED and/or "NO_DATA") as the key,
+            and list of SpanSets to apply to the mask.
+
+        Returns
+        -------
+        mask : `lsst.afw.image.Mask`
+            Updated mask.
         """
         if self.config.doUsePsfMatchedPolygons:
             if ("NO_DATA" in altMaskSpans) and ("NO_DATA" in self.config.badMaskPlanes):
@@ -688,13 +748,16 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
         return mask
 
     def shrinkValidPolygons(self, coaddInputs):
-        """!
-        @brief Shrink coaddInputs' ccds' ValidPolygons in place
+        """Shrink coaddInputs' ccds' ValidPolygons in place.
 
-        @param coaddInputs: original mask
+        Either modify each ccd's validPolygon in place, or if CoaddInputs
+        does not have a validPolygon, create one from its bbox.
 
-        Either modify each ccd's validPolygon in place, or if CoaddInputs does not
-        have a validPolygon, create one from its bbox.
+        Parameters
+        ----------
+        coaddInputs : `lsst.afw.image.coaddInputs`
+            Original mask.
+
         """
         for ccd in coaddInputs.ccds:
             polyOrig = ccd.getValidPolygon()
@@ -707,7 +770,21 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
             ccd.setValidPolygon(validPolygon)
 
     def readBrightObjectMasks(self, dataRef):
-        """Returns None on failure"""
+        """Retrieve the bright object masks.
+
+        Returns None on failure.
+
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            A Butler dataRef.
+
+        Returns
+        -------
+        result : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            Bright object mask from the Butler object, or None if it cannot
+            be retrieved.
+        """
         try:
             return dataRef.get("brightObjectMask", immediate=True)
         except Exception as e:
@@ -715,11 +792,16 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
             return None
 
     def setBrightObjectMasks(self, exposure, dataId, brightObjectMasks):
-        """Set the bright object masks
+        """Set the bright object masks.
 
-        exposure:          Exposure under consideration
-        dataId:            Data identifier dict for patch
-        brightObjectMasks: afwTable of bright objects to mask
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure under consideration.
+        dataId : `lsst.daf.persistence.dataId`
+            Data identifier dict for patch.
+        brightObjectMasks : `lsst.afw.table`
+            Table of bright objects to mask.
         """
         #
         # Check the metadata specifying the tract/patch/filter
@@ -762,7 +844,7 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
             spans.clippedTo(mask.getBBox()).setMask(mask, self.brightObjectBitmask)
 
     def setInexactPsf(self, mask):
-        """Set INEXACT_PSF mask plane
+        """Set INEXACT_PSF mask plane.
 
         If any of the input images isn't represented in the coadd (due to
         clipped pixels or chip gaps), the `CoaddPsf` will be inexact. Flag
@@ -784,8 +866,7 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
 
     @classmethod
     def _makeArgumentParser(cls):
-        """!
-        @brief Create an argument parser
+        """Create an argument parser.
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_" +
@@ -798,15 +879,21 @@ discussed in @ref pipeTasks_multiBand (but note that normally, one would use the
 
 
 def _subBBoxIter(bbox, subregionSize):
-    """!
-    @brief Iterate over subregions of a bbox
+    """Iterate over subregions of a bbox.
 
-    @param[in] bbox: bounding box over which to iterate: afwGeom.Box2I
-    @param[in] subregionSize: size of sub-bboxes
+    Parameters
+    ----------
+    bbox : `lsst.afw.geom.Box2I`
+        Bounding box over which to iterate.
+    subregionSize: `lsst.afw.geom.Extent2I`
+        Size of sub-bboxes.
 
-    @return subBBox: next sub-bounding box of size subregionSize or smaller;
-        each subBBox is contained within bbox, so it may be smaller than subregionSize at the edges of bbox,
-        but it will never be empty
+    Yields
+    ------
+    subBBox : `lsst.afw.geom.Box2I`
+        Next sub-bounding box of size subregionSize or smaller; each subBBox
+        is contained within bbox, so it may be smaller than subregionSize at
+        the edges of bbox, but it will never be empty.
     """
     if bbox.isEmpty():
         raise RuntimeError("bbox %s is empty" % (bbox,))
@@ -824,13 +911,16 @@ def _subBBoxIter(bbox, subregionSize):
 
 
 class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
-    """!
-    @brief A version of lsst.pipe.base.DataIdContainer specialized for assembleCoadd.
+    """A version of `lsst.pipe.base.DataIdContainer` specialized for assembleCoadd.
     """
 
     def makeDataRefList(self, namespace):
-        """!
-           @brief Make self.refList from self.idList.
+        """Make self.refList from self.idList.
+
+        Parameters
+        ----------
+        namespace
+            Results of parsing command-line (with ``butler`` and ``log`` elements).
         """
         datasetType = namespace.config.coaddName + "Coadd"
         keysCoadd = namespace.butler.getKeys(datasetType=datasetType, level=self.level)
@@ -849,17 +939,28 @@ class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
 
 
 def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
-    """!
-    @brief Function to count the number of pixels with a specific mask in a footprint.
+    """Function to count the number of pixels with a specific mask in a
+    footprint.
 
-    Find the intersection of mask & footprint. Count all pixels in the mask that are in the intersection that
-    have bitmask set but do not have ignoreMask set. Return the count.
+    Find the intersection of mask & footprint. Count all pixels in the mask
+    that are in the intersection that have bitmask set but do not have
+    ignoreMask set. Return the count.
 
-    @param[in] mask: mask to define intersection region by.
-    @parma[in] footprint: footprint to define the intersection region by.
-    @param[in] bitmask: specific mask that we wish to count the number of occurances of.
-    @param[in] ignoreMask: pixels to not consider.
-    @return count of number of pixels in footprint with specified mask.
+    Parameters
+    ----------
+    mask : `lsst.afw.image.Mask`
+        Mask to define intersection region by.
+    footprint : `lsst.afw.detection.Footprint`
+        Footprint to define the intersection region by.
+    bitmask
+        Specific mask that we wish to count the number of occurances of.
+    ignoreMask
+        Pixels to not consider.
+
+    Returns
+    -------
+    result : `int`
+        Count of number of pixels in footprint with specified mask.
     """
     bbox = footprint.getBBox()
     bbox.clip(mask.getBBox(afwImage.PARENT))
@@ -871,10 +972,7 @@ def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
 
 
 class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
-    """!
-@anchor SafeClipAssembleCoaddConfig
-
-@brief Configuration parameters for the SafeClipAssembleCoaddTask
+    """Configuration parameters for the SafeClipAssembleCoaddTask.
     """
     clipDetection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
@@ -910,8 +1008,13 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
     )
 
     def setDefaults(self):
-        # The numeric values for these configuration parameters were empirically determined, future work
-        # may further refine them.
+        """Set default values for clipDetection.
+
+        Notes
+        -----
+        The numeric values for these configuration parameters were
+        empirically determined, future work may further refine them.
+        """
         AssembleCoaddConfig.setDefaults(self)
         self.clipDetection.doTempLocalBackground = False
         self.clipDetection.reEstimateBackground = False
@@ -938,169 +1041,168 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
         AssembleCoaddTask.ConfigClass.validate(self)
 
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page SafeClipAssembleCoaddTask
-## @ref SafeClipAssembleCoaddTask_ "SafeClipAssembleCoaddTask"
-## @copybrief SafeClipAssembleCoaddTask
-## @}
-
-
 class SafeClipAssembleCoaddTask(AssembleCoaddTask):
-    """!
-    @anchor SafeClipAssembleCoaddTask_
-
-    @brief Assemble a coadded image from a set of coadded temporary exposures,
+    """Assemble a coadded image from a set of coadded temporary exposures,
     being careful to clip & flag areas with potential artifacts.
 
-    @section pipe_tasks_assembleCoadd_Contents Contents
-      - @ref pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Purpose
-      - @ref pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Initialize
-      - @ref pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Run
-      - @ref pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Config
-      - @ref pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Debug
-      - @ref pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Example
+    In ``AssembleCoaddTask``, we compute the coadd as an clipped mean (i.e.,
+    we clip outliers). The problem with doing this is that when computing the
+    coadd PSF at a given location, individual visit PSFs from visits with
+    outlier pixels contribute to the coadd PSF and cannot be treated correctly.
+    In this task, we correct for this behavior by creating a new
+    ``badMaskPlane`` 'CLIPPED'. We populate this plane on the input
+    coaddTempExps and the final coadd where
 
-    @section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Purpose	Description
+        i. difference imaging suggests that there is an outlier and
+        ii. this outlier appears on only one or two images.
 
-    @copybrief SafeClipAssembleCoaddTask
+    Such regions will not contribute to the final coadd. Furthermore, any
+    routine to determine the coadd PSF can now be cognizant of clipped regions.
+    Note that the algorithm implemented by this task is preliminary and works
+    correctly for HSC data. Parameter modifications and or considerable
+    redesigning of the algorithm is likley required for other surveys.
 
-    Read the documentation for @ref AssembleCoaddTask_ "AssembleCoaddTask" first since
-    SafeClipAssembleCoaddTask subtasks that task.
-    In @ref AssembleCoaddTask_ "AssembleCoaddTask", we compute the coadd as an clipped mean (i.e. we clip
-    outliers).
-    The problem with doing this is that when computing the coadd PSF at a given location, individual visit
-    PSFs from visits with outlier pixels contribute to the coadd PSF and cannot be treated correctly.
-    In this task, we correct for this behavior by creating a new badMaskPlane 'CLIPPED'.
-    We populate this plane on the input coaddTempExps and the final coadd where i. difference imaging suggests
-    that there is an outlier and ii. this outlier appears on only one or two images.
-    Such regions will not contribute to the final coadd.
-    Furthermore, any routine to determine the coadd PSF can now be cognizant of clipped regions.
-    Note that the algorithm implemented by this task is preliminary and works correctly for HSC data.
-    Parameter modifications and or considerable redesigning of the algorithm is likley required for other
-    surveys.
+    ``SafeClipAssembleCoaddTask`` uses a ``SourceDetectionTask``
+    "clipDetection" subtask and also sub-classes ``AssembleCoaddTask``.
+    You can retarget the ``SourceDetectionTask`` "clipDetection" subtask
+    if you wish.
 
-    SafeClipAssembleCoaddTask uses a @ref SourceDetectionTask_ "clipDetection" subtask and also sub-classes
-    @ref AssembleCoaddTask_ "AssembleCoaddTask". You can retarget the
-    @ref SourceDetectionTask_ "clipDetection" subtask if you wish.
-
-    @section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Initialize       Task initialization
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Run       Invoking the Task
-    @copydoc run
-
-    @section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Config       Configuration parameters
-    See @ref SafeClipAssembleCoaddConfig
-
-    @section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Debug		Debug variables
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-    flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
-    files.
-    SafeClipAssembleCoaddTask has no debug variables of its own. The @ref SourceDetectionTask_ "clipDetection"
-    subtasks may support debug variables. See the documetation for @ref SourceDetectionTask_ "clipDetection"
+    Notes
+    -----
+    The `lsst.pipe.base.cmdLineTask.CmdLineTask` interface supports a
+    flag ``-d`` to import ``debug.py`` from your ``PYTHONPATH``;
+    see `baseDebug` for more about ``debug.py`` files.
+    `SafeClipAssembleCoaddTask` has no debug variables of its own.
+    The ``SourceDetectionTask`` "clipDetection" subtasks may support debug
+    variables. See the documetation for `SourceDetectionTask` "clipDetection"
     for further information.
 
-    @section pipe_tasks_assembleCoadd_SafeClipAssembleCoaddTask_Example	A complete example of using
-    SafeClipAssembleCoaddTask
+    Examples
+    --------
+    `SafeClipAssembleCoaddTask` assembles a set of warped ``coaddTempExp``
+    images into a coadded image. The `SafeClipAssembleCoaddTask` is invoked by
+    running assembleCoadd.py *without* the flag '--legacyCoadd'.
 
-    SafeClipAssembleCoaddTask assembles a set of warped coaddTempExp images into a coadded image.
-    The SafeClipAssembleCoaddTask is invoked by running assembleCoadd.py <em>without</em> the flag
-    '--legacyCoadd'.
-    Usage of assembleCoadd.py expects a data reference to the tract patch and filter to be coadded
-    (specified using '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]') along
-    with a list of coaddTempExps to attempt to coadd (specified using
+    Usage of ``assembleCoadd.py`` expects a data reference to the tract patch
+    and filter to be coadded (specified using
+    '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]')
+    along with a list of coaddTempExps to attempt to coadd (specified using
     '--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]').
-    Only the coaddTempExps that cover the specified tract and patch will be coadded.
-    A list of the available optional arguments can be obtained by calling assembleCoadd.py with the --help
-    command line argument:
-    @code
-    assembleCoadd.py --help
-    @endcode
-    To demonstrate usage of the SafeClipAssembleCoaddTask in the larger context of multi-band processing, we
-    will generate the HSC-I & -R band coadds from HSC engineering test data provided in the ci_hsc package. To
-    begin, assuming that the lsst stack has been already set up, we must set up the obs_subaru and ci_hsc
-    packages.
-    This defines the environment variable $CI_HSC_DIR and points at the location of the package. The raw HSC
-    data live in the $CI_HSC_DIR/raw directory. To begin assembling the coadds, we must first
-    <DL>
-      <DT>processCcd</DT>
-      <DD> process the individual ccds in $CI_HSC_RAW to produce calibrated exposures</DD>
-      <DT>makeSkyMap</DT>
-      <DD> create a skymap that covers the area of the sky present in the raw exposures</DD>
-      <DT>makeCoaddTempExp</DT>
-      <DD> warp the individual calibrated exposures to the tangent plane of the coadd</DD>
-    </DL>
+    Only the coaddTempExps that cover the specified tract and patch will be
+    coadded. A list of the available optional arguments can be obtained by
+    calling assembleCoadd.py with the --help command line argument:
+
+    .. code-block:: none
+
+       assembleCoadd.py --help
+
+    To demonstrate usage of the `SafeClipAssembleCoaddTask` in the larger
+    context of multi-band processing, we will generate the HSC-I & -R band
+    coadds from HSC engineering test data provided in the ci_hsc package.
+    To begin, assuming that the lsst stack has been already set up, we must
+    set up the obs_subaru and ci_hsc packages. This defines the environment
+    variable $CI_HSC_DIR and points at the location of the package. The raw
+    HSC data live in the ``$CI_HSC_DIR/raw`` directory. To begin assembling
+    the coadds, we must first
+
+    - ``processCcd``
+        process the individual ccds in $CI_HSC_RAW to produce calibrated exposures
+    - ``makeSkyMap``
+        create a skymap that covers the area of the sky present in the raw exposures
+    - ``makeCoaddTempExp``
+        warp the individual calibrated exposures to the tangent plane of the coadd</DD>
+
     We can perform all of these steps by running
-    @code
-    $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
-    @endcode
-    This will produce warped coaddTempExps for each visit. To coadd the warped data, we call assembleCoadd.py
-    as follows:
-    @code
-    assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
-    --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
-    --selectId visit=903986 ccd=100--selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
-    --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
-    --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
-    --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
-    --selectId visit=903988 ccd=24
-    @endcode
+
+    .. code-block:: none
+
+       $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
+
+    This will produce warped coaddTempExps for each visit. To coadd the
+    warped data, we call ``assembleCoadd.py`` as follows:
+
+    .. code-block:: none
+
+       assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
+       --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
+       --selectId visit=903986 ccd=100--selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
+       --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
+       --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
+       --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
+       --selectId visit=903988 ccd=24
+
     This will process the HSC-I band data. The results are written in
-    `$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I`.
+    ``$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I``.
 
     You may also choose to run:
-    @code
-    scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
-    assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R --selectId visit=903334 ccd=16 \
-    --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 --selectId visit=903334 ccd=100 \
-    --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 --selectId visit=903338 ccd=18 \
-    --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 --selectId visit=903342 ccd=10 \
-    --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 --selectId visit=903344 ccd=5 \
-    --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 --selectId visit=903346 ccd=6 \
-    --selectId visit=903346 ccd=12
-    @endcode
-    to generate the coadd for the HSC-R band if you are interested in following multiBand Coadd processing as
-    discussed in @ref pipeTasks_multiBand.
+
+    .. code-block:: none
+
+       scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346 nnn
+       assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R --selectId visit=903334 ccd=16 \
+       --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 --selectId visit=903334 ccd=100 \
+       --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 --selectId visit=903338 ccd=18 \
+       --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 --selectId visit=903342 ccd=10 \
+       --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 --selectId visit=903344 ccd=5 \
+       --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 --selectId visit=903346 ccd=6 \
+       --selectId visit=903346 ccd=12
+
+    to generate the coadd for the HSC-R band if you are interested in following
+    multiBand Coadd processing as discussed in ``pipeTasks_multiBand``.
     """
     ConfigClass = SafeClipAssembleCoaddConfig
     _DefaultName = "safeClipAssembleCoadd"
 
     def __init__(self, *args, **kwargs):
-        """!
-        @brief Initialize the task and make the @ref SourceDetectionTask_ "clipDetection" subtask.
-        """
         AssembleCoaddTask.__init__(self, *args, **kwargs)
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
-        """!
-        @brief Assemble the coadd for a region
+        """Assemble the coadd for a region.
 
-        Compute the difference of coadds created with and without outlier rejection to identify coadd pixels
-        that have outlier values in some individual visits. Detect clipped regions on the difference image and
-        mark these regions on the one or two individual coaddTempExps where they occur if there is significant
-        overlap between the clipped region and a source.
-        This leaves us with a set of footprints from the difference image that have been identified as having
-        occured on just one or two individual visits. However, these footprints were generated from a
-        difference image. It is conceivable for a large diffuse source to have become broken up into multiple
-        footprints acrosss the coadd difference in this process.
-        Determine the clipped region from all overlapping footprints from the detected sources in each visit -
-        these are big footprints.
-        Combine the small and big clipped footprints and mark them on a new bad mask plane
-        Generate the coadd using @ref AssembleCoaddTask.assemble_ "AssembleCoaddTask.assemble" without outlier
-        removal. Clipped footprints will no longer make it into the coadd because they are marked in the new
+        Compute the difference of coadds created with and without outlier
+        rejection to identify coadd pixels that have outlier values in some
+        individual visits.
+        Detect clipped regions on the difference image and mark these regions
+        on the one or two individual coaddTempExps where they occur if there
+        is significant overlap between the clipped region and a source. This
+        leaves us with a set of footprints from the difference image that have
+        been identified as having occured on just one or two individual visits.
+        However, these footprints were generated from a difference image. It
+        is conceivable for a large diffuse source to have become broken up
+        into multiple footprints acrosss the coadd difference in this process.
+        Determine the clipped region from all overlapping footprints from the
+        detected sources in each visit - these are big footprints.
+        Combine the small and big clipped footprints and mark them on a new
         bad mask plane.
+        Generate the coadd using `AssembleCoaddTask.assemble` without outlier
+        removal. Clipped footprints will no longer make it into the coadd
+        because they are marked in the new bad mask plane.
 
-        N.b. *args and **kwargs are passed but ignored in order to match the call signature expected by the
-        parent task.
+        Parameters
+        ----------
+        skyInfo : `lsst.pipe.base.Struct`
+            Patch geometry information, from getSkyInfo
+        tempExpRefList : `list`
+            List of data reference to tempExp
+        imageScalerList : `list`
+            List of image scalers
+        weightList : `list`
+            List of weights
 
-        @param skyInfo: Patch geometry information, from getSkyInfo
-        @param tempExpRefList: List of data reference to tempExp
-        @param imageScalerList: List of image scalers
-        @param weightList: List of weights
-        return pipeBase.Struct with coaddExposure, nImage
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
+           - ``nImage``: exposure count image (``lsst.afw.image.Image``).
+
+        Notes
+        -----
+        args and kwargs are passed but ignored in order to match the call
+        signature expected by the parent task.
         """
         exp = self.buildDifferenceImage(skyInfo, tempExpRefList, imageScalerList, weightList)
         mask = exp.getMaskedImage().getMask()
@@ -1132,18 +1234,28 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
                                           result.clipSpans, mask=badPixelMask)
 
     def buildDifferenceImage(self, skyInfo, tempExpRefList, imageScalerList, weightList):
-        """!
-        @brief Return an exposure that contains the difference between and unclipped and clipped coadds.
+        """Return an exposure that contains the difference between unclipped
+        and clipped coadds.
 
         Generate a difference image between clipped and unclipped coadds.
-        Compute the difference image by subtracting an outlier-clipped coadd from an outlier-unclipped coadd.
-        Return the difference image.
+        Compute the difference image by subtracting an outlier-clipped coadd
+        from an outlier-unclipped coadd. Return the difference image.
 
-        @param skyInfo: Patch geometry information, from getSkyInfo
-        @param tempExpRefList: List of data reference to tempExp
-        @param imageScalerList: List of image scalers
-        @param weightList: List of weights
-        @return Difference image of unclipped and clipped coadd wrapped in an Exposure
+        Parameters
+        ----------
+        skyInfo : `lsst.pipe.base.Struct`
+            Patch geometry information, from getSkyInfo
+        tempExpRefList : `list`
+            List of data reference to tempExp
+        imageScalerList : `list`
+            List of image scalers
+        weightList : `list`
+            List of weights
+
+        Returns
+        -------
+        exp : `lsst.afw.image.Exposure`
+            Difference image of unclipped and clipped coadd wrapped in an Exposure
         """
         # Clone and upcast self.config because current self.config is frozen
         config = AssembleCoaddConfig()
@@ -1168,27 +1280,40 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         return exp
 
     def detectClip(self, exp, tempExpRefList):
-        """!
-        @brief Detect clipped regions on an exposure and set the mask on the individual tempExp masks
+        """Detect clipped regions on an exposure and set the mask on the
+        individual tempExp masks.
 
-        Detect footprints in the difference image after smoothing the difference image with a Gaussian kernal.
-        Identify footprints that overlap with one or two input coaddTempExps by comparing the computed overlap
-        fraction to thresholds set in the config.
-        A different threshold is applied depending on the number of overlapping visits (restricted to one or
-        two).
-        If the overlap exceeds the thresholds, the footprint is considered "CLIPPED" and is marked as such on
-        the coaddTempExp.
-        Return a struct with the clipped footprints, the indices of the coaddTempExps that end up overlapping
-        with the clipped footprints and a list of new masks for the coaddTempExps.
+        Detect footprints in the difference image after smoothing the
+        difference image with a Gaussian kernal. Identify footprints that
+        overlap with one or two input ``coaddTempExps`` by comparing the
+        computed overlap fraction to thresholds set in the config. A different
+        threshold is applied depending on the number of overlapping visits
+        (restricted to one or two). If the overlap exceeds the thresholds,
+        the footprint is considered "CLIPPED" and is marked as such on the
+        coaddTempExp. Return a struct with the clipped footprints, the indices
+        of the ``coaddTempExps`` that end up overlapping with the clipped
+        footprints, and a list of new masks for the ``coaddTempExps``.
 
-        @param[in] exp: Exposure to run detection on
-        @param[in] tempExpRefList: List of data reference to tempExp
-        @return struct containing:
-        - clipFootprints: list of clipped footprints
-        - clipIndices: indices for each clippedFootprint in tempExpRefList
-        - clipSpans: List of dictionaries containing spanSet lists to clip. Each element contains the new
-                     maskplane name ("CLIPPED")" as the key and list of SpanSets as value
-        - detectionFootprints: List of DETECTED/DETECTED_NEGATIVE plane compressed into footprints
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            Exposure to run detection on.
+        tempExpRefList : `list`
+            List of data reference to tempExp.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - ``clipFootprints``: list of clipped footprints.
+           - ``clipIndices``: indices for each ``clippedFootprint`` in
+                ``tempExpRefList``.
+           - ``clipSpans``: List of dictionaries containing spanSet lists
+                to clip. Each element contains the new maskplane name
+                ("CLIPPED") as the key and list of ``SpanSets`` as the value.
+           - ``detectionFootprints``: List of DETECTED/DETECTED_NEGATIVE plane
+                compressed into footprints.
         """
         mask = exp.getMaskedImage().getMask()
         maskDetValue = mask.getPlaneBitMask("DETECTED") | mask.getPlaneBitMask("DETECTED_NEGATIVE")
@@ -1282,19 +1407,33 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
     def detectClipBig(self, clipList, clipFootprints, clipIndices, detectionFootprints,
                       maskClipValue, maskDetValue, coaddBBox):
-        """!
-        @brief Return individual warp footprints for large artifacts and append them to clipList in place
+        """Return individual warp footprints for large artifacts and append
+        them to ``clipList`` in place.
 
-        Identify big footprints composed of many sources in the coadd difference that may have originated in a
-        large diffuse source in the coadd. We do this by indentifying all clipped footprints that overlap
+        Identify big footprints composed of many sources in the coadd
+        difference that may have originated in a large diffuse source in the
+        coadd. We do this by indentifying all clipped footprints that overlap
         significantly with each source in all the coaddTempExps.
-        @param[in] clipList: List of alt mask SpanSets with clipping information. Modified.
-        @param[in] clipFootprints: List of clipped footprints
-        @param[in] clipIndices: List of which entries in tempExpClipList each footprint belongs to
-        @param[in] maskClipValue: Mask value of clipped pixels
-        @param[in] maskDetValue: Mask value of detected pixels
-        @param[in] coaddBBox: BBox of the coadd and warps
-        @return list of big footprints
+
+        Parameters
+        ----------
+        clipList : `list`
+            List of alt mask SpanSets with clipping information. Modified.
+        clipFootprints : `list`
+            List of clipped footprints.
+        clipIndices : `list`
+            List of which entries in tempExpClipList each footprint belongs to.
+        maskClipValue
+            Mask value of clipped pixels.
+        maskDetValue
+            Mask value of detected pixels.
+        coaddBBox : `lsst.afw.geom.Box`
+            BBox of the coadd and warps.
+
+        Returns
+        -------
+        bigFootprintsCoadd : `list`
+            List of big footprints
         """
         bigFootprintsCoadd = []
         ignoreMask = self.getBadPixelMask()
@@ -1442,152 +1581,131 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
         self.detectTemplate.returnOriginalFootprints = False
 
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page CompareWarpAssembleCoaddTask
-## @ref CompareWarpAssembleCoaddTask_ "CompareWarpAssembleCoaddTask"
-## @copybrief CompareWarpAssembleCoaddTask
-## @}
-
 class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
-    """!
-    @anchor CompareWarpAssembleCoaddTask_
+    """Assemble a compareWarp coadded image from a set of warps
+    by masking artifacts detected by comparing PSF-matched warps.
 
-    @brief Assemble a compareWarp coadded image from a set of warps
-    by masking artifacts detected by comparing PSF-matched warps
-
-    @section pipe_tasks_assembleCoadd_Contents Contents
-      - @ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Purpose
-      - @ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Initialize
-      - @ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Run
-      - @ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Config
-      - @ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Debug
-      - @ref pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Example
-
-    @section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Purpose Description
-
-    @copybrief CompareWarpAssembleCoaddTask
-
-    In @ref AssembleCoaddTask_ "AssembleCoaddTask", we compute the coadd as an clipped mean (i.e. we clip
-    outliers).
-    The problem with doing this is that when computing the coadd PSF at a given location, individual visit
-    PSFs from visits with outlier pixels contribute to the coadd PSF and cannot be treated correctly.
-    In this task, we correct for this behavior by creating a new badMaskPlane 'CLIPPED' which marks
-    pixels in the individual warps suspected to contain an artifact.
-    We populate this plane on the input warps by comparing PSF-matched warps with a PSF-matched median coadd
-    which serves as a model of the static sky. Any group of pixels that deviates from the PSF-matched
-    template coadd by more than config.detect.threshold sigma, is an artifact candidate.
-    The candidates are then filtered to remove variable sources and sources that are difficult to subtract
-    such as bright stars.
-    This filter is configured using the config parameters temporalThreshold and spatialThreshold.
-    The temporalThreshold is the maximum fraction of epochs that the deviation can
-    appear in and still be considered an artifact. The spatialThreshold is the maximum fraction of pixels in
-    the footprint of the deviation that appear in other epochs (where other epochs is defined by the
-    temporalThreshold). If the deviant region meets this criteria of having a significant percentage of pixels
-    that deviate in only a few epochs, these pixels have the 'CLIPPED' bit set in the mask.
-    These regions will not contribute to the final coadd.
-    Furthermore, any routine to determine the coadd PSF can now be cognizant of clipped regions.
-    Note that the algorithm implemented by this task is preliminary and works correctly for HSC data.
-    Parameter modifications and or considerable redesigning of the algorithm is likley required for other
+    In ``AssembleCoaddTask``, we compute the coadd as an clipped mean (i.e.,
+    we clip outliers). The problem with doing this is that when computing the
+    coadd PSF at a given location, individual visit PSFs from visits with
+    outlier pixels contribute to the coadd PSF and cannot be treated correctly.
+    In this task, we correct for this behavior by creating a new badMaskPlane
+    'CLIPPED' which marks pixels in the individual warps suspected to contain
+    an artifact. We populate this plane on the input warps by comparing
+    PSF-matched warps with a PSF-matched median coadd which serves as a
+    model of the static sky. Any group of pixels that deviates from the
+    PSF-matched template coadd by more than config.detect.threshold sigma,
+    is an artifact candidate. The candidates are then filtered to remove
+    variable sources and sources that are difficult to subtract such as
+    bright stars. This filter is configured using the config parameters
+    ``temporalThreshold`` and ``spatialThreshold``. The temporalThreshold is
+    the maximum fraction of epochs that the deviation can appear in and still
+    be considered an artifact. The spatialThreshold is the maximum fraction of
+    pixels in the footprint of the deviation that appear in other epochs
+    (where other epochs is defined by the temporalThreshold). If the deviant
+    region meets this criteria of having a significant percentage of pixels
+    that deviate in only a few epochs, these pixels have the 'CLIPPED' bit
+    set in the mask. These regions will not contribute to the final coadd.
+    Furthermore, any routine to determine the coadd PSF can now be cognizant
+    of clipped regions. Note that the algorithm implemented by this task is
+    preliminary and works correctly for HSC data. Parameter modifications and
+    or considerable redesigning of the algorithm is likley required for other
     surveys.
 
-    CompareWarpAssembleCoaddTask sub-classes
-    @ref AssembleCoaddTask_ "AssembleCoaddTask" and instantiates  @ref AssembleCoaddTask_ "AssembleCoaddTask"
-    as a subtask to generate the TemplateCoadd (the model of the static sky)
+    ``CompareWarpAssembleCoaddTask`` sub-classes
+    ``AssembleCoaddTask`` and instantiates ``AssembleCoaddTask``
+    as a subtask to generate the TemplateCoadd (the model of the static sky).
 
-    @section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Initialize       Task initialization
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Run       Invoking the Task
-    @copydoc run
-
-    @section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Config       Configuration parameters
-    See @ref CompareWarpAssembleCoaddConfig
-
-    @section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Debug       Debug variables
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-    flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
-    files.
+    Notes
+    -----
+    The `lsst.pipe.base.cmdLineTask.CmdLineTask` interface supports a
+    flag ``-d`` to import ``debug.py`` from your ``PYTHONPATH``; see
+    ``baseDebug`` for more about ``debug.py`` files.
 
     This task supports the following debug variables:
-    <dl>
-        <dt>`saveCountIm`
-        <dd> If True then save the Epoch Count Image as a fits file in the `figPath`
-        <dt> `figPath`
-        <dd> Path to save the debug fits images and figures
-    </dl>
+
+    - ``saveCountIm``
+        If True then save the Epoch Count Image as a fits file in the `figPath`
+    - ``figPath``
+        Path to save the debug fits images and figures
 
     For example, put something like:
-    @code{.py}
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)
-            if name == "lsst.pipe.tasks.assembleCoadd":
-                di.saveCountIm = True
-                di.figPath = "/desired/path/to/debugging/output/images"
-            return di
-        lsstDebug.Info = DebugInfo
-    @endcode
-    into your `debug.py` file and run `assemebleCoadd.py` with the `--debug`
-    flag.
-    Some subtasks may have their own debug variables; see individual Task
-    documentation
 
-    @section pipe_tasks_assembleCoadd_CompareWarpAssembleCoaddTask_Example A complete example of using
-    CompareWarpAssembleCoaddTask
+    .. code-block:: python
 
-    CompareWarpAssembleCoaddTask assembles a set of warped images into a coadded image.
-    The CompareWarpAssembleCoaddTask is invoked by running assembleCoadd.py with the flag
-    '--compareWarpCoadd'.
-    Usage of assembleCoadd.py expects a data reference to the tract patch and filter to be coadded
-    (specified using '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]') along
-    with a list of coaddTempExps to attempt to coadd (specified using
+       import lsstDebug
+       def DebugInfo(name):
+           di = lsstDebug.getInfo(name)
+           if name == "lsst.pipe.tasks.assembleCoadd":
+               di.saveCountIm = True
+               di.figPath = "/desired/path/to/debugging/output/images"
+           return di
+       lsstDebug.Info = DebugInfo
+
+    into your ``debug.py`` file and run ``assemebleCoadd.py`` with the
+    ``--debug`` flag. Some subtasks may have their own debug variables;
+    see individual Task documentation.
+
+    Examples
+    --------
+    ``CompareWarpAssembleCoaddTask`` assembles a set of warped images into a
+    coadded image. The ``CompareWarpAssembleCoaddTask`` is invoked by running
+    ``assembleCoadd.py`` with the flag ``--compareWarpCoadd``.
+    Usage of ``assembleCoadd.py`` expects a data reference to the tract patch
+    and filter to be coadded (specified using
+    '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]')
+    along with a list of coaddTempExps to attempt to coadd (specified using
     '--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]').
     Only the warps that cover the specified tract and patch will be coadded.
-    A list of the available optional arguments can be obtained by calling assembleCoadd.py with the --help
-    command line argument:
-    @code
-    assembleCoadd.py --help
-    @endcode
-    To demonstrate usage of the CompareWarpAssembleCoaddTask in the larger context of multi-band processing,
-    we will generate the HSC-I & -R band coadds from HSC engineering test data provided in the ci_hsc package.
-    To begin, assuming that the lsst stack has been already set up, we must set up the obs_subaru and ci_hsc
-    packages.
-    This defines the environment variable $CI_HSC_DIR and points at the location of the package. The raw HSC
-    data live in the $CI_HSC_DIR/raw directory. To begin assembling the coadds, we must first
-    <DL>
-      <DT>processCcd</DT>
-      <DD> process the individual ccds in $CI_HSC_RAW to produce calibrated exposures</DD>
-      <DT>makeSkyMap</DT>
-      <DD> create a skymap that covers the area of the sky present in the raw exposures</DD>
-      <DT>makeCoaddTempExp</DT>
-      <DD> warp the individual calibrated exposures to the tangent plane of the coadd</DD>
-    </DL>
+    A list of the available optional arguments can be obtained by calling
+    ``assembleCoadd.py`` with the ``--help`` command line argument:
+
+    .. code-block:: none
+
+       assembleCoadd.py --help
+
+    To demonstrate usage of the ``CompareWarpAssembleCoaddTask`` in the larger
+    context of multi-band processing, we will generate the HSC-I & -R band
+    oadds from HSC engineering test data provided in the ``ci_hsc`` package.
+    To begin, assuming that the lsst stack has been already set up, we must
+    set up the ``obs_subaru`` and ``ci_hsc`` packages.
+    This defines the environment variable ``$CI_HSC_DIR`` and points at the
+    location of the package. The raw HSC data live in the ``$CI_HSC_DIR/raw``
+    directory. To begin assembling the coadds, we must first
+
+      - processCcd
+        process the individual ccds in $CI_HSC_RAW to produce calibrated exposures
+      - makeSkyMap
+        create a skymap that covers the area of the sky present in the raw exposures
+      - makeCoaddTempExp
+        warp the individual calibrated exposures to the tangent plane of the coadd
+
     We can perform all of these steps by running
-    @code
-    $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
-    @endcode
-    This will produce warped coaddTempExps for each visit. To coadd the warped data, we call assembleCoadd.py
-    as follows:
-    @code
-    assembleCoadd.py --compareWarpCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
-    --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
-    --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
-    --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
-    --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
-    --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
-    --selectId visit=903988 ccd=24
-    @endcode
+
+    .. code-block:: none
+
+       $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
+
+    This will produce warped ``coaddTempExps`` for each visit. To coadd the
+    warped data, we call ``assembleCoadd.py`` as follows:
+
+    .. code-block:: none
+
+       assembleCoadd.py --compareWarpCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
+       --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
+       --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
+       --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
+       --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
+       --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
+       --selectId visit=903988 ccd=24
+
     This will process the HSC-I band data. The results are written in
-    `$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I`.
+    ``$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I``.
     """
     ConfigClass = CompareWarpAssembleCoaddConfig
     _DefaultName = "compareWarpAssembleCoadd"
 
     def __init__(self, *args, **kwargs):
-        """!
-        @brief Initialize the task and make the @ref AssembleCoadd_ "assembleStaticSkyModel" subtask.
-        """
         AssembleCoaddTask.__init__(self, *args, **kwargs)
         self.makeSubtask("assembleStaticSkyModel")
         detectionSchema = afwTable.SourceTable.makeMinimalSchema()
@@ -1598,10 +1716,24 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             self.makeSubtask("scaleWarpVariance")
 
     def makeSupplementaryData(self, dataRef, selectDataList):
-        """!
-        @brief Make inputs specific to Subclass
+        """Make inputs specific to Subclass.
 
-        Generate a templateCoadd to use as a native model of static sky to subtract from warps.
+        Generate a templateCoadd to use as a native model of static sky to
+        subtract from warps.
+
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            Butler dataRef for supplementary data.
+        selectDataList : `list`
+            List of data references to Warps.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - ``templateCoaddcoadd``: coadded exposure (``lsst.afw.image.Exposure``).
         """
         templateCoadd = self.assembleStaticSkyModel.run(dataRef, selectDataList)
 
@@ -1625,23 +1757,34 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  supplementaryData, *args, **kwargs):
-        """!
-        @brief Assemble the coadd
+        """Assemble the coadd.
 
-        Requires additional inputs Struct `supplementaryData` to contain a `templateCoadd` that serves
-        as the model of the static sky.
+        Find artifacts and apply them to the warps' masks creating a list of
+        alternative masks with a new "CLIPPED" plane and updated "NO_DATA"
+        plane. Then pass these alternative masks to the base class's assemble
+        method.
 
-        Find artifacts and apply them to the warps' masks creating a list of alternative masks with a
-        new "CLIPPED" plane and updated "NO_DATA" plane.
-        Then pass these alternative masks to the base class's assemble method.
+        Parameters
+        ----------
+        skyInfo : `lsst.pipe.base.Struct`
+            Patch geometry information.
+        tempExpRefList : `list`
+            List of data references to warps.
+        imageScalerList : `list`
+            List of image scalers.
+        weightList : `list`
+            List of weights.
+        supplementaryData : `lsst.pipe.base.Struct`
+            This Struct must contain a ``templateCoadd`` that serves as the
+            model of the static sky.
 
-        @param skyInfo: Patch geometry information
-        @param tempExpRefList: List of data references to warps
-        @param imageScalerList: List of image scalers
-        @param weightList: List of weights
-        @param supplementaryData: PipeBase.Struct containing a templateCoadd
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
 
-        return pipeBase.Struct with coaddExposure, nImage if requested
+           - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
+           - ``nImage``: exposure count image (``lsst.afw.image.Image``), if requested.
         """
         templateCoadd = supplementaryData.templateCoadd
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
@@ -1658,14 +1801,17 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return result
 
     def applyAltEdgeMask(self, mask, altMaskList):
-        """!
-        @brief Propagate alt EDGE mask to SENSOR_EDGE AND INEXACT_PSF planes
+        """Propagate alt EDGE mask to SENSOR_EDGE AND INEXACT_PSF planes.
 
-        @param mask: original mask
-        @param altMaskList:  List of Dicts containing spanSet lists.
-                             Each element contains the new mask plane name
-                             (e.g. "CLIPPED and/or "NO_DATA") as the key,
-                             and list of SpanSets to apply to the mask.
+        Parameters
+        ----------
+        mask : `lsst.afw.image.Mask`
+            Original mask.
+        altMaskList : `list`
+            List of Dicts containing ``spanSet`` lists.
+            Each element contains the new mask plane name (e.g. "CLIPPED
+            and/or "NO_DATA") as the key, and list of ``SpanSets`` to apply to
+            the mask.
         """
         maskValue = mask.getPlaneBitMask(["SENSOR_EDGE", "INEXACT_PSF"])
         for visitMask in altMaskList:
@@ -1674,18 +1820,29 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                     spanSet.clippedTo(mask.getBBox()).setMask(mask, maskValue)
 
     def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
-        """!
-        @brief Find artifacts
+        """Find artifacts.
 
-        Loop through warps twice. The first loop builds a map with the count of how many
-        epochs each pixel deviates from the templateCoadd by more than config.chiThreshold sigma.
-        The second loop takes each difference image and filters the artifacts detected
-        in each using count map to filter out variable sources and sources that are difficult to
-        subtract cleanly.
+        Loop through warps twice. The first loop builds a map with the count
+        of how many epochs each pixel deviates from the templateCoadd by more
+        than ``config.chiThreshold`` sigma. The second loop takes each
+        difference image and filters the artifacts detected in each using
+        count map to filter out variable sources and sources that are
+        difficult to subtract cleanly.
 
-        @param templateCoadd: Exposure to serve as model of static sky
-        @param tempExpRefList: List of data references to warps
-        @param imageScalerList: List of image scalers
+        Parameters
+        ----------
+        templateCoadd : `lsst.afw.image.Exposure`
+            Exposure to serve as model of static sky.
+        tempExpRefList : `list`
+            List of data references to warps.
+        imageScalerList : `list`
+            List of image scalers.
+
+        Returns
+        -------
+        altMasks : `list`
+            List of dicts containing information about CLIPPED
+            (i.e., artifacts), NO_DATA, and EDGE pixels.
         """
 
         self.log.debug("Generating Count Image, and mask lists.")
@@ -1766,16 +1923,22 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return altMasks
 
     def prefilterArtifacts(self, spanSetList, exp):
-        """!
-        @brief Remove artifact candidates covered by bad mask plane
+        """Remove artifact candidates covered by bad mask plane.
 
         Any future editing of the candidate list that does not depend on
         temporal information should go in this method.
 
-        @param spanSetList: List of SpanSets representing artifact candidates
-        @param exp: Exposure containing mask planes used to prefilter
+        Parameters
+        ----------
+        spanSetList : `list`
+            List of SpanSets representing artifact candidates.
+        exp : `lsst.afw.image.Exposure`
+            Exposure containing mask planes used to prefilter.
 
-        return List of SpanSets with artifacts
+        Returns
+        -------
+        returnSpanSetList : `list`
+            List of SpanSets with artifacts.
         """
         badPixelMask = exp.mask.getPlaneBitMask(self.config.prefilterArtifactsMaskPlanes)
         goodArr = (exp.mask.array & badPixelMask) == 0
@@ -1792,14 +1955,21 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return returnSpanSetList
 
     def filterArtifacts(self, spanSetList, epochCountImage, nImage, footprintsToExclude=None):
-        """!
-        @brief Filter artifact candidates
+        """Filter artifact candidates.
 
-        @param spanSetList: List of SpanSets representing artifact candidates
-        @param epochCountImage: Image of accumulated number of warpDiff detections
-        @param nImage: Image of the accumulated number of total epochs contributing
+        Parameters
+        ----------
+        spanSetList : `list`
+            List of SpanSets representing artifact candidates.
+        epochCountImage : `lsst.afw.image.Image`
+            Image of accumulated number of warpDiff detections.
+        nImage : `lsst.afw.image.Image`
+            Image of the accumulated number of total epochs contributing.
 
-        return List of SpanSets with artifacts
+        Returns
+        -------
+        maskSpanSetList : `list`
+            List of SpanSets with artifacts.
         """
 
         maskSpanSetList = []
@@ -1838,14 +2008,21 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return maskSpanSetList
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
-        """!
-        @brief Fetch a warp from the butler and return a warpDiff
+        """Fetch a warp from the butler and return a warpDiff.
 
-        @param warpRef: `Butler dataRef` for the warp
-        @param imageScaler: `scaleZeroPoint.ImageScaler` object
-        @param templateCoadd: Exposure to be substracted from the scaled warp
+        Parameters
+        ----------
+        warpRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            Butler dataRef for the warp.
+        imageScaler : `lsst.pipe.tasks.scaleZeroPoint.ImageScaler`
+            An image scaler object.
+        templateCoadd : `lsst.afw.image.Exposure`
+            Exposure to be substracted from the scaled warp.
 
-        return Exposure of the image difference between the warp and template
+        Returns
+        -------
+        warp : `lsst.afw.image.Exposure`
+            Exposure of the image difference between the warp and template.
         """
 
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
@@ -1866,15 +2043,24 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return warp
 
     def _dataRef2DebugPath(self, prefix, warpRef, coaddLevel=False):
-        """!
-        @brief Return a path to which to write debugging output
-
-        @param prefix: string, prefix for filename
-        @param warpRef: Butler dataRef
-        @param coaddLevel: bool, optional. If True, include only coadd-level keys
-                           (e.g. 'tract', 'patch', 'filter', but no 'visit')
+        """Return a path to which to write debugging output.
 
         Creates a hyphen-delimited string of dataId values for simple filenames.
+
+        Parameters
+        ----------
+        prefix : `str`
+            Prefix for filename.
+        warpRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            Butler dataRef to make the path from.
+        coaddLevel : `bool`, optional.
+            If True, include only coadd-level keys (e.g., 'tract', 'patch',
+            'filter', but no 'visit').
+
+        Returns
+        -------
+        result : `str`
+            Path for debugging output.
         """
         if coaddLevel:
             keys = warpRef.getButler().getKeys(self.getCoaddDatasetName(self.warpType))
