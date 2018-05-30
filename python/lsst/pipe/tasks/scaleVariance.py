@@ -148,7 +148,14 @@ class ScaleVarianceTask(Task):
         maskVal = maskedImage.mask.getPlaneBitMask(self.config.maskPlanes)
         isGood = ((maskedImage.mask.array & maskVal) == 0) & (maskedImage.variance.array > 0)
         # Robust measurement of stdev using inter-quartile range
-        q1, q3 = np.percentile(snr[isGood], (25, 75))
+        try:
+            q1, q3 = np.percentile(snr[isGood], (25, 75))
+        except IndexError:
+            # This error is raised when all data is nan. Catch error so that it does not
+            # propagate any higher. Set the stdev to one will not fix the bad data, but
+            # it will allow the task to complete. It should be the job of higher level
+            # tasks to handle missing or bad data
+            return 1.0
         stdev = 0.74*(q3 - q1)
         return stdev**2
 
