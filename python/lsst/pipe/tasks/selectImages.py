@@ -27,7 +27,7 @@ import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
-           "DatabaseSelectImagesConfig"]
+           "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask"]
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
@@ -338,4 +338,101 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         return pipeBase.Struct(
             dataRefList=dataRefList,
             exposureInfoList=exposureInfoList,
+        )
+
+
+class BestSeeingWcsSelectImageConfig(WcsSelectImagesTask.ConfigClass):
+    """Base configuration for BestSeeingSelectImagesTask.
+    """
+    nImagesMax = pexConfig.Field(
+        dtype=int,
+        doc="Maximum number of images to select",
+        default=5)
+    maxPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Maximum PSF FWHM (in pixels) to select",
+        default=5.,
+        optional=True)
+    minPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Minimum PSF FWHM (in pixels) to select",
+        default=0.,
+        optional=True)
+
+
+class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
+    """Select up to a maximum number of the best-seeing images using their Wcs.
+    """
+    ConfigClass = BestSeeingWcsSelectImageConfig
+
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True,
+                   selectDataList=None):
+        """Select the best-seeing images in the selectDataList that overlap the patch.
+
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Data reference for coadd/tempExp (with tract, patch)
+        coordList : `list` of `lsst.afw.geom.SpherePoint`
+            List of ICRS sky coordinates specifying boundary of patch
+        makeDataRefList : `boolean`, optional
+            Construct a list of data references?
+        selectDataList : `list` of `SelectStruct`
+            List of SelectStruct, to consider for selection
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Result struct with components:
+            - ``exposureList``: the selected exposures
+                (`list` of `lsst.pipe.tasks.selectImages.BaseExposureInfo`).
+            - ``dataRefList``: the optional data references corresponding to
+                each element of ``exposureList``
+                (`list` of `lsst.daf.persistence.ButlerDataRef`, or `None`).
+        """
+        if self.config.nImagesMax <= 0:
+            raise RuntimeError(f"nImagesMax must be greater than zero: {self.config.nImagesMax}")
+
+        psfSizes = []
+        dataRefList = []
+        exposureInfoList = []
+
+        if selectDataList is None:
+            selectDataList = []
+
+        result = super().runDataRef(dataRef, coordList, makeDataRefList, selectDataList)
+
+        for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
+            cal = dataRef.get("calexp", immediate=True)
+
+            # if min/max PSF values are defined, remove images out of bounds
+            psfSize = cal.getPsf().computeShape().getDeterminantRadius()
+            sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
+            if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
+                continue
+            if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
+                continue
+            psfSizes.append(psfSize)
+            dataRefList.append(dataRef)
+            exposureInfoList.append(exposureInfo)
+
+        if len(psfSizes) > self.config.nImagesMax:
+            sortedIndices = np.argsort(psfSizes)[:self.config.nImagesMax]
+            filteredDataRefList = [dataRefList[i] for i in sortedIndices]
+            filteredExposureInfoList = [exposureInfoList[i] for i in sortedIndices]
+            self.log.info(f"{len(sortedIndices)} images selected with FWHM "
+                          f"range of {psfSizes[sortedIndices[0]]}--{psfSizes[sortedIndices[-1]]} pixels")
+
+        else:
+            if len(psfSizes) == 0:
+                self.log.warn(f"0 images selected.")
+            else:
+                self.log.debug(f"{len(psfSizes)} images selected with FWHM range "
+                               f"of {psfSizes[0]}--{psfSizes[-1]} pixels")
+            filteredDataRefList = dataRefList
+            filteredExposureInfoList = exposureInfoList
+
+        return pipeBase.Struct(
+            dataRefList=filteredDataRefList if makeDataRefList else None,
+            exposureInfoList=filteredExposureInfoList,
         )
