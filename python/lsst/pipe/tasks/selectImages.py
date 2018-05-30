@@ -367,7 +367,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
 
     def runDataRef(self, dataRef, coordList, makeDataRefList=True,
                    selectDataList=None):
-        """Select images in the selectDataList that overlap the patch.
+        """Select the best-seeing images in the selectDataList that overlap the patch.
 
         Parameters
         ----------
@@ -389,12 +389,6 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
             - ``dataRefList``: the optional data references corresponding to
                 each element of ``exposureList``
                 (`list` of `lsst.daf.persistence.ButlerDataRef`, or `None`).
-
-        Notes
-        -----
-        We use the "convexHull" method of lsst.sphgeom.ConvexPolygon to define
-        polygons on the celestial sphere, and test the polygon of the
-        patch for overlap with the polygon of the image.
         """
         if self.config.nImagesMax <= 0:
             raise RuntimeError(f"nImagesMax must be greater than zero: {self.config.nImagesMax}")
@@ -406,42 +400,21 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
         if selectDataList is None:
             selectDataList = []
 
-        patchVertices = [coord.getVector() for coord in coordList]
-        patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
+        result = super().runDataRef(dataRef, coordList, makeDataRefList, selectDataList)
 
-        for data in selectDataList:
-            dataRef = data.dataRef
-            imageWcs = data.wcs
+        for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
             cal = dataRef.get("calexp", immediate=True)
-            nx, ny = cal.getDimensions()
 
-            imageBox = afwGeom.Box2D(afwGeom.Point2D(0, 0), afwGeom.Extent2D(nx, ny))
-            try:
-                imageCorners = [imageWcs.pixelToSky(pix) for pix in imageBox.getCorners()]
-            except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
-                # Protecting ourselves from awful Wcs solutions in input images
-                self.log.warning("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
+            # if min/max PSF values are defined, remove images out of bounds
+            psfSize = cal.getPsf().computeShape().getDeterminantRadius()
+            sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
+            if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
                 continue
-
-            imagePoly = lsst.sphgeom.ConvexPolygon.convexHull([coord.getVector() for coord in imageCorners])
-            if imagePoly is None:
-                self.log.warning("Unable to create polygon from image %s: deselecting", dataRef.dataId)
+            if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
                 continue
-
-            if patchPoly.intersects(imagePoly):
-                # "intersects" also covers "contains" or "is contained by",
-                # so there is no guarantee the whole area is covered
-
-                # if min/max PSF values are defined, remove images out of bounds
-                psfSize = cal.getPsf().computeShape().getDeterminantRadius()
-                sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
-                if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
-                    continue
-                if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
-                    continue
-                psfSizes.append(psfSize)
-                dataRefList.append(dataRef)
-                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, imageCorners))
+            psfSizes.append(psfSize)
+            dataRefList.append(dataRef)
+            exposureInfoList.append(exposureInfo)
 
         if len(psfSizes) > self.config.nImagesMax:
             sortedIndices = np.argsort(psfSizes)[:self.config.nImagesMax]
