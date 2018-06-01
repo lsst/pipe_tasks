@@ -182,7 +182,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     _DefaultName = "dcrAssembleCoadd"
 
     @pipeBase.timeMethod
-    def run(self, dataRef, selectDataList=[], tempExpRefList=None):
+    def run(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of Warps.
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and
@@ -200,10 +200,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             List of data references to Warps. Data to be coadded will be
             selected from this list based on overlap with the patch defined by
             dataRef.
-        tempExpRefList : List of data references to tempExp, optional
-            If provided, the data references for the warped temporary exposures
-            to coadd, otherwise constructed from the parsed command-line
-            arguments.
 
         Returns
         -------
@@ -215,8 +211,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - dcrNImages: list of exposure count images for each subfilter
 
         """
-        results = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList,
-                                        tempExpRefList=tempExpRefList)
+        results = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList)
         for subfilter in range(self.config.dcrNumSubfilters):
             self.processResults(results.dcrCoadds[subfilter], dataRef)
             if self.config.doWrite:
