@@ -26,9 +26,9 @@ import unittest
 
 from lsst.afw.coord import Observatory, Weather
 import lsst.afw.geom as afwGeom
-from lsst.afw.geom import Angle, makeCdMatrix, makeSkyWcs
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+from lsst.geom import arcseconds, degrees, radians
 from lsst.meas.algorithms.testUtils import plantSources
 import lsst.utils.tests
 from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCoaddConfig
@@ -114,9 +114,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         Parameters
         ----------
-        rotAngle : lsst.afw.geom.Angle
+        rotAngle : `lsst.geom.Angle`
             rotation of the CD matrix, East from North
-        pixelScale : lsst.afw.geom.Angle
+        pixelScale : `lsst.geom.Angle`
             Pixel scale of the projection.
         crval : lsst.afw.geom.SpherePoint
             Coordinates of the reference pixel of the wcs.
@@ -127,8 +127,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             A wcs that matches the inputs.
         """
         crpix = afwGeom.Box2D(self.bbox).getCenter()
-        cd_matrix = makeCdMatrix(scale=pixelScale, orientation=rotAngle, flipX=True)
-        wcs = makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd_matrix)
+        cd_matrix = afwGeom.makeCdMatrix(scale=pixelScale, orientation=rotAngle, flipX=True)
+        wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd_matrix)
         return wcs
 
     def makeDummyVisitInfo(self, azimuth, elevation):
@@ -138,9 +138,9 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         Parameters
         ----------
-        azimuth : lsst.afw.geom.Angle
+        azimuth : `lsst.geom.Angle`
             Azimuth angle of the simulated observation.
-        elevation : lsst.afw.geom.Angle
+        elevation : `lsst.geom.Angle`
             Elevation angle of the simulated observation.
 
         Returns
@@ -148,8 +148,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         lsst.afw.image.VisitInfo
             VisitInfo for the exposure.
         """
-        lsstLat = -30.244639*afwGeom.degrees
-        lsstLon = -70.749417*afwGeom.degrees
+        lsstLat = -30.244639*degrees
+        lsstLon = -70.749417*degrees
         lsstAlt = 2663.
         lsstTemperature = 20.*u.Celsius  # in degrees Celcius
         lsstHumidity = 40.  # in percent
@@ -157,14 +157,15 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         lsstWeather = Weather(lsstTemperature.value, lsstPressure.value, lsstHumidity)
         lsstObservatory = Observatory(lsstLon, lsstLat, lsstAlt)
         airmass = 1.0/np.sin(elevation.asRadians())
-        era = Angle(0.)  # on the meridian
-        ra = lsstLon + np.sin(azimuth.asRadians())*(Angle(np.pi/2.) - elevation)/np.cos(lsstLat.asRadians())
-        dec = lsstLat + np.cos(azimuth.asRadians())*(Angle(np.pi/2.) - elevation)
+        era = 0.*radians  # on the meridian
+        zenithAngle = 90.*degrees - elevation
+        ra = lsstLon + np.sin(azimuth.asRadians())*zenithAngle/np.cos(lsstLat.asRadians())
+        dec = lsstLat + np.cos(azimuth.asRadians())*zenithAngle
         visitInfo = afwImage.VisitInfo(era=era,
                                        boresightRaDec=afwGeom.SpherePoint(ra, dec),
                                        boresightAzAlt=afwGeom.SpherePoint(azimuth, elevation),
                                        boresightAirmass=airmass,
-                                       boresightRotAngle=Angle(0.),
+                                       boresightRotAngle=0.*radians,
                                        observatory=lsstObservatory,
                                        weather=lsstWeather
                                        )
@@ -175,10 +176,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         The shift is compared to pre-computed values.
         """
-        rotAngle = Angle(0.)
-        azimuth = 30.*afwGeom.degrees
-        elevation = 65.*afwGeom.degrees
-        pixelScale = 0.2*afwGeom.arcseconds
+        rotAngle = 0.*radians
+        azimuth = 30.*degrees
+        elevation = 65.*degrees
+        pixelScale = 0.2*arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
@@ -194,15 +195,15 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         The rotation is compared to pre-computed values.
         """
-        cdRotAngle = Angle(0.)
+        cdRotAngle = 0.*radians
         azimuth = 130.*afwGeom.degrees
         elevation = 70.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(cdRotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
         rotAngle = self.calculateRotationAngle(visitInfo, wcs)
-        refAngle = Angle(-0.9344289857053072)
-        self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=Angle(1e-6))
+        refAngle = -0.9344289857053072*radians
+        self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=1e-6*radians)
 
     def testConditionDcrModelNoChange(self):
         """Conditioning should not change the model if it is identical to the reference.

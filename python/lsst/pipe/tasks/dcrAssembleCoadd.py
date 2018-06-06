@@ -29,6 +29,7 @@ from lsst.afw.geom import makeTransform
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
+from lsst.geom import radians
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
@@ -950,7 +951,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Returns
         -------
-        lsst.afw.geom.Angle
+        lsst.geom.Angle
             The rotation of the image axis, East from North.
             Equal to the parallactic angle plus any additional rotation of the
             coordinate system.
@@ -962,7 +963,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         parAngle = visitInfo.getBoresightParAngle().asRadians()
         cd = wcs.getCdMatrix()
         cdAngle = (np.arctan2(-cd[0, 1], cd[0, 0]) + np.arctan2(cd[1, 0], cd[1, 1]))/2.
-        rotAngle = afwGeom.Angle(cdAngle + parAngle)
+        rotAngle = (cdAngle + parAngle)*radians
         return rotAngle
 
     def wavelengthGenerator(self):
