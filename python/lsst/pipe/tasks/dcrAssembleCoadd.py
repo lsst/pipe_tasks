@@ -614,9 +614,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         convergeMask = maskedImage.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         if mask is None:
-            backgroundPixels = maskedImage.mask.array & (statsCtrl.getAndMask() ^ convergeMask) == 0
+            backgroundPixels = maskedImage.mask.array & (statsCtrl.getAndMask() | convergeMask) == 0
         else:
-            backgroundPixels = mask.array & (statsCtrl.getAndMask() ^ convergeMask) == 0
+            backgroundPixels = mask.array & (statsCtrl.getAndMask() | convergeMask) == 0
         noiseCutoff = self.config.regularizeSigma*np.std(maskedImage.image.array[backgroundPixels])
         return noiseCutoff
 
@@ -728,7 +728,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         maskedImage = coaddExposure.maskedImage.clone()
         # NANs will potentially contaminate the entire image, depending on the shift or convolution type used.
-        badPixels = np.isnan(maskedImage.image.array) ^ np.isnan(maskedImage.variance.array)
+        badPixels = np.isnan(maskedImage.image.array) | np.isnan(maskedImage.variance.array)
         maskedImage.image.array[badPixels] = 0.
         maskedImage.variance.array[badPixels] = 0.
         maskedImage.image.array /= dcrNumSubfilters
