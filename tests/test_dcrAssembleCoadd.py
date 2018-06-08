@@ -79,8 +79,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             A list of masked images, each containing the model for one subfilter
         """
         seed = 5
-        rng = np.random
-        rng.seed(seed)
+        rng = np.random.RandomState(seed)
         psfSize = 2
         nSrc = 5
         noiseLevel = 5
@@ -89,17 +88,17 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         fluxRange = 2.
         x0, y0 = self.bbox.getBegin()
         xSize, ySize = self.bbox.getDimensions()
-        xLoc = rng.random(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize + x0
-        yLoc = rng.random(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize + y0
+        xLoc = rng.rand(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize + x0
+        yLoc = rng.rand(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize + y0
         dcrModels = []
 
         imageSum = np.zeros((ySize, xSize))
         for subfilter in range(self.config.dcrNumSubfilters):
-            flux = (rng.random(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
+            flux = (rng.rand(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             sigmas = [psfSize for src in range(nSrc)]
-            coordList = [[x, y, counts, sigma] for x, y, counts, sigma in zip(xLoc, yLoc, flux, sigmas)]
+            coordList = list(zip(xLoc, yLoc, flux, sigmas))
             model = plantSources(self.bbox, 10, 0, coordList, addPoissonNoise=False)
-            model.image.array += rng.random((ySize, xSize))*noiseLevel
+            model.image.array += rng.rand(ySize, xSize)*noiseLevel
             imageSum += model.image.array
             model.mask.addMaskPlane("CLIPPED")
             dcrModels.append(model.maskedImage)
@@ -128,8 +127,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             A wcs that matches the inputs.
         """
         crpix = afwGeom.Box2D(self.bbox).getCenter()
-        cd_matrix = afwGeom.makeCdMatrix(scale=pixelScale, orientation=rotAngle, flipX=True)
-        wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd_matrix)
+        cdMatrix = afwGeom.makeCdMatrix(scale=pixelScale, orientation=rotAngle, flipX=True)
+        wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cdMatrix)
         return wcs
 
     def makeDummyVisitInfo(self, azimuth, elevation):
@@ -256,18 +255,22 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         self.config.clampFrequency = 1.1
         statsCtrl = afwMath.StatisticsControl()
         modelRefs = [model.clone() for model in dcrModels]
-        templateImage = np.sum([model.image.array for model in dcrModels], axis=0)
-        backgroundInds = self.mask.array == 0
-        noiseLevel = self.config.regularizeSigma*np.std(templateImage[backgroundInds])
+        templateImage = np.mean([model[self.bbox, afwImage.PARENT].image.array
+                                 for model in dcrModels], axis=0)
 
         self.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
         for model, modelRef in zip(dcrModels, modelRefs):
-            self.assertFloatsAlmostEqual(model.mask.array, modelRef.mask.array)
-            self.assertFloatsAlmostEqual(model.variance.array, modelRef.variance.array)
-            imageDiffHigh = model.image.array - (templateImage*self.config.clampFrequency + noiseLevel)
-            self.assertLessEqual(np.max(imageDiffHigh), 0.)
-            imageDiffLow = model.image.array - (templateImage/self.config.clampFrequency - noiseLevel)
-            self.assertGreaterEqual(np.max(imageDiffLow), 0.)
+            noiseLevel = dcrAssembleCoaddTask.calculateNoiseCutoff(modelRef, statsCtrl)
+            # The mask and variance planes should be unchanged
+            self.assertFloatsEqual(model.mask.array, modelRef.mask.array)
+            self.assertFloatsEqual(model.variance.array, modelRef.variance.array)
+            # Make sure the test parameters do reduce the outliers
+            self.assertGreater(np.max(modelRef.image.array - templateImage),
+                               np.max(model.image.array - templateImage))
+            highThreshold = templateImage*self.config.clampFrequency + noiseLevel*self.config.regularizeSigma
+            self.assertTrue(np.all(model.image.array <= highThreshold))
+            lowThreshold = templateImage/self.config.clampFrequency - noiseLevel
+            self.assertTrue(np.all(model.image.array >= lowThreshold))
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

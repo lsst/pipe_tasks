@@ -715,7 +715,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             if nImage is not None:
                 subNImage.getArray()[maskedImage.getMask().getArray() & statsCtrl.getAndMask() == 0] += 1
             if self.config.removeMaskPlanes:
-                self._removeMaskPlanes(maskedImage)
+                self.removeMaskPlanes(maskedImage)
             maskedImageList.append(maskedImage)
 
         with self.timer("stack"):
@@ -726,7 +726,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         if nImage is not None:
             nImage.assign(subNImage, bbox)
 
-    def _removeMaskPlanes(self, maskedImage):
+    def removeMaskPlanes(self, maskedImage):
         """Unset the mask of an image for mask planes specified in the config.
 
         Parameters

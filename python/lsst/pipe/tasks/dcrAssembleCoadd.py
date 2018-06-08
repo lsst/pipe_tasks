@@ -39,12 +39,14 @@ __all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     useFFT = pexConfig.Field(
         dtype=bool,
-        doc="Use Fourier transforms for the convolution?",
+        doc="Use Fourier transforms for the convolution?"
+            "Note: not yet implemented. Intended for use with variable PSFs.",
         default=False,
     )
     usePsf = pexConfig.Field(
         dtype=bool,
-        doc="Convolve models with the PSF of the exposures? Requires `useFFT=True`.",
+        doc="Convolve models with the PSF of the exposures? Requires `useFFT=True`."
+            "Note: not yet implemented. Intended for use with variable PSFs.",
         default=False,
     )
     dcrNumSubfilters = pexConfig.Field(
@@ -69,12 +71,15 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     useConvergence = pexConfig.Field(
         dtype=bool,
-        doc="Use convergence test as a forward modeling end condition.",
+        doc="Use convergence test as a forward modeling end condition?"
+            "If not set, skips calculating convergence and runs for ``maxNumIter`` iterations",
         default=True,
     )
     doWeightGain = pexConfig.Field(
         dtype=bool,
-        doc="Use the calculated convergence metric to accelerate forward modeling?",
+        doc="Use the calculated convergence metric to accelerate forward modeling?"
+            "If set, convergence has to be calculated an extra time each iteration,"
+            "but fewer iterations may be needed to reach the convergence threshold.",
         default=False,
     )
     doAirmassWeight = pexConfig.Field(
@@ -115,7 +120,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     imageWarpMethod = pexConfig.Field(
         dtype=str,
         doc="Name of the warping kernel to use for shifting the image and variance planes.",
-        default="bilinear",
+        default="lanczos3",
     )
     maskWarpMethod = pexConfig.Field(
         dtype=str,
@@ -251,11 +256,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrShifts.append(np.max(np.abs(self.calculateDcr(visitInfo, templateCoadd.getWcs()))))
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
         # Turn off the warping cache, since we set the linear interpolation length to the entire subregion
+        # This warper is only used for applying DCR shifts, which are assumed to be uniform across a patch
         warpCache = 0
         warpInterpLength = max(self.config.subregionSize)
         self.warpCtrl = afwMath.WarpingControl(self.config.imageWarpMethod,
                                                self.config.maskWarpMethod,
-                                               warpCache, warpInterpLength)
+                                               cacheSize=warpCache, interpLength=warpInterpLength)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  supplementaryData=None):
@@ -297,8 +303,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
-        subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNumSubfilters)
         badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
+        subBandImages = self.dcrDivideCoadd(templateCoadd)
         # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
         # Psf-Matching moves the real edge inwards
         self.applyAltEdgeMask(templateCoadd.mask, spanSetMaskList)
@@ -307,7 +313,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.prepareDcrInputs(templateCoadd, tempExpRefList, weightList)
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
         if self.config.doNImage:
-            dcrNImages = self.calculateNImage(skyInfo, tempExpRefList, spanSetMaskList, stats.ctrl)
+            dcrNImages = self.calculateNImage(skyInfo.bbox, tempExpRefList, spanSetMaskList, stats.ctrl)
             nImage = afwImage.ImageU(skyInfo.bbox)
             # Note that this nImage will be a factor of dcrNumSubfilters higher than
             # the nImage returned by assembleCoadd for most pixels. This is because each
@@ -357,7 +363,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     break
 
                 if self.config.useConvergence:
-                    self.log.info("Iteration %s with convergence metric %s, %2.4f%% improvement",
+                    self.log.info("Iteration %s with convergence metric %s, %.4f%% improvement",
                                   modelIter, convergenceMetric, 100.*convergenceCheck)
                 modelIter += 1
             else:
@@ -367,20 +373,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 else:
                     self.log.info("Coadd %s finished after %s iterations", subBBox, modelIter)
             if self.config.useConvergence:
-                self.log.info("Final convergence improvement was %2.4f%% overall",
+                self.log.info("Final convergence improvement was %.4f%% overall",
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
         dcrCoadds = self.fillCoadd(subBandImages, skyInfo, tempExpRefList, weightList)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
 
-    def calculateNImage(self, skyInfo, tempExpRefList, spanSetMaskList, statsCtrl):
+    def calculateNImage(self, bbox, tempExpRefList, spanSetMaskList, statsCtrl):
         """Calculate the number of exposures contributing to each subfilter.
 
         Parameters
         ----------
-        dcrNImages : `list` of `lsst.afw.image.imageU`
-            List of exposure count images for each subfilter
         bbox : `lsst.afw.geom.box.Box2I`
             Bounding box of the patch to coadd.
         tempExpRefList : `list` of ButlerDataRefs
@@ -389,13 +393,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Each element is dict with keys = mask plane name to add the spans to
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
+
+        Returns
+        -------
+        dcrNImages : `list` of `lsst.afw.image.imageU`
+            List of exposure count images for each subfilter
+
+        Deleted Parameters
+        ------------------
         """
-        dcrNImages = [afwImage.ImageU(skyInfo.bbox) for subfilter in range(self.config.dcrNumSubfilters)]
+        dcrNImages = [afwImage.ImageU(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
-        for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
+        for subBBox in self._subBBoxIter(bbox, subregionSize):
             bboxGrow = afwGeom.Box2I(subBBox)
             bboxGrow.grow(self.bufferSize)
-            bboxGrow.clip(skyInfo.bbox)
+            bboxGrow.clip(bbox)
             subNImages = [afwImage.ImageU(bboxGrow) for subfilter in range(self.config.dcrNumSubfilters)]
             tempExpName = self.getTempExpDatasetName(self.warpType)
             for tempExpRef, altMaskSpans in zip(tempExpRefList, spanSetMaskList):
@@ -472,7 +484,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.applyAltMaskPlanes(maskedImage.mask, altMaskSpans)
 
             if self.config.removeMaskPlanes:
-                self._removeMaskPlanes(maskedImage)
+                self.removeMaskPlanes(maskedImage)
             maskedImage -= templateImage
             residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
         dcrSubModelOut = []
@@ -480,8 +492,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             for oldModel in dcrModels:
                 residualsList = [next(residualGenerator) for residualGenerator in residualGeneratorList]
                 residual = afwMath.statisticsStack(residualsList, statsFlags, statsCtrl, weightList,
-                                                   clipped,  # also set output to CLIPPED if sigma-clipped
-                                                   maskMap)
+                                                   clipped, maskMap)
                 residual.setXY0(bboxGrow.getBegin())
                 newModel = self.clampModel(residual, oldModel, bboxGrow, statsCtrl)
                 dcrSubModelOut.append(newModel)
@@ -492,8 +503,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                              imageScalerList, weightList, spanSetMaskList,
                                                              statsFlags, statsCtrl)
             gain = min(max(convergenceMetric/convergenceMetricNew, self.config.minGain), self.config.maxGain)
-            self.log.info("Convergence-weighted gain used: %2.4f", gain)
-            self.log.info("Based on old convergence: %2.6f, new convergence: %2.6f",
+            self.log.info("Convergence-weighted gain used: %.4f", gain)
+            self.log.info("Based on old convergence: %.6f, new convergence: %.6f",
                           convergenceMetric, convergenceMetricNew)
         else:
             gain = 1.
@@ -511,7 +522,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Stacked residual masked image after subtracting DCR-matched
             templates. To save memory, the residual is modified in-place.
         oldModel : `lsst.afw.image.maskedImageF`
-            Description
+            The DCR model from the previous iteration for one subfilter.
         bbox : `lsst.afw.geom.box.Box2I`
             Sub-region to coadd
         statsCtrl : `lsst.afw.math.StatisticsControl`
@@ -523,7 +534,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The sum of the oldModel and residual, with extreme values clipped.
         """
         newModel = residual
-        newModel += oldModel[bbox, afwImage.PARENT]
+        newModel.image += oldModel[bbox, afwImage.PARENT].image
         newImage = newModel.image.array
         oldImage = oldModel[bbox, afwImage.PARENT].image.array
         noiseCutoff = self.calculateNoiseCutoff(oldModel[bbox, afwImage.PARENT], statsCtrl)
@@ -535,10 +546,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         # Clip pixels that have very high amplitude, compared with the previous iteration.
         clampPixels = np.abs(newImage - oldImage) > (np.abs(oldImage*(self.config.modelClampFactor - 1)) +
                                                      noiseCutoff)
+        # Set high amplitude pixels to a multiple or fraction of the old model value,
+        #  depending on whether the new model is higher or lower than the old
         highPixels = newImage > oldImage
         newImage[clampPixels & highPixels] = oldImage[clampPixels & highPixels]*self.config.modelClampFactor
         newImage[clampPixels & ~highPixels] = oldImage[clampPixels & ~highPixels]/self.config.modelClampFactor
-
         return newModel
 
     def setModelVariance(self, dcrModels):
@@ -577,7 +589,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
         """
-        nModels = len(dcrModels)
         templateImage = np.mean([model[bbox, afwImage.PARENT].image.array
                                  for model in dcrModels], axis=0)
         excess = np.zeros_like(templateImage)
@@ -590,7 +601,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             lowPixels = (modelVals < templateImage/self.config.clampFrequency - noiseCutoff)
             excess[lowPixels] += modelVals[lowPixels] - templateImage[lowPixels]/self.config.clampFrequency
             modelVals[lowPixels] = templateImage[lowPixels]/self.config.clampFrequency
-        excess /= nModels
+        excess /= self.config.dcrNumSubfilters
         for model in dcrModels:
             model.image.array += excess
 
@@ -654,8 +665,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         modelWeightList = [1.0]*self.config.dcrNumSubfilters
         dcrModelCut = [model[bbox, afwImage.PARENT] for model in dcrModels]
         modelSum = afwMath.statisticsStack(dcrModelCut, statsFlags, statsCtrl, modelWeightList,
-                                           clipped,
-                                           maskMap)
+                                           clipped, maskMap)
         significanceImage = np.abs(modelSum.image.array)
         weight = 0
         metric = 0.
@@ -670,10 +680,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             metricList[tempExpRef.dataId["visit"]] = singleMetric
             weight += expWeight
         self.log.info("Individual metrics:\n%s", metricList)
-        if weight == 0:
-            return 1.
-        else:
-            return metric/weight
+        return 1.0 if weight == 0.0 else metric/weight
 
     def calculateSingleConvergence(self, exposure, dcrModels, significanceImage, statsCtrl,
                                    altMaskSpans=None):
@@ -700,7 +707,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         diffVals = np.abs(exposure.image.array - templateImage.image.array)*significanceImage
         refVals = np.abs(templateImage.image.array)*significanceImage
 
-        finitePixels = np.isfinite(refVals) & np.isfinite(diffVals)
+        finitePixels = np.isfinite(diffVals)
         if altMaskSpans is not None:
             self.applyAltMaskPlanes(exposure.mask, altMaskSpans)
         goodMaskPixels = exposure.mask.array & statsCtrl.getAndMask() == 0
@@ -708,18 +715,19 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         usePixels = finitePixels & goodMaskPixels & convergeMaskPixels
         if np.sum(usePixels) == 0:
             metric = 0.
-        metric = np.sum(diffVals[usePixels])/np.sum(refVals[usePixels])
+        else:
+            diffUse = diffVals[usePixels]
+            refUse = refVals[usePixels]
+            metric = np.sum(diffUse/np.median(diffUse))/np.sum(refUse/np.median(diffUse))
         return metric
 
-    def dcrDivideCoadd(self, coaddExposure, dcrNumSubfilters):
+    def dcrDivideCoadd(self, coaddExposure):
         """Divide a coadd into equal subfilter coadds.
 
         Parameters
         ----------
         coaddExposure : `lsst.afw.image.exposure.ExposureF`
             The target image for the coadd
-        dcrNumSubfilters : `int`
-            The number of subfilters to divide the coadd into.
 
         Returns
         -------
@@ -731,11 +739,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         badPixels = np.isnan(maskedImage.image.array) | np.isnan(maskedImage.variance.array)
         maskedImage.image.array[badPixels] = 0.
         maskedImage.variance.array[badPixels] = 0.
-        maskedImage.image.array /= dcrNumSubfilters
-        maskedImage.variance.array /= dcrNumSubfilters
+        maskedImage.image.array /= self.config.dcrNumSubfilters
+        maskedImage.variance.array /= self.config.dcrNumSubfilters
         maskedImage.mask.array[badPixels] = maskedImage.mask.getPlaneBitMask("NO_DATA")
         dcrModels = [maskedImage, ]
-        for subfilter in range(1, dcrNumSubfilters):
+        for subfilter in range(1, self.config.dcrNumSubfilters):
             dcrModels.append(maskedImage.clone())
         return dcrModels
 
@@ -823,10 +831,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if bbox is None:
                 bbox = maskedImage.getBBox()
             shiftedImage = afwImage.MaskedImageF(bbox)
-            if useInverse:
-                transform = makeTransform(AffineTransform(-dcr))
-            else:
-                transform = makeTransform(AffineTransform(dcr))
+            transform = makeTransform(AffineTransform((-1.0 if useInverse else 1.0)*dcr))
             afwMath.warpImage(shiftedImage, maskedImage[bbox, afwImage.PARENT],
                               transform, self.warpCtrl, padValue=padValue)
         return shiftedImage
@@ -850,8 +855,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             # The DcrModels are MaskedImages, which only support in-place operations.
             newModel *= gain
             newModel += oldModel[bbox, afwImage.PARENT]
-            newModel.image.array[:] /= 1. + gain
-            newModel.variance.array[:] /= 1. + gain
+            newModel.image.array /= 1. + gain
+            newModel.variance.array /= 1. + gain
 
     def calculateDcr(self, visitInfo, wcs):
         """Calculate the shift in pixels of an exposure due to DCR.
