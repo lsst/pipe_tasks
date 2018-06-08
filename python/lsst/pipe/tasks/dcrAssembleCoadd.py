@@ -297,8 +297,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
-        badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
         subBandImages = self.dcrDivideCoadd(templateCoadd, self.config.dcrNumSubfilters)
+        badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
         # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
         # Psf-Matching moves the real edge inwards
         self.applyAltEdgeMask(templateCoadd.mask, spanSetMaskList)
@@ -459,7 +459,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
         maskMap = self.setRejectedMaskMapping(statsCtrl)
-        clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
+        clipped = dcrModels[0].mask.getPlaneBitMask("CLIPPED")
 
         for tempExpRef, imageScaler, altMaskSpans in zip(tempExpRefList, imageScalerList, spanSetMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bboxGrow)
@@ -649,7 +649,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Quality of fit metric for all input exposures, within the sub-region
         """
         maskMap = self.setRejectedMaskMapping(statsCtrl)
-        clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
+        clipped = dcrModels[0].mask.getPlaneBitMask("CLIPPED")
         tempExpName = self.getTempExpDatasetName(self.warpType)
         modelWeightList = [1.0]*self.config.dcrNumSubfilters
         dcrModelCut = [model[bbox, afwImage.PARENT] for model in dcrModels]
@@ -694,7 +694,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         `float`
             Quality of fit metric for one exposure, within the sub-region.
         """
-        convergeMask = afwImage.Mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+        convergeMask = exposure.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         templateImage = self.buildMatchedTemplate(dcrModels, exposure.getInfo().getVisitInfo(),
                                                   exposure.getBBox(), exposure.getInfo().getWcs())
         diffVals = np.abs(exposure.image.array - templateImage.image.array)*significanceImage
