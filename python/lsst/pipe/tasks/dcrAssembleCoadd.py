@@ -248,8 +248,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             airmass = visitInfo.getBoresightAirmass()
             if self.config.doAirmassWeight:
                 weightList[visitNum] *= airmass
-            dcrShifts.append(np.max(np.abs(self.dcrShiftCalculate(visitInfo,
-                                                                  templateCoadd.getInfo().getWcs()))))
+            dcrShifts.append(np.max(np.abs(self.calculateDcr(visitInfo, templateCoadd.getWcs()))))
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
         # Turn off the warping cache, since we set the linear interpolation length to the entire subregion
         warpCache = 0
@@ -406,7 +405,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 mask = exposure.mask
                 if altMaskSpans is not None:
                     self.applyAltMaskPlanes(mask, altMaskSpans)
-                dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
+                dcrShift = self.calculateDcr(visitInfo, wcs)
                 for dcr, subNImage in zip(dcrShift, subNImages):
                     shiftedImage = self.convolveDcrModelPlane(exposure.maskedImage, dcr, useInverse=True)
                     subNImage.array[shiftedImage.mask.array & statsCtrl.getAndMask() == 0] += 1
@@ -854,7 +853,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             newModel.image.array[:] /= 1. + gain
             newModel.variance.array[:] /= 1. + gain
 
-    def dcrShiftCalculate(self, visitInfo, wcs):
+    def calculateDcr(self, visitInfo, wcs):
         """Calculate the shift in pixels of an exposure due to DCR.
 
         Parameters
@@ -909,7 +908,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         `lsst.afw.image.maskedImageF`
             The DCR-matched template
         """
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
+        dcrShift = self.calculateDcr(visitInfo, wcs)
         templateImage = afwImage.MaskedImageF(bbox)
         for dcr, model in zip(dcrShift, dcrModels):
             templateImage += self.convolveDcrModelPlane(model, dcr, bbox=bbox)
@@ -939,7 +938,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         `lsst.afw.image.maskedImageF`
             The residual image for the next subfilter, shifted for DCR.
         """
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
+        dcrShift = self.calculateDcr(visitInfo, wcs)
         for dcr in dcrShift:
             yield self.convolveDcrModelPlane(residual, dcr, bbox=bbox, useInverse=True)
 

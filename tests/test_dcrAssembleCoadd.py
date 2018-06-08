@@ -173,7 +173,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
                                        )
         return visitInfo
 
-    def testDcrShiftCalculation(self):
+    def testDcrCalculation(self):
         """Test that the shift in pixels due to DCR is consistently computed.
 
         The shift is compared to pre-computed values.
@@ -184,7 +184,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         pixelScale = 0.2*arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
+        dcrShift = self.calculateDcr(visitInfo, wcs)
         refShift = [afwGeom.Extent2D(-0.5363512808, -0.3103517169),
                     afwGeom.Extent2D(0.001887293861, 0.001092054612),
                     afwGeom.Extent2D(0.3886592703, 0.2248919247)]
