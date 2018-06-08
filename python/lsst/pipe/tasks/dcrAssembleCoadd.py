@@ -1,4 +1,3 @@
-from __future__ import absolute_import, division, print_function
 # This file is part of pipe_tasks.
 #
 # LSST Data Management System
