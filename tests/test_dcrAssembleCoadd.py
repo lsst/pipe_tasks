@@ -33,7 +33,7 @@ import lsst.utils.tests
 from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCoaddConfig
 
 
-class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
+class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
     """A test case for the DCR-aware image coaddition algorithm.
 
     Attributes
@@ -55,12 +55,11 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         """Define the filter, DCR parameters, and the bounding box for the tests.
         """
         self.config = DcrAssembleCoaddConfig()
+        self.config.dcrNumSubfilters = 3
         lambdaEff = 476.31  # Use LSST g band values for the test.
         lambdaMin = 405
         lambdaMax = 552
         afwImage.utils.defineFilter("gTest", lambdaEff, lambdaMin=lambdaMin, lambdaMax=lambdaMax)
-        self.filterInfo = afwImage.Filter("gTest")
-        self.config.dcrNumSubfilters = 3
         self.bufferSize = 5
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
@@ -177,13 +176,15 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         The shift is compared to pre-computed values.
         """
+        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
+        dcrAssembleCoaddTask.filterInfo = afwImage.Filter("gTest")
         rotAngle = 0.*radians
         azimuth = 30.*degrees
         elevation = 65.*degrees
         pixelScale = 0.2*arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        dcrShift = self.calculateDcr(visitInfo, wcs)
+        dcrShift = dcrAssembleCoaddTask.calculateDcr(visitInfo, wcs)
         refShift = [afwGeom.Extent2D(-0.5363512808, -0.3103517169),
                     afwGeom.Extent2D(0.001887293861, 0.001092054612),
                     afwGeom.Extent2D(0.3886592703, 0.2248919247)]
@@ -196,13 +197,14 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         The rotation is compared to pre-computed values.
         """
+        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
         cdRotAngle = 0.*radians
         azimuth = 130.*afwGeom.degrees
         elevation = 70.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(cdRotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        rotAngle = self.calculateRotationAngle(visitInfo, wcs)
+        rotAngle = dcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
         refAngle = -0.9344289857053072*radians
         self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=1e-6*radians)
 
@@ -211,9 +213,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This additionally tests that the variance and mask planes do not change.
         """
+        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
         dcrModels = self.makeTestImages()
         refModels = [model.clone() for model in dcrModels]
-        self.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
+        dcrAssembleCoaddTask.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
         for model, refModel in zip(dcrModels, refModels):
             self.assertMaskedImagesEqual(model, refModel)
 
@@ -222,11 +225,12 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This additionally tests that the variance and mask planes do not change.
         """
+        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
         dcrModels = self.makeTestImages()
         refModels = [model.clone() for model in dcrModels]
         for model in dcrModels:
             model.image.array[:] *= 3.
-        self.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
+        dcrAssembleCoaddTask.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
         for model, refModel in zip(dcrModels, refModels):
             refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(model, refModel)
@@ -236,12 +240,13 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This also tests that noise-like pixels are not regularized.
         """
+        self.config.regularizeSigma = 1.
+        self.config.clampFrequency = 3.
+        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
         dcrModels = self.makeTestImages()
-        self.config.regularizeSigma = 3.
-        self.config.clampFrequency = 2.
         statsCtrl = afwMath.StatisticsControl()
         modelRefs = [model.clone() for model in dcrModels]
-        self.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
+        dcrAssembleCoaddTask.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
         for model, modelRef in zip(dcrModels, modelRefs):
             self.assertMaskedImagesEqual(model, modelRef)
 
@@ -250,15 +255,16 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         This also tests that noise-like pixels are not regularized.
         """
-        dcrModels = self.makeTestImages()
-        self.config.regularizeSigma = 3.
+        self.config.regularizeSigma = 1.
         self.config.clampFrequency = 1.1
+        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
+        dcrModels = self.makeTestImages()
         statsCtrl = afwMath.StatisticsControl()
         modelRefs = [model.clone() for model in dcrModels]
         templateImage = np.mean([model[self.bbox, afwImage.PARENT].image.array
                                  for model in dcrModels], axis=0)
 
-        self.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
+        dcrAssembleCoaddTask.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
         for model, modelRef in zip(dcrModels, modelRefs):
             noiseLevel = dcrAssembleCoaddTask.calculateNoiseCutoff(modelRef, statsCtrl)
             # The mask and variance planes should be unchanged
