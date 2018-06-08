@@ -39,20 +39,22 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
     Attributes
     ----------
-    bbox : lsst.afw.geom.box.Box2I
+    bbox : `lsst.afw.geom.Box2I`
         Bounding box of the test model.
-    bufferSize : int
-        Distance from the inner edge of the bounding box to avoid placing test sources in the model images.
-    config : lsst.pipe.tasks.dcrAssembleCoadd.DcrAssembleCoaddConfig
+    bufferSize : `int`
+        Distance from the inner edge of the bounding box
+        to avoid placing test sources in the model images.
+    config : `lsst.pipe.tasks.dcrAssembleCoadd.DcrAssembleCoaddConfig`
         Configuration parameters to initialize the task.
-    filterInfo : lsst.afw.image.filter.Filter
+    filterInfo : `lsst.afw.image.Filter`
         Dummy filter object for testing.
-    mask : lsst.afw.image.mask
+    mask : `lsst.afw.image.Mask`
         Reference mask of the unshifted model.
     """
 
     def setUp(self):
-        """Define the filters,  DCR attributes, and the image bounding box for the tests."""
+        """Define the filter, DCR parameters, and the bounding box for the tests.
+        """
         self.config = DcrAssembleCoaddConfig()
         lambdaEff = 476.31  # Use LSST g band values for the test.
         lambdaMin = 405
@@ -74,8 +76,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         Returns
         -------
-        dcrModels : list of lsst.afw.image.maskedImageF
-            A list of masked images, each containing the model for one subfilter.
+        dcrModels : `list` of `lsst.afw.image.maskedImage`
+            A list of masked images, each containing the model for one subfilter
         """
         seed = 5
         rng = np.random
@@ -118,12 +120,12 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             rotation of the CD matrix, East from North
         pixelScale : `lsst.geom.Angle`
             Pixel scale of the projection.
-        crval : lsst.afw.geom.SpherePoint
+        crval : `lsst.afw.geom.SpherePoint`
             Coordinates of the reference pixel of the wcs.
 
         Returns
         -------
-        lsst.afw.geom.skyWcs.skyWcs.SkyWcs
+        `lsst.afw.geom.skyWcs.SkyWcs`
             A wcs that matches the inputs.
         """
         crpix = afwGeom.Box2D(self.bbox).getCenter()
@@ -134,7 +136,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
     def makeDummyVisitInfo(self, azimuth, elevation):
         """Make a self-consistent visitInfo object for testing.
 
-        For simplicity, the simulated observation is assumed to be taken on the local meridian.
+        For simplicity, the simulated observation is assumed
+        to be taken on the local meridian.
 
         Parameters
         ----------
@@ -145,7 +148,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
 
         Returns
         -------
-        lsst.afw.image.VisitInfo
+        `lsst.afw.image.VisitInfo`
             VisitInfo for the exposure.
         """
         lsstLat = -30.244639*degrees
@@ -191,7 +194,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             self.assertFloatsAlmostEqual(shiftOld.getY(), shiftNew.getY(), rtol=1e-6, atol=1e-8)
 
     def testRotationAngle(self):
-        """Test that he sky rotation angle is consistently computed.
+        """Test that the sky rotation angle is consistently computed.
 
         The rotation is compared to pre-computed values.
         """
@@ -206,7 +209,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
         self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=1e-6*radians)
 
     def testConditionDcrModelNoChange(self):
-        """Conditioning should not change the model if it is identical to the reference.
+        """Conditioning should not change the model if it equals the reference.
 
         This additionally tests that the variance and mask planes do not change.
         """
@@ -217,7 +220,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase, DcrAssembleCoaddTask):
             self.assertMaskedImagesEqual(model, refModel)
 
     def testConditionDcrModelWithChange(self):
-        """Verify the effect of conditioning when the model changes by a known amount.
+        """Verify conditioning when the model changes by a known amount.
 
         This additionally tests that the variance and mask planes do not change.
         """

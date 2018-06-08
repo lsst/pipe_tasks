@@ -370,6 +370,15 @@ class AssembleCoaddTask(CoaddBaseTask):
         return retStruct
 
     def processResults(self, coaddExposure, dataRef):
+        """Interpolate over missing data and mask bright stars.
+
+        Parameters
+        ----------
+        coaddExposure : `lsst.afw.image.exposure.Exposure`
+            Description
+        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+            Butler dataRef for supplementary data.
+        """
         if self.config.doInterp:
             self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
             # The variance must be positive; work around for DM-3201.
@@ -491,13 +500,18 @@ class AssembleCoaddTask(CoaddBaseTask):
                                imageScalerList=imageScalerList)
 
     def prepareStats(self, mask=None):
-        """!
-        \brief Prepare the statistics for coadding images.
+        """Prepare the statistics for coadding images.
 
-        \param[in] mask: Mask to ignore when coadding
-        \return Tuple:
-        - statsCtrl: Statistics control object for coadd
-        - statsFlags: afwMath.Property object for statistic for coadd
+        Parameters
+        ----------
+        mask : None, optional
+            Mask to ignore when coadding
+
+        Returns
+        -------
+        `lsst.pipe.base.Struct`
+            - statsCtrl: Statistics control object for coadd
+            - statsFlags: afwMath.Property object for statistic for coadd
         """
         if mask is None:
             mask = self.getBadPixelMask()
@@ -516,7 +530,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, mask=None, supplementaryData=None):
-        """Assemble a coadd from input warps
+        """Assemble a coadd from input warps.
 
         Assemble the coadd using the provided list of coaddTempExps. Since
         the full coadd covers a patch (a large area), the assembly is
@@ -717,7 +731,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        maskedImage : lsst.afw.image.maskedImageF
+        maskedImage : `lsst.afw.image.maskedImage`
             The masked image to be modified.
         """
         mask = maskedImage.getMask()
@@ -737,9 +751,9 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        mask : lsst.afw.image.mask
+        mask : `lsst.afw.image.Mask`
             The target image for the coadd
-        statsCtrl : lsst.afw.math.StatisticsControl
+        statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
 
         Returns

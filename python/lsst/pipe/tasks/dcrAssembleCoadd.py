@@ -184,7 +184,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     @pipeBase.timeMethod
     def run(self, dataRef, selectDataList=[]):
-        """Assemble a coadd from a set of Warps.
+        """Assemble a coadd from a set of warps.
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and
         find scalings to match the photometric zeropoint to a reference Warp.
@@ -194,22 +194,23 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dataRef : lsst.daf.persistence.Butler.dataRef
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
             Data reference defining the patch for coaddition and the
             reference Warp
-        selectDataList : list, optional
-            List of data references to Warps. Data to be coadded will be
+        selectDataList : `list`, optional
+            List of data references to warps. Data to be coadded will be
             selected from this list based on overlap with the patch defined by
             dataRef.
 
         Returns
         -------
-        pipeBase.Struct
+        `lsst.pipe.base.Struct`
             The Struct contains the following fields:
-            - coaddExposure: coadded exposure
-            - nImage: exposure count image
-            - dcrCoadds: list of coadded exposures for each subfilter
-            - dcrNImages: list of exposure count images for each subfilter
+
+            - ``coaddExposure``: coadded exposure (`lsst.afw.image.Exposure`)
+            - ``nImage``: exposure count image (`lsst.afw.image.imageU`)
+            - ``dcrCoadds``: list of coadded exposures for each subfilter
+            - ``dcrNImages``: list of exposure count images for each subfilter
 
         """
         results = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList)
@@ -228,17 +229,17 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     def prepareDcrInputs(self, templateCoadd, tempExpRefList, weightList):
         """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
 
-        Sets the properties `filterInfo` and `bufferSize`.
+        Sets the properties ``filterInfo`` and ``bufferSize``.
 
         Parameters
         ----------
-        templateCoadd : lsst.afw.image.exposure.exposure.ExposureF
+        templateCoadd : `lsst.afw.image.ExposureF`
             The initial coadd exposure before accounting for DCR.
-        tempExpRefList : List of ButlerDataRefs
+        tempExpRefList : `list` of ButlerDataRefs
             The data references to the input warped exposures.
-        weightList : list of floats
+        weightList : `list` of floats
             The weight to give each input exposure in the coadd
-            Will be modified in place if `doAirmassWeight` is set.
+            Will be modified in place if ``doAirmassWeight`` is set.
         """
         self.filterInfo = templateCoadd.getFilter()
         tempExpName = self.getTempExpDatasetName(self.warpType)
@@ -251,7 +252,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrShifts.append(np.max(np.abs(self.dcrShiftCalculate(visitInfo,
                                                                   templateCoadd.getInfo().getWcs()))))
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
-        # Turn of the warping cache, since we set the linear interpolation length to the entire subregion
+        # Turn off the warping cache, since we set the linear interpolation length to the entire subregion
         warpCache = 0
         warpInterpLength = max(self.config.subregionSize)
         self.warpCtrl = afwMath.WarpingControl(self.config.imageWarpMethod,
@@ -262,8 +263,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                  supplementaryData=None):
         """Assemble the coadd.
 
-        Requires additional inputs Struct `supplementaryData` to contain a
-        `templateCoadd` that serves as the model of the static sky.
+        Requires additional inputs Struct ``supplementaryData`` to contain a
+        ``templateCoadd`` that serves as the model of the static sky.
 
         Find artifacts and apply them to the warps' masks creating a list of
         alternative masks with a new "CLIPPED" plane and updated "NO_DATA" plane
@@ -271,25 +272,28 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        skyInfo : lsst.skymap.discreteSkyMap.DiscreteSkyMap
+        skyInfo : `lsst.skymap.discreteSkyMap.DiscreteSkyMap`
             Patch geometry information, from getSkyInfo
-        tempExpRefList : List of ButlerDataRefs
+        tempExpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
             The data references to the input warped exposures.
-        imageScalerList : List of image scalers
+        imageScalerList : `list` of image scalers
             The image scalars correct for the zero point of the exposures.
-        weightList : list of floats
+        weightList : `list` of `float`
             The weight to give each input exposure in the coadd
-        supplementaryData : PipeBase.Struct
-            A templateCoadd constructed from the full band.
+        supplementaryData : `lsst.pipe.base.Struct`
+            Result struct returned by ``makeSupplementaryData`` with components:
+
+            - ``templateCoadd``: coadded exposure (`lsst.afw.image.Exposure`)
 
         Returns
         -------
-        pipeBase.Struct
-            The Struct contains the following fields:
-            - coaddExposure: coadded exposure
-            - nImage: exposure count image
-            - dcrCoadds: list of coadded exposures for each subfilter
-            - dcrNImages: list of exposure count images for each subfilter
+        `lsst.pipe.base.Struct`
+            The struct contains the following fields:
+
+            - ``coaddExposure``: coadded exposure (`lsst.afw.image.Exposure`)
+            - ``nImage``: exposure count image (`lsst.afw.image.imageU`)
+            - ``dcrCoadds``: `list` of coadded exposures for each subfilter
+            - ``dcrNImages``: `list` of exposure count images for each subfilter
         """
         templateCoadd = supplementaryData.templateCoadd
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
@@ -377,15 +381,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrNImages : list of list of lsst.afw.image.imageU
+        dcrNImages : `list` of `lsst.afw.image.imageU`
             List of exposure count images for each subfilter
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Bounding box of the patch to coadd.
-        tempExpRefList : List of ButlerDataRefs
+        tempExpRefList : `list` of ButlerDataRefs
             The data references to the input warped exposures.
-        spanSetMaskList : List of Dicts containing spanSet lists, or None
+        spanSetMaskList : `list` of `dict` containing spanSet lists, or None
             Each element is dict with keys = mask plane name to add the spans to
-        statsCtrl : lsst.afw.math.StatisticsControl
+        statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
         """
         dcrNImages = [afwImage.ImageU(skyInfo.bbox) for subfilter in range(self.config.dcrNumSubfilters)]
@@ -429,25 +433,25 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Bounding box of the subregion to coadd.
-        tempExpRefList : List of ButlerDataRefs
+        tempExpRefList : `list` of ButlerDataRefs
             The data references to the input warped exposures.
-        imageScalerList : List of image scalers
+        imageScalerList : `list` of image scalers
             The image scalars correct for the zero point of the exposures.
-        weightList : list of floats
+        weightList : `list` of `float`
             The weight to give each input exposure in the coadd
-        spanSetMaskList : List of Dicts containing spanSet lists, or None
+        spanSetMaskList : `list` of `dict` containing spanSet lists, or None
             Each element is dict with keys = mask plane name to add the spans to
-        statsFlags : lsst.afw.math.Property
+        statsFlags : `lsst.afw.math.Property`
             Statistics settings for coaddition.
-        statsCtrl : lsst.afw.math.StatisticsControl
+        statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
         convergenceMetric : `float`
             Quality of fit metric for the matched templates of the input images.
-        baseMask : lsst.afw.image.mask
+        baseMask : `lsst.afw.image.Mask`
             Mask of the initial template coadd.
         """
         bboxGrow = afwGeom.Box2I(bbox)
@@ -505,14 +509,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        residual : lsst.afw.image.maskedImageF
+        residual : `lsst.afw.image.maskedImageF`
             Stacked residual masked image after subtracting DCR-matched
             templates. To save memory, the residual is modified in-place.
-        oldModel : lsst.afw.image.maskedImageF
+        oldModel : `lsst.afw.image.maskedImageF`
             Description
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Sub-region to coadd
-        statsCtrl : lsst.afw.math.StatisticsControl
+        statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
 
         Returns
@@ -548,7 +552,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
         """
         if self.subfilterVariance is None:
@@ -566,13 +570,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter.
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Sub-region to coadd
-        mask : lsst.afw.image.mask
+        mask : `lsst.afw.image.Mask`
             Reference mask to use for all model planes.
-        statsCtrl : lsst.afw.math.StatisticsControl
+        statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
         """
         nModels = len(dcrModels)
@@ -597,11 +601,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        maskedImage : lsst.afw.image.maskedImageF
+        maskedImage : `lsst.afw.image.maskedImageF`
             The input image to evaluate the background noise properties.
-        statsCtrl : lsst.afw.math.StatisticsControl
+        statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
-        mask : lsst.afw.image.mask, Optional
+        mask : `lsst.afw.image.Mask`, Optional
             Optional alternate mask
 
         Returns
@@ -624,21 +628,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Sub-region to coadd
-        tempExpRefList : List of ButlerDataRefs
+        tempExpRefList : `list` of ButlerDataRefs
             The data references to the input warped exposures.
-        imageScalerList : List of image scalers
+        imageScalerList : `list` of image scalers
             The image scalars correct for the zero point of the exposures.
-        weightList : list of floats
+        weightList : `list` of `float`
             The weight to give each input exposure in the coadd
-        spanSetMaskList : List of Dicts containing spanSet lists, or None
+        spanSetMaskList : `list` of `dict` containing spanSet lists, or None
             Each element is dict with keys = mask plane name to add the spans to
-        statsFlags : lsst.afw.math.Property
+        statsFlags : `lsst.afw.math.Property`
             Statistics settings for coaddition.
-        statsCtrl : lsst.afw.math.StatisticsControl
+        statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
 
         Returns
@@ -679,11 +683,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        exposure : lsst.afw.image.exposure.exposure.ExposureF
+        exposure : `lsst.afw.image.exposure.ExposureF`
             The input warped exposure to evaluate.
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
-        significanceImage : `np.ndarray`
+        significanceImage : `numpy.ndarray`
             Array of weights for each pixel corresponding to its significance
             for the convergence calculation.
 
@@ -714,14 +718,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        coaddExposure : lsst.afw.image.exposure.exposure.ExposureF
+        coaddExposure : `lsst.afw.image.exposure.ExposureF`
             The target image for the coadd
         dcrNumSubfilters : `int`
             The number of subfilters to divide the coadd into.
 
         Returns
         -------
-        list of lsst.afw.image.maskedImageF
+        `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
         """
         maskedImage = coaddExposure.maskedImage.clone()
@@ -742,13 +746,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrCoadds : list of lsst.afw.image.exposure.exposure.ExposureF
+        dcrCoadds : `list` of `lsst.afw.image.exposure.ExposureF`
             A list of coadd exposures, each exposure containing
             the model for one subfilter.
 
         Returns
         -------
-        lsst.afw.image.exposure.exposure.ExposureF
+        `lsst.afw.image.exposure.ExposureF`
             A single coadd exposure that is the sum of the sub-bands.
         """
         coaddExposure = dcrCoadds[0].clone()
@@ -761,18 +765,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
-        skyInfo : lsst.skymap.discreteSkyMap.DiscreteSkyMap
-            Patch geometry information, from getSkyInfo
-        tempExpRefList : List of ButlerDataRefs
+        skyInfo : `lsst.skymap.discreteSkyMap.DiscreteSkyMap`
+            Patch geometry information, from ``getSkyInfo``
+        tempExpRefList : `list` of ButlerDataRefs
             The data references to the input warped exposures.
-        weightList : list of floats
+        weightList : `list` of `float`
             The weight to give each input exposure in the coadd
 
         Returns
         -------
-        list of lsst.afw.image.exposure.exposure.ExposureF
+        `list` of `lsst.afw.image.exposure.ExposureF`
             A list of coadd exposures, each exposure containing
             the model for one subfilter.
         """
@@ -792,21 +796,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        maskedImage : lsst.afw.image.maskedImageF
+        maskedImage : `lsst.afw.image.maskedImageF`
             The input masked image to shift.
-        dcr : lsst.afw.geom.Extent2I
-            Shift calculated with `dcrShiftCalculate`.
-        bbox : lsst.afw.geom.box.Box2I, optional
+        dcr : `lsst.afw.geom.Extent2I`
+            Shift calculated with ``calculateDcr``.
+        bbox : `lsst.afw.geom.box.Box2I`, optional
             Sub-region of the masked image to shift.
             Shifts the entire image if None.
-        useFFT : bool, optional
+        useFFT : `bool`, optional
             Perform the convolution with an FFT?
-        useInverse : bool, optional
-            Use the reverse of `dcr` for the shift.
+        useInverse : `bool`, optional
+            Use the reverse of ``dcr`` for the shift.
 
         Returns
         -------
-        lsst.afw.image.maskedImageF
+        `lsst.afw.image.maskedImageF`
             A masked image, with the pixels within the bounding box shifted.
 
         Raises
@@ -835,11 +839,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        oldDcrModels : list of lsst.afw.image.maskedImageF
+        oldDcrModels : `list` of `lsst.afw.image.maskedImageF`
             The models for each subfilter from the previous iteration.
-        newDcrModels : list of lsst.afw.image.maskedImageF
+        newDcrModels : `list` of `lsst.afw.image.maskedImageF`
             The models for each subfilter from the current iteration.
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Sub-region of the coadd
         gain : `float`, optional
             Additional weight to apply to the model from the current iteration.
@@ -856,14 +860,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        visitInfo : lsst.afw.image.VisitInfo
+        visitInfo : `lsst.afw.image.VisitInfo`
             Metadata for the exposure.
-        wcs : lsst.afw.geom.skyWcs.skyWcs.SkyWcs
+        wcs : `lsst.afw.geom.SkyWcs`
             Coordinate system definition (wcs) for the exposure.
 
         Returns
         -------
-        lsst.afw.geom.Extent2I
+        `lsst.afw.geom.Extent2I`
             The 2D shift due to DCR, in pixels.
         """
         rotation = self.calculateRotationAngle(visitInfo, wcs)
@@ -890,20 +894,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
-        visitInfo : lsst.afw.image.VisitInfo
+        visitInfo : `lsst.afw.image.VisitInfo`
             Metadata for the exposure.
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Sub-region of the coadd
-        wcs : lsst.afw.geom.skyWcs.skyWcs.SkyWcs
+        wcs : `lsst.afw.geom.SkyWcs`
             Coordinate system definition (wcs) for the exposure.
-        mask : lsst.afw.image.mask, optional
+        mask : `lsst.afw.image.Mask`, optional
             reference mask to use for the template image.
 
         Returns
         -------
-        lsst.afw.image.maskedImageF
+        `lsst.afw.image.maskedImageF`
             The DCR-matched template
         """
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
@@ -919,20 +923,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        dcrModels : list of lsst.afw.image.maskedImageF
+        dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter.
-        residual : lsst.afw.image.maskedImageF
-            The residual masked image for one exposure, after subtracting the matched template
-        visitInfo : lsst.afw.image.VisitInfo
+        residual : `lsst.afw.image.maskedImageF`
+            The residual masked image for one exposure,
+            after subtracting the matched template
+        visitInfo : `lsst.afw.image.VisitInfo`
             Metadata for the exposure.
-        bbox : lsst.afw.geom.box.Box2I
+        bbox : `lsst.afw.geom.box.Box2I`
             Sub-region of the coadd
-        wcs : lsst.afw.geom.skyWcs.skyWcs.SkyWcs
+        wcs : `lsst.afw.geom.SkyWcs`
             Coordinate system definition (wcs) for the exposure.
 
         Yields
         ------
-        lsst.afw.image.maskedImageF
+        `lsst.afw.image.maskedImageF`
             The residual image for the next subfilter, shifted for DCR.
         """
         dcrShift = self.dcrShiftCalculate(visitInfo, wcs)
@@ -944,14 +949,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        visitInfo : lsst.afw.image.VisitInfo
+        visitInfo : `lsst.afw.image.VisitInfo`
             Metadata for the exposure.
-        wcs : lsst.afw.geom.skyWcs.skyWcs.SkyWcs
+        wcs : `lsst.afw.geom.SkyWcs`
             Coordinate system definition (wcs) for the exposure.
 
         Returns
         -------
-        lsst.geom.Angle
+        `lsst.geom.Angle`
             The rotation of the image axis, East from North.
             Equal to the parallactic angle plus any additional rotation of the
             coordinate system.
@@ -971,7 +976,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Yields
         ------
-        Tuple of two `floats`
+        `tuple` of two `float`
             The next set of wavelength endpoints for a subfilter, in nm.
         """
         lambdaMin = self.filterInfo.getFilterProperty().getLambdaMin()
