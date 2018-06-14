@@ -278,6 +278,39 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             lowThreshold = templateImage/self.config.clampFrequency - noiseLevel
             self.assertTrue(np.all(model.image.array >= lowThreshold))
 
+    def testModelClamp(self):
+        """Test that large amplitude changes between iterations are restricted.
+
+        This also tests that noise-like pixels are not regularized.
+        """
+        seed = 5
+        rng = np.random.RandomState(seed)
+        self.config.modelClampFactor = 2.
+        self.config.dcrNumSubfilters = 1
+        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
+        oldModel = self.makeTestImages()[0]
+        xSize, ySize = self.bbox.getDimensions()
+        statsCtrl = afwMath.StatisticsControl()
+        residual = oldModel.clone()
+        residual.image.array[:] = rng.rand(ySize, xSize)*np.max(oldModel.image.array)
+        residualRef = residual.clone()
+
+        newModel = dcrAssembleCoaddTask.clampModel(residual, oldModel, self.bbox, statsCtrl)
+
+        # The mask and variance planes should be unchanged
+        self.assertFloatsEqual(newModel.mask.array, oldModel.mask.array)
+        self.assertFloatsEqual(newModel.variance.array, oldModel.variance.array)
+        # Make sure the test parameters do reduce the outliers
+        self.assertGreater(np.max(residualRef.image.array),
+                           np.max(newModel.image.array - oldModel.image.array))
+        # Check that all of the outliers are clipped
+        noiseLevel = dcrAssembleCoaddTask.calculateNoiseCutoff(oldModel, statsCtrl)
+        highThreshold = (oldModel.image.array*self.config.modelClampFactor +
+                         noiseLevel*self.config.regularizeSigma)
+        self.assertTrue(np.all(newModel.image.array <= highThreshold))
+        lowThreshold = oldModel.image.array/self.config.modelClampFactor - noiseLevel
+        self.assertTrue(np.all(newModel.image.array >= lowThreshold))
+
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
     pass
