@@ -398,31 +398,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         -------
         dcrNImages : `list` of `lsst.afw.image.imageU`
             List of exposure count images for each subfilter
-
-        Deleted Parameters
-        ------------------
         """
         dcrNImages = [afwImage.ImageU(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
-        subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
-        for subBBox in self._subBBoxIter(bbox, subregionSize):
-            bboxGrow = afwGeom.Box2I(subBBox)
-            bboxGrow.grow(self.bufferSize)
-            bboxGrow.clip(bbox)
-            subNImages = [afwImage.ImageU(bboxGrow) for subfilter in range(self.config.dcrNumSubfilters)]
-            tempExpName = self.getTempExpDatasetName(self.warpType)
-            for tempExpRef, altMaskSpans in zip(tempExpRefList, spanSetMaskList):
-                exposure = tempExpRef.get(tempExpName + "_sub", bbox=bboxGrow)
-                visitInfo = exposure.getInfo().getVisitInfo()
-                wcs = exposure.getInfo().getWcs()
-                mask = exposure.mask
-                if altMaskSpans is not None:
-                    self.applyAltMaskPlanes(mask, altMaskSpans)
-                dcrShift = self.calculateDcr(visitInfo, wcs)
-                for dcr, subNImage in zip(dcrShift, subNImages):
-                    shiftedImage = self.convolveDcrModelPlane(exposure.maskedImage, dcr, useInverse=True)
-                    subNImage.array[shiftedImage.mask.array & statsCtrl.getAndMask() == 0] += 1
-            for subfilter, subNImage in enumerate(subNImages):
-                dcrNImages[subfilter].assign(subNImage[subBBox, afwImage.PARENT], subBBox)
+        tempExpName = self.getTempExpDatasetName(self.warpType)
+        for tempExpRef, altMaskSpans in zip(tempExpRefList, spanSetMaskList):
+            exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
+            visitInfo = exposure.getInfo().getVisitInfo()
+            wcs = exposure.getInfo().getWcs()
+            mask = exposure.mask
+            if altMaskSpans is not None:
+                self.applyAltMaskPlanes(mask, altMaskSpans)
+            dcrShift = self.calculateDcr(visitInfo, wcs)
+            for dcr, dcrNImage in zip(dcrShift, dcrNImages):
+                shiftedImage = self.convolveDcrModelPlane(exposure.maskedImage, dcr, useInverse=True)
+                dcrNImage.array[shiftedImage.mask.array & statsCtrl.getAndMask() == 0] += 1
         return dcrNImages
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
