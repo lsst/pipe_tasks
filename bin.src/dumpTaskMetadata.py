@@ -58,7 +58,7 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
                 if any(name.endswith(timerSuffix) for timerSuffix in TimerSuffixList):
                     continue
 
-            data = taskMetadata.get(name)
+            data = taskMetadata.getArray(name)
             if isinstance(data, dafBase.PropertySet):
                 # this same data will come up again in nameList
                 continue

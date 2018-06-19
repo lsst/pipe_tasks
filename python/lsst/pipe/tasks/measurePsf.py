@@ -295,7 +295,7 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata,
                                                        flagKey=self.usedKey)
         self.log.info("PSF determination using %d/%d stars." %
-                      (self.metadata.get("numGoodStars"), self.metadata.get("numAvailStars")))
+                      (self.metadata.getScalar("numGoodStars"), self.metadata.getScalar("numAvailStars")))
 
         exposure.setPsf(psf)
 

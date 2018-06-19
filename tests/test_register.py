@@ -161,10 +161,10 @@ class RegisterTestCase(unittest.TestCase):
     def assertMetadata(self, outData, numRejected=0):
         """Assert that the registration task is populating the metadata"""
         metadata = outData.task.metadata
-        self.assertEqual(metadata.get("MATCH_NUM"), self.numSources)
-        self.assertAlmostEqual(metadata.get("SIP_RMS"), 0.0)
-        self.assertEqual(metadata.get("SIP_GOOD"), self.numSources-numRejected)
-        self.assertEqual(metadata.get("SIP_REJECTED"), numRejected)
+        self.assertEqual(metadata.getScalar("MATCH_NUM"), self.numSources)
+        self.assertAlmostEqual(metadata.getScalar("SIP_RMS"), 0.0)
+        self.assertEqual(metadata.getScalar("SIP_GOOD"), self.numSources-numRejected)
+        self.assertEqual(metadata.getScalar("SIP_REJECTED"), numRejected)
 
     def testRegister(self):
         """Test image registration"""

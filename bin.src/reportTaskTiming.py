@@ -168,7 +168,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
                     resInfo = ResourceInfo(taskName, self.log)
                     resourceDict[taskName] = resInfo
                 if resInfo.isValidName(itemName):
-                    resInfo.setItem(itemName, taskMetadata.get(name, True))
+                    resInfo.setItem(itemName, taskMetadata.getArray(name))
 
         for resourceInfo in resourceDict.values():
             resourceInfo.reportUsage()
