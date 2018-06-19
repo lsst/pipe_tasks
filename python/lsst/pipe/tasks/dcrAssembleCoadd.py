@@ -337,13 +337,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
             convergenceCheck = 1.
-            self.subfilterVariance = None
+            subfilterVariance = None
             while (convergenceCheck > self.config.convergenceThreshold or
                    modelIter < self.config.minNumIter):
                 try:
                     self.dcrAssembleSubregion(subBandImages, subBBox, tempExpRefList, imageScalerList,
                                               weightList, spanSetMaskList, stats.flags, stats.ctrl,
-                                              convergenceMetric, baseMask)
+                                              convergenceMetric, baseMask, subfilterVariance)
                     if self.config.useConvergence:
                         convergenceMetric = self.calculateConvergence(subBandImages, subBBox, tempExpRefList,
                                                                       imageScalerList, weightList,
@@ -426,7 +426,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return dcrNImages
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
-                             spanSetMaskList, statsFlags, statsCtrl, convergenceMetric, baseMask):
+                             spanSetMaskList, statsFlags, statsCtrl, convergenceMetric,
+                             baseMask, subfilterVariance):
         """Assemble the DCR coadd for a sub-region.
 
         Build a DCR-matched template for each input exposure, then shift the
@@ -463,6 +464,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Quality of fit metric for the matched templates of the input images.
         baseMask : `lsst.afw.image.Mask`
             Mask of the initial template coadd.
+        subfilterVariance : `list` of `numpy.ndarray`
+            The variance of each coadded subfilter image.
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
@@ -486,7 +489,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.removeMaskPlanes:
                 self.removeMaskPlanes(maskedImage)
             maskedImage -= templateImage
-            residualGeneratorList.append(self.dcrResiduals(dcrModels, maskedImage, visitInfo, bboxGrow, wcs))
+            residualGeneratorList.append(self.dcrResiduals(maskedImage, visitInfo, bboxGrow, wcs))
         dcrSubModelOut = []
         with self.timer("stack"):
             for oldModel in dcrModels:
@@ -496,7 +499,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 residual.setXY0(bboxGrow.getBegin())
                 newModel = self.clampModel(residual, oldModel, bboxGrow, statsCtrl)
                 dcrSubModelOut.append(newModel)
-        self.setModelVariance(dcrSubModelOut)
+        self.setModelVariance(dcrSubModelOut, subfilterVariance)
         self.regularizeModel(dcrSubModelOut, bboxGrow, baseMask, statsCtrl)
         if self.config.doWeightGain:
             convergenceMetricNew = self.calculateConvergence(dcrSubModelOut, bbox, tempExpRefList,
@@ -553,7 +556,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         newImage[clampPixels & ~highPixels] = oldImage[clampPixels & ~highPixels]/self.config.modelClampFactor
         return newModel
 
-    def setModelVariance(self, dcrModels):
+    def setModelVariance(self, dcrModels, subfilterVariance=None):
         """Set the subfilter variance planes from the first iteration's results.
 
         We are not solving for the variance, so we need to shift the variance
@@ -564,11 +567,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         dcrModels : `list` of `lsst.afw.image.maskedImageF`
             A list of masked images, each containing the model for one subfilter
+        subfilterVariance : `list` of `numpy.ndarray`
+            The variance of each coadded subfilter image.
         """
-        if self.subfilterVariance is None:
-            self.subfilterVariance = [mi.variance.array for mi in dcrModels]
+        if subfilterVariance is None:
+            subfilterVariance = [mi.variance.array for mi in dcrModels]
         else:
-            for mi, variance in zip(dcrModels, self.subfilterVariance):
+            for mi, variance in zip(dcrModels, subfilterVariance):
                 mi.variance.array[:] = variance
 
     def regularizeModel(self, dcrModels, bbox, mask, statsCtrl):
@@ -621,7 +626,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         -------
         float
             The threshold value to treat pixels as noise in an image,
-            set by self.config.regularizeSigma.
+            set by ``self.config.regularizeSigma``.
         """
         convergeMask = maskedImage.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         if mask is None:
@@ -695,6 +700,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         significanceImage : `numpy.ndarray`
             Array of weights for each pixel corresponding to its significance
             for the convergence calculation.
+        statsCtrl : `lsst.afw.math.StatisticsControl`
+            Statistics control object for coadd
+        altMaskSpans : `dict` containing spanSet lists, or None
+            The keys of the `dict` equal the mask plane name to add the spans to
 
         Returns
         -------
@@ -921,13 +930,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             templateImage.setMask(mask[bbox, afwImage.PARENT])
         return templateImage
 
-    def dcrResiduals(self, dcrModels, residual, visitInfo, bbox, wcs):
+    def dcrResiduals(self, residual, visitInfo, bbox, wcs):
         """Prepare a residual image for stacking in each subfilter by applying the reverse DCR shifts.
 
         Parameters
         ----------
-        dcrModels : `list` of `lsst.afw.image.maskedImageF`
-            A list of masked images, each containing the model for one subfilter.
         residual : `lsst.afw.image.maskedImageF`
             The residual masked image for one exposure,
             after subtracting the matched template
