@@ -120,11 +120,10 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
         @param datasetType: datasetType of metadata (or any object that supports get(name))
         @return a list of dicts of metadata:
         - each entry in the list corresponds to a dataRef in dataRefList
-        - each dict contains name: item of metadata, for each name in nameList;
-            numeric and string values will be returned as arrays
+        - each dict contains name: item of metadata, for each name in nameList
         """
         valList = []
         for dataRef in dataRefList:
-            metadata = dataRef.getArray(datasetType=datasetType)
+            metadata = dataRef.get(datasetType=datasetType)
             valList.append(dict((name, metadata.get(name)) for name in nameList))
         return valList
