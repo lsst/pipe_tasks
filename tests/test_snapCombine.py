@@ -164,11 +164,13 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         resMetadata = resExp.getMetadata()
 
         for key in sameKeys:
-            self.assertEqual(resMetadata.get(key), metadata0.get(key))
+            self.assertEqual(resMetadata.getScalar(key), metadata0.getScalar(key))
         for key in avgKeys:
-            self.assertAlmostEqual(resMetadata.get(key), ((metadata0.get(key) + metadata1.get(key)) / 2.0))
+            self.assertAlmostEqual(resMetadata.getScalar(key),
+                                   (metadata0.getScalar(key) + metadata1.getScalar(key)) / 2.0)
         for key in sumKeys:
-            self.assertAlmostEqual(resMetadata.get(key), (metadata0.get(key) + metadata1.get(key)))
+            self.assertAlmostEqual(resMetadata.getScalar(key),
+                                   metadata0.getScalar(key) + metadata1.getScalar(key))
         for key in miss1Keys:
             self.assertFalse(resMetadata.exists(key))
 

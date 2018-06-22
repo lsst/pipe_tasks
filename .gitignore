@@ -6,6 +6,7 @@
 pytest_session.txt
 .cache
 .pytest_cache
+.coverage
 /*.fits
 *_wrap.cc
 *Lib.py
@@ -26,6 +27,7 @@ bin/assembleCoadd.py
 bin/calibrate.py
 bin/characterizeImage.py
 bin/detectCoaddSources.py
+bin/detectDcrCoaddSources.py
 bin/dumpTaskMetadata.py
 bin/imageDifference.py
 bin/imageDifferenceWinter2013.py
@@ -37,8 +39,11 @@ bin/makeDiscreteSkyMap.py
 bin/makeSkyMap.py
 bin/matchBackgrounds.py
 bin/measureCoaddSources.py
+bin/measureDcrCoaddSources.py
 bin/mergeCoaddDetections.py
+bin/mergeDcrCoaddDetections.py
 bin/mergeCoaddMeasurements.py
+bin/mergeDcrCoaddMeasurements.py
 bin/processCcd.py
 bin/processCoadd.py
 bin/processDonut.py

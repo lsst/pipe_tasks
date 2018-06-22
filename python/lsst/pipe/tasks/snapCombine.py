@@ -305,8 +305,8 @@ class SnapCombineTask(pipeBase.Task):
         for key, doAvg in keyDoAvgList:
             opStr = "average" if doAvg else "sum"
             try:
-                val0 = metadata0.get(key)
-                val1 = metadata1.get(key)
+                val0 = metadata0.getScalar(key)
+                val1 = metadata1.getScalar(key)
             except Exception:
                 self.log.warn("Could not %s metadata %r: missing from one or both exposures" % (opStr, key,))
                 continue

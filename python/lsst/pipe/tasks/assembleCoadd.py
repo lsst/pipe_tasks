@@ -815,7 +815,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             if not md.exists(k):
                 self.log.warn("Expected to see %s in metadata", k)
             else:
-                if md.get(k) != dataId[k]:
+                if md.getScalar(k) != dataId[k]:
                     self.log.warn("Expected to see %s == %s in metadata, saw %s", k, md.get(k), dataId[k])
 
         mask = exposure.getMaskedImage().getMask()

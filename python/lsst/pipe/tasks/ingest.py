@@ -90,7 +90,7 @@ class ParseTask(Task):
         """
         try:
             # This returns a tuple
-            ext = md.get("EXTNAME")
+            ext = md.getScalar("EXTNAME")
             return ext[1]
         except lsst.pex.exceptions.Exception:
             return None
@@ -113,7 +113,7 @@ class ParseTask(Task):
             info = {}
         for p, h in self.config.translation.items():
             if md.exists(h):
-                value = md.get(h)
+                value = md.getScalar(h)
                 if isinstance(value, str):
                     value = value.strip()
                 info[p] = value
@@ -138,7 +138,7 @@ class ParseTask(Task):
         Besides being an example of a translator, this is also generally useful.
         It will only be used if listed as a translator in the configuration.
         """
-        date = md.get("DATE-OBS").strip()
+        date = md.getScalar("DATE-OBS").strip()
         c = date.find("T")
         if c > 0:
             date = date[:c]
@@ -150,7 +150,7 @@ class ParseTask(Task):
         Besides being an example of a translator, this is also generally useful.
         It will only be used if listed as a translator in the configuration.
         """
-        filterName = md.get("FILTER").strip()
+        filterName = md.getScalar("FILTER").strip()
         filterName = filterName.strip()
         c = filterName.find(" ")
         if c > 0:

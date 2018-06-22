@@ -27,7 +27,7 @@ class CalibsParseTask(ParseTask):
         if not md.exists("OBSTYPE"):
             raise RuntimeError("Unable to find the required header keyword OBSTYPE in %s, hdu %d" %
                                (filename, self.config.hdu))
-        obstype = md.get("OBSTYPE").strip().lower()
+        obstype = md.getScalar("OBSTYPE").strip().lower()
         if "flat" in obstype:
             obstype = "flat"
         elif "zero" in obstype or "bias" in obstype:
