@@ -741,7 +741,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             except Exception as e:
                 self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.args[0])
 
-    def setRejectedMaskMapping(self, statsCtrl):
+    @staticmethod
+    def setRejectedMaskMapping(statsCtrl):
         """Map certain mask planes of the warps to new planes for the coadd.
 
         If a pixel is rejected due to a mask value other than EDGE, NO_DATA,
