@@ -30,10 +30,10 @@ import lsst.afw.math as afwMath
 from lsst.geom import arcseconds, degrees, radians
 from lsst.meas.algorithms.testUtils import plantSources
 import lsst.utils.tests
-from lsst.pipe.tasks.dcrAssembleCoadd import DcrModel, calculateDcr, calculateRotationAngle
+from lsst.pipe.tasks.dcrModel import DcrModel, calculateDcr, calculateRotationAngle
 
 
-class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
+class DcrModelTestTask(lsst.utils.tests.TestCase):
     """A test case for the DCR-aware image coaddition algorithm.
 
     Attributes
