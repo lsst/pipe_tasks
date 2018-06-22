@@ -35,7 +35,7 @@ __all__ = ["DcrModel", "applyDcr", "calculateDcr", "calculateRotationAngle"]
 class DcrModel(object):
 
     """Summary
-    
+
     Attributes
     ----------
     dcrNumSubfilters : TYPE
@@ -45,11 +45,11 @@ class DcrModel(object):
     modelImages : `list` of `lsst.afw.image.maskedImageF`
         A list of masked images, each containing the model for one subfilter
     """
-    
+
     def __init__(self, dcrNumSubfilters, coaddExposure=None, modelImages=None,
                  filterInfo=None):
         """Divide a coadd into equal subfilter coadds.
-        
+
         Parameters
         ----------
         dcrNumSubfilters : TYPE
@@ -60,7 +60,7 @@ class DcrModel(object):
             Description
         filterInfo : None, optional
             Description
-        
+
         Raises
         ------
         ValueError
@@ -92,14 +92,14 @@ class DcrModel(object):
 
     def getImage(self, subfilter, bbox=None):
         """Summary
-        
+
         Parameters
         ----------
         subfilter : TYPE
             Description
         bbox : None, optional
             Description
-        
+
         Returns
         -------
         TYPE
@@ -110,12 +110,12 @@ class DcrModel(object):
 
     def getReferenceImage(self, bbox=None):
         """Summary
-        
+
         Parameters
         ----------
         bbox : None, optional
             Description
-        
+
         Returns
         -------
         TYPE
@@ -126,7 +126,7 @@ class DcrModel(object):
 
     def assign(self, dcrSubModel, bbox):
         """Summary
-        
+
         Parameters
         ----------
         dcrSubModel : TYPE
@@ -139,11 +139,11 @@ class DcrModel(object):
 
     def setModelVariance(self, dcrModels, subfilterVariance=None):
         """Set the subfilter variance planes from the first iteration's results.
-        
+
         We are not solving for the variance, so we need to shift the variance
         plane only once. Otherwise, regions with high variance will bleed into
         neighboring pixels with each successive iteration.
-        
+
         Parameters
         ----------
         dcrModels : `list` of `lsst.afw.image.maskedImageF`
@@ -159,7 +159,7 @@ class DcrModel(object):
 
     def buildMatchedTemplate(self, warpCtrl, exposure=None, visitInfo=None, bbox=None, wcs=None, mask=None):
         """Create a DCR-matched template for an exposure.
-        
+
         Parameters
         ----------
         warpCtrl : TYPE
@@ -175,12 +175,12 @@ class DcrModel(object):
             Coordinate system definition (wcs) for the exposure.
         mask : `lsst.afw.image.Mask`, optional
             reference mask to use for the template image.
-        
+
         Returns
         -------
         `lsst.afw.image.maskedImageF`
             The DCR-matched template
-        
+
         Raises
         ------
         ValueError
@@ -202,7 +202,7 @@ class DcrModel(object):
 
     def conditionDcrModel(self, subfilter, newModel, bbox, gain=1.):
         """Average two iterations' solutions to reduce oscillations.
-        
+
         Parameters
         ----------
         subfilter : TYPE
@@ -213,7 +213,7 @@ class DcrModel(object):
             Sub-region of the coadd
         gain : `float`, optional
             Additional weight to apply to the model from the current iteration.
-        
+
         Deleted Parameters
         ------------------
         newDcrModels : `list` of `lsst.afw.image.maskedImageF`
@@ -230,7 +230,7 @@ class DcrModel(object):
     def clampModel(self, subfilter, newModel, bbox, statsCtrl, regularizeSigma, modelClampFactor,
                    convergenceMaskPlanes=None):
         """Restrict large variations in the model between iterations.
-        
+
         Parameters
         ----------
         subfilter : TYPE
@@ -252,7 +252,7 @@ class DcrModel(object):
         ------------------
         lsst.afw.image.maskedImageF
             The sum of the oldModel and residual, with extreme values clipped.
-        
+
         Deleted Parameters
         ------------------
         residual : `lsst.afw.image.maskedImageF`
@@ -284,11 +284,11 @@ class DcrModel(object):
     def regularizeModel(self, bbox, mask, statsCtrl, regularizeSigma, clampFrequency,
                         convergenceMaskPlanes=None):
         """Restrict large variations in the model between subfilters.
-        
+
         Any flux subtracted by the restriction is accumulated from all
         subfilters, and divided evenly to each afterwards in order to preserve
         total flux.
-        
+
         Parameters
         ----------
         bbox : `lsst.afw.geom.box.Box2I`
@@ -324,7 +324,7 @@ class DcrModel(object):
     def calculateNoiseCutoff(self, maskedImage, statsCtrl, regularizeSigma, mask=None,
                              convergenceMaskPlanes=None):
         """Helper function to calculate the background noise level of an image.
-        
+
         Parameters
         ----------
         maskedImage : `lsst.afw.image.maskedImageF`
@@ -357,7 +357,7 @@ class DcrModel(object):
 
 def applyDcr(maskedImage, dcr, warpCtrl, bbox=None, useInverse=False):
     """Shift a masked image.
-    
+
     Parameters
     ----------
     maskedImage : `lsst.afw.image.maskedImageF`
@@ -371,12 +371,12 @@ def applyDcr(maskedImage, dcr, warpCtrl, bbox=None, useInverse=False):
         Shifts the entire image if None.
     useInverse : `bool`, optional
         Use the reverse of ``dcr`` for the shift.
-    
+
     Returns
     -------
     `lsst.afw.image.maskedImageF`
         A masked image, with the pixels within the bounding box shifted.
-    
+
     Deleted Parameters
     ------------------
     useFFT : `bool`, optional
@@ -394,7 +394,7 @@ def applyDcr(maskedImage, dcr, warpCtrl, bbox=None, useInverse=False):
 
 def calculateDcr(visitInfo, wcs, filterInfo, dcrNumSubfilters):
     """Calculate the shift in pixels of an exposure due to DCR.
-    
+
     Parameters
     ----------
     visitInfo : `lsst.afw.image.VisitInfo`
@@ -405,7 +405,7 @@ def calculateDcr(visitInfo, wcs, filterInfo, dcrNumSubfilters):
         Description
     dcrNumSubfilters : TYPE
         Description
-    
+
     Returns
     -------
     `lsst.afw.geom.Extent2I`
@@ -433,14 +433,14 @@ def calculateDcr(visitInfo, wcs, filterInfo, dcrNumSubfilters):
 
 def calculateRotationAngle(visitInfo, wcs):
     """Calculate the sky rotation angle of an exposure.
-    
+
     Parameters
     ----------
     visitInfo : `lsst.afw.image.VisitInfo`
         Metadata for the exposure.
     wcs : `lsst.afw.geom.SkyWcs`
         Coordinate system definition (wcs) for the exposure.
-    
+
     Returns
     -------
     `lsst.geom.Angle`
@@ -461,14 +461,14 @@ def calculateRotationAngle(visitInfo, wcs):
 
 def wavelengthGenerator(filterInfo, dcrNumSubfilters):
     """Iterate over the wavelength endpoints of subfilters.
-    
+
     Parameters
     ----------
     filterInfo : TYPE
         Description
     dcrNumSubfilters : TYPE
         Description
-    
+
     Yields
     ------
     `tuple` of two `float`
