@@ -33,7 +33,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
 
-__all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig", "DcrModel"]
+__all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig", "DcrModel",
+           "applyDcr", "calculateDcr", "calculateRotationAngle"]
 
 
 class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
@@ -333,7 +334,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         stats = self.prepareStats(mask=badPixelMask)
         dcrModels = self.prepareDcrInputs(templateCoadd, tempExpRefList, weightList)
         if self.config.doNImage:
-            dcrNImages = self.calculateNImage(dcrModels, skyInfo.bbox, tempExpRefList, spanSetMaskList, stats.ctrl)
+            dcrNImages = self.calculateNImage(dcrModels, skyInfo.bbox,
+                                              tempExpRefList, spanSetMaskList, stats.ctrl)
             nImage = afwImage.ImageU(skyInfo.bbox)
             # Note that this nImage will be a factor of dcrNumSubfilters higher than
             # the nImage returned by assembleCoadd for most pixels. This is because each
@@ -740,7 +742,7 @@ class DcrModel(object):
         Description
     """
     
-    def __init__(self, dcrNumSubfilters, coaddExposure=None, dcrModels=None,
+    def __init__(self, dcrNumSubfilters, coaddExposure=None, modelImages=None,
                  clampFrequency=None, modelClampFactor=None,
                  regularizeSigma=None, convergenceMaskPlanes=None,
                  warpCtrl=None, filterInfo=None):
@@ -752,7 +754,7 @@ class DcrModel(object):
             Description
         coaddExposure : `lsst.afw.image.exposure.ExposureF`
             The target image for the coadd
-        dcrModels : None, optional
+        modelImages : None, optional
             Description
         clampFrequency : None, optional
             Description
@@ -768,7 +770,7 @@ class DcrModel(object):
         Raises
         ------
         ValueError
-            If neither ``dcrModels`` or ``coaddExposure`` are set.
+            If neither ``modelImages`` or ``coaddExposure`` are set.
         """
         self.dcrNumSubfilters = dcrNumSubfilters
         self.clampFrequency = clampFrequency
@@ -777,8 +779,8 @@ class DcrModel(object):
         self.convergenceMaskPlanes = convergenceMaskPlanes
         self.warpCtrl = warpCtrl
         self.filterInfo = filterInfo
-        if dcrModels is not None:
-            self.modelImages = dcrModels
+        if modelImages is not None:
+            self.modelImages = modelImages
         elif coaddExposure is not None:
             maskedImage = coaddExposure.maskedImage.clone()
             # NANs will potentially contaminate the entire image,
@@ -933,14 +935,15 @@ class DcrModel(object):
             self.clampModel(newModel, oldModel, bbox, statsCtrl)
             self.conditionDcrModel(newModel, oldModel, bbox, gain=1.)
             newDcrModels.append(newModel)
-        return DcrModel(self.dcrNumSubfilters, dcrModels=newDcrModels,
+        return DcrModel(self.dcrNumSubfilters, modelImages=newDcrModels,
                         clampFrequency=self.clampFrequency,
                         modelClampFactor=self.modelClampFactor,
                         regularizeSigma=self.regularizeSigma,
                         convergenceMaskPlanes=self.convergenceMaskPlanes,
                         filterInfo=self.filterInfo)
 
-    def conditionDcrModel(self, newModel, oldModel, bbox, gain=1.):
+    @staticmethod
+    def conditionDcrModel(newModel, oldModel, bbox, gain=1.):
         """Average two iterations' solutions to reduce oscillations.
         
         Parameters

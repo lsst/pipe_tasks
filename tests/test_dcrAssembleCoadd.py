@@ -30,7 +30,7 @@ import lsst.afw.math as afwMath
 from lsst.geom import arcseconds, degrees, radians
 from lsst.meas.algorithms.testUtils import plantSources
 import lsst.utils.tests
-from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCoaddConfig
+from lsst.pipe.tasks.dcrAssembleCoadd import DcrModel, calculateDcr, calculateRotationAngle
 
 
 class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
@@ -43,10 +43,8 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
     bufferSize : `int`
         Distance from the inner edge of the bounding box
         to avoid placing test sources in the model images.
-    config : `lsst.pipe.tasks.dcrAssembleCoadd.DcrAssembleCoaddConfig`
-        Configuration parameters to initialize the task.
-    filterInfo : `lsst.afw.image.Filter`
-        Dummy filter object for testing.
+    dcrNumSubfilters : int
+        Number of sub-filters used to model chromatic effects within a band.
     mask : `lsst.afw.image.Mask`
         Reference mask of the unshifted model.
     """
@@ -54,15 +52,11 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
     def setUp(self):
         """Define the filter, DCR parameters, and the bounding box for the tests.
         """
-        self.config = DcrAssembleCoaddConfig()
-        self.config.dcrNumSubfilters = 3
-        lambdaEff = 476.31  # Use LSST g band values for the test.
-        lambdaMin = 405
-        lambdaMax = 552
-        afwImage.utils.defineFilter("gTest", lambdaEff, lambdaMin=lambdaMin, lambdaMax=lambdaMax)
+        self.dcrNumSubfilters = 3
+        self.lambdaEff = 476.31  # Use LSST g band values for the test.
+        self.lambdaMin = 405
+        self.lambdaMax = 552
         self.bufferSize = 5
-        badMaskPlanes = self.config.badMaskPlanes[:]
-        badMaskPlanes.append("CLIPPED")
         xSize = 40
         ySize = 42
         x0 = 12345
@@ -74,7 +68,7 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         Returns
         -------
-        dcrModels : `list` of `lsst.afw.image.maskedImage`
+        modelImages : `list` of `lsst.afw.image.maskedImage`
             A list of masked images, each containing the model for one subfilter
         """
         seed = 5
@@ -89,10 +83,10 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
         xSize, ySize = self.bbox.getDimensions()
         xLoc = rng.rand(nSrc)*(xSize - 2*self.bufferSize) + self.bufferSize + x0
         yLoc = rng.rand(nSrc)*(ySize - 2*self.bufferSize) + self.bufferSize + y0
-        dcrModels = []
+        modelImages = []
 
         imageSum = np.zeros((ySize, xSize))
-        for subfilter in range(self.config.dcrNumSubfilters):
+        for subfilter in range(self.dcrNumSubfilters):
             flux = (rng.rand(nSrc)*(fluxRange - 1.) + 1.)*sourceSigma*noiseLevel
             sigmas = [psfSize for src in range(nSrc)]
             coordList = list(zip(xLoc, yLoc, flux, sigmas))
@@ -100,13 +94,13 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
             model.image.array += rng.rand(ySize, xSize)*noiseLevel
             imageSum += model.image.array
             model.mask.addMaskPlane("CLIPPED")
-            dcrModels.append(model.maskedImage)
+            modelImages.append(model.maskedImage)
         maskVals = np.zeros_like(imageSum)
         maskVals[imageSum > detectionSigma*noiseLevel] = afwImage.Mask.getPlaneBitMask('DETECTED')
-        for model in dcrModels:
+        for model in modelImages:
             model.mask.array[:] = maskVals
-        self.mask = dcrModels[0].mask
-        return dcrModels
+        self.mask = modelImages[0].mask
+        return modelImages
 
     def makeDummyWcs(self, rotAngle, pixelScale, crval):
         """Make a World Coordinate System object for testing.
@@ -176,15 +170,17 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         The shift is compared to pre-computed values.
         """
-        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
-        dcrAssembleCoaddTask.filterInfo = afwImage.Filter("gTest")
+        dcrNumSubfilters = 3
+        afwImage.utils.defineFilter("gTest", self.lambdaEff,
+                                    lambdaMin=self.lambdaMin, lambdaMax=self.lambdaMax)
+        filterInfo = afwImage.Filter("gTest")
         rotAngle = 0.*radians
         azimuth = 30.*degrees
         elevation = 65.*degrees
         pixelScale = 0.2*arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(rotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        dcrShift = dcrAssembleCoaddTask.calculateDcr(visitInfo, wcs)
+        dcrShift = calculateDcr(visitInfo, wcs, filterInfo, dcrNumSubfilters)
         refShift = [afwGeom.Extent2D(-0.5363512808, -0.3103517169),
                     afwGeom.Extent2D(0.001887293861, 0.001092054612),
                     afwGeom.Extent2D(0.3886592703, 0.2248919247)]
@@ -197,14 +193,13 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         The rotation is compared to pre-computed values.
         """
-        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
         cdRotAngle = 0.*radians
         azimuth = 130.*afwGeom.degrees
         elevation = 70.*afwGeom.degrees
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(cdRotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        rotAngle = dcrAssembleCoaddTask.calculateRotationAngle(visitInfo, wcs)
+        rotAngle = calculateRotationAngle(visitInfo, wcs)
         refAngle = -0.9344289857053072*radians
         self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=1e-6*radians)
 
@@ -213,11 +208,11 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
-        dcrModels = self.makeTestImages()
-        refModels = [model.clone() for model in dcrModels]
-        dcrAssembleCoaddTask.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
-        for model, refModel in zip(dcrModels, refModels):
+        modelImages = self.makeTestImages()
+
+        refModels = [model.clone() for model in modelImages]
+        for model, refModel in zip(modelImages, refModels):
+            DcrModel.conditionDcrModel(model, refModel, self.bbox, gain=1.)
             self.assertMaskedImagesEqual(model, refModel)
 
     def testConditionDcrModelWithChange(self):
@@ -225,13 +220,12 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
-        dcrModels = self.makeTestImages()
-        refModels = [model.clone() for model in dcrModels]
-        for model in dcrModels:
+        modelImages = self.makeTestImages()
+        refModels = [model.clone() for model in modelImages]
+        for model in modelImages:
             model.image.array[:] *= 3.
-        dcrAssembleCoaddTask.conditionDcrModel(refModels, dcrModels, self.bbox, gain=1.)
-        for model, refModel in zip(dcrModels, refModels):
+        for model, refModel in zip(modelImages, refModels):
+            DcrModel.conditionDcrModel(model, refModel, self.bbox, gain=1.)
             refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(model, refModel)
 
@@ -240,14 +234,15 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         This also tests that noise-like pixels are not regularized.
         """
-        self.config.regularizeSigma = 1.
-        self.config.clampFrequency = 3.
-        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
-        dcrModels = self.makeTestImages()
+        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages(),
+                             regularizeSigma=1.,
+                             clampFrequency=3.,
+                             convergenceMaskPlanes=["DETECTED", ])
         statsCtrl = afwMath.StatisticsControl()
-        modelRefs = [model.clone() for model in dcrModels]
-        dcrAssembleCoaddTask.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
-        for model, modelRef in zip(dcrModels, modelRefs):
+        modelRefs = [model.clone() for model in dcrModels.modelImages]
+        mask = modelRefs[0].mask
+        dcrModels.regularizeModel(self.bbox, mask, statsCtrl)
+        for model, modelRef in zip(dcrModels.modelImages, modelRefs):
             self.assertMaskedImagesEqual(model, modelRef)
 
     def testRegularizationSmallClamp(self):
@@ -255,27 +250,28 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         This also tests that noise-like pixels are not regularized.
         """
-        self.config.regularizeSigma = 1.
-        self.config.clampFrequency = 1.1
-        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
-        dcrModels = self.makeTestImages()
+        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages(),
+                             regularizeSigma=1.,
+                             clampFrequency=1.1,
+                             convergenceMaskPlanes=["DETECTED", ])
         statsCtrl = afwMath.StatisticsControl()
-        modelRefs = [model.clone() for model in dcrModels]
+        modelRefs = [model.clone() for model in dcrModels.modelImages]
+        mask = modelRefs[0].mask
         templateImage = np.mean([model[self.bbox, afwImage.PARENT].image.array
-                                 for model in dcrModels], axis=0)
+                                 for model in dcrModels.modelImages], axis=0)
 
-        dcrAssembleCoaddTask.regularizeModel(dcrModels, self.bbox, self.mask, statsCtrl)
-        for model, modelRef in zip(dcrModels, modelRefs):
-            noiseLevel = dcrAssembleCoaddTask.calculateNoiseCutoff(modelRef, statsCtrl)
+        dcrModels.regularizeModel(self.bbox, mask, statsCtrl)
+        for model, modelRef in zip(dcrModels.modelImages, modelRefs):
+            noiseLevel = dcrModels.calculateNoiseCutoff(modelRef, statsCtrl)
             # The mask and variance planes should be unchanged
             self.assertFloatsEqual(model.mask.array, modelRef.mask.array)
             self.assertFloatsEqual(model.variance.array, modelRef.variance.array)
             # Make sure the test parameters do reduce the outliers
             self.assertGreater(np.max(modelRef.image.array - templateImage),
                                np.max(model.image.array - templateImage))
-            highThreshold = templateImage*self.config.clampFrequency + noiseLevel*self.config.regularizeSigma
+            highThreshold = templateImage*dcrModels.clampFrequency + noiseLevel*dcrModels.regularizeSigma
             self.assertTrue(np.all(model.image.array <= highThreshold))
-            lowThreshold = templateImage/self.config.clampFrequency - noiseLevel
+            lowThreshold = templateImage/dcrModels.clampFrequency - noiseLevel
             self.assertTrue(np.all(model.image.array >= lowThreshold))
 
     def testModelClamp(self):
@@ -283,32 +279,33 @@ class DcrAssembleCoaddTestTask(lsst.utils.tests.TestCase):
 
         This also tests that noise-like pixels are not regularized.
         """
+        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages(),
+                             regularizeSigma=3.,
+                             modelClampFactor=2.,
+                             convergenceMaskPlanes=["DETECTED", ])
         seed = 5
         rng = np.random.RandomState(seed)
-        self.config.modelClampFactor = 2.
-        self.config.dcrNumSubfilters = 1
-        dcrAssembleCoaddTask = DcrAssembleCoaddTask(self.config)
-        oldModel = self.makeTestImages()[0]
+        oldModel = dcrModels.modelImages[0]
         xSize, ySize = self.bbox.getDimensions()
         statsCtrl = afwMath.StatisticsControl()
-        residual = oldModel.clone()
-        residual.image.array[:] = rng.rand(ySize, xSize)*np.max(oldModel.image.array)
-        residualRef = residual.clone()
+        newModel = oldModel.clone()
+        newModel.image.array[:] += rng.rand(ySize, xSize)*np.max(oldModel.image.array)
+        newModelRef = newModel.clone()
 
-        newModel = dcrAssembleCoaddTask.clampModel(residual, oldModel, self.bbox, statsCtrl)
+        dcrModels.clampModel(newModel, oldModel, self.bbox, statsCtrl)
 
         # The mask and variance planes should be unchanged
         self.assertFloatsEqual(newModel.mask.array, oldModel.mask.array)
         self.assertFloatsEqual(newModel.variance.array, oldModel.variance.array)
         # Make sure the test parameters do reduce the outliers
-        self.assertGreater(np.max(residualRef.image.array),
+        self.assertGreater(np.max(newModelRef.image.array),
                            np.max(newModel.image.array - oldModel.image.array))
         # Check that all of the outliers are clipped
-        noiseLevel = dcrAssembleCoaddTask.calculateNoiseCutoff(oldModel, statsCtrl)
-        highThreshold = (oldModel.image.array*self.config.modelClampFactor +
-                         noiseLevel*self.config.regularizeSigma)
+        noiseLevel = dcrModels.calculateNoiseCutoff(oldModel, statsCtrl)
+        highThreshold = (oldModel.image.array*dcrModels.modelClampFactor +
+                         noiseLevel*dcrModels.regularizeSigma)
         self.assertTrue(np.all(newModel.image.array <= highThreshold))
-        lowThreshold = oldModel.image.array/self.config.modelClampFactor - noiseLevel
+        lowThreshold = oldModel.image.array/dcrModels.modelClampFactor - noiseLevel
         self.assertTrue(np.all(newModel.image.array >= lowThreshold))
 
 
