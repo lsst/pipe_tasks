@@ -38,28 +38,16 @@ class DcrModel(object):
     
     Attributes
     ----------
-    clampFrequency : TYPE
-        Description
-    convergenceMaskPlanes : TYPE
-        Description
     dcrNumSubfilters : TYPE
         Description
     filterInfo : TYPE
         Description
-    modelClampFactor : TYPE
-        Description
     modelImages : `list` of `lsst.afw.image.maskedImageF`
         A list of masked images, each containing the model for one subfilter
-    regularizeSigma : TYPE
-        Description
-    warpCtrl : TYPE
-        Description
     """
     
     def __init__(self, dcrNumSubfilters, coaddExposure=None, modelImages=None,
-                 clampFrequency=None, modelClampFactor=None,
-                 regularizeSigma=None, convergenceMaskPlanes=None,
-                 warpCtrl=None, filterInfo=None):
+                 filterInfo=None):
         """Divide a coadd into equal subfilter coadds.
         
         Parameters
@@ -70,16 +58,6 @@ class DcrModel(object):
             The target image for the coadd
         modelImages : None, optional
             Description
-        clampFrequency : None, optional
-            Description
-        modelClampFactor : None, optional
-            Description
-        regularizeSigma : None, optional
-            Description
-        convergenceMaskPlanes : None, optional
-            Description
-        warpCtrl : None, optional
-            Description
         filterInfo : None, optional
             Description
         
@@ -87,15 +65,14 @@ class DcrModel(object):
         ------
         ValueError
             If neither ``modelImages`` or ``coaddExposure`` are set.
+            If ``modelImages`` is supplied but does not match ``dcrNumSubfilters``.
         """
         self.dcrNumSubfilters = dcrNumSubfilters
-        self.clampFrequency = clampFrequency
-        self.modelClampFactor = modelClampFactor
-        self.regularizeSigma = regularizeSigma
-        self.convergenceMaskPlanes = convergenceMaskPlanes
-        self.warpCtrl = warpCtrl
         self.filterInfo = filterInfo
         if modelImages is not None:
+            if len(modelImages) != dcrNumSubfilters:
+                raise ValueError("The dimension of modelImages must equal"
+                                 " the supplied dcrNumSubfilters.")
             self.modelImages = modelImages
         elif coaddExposure is not None:
             maskedImage = coaddExposure.maskedImage.clone()
@@ -112,6 +89,40 @@ class DcrModel(object):
                 self.modelImages.append(maskedImage.clone())
         else:
             raise ValueError("Either dcrModels or coaddExposure must be set.")
+
+    def getImage(self, subfilter, bbox=None):
+        """Summary
+        
+        Parameters
+        ----------
+        subfilter : TYPE
+            Description
+        bbox : None, optional
+            Description
+        
+        Returns
+        -------
+        TYPE
+            Description
+        """
+        return self.modelImages[subfilter] if bbox is None \
+            else self.modelImages[subfilter][bbox, afwImage.PARENT]
+
+    def getReferenceImage(self, bbox=None):
+        """Summary
+        
+        Parameters
+        ----------
+        bbox : None, optional
+            Description
+        
+        Returns
+        -------
+        TYPE
+            Description
+        """
+        return np.mean([self.getImage(subfilter, bbox).image.array
+                        for subfilter in range(self.dcrNumSubfilters)], axis=0)
 
     def assign(self, dcrSubModel, bbox):
         """Summary
@@ -146,11 +157,13 @@ class DcrModel(object):
             for mi, variance in zip(self.modelImages, subfilterVariance):
                 mi.variance.array[:] = variance
 
-    def buildMatchedTemplate(self, exposure=None, visitInfo=None, bbox=None, wcs=None, mask=None):
+    def buildMatchedTemplate(self, warpCtrl, exposure=None, visitInfo=None, bbox=None, wcs=None, mask=None):
         """Create a DCR-matched template for an exposure.
         
         Parameters
         ----------
+        warpCtrl : TYPE
+            Description
         exposure : `lsst.afw.image.exposure.ExposureF`, optional
             The input exposure to build a matched template for.
             May be omitted if all of the metadata is supplied separately
@@ -181,21 +194,20 @@ class DcrModel(object):
             raise ValueError("Either exposure or visitInfo, bbox, and wcs must be set.")
         dcrShift = calculateDcr(visitInfo, wcs, self.filterInfo, self.dcrNumSubfilters)
         templateImage = afwImage.MaskedImageF(bbox)
-        for dcr, model in zip(dcrShift, self.modelImages):
-            templateImage += applyDcr(model, dcr, self.warpCtrl, bbox=bbox)
+        for subfilter, dcr in enumerate(dcrShift):
+            templateImage += applyDcr(self.getImage(subfilter, bbox), dcr, warpCtrl)
         if mask is not None:
             templateImage.setMask(mask[bbox, afwImage.PARENT])
         return templateImage
 
-    @staticmethod
-    def conditionDcrModel(newModel, oldModel, bbox, gain=1.):
+    def conditionDcrModel(self, subfilter, newModel, bbox, gain=1.):
         """Average two iterations' solutions to reduce oscillations.
         
         Parameters
         ----------
-        newModel : TYPE
+        subfilter : TYPE
             Description
-        oldModel : TYPE
+        newModel : TYPE
             Description
         bbox : `lsst.afw.geom.box.Box2I`
             Sub-region of the coadd
@@ -206,27 +218,36 @@ class DcrModel(object):
         ------------------
         newDcrModels : `list` of `lsst.afw.image.maskedImageF`
             The models for each subfilter from the current iteration.
+        oldModel : TYPE
+            Description
         """
         # The models are MaskedImages, which only support in-place operations.
         newModel *= gain
-        newModel += oldModel[bbox, afwImage.PARENT]
+        newModel += self.getImage(subfilter, bbox)
         newModel.image.array /= 1. + gain
         newModel.variance.array /= 1. + gain
 
-    def clampModel(self, newModel, oldModel, bbox, statsCtrl):
+    def clampModel(self, subfilter, newModel, bbox, statsCtrl, regularizeSigma, modelClampFactor,
+                   convergenceMaskPlanes=None):
         """Restrict large variations in the model between iterations.
         
         Parameters
         ----------
-        newModel : TYPE
+        subfilter : TYPE
             Description
-        oldModel : TYPE
+        newModel : TYPE
             Description
         bbox : `lsst.afw.geom.box.Box2I`
             Sub-region to coadd
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
-        
+        regularizeSigma : TYPE
+            Description
+        modelClampFactor : TYPE
+            Description
+        convergenceMaskPlanes : None, optional
+            Description
+
         No Longer Returned
         ------------------
         lsst.afw.image.maskedImageF
@@ -237,29 +258,31 @@ class DcrModel(object):
         residual : `lsst.afw.image.maskedImageF`
             Stacked residual masked image after subtracting DCR-matched
             templates. To save memory, the residual is modified in-place.
-        oldModel : `lsst.afw.image.maskedImageF`
-            The DCR model from the previous iteration for one subfilter.
+        oldModel : TYPE
+            Description
         newModels : TYPE
             Description
         """
         newImage = newModel.image.array
-        oldImage = oldModel[bbox, afwImage.PARENT].image.array
-        noiseCutoff = self.calculateNoiseCutoff(newModel, statsCtrl)
+        oldImage = self.getImage(subfilter, bbox).image.array
+        noiseCutoff = self.calculateNoiseCutoff(newModel, statsCtrl, regularizeSigma,
+                                                convergenceMaskPlanes=convergenceMaskPlanes)
         # Catch any invalid values
         nanPixels = np.isnan(newImage)
         newImage[nanPixels] = 0.
         infPixels = np.isinf(newImage)
-        newImage[infPixels] = oldImage[infPixels]*self.modelClampFactor
+        newImage[infPixels] = oldImage[infPixels]*modelClampFactor
         # Clip pixels that have very high amplitude, compared with the previous iteration.
-        clampPixels = np.abs(newImage - oldImage) > (np.abs(oldImage*(self.modelClampFactor - 1)) +
+        clampPixels = np.abs(newImage - oldImage) > (np.abs(oldImage*(modelClampFactor - 1)) +
                                                      noiseCutoff)
         # Set high amplitude pixels to a multiple or fraction of the old model value,
         #  depending on whether the new model is higher or lower than the old
         highPixels = newImage > oldImage
-        newImage[clampPixels & highPixels] = oldImage[clampPixels & highPixels]*self.modelClampFactor
-        newImage[clampPixels & ~highPixels] = oldImage[clampPixels & ~highPixels]/self.modelClampFactor
+        newImage[clampPixels & highPixels] = oldImage[clampPixels & highPixels]*modelClampFactor
+        newImage[clampPixels & ~highPixels] = oldImage[clampPixels & ~highPixels]/modelClampFactor
 
-    def regularizeModel(self, bbox, mask, statsCtrl):
+    def regularizeModel(self, bbox, mask, statsCtrl, regularizeSigma, clampFrequency,
+                        convergenceMaskPlanes=None):
         """Restrict large variations in the model between subfilters.
         
         Any flux subtracted by the restriction is accumulated from all
@@ -274,24 +297,32 @@ class DcrModel(object):
             Reference mask to use for all model planes.
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
+        regularizeSigma : TYPE
+            Description
+        clampFrequency : TYPE
+            Description
+        convergenceMaskPlanes : None, optional
+            Description
         """
-        templateImage = np.mean([model[bbox, afwImage.PARENT].image.array
-                                 for model in self.modelImages], axis=0)
+        templateImage = self.getReferenceImage(bbox)
         excess = np.zeros_like(templateImage)
         for model in self.modelImages:
-            noiseCutoff = self.calculateNoiseCutoff(model, statsCtrl, mask=mask[bbox, afwImage.PARENT])
+            noiseCutoff = self.calculateNoiseCutoff(model, statsCtrl, regularizeSigma,
+                                                    mask=mask[bbox, afwImage.PARENT],
+                                                    convergenceMaskPlanes=convergenceMaskPlanes)
             modelVals = model.image.array
-            highPixels = (modelVals > (templateImage*self.clampFrequency + noiseCutoff))
-            excess[highPixels] += modelVals[highPixels] - templateImage[highPixels]*self.clampFrequency
-            modelVals[highPixels] = templateImage[highPixels]*self.clampFrequency
-            lowPixels = (modelVals < templateImage/self.clampFrequency - noiseCutoff)
-            excess[lowPixels] += modelVals[lowPixels] - templateImage[lowPixels]/self.clampFrequency
-            modelVals[lowPixels] = templateImage[lowPixels]/self.clampFrequency
+            highPixels = (modelVals > (templateImage*clampFrequency + noiseCutoff))
+            excess[highPixels] += modelVals[highPixels] - templateImage[highPixels]*clampFrequency
+            modelVals[highPixels] = templateImage[highPixels]*clampFrequency
+            lowPixels = (modelVals < templateImage/clampFrequency - noiseCutoff)
+            excess[lowPixels] += modelVals[lowPixels] - templateImage[lowPixels]/clampFrequency
+            modelVals[lowPixels] = templateImage[lowPixels]/clampFrequency
         excess /= self.dcrNumSubfilters
         for model in self.modelImages:
             model.image.array += excess
 
-    def calculateNoiseCutoff(self, maskedImage, statsCtrl, mask=None):
+    def calculateNoiseCutoff(self, maskedImage, statsCtrl, regularizeSigma, mask=None,
+                             convergenceMaskPlanes=None):
         """Helper function to calculate the background noise level of an image.
         
         Parameters
@@ -300,21 +331,27 @@ class DcrModel(object):
             The input image to evaluate the background noise properties.
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
+        regularizeSigma : TYPE
+            Description
         mask : `lsst.afw.image.Mask`, Optional
             Optional alternate mask
-        
+        convergenceMaskPlanes : None, optional
+            Description
+
         Returns
         -------
         float
-            The threshold value to treat pixels as noise in an image,
-            set by ``self.regularizeSigma``.
+            The threshold value to treat pixels as noise in an image..
         """
-        convergeMask = maskedImage.mask.getPlaneBitMask(self.convergenceMaskPlanes)
+        if convergenceMaskPlanes is None:
+            convergeMask = maskedImage.mask.getPlaneBitMask("DETECTED")
+        else:
+            convergeMask = maskedImage.mask.getPlaneBitMask(convergenceMaskPlanes)
         if mask is None:
             backgroundPixels = maskedImage.mask.array & (statsCtrl.getAndMask() | convergeMask) == 0
         else:
             backgroundPixels = mask.array & (statsCtrl.getAndMask() | convergeMask) == 0
-        noiseCutoff = self.regularizeSigma*np.std(maskedImage.image.array[backgroundPixels])
+        noiseCutoff = regularizeSigma*np.std(maskedImage.image.array[backgroundPixels])
         return noiseCutoff
 
 

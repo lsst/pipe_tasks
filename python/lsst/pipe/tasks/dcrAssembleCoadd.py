@@ -252,13 +252,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                self.config.maskWarpMethod,
                                                cacheSize=warpCache, interpLength=warpInterpLength)
         dcrModels = DcrModel(self.config.dcrNumSubfilters, coaddExposure=templateCoadd,
-                             clampFrequency=self.config.clampFrequency,
-                             modelClampFactor=self.config.modelClampFactor,
-                             regularizeSigma=self.config.regularizeSigma,
-                             convergenceMaskPlanes=self.config.convergenceMaskPlanes,
-                             warpCtrl=self.warpCtrl,
-                             filterInfo=self.filterInfo,
-                             )
+                             filterInfo=self.filterInfo)
         return dcrModels
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
@@ -431,8 +425,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         
         Parameters
         ----------
-        dcrModels : `list` of `lsst.afw.image.maskedImageF`
-            A list of masked images, each containing the model for one subfilter
+        dcrModels : TYPE
+            Description
         bbox : `lsst.afw.geom.box.Box2I`
             Bounding box of the subregion to coadd.
         tempExpRefList : `list` of ButlerDataRefs
@@ -456,8 +450,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
-        for model in dcrModels.modelImages:
-            bboxGrow.clip(model.getBBox())
+        for subfilter in range(self.config.dcrNumSubfilters):
+            bboxGrow.clip(dcrModels.getImage(subfilter).getBBox())
 
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
@@ -467,7 +461,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.maskedImage
-            templateImage = dcrModels.buildMatchedTemplate(visitInfo=visitInfo, bbox=bboxGrow,
+            templateImage = dcrModels.buildMatchedTemplate(self.warpCtrl, visitInfo=visitInfo, bbox=bboxGrow,
                                                            wcs=wcs, mask=baseMask)
             imageScaler.scaleMaskedImage(maskedImage)
             if altMaskSpans is not None:
@@ -480,7 +474,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         dcrSubModelOut = self.newModelFromResidual(dcrModels, residualGeneratorList, bboxGrow,
                                                    statsFlags, statsCtrl, weightList)
-        dcrSubModelOut.regularizeModel(bboxGrow, baseMask, statsCtrl)
+        dcrSubModelOut.regularizeModel(bboxGrow, baseMask, statsCtrl, self.config.regularizeSigma,
+                                       self.config.clampFrequency, self.config.convergenceMaskPlanes)
         dcrModels.assign(dcrSubModelOut, bbox)
 
     def dcrResiduals(self, residual, visitInfo, bbox, wcs):
@@ -531,24 +526,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Description
         """
         maskMap = self.setRejectedMaskMapping(statsCtrl)
-        clipped = dcrModels.modelImages[0].mask.getPlaneBitMask("CLIPPED")
-        newDcrModels = []
-        for oldModel in dcrModels.modelImages:
+        clipped = dcrModels.getImage(0).mask.getPlaneBitMask("CLIPPED")
+        newModelImages = []
+        for subfilter in range(self.config.dcrNumSubfilters):
             residualsList = [next(residualGenerator) for residualGenerator in residualGeneratorList]
             residual = afwMath.statisticsStack(residualsList, statsFlags, statsCtrl, weightList,
                                                clipped, maskMap)
             residual.setXY0(bbox.getBegin())
             # `MaskedImage`s only support in-place addition, so rename for readability
-            residual.image += oldModel[bbox, afwImage.PARENT].image
+            residual += dcrModels.getImage(subfilter, bbox)
             newModel = residual
-            dcrModels.clampModel(newModel, oldModel, bbox, statsCtrl)
-            dcrModels.conditionDcrModel(newModel, oldModel, bbox, gain=1.)
-            newDcrModels.append(newModel)
-        return DcrModel(dcrModels.dcrNumSubfilters, modelImages=newDcrModels,
-                        clampFrequency=dcrModels.clampFrequency,
-                        modelClampFactor=dcrModels.modelClampFactor,
-                        regularizeSigma=dcrModels.regularizeSigma,
-                        convergenceMaskPlanes=dcrModels.convergenceMaskPlanes,
+            dcrModels.clampModel(subfilter, newModel, bbox, statsCtrl, self.config.regularizeSigma,
+                                 self.config.modelClampFactor, self.config.convergenceMaskPlanes)
+            dcrModels.conditionDcrModel(subfilter, newModel, bbox, gain=1.)
+            newModelImages.append(newModel)
+        return DcrModel(dcrModels.dcrNumSubfilters, modelImages=newModelImages,
                         filterInfo=dcrModels.filterInfo)
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
@@ -579,8 +571,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         `float`
             Quality of fit metric for all input exposures, within the sub-region
         """
-        significanceImage = np.sum([np.abs(model[bbox, afwImage.PARENT].image.array)
-                                    for model in dcrModels.modelImages], axis=0)
+        significanceImage = dcrModels.getReferenceImage(bbox)
         weight = 0
         metric = 0.
         metricList = {}
@@ -620,7 +611,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Quality of fit metric for one exposure, within the sub-region.
         """
         convergeMask = exposure.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
-        templateImage = dcrModels.buildMatchedTemplate(visitInfo=exposure.getInfo().getVisitInfo(),
+        templateImage = dcrModels.buildMatchedTemplate(self.warpCtrl,
+                                                       visitInfo=exposure.getInfo().getVisitInfo(),
                                                        bbox=exposure.getBBox(),
                                                        wcs=exposure.getInfo().getWcs())
         diffVals = np.abs(exposure.image.array - templateImage.image.array)*significanceImage
@@ -684,7 +676,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             the model for one subfilter.
         """
         dcrCoadds = []
-        for model in dcrModels.modelImages:
+        for subfilter in range(self.config.dcrNumSubfilters):
+            model = dcrModels.getImage(subfilter, skyInfo.bbox)
             coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
             if calibration is not None:
                 coaddExposure.setCalib(calibration)
