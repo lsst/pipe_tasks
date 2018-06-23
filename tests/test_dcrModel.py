@@ -45,12 +45,14 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         to avoid placing test sources in the model images.
     dcrNumSubfilters : int
         Number of sub-filters used to model chromatic effects within a band.
-    lambdaEff : float
-        Description
-    lambdaMax : int
-        Description
-    lambdaMin : int
-        Description
+    lambdaEff : `float`
+        Effective wavelength of the full band.
+    lambdaMax : `float`
+        Maximum wavelength where the relative throughput
+        of the band is greater than 1%.
+    lambdaMin : `float`
+        Minimum wavelength where the relative throughput
+        of the band is greater than 1%.
     mask : `lsst.afw.image.Mask`
         Reference mask of the unshifted model.
     """
@@ -60,8 +62,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         """
         self.dcrNumSubfilters = 3
         self.lambdaEff = 476.31  # Use LSST g band values for the test.
-        self.lambdaMin = 405
-        self.lambdaMax = 552
+        self.lambdaMin = 405.
+        self.lambdaMax = 552.
         self.bufferSize = 5
         xSize = 40
         ySize = 42
@@ -214,7 +216,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages())
+        filterInfo = None  # ``filterInfo`` is not needed for this test.
+        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         newModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
         for subfilter, newModel in enumerate(newModels):
             dcrModels.conditionDcrModel(subfilter, newModel, self.bbox, gain=1.)
@@ -225,7 +228,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages())
+        filterInfo = None  # ``filterInfo`` is not needed for this test.
+        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         newModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
         for model in newModels:
             model.image.array[:] *= 3.
@@ -242,7 +246,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         """
         regularizeSigma = 1.
         clampFrequency = 3.
-        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages())
+        filterInfo = None  # ``filterInfo`` is not needed for this test.
+        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         statsCtrl = afwMath.StatisticsControl()
         refModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
         mask = refModels[0].mask
@@ -257,7 +262,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         """
         regularizeSigma = 1.
         clampFrequency = 1.1
-        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages())
+        filterInfo = None  # ``filterInfo`` is not needed for this test.
+        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         statsCtrl = afwMath.StatisticsControl()
         refModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
         mask = refModels[0].mask
@@ -286,7 +292,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         regularizeSigma = 3.
         modelClampFactor = 2.
         subfilter = 0
-        dcrModels = DcrModel(self.dcrNumSubfilters, modelImages=self.makeTestImages())
+        filterInfo = None  # ``filterInfo`` is not needed for this test.
+        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         seed = 5
         rng = np.random.RandomState(seed)
         oldModel = dcrModels.getImage(0)
