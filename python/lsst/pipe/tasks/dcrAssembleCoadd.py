@@ -463,8 +463,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
-        for subfilter in range(self.config.dcrNumSubfilters):
-            bboxGrow.clip(dcrModels.getImage(subfilter).getBBox())
+        for model in dcrModels:
+            bboxGrow.clip(model.getBBox())
 
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
@@ -539,15 +539,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             New model of the true scene after correcting chromatic effects.
         """
         maskMap = self.setRejectedMaskMapping(statsCtrl)
-        clipped = dcrModels.getImage(0).mask.getPlaneBitMask("CLIPPED")
+        clipped = dcrModels[0].mask.getPlaneBitMask("CLIPPED")
         newModelImages = []
-        for subfilter in range(self.config.dcrNumSubfilters):
+        for subfilter, model in enumerate(dcrModels):
             residualsList = [next(residualGenerator) for residualGenerator in residualGeneratorList]
             residual = afwMath.statisticsStack(residualsList, statsFlags, statsCtrl, weightList,
                                                clipped, maskMap)
             residual.setXY0(bbox.getBegin())
             # `MaskedImage`s only support in-place addition, so rename for readability
-            residual += dcrModels.getImage(subfilter, bbox)
+            residual += model[bbox, afwImage.PARENT]
             newModel = residual
             dcrModels.clampModel(subfilter, newModel, bbox, statsCtrl, self.config.regularizeSigma,
                                  self.config.modelClampFactor, self.config.convergenceMaskPlanes)

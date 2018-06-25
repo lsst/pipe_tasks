@@ -97,6 +97,23 @@ class DcrModel(object):
         else:
             raise ValueError("Either dcrModels or coaddExposure must be set.")
 
+    def __getitem__(self, subfilter):
+        """Iterate over the subfilters of the DCR model.
+
+        Parameters
+        ----------
+        subfilter : `int`
+            Index of the current subfilter within the full band.
+
+        Returns
+        -------
+        `lsst.afw.image.MaskedImageF`
+            The DCR model for the given ``subfilter``.
+        """
+        if subfilter >= self.dcrNumSubfilters:
+            raise IndexError("subfilter out of bounds.")
+        return self.modelImages[subfilter]
+
     def getImage(self, subfilter, bbox=None):
         """Return the image of the DCR model for a given subfilter.
 
@@ -128,8 +145,7 @@ class DcrModel(object):
         `numpy.ndarray`
             The template with no chromatic effects applied.
         """
-        return np.mean([self.getImage(subfilter, bbox).image.array
-                        for subfilter in range(self.dcrNumSubfilters)], axis=0)
+        return np.mean([model[bbox, afwImage.PARENT].image.array for model in self], axis=0)
 
     def assign(self, dcrSubModel, bbox):
         """Update a sub-region of the ``DcrModel`` with new values.
@@ -141,7 +157,7 @@ class DcrModel(object):
         bbox : `lsst.afw.geom.box.Box2I`
             Sub-region of the coadd
         """
-        for model, subModel in zip(self.modelImages, dcrSubModel.modelImages):
+        for model, subModel in zip(self, dcrSubModel):
             model.assign(subModel[bbox, afwImage.PARENT], bbox)
 
     def buildMatchedTemplate(self, warpCtrl, exposure=None, visitInfo=None, bbox=None, wcs=None, mask=None):
@@ -280,7 +296,7 @@ class DcrModel(object):
         """
         templateImage = self.getReferenceImage(bbox)
         excess = np.zeros_like(templateImage)
-        for model in self.modelImages:
+        for model in self:
             noiseCutoff = self.calculateNoiseCutoff(model, statsCtrl, regularizeSigma,
                                                     mask=mask[bbox, afwImage.PARENT],
                                                     convergenceMaskPlanes=convergenceMaskPlanes)
@@ -292,7 +308,7 @@ class DcrModel(object):
             excess[lowPixels] += modelVals[lowPixels] - templateImage[lowPixels]/clampFrequency
             modelVals[lowPixels] = templateImage[lowPixels]/clampFrequency
         excess /= self.dcrNumSubfilters
-        for model in self.modelImages:
+        for model in self:
             model.image.array += excess
 
     def calculateNoiseCutoff(self, maskedImage, statsCtrl, regularizeSigma, mask=None,

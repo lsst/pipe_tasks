@@ -319,6 +319,16 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         lowThreshold = oldModel.image.array/modelClampFactor - noiseLevel
         self.assertTrue(np.all(newModel.image.array >= lowThreshold))
 
+    def testIterateModel(self):
+        """Test that the DcrModel is iterable, and has the right values.
+        """
+        filterInfo = None  # ``filterInfo`` is not needed for this test.
+        testModels = self.makeTestImages()
+        refVals = [np.sum(model.image.array) for model in testModels]
+        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=testModels)
+        for refVal, model in zip(refVals, dcrModels):
+            self.assertFloatsEqual(refVal, np.sum(model.image.array))
+
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
     pass
