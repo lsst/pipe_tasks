@@ -30,7 +30,7 @@ import lsst.afw.table as afwTable
 class PropagateVisitFlagsConfig(Config):
     """!Configuration for propagating flags to coadd"""
     flags = DictField(keytype=str, itemtype=float,
-                      default={"calib_psfCandidate": 0.2, "calib_psfUsed": 0.2, },
+                      default={"calib_psf_candidate": 0.2, "calib_psf_used": 0.2, },
                       doc="Source catalog flags to propagate, with the threshold of relative occurrence.")
     matchRadius = Field(dtype=float, default=0.2, doc="Source matching radius (arcsec)")
 
@@ -115,7 +115,7 @@ The 'run' method (described below) is the entry-point for operations.  The
 # * coaddExposure: coadd (lsst.afw.image.Exposure)
 from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask, PropagateVisitFlagsConfig
 config = PropagateVisitFlagsConfig()
-config.flags["calib.psf.used"] = 0.3 # Relative threshold for this flag
+config.flags["calib_psf_used"] = 0.3 # Relative threshold for this flag
 config.matchRadius = 0.5 # Matching radius in arcsec
 task = PropagateVisitFlagsTask(coaddCatalog.schema, config=config)
 ccdInputs = task.getCcdInputs(coaddExposure)

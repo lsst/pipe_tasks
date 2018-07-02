@@ -208,7 +208,7 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         @param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
         @param **kwargs Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
 
-        If schema is not None, 'calib.psf.candidate' and 'calib.psf.used' fields will be added to
+        If schema is not None, 'calib_psf_candidate' and 'calib_psf_used' fields will be added to
         identify which stars were employed in the PSF estimation.
 
         @note This task can add fields to the schema, so any code calling this task must ensure that
@@ -218,12 +218,12 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         pipeBase.Task.__init__(self, **kwargs)
         if schema is not None:
             self.candidateKey = schema.addField(
-                "calib_psfCandidate", type="Flag",
+                "calib_psf_candidate", type="Flag",
                 doc=("Flag set if the source was a candidate for PSF determination, "
                      "as determined by the star selector.")
             )
             self.usedKey = schema.addField(
-                "calib_psfUsed", type="Flag",
+                "calib_psf_used", type="Flag",
                 doc=("Flag set if the source was actually used for PSF determination, "
                      "as determined by the '%s' PSF determiner.") % self.config.psfDeterminer.name
             )
