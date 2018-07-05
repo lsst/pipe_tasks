@@ -611,8 +611,8 @@ class FocalPlaneBackground(object):
             num = result.getValue(afwMath.NPOINT)
             if not numpy.isfinite(mean) or not numpy.isfinite(num):
                 continue
-            warped.set(xx, yy, mean*num)
-            warpedCounts.set(xx, yy, num)
+            warped[xx, yy, afwImage.LOCAL] = mean*num
+            warpedCounts[xx, yy,afwImage.LOCAL] = num
 
         self._values += warped
         self._numbers += warpedCounts
