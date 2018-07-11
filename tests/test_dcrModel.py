@@ -218,10 +218,10 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         """
         filterInfo = None  # ``filterInfo`` is not needed for this test.
         dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
-        newModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
+        newModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         for subfilter, newModel in enumerate(newModels):
             dcrModels.conditionDcrModel(subfilter, newModel, self.bbox, gain=1.)
-            self.assertMaskedImagesEqual(dcrModels.getImage(subfilter), newModel)
+            self.assertMaskedImagesEqual(dcrModels[subfilter], newModel)
 
     def testConditionDcrModelWithChange(self):
         """Verify conditioning when the model changes by a known amount.
@@ -230,12 +230,12 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         """
         filterInfo = None  # ``filterInfo`` is not needed for this test.
         dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
-        newModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
+        newModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         for model in newModels:
             model.image.array[:] *= 3.
         for subfilter, newModel in enumerate(newModels):
             dcrModels.conditionDcrModel(subfilter, newModel, self.bbox, gain=1.)
-            refModel = dcrModels.getImage(subfilter)
+            refModel = dcrModels[subfilter]
             refModel.image.array[:] *= 2.
             self.assertMaskedImagesEqual(refModel, newModel)
 
@@ -249,11 +249,11 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         filterInfo = None  # ``filterInfo`` is not needed for this test.
         dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         statsCtrl = afwMath.StatisticsControl()
-        refModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
+        refModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         mask = refModels[0].mask
         dcrModels.regularizeModel(self.bbox, mask, statsCtrl, regularizeSigma, clampFrequency)
         for subfilter, refModel in enumerate(refModels):
-            self.assertMaskedImagesEqual(dcrModels.getImage(subfilter), refModel)
+            self.assertMaskedImagesEqual(dcrModels[subfilter], refModel)
 
     def testRegularizationSmallClamp(self):
         """Test that large variations between model planes are reduced.
@@ -265,13 +265,13 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         filterInfo = None  # ``filterInfo`` is not needed for this test.
         dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         statsCtrl = afwMath.StatisticsControl()
-        refModels = [dcrModels.getImage(subfilter).clone() for subfilter in range(self.dcrNumSubfilters)]
+        refModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         mask = refModels[0].mask
         templateImage = dcrModels.getReferenceImage(self.bbox)
 
         dcrModels.regularizeModel(self.bbox, mask, statsCtrl, regularizeSigma, clampFrequency)
         for subfilter, refModel in enumerate(refModels):
-            model = dcrModels.getImage(subfilter)
+            model = dcrModels[subfilter]
             noiseLevel = dcrModels.calculateNoiseCutoff(refModel, statsCtrl, regularizeSigma)
             # The mask and variance planes should be unchanged
             self.assertFloatsEqual(model.mask.array, refModel.mask.array)
@@ -296,7 +296,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
         seed = 5
         rng = np.random.RandomState(seed)
-        oldModel = dcrModels.getImage(0)
+        oldModel = dcrModels[0]
         xSize, ySize = self.bbox.getDimensions()
         statsCtrl = afwMath.StatisticsControl()
         newModel = oldModel.clone()
@@ -328,6 +328,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=testModels)
         for refVal, model in zip(refVals, dcrModels):
             self.assertFloatsEqual(refVal, np.sum(model.image.array))
+        # Negative indices are allowed, so check that those return models from the end.
+        self.assertFloatsEqual(refVals[-1], np.sum(dcrModels[-1].image.array))
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

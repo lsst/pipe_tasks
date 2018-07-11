@@ -687,8 +687,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             the model for one subfilter.
         """
         dcrCoadds = []
-        for subfilter in range(self.config.dcrNumSubfilters):
-            model = dcrModels.getImage(subfilter, skyInfo.bbox)
+        for model in dcrModels:
             coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
             if calibration is not None:
                 coaddExposure.setCalib(calibration)
@@ -696,7 +695,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 coaddExposure.getInfo().setCoaddInputs(coaddInputs)
             # Set the metadata for the coadd, including PSF and aperture corrections.
             self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
-            coaddUtils.setCoaddEdgeBits(model.mask, model.variance)
-            coaddExposure.setMaskedImage(model)
+            coaddUtils.setCoaddEdgeBits(model[skyInfo.bbox].mask, model[skyInfo.bbox].variance)
+            coaddExposure.setMaskedImage(model[skyInfo.bbox])
             dcrCoadds.append(coaddExposure)
         return dcrCoadds

@@ -112,27 +112,19 @@ class DcrModel:
         modelImage : `lsst.afw.image.MaskedImage`
             The DCR model for the given ``subfilter``.
         """
-        if subfilter >= self.dcrNumSubfilters:
+        if np.abs(subfilter) >= len(self):
             raise IndexError("subfilter out of bounds.")
         return self.modelImages[subfilter]
 
-    def getImage(self, subfilter, bbox=None):
-        """Return the image of the DCR model for a given subfilter.
 
         Parameters
         ----------
         subfilter : `int`
             Index of the current subfilter within the full band.
-        bbox : `lsst.afw.geom.box.Box2I`, optional
-            Sub-region of the coadd. Returns the entire image if None.
 
         Returns
         -------
-        `lsst.afw.image.MaskedImageF`
-            The DCR model for the given ``subfilter``.
         """
-        return self.modelImages[subfilter] if bbox is None \
-            else self.modelImages[subfilter][bbox, afwImage.PARENT]
 
     def getReferenceImage(self, bbox=None):
         """Create a simple template from the DCR model.
@@ -203,7 +195,7 @@ class DcrModel:
         dcrShift = calculateDcr(visitInfo, wcs, self.filterInfo, self.dcrNumSubfilters)
         templateImage = afwImage.MaskedImageF(bbox)
         for subfilter, dcr in enumerate(dcrShift):
-            templateImage += applyDcr(self.getImage(subfilter, bbox), dcr, warpCtrl)
+            templateImage += applyDcr(self[subfilter][bbox], dcr, warpCtrl)
         if mask is not None:
             templateImage.setMask(mask[bbox, afwImage.PARENT])
         return templateImage
@@ -227,7 +219,7 @@ class DcrModel:
         """
         # The models are MaskedImages, which only support in-place operations.
         newModel *= gain
-        newModel += self.getImage(subfilter, bbox)
+        newModel += self[subfilter][bbox]
         newModel.image.array /= 1. + gain
         newModel.variance.array /= 1. + gain
 
@@ -256,7 +248,7 @@ class DcrModel:
             Default value is set in ``calculateNoiseCutoff`` if not supplied.
         """
         newImage = newModel.image.array
-        oldImage = self.getImage(subfilter, bbox).image.array
+        oldImage = self[subfilter][bbox].image.array
         noiseCutoff = self.calculateNoiseCutoff(newModel, statsCtrl, regularizeSigma,
                                                 convergenceMaskPlanes=convergenceMaskPlanes)
         # Catch any invalid values
