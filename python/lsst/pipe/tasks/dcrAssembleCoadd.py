@@ -182,11 +182,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         selectDataList : `list`
             List of data references to warps. Data to be coadded will be
             selected from this list based on overlap with the patch defined by
-            dataRef.
+            the data reference.
 
         Returns
         -------
-        `lsst.pipe.base.Struct`
+        results : `lsst.pipe.base.Struct`
             The Struct contains the following fields:
 
             - ``coaddExposure``: coadded exposure (`lsst.afw.image.Exposure`)
@@ -225,8 +225,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Returns
         -------
-        `lsst.pipe.tasks.DcrModel`
-            Best fit model of the true scene after correcting chromatic effects.
+        dcrModels : `lsst.pipe.tasks.DcrModel`
+            Best fit model of the true sky after correcting chromatic effects.
 
         Raises
         ------
@@ -271,7 +271,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Divide the ``templateCoadd`` evenly between each subfilter of a
         ``DcrModel`` as the starting best estimate of the true wavelength-
-        dependent scene. Forward model the ``DcrModel`` using the known
+        dependent sky. Forward model the ``DcrModel`` using the known
         chromatic effects in each subfilter and calculate a convergence metric
         based on how well the modeled template matches the input warps. If
         the convergence has not yet reached the desired threshold, then shift
@@ -300,8 +300,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Returns
         -------
-        `lsst.pipe.base.Struct`
-            The struct contains the following fields:
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
 
             - ``coaddExposure``: coadded exposure (`lsst.afw.image.Exposure`)
             - ``nImage``: exposure count image (`lsst.afw.image.ImageU`)
@@ -389,7 +389,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Parameters
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
-            Best fit model of the true scene after correcting chromatic effects.
+            Best fit model of the true sky after correcting chromatic effects.
         bbox : `lsst.afw.geom.box.Box2I`
             Bounding box of the patch to coadd.
         tempExpRefList : `list` of `ButlerDataRef`
@@ -439,7 +439,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Parameters
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
-            Best fit model of the true scene after correcting chromatic effects.
+            Best fit model of the true sky after correcting chromatic effects.
         bbox : `lsst.afw.geom.box.Box2I`
             Bounding box of the subregion to coadd.
         tempExpRefList : `list` of `ButlerDataRef`
@@ -521,7 +521,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Parameters
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
-            Current model of the true scene after correcting chromatic effects.
+            Current model of the true sky after correcting chromatic effects.
         residualGeneratorList : `generator` of `lsst.afw.image.maskedImageF`
             The residual image for the next subfilter, shifted for DCR.
         bbox : `lsst.afw.geom.box.Box2I`
@@ -536,7 +536,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Returns
         -------
         `lsst.pipe.tasks.DcrModel`
-            New model of the true scene after correcting chromatic effects.
+            New model of the true sky after correcting chromatic effects.
         """
         maskMap = self.setRejectedMaskMapping(statsCtrl)
         clipped = dcrModels[0].mask.getPlaneBitMask("CLIPPED")
@@ -562,7 +562,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Parameters
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
-            Best fit model of the true scene after correcting chromatic effects.
+            Best fit model of the true sky after correcting chromatic effects.
         bbox : `lsst.afw.geom.box.Box2I`
             Sub-region to coadd
         tempExpRefList : `list` of `ButlerDataRef`
@@ -605,7 +605,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Parameters
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
-            Best fit model of the true scene after correcting chromatic effects.
+            Best fit model of the true sky after correcting chromatic effects.
         exposure : `lsst.afw.image.ExposureF`
             The input warped exposure to evaluate.
         significanceImage : `numpy.ndarray`
@@ -668,7 +668,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Parameters
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
-            Best fit model of the true scene after correcting chromatic effects.
+            Best fit model of the true sky after correcting chromatic effects.
         skyInfo : `lsst.pipe.base.Struct`
             Patch geometry information, from getSkyInfo
         tempExpRefList : `list` of `ButlerDataRef`

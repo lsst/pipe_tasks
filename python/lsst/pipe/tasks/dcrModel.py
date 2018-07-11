@@ -32,21 +32,39 @@ from lsst.geom import radians
 __all__ = ["DcrModel", "applyDcr", "calculateDcr", "calculateRotationAngle"]
 
 
-class DcrModel(object):
-    """A model of the true scene after correcting chromatic effects.
+class DcrModel:
+    """A model of the true sky after correcting chromatic effects.
 
     Attributes
     ----------
     dcrNumSubfilters : `int`
         Number of sub-filters used to model chromatic effects within a band.
+    filterInfo : `lsst.afw.image.Filter`, optional
+        The filter definition, set in the current instruments' obs package.
+        Required for any calculation of DCR, including making matched templates.
+    modelImages : `list` of `lsst.afw.image.MaskedImage`
+        A list of masked images, each containing the model for one subfilter
+
+    Parameters
+    ----------
+    dcrNumSubfilters : `int`
+        Number of sub-filters used to model chromatic effects within a band.
     filterInfo : `lsst.afw.image.Filter`
         The filter definition, set in the current instruments' obs package.
-    modelImages : `list` of `lsst.afw.image.MaskedImageF`
-        A list of masked images, each containing the model for one subfilter
+    coaddExposure : `lsst.afw.image.Exposure`, optional
+        The target image for the coadd.
+    modelImages : `list` of `lsst.afw.image.MaskedImage`, optional
+        A list of masked images, each containing the model for one subfilter.
+
+    Raises
+    ------
+    ValueError
+        If neither ``modelImages`` or ``coaddExposure`` are set.
+        If ``modelImages`` is supplied but does not match ``dcrNumSubfilters``.
 
     Notes
     -----
-    The ``DcrModel`` contains an estimate of the true scene, at a higher
+    The ``DcrModel`` contains an estimate of the true sky, at a higher
     wavelength resolution than the input observations. It can be forward-
     modeled to produce Differential Chromatic Refraction (DCR) matched
     templates for a given ``Exposure``, and provides utilities for conditioning
@@ -55,24 +73,8 @@ class DcrModel(object):
     """
 
     def __init__(self, dcrNumSubfilters, filterInfo, coaddExposure=None, modelImages=None):
-        """Divide a coadd into equal subfilter coadds.
 
-        Parameters
-        ----------
         dcrNumSubfilters : `int`
-            Number of sub-filters used to model chromatic effects within a band.
-        filterInfo : `lsst.afw.image.Filter`
-            The filter definition, set in the current instruments' obs package.
-        coaddExposure : `lsst.afw.image.ExposureF`, optional
-            The target image for the coadd.
-        modelImages : `list` of `lsst.afw.image.MaskedImageF`, optional
-            A list of masked images, each containing the model for one subfilter.
-
-        Raises
-        ------
-        ValueError
-            If neither ``modelImages`` or ``coaddExposure`` are set.
-            If ``modelImages`` is supplied but does not match ``dcrNumSubfilters``.
         """
         self.dcrNumSubfilters = dcrNumSubfilters
         self.filterInfo = filterInfo
@@ -107,7 +109,7 @@ class DcrModel(object):
 
         Returns
         -------
-        `lsst.afw.image.MaskedImageF`
+        modelImage : `lsst.afw.image.MaskedImage`
             The DCR model for the given ``subfilter``.
         """
         if subfilter >= self.dcrNumSubfilters:
@@ -137,7 +139,7 @@ class DcrModel(object):
 
         Parameters
         ----------
-        bbox : `lsst.afw.geom.box.Box2I`, optional
+        bbox : `lsst.afw.geom.Box2I`, optional
             Sub-region of the coadd. Returns the entire image if None.
 
         Returns
@@ -154,8 +156,9 @@ class DcrModel(object):
         ----------
         dcrSubModel : `lsst.pipe.tasks.DcrModel`
             New model of the true scene after correcting chromatic effects.
-        bbox : `lsst.afw.geom.box.Box2I`
-            Sub-region of the coadd
+        bbox : `lsst.afw.geom.Box2I`, optional
+            Sub-region of the coadd.
+            Defaults to the bounding box of ``dcrSubModel``.
         """
         for model, subModel in zip(self, dcrSubModel):
             model.assign(subModel[bbox, afwImage.PARENT], bbox)
@@ -167,12 +170,12 @@ class DcrModel(object):
         ----------
         warpCtrl : `lsst.afw.Math.WarpingControl`
             Configuration settings for warping an image
-        exposure : `lsst.afw.image.ExposureF`, optional
+        exposure : `lsst.afw.image.Exposure`, optional
             The input exposure to build a matched template for.
             May be omitted if all of the metadata is supplied separately
         visitInfo : `lsst.afw.image.VisitInfo`, optional
             Metadata for the exposure. Ignored if ``exposure`` is set.
-        bbox : `lsst.afw.geom.box.Box2I`, optional
+        bbox : `lsst.afw.geom.Box2I`, optional
             Sub-region of the coadd. Ignored if ``exposure`` is set.
         wcs : `lsst.afw.geom.SkyWcs`, optional
             Coordinate system definition (wcs) for the exposure.
@@ -183,7 +186,7 @@ class DcrModel(object):
 
         Returns
         -------
-        `lsst.afw.image.maskedImageF`
+        templateImage : `lsst.afw.image.maskedImageF`
             The DCR-matched template
 
         Raises
@@ -212,7 +215,7 @@ class DcrModel(object):
         ----------
         subfilter : `int`
             Index of the current subfilter within the full band.
-        newModel : `lsst.afw.image.MaskedImageF`
+        newModel : `lsst.afw.image.MaskedImage`
             The new DCR model for one subfilter from the current iteration.
             Values in ``newModel`` that are extreme compared with the last
             iteration are modified in place.
@@ -236,7 +239,7 @@ class DcrModel(object):
         ----------
         subfilter : `int`
             Index of the current subfilter within the full band.
-        newModel : `lsst.afw.image.MaskedImageF`
+        newModel : `lsst.afw.image.MaskedImage`
             The new DCR model for one subfilter from the current iteration.
             Values in ``newModel`` that are extreme compared with the last
             iteration are modified in place.
@@ -317,7 +320,7 @@ class DcrModel(object):
 
         Parameters
         ----------
-        maskedImage : `lsst.afw.image.maskedImageF`
+        maskedImage : `lsst.afw.image.MaskedImage`
             The input image to evaluate the background noise properties.
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
@@ -351,7 +354,7 @@ def applyDcr(maskedImage, dcr, warpCtrl, bbox=None, useInverse=False):
 
     Parameters
     ----------
-    maskedImage : `lsst.afw.image.maskedImageF`
+    maskedImage : `lsst.afw.image.MaskedImage`
         The input masked image to shift.
     dcr : `lsst.afw.geom.Extent2I`
         Shift calculated with ``calculateDcr``.

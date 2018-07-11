@@ -374,15 +374,15 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        coaddExposure : `lsst.afw.image.exposure.Exposure`
-            Description
+        coaddExposure : `lsst.afw.image.Exposure`
+            The coadded exposure to process.
         dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Butler dataRef for supplementary data.
+            Butler data reference for supplementary data.
         """
         if self.config.doInterp:
             self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
             # The variance must be positive; work around for DM-3201.
-            varArray = coaddExposure.getMaskedImage().getVariance().getArray()
+            varArray = coaddExposure.variance.array
             with numpy.errstate(invalid="ignore"):
                 varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
@@ -400,7 +400,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         Parameters
         ----------
         dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Butler dataRef for supplementary data.
+            Butler data reference for supplementary data.
         selectDataList : `list`
             List of data references to Warps.
         """
@@ -504,14 +504,16 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        mask : None, optional
-            Mask to ignore when coadding
+        mask : `int`, optional
+            Mask planes to exclude from coaddition.
 
         Returns
         -------
-        `lsst.pipe.base.Struct`
-            - statsCtrl: Statistics control object for coadd
-            - statsFlags: afwMath.Property object for statistic for coadd
+        stats : `lsst.pipe.base.Struct`
+            Statistics structure with the following fields:
+
+            - ``statsCtrl``: Statistics control object for coadd
+            - ``statsFlags``: afwMath.Property object for statistic for coadd
         """
         if mask is None:
             mask = self.getBadPixelMask()
@@ -752,14 +754,12 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        mask : `lsst.afw.image.Mask`
-            The target image for the coadd
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
 
         Returns
         -------
-        list of tuples of ints
+        maskMap : `list` of `tuple` of `int`
             A list of mappings of mask planes of the warped exposures to
             mask planes of the coadd.
         """
