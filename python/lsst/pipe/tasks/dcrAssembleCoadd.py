@@ -255,7 +255,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.warpCtrl = afwMath.WarpingControl(self.config.imageWarpMethod,
                                                self.config.maskWarpMethod,
                                                cacheSize=warpCache, interpLength=warpInterpLength)
-        dcrModels = DcrModel(self.config.dcrNumSubfilters, self.filterInfo, coaddExposure=templateCoadd)
+        dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
+                                       self.config.dcrNumSubfilters,
+                                       self.filterInfo)
         return dcrModels
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
@@ -552,7 +554,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                  self.config.modelClampFactor, self.config.convergenceMaskPlanes)
             dcrModels.conditionDcrModel(subfilter, newModel, bbox, gain=1.)
             newModelImages.append(newModel)
-        return DcrModel(dcrModels.dcrNumSubfilters, dcrModels.filterInfo, modelImages=newModelImages)
+        return DcrModel(newModelImages, self.filterInfo)
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
                              weightList, spanSetMaskList, statsCtrl):

@@ -39,28 +39,18 @@ class DcrModel:
     ----------
     dcrNumSubfilters : `int`
         Number of sub-filters used to model chromatic effects within a band.
-    filterInfo : `lsst.afw.image.Filter`, optional
+    filterInfo : `lsst.afw.image.Filter`
         The filter definition, set in the current instruments' obs package.
-        Required for any calculation of DCR, including making matched templates.
     modelImages : `list` of `lsst.afw.image.MaskedImage`
         A list of masked images, each containing the model for one subfilter
 
     Parameters
     ----------
-    dcrNumSubfilters : `int`
-        Number of sub-filters used to model chromatic effects within a band.
-    filterInfo : `lsst.afw.image.Filter`
-        The filter definition, set in the current instruments' obs package.
-    coaddExposure : `lsst.afw.image.Exposure`, optional
-        The target image for the coadd.
-    modelImages : `list` of `lsst.afw.image.MaskedImage`, optional
+    modelImages : `list` of `lsst.afw.image.MaskedImage`
         A list of masked images, each containing the model for one subfilter.
-
-    Raises
-    ------
-    ValueError
-        If neither ``modelImages`` or ``coaddExposure`` are set.
-        If ``modelImages`` is supplied but does not match ``dcrNumSubfilters``.
+    filterInfo : `lsst.afw.image.Filter`, optional
+        The filter definition, set in the current instruments' obs package.
+        Required for any calculation of DCR, including making matched templates.
 
     Notes
     -----
@@ -72,29 +62,43 @@ class DcrModel:
     iterations of forward modeling or between the subfilters of the model.
     """
 
-    def __init__(self, dcrNumSubfilters, filterInfo, coaddExposure=None, modelImages=None):
-        self.dcrNumSubfilters = dcrNumSubfilters
+    def __init__(self, modelImages, filterInfo=None):
+        self.dcrNumSubfilters = len(modelImages)
         self.filterInfo = filterInfo
-        if modelImages is not None:
-            if len(modelImages) != dcrNumSubfilters:
-                raise ValueError("The dimension of modelImages must equal"
-                                 " the supplied dcrNumSubfilters.")
-            self.modelImages = modelImages
-        elif coaddExposure is not None:
-            maskedImage = coaddExposure.maskedImage.clone()
-            # NANs will potentially contaminate the entire image,
-            #  depending on the shift or convolution type used.
-            badPixels = np.isnan(maskedImage.image.array) | np.isnan(maskedImage.variance.array)
-            maskedImage.image.array[badPixels] = 0.
-            maskedImage.variance.array[badPixels] = 0.
-            maskedImage.image.array /= dcrNumSubfilters
-            maskedImage.variance.array /= dcrNumSubfilters
-            maskedImage.mask.array[badPixels] = maskedImage.mask.getPlaneBitMask("NO_DATA")
-            self.modelImages = [maskedImage, ]
-            for subfilter in range(1, dcrNumSubfilters):
-                self.modelImages.append(maskedImage.clone())
-        else:
-            raise ValueError("Either dcrModels or coaddExposure must be set.")
+        self.modelImages = modelImages
+
+    @classmethod
+    def fromImage(cls, maskedImage, dcrNumSubfilters, filterInfo=None):
+        """Initialize a DcrModel by dividing a coadd between the subfilters.
+
+        Parameters
+        ----------
+        maskedImage : `lsst.afw.image.MaskedImage`
+            Input coadded image to divide equally between the subfilters.
+        dcrNumSubfilters : `int`
+            Number of sub-filters used to model chromatic effects within a band.
+        filterInfo : None, optional
+            The filter definition, set in the current instruments' obs package.
+            Required for any calculation of DCR, including making matched templates.
+
+        Returns
+        -------
+        dcrModel : `lsst.pipe.tasks.DcrModel`
+            Best fit model of the true sky after correcting chromatic effects.
+        """
+        # NANs will potentially contaminate the entire image,
+        #  depending on the shift or convolution type used.
+        model = maskedImage.clone()
+        badPixels = np.isnan(model.image.array) | np.isnan(model.variance.array)
+        model.image.array[badPixels] = 0.
+        model.variance.array[badPixels] = 0.
+        model.image.array /= dcrNumSubfilters
+        model.variance.array /= dcrNumSubfilters
+        model.mask.array[badPixels] = model.mask.getPlaneBitMask("NO_DATA")
+        modelImages = [model, ]
+        for subfilter in range(1, dcrNumSubfilters):
+            modelImages.append(model.clone())
+        return cls(modelImages, filterInfo)
 
     def __len__(self):
         """Return the number of subfilters.
@@ -124,7 +128,7 @@ class DcrModel:
         return self.modelImages[subfilter]
 
     def __setitem__(self, subfilter, maskedImage):
-        """Summary
+        """Update the model image for one subfilter.
 
         Parameters
         ----------
@@ -132,9 +136,16 @@ class DcrModel:
             Index of the current subfilter within the full band.
         maskedImage : `lsst.afw.image.MaskedImage`
             The DCR model to set for the given ``subfilter``.
+
+        Raises
+        ------
+        ValueError
+            If the bounding box of the new image does not match.
         """
         if np.abs(subfilter) >= len(self):
             raise IndexError("subfilter out of bounds.")
+        if maskedImage.getBBox() != self.getBBox():
+            raise ValueError("The bounding box of a subfilter must not change.")
         self.modelImages[subfilter] = maskedImage
 
     def getBBox(self):
@@ -157,7 +168,7 @@ class DcrModel:
 
         Returns
         -------
-        `numpy.ndarray`
+        templateImage : `numpy.ndarray`
             The template with no chromatic effects applied.
         """
         return np.mean([model[bbox].image.array for model in self], axis=0)
@@ -215,8 +226,12 @@ class DcrModel:
         Raises
         ------
         ValueError
+            If ``filterInfo`` is not set.
+        ValueError
             If neither ``exposure`` or all of ``visitInfo``, ``bbox``, and ``wcs`` are set.
         """
+        if self.filterInfo is None:
+            raise ValueError("'filterInfo' must be set for the DcrModel in order to calculate DCR.")
         if exposure is not None:
             visitInfo = exposure.getInfo().getVisitInfo()
             bbox = exposure.getBBox()

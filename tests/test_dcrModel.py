@@ -216,8 +216,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        filterInfo = None  # ``filterInfo`` is not needed for this test.
-        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
+        dcrModels = DcrModel(modelImages=self.makeTestImages())
         newModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         for subfilter, newModel in enumerate(newModels):
             dcrModels.conditionDcrModel(subfilter, newModel, self.bbox, gain=1.)
@@ -228,8 +227,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
 
         This additionally tests that the variance and mask planes do not change.
         """
-        filterInfo = None  # ``filterInfo`` is not needed for this test.
-        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
+        dcrModels = DcrModel(modelImages=self.makeTestImages())
         newModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         for model in newModels:
             model.image.array[:] *= 3.
@@ -246,8 +244,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         """
         regularizeSigma = 1.
         clampFrequency = 3.
-        filterInfo = None  # ``filterInfo`` is not needed for this test.
-        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
+        dcrModels = DcrModel(modelImages=self.makeTestImages())
         statsCtrl = afwMath.StatisticsControl()
         refModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         mask = refModels[0].mask
@@ -262,8 +259,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         """
         regularizeSigma = 1.
         clampFrequency = 1.1
-        filterInfo = None  # ``filterInfo`` is not needed for this test.
-        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
+        dcrModels = DcrModel(modelImages=self.makeTestImages())
         statsCtrl = afwMath.StatisticsControl()
         refModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
         mask = refModels[0].mask
@@ -292,8 +288,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         regularizeSigma = 3.
         modelClampFactor = 2.
         subfilter = 0
-        filterInfo = None  # ``filterInfo`` is not needed for this test.
-        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=self.makeTestImages())
+        dcrModels = DcrModel(modelImages=self.makeTestImages())
         seed = 5
         rng = np.random.RandomState(seed)
         oldModel = dcrModels[0]
@@ -322,10 +317,9 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
     def testIterateModel(self):
         """Test that the DcrModel is iterable, and has the right values.
         """
-        filterInfo = None  # ``filterInfo`` is not needed for this test.
         testModels = self.makeTestImages()
         refVals = [np.sum(model.image.array) for model in testModels]
-        dcrModels = DcrModel(self.dcrNumSubfilters, filterInfo, modelImages=testModels)
+        dcrModels = DcrModel(modelImages=testModels)
         for refVal, model in zip(refVals, dcrModels):
             self.assertFloatsEqual(refVal, np.sum(model.image.array))
         # Negative indices are allowed, so check that those return models from the end.
