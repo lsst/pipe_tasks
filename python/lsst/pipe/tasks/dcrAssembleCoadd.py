@@ -547,7 +547,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                clipped, maskMap)
             residual.setXY0(bbox.getBegin())
             # `MaskedImage`s only support in-place addition, so rename for readability
-            residual += model[bbox, afwImage.PARENT]
+            residual += model[bbox]
             newModel = residual
             dcrModels.clampModel(subfilter, newModel, bbox, statsCtrl, self.config.regularizeSigma,
                                  self.config.modelClampFactor, self.config.convergenceMaskPlanes)

@@ -139,7 +139,7 @@ class DcrModel:
         `numpy.ndarray`
             The template with no chromatic effects applied.
         """
-        return np.mean([model[bbox, afwImage.PARENT].image.array for model in self], axis=0)
+        return np.mean([model[bbox].image.array for model in self], axis=0)
 
     def assign(self, dcrSubModel, bbox):
         """Update a sub-region of the ``DcrModel`` with new values.
@@ -153,7 +153,7 @@ class DcrModel:
             Defaults to the bounding box of ``dcrSubModel``.
         """
         for model, subModel in zip(self, dcrSubModel):
-            model.assign(subModel[bbox, afwImage.PARENT], bbox)
+            model.assign(subModel[bbox], bbox)
 
     def buildMatchedTemplate(self, warpCtrl, exposure=None, visitInfo=None, bbox=None, wcs=None, mask=None):
         """Create a DCR-matched template for an exposure.
@@ -197,7 +197,7 @@ class DcrModel:
         for subfilter, dcr in enumerate(dcrShift):
             templateImage += applyDcr(self[subfilter][bbox], dcr, warpCtrl)
         if mask is not None:
-            templateImage.setMask(mask[bbox, afwImage.PARENT])
+            templateImage.setMask(mask[bbox])
         return templateImage
 
     def conditionDcrModel(self, subfilter, newModel, bbox, gain=1.):
@@ -293,7 +293,7 @@ class DcrModel:
         excess = np.zeros_like(templateImage)
         for model in self:
             noiseCutoff = self.calculateNoiseCutoff(model, statsCtrl, regularizeSigma,
-                                                    mask=mask[bbox, afwImage.PARENT],
+                                                    mask=mask[bbox],
                                                     convergenceMaskPlanes=convergenceMaskPlanes)
             modelVals = model.image.array
             highPixels = (modelVals > (templateImage*clampFrequency + noiseCutoff))
@@ -373,7 +373,7 @@ def applyDcr(maskedImage, dcr, warpCtrl, bbox=None, useInverse=False):
         bbox = maskedImage.getBBox()
     shiftedImage = afwImage.MaskedImageF(bbox)
     transform = makeTransform(AffineTransform((-1.0 if useInverse else 1.0)*dcr))
-    afwMath.warpImage(shiftedImage, maskedImage[bbox, afwImage.PARENT],
+    afwMath.warpImage(shiftedImage, maskedImage[bbox],
                       transform, warpCtrl, padValue=padValue)
     return shiftedImage
 
