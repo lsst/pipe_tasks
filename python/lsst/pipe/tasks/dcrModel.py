@@ -73,9 +73,6 @@ class DcrModel:
     """
 
     def __init__(self, dcrNumSubfilters, filterInfo, coaddExposure=None, modelImages=None):
-
-        dcrNumSubfilters : `int`
-        """
         self.dcrNumSubfilters = dcrNumSubfilters
         self.filterInfo = filterInfo
         if modelImages is not None:
@@ -99,6 +96,16 @@ class DcrModel:
         else:
             raise ValueError("Either dcrModels or coaddExposure must be set.")
 
+    def __len__(self):
+        """Return the number of subfilters.
+
+        Returns
+        -------
+        dcrNumSubfilters : `int`
+            The number of DCR subfilters in the model.
+        """
+        return self.dcrNumSubfilters
+
     def __getitem__(self, subfilter):
         """Iterate over the subfilters of the DCR model.
 
@@ -116,15 +123,29 @@ class DcrModel:
             raise IndexError("subfilter out of bounds.")
         return self.modelImages[subfilter]
 
+    def __setitem__(self, subfilter, maskedImage):
+        """Summary
 
         Parameters
         ----------
         subfilter : `int`
             Index of the current subfilter within the full band.
+        maskedImage : `lsst.afw.image.MaskedImage`
+            The DCR model to set for the given ``subfilter``.
+        """
+        if np.abs(subfilter) >= len(self):
+            raise IndexError("subfilter out of bounds.")
+        self.modelImages[subfilter] = maskedImage
+
+    def getBBox(self):
+        """Return the common bounding box of each subfilter image.
 
         Returns
         -------
+        bbox : `lsst.afw.geom.Box2I`
+            Bounding box of the DCR model.
         """
+        return self[0].getBBox()
 
     def getReferenceImage(self, bbox=None):
         """Create a simple template from the DCR model.
@@ -141,7 +162,7 @@ class DcrModel:
         """
         return np.mean([model[bbox].image.array for model in self], axis=0)
 
-    def assign(self, dcrSubModel, bbox):
+    def assign(self, dcrSubModel, bbox=None):
         """Update a sub-region of the ``DcrModel`` with new values.
 
         Parameters
@@ -151,7 +172,17 @@ class DcrModel:
         bbox : `lsst.afw.geom.Box2I`, optional
             Sub-region of the coadd.
             Defaults to the bounding box of ``dcrSubModel``.
+
+        Raises
+        ------
+        ValueError
+            If the new model has a different number of subfilters.
         """
+        if len(dcrSubModel) != len(self):
+            raise ValueError("The number of DCR subfilters must be the same "
+                             "between the old and new models.")
+        if bbox is None:
+            bbox = self.getBBox()
         for model, subModel in zip(self, dcrSubModel):
             model.assign(subModel[bbox], bbox)
 
@@ -192,7 +223,7 @@ class DcrModel:
             wcs = exposure.getInfo().getWcs()
         elif visitInfo is None or bbox is None or wcs is None:
             raise ValueError("Either exposure or visitInfo, bbox, and wcs must be set.")
-        dcrShift = calculateDcr(visitInfo, wcs, self.filterInfo, self.dcrNumSubfilters)
+        dcrShift = calculateDcr(visitInfo, wcs, self.filterInfo, len(self))
         templateImage = afwImage.MaskedImageF(bbox)
         for subfilter, dcr in enumerate(dcrShift):
             templateImage += applyDcr(self[subfilter][bbox], dcr, warpCtrl)
@@ -302,7 +333,7 @@ class DcrModel:
             lowPixels = (modelVals < templateImage/clampFrequency - noiseCutoff)
             excess[lowPixels] += modelVals[lowPixels] - templateImage[lowPixels]/clampFrequency
             modelVals[lowPixels] = templateImage[lowPixels]/clampFrequency
-        excess /= self.dcrNumSubfilters
+        excess /= len(self)
         for model in self:
             model.image.array += excess
 

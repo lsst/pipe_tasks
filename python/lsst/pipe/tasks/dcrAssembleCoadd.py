@@ -463,8 +463,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
-        for model in dcrModels:
-            bboxGrow.clip(model.getBBox())
+        bboxGrow.clip(dcrModels.getBBox())
 
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
