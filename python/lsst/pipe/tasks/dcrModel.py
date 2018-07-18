@@ -100,6 +100,32 @@ class DcrModel:
             modelImages.append(model.clone())
         return cls(modelImages, filterInfo)
 
+    @classmethod
+    def fromDataRef(cls, dataRef, dcrNumSubfilters):
+        """Load an existing DcrModel from a repository.
+
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Data reference defining the patch for coaddition and the
+            reference Warp
+        dcrNumSubfilters : `int`
+            Number of sub-filters used to model chromatic effects within a band.
+
+        Returns
+        -------
+        dcrModel : `lsst.pipe.tasks.DcrModel`
+            Best fit model of the true sky after correcting chromatic effects.
+        """
+        modelImages = []
+        filterInfo = None
+        for subfilter in range(dcrNumSubfilters):
+            dcrCoadd = dataRef.get("dcrCoadd", subfilter=subfilter, numSubfilters=dcrNumSubfilters)
+            if filterInfo is None:
+                filterInfo = dcrCoadd.getFilter()
+            modelImages.append(dcrCoadd.maskedImage)
+        return cls(modelImages, filterInfo)
+
     def __len__(self):
         """Return the number of subfilters.
 
