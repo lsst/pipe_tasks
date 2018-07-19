@@ -211,10 +211,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
     @section pipe_tasks_calibrate_IO  Invoking the Task
 
     If you want this task to unpersist inputs or persist outputs, then call
-    the `run` method (a wrapper around the `calibrate` method).
+    the `runDataRef` method (a wrapper around the `run` method).
 
     If you already have the inputs unpersisted and do not want to persist the
-    output then it is more direct to call the `calibrate` method:
+    output then it is more direct to call the `run` method:
 
     @section pipe_tasks_calibrate_Config  Configuration parameters
 
@@ -380,19 +380,19 @@ class CalibrateTask(pipeBase.CmdLineTask):
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
 
     @pipeBase.timeMethod
-    def run(self, dataRef, exposure=None, background=None, icSourceCat=None,
-            doUnpersist=True):
+    def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,
+                   doUnpersist=True):
         """!Calibrate an exposure, optionally unpersisting inputs and
             persisting outputs.
 
-        This is a wrapper around the `calibrate` method that unpersists inputs
+        This is a wrapper around the `run` method that unpersists inputs
         (if `doUnpersist` true) and persists outputs (if `config.doWrite` true)
 
         @param[in] dataRef  butler data reference corresponding to a science
             image
         @param[in,out] exposure  characterized exposure (an
             lsst.afw.image.ExposureF or similar), or None to unpersist existing
-            icExp and icBackground. See calibrate method for details of what is
+            icExp and icBackground. See `run` method for details of what is
             read and written.
         @param[in,out] background  initial model of background already
             subtracted from exposure (an lsst.afw.math.BackgroundList). May be
@@ -425,7 +425,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         exposureIdInfo = dataRef.get("expIdInfo")
 
-        calRes = self.calibrate(
+        calRes = self.run(
             exposure=exposure,
             exposureIdInfo=exposureIdInfo,
             background=background,
@@ -444,8 +444,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         return calRes
 
-    def calibrate(self, exposure, exposureIdInfo=None, background=None,
-                  icSourceCat=None):
+    def run(self, exposure, exposureIdInfo=None, background=None,
+            icSourceCat=None):
         """!Calibrate an exposure (science image or coadd)
 
         @param[in,out] exposure  exposure to calibrate (an

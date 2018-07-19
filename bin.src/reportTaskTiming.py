@@ -145,7 +145,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
-    def run(self, dataRefList):
+    def runDataRef(self, dataRefList):
         """Report timing statistics for a collection of task metadata
 
         @param dataRefList: a list of data references for task metadata

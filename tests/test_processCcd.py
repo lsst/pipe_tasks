@@ -277,7 +277,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
                 doReturnResults=True,
             )
-            icResult2 = charImageTask.characterize(isrResult2.exposure)
+            icResult2 = charImageTask.run(isrResult2.exposure)
             self.assertMaskedImagesEqual(
                 icResult1.parsedCmd.butler.get("icExp", dataId, immediate=True).getMaskedImage(),
                 icResult1.resultList[0].result.exposure.getMaskedImage()
@@ -308,7 +308,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
                 doReturnResults=True,
             )
-            calResult2 = calibrateTask.calibrate(
+            calResult2 = calibrateTask.run(
                 icResult2.exposure,
                 background=icResult2.background,
                 icSourceCat=icResult2.sourceCat

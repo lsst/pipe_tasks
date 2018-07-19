@@ -54,7 +54,7 @@ class DataRefListRunner(pipeBase.TaskRunner):
             - result: result returned by task runDataRef
         """
         task = self.TaskClass(config=self.config, log=self.log)
-        result = task.run(dataRefList)
+        result = task.runDataRef(dataRefList)
 
         if self.doReturnResults:
             return pipeBase.Struct(
@@ -75,7 +75,7 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
-    def run(self, dataRefList):
+    def runDataRef(self, dataRefList):
         """Get data from a repository for a collection of data references
 
         @param dataRefList: a list of data references

@@ -57,7 +57,7 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         self.makeSubtask("select")
 
     @pipeBase.timeMethod
-    def run(self, patchRef):
+    def runDataRef(self, patchRef):
         """Select images for a region and report how many are in each tract and patch
 
         Also report quartiles of FWHM

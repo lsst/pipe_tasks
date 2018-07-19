@@ -45,7 +45,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         # Test that all of the flags are defined and there is no reservation by default
         # also test that used sources are a subset of candidate sources
         task = CharacterizeImageTask()
-        results = task.characterize(self.exposure)
+        results = task.run(self.exposure)
         used = 0
         reserved = 0
         for source in results.sourceCat:

@@ -134,7 +134,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
 
     def buildSkyMap(self, butler):
         """Build the skymap for the mock dataset."""
-        return self.makeSkyMap.run(butler.dataRef(self.config.coaddName + "Coadd_skyMap")).skyMap
+        return self.makeSkyMap.runDataRef(butler.dataRef(self.config.coaddName + "Coadd_skyMap")).skyMap
 
     def buildTruthCatalog(self, butler=None, skyMap=None, tract=0):
         """Create and save (if butler is not None) a truth catalog containing all the mock objects.
@@ -278,11 +278,11 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             directCoaddTaskList.append(self.makeCoaddTask(coaddTask))
         assemblePsfMatchedCoaddTask = self.makeCoaddTask(AssembleCoaddTask, assemblePsfMatched=True)
         for patchRef in self.iterPatchRefs(butler, tractInfo):
-            makeCoaddTempExpTask.run(patchRef)
+            makeCoaddTempExpTask.runDataRef(patchRef)
         for patchRef in self.iterPatchRefs(butler, tractInfo):
             for directCoaddTask in directCoaddTaskList:
-                directCoaddTask.run(patchRef)
-            assemblePsfMatchedCoaddTask.run(patchRef)
+                directCoaddTask.runDataRef(patchRef)
+            assemblePsfMatchedCoaddTask.runDataRef(patchRef)
 
     def buildMockCoadd(self, butler, truthCatalog=None, skyMap=None, tract=0):
         """Directly create a simulation of the coadd, using the CoaddPsf (and ModelPsf)

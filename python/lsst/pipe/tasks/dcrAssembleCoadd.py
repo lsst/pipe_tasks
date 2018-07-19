@@ -161,12 +161,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     _DefaultName = "dcrAssembleCoadd"
 
     @pipeBase.timeMethod
-    def run(self, dataRef, selectDataList=[]):
+    def runDataRef(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of warps.
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and
         find scalings to match the photometric zeropoint to a reference Warp.
-        Assemble the Warps using assemble.
+        Assemble the Warps using run method.
         Forward model chromatic effects across multiple subfilters,
         and subtract from the input Warps to build sets of residuals.
         Use the residuals to construct a new ``DcrModel`` for each subfilter,
@@ -194,7 +194,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - ``dcrCoadds``: `list` of coadded exposures for each subfilter
             - ``dcrNImages``: `list` of exposure count images for each subfilter
         """
-        results = AssembleCoaddTask.run(self, dataRef, selectDataList=selectDataList)
+        results = AssembleCoaddTask.runDataRef(self, dataRef, selectDataList=selectDataList)
         for subfilter in range(self.config.dcrNumSubfilters):
             self.processResults(results.dcrCoadds[subfilter], dataRef)
             if self.config.doWrite:
@@ -259,8 +259,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        self.filterInfo)
         return dcrModels
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                 supplementaryData=None):
+    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+            supplementaryData=None):
         """Assemble the coadd.
 
         Requires additional inputs Struct ``supplementaryData`` to contain a
