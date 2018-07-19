@@ -251,7 +251,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.schema.addField("srcMatchId", "L", "unique id of source match")
 
     @pipeBase.timeMethod
-    def run(self, sensorRef, templateIdList=None):
+    def runDataRef(self, sensorRef, templateIdList=None):
         """Subtract an image from a template coadd and measure the result
 
         Steps include:

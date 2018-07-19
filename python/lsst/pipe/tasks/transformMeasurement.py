@@ -244,7 +244,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
                          outputDataset=self.outputDataset)
 
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def runDataRef(self, dataRef):
         """!Transform the source catalog referred to by dataRef.
 
         The result is both returned and written as dataset type "transformed_" + the input

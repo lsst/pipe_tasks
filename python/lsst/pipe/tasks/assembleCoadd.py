@@ -310,12 +310,12 @@ class AssembleCoaddTask(CoaddBaseTask):
         self.warpType = self.config.warpType
 
     @pipeBase.timeMethod
-    def run(self, dataRef, selectDataList=[]):
+    def runDataRef(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of Warps.
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and
         find scalings to match the photometric zeropoint to a reference Warp.
-        Assemble the Warps using `assemble`. Interpolate over NaNs and
+        Assemble the Warps using `run`. Interpolate over NaNs and
         optionally write the coadd to disk. Return the coadded exposure.
 
         Parameters
@@ -357,8 +357,8 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
 
-        retStruct = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
-                                  inputData.weightList, supplementaryData=supplementaryData)
+        retStruct = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
+                             inputData.weightList, supplementaryData=supplementaryData)
 
         self.processResults(retStruct.coaddExposure, dataRef)
         if self.config.doWrite:
@@ -391,7 +391,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
 
     def makeSupplementaryData(self, dataRef, selectDataList):
-        """Make additional inputs to assemble() specific to subclasses.
+        """Make additional inputs to run() specific to subclasses.
 
         Available to be implemented by subclasses only if they need the
         coadd dataRef for performing preliminary processing before
@@ -531,9 +531,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
         return pipeBase.Struct(ctrl=statsCtrl, flags=statsFlags)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                 altMaskList=None, mask=None, supplementaryData=None):
-        """Assemble a coadd from input warps.
+    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+            altMaskList=None, mask=None, supplementaryData=None):
+        """Assemble a coadd from input warps
 
         Assemble the coadd using the provided list of coaddTempExps. Since
         the full coadd covers a patch (a large area), the assembly is
@@ -561,7 +561,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         supplementaryData : lsst.pipe.base.Struct, optional
             Struct with additional data products needed to assemble coadd.
             Only used by subclasses that implement `makeSupplementaryData`
-            and override `assemble`.
+            and override `run`.
 
         Returns
         -------
@@ -1217,7 +1217,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
+    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
         """Assemble the coadd for a region.
 
         Compute the difference of coadds created with and without outlier
@@ -1235,7 +1235,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         detected sources in each visit - these are big footprints.
         Combine the small and big clipped footprints and mark them on a new
         bad mask plane.
-        Generate the coadd using `AssembleCoaddTask.assemble` without outlier
+        Generate the coadd using `AssembleCoaddTask.run` without outlier
         removal. Clipped footprints will no longer make it into the coadd
         because they are marked in the new bad mask plane.
 
@@ -1289,8 +1289,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
-        return AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                          result.clipSpans, mask=badPixelMask)
+        return AssembleCoaddTask.run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                     result.clipSpans, mask=badPixelMask)
 
     def buildDifferenceImage(self, skyInfo, tempExpRefList, imageScalerList, weightList):
         """Return an exposure that contains the difference between unclipped
@@ -1326,11 +1326,11 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
         config.statistic = 'MEAN'
         task = AssembleCoaddTask(config=config)
-        coaddMean = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
+        coaddMean = task.run(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
 
         config.statistic = 'MEANCLIP'
         task = AssembleCoaddTask(config=config)
-        coaddClip = task.assemble(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
+        coaddClip = task.run(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
 
         coaddDiff = coaddMean.getMaskedImage().Factory(coaddMean.getMaskedImage())
         coaddDiff -= coaddClip.getMaskedImage()
@@ -1794,7 +1794,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
            - ``templateCoaddcoadd``: coadded exposure (``lsst.afw.image.Exposure``).
         """
-        templateCoadd = self.assembleStaticSkyModel.run(dataRef, selectDataList)
+        templateCoadd = self.assembleStaticSkyModel.runDataRef(dataRef, selectDataList)
 
         if templateCoadd is None:
             warpName = (self.assembleStaticSkyModel.warpType[0].upper() +
@@ -1815,13 +1815,13 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
                                nImage=templateCoadd.nImage)
 
-    def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                 supplementaryData, *args, **kwargs):
+    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+            supplementaryData, *args, **kwargs):
         """Assemble the coadd.
 
         Find artifacts and apply them to the warps' masks creating a list of
         alternative masks with a new "CLIPPED" plane and updated "NO_DATA"
-        plane. Then pass these alternative masks to the base class's assemble
+        plane. Then pass these alternative masks to the base class's `run`
         method.
 
         Parameters
@@ -1852,8 +1852,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        result = AssembleCoaddTask.assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-                                            spanSetMaskList, mask=badPixelMask)
+        result = AssembleCoaddTask.run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+                                       spanSetMaskList, mask=badPixelMask)
 
         # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
         # Psf-Matching moves the real edge inwards

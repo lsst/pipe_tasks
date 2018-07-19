@@ -90,10 +90,10 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
         result = None  # in case the task fails
         exitStatus = 0  # exit status for shell
         if self.doRaise:
-            result = task.run(butler, dataRefList)
+            result = task.runDataRef(butler, dataRefList)
         else:
             try:
-                result = task.run(butler, dataRefList)
+                result = task.runDataRef(butler, dataRefList)
             except Exception as e:
                 task.log.fatal("Failed: %s" % e)
                 exitStatus = 1
@@ -129,7 +129,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
     @pipeBase.timeMethod
-    def run(self, butler, dataRefList):
+    def runDataRef(self, butler, dataRefList):
         """!Make a skymap from the bounds of the given set of calexps.
 
         @param[in]  butler        data butler used to save the SkyMap

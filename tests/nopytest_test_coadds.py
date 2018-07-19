@@ -163,14 +163,14 @@ def runTaskOnPatches(butler, task, mocksTask, tract=0):
     skyMap = butler.get(mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
     tractInfo = skyMap[tract]
     for dataRef in mocksTask.iterPatchRefs(butler, tractInfo):
-        task.run(dataRef)
+        task.runDataRef(dataRef)
 
 
 def runTaskOnPatchList(butler, task, mocksTask, tract=0, rerun=None):
     skyMap = butler.get(mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
     tractInfo = skyMap[tract]
     for dataRef in mocksTask.iterPatchRefs(butler, tractInfo):
-        task.run([dataRef])
+        task.runDataRef([dataRef])
 
 
 def runTaskOnCcds(butler, task, tract=0):
@@ -180,7 +180,7 @@ def runTaskOnCcds(butler, task, tract=0):
     for record in catalog:
         dataRef = butler.dataRef("forced_src", tract=tract, visit=record.getI(visitKey),
                                  ccd=record.getI(ccdKey))
-        task.run(dataRef)
+        task.runDataRef(dataRef)
 
 
 def getObsDict(butler, tract=0):

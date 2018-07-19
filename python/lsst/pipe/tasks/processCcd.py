@@ -107,7 +107,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
     This task is primarily designed to be run from the command line.
 
-    The main method is `run`, which takes a single butler data reference for the raw input data.
+    The main method is `runDataRef`, which takes a single butler data reference for the raw input data.
 
     @section pipe_tasks_processCcd_Config  Configuration parameters
 
@@ -160,7 +160,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
                          astromRefObjLoader=astromRefObjLoader, photoRefObjLoader=photoRefObjLoader)
 
     @pipeBase.timeMethod
-    def run(self, sensorRef):
+    def runDataRef(self, sensorRef):
         """Process one CCD
 
         The sequence of operations is:
@@ -182,7 +182,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
         exposure = self.isr.runDataRef(sensorRef).exposure
 
-        charRes = self.charImage.run(
+        charRes = self.charImage.runDataRef(
             dataRef=sensorRef,
             exposure=exposure,
             doUnpersist=False,
@@ -190,7 +190,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         exposure = charRes.exposure
 
         if self.config.doCalibrate:
-            calibRes = self.calibrate.run(
+            calibRes = self.calibrate.runDataRef(
                 dataRef=sensorRef,
                 exposure=charRes.exposure,
                 background=charRes.background,
