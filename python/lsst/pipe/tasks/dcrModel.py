@@ -29,7 +29,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 from lsst.geom import radians
 
-__all__ = ["DcrModel", "applyDcr", "calculateDcr", "calculateRotationAngle"]
+__all__ = ["DcrModel", "applyDcr", "calculateDcr", "calculateImageParallacticAngle"]
 
 
 class DcrModel:
@@ -469,7 +469,7 @@ def calculateDcr(visitInfo, wcs, filterInfo, dcrNumSubfilters):
     `lsst.afw.geom.Extent2I`
         The 2D shift due to DCR, in pixels.
     """
-    rotation = calculateRotationAngle(visitInfo, wcs)
+    rotation = calculateImageParallacticAngle(visitInfo, wcs)
     dcrShift = []
     lambdaEff = filterInfo.getFilterProperty().getLambdaEff()
     for wl0, wl1 in wavelengthGenerator(filterInfo, dcrNumSubfilters):
@@ -489,8 +489,8 @@ def calculateDcr(visitInfo, wcs, filterInfo, dcrNumSubfilters):
     return dcrShift
 
 
-def calculateRotationAngle(visitInfo, wcs):
-    """Calculate the sky rotation angle of an exposure.
+def calculateImageParallacticAngle(visitInfo, wcs):
+    """Calculate the total sky rotation angle of an exposure.
 
     Parameters
     ----------

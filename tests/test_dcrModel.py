@@ -30,7 +30,7 @@ import lsst.afw.math as afwMath
 from lsst.geom import arcseconds, degrees, radians
 from lsst.meas.algorithms.testUtils import plantSources
 import lsst.utils.tests
-from lsst.pipe.tasks.dcrModel import DcrModel, calculateDcr, calculateRotationAngle
+from lsst.pipe.tasks.dcrModel import DcrModel, calculateDcr, calculateImageParallacticAngle
 
 
 class DcrModelTestTask(lsst.utils.tests.TestCase):
@@ -207,7 +207,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         pixelScale = 0.2*afwGeom.arcseconds
         visitInfo = self.makeDummyVisitInfo(azimuth, elevation)
         wcs = self.makeDummyWcs(cdRotAngle, pixelScale, crval=visitInfo.getBoresightRaDec())
-        rotAngle = calculateRotationAngle(visitInfo, wcs)
+        rotAngle = calculateImageParallacticAngle(visitInfo, wcs)
         refAngle = -0.9344289857053072*radians
         self.assertAnglesAlmostEqual(refAngle, rotAngle, maxDiff=1e-6*radians)
 
