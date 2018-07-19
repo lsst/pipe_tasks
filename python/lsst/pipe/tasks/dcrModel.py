@@ -87,7 +87,7 @@ class DcrModel:
             Best fit model of the true sky after correcting chromatic effects.
         """
         # NANs will potentially contaminate the entire image,
-        #  depending on the shift or convolution type used.
+        # depending on the shift or convolution type used.
         model = maskedImage.clone()
         badPixels = np.isnan(model.image.array) | np.isnan(model.variance.array)
         model.image.array[badPixels] = 0.
@@ -142,12 +142,20 @@ class DcrModel:
         Parameters
         ----------
         subfilter : `int`
-            Index of the current subfilter within the full band.
+            Index of the current ``subfilter`` within the full band.
+            Negative indices are allowed, and count in reverse order
+            from the highest ``subfilter``.
 
         Returns
         -------
         modelImage : `lsst.afw.image.MaskedImage`
             The DCR model for the given ``subfilter``.
+
+        Raises
+        ------
+        IndexError
+            If the requested ``subfilter`` is greater or equal to the number
+            of subfilters in the model.
         """
         if np.abs(subfilter) >= len(self):
             raise IndexError("subfilter out of bounds.")
@@ -165,6 +173,9 @@ class DcrModel:
 
         Raises
         ------
+        IndexError
+            If the requested ``subfilter`` is greater or equal to the number
+            of subfilters in the model.
         ValueError
             If the bounding box of the new image does not match.
         """
@@ -228,7 +239,7 @@ class DcrModel:
 
         Parameters
         ----------
-        warpCtrl : `lsst.afw.Math.WarpingControl`
+        warpCtrl : `lsst.afw.math.WarpingControl`
             Configuration settings for warping an image
         exposure : `lsst.afw.image.Exposure`, optional
             The input exposure to build a matched template for.
@@ -283,7 +294,7 @@ class DcrModel:
             The new DCR model for one subfilter from the current iteration.
             Values in ``newModel`` that are extreme compared with the last
             iteration are modified in place.
-        bbox : `lsst.afw.geom.box.Box2I`
+        bbox : `lsst.afw.geom.Box2I`
             Sub-region of the coadd
         gain : `float`, optional
             Additional weight to apply to the model from the current iteration.
@@ -299,7 +310,7 @@ class DcrModel:
         newModel.variance /= 1. + gain
 
     def clampModel(self, subfilter, newModel, bbox, statsCtrl, regularizeSigma, modelClampFactor,
-                   convergenceMaskPlanes=None):
+                   convergenceMaskPlanes="DETECTED"):
         """Restrict large variations in the model between iterations.
 
         Parameters
@@ -310,7 +321,7 @@ class DcrModel:
             The new DCR model for one subfilter from the current iteration.
             Values in ``newModel`` that are extreme compared with the last
             iteration are modified in place.
-        bbox : `lsst.afw.geom.box.Box2I`
+        bbox : `lsst.afw.geom.Box2I`
             Sub-region to coadd
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
@@ -341,7 +352,7 @@ class DcrModel:
         newImage[clampPixels & ~highPixels] = oldImage[clampPixels & ~highPixels]/modelClampFactor
 
     def regularizeModel(self, bbox, mask, statsCtrl, regularizeSigma, clampFrequency,
-                        convergenceMaskPlanes=None):
+                        convergenceMaskPlanes="DETECTED"):
         """Restrict large variations in the model between subfilters.
 
         Any flux subtracted by the restriction is accumulated from all
@@ -350,7 +361,7 @@ class DcrModel:
 
         Parameters
         ----------
-        bbox : `lsst.afw.geom.box.Box2I`
+        bbox : `lsst.afw.geom.Box2I`
             Sub-region to coadd
         mask : `lsst.afw.image.Mask`
             Reference mask to use for all model planes.
@@ -361,15 +372,15 @@ class DcrModel:
         clampFrequency : `float`
             Maximum relative change of the model allowed between subfilters.
         convergenceMaskPlanes : `list` of `str`, or `str`, optional
-            Mask planes to use to calculate convergence.
+            Mask planes to use to calculate convergence. (Default is "DETECTED")
             Default value is set in ``calculateNoiseCutoff`` if not supplied.
         """
         templateImage = self.getReferenceImage(bbox)
         excess = np.zeros_like(templateImage)
         for model in self:
             noiseCutoff = self.calculateNoiseCutoff(model, statsCtrl, regularizeSigma,
-                                                    mask=mask[bbox],
-                                                    convergenceMaskPlanes=convergenceMaskPlanes)
+                                                    convergenceMaskPlanes=convergenceMaskPlanes,
+                                                    mask=mask[bbox])
             modelVals = model.image.array
             highPixels = (modelVals > (templateImage*clampFrequency + noiseCutoff))
             excess[highPixels] += modelVals[highPixels] - templateImage[highPixels]*clampFrequency
@@ -381,8 +392,8 @@ class DcrModel:
         for model in self:
             model.image.array += excess
 
-    def calculateNoiseCutoff(self, maskedImage, statsCtrl, regularizeSigma, mask=None,
-                             convergenceMaskPlanes=None):
+    def calculateNoiseCutoff(self, maskedImage, statsCtrl, regularizeSigma,
+                             convergenceMaskPlanes="DETECTED", mask=None):
         """Helper function to calculate the background noise level of an image.
 
         Parameters
@@ -393,25 +404,20 @@ class DcrModel:
             Statistics control object for coadd
         regularizeSigma : `float`
             Threshold to exclude noise-like pixels from regularization.
+        convergenceMaskPlanes : `list` of `str`, or `str`
+            Mask planes to use to calculate convergence.
         mask : `lsst.afw.image.Mask`, Optional
             Optional alternate mask
-        convergenceMaskPlanes : `list` of `str`, or `str`, optional
-            Mask planes to use to calculate convergence.
-            The "DETECTED" mask plane is used by default if not supplied.
 
         Returns
         -------
-        float
+        noiseCutoff : `float`
             The threshold value to treat pixels as noise in an image..
         """
-        if convergenceMaskPlanes is None:
-            convergeMask = maskedImage.mask.getPlaneBitMask("DETECTED")
-        else:
-            convergeMask = maskedImage.mask.getPlaneBitMask(convergenceMaskPlanes)
+        convergeMask = maskedImage.mask.getPlaneBitMask(convergenceMaskPlanes)
         if mask is None:
-            backgroundPixels = maskedImage.mask.array & (statsCtrl.getAndMask() | convergeMask) == 0
-        else:
-            backgroundPixels = mask.array & (statsCtrl.getAndMask() | convergeMask) == 0
+            mask = maskedImage.mask
+        backgroundPixels = mask.array & (statsCtrl.getAndMask() | convergeMask) == 0
         noiseCutoff = regularizeSigma*np.std(maskedImage.image.array[backgroundPixels])
         return noiseCutoff
 
@@ -427,7 +433,7 @@ def applyDcr(maskedImage, dcr, warpCtrl, bbox=None, useInverse=False):
         Shift calculated with ``calculateDcr``.
     warpCtrl : `lsst.afw.math.WarpingControl`
         Configuration settings for warping an image
-    bbox : `lsst.afw.geom.box.Box2I`, optional
+    bbox : `lsst.afw.geom.Box2I`, optional
         Sub-region of the masked image to shift.
         Shifts the entire image if None (Default).
     useInverse : `bool`, optional
@@ -437,11 +443,6 @@ def applyDcr(maskedImage, dcr, warpCtrl, bbox=None, useInverse=False):
     -------
     `lsst.afw.image.maskedImageF`
         A masked image, with the pixels within the bounding box shifted.
-
-    Deleted Parameters
-    ------------------
-    useFFT : `bool`, optional
-        Perform the convolution with an FFT?
     """
     padValue = afwImage.pixel.SinglePixelF(0., maskedImage.mask.getPlaneBitMask("NO_DATA"), 0)
     if bbox is None:

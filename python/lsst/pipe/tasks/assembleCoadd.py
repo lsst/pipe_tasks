@@ -376,7 +376,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         ----------
         coaddExposure : `lsst.afw.image.Exposure`
             The coadded exposure to process.
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
             Butler data reference for supplementary data.
         """
         if self.config.doInterp:
@@ -399,7 +399,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
             Butler data reference for supplementary data.
         selectDataList : `list`
             List of data references to Warps.
@@ -505,7 +505,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         Parameters
         ----------
         mask : `int`, optional
-            Mask planes to exclude from coaddition.
+            Bit mask value to exclude from coaddition.
 
         Returns
         -------
@@ -513,7 +513,8 @@ class AssembleCoaddTask(CoaddBaseTask):
             Statistics structure with the following fields:
 
             - ``statsCtrl``: Statistics control object for coadd
-            - ``statsFlags``: afwMath.Property object for statistic for coadd
+                (`lsst.afw.math.StatisticsControl`)
+            - ``statsFlags``: Statistic for coadd (`lsst.afw.math.Property`)
         """
         if mask is None:
             mask = self.getBadPixelMask()
@@ -733,7 +734,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        maskedImage : `lsst.afw.image.maskedImage`
+        maskedImage : `lsst.afw.image.MaskedImage`
             The masked image to be modified.
         """
         mask = maskedImage.getMask()
@@ -948,9 +949,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         Yields
         ------
         subBBox : `lsst.afw.geom.Box2I`
-            Next sub-bounding box of size subregionSize or smaller; each subBBox
-            is contained within bbox, so it may be smaller than subregionSize at
-            the edges of bbox, but it will never be empty.
+            Next sub-bounding box of size ``subregionSize`` or smaller; each ``subBBox``
+            is contained within ``bbox``, so it may be smaller than ``subregionSize`` at
+            the edges of ``bbox``, but it will never be empty.
         """
         if bbox.isEmpty():
             raise RuntimeError("bbox %s is empty" % (bbox,))
