@@ -222,6 +222,17 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
             dcrModels.conditionDcrModel(subfilter, newModel, self.bbox, gain=1.)
             self.assertMaskedImagesEqual(dcrModels[subfilter], newModel)
 
+    def testConditionDcrModelNoChangeHighGain(self):
+        """Conditioning should not change the model if it equals the reference.
+
+        This additionally tests that the variance and mask planes do not change.
+        """
+        dcrModels = DcrModel(modelImages=self.makeTestImages())
+        newModels = [dcrModels[subfilter].clone() for subfilter in range(self.dcrNumSubfilters)]
+        for subfilter, newModel in enumerate(newModels):
+            dcrModels.conditionDcrModel(subfilter, newModel, self.bbox, gain=2.5)
+            self.assertMaskedImagesAlmostEqual(dcrModels[subfilter], newModel)
+
     def testConditionDcrModelWithChange(self):
         """Verify conditioning when the model changes by a known amount.
 
@@ -235,7 +246,7 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
             dcrModels.conditionDcrModel(subfilter, newModel, self.bbox, gain=1.)
             refModel = dcrModels[subfilter]
             refModel.image.array[:] *= 2.
-            self.assertMaskedImagesEqual(refModel, newModel)
+            self.assertMaskedImagesAlmostEqual(refModel, newModel)
 
     def testRegularizationLargeClamp(self):
         """Frequency regularization should leave the models unchanged if the clamp factor is large.

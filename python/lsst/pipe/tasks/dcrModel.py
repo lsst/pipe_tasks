@@ -289,11 +289,14 @@ class DcrModel:
             Additional weight to apply to the model from the current iteration.
             Defaults to 1.0, which gives equal weight to both solutions.
         """
-        # The models are MaskedImages, which only support in-place operations.
-        newModel *= gain
-        newModel += self[subfilter][bbox]
-        newModel.image.array /= 1. + gain
-        newModel.variance.array /= 1. + gain
+        # Calculate weighted averages of the image and variance planes.
+        # Note that ``newModel *= gain`` would multiply the variance by ``gain**2``
+        newModel.image *= gain
+        newModel.image += self[subfilter][bbox].image
+        newModel.image /= 1. + gain
+        newModel.variance *= gain
+        newModel.variance += self[subfilter][bbox].variance
+        newModel.variance /= 1. + gain
 
     def clampModel(self, subfilter, newModel, bbox, statsCtrl, regularizeSigma, modelClampFactor,
                    convergenceMaskPlanes=None):
