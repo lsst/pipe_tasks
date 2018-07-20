@@ -95,7 +95,7 @@ class SkyCorrectionTask(BatchPoolTask):
         numTargets = len(cls.RunnerClass.getTargetList(parsedCmd))
         return time*numTargets
 
-    def run(self, expRef):
+    def runDataRef(self, expRef):
         """Perform sky correction on an exposure
 
         We restore the original sky, and remove it again using multiple
