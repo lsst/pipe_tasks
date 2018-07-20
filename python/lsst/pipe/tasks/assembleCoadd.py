@@ -360,17 +360,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         retStruct = self.assemble(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                                   inputData.weightList, supplementaryData=supplementaryData)
 
-        if self.config.doInterp:
-            self.interpImage.run(retStruct.coaddExposure.getMaskedImage(), planeName="NO_DATA")
-            # The variance must be positive; work around for DM-3201.
-            varArray = retStruct.coaddExposure.getMaskedImage().getVariance().getArray()
-            with numpy.errstate(invalid="ignore"):
-                varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
-
-        if self.config.doMaskBrightObjects:
-            brightObjectMasks = self.readBrightObjectMasks(dataRef)
-            self.setBrightObjectMasks(retStruct.coaddExposure, dataRef.dataId, brightObjectMasks)
-
+        self.processResults(retStruct.coaddExposure, dataRef)
         if self.config.doWrite:
             self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
             dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
@@ -378,6 +368,27 @@ class AssembleCoaddTask(CoaddBaseTask):
             dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
 
         return retStruct
+
+    def processResults(self, coaddExposure, dataRef):
+        """Interpolate over missing data and mask bright stars.
+
+        Parameters
+        ----------
+        coaddExposure : `lsst.afw.image.Exposure`
+            The coadded exposure to process.
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Butler data reference for supplementary data.
+        """
+        if self.config.doInterp:
+            self.interpImage.run(coaddExposure.getMaskedImage(), planeName="NO_DATA")
+            # The variance must be positive; work around for DM-3201.
+            varArray = coaddExposure.variance.array
+            with numpy.errstate(invalid="ignore"):
+                varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
+
+        if self.config.doMaskBrightObjects:
+            brightObjectMasks = self.readBrightObjectMasks(dataRef)
+            self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
 
     def makeSupplementaryData(self, dataRef, selectDataList):
         """Make additional inputs to assemble() specific to subclasses.
@@ -388,8 +399,8 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         Parameters
         ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Butler dataRef for supplementary data.
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Butler data reference for supplementary data.
         selectDataList : `list`
             List of data references to Warps.
         """
@@ -488,9 +499,41 @@ class AssembleCoaddTask(CoaddBaseTask):
         return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList,
                                imageScalerList=imageScalerList)
 
+    def prepareStats(self, mask=None):
+        """Prepare the statistics for coadding images.
+
+        Parameters
+        ----------
+        mask : `int`, optional
+            Bit mask value to exclude from coaddition.
+
+        Returns
+        -------
+        stats : `lsst.pipe.base.Struct`
+            Statistics structure with the following fields:
+
+            - ``statsCtrl``: Statistics control object for coadd
+                (`lsst.afw.math.StatisticsControl`)
+            - ``statsFlags``: Statistic for coadd (`lsst.afw.math.Property`)
+        """
+        if mask is None:
+            mask = self.getBadPixelMask()
+        statsCtrl = afwMath.StatisticsControl()
+        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
+        statsCtrl.setNumIter(self.config.clipIter)
+        statsCtrl.setAndMask(mask)
+        statsCtrl.setNanSafe(True)
+        statsCtrl.setWeighted(True)
+        statsCtrl.setCalcErrorFromInputVariance(self.config.calcErrorFromInputVariance)
+        for plane, threshold in self.config.maskPropagationThresholds.items():
+            bit = afwImage.Mask.getMaskPlane(plane)
+            statsCtrl.setMaskPropagationThreshold(bit, threshold)
+        statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
+        return pipeBase.Struct(ctrl=statsCtrl, flags=statsFlags)
+
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  altMaskList=None, mask=None, supplementaryData=None):
-        """Assemble a coadd from input warps
+        """Assemble a coadd from input warps.
 
         Assemble the coadd using the provided list of coaddTempExps. Since
         the full coadd covers a patch (a large area), the assembly is
@@ -530,21 +573,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
-        if mask is None:
-            mask = self.getBadPixelMask()
-
-        statsCtrl = afwMath.StatisticsControl()
-        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
-        statsCtrl.setNumIter(self.config.clipIter)
-        statsCtrl.setAndMask(mask)
-        statsCtrl.setNanSafe(True)
-        statsCtrl.setWeighted(True)
-        statsCtrl.setCalcErrorFromInputVariance(self.config.calcErrorFromInputVariance)
-        for plane, threshold in self.config.maskPropagationThresholds.items():
-            bit = afwImage.Mask.getMaskPlane(plane)
-            statsCtrl.setMaskPropagationThreshold(bit, threshold)
-
-        statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
+        stats = self.prepareStats(mask=mask)
 
         if altMaskList is None:
             altMaskList = [None]*len(tempExpRefList)
@@ -561,10 +590,10 @@ class AssembleCoaddTask(CoaddBaseTask):
             nImage = afwImage.ImageU(skyInfo.bbox)
         else:
             nImage = None
-        for subBBox in _subBBoxIter(skyInfo.bbox, subregionSize):
+        for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             try:
                 self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
-                                       weightList, altMaskList, statsFlags, statsCtrl,
+                                       weightList, altMaskList, stats.flags, stats.ctrl,
                                        nImage=nImage)
             except Exception as e:
                 self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
@@ -671,17 +700,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         coaddExposure.mask.addMaskPlane("REJECTED")
         coaddExposure.mask.addMaskPlane("CLIPPED")
         coaddExposure.mask.addMaskPlane("SENSOR_EDGE")
-        # If a pixel is rejected due to a mask value other than EDGE, NO_DATA,
-        # or CLIPPED, set it to REJECTED on the coadd.
-        # If a pixel is rejected due to EDGE, set the coadd pixel to SENSOR_EDGE.
-        # if a pixel is rejected due to CLIPPED, set the coadd pixel to CLIPPED.
-        edge = afwImage.Mask.getPlaneBitMask("EDGE")
-        noData = afwImage.Mask.getPlaneBitMask("NO_DATA")
+        maskMap = self.setRejectedMaskMapping(statsCtrl)
         clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
-        toReject = statsCtrl.getAndMask() & (~noData) & (~edge) & (~clipped)
-        maskMap = [(toReject, coaddExposure.mask.getPlaneBitMask("REJECTED")),
-                   (edge, coaddExposure.mask.getPlaneBitMask("SENSOR_EDGE")),
-                   (clipped, clipped)]
         maskedImageList = []
         if nImage is not None:
             subNImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
@@ -698,13 +718,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             if nImage is not None:
                 subNImage.getArray()[maskedImage.getMask().getArray() & statsCtrl.getAndMask() == 0] += 1
             if self.config.removeMaskPlanes:
-                mask = maskedImage.getMask()
-                for maskPlane in self.config.removeMaskPlanes:
-                    try:
-                        mask &= ~mask.getPlaneBitMask(maskPlane)
-                    except Exception as e:
-                        self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.args[0])
-
+                self.removeMaskPlanes(maskedImage)
             maskedImageList.append(maskedImage)
 
         with self.timer("stack"):
@@ -714,6 +728,50 @@ class AssembleCoaddTask(CoaddBaseTask):
         coaddExposure.maskedImage.assign(coaddSubregion, bbox)
         if nImage is not None:
             nImage.assign(subNImage, bbox)
+
+    def removeMaskPlanes(self, maskedImage):
+        """Unset the mask of an image for mask planes specified in the config.
+
+        Parameters
+        ----------
+        maskedImage : `lsst.afw.image.MaskedImage`
+            The masked image to be modified.
+        """
+        mask = maskedImage.getMask()
+        for maskPlane in self.config.removeMaskPlanes:
+            try:
+                mask &= ~mask.getPlaneBitMask(maskPlane)
+            except Exception as e:
+                self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.args[0])
+
+    @staticmethod
+    def setRejectedMaskMapping(statsCtrl):
+        """Map certain mask planes of the warps to new planes for the coadd.
+
+        If a pixel is rejected due to a mask value other than EDGE, NO_DATA,
+        or CLIPPED, set it to REJECTED on the coadd.
+        If a pixel is rejected due to EDGE, set the coadd pixel to SENSOR_EDGE.
+        If a pixel is rejected due to CLIPPED, set the coadd pixel to CLIPPED.
+
+        Parameters
+        ----------
+        statsCtrl : `lsst.afw.math.StatisticsControl`
+            Statistics control object for coadd
+
+        Returns
+        -------
+        maskMap : `list` of `tuple` of `int`
+            A list of mappings of mask planes of the warped exposures to
+            mask planes of the coadd.
+        """
+        edge = afwImage.Mask.getPlaneBitMask("EDGE")
+        noData = afwImage.Mask.getPlaneBitMask("NO_DATA")
+        clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
+        toReject = statsCtrl.getAndMask() & (~noData) & (~edge) & (~clipped)
+        maskMap = [(toReject, afwImage.Mask.getPlaneBitMask("REJECTED")),
+                   (edge, afwImage.Mask.getPlaneBitMask("SENSOR_EDGE")),
+                   (clipped, clipped)]
+        return maskMap
 
     def applyAltMaskPlanes(self, mask, altMaskSpans):
         """Apply in place alt mask formatted as SpanSets to a mask.
@@ -877,37 +935,38 @@ class AssembleCoaddTask(CoaddBaseTask):
                                ContainerClass=SelectDataIdContainer)
         return parser
 
+    @staticmethod
+    def _subBBoxIter(bbox, subregionSize):
+        """Iterate over subregions of a bbox.
 
-def _subBBoxIter(bbox, subregionSize):
-    """Iterate over subregions of a bbox.
+        Parameters
+        ----------
+        bbox : `lsst.afw.geom.Box2I`
+            Bounding box over which to iterate.
+        subregionSize: `lsst.afw.geom.Extent2I`
+            Size of sub-bboxes.
 
-    Parameters
-    ----------
-    bbox : `lsst.afw.geom.Box2I`
-        Bounding box over which to iterate.
-    subregionSize: `lsst.afw.geom.Extent2I`
-        Size of sub-bboxes.
+        Yields
+        ------
+        subBBox : `lsst.afw.geom.Box2I`
+            Next sub-bounding box of size ``subregionSize`` or smaller; each ``subBBox``
+            is contained within ``bbox``, so it may be smaller than ``subregionSize`` at
+            the edges of ``bbox``, but it will never be empty.
+        """
+        if bbox.isEmpty():
+            raise RuntimeError("bbox %s is empty" % (bbox,))
+        if subregionSize[0] < 1 or subregionSize[1] < 1:
+            raise RuntimeError("subregionSize %s must be nonzero" % (subregionSize,))
 
-    Yields
-    ------
-    subBBox : `lsst.afw.geom.Box2I`
-        Next sub-bounding box of size subregionSize or smaller; each subBBox
-        is contained within bbox, so it may be smaller than subregionSize at
-        the edges of bbox, but it will never be empty.
-    """
-    if bbox.isEmpty():
-        raise RuntimeError("bbox %s is empty" % (bbox,))
-    if subregionSize[0] < 1 or subregionSize[1] < 1:
-        raise RuntimeError("subregionSize %s must be nonzero" % (subregionSize,))
-
-    for rowShift in range(0, bbox.getHeight(), subregionSize[1]):
-        for colShift in range(0, bbox.getWidth(), subregionSize[0]):
-            subBBox = afwGeom.Box2I(bbox.getMin() + afwGeom.Extent2I(colShift, rowShift), subregionSize)
-            subBBox.clip(bbox)
-            if subBBox.isEmpty():
-                raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, colShift=%s, rowShift=%s" %
-                                   (bbox, subregionSize, colShift, rowShift))
-            yield subBBox
+        for rowShift in range(0, bbox.getHeight(), subregionSize[1]):
+            for colShift in range(0, bbox.getWidth(), subregionSize[0]):
+                subBBox = afwGeom.Box2I(bbox.getMin() + afwGeom.Extent2I(colShift, rowShift), subregionSize)
+                subBBox.clip(bbox)
+                if subBBox.isEmpty():
+                    raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, "
+                                       "colShift=%s, rowShift=%s" %
+                                       (bbox, subregionSize, colShift, rowShift))
+                yield subBBox
 
 
 class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
@@ -1753,7 +1812,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             """ % {"warpName": warpName}
             raise RuntimeError(message)
 
-        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure)
+        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
+                               nImage=templateCoadd.nImage)
 
     def assemble(self, skyInfo, tempExpRefList, imageScalerList, weightList,
                  supplementaryData, *args, **kwargs):
