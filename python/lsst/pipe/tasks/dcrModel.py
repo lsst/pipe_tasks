@@ -105,7 +105,7 @@ class DcrModel:
         return cls(modelImages, filterInfo, psf)
 
     @classmethod
-    def fromDataRef(cls, dataRef, dcrNumSubfilters):
+    def fromDataRef(cls, dataRef, datasetType="dcrCoadd", numSubfilters=None, **kwargs):
         """Load an existing DcrModel from a repository.
 
         Parameters
@@ -113,8 +113,14 @@ class DcrModel:
         dataRef : `lsst.daf.persistence.ButlerDataRef`
             Data reference defining the patch for coaddition and the
             reference Warp
-        dcrNumSubfilters : `int`
+        datasetType : `str`, optional
+            Name of the DcrModel in the registry {"dcrCoadd", "dcrCoadd_sub"}
+        numSubfilters : `int`
             Number of sub-filters used to model chromatic effects within a band.
+        **kwargs
+            Additional keyword arguments to pass to look up the model in the data registry.
+            Common keywords and their types include: ``tract``:`str`, ``patch``:`str`,
+            ``bbox``:`lsst.afw.geom.Box2I`
 
         Returns
         -------
@@ -123,8 +129,10 @@ class DcrModel:
         """
         modelImages = []
         filterInfo = None
-        for subfilter in range(dcrNumSubfilters):
-            dcrCoadd = dataRef.get("dcrCoadd", subfilter=subfilter, numSubfilters=dcrNumSubfilters)
+        psf = None
+        for subfilter in range(numSubfilters):
+            dcrCoadd = dataRef.get(datasetType, subfilter=subfilter,
+                                   numSubfilters=numSubfilters, **kwargs)
             if filterInfo is None:
                 filterInfo = dcrCoadd.getFilter()
             if psf is None:
@@ -317,6 +325,39 @@ class DcrModel:
         if mask is not None:
             templateImage.setMask(mask[bbox])
         return templateImage
+
+    def buildMatchedExposure(self, exposure=None, warpCtrl=None,
+                             visitInfo=None, bbox=None, wcs=None, mask=None):
+        """Wrapper to create an exposure from a template image.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`, optional
+            The input exposure to build a matched template for.
+            May be omitted if all of the metadata is supplied separately
+        warpCtrl : `lsst.afw.Math.WarpingControl`
+            Configuration settings for warping an image
+        visitInfo : `lsst.afw.image.VisitInfo`, optional
+            Metadata for the exposure. Ignored if ``exposure`` is set.
+        bbox : `lsst.afw.geom.Box2I`, optional
+            Sub-region of the coadd. Ignored if ``exposure`` is set.
+        wcs : `lsst.afw.geom.SkyWcs`, optional
+            Coordinate system definition (wcs) for the exposure.
+            Ignored if ``exposure`` is set.
+        mask : `lsst.afw.image.Mask`, optional
+            reference mask to use for the template image.
+
+        Returns
+        -------
+        templateExposure : `lsst.afw.image.exposureF`
+            The DCR-matched template
+        """
+        templateImage = self.buildMatchedTemplate(exposure, warpCtrl, visitInfo, bbox, wcs, mask)
+        templateExposure = afwImage.ExposureF(bbox, wcs)
+        templateExposure.setMaskedImage(templateImage)
+        templateExposure.setPsf(self.psf)
+        templateExposure.setFilter(self.filter)
+        return templateExposure
 
     def conditionDcrModel(self, subfilter, newModel, bbox, gain=1.):
         """Average two iterations' solutions to reduce oscillations.
