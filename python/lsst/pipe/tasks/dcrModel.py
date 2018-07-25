@@ -62,13 +62,14 @@ class DcrModel:
     iterations of forward modeling or between the subfilters of the model.
     """
 
-    def __init__(self, modelImages, filterInfo=None):
+    def __init__(self, modelImages, filterInfo=None, psf=None):
         self.dcrNumSubfilters = len(modelImages)
-        self.filterInfo = filterInfo
         self.modelImages = modelImages
+        self._filter = filterInfo
+        self._psf = psf
 
     @classmethod
-    def fromImage(cls, maskedImage, dcrNumSubfilters, filterInfo=None):
+    def fromImage(cls, maskedImage, dcrNumSubfilters, filterInfo=None, psf=None):
         """Initialize a DcrModel by dividing a coadd between the subfilters.
 
         Parameters
@@ -77,9 +78,12 @@ class DcrModel:
             Input coadded image to divide equally between the subfilters.
         dcrNumSubfilters : `int`
             Number of sub-filters used to model chromatic effects within a band.
-        filterInfo : None, optional
+        filterInfo : `lsst.afw.image.Filter`, optional
             The filter definition, set in the current instruments' obs package.
             Required for any calculation of DCR, including making matched templates.
+        psf : `lsst.afw.detection.Psf`, optional
+            Point spread function (PSF) of the model.
+            Required if the ``DcrModel`` will be persisted.
 
         Returns
         -------
@@ -98,7 +102,7 @@ class DcrModel:
         modelImages = [model, ]
         for subfilter in range(1, dcrNumSubfilters):
             modelImages.append(model.clone())
-        return cls(modelImages, filterInfo)
+        return cls(modelImages, filterInfo, psf)
 
     @classmethod
     def fromDataRef(cls, dataRef, dcrNumSubfilters):
@@ -123,8 +127,10 @@ class DcrModel:
             dcrCoadd = dataRef.get("dcrCoadd", subfilter=subfilter, numSubfilters=dcrNumSubfilters)
             if filterInfo is None:
                 filterInfo = dcrCoadd.getFilter()
+            if psf is None:
+                psf = dcrCoadd.getPsf()
             modelImages.append(dcrCoadd.maskedImage)
-        return cls(modelImages, filterInfo)
+        return cls(modelImages, filterInfo, psf)
 
     def __len__(self):
         """Return the number of subfilters.
@@ -185,7 +191,30 @@ class DcrModel:
             raise ValueError("The bounding box of a subfilter must not change.")
         self.modelImages[subfilter] = maskedImage
 
-    def getBBox(self):
+    @property
+    def filter(self):
+        """Return the filter of the model.
+
+        Returns
+        -------
+        filter : `lsst.afw.image.Filter`
+            The filter definition, set in the current instruments' obs package.
+        """
+        return self._filter
+
+    @property
+    def psf(self):
+        """Return the psf of the model.
+
+        Returns
+        -------
+        psf : `lsst.afw.detection.Psf`
+            Point spread function (PSF) of the model.
+        """
+        return self._psf
+
+    @property
+    def bbox(self):
         """Return the common bounding box of each subfilter image.
 
         Returns
@@ -263,11 +292,9 @@ class DcrModel:
         Raises
         ------
         ValueError
-            If ``filterInfo`` is not set.
-        ValueError
             If neither ``exposure`` or all of ``visitInfo``, ``bbox``, and ``wcs`` are set.
         """
-        if self.filterInfo is None:
+        if self.filter is None:
             raise ValueError("'filterInfo' must be set for the DcrModel in order to calculate DCR.")
         if exposure is not None:
             visitInfo = exposure.getInfo().getVisitInfo()
@@ -275,7 +302,7 @@ class DcrModel:
             wcs = exposure.getInfo().getWcs()
         elif visitInfo is None or bbox is None or wcs is None:
             raise ValueError("Either exposure or visitInfo, bbox, and wcs must be set.")
-        dcrShift = calculateDcr(visitInfo, wcs, self.filterInfo, len(self))
+        dcrShift = calculateDcr(visitInfo, wcs, self.filter, len(self))
         templateImage = afwImage.MaskedImageF(bbox)
         for subfilter, dcr in enumerate(dcrShift):
             templateImage += applyDcr(self[subfilter][bbox], dcr, warpCtrl)

@@ -232,8 +232,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         NotImplementedError
             If ``lambdaMin`` is missing from the Mapper class of the obs package being used.
         """
-        self.filterInfo = templateCoadd.getFilter()
-        if np.isnan(self.filterInfo.getFilterProperty().getLambdaMin()):
+        filterInfo = templateCoadd.getFilter()
+        if np.isnan(filterInfo.getFilterProperty().getLambdaMin()):
             raise NotImplementedError("No minimum/maximum wavelength information found"
                                       " in the filter definition! Please add lambdaMin and lambdaMax"
                                       " to the Mapper class in your obs package.")
@@ -245,7 +245,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.doAirmassWeight:
                 weightList[visitNum] *= airmass
             dcrShifts.append(np.max(np.abs(calculateDcr(visitInfo, templateCoadd.getWcs(),
-                                                        self.filterInfo, self.config.dcrNumSubfilters))))
+                                                        filterInfo, self.config.dcrNumSubfilters))))
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
         # Turn off the warping cache, since we set the linear interpolation length to the entire subregion
         # This warper is only used for applying DCR shifts, which are assumed to be uniform across a patch
@@ -256,7 +256,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                cacheSize=warpCache, interpLength=warpInterpLength)
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
                                        self.config.dcrNumSubfilters,
-                                       self.filterInfo)
+                                       filterInfo=filterInfo,
+                                       psf=templateCoadd.getPsf())
         return dcrModels
 
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
@@ -414,7 +415,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             mask = exposure.mask
             if altMaskSpans is not None:
                 self.applyAltMaskPlanes(mask, altMaskSpans)
-            dcrShift = calculateDcr(visitInfo, wcs, self.filterInfo, self.config.dcrNumSubfilters)
+            dcrShift = calculateDcr(visitInfo, wcs, dcrModels.filter, self.config.dcrNumSubfilters)
             for dcr, dcrNImage in zip(dcrShift, dcrNImages):
                 shiftedImage = applyDcr(exposure.maskedImage, dcr, self.warpCtrl, useInverse=True)
                 dcrNImage.array[shiftedImage.mask.array & statsCtrl.getAndMask() == 0] += 1
@@ -464,7 +465,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
-        bboxGrow.clip(dcrModels.getBBox())
+        bboxGrow.clip(dcrModels.bbox)
 
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
@@ -474,8 +475,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.maskedImage
-            templateImage = dcrModels.buildMatchedTemplate(self.warpCtrl, visitInfo=visitInfo, bbox=bboxGrow,
-                                                           wcs=wcs, mask=baseMask)
+            templateImage = dcrModels.buildMatchedTemplate(warpCtrl=self.warpCtrl, visitInfo=visitInfo,
+                                                           bbox=bboxGrow, wcs=wcs, mask=baseMask)
             imageScaler.scaleMaskedImage(maskedImage)
             if altMaskSpans is not None:
                 self.applyAltMaskPlanes(maskedImage.mask, altMaskSpans)
@@ -483,7 +484,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.removeMaskPlanes:
                 self.removeMaskPlanes(maskedImage)
             maskedImage -= templateImage
-            residualGeneratorList.append(self.dcrResiduals(maskedImage, visitInfo, bboxGrow, wcs))
+            residualGeneratorList.append(self.dcrResiduals(maskedImage, visitInfo, bboxGrow, wcs,
+                                                           dcrModels.filter))
 
         dcrSubModelOut = self.newModelFromResidual(dcrModels, residualGeneratorList, bboxGrow,
                                                    statsFlags, statsCtrl, weightList)
@@ -491,7 +493,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        self.config.clampFrequency, self.config.convergenceMaskPlanes)
         dcrModels.assign(dcrSubModelOut, bbox)
 
-    def dcrResiduals(self, residual, visitInfo, bbox, wcs):
+    def dcrResiduals(self, residual, visitInfo, bbox, wcs, filterInfo):
         """Prepare a residual image for stacking in each subfilter by applying the reverse DCR shifts.
 
         Parameters
@@ -505,13 +507,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Sub-region of the coadd
         wcs : `lsst.afw.geom.SkyWcs`
             Coordinate system definition (wcs) for the exposure.
+        filterInfo : `lsst.afw.image.Filter`
+            The filter definition, set in the current instruments' obs package.
+            Required for any calculation of DCR, including making matched templates.
 
         Yields
         ------
         residualImage : `lsst.afw.image.maskedImageF`
             The residual image for the next subfilter, shifted for DCR.
         """
-        dcrShift = calculateDcr(visitInfo, wcs, self.filterInfo, self.config.dcrNumSubfilters)
+        dcrShift = calculateDcr(visitInfo, wcs, filterInfo, self.config.dcrNumSubfilters)
         for dcr in dcrShift:
             yield applyDcr(residual, dcr, self.warpCtrl, bbox=bbox, useInverse=True)
 
@@ -553,7 +558,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                  self.config.modelClampFactor, self.config.convergenceMaskPlanes)
             dcrModels.conditionDcrModel(subfilter, newModel, bbox, gain=1.)
             newModelImages.append(newModel)
-        return DcrModel(newModelImages, self.filterInfo)
+        return DcrModel(newModelImages, dcrModels.filter, dcrModels.psf)
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
                              weightList, spanSetMaskList, statsCtrl):
@@ -622,7 +627,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Quality of fit metric for one exposure, within the sub-region.
         """
         convergeMask = exposure.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
-        templateImage = dcrModels.buildMatchedTemplate(self.warpCtrl,
+        templateImage = dcrModels.buildMatchedTemplate(warpCtrl=self.warpCtrl,
                                                        visitInfo=exposure.getInfo().getVisitInfo(),
                                                        bbox=exposure.getBBox(),
                                                        wcs=exposure.getInfo().getWcs())
