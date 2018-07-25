@@ -230,7 +230,7 @@ class DcrModel:
         Parameters
         ----------
         bbox : `lsst.afw.geom.Box2I`, optional
-            Sub-region of the coadd. Returns the entire image if None.
+            Sub-region of the coadd. Returns the entire image if `None`.
 
         Returns
         -------
@@ -263,16 +263,19 @@ class DcrModel:
         for model, subModel in zip(self, dcrSubModel):
             model.assign(subModel[bbox], bbox)
 
-    def buildMatchedTemplate(self, warpCtrl, exposure=None, visitInfo=None, bbox=None, wcs=None, mask=None):
-        """Create a DCR-matched template for an exposure.
+    def buildMatchedTemplate(self, exposure=None, warpCtrl=None,
+                             visitInfo=None, bbox=None, wcs=None, mask=None):
+        """Create a DCR-matched template image for an exposure.
 
         Parameters
         ----------
-        warpCtrl : `lsst.afw.math.WarpingControl`
-            Configuration settings for warping an image
         exposure : `lsst.afw.image.Exposure`, optional
             The input exposure to build a matched template for.
             May be omitted if all of the metadata is supplied separately
+        warpCtrl : `lsst.afw.Math.WarpingControl`, optional
+            Configuration settings for warping an image.
+            If not set, defaults to a lanczos3 warping kernel for the image,
+            and a bilinear kernel for the mask
         visitInfo : `lsst.afw.image.VisitInfo`, optional
             Metadata for the exposure. Ignored if ``exposure`` is set.
         bbox : `lsst.afw.geom.Box2I`, optional
@@ -282,7 +285,6 @@ class DcrModel:
             Ignored if ``exposure`` is set.
         mask : `lsst.afw.image.Mask`, optional
             reference mask to use for the template image.
-            Ignored if ``exposure`` is set.
 
         Returns
         -------
@@ -302,6 +304,12 @@ class DcrModel:
             wcs = exposure.getInfo().getWcs()
         elif visitInfo is None or bbox is None or wcs is None:
             raise ValueError("Either exposure or visitInfo, bbox, and wcs must be set.")
+        if warpCtrl is None:
+            # Turn off the warping cache, since we set the linear interpolation length to the entire subregion
+            # This warper is only used for applying DCR shifts, which are assumed to be uniform across a patch
+            warpCtrl = afwMath.WarpingControl("lanczos3", "bilinear",
+                                              cacheSize=0, interpLength=max(bbox.getDimensions()))
+
         dcrShift = calculateDcr(visitInfo, wcs, self.filter, len(self))
         templateImage = afwImage.MaskedImageF(bbox)
         for subfilter, dcr in enumerate(dcrShift):
