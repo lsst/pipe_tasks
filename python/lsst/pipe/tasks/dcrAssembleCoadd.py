@@ -25,10 +25,10 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.coadd.utils as coaddUtils
+from lsst.ip.diffim.dcrModel import applyDcr, calculateDcr, DcrModel
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
-from .dcrModel import applyDcr, calculateDcr, DcrModel
 
 __all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
