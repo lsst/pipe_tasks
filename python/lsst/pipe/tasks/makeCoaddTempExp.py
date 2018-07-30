@@ -305,7 +305,36 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             except (KeyError, ValueError):
                 visitId = i
 
-            exps = self.run(calexpRefList, skyInfo, visitId).exposures
+            calExpList = []
+            ccdIdList = []
+            dataIdList = []
+
+            for calExpInd, calExpRef in enumerate(calexpRefList):
+                self.log.info("Reading calexp %d of %d for this Warp: id=%s",
+                              calExpInd+1, len(calexpRefList), calExpRef.dataId)
+                try:
+                    ccdId = calExpRef.get("ccdExposureId", immediate=True)
+                except Exception:
+                    ccdId = calExpInd
+                try:
+                    # We augment the dataRef here with the tract, which is harmless for loading things
+                    # like calexps that don't need the tract, and necessary for meas_mosaic outputs,
+                    # which do.
+                    calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
+                                                                      tract=skyInfo.tractInfo.getId())
+                    calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
+                except Exception as e:
+                    self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
+                    continue
+
+                if self.config.doApplySkyCorr:
+                    self.applySkyCorr(calExpRef, calExp)
+
+                calExpList.append(calExp)
+                ccdIdList.append(ccdId)
+                dataIdList.append(calExpRef.dataId)
+
+            exps = self.run(calExpList, ccdIdList, skyInfo, visitId, dataIdList).exposures
 
             if any(exps.values()):
                 dataRefList.append(tempExpRef)
@@ -320,7 +349,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         return dataRefList
 
-    def run(self, calexpRefList, skyInfo, visitId=0):
+    def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None):
         """Create a Warp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
@@ -347,38 +376,23 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         totGoodPix = {warpType: 0 for warpType in warpTypeList}
         didSetMetadata = {warpType: False for warpType in warpTypeList}
         coaddTempExps = {warpType: self._prepareEmptyExposure(skyInfo) for warpType in warpTypeList}
-        inputRecorder = {warpType: self.inputRecorder.makeCoaddTempExpRecorder(visitId, len(calexpRefList))
+        inputRecorder = {warpType: self.inputRecorder.makeCoaddTempExpRecorder(visitId, len(calExpList))
                          for warpType in warpTypeList}
 
         modelPsf = self.config.modelPsf.apply() if self.config.makePsfMatched else None
-        for calExpInd, calExpRef in enumerate(calexpRefList):
+        if dataIdList is None:
+            dataIdList = ccdIdList
+
+        for calExpInd, (calExp, ccdId, dataId) in enumerate(zip(calExpList, ccdIdList, dataIdList)):
             self.log.info("Processing calexp %d of %d for this Warp: id=%s",
-                          calExpInd+1, len(calexpRefList), calExpRef.dataId)
-            try:
-                ccdId = calExpRef.get("ccdExposureId", immediate=True)
-            except Exception:
-                ccdId = calExpInd
-            try:
-                # We augment the dataRef here with the tract, which is harmless for loading things
-                # like calexps that don't need the tract, and necessary for meas_mosaic outputs,
-                # which do.
-                calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
-                                                                  tract=skyInfo.tractInfo.getId())
-                calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
-            except Exception as e:
-                self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
-                continue
-
-            if self.config.doApplySkyCorr:
-                self.applySkyCorr(calExpRef, calExp)
-
+                          calExpInd+1, len(calExpList), dataId)
             try:
                 warpedAndMatched = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf,
                                                             wcs=skyInfo.wcs, maxBBox=skyInfo.bbox,
                                                             makeDirect=self.config.makeDirect,
                                                             makePsfMatched=self.config.makePsfMatched)
             except Exception as e:
-                self.log.warn("WarpAndPsfMatch failed for calexp %s; skipping it: %s", calExpRef.dataId, e)
+                self.log.warn("WarpAndPsfMatch failed for calexp %s; skipping it: %s", dataId, e)
                 continue
             try:
                 numGoodPix = {warpType: 0 for warpType in warpTypeList}
@@ -396,7 +410,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                         coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                     totGoodPix[warpType] += numGoodPix[warpType]
                     self.log.debug("Calexp %s has %d good pixels in this patch (%.1f%%) for %s",
-                                   calExpRef.dataId, numGoodPix[warpType],
+                                   dataId, numGoodPix[warpType],
                                    100.0*numGoodPix[warpType]/skyInfo.bbox.getArea(), warpType)
                     if numGoodPix[warpType] > 0 and not didSetMetadata[warpType]:
                         coaddTempExp.setCalib(exposure.getCalib())
@@ -410,7 +424,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     inputRecorder[warpType].addCalExp(calExp, ccdId, numGoodPix[warpType])
 
             except Exception as e:
-                self.log.warn("Error processing calexp %s; skipping it: %s", calExpRef.dataId, e)
+                self.log.warn("Error processing calexp %s; skipping it: %s", dataId, e)
                 continue
 
         for warpType in warpTypeList:
