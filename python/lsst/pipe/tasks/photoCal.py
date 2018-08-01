@@ -266,7 +266,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         - fluxErr
         """
         flux = schema.find(self.config.fluxField).key
-        fluxErr = schema.find(self.config.fluxField + "Sigma").key
+        fluxErr = schema.find(self.config.fluxField + "Err").key
         return pipeBase.Struct(flux=flux, fluxErr=fluxErr)
 
     @pipeBase.timeMethod
@@ -344,7 +344,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
             fluxKey = refSchema.find(fluxField).key
             refFluxArr = np.array([m.first.get(fluxKey) for m in matches])
             try:
-                fluxErrKey = refSchema.find(fluxField + "Sigma").key
+                fluxErrKey = refSchema.find(fluxField + "Err").key
                 refFluxErrArr = np.array([m.first.get(fluxErrKey) for m in matches])
             except KeyError:
                 # Reference catalogue may not have flux uncertainties; HACK

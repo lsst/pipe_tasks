@@ -63,8 +63,8 @@ class PhotoCalTest(unittest.TestCase):
         self.srcCat = afwTable.SourceCatalog.readFits(
             os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
 
-        self.srcCat["slot_ApFlux_fluxSigma"] = 1
-        self.srcCat["slot_PsfFlux_fluxSigma"] = 1
+        self.srcCat["slot_ApFlux_fluxErr"] = 1
+        self.srcCat["slot_PsfFlux_fluxErr"] = 1
 
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
