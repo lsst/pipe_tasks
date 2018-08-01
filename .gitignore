@@ -27,6 +27,7 @@ bin/assembleCoadd.py
 bin/calibrate.py
 bin/characterizeImage.py
 bin/dcrAssembleCoadd.py
+bin/deblendCoaddSources.py
 bin/detectCoaddSources.py
 bin/detectDcrCoaddSources.py
 bin/dumpTaskMetadata.py

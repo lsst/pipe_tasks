@@ -27,7 +27,7 @@ from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, Butl
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import DynamicDetectionTask, SkyObjectsTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
-from lsst.meas.deblender import SourceDeblendTask
+from lsst.meas.deblender import SourceDeblendTask, MultibandDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
@@ -325,20 +325,25 @@ class DetectCoaddSourcesTask(CmdLineTask):
 
 
 class MergeSourcesRunner(TaskRunner):
-    """!
-    @anchor MergeSourcesRunner_
+    """Task runner for the `MergeSourcesTask`
 
-    @brief Task runner for the @ref MergeSourcesTask_ "MergeSourcesTask". Required because the run method
-    requires a list of dataRefs rather than a single dataRef.
+    Required because the run method requires a list of
+    dataRefs rather than a single dataRef.
     """
-
     def makeTask(self, parsedCmd=None, args=None):
-        """!
-        @brief Provide a butler to the Task constructor.
+        """Provide a butler to the Task constructor.
 
-        @param[in]  parsedCmd  the parsed command
-        @param[in]  args       tuple of a list of data references and kwargs (un-used)
-        @throws RuntimeError if both parsedCmd & args are None
+        Parameters
+        ----------
+        parsedCmd:
+            The parsed command
+        args: tuple
+            Tuple of a list of data references and kwargs (un-used)
+
+        Raises
+        ------
+        RuntimeError
+            Thrown if both `parsedCmd` & `args` are `None`
         """
         if parsedCmd is not None:
             butler = parsedCmd.butler
@@ -350,30 +355,57 @@ class MergeSourcesRunner(TaskRunner):
         return self.TaskClass(config=self.config, log=self.log, butler=butler)
 
     @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
-        """!
-        @brief Provide a list of patch references for each patch.
+    def buildRefDict(parsedCmd):
+        """Build a hierarchical dictionary of patch references
 
-        The patch references within the list will have different filters.
+        Parameters
+        ----------
+        parsedCmd:
+            The parsed command
 
-        @param[in]  parsedCmd  the parsed command
-        @param      **kwargs   key word arguments (unused)
-        @throws RuntimeError if multiple references are provided for the same combination of tract, patch and
-        filter
+        Returns
+        -------
+        refDict: dict
+            A reference dictionary of the form {patch: {tract: {filter: dataRef}}}
+
+        Raises
+        ------
+        RuntimeError
+            Thrown when multiple references are provided for the same
+            combination of tract, patch and filter
         """
-        refList = {}  # Will index this as refList[tract][patch][filter] = ref
+        refDict = {}  # Will index this as refDict[tract][patch][filter] = ref
         for ref in parsedCmd.id.refList:
             tract = ref.dataId["tract"]
             patch = ref.dataId["patch"]
             filter = ref.dataId["filter"]
-            if tract not in refList:
-                refList[tract] = {}
-            if patch not in refList[tract]:
-                refList[tract][patch] = {}
-            if filter in refList[tract][patch]:
+            if tract not in refDict:
+                refDict[tract] = {}
+            if patch not in refDict[tract]:
+                refDict[tract][patch] = {}
+            if filter in refDict[tract][patch]:
                 raise RuntimeError("Multiple versions of %s" % (ref.dataId,))
-            refList[tract][patch][filter] = ref
-        return [(list(p.values()), kwargs) for t in refList.values() for p in t.values()]
+            refDict[tract][patch][filter] = ref
+        return refDict
+
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        """Provide a list of patch references for each patch, tract, filter combo.
+
+        Parameters
+        ----------
+        parsedCmd:
+            The parsed command
+        kwargs:
+            Keyword arguments passed to the task
+
+        Returns
+        -------
+        targetList: list
+            List of tuples, where each tuple is a (dataRef, kwargs) pair.
+        """
+        refDict = MergeSourcesRunner.buildRefDict(parsedCmd)
+        return [(list(p.values()), kwargs) for t in refDict.values() for p in t.values()]
 
 
 class MergeSourcesConfig(Config):
@@ -818,14 +850,243 @@ class MergeDetectionsTask(MergeSourcesTask):
         return converted
 
 
+class DeblendCoaddSourcesConfig(Config):
+    """DeblendCoaddSourcesConfig
+
+    Configuration parameters for the `DeblendCoaddSourcesTask`.
+    """
+    singleBandDeblend = ConfigurableField(target=SourceDeblendTask,
+                                          doc="Deblend sources separately in each band")
+    multiBandDeblend = ConfigurableField(target=MultibandDeblendTask,
+                                         doc="Deblend sources simultaneously across bands")
+    simultaneous = Field(dtype=bool, default=False, doc="Simultaneously deblend all bands?")
+    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+
+
+class DeblendCoaddSourcesRunner(MergeSourcesRunner):
+    """Task runner for the `MergeSourcesTask`
+
+    Required because the run method requires a list of
+    dataRefs rather than a single dataRef.
+    """
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        """Provide a list of patch references for each patch, tract, filter combo.
+
+        Parameters
+        ----------
+        parsedCmd:
+            The parsed command
+        kwargs:
+            Keyword arguments passed to the task
+
+        Returns
+        -------
+        targetList: list
+            List of tuples, where each tuple is a (dataRef, kwargs) pair.
+        """
+        refDict = MergeSourcesRunner.buildRefDict(parsedCmd)
+        kwargs["psfCache"] = parsedCmd.psfCache
+        return [(list(p.values()), kwargs) for t in refDict.values() for p in t.values()]
+
+
+class DeblendCoaddSourcesTask(CmdLineTask):
+    """Deblend the sources in a merged catalog
+
+    Deblend sources from master catalog in each coadd.
+    This can either be done separately in each band using the HSC-SDSS deblender
+    (`DeblendCoaddSourcesTask.config.simultaneous==False`)
+    or use SCARLET to simultaneously fit the blend in all bands
+    (`DeblendCoaddSourcesTask.config.simultaneous==True`).
+    The task will set its own `self.schema` atribute to the `Schema` of the
+    output deblended catalog.
+    This will include all fields from the input `Schema`, as well as additional fields
+    from the deblender.
+
+    `pipe.tasks.multiband.DeblendCoaddSourcesTask Description
+    ---------------------------------------------------------
+    `
+
+    Parameters
+    ----------
+    butler: `Butler`
+        Butler used to read the input schemas from disk or
+        construct the reference catalog loader, if `schema` or `peakSchema` or
+    schema: `Schema`
+        The schema of the merged detection catalog as an input to this task.
+    peakSchema: `Schema`
+        The schema of the `PeakRecord`s in the `Footprint`s in the merged detection catalog
+    """
+    ConfigClass = DeblendCoaddSourcesConfig
+    RunnerClass = DeblendCoaddSourcesRunner
+    _DefaultName = "deblendCoaddSources"
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", "deepCoadd_calexp",
+                               help="data ID, e.g. --id tract=12345 patch=1,2 filter=g^r^i",
+                               ContainerClass=ExistingCoaddDataIdContainer)
+        parser.add_argument("--psfCache", type=int, default=100, help="Size of CoaddPsf cache")
+        return parser
+
+    def __init__(self, butler=None, schema=None, peakSchema=None, **kwargs):
+        CmdLineTask.__init__(self, **kwargs)
+        if schema is None:
+            assert butler is not None, "Neither butler nor schema is defined"
+            schema = butler.get(self.config.coaddName + "Coadd_mergeDet_schema", immediate=True).schema
+        self.schemaMapper = afwTable.SchemaMapper(schema)
+        self.schemaMapper.addMinimalSchema(schema)
+        self.schema = self.schemaMapper.getOutputSchema()
+        if peakSchema is None:
+            assert butler is not None, "Neither butler nor peakSchema is defined"
+            peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
+
+        if self.config.simultaneous:
+            self.makeSubtask("multiBandDeblend", schema=self.schema, peakSchema=peakSchema)
+        else:
+            self.makeSubtask("singleBandDeblend", schema=self.schema, peakSchema=peakSchema)
+
+    def getSchemaCatalogs(self):
+        """Return a dict of empty catalogs for each catalog dataset produced by this task.
+
+        Returns
+        -------
+        result: dict
+            Dictionary of empty catalogs, with catalog names as keys.
+        """
+        catalog = afwTable.SourceCatalog(self.schema)
+        return {self.config.coaddName + "Coadd_deblendedFlux": catalog,
+                self.config.coaddName + "Coadd_deblendedModel": catalog}
+
+    def runDataRef(self, patchRefList, psfCache=100):
+        """Deblend the patch
+
+        Deblend each source simultaneously or separately
+        (depending on `DeblendCoaddSourcesTask.config.simultaneous`).
+        Set `is-primary` and related flags.
+        Propagate flags from individual visits.
+        Write the deblended sources out.
+
+        Parameters
+        ----------
+        patchRefList: list
+            List of data references for each filter
+        """
+        if self.config.simultaneous:
+            # Use SCARLET to simultaneously deblend across filters
+            filters = []
+            exposures = []
+            for patchRef in patchRefList:
+                exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
+                filters.append(patchRef.dataId["filter"])
+                exposures.append(exposure)
+            # The input sources are the same for all bands, since it is a merged catalog
+            sources = self.readSources(patchRef)
+            exposure = afwImage.MultibandExposure.fromExposures(filters, exposures)
+            fluxCatalogs, templateCatalogs = self.multiBandDeblend.run(exposure, sources)
+            for n in range(len(patchRefList)):
+                self.write(patchRefList[n], fluxCatalogs[filters[n]], templateCatalogs[filters[n]])
+        else:
+            # Use the singeband deblender to deblend each band separately
+            for patchRef in patchRefList:
+                exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
+                exposure.getPsf().setCacheCapacity(psfCache)
+                sources = self.readSources(patchRef)
+                self.singleBandDeblend.run(exposure, sources)
+                self.write(patchRef, sources)
+
+    def readSources(self, dataRef):
+        """Read merged catalog
+
+        Read the catalog of merged detections and create a catalog
+        in a single band.
+
+        Parameters
+        ----------
+        dataRef: data reference
+            Data reference for catalog of merged detections
+
+        Returns
+        -------
+        sources: `SourceCatalog`
+            List of sources in merged catalog
+
+        We also need to add columns to hold the measurements we're about to make
+        so we can measure in-place.
+        """
+        merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
+        self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
+        idFactory = self.makeIdFactory(dataRef)
+        for s in merged:
+            idFactory.notify(s.getId())
+        table = afwTable.SourceTable.make(self.schema, idFactory)
+        sources = afwTable.SourceCatalog(table)
+        sources.extend(merged, self.schemaMapper)
+        return sources
+
+    def write(self, dataRef, flux_sources, template_sources=None):
+        """Write the source catalog(s)
+
+        Parameters
+        ----------
+        dataRef: Data Reference
+            Reference to the output catalog.
+        flux_sources: `SourceCatalog`
+            Flux conserved sources to write to file.
+            If using the single band deblender, this is the catalog
+            generated.
+        template_sources: `SourceCatalog`
+            Source catalog using the multiband template models
+            as footprints.
+        """
+        # The multiband deblender does not have to conserve flux,
+        # so only write the flux conserved catalog if it exists
+        if flux_sources is not None:
+            assert not self.config.simultaneous or self.config.multiBandDeblend.conserveFlux
+            dataRef.put(flux_sources, self.config.coaddName + "Coadd_deblendedFlux")
+        # Only the multiband deblender has the option to output the
+        # template model catalog, which can optionally be used
+        # in MeasureMergedCoaddSources
+        if template_sources is not None:
+            assert self.config.multiBandDeblend.saveTemplates
+            dataRef.put(template_sources, self.config.coaddName + "Coadd_deblendedModel")
+        self.log.info("Wrote %d sources: %s" % (len(flux_sources), dataRef.dataId))
+
+    def writeMetadata(self, dataRefList):
+        """Write the metadata produced from processing the data.
+        Parameters
+        ----------
+        dataRefList
+            List of Butler data references used to write the metadata.
+            The metadata is written to dataset type `CmdLineTask._getMetadataName`.
+        """
+        for dataRef in dataRefList:
+            try:
+                metadataName = self._getMetadataName()
+                if metadataName is not None:
+                    dataRef.put(self.getFullMetadata(), metadataName)
+            except Exception as e:
+                self.log.warn("Could not persist metadata for dataId=%s: %s", dataRef.dataId, e)
+
+    def getExposureId(self, dataRef):
+        """Get the ExposureId from a data reference
+        """
+        return int(dataRef.get(self.config.coaddName + "CoaddId"))
+
+
 class MeasureMergedCoaddSourcesConfig(Config):
     """!
     @anchor MeasureMergedCoaddSourcesConfig_
 
     @brief Configuration parameters for the MeasureMergedCoaddSourcesTask
     """
-    doDeblend = Field(dtype=bool, default=True, doc="Deblend sources?")
-    deblend = ConfigurableField(target=SourceDeblendTask, doc="Deblend sources")
+    inputCatalog = Field(dtype=str, default="deblendedFlux",
+                         doc=("Name of the input catalog to use."
+                              "If the single band deblender was used this should be 'deblendedFlux."
+                              "If the multi-band deblender was used this should be 'deblendedModel."
+                              "If no deblending was performed this should be 'mergeDet'"))
     measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
     setPrimaryFlags = ConfigurableField(target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch")
     doPropagateFlags = Field(
@@ -868,7 +1129,6 @@ class MeasureMergedCoaddSourcesConfig(Config):
 
     def setDefaults(self):
         Config.setDefaults(self)
-        self.deblend.propagateAllPeaks = True
         self.measurement.plugins.names |= ['base_InputCount', 'base_Variance']
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
                                                                        'INEXACT_PSF']
@@ -910,7 +1170,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     Command-line task that uses peaks and footprints from a master catalog to perform deblending and
     measurement in each coadd.
 
-    Given a master input catalog of sources (peaks and footprints), deblend and measure each source on the
+    Given a master input catalog of sources (peaks and footprints) or deblender outputs
+    (including a HeavyFootprint in each band), measure each source on the
     coadd. Repeating this procedure with the same master catalog across multiple coadds will generate a
     consistent set of child sources.
 
@@ -921,7 +1182,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     Optionally, we can match the coadd sources to an external reference catalog.
 
       @par Inputs:
-        deepCoadd_mergeDet{tract,patch}: SourceCatalog
+        deepCoadd_mergeDet{tract,patch} or deepCoadd_deblend{tract,patch}: SourceCatalog
         @n deepCoadd_calexp{tract,patch,filter}: ExposureF
       @par Outputs:
         deepCoadd_meas{tract,patch,filter}: SourceCatalog
@@ -931,8 +1192,6 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     MeasureMergedCoaddSourcesTask delegates most of its work to a set of sub-tasks:
 
     <DL>
-      <DT> @ref SourceDeblendTask_ "deblend"
-      <DD> Deblend all the sources from the master catalog.</DD>
       <DT> @ref SingleFrameMeasurementTask_ "measurement"
       <DD> Measure source properties of deblended sources.</DD>
       <DT> @ref SetPrimaryFlagsTask_ "setPrimaryFlags"
@@ -1033,18 +1292,15 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         measurements.
         """
         CmdLineTask.__init__(self, **kwargs)
+        self.deblended = self.config.inputCatalog.startswith("deblended")
+        self.inputCatalog = "Coadd_" + self.config.inputCatalog
         if schema is None:
             assert butler is not None, "Neither butler nor schema is defined"
-            schema = butler.get(self.config.coaddName + "Coadd_mergeDet_schema", immediate=True).schema
+            schema = butler.get(self.config.coaddName + self.inputCatalog + "_schema", immediate=True).schema
         self.schemaMapper = afwTable.SchemaMapper(schema)
         self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = PropertyList()
-        if self.config.doDeblend:
-            if peakSchema is None:
-                assert butler is not None, "Neither butler nor peakSchema is defined"
-                peakSchema = butler.get(self.config.coaddName + "Coadd_peak_schema", immediate=True).schema
-            self.makeSubtask("deblend", schema=self.schema, peakSchema=peakSchema)
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         if self.config.doMatchSources:
@@ -1065,23 +1321,13 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
         @param[in] patchRef: Patch reference.
 
-        Deblend each source in every coadd and measure. Set 'is-primary' and related flags. Propagate flags
+        Set 'is-primary' and related flags. Propagate flags
         from individual visits. Optionally match the sources to a reference catalog and write the matches.
         Finally, write the deblended sources and measurements out.
         """
         exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
         exposure.getPsf().setCacheCapacity(psfCache)
         sources = self.readSources(patchRef)
-        if self.config.doDeblend:
-            self.deblend.run(exposure, sources)
-
-            bigKey = sources.schema["deblend_parentTooBig"].asKey()
-            # catalog is non-contiguous so can't extract column
-            numBig = sum((s.get(bigKey) for s in sources))
-            if numBig > 0:
-                self.log.warn("Patch %s contains %d large footprints that were not deblended" %
-                              (patchRef.dataId, numBig))
-
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
 
@@ -1105,7 +1351,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         self.setPrimaryFlags.run(sources, skyInfo.skyMap, skyInfo.tractInfo, skyInfo.patchInfo,
-                                 includeDeblend=self.config.doDeblend)
+                                 includeDeblend=self.deblended)
         if self.config.doPropagateFlags:
             self.propagateFlags.run(patchRef.getButler(), sources, self.propagateFlags.getCcdInputs(exposure),
                                     exposure.getWcs())
@@ -1123,7 +1369,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         We also need to add columns to hold the measurements we're about to make
         so we can measure in-place.
         """
-        merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
+        merged = dataRef.get(self.config.coaddName + self.inputCatalog, immediate=True)
         self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
         idFactory = self.makeIdFactory(dataRef)
         for s in merged:

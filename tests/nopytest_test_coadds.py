@@ -75,6 +75,7 @@ else:
 
 from lsst.pipe.tasks.assembleCoadd import AssembleCoaddConfig, SafeClipAssembleCoaddConfig
 from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTask,
+                                       DeblendCoaddSourcesTask,
                                        MeasureMergedCoaddSourcesTask, MergeMeasurementsTask)
 
 DATAREPO_ROOT = os.path.join(os.path.dirname(__file__), ".tests", "testCoadds-data")
@@ -122,6 +123,11 @@ def setup_module(module):
     mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=butler)
     mergeDetTask.writeSchemas(butler)
     runTaskOnPatchList(butler, mergeDetTask, mocksTask)
+
+    deblendSourcesConfig = DeblendCoaddSourcesTask.ConfigClass()
+    deblendSourcesTask = DeblendCoaddSourcesTask(config=deblendSourcesConfig, butler=butler)
+    deblendSourcesTask.writeSchemas(butler)
+    runTaskOnPatchList(butler, deblendSourcesTask, mocksTask)
 
     measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
     measMergedConfig.measurement.slots.shape = "base_SdssShape"
