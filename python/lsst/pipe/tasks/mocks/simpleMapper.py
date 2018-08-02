@@ -431,7 +431,8 @@ def makeSimpleCamera(
     transformMap = lsst.afw.cameraGeom.TransformMap(nativeSys, transforms)
 
     detectorList = []
-    ccdBBox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(), lsst.afw.geom.Extent2I(sizeX, sizeY))
+    ccdBBox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(), lsst.afw.geom.Extent2I(sizeX, sizeY),
+                                  invert=False)
     for iY in range(nY):
         cY = (iY - 0.5 * (nY - 1)) * (pixelSize * sizeY + gapY)
         for iX in range(nX):

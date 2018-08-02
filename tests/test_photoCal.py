@@ -68,7 +68,7 @@ class PhotoCalTest(unittest.TestCase):
 
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(2048, 4612))
+        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(2048, 4612), invert=False)
         smallExposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
         self.exposure = afwImage.ExposureF(self.bbox)
         self.exposure.setWcs(smallExposure.getWcs())

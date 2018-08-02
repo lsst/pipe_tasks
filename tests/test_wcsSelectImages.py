@@ -47,7 +47,7 @@ class DummyPatch:
     """Quacks like a lsst.skymap.PatchInfo"""
 
     def __init__(self, xy0, dims):
-        self._outerBBox = afwGeom.Box2I(xy0, dims)
+        self._outerBBox = afwGeom.Box2I(xy0, dims, invert=False)
 
     def getOuterBBox(self):
         return self._outerBBox
@@ -125,7 +125,8 @@ def createImage(
     cdMatrix = afwGeom.makeCdMatrix(scale=scale)
     wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
     return SelectStruct(DummyDataRef(dataId), wcs, afwGeom.Box2I(afwGeom.Point2I(0, 0),
-                                                                 afwGeom.Extent2I(dims[0], dims[1])))
+                                                                 afwGeom.Extent2I(dims[0], dims[1]),
+                                                                 invert=False))
 
 
 class WcsSelectImagesTestCase(unittest.TestCase):

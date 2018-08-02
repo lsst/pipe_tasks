@@ -103,7 +103,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
             for i, exposure in enumerate((butler.get("calexp", dataId), result.exposure)):
                 self.assertEqual(exposure.getBBox(),
-                                 afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
+                                 afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000),
+                                               invert=False))
                 maskedImage = exposure.getMaskedImage()
                 maskArr = maskedImage.getMask().getArray()
                 numGoodPix = np.sum(maskArr == 0)

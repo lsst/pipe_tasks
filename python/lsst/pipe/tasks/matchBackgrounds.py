@@ -555,7 +555,8 @@ class MatchBackgroundsTask(pipeBase.Task):
         for ymin, ymax in zip(yedges[0:-1], yedges[1:]):
             for xmin, xmax in zip(xedges[0:-1], xedges[1:]):
                 subBBox = afwGeom.Box2I(afwGeom.PointI(int(x0 + xmin), int(y0 + ymin)),
-                                        afwGeom.PointI(int(x0 + xmax-1), int(y0 + ymax-1)))
+                                        afwGeom.PointI(int(x0 + xmax-1), int(y0 + ymax-1)),
+                                        invert=False)
                 subIm = afwImage.MaskedImageF(maskedImage, subBBox, afwImage.PARENT, False)
                 stats = afwMath.makeStatistics(subIm,
                                                afwMath.MEAN | afwMath.MEANCLIP | afwMath.MEDIAN |

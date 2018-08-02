@@ -624,7 +624,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
         tempExpList = [tempExpRef.get(tempExpName + "_sub",
-                                      bbox=afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1, 1)),
+                                      bbox=afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1, 1),
+                                                         invert=False),
                                       imageOrigin="LOCAL", immediate=True) for tempExpRef in tempExpRefList]
         numCcds = sum(len(tempExp.getInfo().getCoaddInputs().ccds) for tempExp in tempExpList)
 
@@ -888,7 +889,7 @@ class AssembleCoaddTask(CoaddBaseTask):
                 height = rec["height"].asArcseconds()/plateScale  # convert to pixels
 
                 halfSize = afwGeom.ExtentI(0.5*width, 0.5*height)
-                bbox = afwGeom.Box2I(center - halfSize, center + halfSize)
+                bbox = afwGeom.Box2I(center - halfSize, center + halfSize, invert=False)
 
                 bbox = afwGeom.BoxI(afwGeom.PointI(int(center[0] - 0.5*width), int(center[1] - 0.5*height)),
                                     afwGeom.PointI(int(center[0] + 0.5*width), int(center[1] + 0.5*height)))
@@ -960,7 +961,8 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         for rowShift in range(0, bbox.getHeight(), subregionSize[1]):
             for colShift in range(0, bbox.getWidth(), subregionSize[0]):
-                subBBox = afwGeom.Box2I(bbox.getMin() + afwGeom.Extent2I(colShift, rowShift), subregionSize)
+                subBBox = afwGeom.Box2I(bbox.getMin() + afwGeom.Extent2I(colShift, rowShift), subregionSize,
+                                        invert=False)
                 subBBox.clip(bbox)
                 if subBBox.isEmpty():
                     raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, "

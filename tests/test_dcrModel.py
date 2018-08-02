@@ -69,7 +69,8 @@ class DcrModelTestTask(lsst.utils.tests.TestCase):
         ySize = 42
         x0 = 12345
         y0 = 67890
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(x0, y0), afwGeom.Extent2I(xSize, ySize))
+        self.bbox = afwGeom.Box2I(afwGeom.Point2I(x0, y0), afwGeom.Extent2I(xSize, ySize),
+                                  invert=False)
 
     def makeTestImages(self):
         """Make reproduceable PSF-convolved masked images for testing.

@@ -65,12 +65,12 @@ def addDefects(exp, nBadCols=10):
     for xi in numpy.random.randint(0, xsize, nBadCols):
         yi = numpy.random.randint(0, ysize)
         xi, yi = int(xi), int(yi)
-        bbox = afwGeom.Box2I(afwGeom.PointI(xi, 0), afwGeom.ExtentI(1, yi+1))
+        bbox = afwGeom.Box2I(afwGeom.PointI(xi, 0), afwGeom.ExtentI(1, yi + 1), invert=False)
         subIm = afwImage.ImageF(img, bbox)
         subIm.set(1e7)
         defectList.push_back(measAlg.Defect(bbox))
     # set a 15 pixel box of defects at the upper left corner to demonstrate fallbackValue
-    bbox = afwGeom.Box2I(afwGeom.PointI(0, ysize-15), afwGeom.ExtentI(15, 15))
+    bbox = afwGeom.Box2I(afwGeom.PointI(0, ysize-15), afwGeom.ExtentI(15, 15), invert=False)
     subIm = afwImage.ImageF(img, bbox)
     subIm.set(1e7)
     defectList.push_back(measAlg.Defect(bbox))

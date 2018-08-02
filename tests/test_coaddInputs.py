@@ -85,7 +85,8 @@ class MockExposure:
         In particular, exposure info is set as a record in a table, so it can be recorded in a coadd
         """
         inputRecorder = self.coaddInputRecorder.makeCoaddTempExpRecorder(universalId, self.numExp)
-        bbox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(100, 100), lsst.afw.geom.Extent2I(10, 10))
+        bbox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(100, 100), lsst.afw.geom.Extent2I(10, 10),
+                                   invert=False)
 
         detectorName = "detector {}".format(universalId)
         detector = lsst.afw.cameraGeom.testUtils.DetectorWrapper(name=detectorName, id=universalId).detector
@@ -147,7 +148,7 @@ class MockExposure:
     @staticmethod
     def makeApCorrMap():
         """Make a trivial ApCorrMap with three elements"""
-        bbox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(-5, -5), lsst.afw.geom.Point2I(5, 5))
+        bbox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(-5, -5), lsst.afw.geom.Point2I(5, 5), invert=False)
         apCorrMap = lsst.afw.image.ApCorrMap()
         for name in ("a", "b", "c"):
             apCorrMap.set(name, ChebyshevBoundedField(bbox, np.zeros((3, 3), dtype=float)))
