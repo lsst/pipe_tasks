@@ -261,22 +261,22 @@ class DetectCoaddSourcesTask(CmdLineTask):
         if self.config.doScaleVariance:
             self.makeSubtask("scaleVariance")
 
-    def run(self, patchRef):
+    def runDataRef(self, patchRef):
         """!
         @brief Run detection on a coadd.
 
-        Invokes @ref runDetection and then uses @ref write to output the
+        Invokes @ref run and then uses @ref write to output the
         results.
 
         @param[in] patchRef: data reference for patch
         """
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
         expId = int(patchRef.get(self.config.coaddName + "CoaddId"))
-        results = self.runDetection(exposure, self.makeIdFactory(patchRef), expId=expId)
+        results = self.run(exposure, self.makeIdFactory(patchRef), expId=expId)
         self.write(exposure, results, patchRef)
         return results
 
-    def runDetection(self, exposure, idFactory, expId):
+    def run(self, exposure, idFactory, expId):
         """!
         @brief Run detection on an exposure.
 
@@ -411,7 +411,7 @@ class MergeSourcesTask(CmdLineTask):
     * `outputDataset`: name of dataset to write
     * `getSchemaCatalogs` to the result of `_makeGetSchemaCatalogs(outputDataset)`
 
-    In addition, sub-classes must implement the mergeCatalogs method.
+    In addition, sub-classes must implement the run method.
     """
     _DefaultName = None
     ConfigClass = MergeSourcesConfig
@@ -461,15 +461,15 @@ class MergeSourcesTask(CmdLineTask):
         """
         CmdLineTask.__init__(self, **kwargs)
 
-    def run(self, patchRefList):
+    def runDataRef(self, patchRefList):
         """!
-        @brief Merge coadd sources from multiple bands. Calls @ref mergeCatalogs which must be defined in
+        @brief Merge coadd sources from multiple bands. Calls @ref `run` which must be defined in
         subclasses that inherit from MergeSourcesTask.
 
         @param[in] patchRefList list of data references for each filter
         """
         catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
-        mergedCatalog = self.mergeCatalogs(catalogs, patchRefList[0])
+        mergedCatalog = self.run(catalogs, patchRefList[0])
         self.write(patchRefList[0], mergedCatalog)
 
     def readCatalog(self, patchRef):
@@ -487,7 +487,7 @@ class MergeSourcesTask(CmdLineTask):
         self.log.info("Read %d sources for filter %s: %s" % (len(catalog), filterName, patchRef.dataId))
         return filterName, catalog
 
-    def mergeCatalogs(self, catalogs, patchRef):
+    def run(self, catalogs, patchRef):
         """!
         @brief Merge multiple catalogs. This function must be defined in all subclasses that inherit from
         MergeSourcesTask.
@@ -698,7 +698,7 @@ class MergeDetectionsTask(MergeSourcesTask):
         filterNames += [self.config.skyFilterName]
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
 
-    def mergeCatalogs(self, catalogs, patchRef):
+    def run(self, catalogs, patchRef):
         """!
         @brief Merge multiple catalogs.
 
@@ -1059,7 +1059,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         if self.config.doRunCatalogCalculation:
             self.makeSubtask("catalogCalculation", schema=self.schema)
 
-    def run(self, patchRef, psfCache=100):
+    def runDataRef(self, patchRef, psfCache=100):
         """!
         @brief Deblend and measure.
 
@@ -1323,7 +1323,7 @@ class MergeMeasurementsTask(MergeSourcesTask):
             except KeyError as exc:
                 self.log.warn("Can't find flag %s in schema: %s" % (flag, exc,))
 
-    def mergeCatalogs(self, catalogs, patchRef):
+    def run(self, catalogs, patchRef):
         """!
         Merge measurement catalogs to create a single reference catalog for forced photometry
 

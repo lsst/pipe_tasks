@@ -43,7 +43,7 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
     _DefaultName = "DumpTaskMetadata"
 
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def runDataRef(self, dataRef):
         """Report task metadata
         """
         print("%s for dataId=%s" % (dataRef.butlerSubset.datasetType, dataRef.dataId))

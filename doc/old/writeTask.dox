@@ -146,11 +146,15 @@ this is strongly recommended, as explained in the next section.
 
 \subsection pipeTasks_writeTask_runMethod The run Method
 
-Most tasks have a `run` method which perform's the task's data processing operation.
-This is required for command-line tasks and strongly recommended for most other tasks.
-One exception is if your task needs different methods to handle different data types
-(C++ handles this using overloaded functions, but the standard technique is Python
-is to provide different methods for different call signatures).
+Most tasks have a `run` method which perform's the task's data
+processing operation.  In addition, command-line tasks require a
+`runDataRef` method that fetches the appropriate data products
+specified by Gen-2 Butler DataRefs.  This is required for command-line
+tasks and strongly recommended for most other tasks.  One exception is
+if your task needs different methods to handle different data types
+(C++ handles this using overloaded functions, but the standard
+technique is Python is to provide different methods for different call
+signatures).
 
 If your task's processing can be divided into logical units, then we recommend that
 you provide methods for each unit. `run` can then call each method to do its work.
@@ -161,17 +165,18 @@ as part of your data processing. Pass data between methods by calling and return
 This makes the task much easier to reason about, since processing one item of data
 cannot affect future items of data.
 
-The `run` method should always return its results in an lsst.pipe.base.struct.Struct object,
-with a named field for each item of data. This is safer than returning a tuple of items,
-and allows adding fields without affecting existing code. Other methods should also
-return Structs if they return more than one or two items.
+The `run` and `runDataRef` methods should always return its results in
+an lsst.pipe.base.struct.Struct object, with a named field for each
+item of data. This is safer than returning a tuple of items, and
+allows adding fields without affecting existing code. Other methods
+should also return Structs if they return more than one or two items.
 
 Any method that is likely to take significant time or memory should be preceded by this python decorator:
 <code>\@lsst.pipe.base.timeMethod</code>. This automatically records the execution time and memory
 of the method in the task's `metadata` attribute.
 
 The example exampleCmdLineTask.ExampleCmdLineTask is so simple that it needs no other methods;
-`run` does everything:
+`runDataRef` does everything:
 \dontinclude tasks/exampleCmdLineTask.py
 \skip class ExampleCmdLineTask
 \skipline pipeBase.timeMethod
@@ -212,7 +217,7 @@ and `pipe/tasks/exampleCmdLineTask.py` provide useful examples and documentation
 
 Content should include:
 - The task's purpose.
-- An overview of the important task methods, including `run` (if present), including links to the detailed documentation for each method.
+- An overview of the important task methods, including `run` and `runDataRef` (if present), including links to the detailed documentation for each method.
 - The detailed documentation for each method must carefully describe its parameters, including data type (unless blindingly obvious). If a method takes a data reference or a butler, describe which dataset types are read and written.
 - A link to the config class, which should have clear help strings for each parameter.
 - A description of debug options.

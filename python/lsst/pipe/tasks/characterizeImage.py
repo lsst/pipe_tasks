@@ -206,10 +206,10 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     @section pipe_tasks_characterizeImage_IO  Invoking the Task
 
     If you want this task to unpersist inputs or persist outputs, then call
-    the `run` method (a thin wrapper around the `characterize` method).
+    the `runDataRef` method (a thin wrapper around the `run` method).
 
     If you already have the inputs unpersisted and do not want to persist the output
-    then it is more direct to call the `characterize` method:
+    then it is more direct to call the `run` method:
 
     @section pipe_tasks_characterizeImage_Config  Configuration parameters
 
@@ -306,7 +306,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
 
     @pipeBase.timeMethod
-    def run(self, dataRef, exposure=None, background=None, doUnpersist=True):
+    def runDataRef(self, dataRef, exposure=None, background=None, doUnpersist=True):
         """!Characterize a science image and, if wanted, persist the results
 
         This simply unpacks the exposure and passes it to the characterize method to do the work.
@@ -343,7 +343,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         exposureIdInfo = dataRef.get("expIdInfo")
 
-        charRes = self.characterize(
+        charRes = self.run(
             exposure=exposure,
             exposureIdInfo=exposureIdInfo,
             background=background,
@@ -358,7 +358,7 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         return charRes
 
     @pipeBase.timeMethod
-    def characterize(self, exposure, exposureIdInfo=None, background=None):
+    def run(self, exposure, exposureIdInfo=None, background=None):
         """!Characterize a science image
 
         Peforms the following operations:

@@ -59,10 +59,10 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
         results = None  # in case the task fails
         exitStatus = 0  # exit status for shell
         if self.doRaise:
-            results = task.run(butler)
+            results = task.runDataRef(butler)
         else:
             try:
-                results = task.run(butler)
+                results = task.runDataRef(butler)
             except Exception as e:
                 task.log.fatal("Failed: %s" % e)
                 exitStatus = 1
@@ -94,7 +94,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
     @pipeBase.timeMethod
-    def run(self, butler):
+    def runDataRef(self, butler):
         """!Make a skymap, persist it (optionally) and log some information about it
 
         @param[in]   butler  data butler

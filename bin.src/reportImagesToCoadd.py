@@ -68,7 +68,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         self.makeSubtask("select")
 
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def runDataRef(self, dataRef):
         """Select images across the sky and report how many are in each tract and patch
 
         Also report quartiles of FWHM

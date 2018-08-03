@@ -59,7 +59,7 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def runDataRef(self, dataRef):
         """Report tracts and patches that are within a given region of a skymap
 
         @param dataRef: data reference for sky map.

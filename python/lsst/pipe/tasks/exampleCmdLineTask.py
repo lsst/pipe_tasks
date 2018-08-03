@@ -74,7 +74,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     The image statistics are computed using a subtask, in order to show how to call subtasks and how to
     \ref pipeBase_argumentParser_retargetSubtasks "retarget" (replace) them with variant subtasks.
 
-    The main method is \ref ExampleCmdLineTask.run "run".
+    The main method is \ref ExampleCmdLineTask.runDataRef "runDataRef".
 
     \section pipeTasks_ExampleCmdLineTask_Config    Configuration parameters
 
@@ -113,7 +113,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         self.makeSubtask("stats")
 
     @pipeBase.timeMethod
-    def run(self, dataRef):
+    def runDataRef(self, dataRef):
         """!Compute a few statistics on the image plane of an exposure
 
         @param dataRef: data reference for a calibrated science exposure ("calexp")

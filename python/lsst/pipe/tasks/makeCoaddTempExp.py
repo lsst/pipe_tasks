@@ -126,7 +126,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
     This task is primarily designed to be run from the command line.
 
-    The main method is `run`, which takes a single butler data reference for the patch(es)
+    The main method is `runDataRef`, which takes a single butler data reference for the patch(es)
     to process.
 
     @copydoc run
@@ -252,7 +252,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         self.makeSubtask("warpAndPsfMatch")
 
     @pipeBase.timeMethod
-    def run(self, patchRef, selectDataList=[]):
+    def runDataRef(self, patchRef, selectDataList=[]):
         """!Produce <coaddName>Coadd_<warpType>Warp images by warping and optionally PSF-matching.
 
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
@@ -305,7 +305,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             except (KeyError, ValueError):
                 visitId = i
 
-            exps = self.createTempExp(calexpRefList, skyInfo, visitId).exposures
+            exps = self.run(calexpRefList, skyInfo, visitId).exposures
 
             if any(exps.values()):
                 dataRefList.append(tempExpRef)
@@ -320,7 +320,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         return dataRefList
 
-    def createTempExp(self, calexpRefList, skyInfo, visitId=0):
+    def run(self, calexpRefList, skyInfo, visitId=0):
         """Create a Warp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
