@@ -46,7 +46,7 @@ class MockObservationConfig(lsst.pex.config.Config):
         dtype=float, default=1E11, optional=False,
         doc="Flux at zero magnitude used to define Calibs."
     )
-    fluxMag0Sigma = lsst.pex.config.Field(
+    fluxMag0Err = lsst.pex.config.Field(
         dtype=float, default=100.0, optional=False,
         doc="Error on flux at zero magnitude used to define Calibs; used to add scatter as well."
     )
@@ -184,8 +184,8 @@ class MockObservationTask(lsst.pipe.base.Task):
         """
         calib = lsst.afw.image.Calib()
         calib.setFluxMag0(
-            self.rng.randn() * self.config.fluxMag0Sigma + self.config.fluxMag0,
-            self.config.fluxMag0Sigma
+            self.rng.randn() * self.config.fluxMag0Err + self.config.fluxMag0,
+            self.config.fluxMag0Err
         )
         return calib
 
@@ -242,7 +242,7 @@ class MockObservationTask(lsst.pipe.base.Task):
         apCorrMap = lsst.afw.image.ApCorrMap()
         for name in getApCorrNameSet():
             apCorrMap.set(name + "_flux", makeRandomBoundedField())
-            apCorrMap.set(name + "_fluxSigma", makeRandomBoundedField())
+            apCorrMap.set(name + "_fluxErr", makeRandomBoundedField())
         return apCorrMap
 
     def buildTransmissionCurve(self, detector):

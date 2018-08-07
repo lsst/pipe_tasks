@@ -1293,7 +1293,7 @@ class MergeMeasurementsTask(MergeSourcesTask):
         self.schemaMapper = afwTable.SchemaMapper(inputSchema, True)
         self.schemaMapper.addMinimalSchema(inputSchema, True)
         self.fluxKey = inputSchema.find(self.config.snName + "_flux").getKey()
-        self.fluxErrKey = inputSchema.find(self.config.snName + "_fluxSigma").getKey()
+        self.fluxErrKey = inputSchema.find(self.config.snName + "_fluxErr").getKey()
         self.fluxFlagKey = inputSchema.find(self.config.snName + "_flag").getKey()
 
         self.flagKeys = {}
