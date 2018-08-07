@@ -89,7 +89,7 @@ class ImageDifferenceConfig(pexConfig.Config):
                                    doc="Add columns to the source table to hold analysis metrics?")
 
     coaddName = pexConfig.Field(
-        doc="coadd name: typically one of deep or goodSeeing",
+        doc="coadd name: typically one of deep, goodSeeing, or dcr",
         dtype=str,
         default="deep",
     )
@@ -201,6 +201,9 @@ class ImageDifferenceConfig(pexConfig.Config):
         if self.doUseRegister and not self.doSelectSources:
             raise ValueError("doUseRegister=True and doSelectSources=False. " +
                              "Cannot run RegisterTask without selecting sources.")
+        if hasattr(self.getTemplate, "coaddName"):
+            if self.getTemplate.coaddName != self.coaddName:
+                raise ValueError("Mis-matched coaddName and getTemplate.coaddName in the config.")
 
 
 class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
