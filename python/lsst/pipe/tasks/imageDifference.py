@@ -775,12 +775,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             with disp.Buffering():
                 for s in diaSources:
                     x, y = s.getX() - x0, s.getY() - y0
-                    ctype = "red" if s.get("flags.negative") else "yellow"
-                    if (s.get("flags.pixel.interpolated.center") or s.get("flags.pixel.saturated.center") or
-                            s.get("flags.pixel.cr.center")):
+                    ctype = "red" if s.get("flags_negative") else "yellow"
+                    if (s.get("base_PixelFlags_flag_interpolatedCenter") or
+                            s.get("base_PixelFlags_flag_saturatedCenter") or
+                            s.get("base_PixelFlags_flag_crCenter")):
                         ptype = "x"
-                    elif (s.get("flags.pixel.interpolated.any") or s.get("flags.pixel.saturated.any") or
-                          s.get("flags.pixel.cr.any")):
+                    elif (s.get("base_PixelFlags_flag_interpolated") or
+                          s.get("base_PixelFlags_flag_saturated") or
+                          s.get("base_PixelFlags_flag_cr")):
                         ptype = "+"
                     else:
                         ptype = "o"
@@ -814,7 +816,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if display and showDiaSources:
             flagChecker = SourceFlagChecker(diaSources)
             isFlagged = [flagChecker(x) for x in diaSources]
-            isDipole = [x.get("classification.dipole") for x in diaSources]
+            isDipole = [x.get("ip_diffim_ClassificationDipole_value") for x in diaSources]
             diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole,
                                    frame=lsstDebug.frame)
             lsstDebug.frame += 1
