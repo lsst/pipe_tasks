@@ -69,9 +69,10 @@ def run(display=False):
     config = SingleFrameMeasurementTask.ConfigClass()
     # Use the minimum set of plugins required.
     config.plugins.names.clear()
-    for plugin in ["base_SdssCentroid", "base_SdssShape", "base_CircularApertureFlux", "base_PixelFlags"]:
+    for plugin in ["base_SdssCentroid", "base_SdssShape", "base_CircularApertureFlux", "base_PixelFlags",
+                   "base_GaussianFlux", ]:
         config.plugins.names.add(plugin)
-    config.plugins["base_CircularApertureFlux"].radii = [7.0]
+    config.plugins["base_CircularApertureFlux"].radii = [7.0, 12.0]
     # Use of the PSF flux is hardcoded in secondMomentStarSelector
     config.slots.psfFlux = "base_CircularApertureFlux_7_0"
     measureTask = SingleFrameMeasurementTask(schema, config=config)
@@ -95,7 +96,7 @@ def run(display=False):
     # Process the data
     #
     sources = detectionTask.run(tab, exposure, sigma=2).sources
-    measureTask.measure(exposure, sources)
+    measureTask.measure(sources, exposure)
 
     result = measurePsfTask.run(exposure, sources)
     print("psf=", result.psf)
@@ -108,9 +109,9 @@ def run(display=False):
             for s in sources:
                 xy = s.getCentroid()
                 ds9.dot('+', *xy, frame=frame)
-                if s.get("calib.psf.candidate"):
+                if s.get("calib_psf_candidate"):
                     ds9.dot('x', *xy, ctype=ds9.YELLOW, frame=frame)
-                if s.get("calib.psf.used"):
+                if s.get("calib_psf_used"):
                     ds9.dot('o', *xy, size=4, ctype=ds9.RED, frame=frame)
 
 
