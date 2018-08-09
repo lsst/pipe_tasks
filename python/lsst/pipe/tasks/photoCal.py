@@ -31,7 +31,7 @@ import lsst.pipe.base as pipeBase
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, Calib
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
-import lsst.afw.display.ds9 as ds9
+import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from .colorterms import ColortermLibrary
 
@@ -172,7 +172,7 @@ The available variables in PhotoCalTask are:
   <DT> @c display
   <DD> If True enable other debug outputs
   <DT> @c displaySources
-  <DD> If True, display the exposure on ds9's frame 1 and overlay the source catalogue.
+  <DD> If True, display the exposure on the display's frame 1 and overlay the source catalogue.
     <DL>
       <DT> red o
       <DD> Reserved objects
@@ -497,12 +497,13 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         frame : `int`
             Frame number for display.
         """
-        ds9.mtv(exposure, frame=frame, title="photocal")
-        with ds9.Buffering():
+        disp = afwDisplay.getDisplay(frame=frame)
+        disp.mtv(exposure, title="photocal")
+        with disp.Buffering():
             for mm, rr in zip(matches, reserved):
                 x, y = mm.second.getCentroid()
-                ctype = ds9.RED if rr else ds9.GREEN
-                ds9.dot("o", x, y, size=4, frame=frame, ctype=ctype)
+                ctype = afwDisplay.RED if rr else afwDisplay.GREEN
+                disp.dot("o", x, y, size=4, ctype=ctype)
 
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
         """!Flux calibration code, returning (ZeroPoint, Distribution Width, Number of stars)

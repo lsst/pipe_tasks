@@ -36,15 +36,17 @@ import numpy as np
 import lsst.utils.tests
 import lsst.geom
 import lsst.afw.image as afwImage
-import lsst.afw.display.ds9 as ds9
 import lsst.ip.isr as ipIsr
 import lsst.pex.config as pexConfig
 from lsst.pipe.tasks.interpImage import InterpImageTask
 
 try:
-    type(display)
+    display
 except NameError:
     display = False
+else:
+    import lsst.afw.display as afwDisplay
+    afwDisplay.setDefaultMaskTransparency(75)
 
 
 class InterpolationTestCase(lsst.utils.tests.TestCase):
@@ -82,12 +84,12 @@ class InterpolationTestCase(lsst.utils.tests.TestCase):
         defectList = ipIsr.getDefectListFromMask(mi, pixelPlane)
 
         if display:
-            ds9.mtv(mi, frame=0)
+            afwDisplay.Display(frame=0).mtv(mi, title=self._testMethodName + ": image")
 
         def validateInterp(miInterp, useFallbackValueAtEdge, fallbackValue):
             imaInterp = miInterp.getImage().getArray()
             if display:
-                ds9.mtv(miInterp, frame=1)
+                afwDisplay.Display(frame=1).mtv(miInterp, title=self._testMethodName + ": interp image")
             self.assertGreater(np.min(imaInterp), min(-2, 2*fallbackValue))
             self.assertGreater(max(2, 2*fallbackValue), np.max(imaInterp))
             val0 = np.mean(miInterp.image[1:2, :, afwImage.LOCAL].array, dtype=float)

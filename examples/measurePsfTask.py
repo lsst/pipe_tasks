@@ -29,7 +29,7 @@ import numpy as np
 import lsst.utils
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
-import lsst.afw.display.ds9 as ds9
+import lsst.afw.display as afwDisplay
 import lsst.meas.algorithms as measAlg
 from lsst.meas.algorithms.detection import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
@@ -101,18 +101,19 @@ def run(display=False):
     result = measurePsfTask.run(exposure, sources)
     print("psf=", result.psf)
 
-    if display:                         # display on ds9 (see also --debug argparse option)
+    if display:
         frame = 1
-        ds9.mtv(exposure, frame=frame)
+        disp = afwDisplay.Display(frame=frame)  # see also --debug argparse option
+        disp.mtv(exposure)
 
-        with ds9.Buffering():
+        with disp.Buffering():
             for s in sources:
                 xy = s.getCentroid()
-                ds9.dot('+', *xy, frame=frame)
+                disp.dot('+', *xy)
                 if s.get("calib_psf_candidate"):
-                    ds9.dot('x', *xy, ctype=ds9.YELLOW, frame=frame)
+                    disp.dot('x', *xy, ctype=afwDisplay.YELLOW)
                 if s.get("calib_psf_used"):
-                    ds9.dot('o', *xy, size=4, ctype=ds9.RED, frame=frame)
+                    disp.dot('o', *xy, size=4, ctype=afwDisplay.RED)
 
 
 if __name__ == "__main__":
@@ -120,7 +121,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Demonstrate the use of MeasurePsfTask")
 
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
-    parser.add_argument('--ds9', action="store_true", help="Display sources on ds9", default=False)
+    parser.add_argument('--doDisplay', action="store_true", help="Display sources", default=False)
 
     args = parser.parse_args()
 
@@ -130,4 +131,4 @@ if __name__ == "__main__":
         except ImportError as e:
             print(e, file=sys.stderr)
 
-    run(display=args.ds9)
+    run(display=args.doDisplay)

@@ -25,7 +25,7 @@ import lsst.afw.detection as afwDet
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 from lsstDebug import getDebugFrame
-from lsst.afw.display import getDisplay
+import lsst.afw.display as afwDisplay
 from lsst.pipe.tasks.interpImage import InterpImageTask
 
 
@@ -115,7 +115,7 @@ class RepairTask(pipeBase.Task):
           <DD> display image after cosmic ray and defect correction
         </DL>
       <DT> @c displayCR
-      <DD> If True, display the exposure on ds9's frame 1 and overlay bounding boxes around detects CRs.
+      <DD> If True, display the exposure on display's frame 1 and overlay bounding boxes around detects CRs.
     </DL>
     @section pipe_tasks_repair_Example A complete example of using RepairTask
 
@@ -203,7 +203,7 @@ class RepairTask(pipeBase.Task):
 
         frame = getDebugFrame(self._display, "repair.before")
         if frame:
-            getDisplay(frame).mtv(exposure)
+            afwDisplay.Display(frame).mtv(exposure)
 
         if defects is not None and self.config.doInterpolate:
             self.interp.run(exposure, defects=defects)
@@ -213,7 +213,7 @@ class RepairTask(pipeBase.Task):
 
         frame = getDebugFrame(self._display, "repair.after")
         if frame:
-            getDisplay(frame).mtv(exposure)
+            afwDisplay.Display(frame).mtv(exposure)
 
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
@@ -269,8 +269,7 @@ class RepairTask(pipeBase.Task):
 
         except Exception:
             if display:
-                import lsst.afw.display.ds9 as ds9
-                ds9.mtv(exposure0, title="Failed CR")
+                afwDisplay.Display().mtv(exposure0, title="Failed CR")
             raise
 
         num = 0
@@ -281,14 +280,12 @@ class RepairTask(pipeBase.Task):
             num = len(crs)
 
             if display and displayCR:
-                import lsst.afw.display.ds9 as ds9
-                import lsst.afw.display.utils as displayUtils
+                disp = afwDisplay.Display()
+                disp.incrDefaultFrame()
+                disp.mtv(exposure0, title="Post-CR")
 
-                ds9.incrDefaultFrame()
-                ds9.mtv(exposure0, title="Post-CR")
-
-                with ds9.Buffering():
+                with disp.Buffering():
                     for cr in crs:
-                        displayUtils.drawBBox(cr.getBBox(), borderWidth=0.55)
+                        afwDisplay.utils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
         self.log.info("Identified %s cosmic rays." % (num,))

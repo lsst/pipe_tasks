@@ -71,11 +71,12 @@ def plotTruth(catalog, wcs):
 
 
 def displayImages(root):
-    """Display coadd images with DS9 in different frames, with the bounding boxes of the
+    """Display coadd images in different frames, with the bounding boxes of the
     observations that went into them overlayed.
     """
-    import lsst.afw.display.ds9
-    import lsst.afw.display.utils
+    import lsst.afw.display as afwDisplay
+    afwDisplay.setDefaultMaskTransparency(75)
+
     butler = lsst.daf.persistence.Butler(root=root)
     skyMap = butler.get("deepCoadd_skyMap")
     tractInfo = skyMap[0]
@@ -83,9 +84,9 @@ def displayImages(root):
     coadds = [patchRef.get("deepCoadd", immediate=True)
               for patchRef in task.iterPatchRefs(butler, tractInfo)]
     for n, coadd in enumerate(coadds):
-        lsst.afw.display.ds9.mtv(coadd, frame=n+1)
+        afwDisplay.Display(frame=n+1).mtv(coadd, title="displayImages: coadd")
     for n, coadd in enumerate(coadds):
-        lsst.afw.display.utils.drawCoaddInputs(coadd, frame=n+1)
+        afwDisplay.utils.drawCoaddInputs(coadd, frame=n+1)
     return butler
 
 

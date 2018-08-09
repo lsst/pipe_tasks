@@ -42,6 +42,7 @@ from lsst.ip.diffim import DipoleAnalysis, \
     DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
+import lsst.afw.display as afwDisplay
 
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 IqrToSigma = 0.741
@@ -762,16 +763,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         showDipoles = lsstDebug.Info(__name__).showDipoles
         maskTransparency = lsstDebug.Info(__name__).maskTransparency
         if display:
-            import lsst.afw.display.ds9 as ds9
+            disp = afwDisplay.getDisplay(frame=lsstDebug.frame)
             if not maskTransparency:
                 maskTransparency = 0
-            ds9.setMaskTransparency(maskTransparency)
+            disp.setMaskTransparency(maskTransparency)
 
         if display and showSubtracted:
-            ds9.mtv(subtractRes.subtractedExposure, frame=lsstDebug.frame, title="Subtracted image")
+            disp.mtv(subtractRes.subtractedExposure, title="Subtracted image")
             mi = subtractRes.subtractedExposure.getMaskedImage()
             x0, y0 = mi.getX0(), mi.getY0()
-            with ds9.Buffering():
+            with disp.Buffering():
                 for s in diaSources:
                     x, y = s.getX() - x0, s.getY() - y0
                     ctype = "red" if s.get("flags.negative") else "yellow"
@@ -783,7 +784,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         ptype = "+"
                     else:
                         ptype = "o"
-                    ds9.dot(ptype, x, y, size=4, frame=lsstDebug.frame, ctype=ctype)
+                    disp.dot(ptype, x, y, size=4, ctype=ctype)
             lsstDebug.frame += 1
 
         if display and showPixelResiduals and selectSources:
