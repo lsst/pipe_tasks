@@ -57,3 +57,4 @@ bin/transformCoaddMeasurement.py
 bin/transformForcedSrcMeasurement.py
 bin/transformSrcMeasurement.py
 bin/ingestImagesPgsql.py
+bin/deblendDcrCoaddSources.py

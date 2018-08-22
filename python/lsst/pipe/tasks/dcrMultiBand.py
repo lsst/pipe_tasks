@@ -23,13 +23,14 @@
 
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import ArgumentParser
-from lsst.pipe.tasks.multiBand import MergeDetectionsTask
+from lsst.pipe.tasks.multiBand import DeblendCoaddSourcesTask
 from lsst.pipe.tasks.multiBand import DetectCoaddSourcesTask
 from lsst.pipe.tasks.multiBand import MergeSourcesRunner
 from lsst.pipe.tasks.multiBand import MeasureMergedCoaddSourcesTask
+from lsst.pipe.tasks.multiBand import MergeDetectionsTask
 from lsst.pipe.tasks.multiBand import MergeMeasurementsTask
 
-__all__ = ["DetectDcrCoaddSources", "MergeDcrDetectionsTask",
+__all__ = ["DetectDcrCoaddSources", "DeblendDcrCoaddSourcesTask", "MergeDcrDetectionsTask",
            "MeasureMergedDcrCoaddSourcesTask", "MergeDcrMeasurementsTask"]
 
 """Measure sources and their sub-filter spectrum from a DCR model."""
@@ -43,8 +44,8 @@ class MergeDcrSourcesRunner(MergeSourcesRunner):
     """
 
     @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
-        """Provide a list of patch and filter references for each tract.
+    def buildRefDict(parsedCmd):
+        """Build a hierarchical dictionary of patch references
 
         The filter references within the list will have different subfilters.
 
@@ -57,32 +58,51 @@ class MergeDcrSourcesRunner(MergeSourcesRunner):
 
         Returns
         -------
-        list of `patchRef`
-            List of all matching data references for a given patch.
+        refDict: dict
+            A reference dictionary of the form {patch: {tract: {filter: {subfilter: dataRef}}}}
 
         Raises
         ------
         RuntimeError
-            if multiple references are provided for the same combination of
+            Thrown when multiple references are provided for the same combination of
             tract, patch, filter, and subfilter
         """
-        refList = {}  # Will index this as refList[tract][patch][filter][subfilter] = ref
+        refDict = {}  # Will index this as refDict[tract][patch][filter][subfilter] = ref
         for ref in parsedCmd.id.refList:
             tract = ref.dataId["tract"]
             patch = ref.dataId["patch"]
             filter = ref.dataId["filter"]
             subfilter = ref.dataId["subfilter"]
-            if tract not in refList:
-                refList[tract] = {}
-            if patch not in refList[tract]:
-                refList[tract][patch] = {}
-            if filter not in refList[tract][patch]:
-                refList[tract][patch][filter] = {}
-            if subfilter in refList[tract][patch][filter]:
+            if tract not in refDict:
+                refDict[tract] = {}
+            if patch not in refDict[tract]:
+                refDict[tract][patch] = {}
+            if filter not in refDict[tract][patch]:
+                refDict[tract][patch][filter] = {}
+            if subfilter in refDict[tract][patch][filter]:
                 raise RuntimeError("Multiple versions of %s" % (ref.dataId,))
-            refList[tract][patch][filter][subfilter] = ref
+            refDict[tract][patch][filter][subfilter] = ref
+        return refDict
+
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        """Provide a list of patch references for each patch, tract, filter combo.
+
+        Parameters
+        ----------
+        parsedCmd:
+            The parsed command
+        kwargs:
+            Keyword arguments passed to the task
+
+        Returns
+        -------
+        targetList: list
+            List of tuples, where each tuple is a (dataRef, kwargs) pair.
+        """
+        refDict = MergeDcrSourcesRunner.buildRefDict(parsedCmd)
         return [(list(f.values()), kwargs)
-                for t in list(refList.values())
+                for t in list(refDict.values())
                 for p in list(t.values())
                 for f in list(p.values())]
 
@@ -97,6 +117,53 @@ class DetectDcrCoaddSources(DetectCoaddSourcesTask):
                                datasetType="dcrCoadd",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=g, subfilter=0",
                                ContainerClass=ExistingCoaddDataIdContainer)
+        return parser
+
+
+class DeblendDcrCoaddSourcesRunner(MergeDcrSourcesRunner):
+    """Task runner for the `MergeSourcesTask`.
+
+    Required because the run method requires a list of
+    dataRefs rather than a single dataRef.
+    """
+
+    @staticmethod
+    def getTargetList(parsedCmd, **kwargs):
+        """Provide a list of patch references for each patch, tract, filter combo.
+
+        Parameters
+        ----------
+        parsedCmd:
+            The parsed command
+        kwargs:
+            Keyword arguments passed to the task
+
+        Returns
+        -------
+        targetList: list
+            List of tuples, where each tuple is a (dataRef, kwargs) pair.
+        """
+        refDict = MergeDcrSourcesRunner.buildRefDict(parsedCmd)
+        kwargs["psfCache"] = parsedCmd.psfCache
+        return [(list(f.values()), kwargs)
+                for t in list(refDict.values())
+                for p in list(t.values())
+                for f in list(p.values())]
+
+
+class DeblendDcrCoaddSourcesTask(DeblendCoaddSourcesTask):
+    """Deblend the sources in a merged catalog."""
+
+    RunnerClass = DeblendDcrCoaddSourcesRunner
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument(name="--id",
+                               datasetType="dcrCoadd_calexp",
+                               help="data ID, e.g. --id tract=12345 patch=1,2 filter=g, subfilter=0",
+                               ContainerClass=ExistingCoaddDataIdContainer)
+        parser.add_argument("--psfCache", type=int, default=100, help="Size of CoaddPsf cache")
         return parser
 
 
@@ -131,6 +198,7 @@ class MeasureMergedDcrCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
                                datasetType="dcrCoadd_calexp",
                                help="data ID, e.g. --id tract=12345 patch=1,2 filter=g, subfilter=0",
                                ContainerClass=ExistingCoaddDataIdContainer)
+        parser.add_argument("--psfCache", type=int, default=100, help="Size of CoaddPsf cache")
         return parser
 
 
