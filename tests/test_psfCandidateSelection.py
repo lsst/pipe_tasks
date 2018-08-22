@@ -49,9 +49,9 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         used = 0
         reserved = 0
         for source in results.sourceCat:
-            if source.get("calib_psfUsed"):
+            if source.get("calib_psf_used"):
                 used += 1
-                self.assertTrue(source.get("calib_psfCandidate"))
+                self.assertTrue(source.get("calib_psf_candidate"))
             if source.get("calib_psf_reserved"):
                 reserved += 1
         self.assertGreater(used, 0)

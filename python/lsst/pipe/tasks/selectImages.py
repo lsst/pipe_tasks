@@ -240,7 +240,7 @@ class PsfWcsSelectImagesConfig(pexConfig.Config):
     starSelection = pexConfig.Field(
         doc="select star with this field",
         dtype=str,
-        default='calib_psfUsed'
+        default='calib_psf_used'
     )
     starShape = pexConfig.Field(
         doc="name of star shape",
