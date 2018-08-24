@@ -862,6 +862,10 @@ class DeblendCoaddSourcesConfig(Config):
     simultaneous = Field(dtype=bool, default=False, doc="Simultaneously deblend all bands?")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
 
+    def setDefaults(self):
+        Config.setDefaults(self)
+        self.singleBandDeblend.propagateAllPeaks = True
+
 
 class DeblendCoaddSourcesRunner(MergeSourcesRunner):
     """Task runner for the `MergeSourcesTask`
