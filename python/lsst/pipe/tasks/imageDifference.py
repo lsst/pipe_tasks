@@ -208,8 +208,8 @@ class ImageDifferenceConfig(pexConfig.Config):
 
 class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
 
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
+    @classmethod
+    def getTargetList(cls, parsedCmd, **kwargs):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, templateIdList=parsedCmd.templateId.idList,
                                                  **kwargs)
 

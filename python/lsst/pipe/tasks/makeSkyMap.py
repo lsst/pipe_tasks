@@ -50,8 +50,8 @@ class MakeSkyMapConfig(pexConfig.Config):
 
 class MakeSkyMapRunner(pipeBase.TaskRunner):
     """Only need a single butler instance to run on."""
-    @staticmethod
-    def getTargetList(parsedCmd):
+    @classmethod
+    def getTargetList(cls, parsedCmd):
         return [parsedCmd.butler]
 
     def __call__(self, butler):

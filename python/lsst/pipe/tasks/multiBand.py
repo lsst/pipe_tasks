@@ -388,8 +388,8 @@ class MergeSourcesRunner(TaskRunner):
             refDict[tract][patch][filter] = ref
         return refDict
 
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
+    @classmethod
+    def getTargetList(cls, parsedCmd, **kwargs):
         """Provide a list of patch references for each patch, tract, filter combo.
 
         Parameters
@@ -404,7 +404,7 @@ class MergeSourcesRunner(TaskRunner):
         targetList: list
             List of tuples, where each tuple is a (dataRef, kwargs) pair.
         """
-        refDict = MergeSourcesRunner.buildRefDict(parsedCmd)
+        refDict = cls.buildRefDict(parsedCmd)
         return [(list(p.values()), kwargs) for t in refDict.values() for p in t.values()]
 
 
@@ -873,8 +873,8 @@ class DeblendCoaddSourcesRunner(MergeSourcesRunner):
     Required because the run method requires a list of
     dataRefs rather than a single dataRef.
     """
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
+    @classmethod
+    def getTargetList(cls, parsedCmd, **kwargs):
         """Provide a list of patch references for each patch, tract, filter combo.
 
         Parameters
@@ -889,7 +889,7 @@ class DeblendCoaddSourcesRunner(MergeSourcesRunner):
         targetList: list
             List of tuples, where each tuple is a (dataRef, kwargs) pair.
         """
-        refDict = MergeSourcesRunner.buildRefDict(parsedCmd)
+        refDict = cls.buildRefDict(parsedCmd)
         kwargs["psfCache"] = parsedCmd.psfCache
         return [(list(p.values()), kwargs) for t in refDict.values() for p in t.values()]
 
@@ -1149,8 +1149,8 @@ class MeasureMergedCoaddSourcesConfig(Config):
 
 class MeasureMergedCoaddSourcesRunner(ButlerInitializedTaskRunner):
     """Get the psfCache setting into MeasureMergedCoaddSourcesTask"""
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
+    @classmethod
+    def getTargetList(cls, parsedCmd, **kwargs):
         return ButlerInitializedTaskRunner.getTargetList(parsedCmd, psfCache=parsedCmd.psfCache)
 
 

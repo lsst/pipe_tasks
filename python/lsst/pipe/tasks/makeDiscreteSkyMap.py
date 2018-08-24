@@ -70,8 +70,8 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
     - butler: data butler
     - dataRefList: list of all dataRefs,
     """
-    @staticmethod
-    def getTargetList(parsedCmd):
+    @classmethod
+    def getTargetList(cls, parsedCmd):
         return [(parsedCmd.butler, parsedCmd.id.refList)]
 
     def __call__(self, args):

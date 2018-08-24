@@ -84,8 +84,8 @@ class MergeDcrSourcesRunner(MergeSourcesRunner):
             refDict[tract][patch][filter][subfilter] = ref
         return refDict
 
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
+    @classmethod
+    def getTargetList(cls, parsedCmd, **kwargs):
         """Provide a list of patch references for each patch, tract, filter combo.
 
         Parameters
@@ -100,7 +100,7 @@ class MergeDcrSourcesRunner(MergeSourcesRunner):
         targetList: list
             List of tuples, where each tuple is a (dataRef, kwargs) pair.
         """
-        refDict = MergeDcrSourcesRunner.buildRefDict(parsedCmd)
+        refDict = cls.buildRefDict(parsedCmd)
         return [(list(f.values()), kwargs)
                 for t in list(refDict.values())
                 for p in list(t.values())
@@ -127,8 +127,8 @@ class DeblendDcrCoaddSourcesRunner(MergeDcrSourcesRunner):
     dataRefs rather than a single dataRef.
     """
 
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
+    @classmethod
+    def getTargetList(cls, parsedCmd, **kwargs):
         """Provide a list of patch references for each patch, tract, filter combo.
 
         Parameters
@@ -143,7 +143,7 @@ class DeblendDcrCoaddSourcesRunner(MergeDcrSourcesRunner):
         targetList: list
             List of tuples, where each tuple is a (dataRef, kwargs) pair.
         """
-        refDict = MergeDcrSourcesRunner.buildRefDict(parsedCmd)
+        refDict = cls.buildRefDict(parsedCmd)
         kwargs["psfCache"] = parsedCmd.psfCache
         return [(list(f.values()), kwargs)
                 for t in list(refDict.values())

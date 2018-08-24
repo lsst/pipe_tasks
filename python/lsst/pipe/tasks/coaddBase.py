@@ -85,8 +85,8 @@ class CoaddBaseConfig(pexConfig.Config):
 
 class CoaddTaskRunner(pipeBase.TaskRunner):
 
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
+    @classmethod
+    def getTargetList(cls, parsedCmd, **kwargs):
         return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
                                                  **kwargs)
 

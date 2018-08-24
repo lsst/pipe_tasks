@@ -35,8 +35,8 @@ class DataRefListRunner(pipeBase.TaskRunner):
     Differs from the default TaskRunner by providing all data references at once,
     instead of iterating over them one at a time.
     """
-    @staticmethod
-    def getTargetList(parsedCmd):
+    @classmethod
+    def getTargetList(cls, parsedCmd):
         """Return a list of targets (arguments for __call__); one entry per invocation
         """
         return [parsedCmd.id.refList]  # one argument consisting of a list of dataRefs
