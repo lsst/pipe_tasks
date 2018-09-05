@@ -273,16 +273,18 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         #
         stars = self.starSelector.run(sourceCat=sources, matches=matches, exposure=exposure)
         selectionResult = self.makePsfCandidates.run(stars.sourceCat, exposure=exposure)
+        self.log.info("PSF star selector found %d candidates" % len(selectionResult.psfCandidates))
         reserveResult = self.reserve.run(selectionResult.goodStarCat, expId=expId)
-        psfCandidateList = [cand for cand, use
-                            in zip(selectionResult.psfCandidates, reserveResult.use) if use]
+        # Make list of psf candidates to send to the determiner (omitting those marked as reserved)
+        psfDeterminerList = [cand for cand, use
+                             in zip(selectionResult.psfCandidates, reserveResult.use) if use]
 
-        if psfCandidateList and self.candidateKey is not None:
-            for cand in psfCandidateList:
+        if selectionResult.psfCandidates and self.candidateKey is not None:
+            for cand in selectionResult.psfCandidates:
                 source = cand.getSource()
                 source.set(self.candidateKey, True)
 
-        self.log.info("PSF star selector found %d candidates" % len(psfCandidateList))
+        self.log.info("Sending %d candidates to PSF determiner" % len(psfDeterminerList))
 
         if display:
             frame = display
@@ -292,7 +294,7 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         #
         # Determine PSF
         #
-        psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfCandidateList, self.metadata,
+        psf, cellSet = self.psfDeterminer.determinePsf(exposure, psfDeterminerList, self.metadata,
                                                        flagKey=self.usedKey)
         self.log.info("PSF determination using %d/%d stars." %
                       (self.metadata.getScalar("numGoodStars"), self.metadata.getScalar("numAvailStars")))
