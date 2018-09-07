@@ -302,7 +302,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The weight to give each input exposure in the coadd
         supplementaryData : `lsst.pipe.base.Struct`
             Result struct returned by ``makeSupplementaryData`` with components:
-
             - ``templateCoadd``: coadded exposure (`lsst.afw.image.Exposure`)
 
         Returns

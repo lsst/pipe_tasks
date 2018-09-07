@@ -70,6 +70,12 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
     _DefaultName = "exampleSigmaClippedStats"
 
     def __init__(self, *args, **kwargs):
+        """Construct an ExampleSigmaClippedStatsTask
+
+        The init method may compute anything that that does not require data.
+        In this case we create a statistics control object using the config
+        (which cannot change once the task is created).
+        """
         pipeBase.Task.__init__(self, *args, **kwargs)
 
         self._badPixelMask = afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)

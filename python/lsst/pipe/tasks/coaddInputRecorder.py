@@ -79,6 +79,18 @@ class CoaddTempExpInputRecorder:
     """
 
     def __init__(self, task, visitId, num=0):
+        """Constructor
+
+        Parameters
+        ----------
+        task :
+            The CoaddInputRecorderTask that is utilising us
+        visitId :
+            Identifier (integer) for the visit
+        num :
+            Number of CCDs for this visit that overlap this
+            patch (for reserving memory)
+        """
         self.task = task
         self.coaddInputs = self.task.makeCoaddInputs()
         self.coaddInputs.visits.reserve(1)

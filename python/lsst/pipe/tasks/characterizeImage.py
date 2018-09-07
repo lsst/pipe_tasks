@@ -246,6 +246,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     measure:
         - `bool`; if True display image and sources after final measurement
 
+    Examples
+    --------
     For example, put something like:
 
     .. code-block:: none

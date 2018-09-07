@@ -178,6 +178,9 @@ class DetectCoaddSourcesTask(CmdLineTask):
     Notes
     -----
 
+    Examples
+    --------
+
     DetectCoaddSourcesTask is meant to be run after assembling a coadded image in a given band. The purpose of
     the task is to update the background, detect all sources in a single band and generate a set of parent
     footprints. Subsequent tasks in the multi-band processing procedure will merge sources across bands and,
@@ -1151,6 +1154,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     MeasureMergedCoaddSourcesTask has no debug variables of its own because it delegates all the work to
     the various sub-tasks. See the documetation for individual sub-tasks for more information.
 
+    Examples
+    --------
     After MeasureMergedCoaddSourcesTask has been run on multiple coadds, we have a set of per-band catalogs.
     The next stage in the multi-band processing procedure will merge these measurements into a suitable
     catalog for driving forced photometry.

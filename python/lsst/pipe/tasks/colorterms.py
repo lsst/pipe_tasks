@@ -109,6 +109,8 @@ class ColortermDict(Config):
     ColortermDict(data=dataDict)
     where dataDict is a Python dict of filterName: Colorterm
 
+    Examples
+    --------
     For example:
 
     .. code-block:: none
@@ -143,6 +145,9 @@ class ColortermLibrary(Config):
     ColortermLibrary(data=dataDict)
     where dataDict is a Python dict of catalog_name_or_glob: ColortermDict
 
+    Examples
+    --------
+
     .. code-block:: none
 
         For example:
@@ -153,8 +158,8 @@ class ColortermLibrary(Config):
                     ...
                 }),
                 "sdss": ColortermDict(data={
-                    'g':Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
-                    'r':Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+                    'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
+                    'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
                     ...
                 }),
             })

@@ -49,7 +49,6 @@ IqrToSigma = 0.741
 __all__ = ('ImageDifferenceConfig', 'ImageDifferenceTaskRunner',
            'Winter2013ImageDifferenceConfig', 'Winter2013ImageDifferenceTask')
 
-
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
     """
@@ -848,7 +847,6 @@ class Winter2013ImageDifferenceConfig(ImageDifferenceConfig):
     def setDefaults(self):
         ImageDifferenceConfig.setDefaults(self)
         self.getTemplate.retarget(GetCalexpAsTemplateTask)
-
 
 class Winter2013ImageDifferenceTask(ImageDifferenceTask):
     """Image difference Task used in the Winter 2013 data challege.
