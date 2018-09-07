@@ -4,6 +4,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 from lsst.log import Log
 
+__all__=('ObjectMaskCatalog',)
 
 class ObjectMaskCatalog:
     """Class to support bright object masks
@@ -40,40 +41,43 @@ class ObjectMaskCatalog:
 
     @staticmethod
     def readFits(fileName, hdu=0, flags=0):
-        """Read a ds9 region file, returning a ObjectMaskCatalog object
+        # """Read a ds9 region file, returning a ObjectMaskCatalog object
 
-        This method is called "readFits" to fool the butler. The corresponding mapper entry looks like
-        brightObjectMask: {
-            template:      "deepCoadd/BrightObjectMasks/%(tract)d/BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg"  # noqa E501
-            python:        "lsst.obs.subaru.objectMasks.ObjectMaskCatalog"
-            persistable:   "PurePythonClass"
-            storage:       "FitsCatalogStorage"
-        }
-        and this is the only way I know to get it to read a random file type, in this case a ds9 region file.
 
-        This method expects to find files named as BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg
-        The files should be structured as follows:
+        # Notes
+        # -----
+        # This method is called "readFits" to fool the butler. The corresponding mapper entry looks like
+        # brightObjectMask: {
+        #     template:      "deepCoadd/BrightObjectMasks/%(tract)d/BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg"  # noqa E501
+        #     python:        "lsst.obs.subaru.objectMasks.ObjectMaskCatalog"
+        #     persistable:   "PurePythonClass"
+        #     storage:       "FitsCatalogStorage"
+        # }
+        # and this is the only way I know to get it to read a random file type, in this case a ds9 region file.
 
-        # Description of catalogue as a comment
-        # CATALOG: catalog-id-string
-        # TRACT: 0
-        # PATCH: 5,4
-        # FILTER: HSC-I
+        # This method expects to find files named as BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg
+        # The files should be structured as follows:
 
-        wcs; fk5
+        # # Description of catalogue as a comment
+        # # CATALOG: catalog-id-string
+        # # TRACT: 0
+        # # PATCH: 5,4
+        # # FILTER: HSC-I
 
-        circle(RA, DEC, RADIUS)           # ID: 1, mag: 12.34
-        box(RA, DEC, XSIZE, YSIZE, THETA) # ID: 2, mag: 23.45
-        ...
+        # wcs; fk5
 
-        The ", mag: XX.YY" is optional
+        # circle(RA, DEC, RADIUS)           # ID: 1, mag: 12.34
+        # box(RA, DEC, XSIZE, YSIZE, THETA) # ID: 2, mag: 23.45
+        # ...
 
-        The commented lines must be present, with the relevant fields such as tract patch and filter filled
-        in. The coordinate system must be listed as above. Each patch is specified as a box or circle, with
-        RA, DEC, and dimensions specified in decimal degrees (with or without an explicit "d").
+        # The ", mag: XX.YY" is optional
 
-        Only (axis-aligned) boxes and circles are currently supported as region definitions.
-        """
+        # The commented lines must be present, with the relevant fields such as tract patch and filter filled
+        # in. The coordinate system must be listed as above. Each patch is specified as a box or circle, with
+        # RA, DEC, and dimensions specified in decimal degrees (with or without an explicit "d").
+
+        # Only (axis-aligned) boxes and circles are currently supported as region definitions.
+        # """
 
         log = Log.getLogger("ObjectMaskCatalog")
 

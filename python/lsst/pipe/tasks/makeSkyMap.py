@@ -27,6 +27,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
 
+__all__=('MakeSkyMapConfig','MakeSkyMapRunner','MakeSkyMapTask')
 
 class MakeSkyMapConfig(pexConfig.Config):
     """Config for MakeSkyMapTask
@@ -81,7 +82,7 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
 
 
 class MakeSkyMapTask(pipeBase.CmdLineTask):
-    """!Make a sky map in a repository
+    """Make a sky map in a repository
 
     Making a sky map in a repository is a prerequisite for making a coadd,
     since the sky map is used as the pixelization for the coadd.
@@ -95,11 +96,18 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def runDataRef(self, butler):
-        """!Make a skymap, persist it (optionally) and log some information about it
+        """Make a skymap, persist it (optionally) and log some information about it
 
-        @param[in]   butler  data butler
-        @return      a pipeBase Struct containing:
-                     - skyMap: the constructed SkyMap
+        Parameters
+        ----------
+        butler :
+            data butler
+
+        Returns
+        -------
+        result :
+            a pipeBase Struct containing:
+            - ``skyMap``: the constructed SkyMap
         """
         skyMap = self.config.skyMap.apply()
         self.logSkyMapInfo(skyMap)
@@ -110,9 +118,11 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         )
 
     def logSkyMapInfo(self, skyMap):
-        """!Log information about a sky map
+        """Log information about a sky map
 
-        @param[in] skyMap  sky map (an lsst.skyMap.SkyMap)
+        Parameters
+        ----------
+        skyMap : `lsst.skyMap.SkyMap`
         """
         self.log.info("sky map has %s tracts" % (len(skyMap),))
         for tractInfo in skyMap:

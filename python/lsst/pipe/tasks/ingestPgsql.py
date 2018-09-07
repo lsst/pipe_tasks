@@ -10,6 +10,7 @@ try:
 except ImportError:
     havePgSql = False
 
+__all__=('PgsqlRegistryContext','PgsqlRegisterTask','PgsqlIngestConfig','PgsqlIngestTask')
 
 class PgsqlRegistryContext(RegistryContext):
     """Context manager to provide a pgsql registry
@@ -17,9 +18,14 @@ class PgsqlRegistryContext(RegistryContext):
     def __init__(self, registryName, createTableFunc, forceCreateTables):
         """Construct a context manager
 
-        @param registryName: Name of registry file
-        @param createTableFunc: Function to create tables
-        @param forceCreateTables: Force the (re-)creation of tables?
+        Parameters
+        ----------
+        registryName :
+            Name of registry file
+        createTableFunc :
+            Function to create tables
+        forceCreateTables :
+            Force the (re-)creation of tables?
         """
         self.registryName = registryName
         data = PgsqlRegistry.readYaml(registryName)
@@ -52,10 +58,19 @@ class PgsqlRegisterTask(RegisterTask):
     def openRegistry(self, directory, create=False, dryrun=False):
         """Open the registry and return the connection handle.
 
-        @param directory  Directory in which the registry file will be placed
-        @param create  Clobber any existing registry and create a new one?
-        @param dryrun  Don't do anything permanent?
-        @return Database connection
+        Parameters
+        ----------
+        directory :
+            Directory in which the registry file will be placed
+        create :
+            Clobber any existing registry and create a new one?
+        dryrun :
+            Don't do anything permanent?
+
+        Returns
+        -------
+        result :
+            Database connection
         """
         if dryrun:
             return fakeContext()
@@ -72,8 +87,12 @@ class PgsqlRegisterTask(RegisterTask):
         compared to SQLite (FLOAT instead of DOUBLE, SERIAL instead of
         AUTOINCREMENT).
 
-        @param conn    Database connection
-        @param table   Name of table to create in database
+        Parameters
+        ----------
+        conn :
+            Database connection
+        table :
+            Name of table to create in database
         """
         if table is None:
             table = self.config.table

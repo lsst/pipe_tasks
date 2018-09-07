@@ -20,6 +20,18 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+"""
+New dataset types:
+- deepCoadd_det: detections from what used to be processCoadd (tract, patch, filter)
+- deepCoadd_mergeDet: merged detections (tract, patch)
+- deepCoadd_meas: measurements of merged detections (tract, patch, filter)
+- deepCoadd_ref: reference sources (tract, patch)
+All of these have associated schema catalogs that require no data ID and hold no records.
+
+In addition, we have a schema-only dataset, which saves the schema for the PeakRecords in
+the mergeDet, meas, and ref dataset Footprints:
+- deepCoadd_peak_schema
+"""
 import numpy
 
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
@@ -40,18 +52,12 @@ import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDetect
 from lsst.daf.base import PropertyList
 
-"""
-New dataset types:
-* deepCoadd_det: detections from what used to be processCoadd (tract, patch, filter)
-* deepCoadd_mergeDet: merged detections (tract, patch)
-* deepCoadd_meas: measurements of merged detections (tract, patch, filter)
-* deepCoadd_ref: reference sources (tract, patch)
-All of these have associated *_schema catalogs that require no data ID and hold no records.
+__all__=('DetectCoaddSourcesConfig','MergeSourcesRunner','MergeSourcesConfig','MergeSourcesTask',
+'CullPeaksConfig','MergeDetectionsConfig','MergeDetectionsTask','DeblendCoaddSourcesConfig',
+'DeblendCoaddSourcesRunner','DeblendCoaddSourcesTask','MeasureMergedCoaddSourcesConfig','MeasureMergedCoaddSourcesRunner',
+'MeasureMergedCoaddSourcesTask','MergeMeasurementsConfig','MergeMeasurementsTask')
 
-In addition, we have a schema-only dataset, which saves the schema for the PeakRecords in
-the mergeDet, meas, and ref dataset Footprints:
-* deepCoadd_peak_schema
-"""
+
 
 
 def _makeGetSchemaCatalogs(datasetSuffix):
@@ -60,7 +66,10 @@ def _makeGetSchemaCatalogs(datasetSuffix):
     These are identical for most of the classes here, so we'll consolidate
     the code.
 
-    datasetSuffix:  Suffix of dataset name, e.g., "src" for "deepCoadd_src"
+    Parameters
+    ----------
+    datasetSuffix :
+        Suffix of dataset name, e.g., "src" for "deepCoadd_src"
     """
 
     def getSchemaCatalogs(self):
@@ -78,7 +87,10 @@ def _makeMakeIdFactory(datasetName):
     These are identical for all the classes here, so this consolidates
     the code.
 
-    datasetName:  Dataset name without the coadd name prefix, e.g., "CoaddId" for "deepCoaddId"
+    Parameters
+    ----------
+    datasetName :
+        Dataset name without the coadd name prefix, e.g., "CoaddId" for "deepCoaddId"
     """
 
     def makeIdFactory(self, dataRef):
@@ -104,10 +116,7 @@ def getShortFilterName(name):
 ##############################################################################################################
 
 class DetectCoaddSourcesConfig(Config):
-    """!
-    @anchor DetectCoaddSourcesConfig_
-
-    @brief Configuration parameters for the DetectCoaddSourcesTask
+    """Configuration parameters for the DetectCoaddSourcesTask
     """
     doScaleVariance = Field(dtype=bool, default=True, doc="Scale variance plane using empirical noise?")
     scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
@@ -139,23 +148,7 @@ class DetectCoaddSourcesConfig(Config):
 
 
 class DetectCoaddSourcesTask(CmdLineTask):
-    """!
-    @anchor DetectCoaddSourcesTask_
-
-    @brief Detect sources on a coadd
-
-    @section pipe_tasks_multiBand_Contents Contents
-
-      - @ref pipe_tasks_multiBand_DetectCoaddSourcesTask_Purpose
-      - @ref pipe_tasks_multiBand_DetectCoaddSourcesTask_Initialize
-      - @ref pipe_tasks_multiBand_DetectCoaddSourcesTask_Run
-      - @ref pipe_tasks_multiBand_DetectCoaddSourcesTask_Config
-      - @ref pipe_tasks_multiBand_DetectCoaddSourcesTask_Debug
-      - @ref pipe_tasks_multiband_DetectCoaddSourcesTask_Example
-
-    @section pipe_tasks_multiBand_DetectCoaddSourcesTask_Purpose	Description
-
-    Command-line task that detects sources on a coadd of exposures obtained with a single filter.
+    """Command-line task that detects sources on a coadd of exposures obtained with a single filter.
 
     Coadding individual visits requires each exposure to be warped. This introduces covariance in the noise
     properties across pixels. Before detection, we correct the coadd variance by scaling the variance plane
@@ -165,43 +158,22 @@ class DetectCoaddSourcesTask(CmdLineTask):
     After scaling the variance plane, we detect sources and generate footprints by delegating to the @ref
     SourceDetectionTask_ "detection" subtask.
 
-      @par Inputs:
-        deepCoadd{tract,patch,filter}: ExposureF
-      @par Outputs:
-        deepCoadd_det{tract,patch,filter}: SourceCatalog (only parent Footprints)
-        @n deepCoadd_calexp{tract,patch,filter}: Variance scaled, background-subtracted input
-                                                 exposure (ExposureF)
-        @n deepCoadd_calexp_background{tract,patch,filter}: BackgroundList
-      @par Data Unit:
+    Parameters
+    -----
+    deepCoadd :
+        {tract,patch,filter}. ExposureF
+    deepCoadd_det :
+        {tract,patch,filter}. SourceCatalog (only parent Footprints)
+    deepCoadd_calexp :
+        {tract,patch,filter}. Variance scaled, background-subtracted input
+        exposure (ExposureF)
+    deepCoadd_calexp_background :
+        {tract,patch,filter}. BackgroundList
+    Data Unit :
         tract, patch, filter
 
-    DetectCoaddSourcesTask delegates most of its work to the @ref SourceDetectionTask_ "detection" subtask.
-    You can retarget this subtask if you wish.
-
-    @section pipe_tasks_multiBand_DetectCoaddSourcesTask_Initialize       Task initialization
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_multiBand_DetectCoaddSourcesTask_Run       Invoking the Task
-
-    @copydoc run
-
-    @section pipe_tasks_multiBand_DetectCoaddSourcesTask_Config       Configuration parameters
-
-    See @ref DetectCoaddSourcesConfig_ "DetectSourcesConfig"
-
-    @section pipe_tasks_multiBand_DetectCoaddSourcesTask_Debug		Debug variables
-
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-    flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
-    files.
-
-    DetectCoaddSourcesTask has no debug variables of its own because it relegates all the work to
-    @ref SourceDetectionTask_ "SourceDetectionTask"; see the documetation for
-    @ref SourceDetectionTask_ "SourceDetectionTask" for further information.
-
-    @section pipe_tasks_multiband_DetectCoaddSourcesTask_Example A complete example
-    of using DetectCoaddSourcesTask
+    Examples
+    --------
 
     DetectCoaddSourcesTask is meant to be run after assembling a coadded image in a given band. The purpose of
     the task is to update the background, detect all sources in a single band and generate a set of parent
@@ -209,25 +181,25 @@ class DetectCoaddSourcesTask(CmdLineTask):
     eventually, perform forced photometry. Command-line usage of DetectCoaddSourcesTask expects a data
     reference to the coadd to be processed. A list of the available optional arguments can be obtained by
     calling detectCoaddSources.py with the `--help` command line argument:
-    @code
-    detectCoaddSources.py --help
-    @endcode
+
+    >>> detectCoaddSources.py --help
 
     To demonstrate usage of the DetectCoaddSourcesTask in the larger context of multi-band processing, we
     will process HSC data in the [ci_hsc](https://github.com/lsst/ci_hsc) package. Assuming one has followed
     steps 1 - 4 at @ref pipeTasks_multiBand, one may detect all the sources in each coadd as follows:
-    @code
-    detectCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I
-    @endcode
+
+
+    >>> detectCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I
+
     that will process the HSC-I band data. The results are written to
     `$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I`.
 
     It is also necessary to run:
-    @code
-    detectCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R
-    @endcode
+
+    >>> detectCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R
+
     to generate the sources catalogs for the HSC-R band required by the next step in the multi-band
-    processing procedure: @ref MergeDetectionsTask_ "MergeDetectionsTask".
+    processing procedure: MergeDetectionsTask_ "MergeDetectionsTask".
     """
     _DefaultName = "detectCoaddSources"
     ConfigClass = DetectCoaddSourcesConfig
@@ -242,14 +214,17 @@ class DetectCoaddSourcesTask(CmdLineTask):
         return parser
 
     def __init__(self, schema=None, **kwargs):
-        """!
-        @brief Initialize the task. Create the @ref SourceDetectionTask_ "detection" subtask.
+        """Initialize the task. Create the @ref SourceDetectionTask_ "detection" subtask.
 
         Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
 
-        @param[in] schema:   initial schema for the output catalog, modified-in place to include all
-                             fields set by this task.  If None, the source minimal schema will be used.
-        @param[in] **kwargs: keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
+        Parameters
+        ----------
+        schema :
+            initial schema for the output catalog, modified-in place to include all
+            fields set by this task.  If None, the source minimal schema will be used.
+        kwargs :
+            keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
         CmdLineTask.__init__(self, **kwargs)
         if schema is None:
@@ -262,13 +237,15 @@ class DetectCoaddSourcesTask(CmdLineTask):
             self.makeSubtask("scaleVariance")
 
     def runDataRef(self, patchRef):
-        """!
-        @brief Run detection on a coadd.
+        """Run detection on a coadd.
 
-        Invokes @ref run and then uses @ref write to output the
+        Invokes run and then uses write to output the
         results.
 
-        @param[in] patchRef: data reference for patch
+        Parameters
+        ----------
+        patchRef :
+            data reference for patch
         """
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
         expId = int(patchRef.get(self.config.coaddName + "CoaddId"))
@@ -277,21 +254,28 @@ class DetectCoaddSourcesTask(CmdLineTask):
         return results
 
     def run(self, exposure, idFactory, expId):
-        """!
-        @brief Run detection on an exposure.
+        """Run detection on an exposure.
 
         First scale the variance plane to match the observed variance
-        using @ref ScaleVarianceTask. Then invoke the @ref SourceDetectionTask_ "detection" subtask to
+        using ScaleVarianceTask. Then invoke the SourceDetectionTask_ "detection" subtask to
         detect sources.
 
-        @param[in,out] exposure: Exposure on which to detect (may be backround-subtracted and scaled,
-                                 depending on configuration).
-        @param[in] idFactory: IdFactory to set source identifiers
-        @param[in] expId: Exposure identifier (integer) for RNG seed
+        Parameters
+        ----------
+        exposure :
+            Exposure on which to detect (may be backround-subtracted and scaled,
+            depending on configuration).
+        idFactory :
+            IdFactory to set source identifiers
+        expId :
+            Exposure identifier (integer) for RNG seed
 
-        @return a pipe.base.Struct with fields
-        - sources: catalog of detections
-        - backgrounds: list of backgrounds
+        Returns
+        -------
+        result : `pipe.base.Struct`
+            a pipe.base.Struct with fields:
+            - ``sources`` : catalog of detections
+            - ``backgrounds`` : list of backgrounds
         """
         if self.config.doScaleVariance:
             varScale = self.scaleVariance.run(exposure.maskedImage)
@@ -309,12 +293,14 @@ class DetectCoaddSourcesTask(CmdLineTask):
         return Struct(sources=sources, backgrounds=backgrounds)
 
     def write(self, exposure, results, patchRef):
-        """!
-        @brief Write out results from runDetection.
+        """Write out results from runDetection.
 
-        @param[in] exposure: Exposure to write out
-        @param[in] results: Struct returned from runDetection
-        @param[in] patchRef: data reference for patch
+        exposure:
+            Exposure to write out
+        results:
+            Struct returned from runDetection
+        patchRef:
+            data reference for patch
         """
         coaddName = self.config.coaddName + "Coadd"
         patchRef.put(results.backgrounds, coaddName + "_calexp_background")
@@ -409,10 +395,7 @@ class MergeSourcesRunner(TaskRunner):
 
 
 class MergeSourcesConfig(Config):
-    """!
-    @anchor MergeSourcesConfig_
-
-    @brief Configuration for merging sources.
+    """Configuration for merging sources.
     """
     priorityList = ListField(dtype=str, default=[],
                              doc="Priority-ordered list of bands for the merge.")
@@ -425,23 +408,23 @@ class MergeSourcesConfig(Config):
 
 
 class MergeSourcesTask(CmdLineTask):
-    """!
-    @anchor MergeSourcesTask_
-
-    @brief A base class for merging source catalogs.
+    """A base class for merging source catalogs.
 
     Merging detections (MergeDetectionsTask) and merging measurements (MergeMeasurementsTask) are
     so similar that it makes sense to re-use the code, in the form of this abstract base class.
 
+    Notes
+    -----
     NB: Do not use this class directly. Instead use one of the child classes that inherit from
-    MergeSourcesTask such as @ref MergeDetectionsTask_ "MergeDetectionsTask" or @ref MergeMeasurementsTask_
+    MergeSourcesTask such as MergeDetectionsTask "MergeDetectionsTask" or MergeMeasurementsTask
     "MergeMeasurementsTask"
 
     Sub-classes should set the following class variables:
-    * `_DefaultName`: name of Task
-    * `inputDataset`: name of dataset to read
-    * `outputDataset`: name of dataset to write
-    * `getSchemaCatalogs` to the result of `_makeGetSchemaCatalogs(outputDataset)`
+
+    - `_DefaultName` : name of Task
+    - `inputDataset` : name of dataset to read
+    - `outputDataset` : name of dataset to write
+    - `getSchemaCatalogs` : to the result of `_makeGetSchemaCatalogs(outputDataset)`
 
     In addition, sub-classes must implement the run method.
     """
@@ -454,8 +437,7 @@ class MergeSourcesTask(CmdLineTask):
 
     @classmethod
     def _makeArgumentParser(cls):
-        """!
-        @brief Create a suitable ArgumentParser.
+        """Create a suitable ArgumentParser.
 
         We will use the ArgumentParser to get a provide a list of data
         references for patches; the RunnerClass will sort them into lists
@@ -468,11 +450,14 @@ class MergeSourcesTask(CmdLineTask):
         return parser
 
     def getInputSchema(self, butler=None, schema=None):
-        """!
-        @brief Obtain the input schema either directly or froma  butler reference.
+        """ Obtain the input schema either directly or froma  butler reference.
 
-        @param[in]  butler   butler reference to obtain the input schema from
-        @param[in]  schema   the input schema
+        Parameters
+        ----------
+        butler :
+            butler reference to obtain the input schema from
+        schema :
+            the input schema
         """
         if schema is None:
             assert butler is not None, "Neither butler nor schema specified"
@@ -481,38 +466,51 @@ class MergeSourcesTask(CmdLineTask):
         return schema
 
     def __init__(self, butler=None, schema=None, **kwargs):
-        """!
-        @brief Initialize the task.
+        """Initialize the task.
 
-        Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
-        @param[in]  schema   the schema of the detection catalogs used as input to this one
-        @param[in]  butler   a butler used to read the input schema from disk, if schema is None
+        Parameters
+        ----------
+        Keyword arguments (in addition to those forwarded to CmdLineTask.__init__) :
+        schema :
+            the schema of the detection catalogs used as input to this one
+        butler :
+            a butler used to read the input schema from disk, if schema is None
 
+        Notes
+        -----
         Derived classes should use the getInputSchema() method to handle the additional
         arguments and retreive the actual input schema.
         """
         CmdLineTask.__init__(self, **kwargs)
 
     def runDataRef(self, patchRefList):
-        """!
-        @brief Merge coadd sources from multiple bands. Calls @ref `run` which must be defined in
+        """Merge coadd sources from multiple bands. Calls`run` which must be defined in
         subclasses that inherit from MergeSourcesTask.
 
-        @param[in] patchRefList list of data references for each filter
+        Parameters
+        ----------
+        patchRefList :
+            list of data references for each filter
         """
         catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
         mergedCatalog = self.run(catalogs, patchRefList[0])
         self.write(patchRefList[0], mergedCatalog)
 
     def readCatalog(self, patchRef):
-        """!
-        @brief Read input catalog.
+        """Read input catalog.
 
         We read the input dataset provided by the 'inputDataset'
         class variable.
 
-        @param[in]  patchRef   data reference for patch
-        @return tuple consisting of the filter name and the catalog
+        Parameters
+        ----------
+        patchRef :
+            data reference for patch
+
+        Returns
+        -------
+        filterName :
+        catalog :
         """
         filterName = patchRef.dataId["filter"]
         catalog = patchRef.get(self.config.coaddName + "Coadd_" + self.inputDataset, immediate=True)
@@ -520,23 +518,32 @@ class MergeSourcesTask(CmdLineTask):
         return filterName, catalog
 
     def run(self, catalogs, patchRef):
-        """!
-        @brief Merge multiple catalogs. This function must be defined in all subclasses that inherit from
+        """Merge multiple catalogs. This function must be defined in all subclasses that inherit from
         MergeSourcesTask.
 
-        @param[in] catalogs dict mapping filter name to source catalog
+        Parameters
+        ----------
+        catalogs : dict mapping filter name to source catalog
 
-        @return merged catalog
+        Returns
+        -------
+        result :
+            merged catalog
         """
         raise NotImplementedError()
 
     def write(self, patchRef, catalog):
-        """!
-        @brief Write the output.
+        """Write the output.
 
-        @param[in]  patchRef   data reference for patch
-        @param[in]  catalog    catalog
+        Parameters
+        ----------
+        patchRef :
+            data reference for patch
+        catalog :
+            catalog
 
+        Notes
+        -----
         We write as the dataset provided by the 'outputDataset'
         class variable.
         """
@@ -548,31 +555,30 @@ class MergeSourcesTask(CmdLineTask):
         self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
 
     def writeMetadata(self, dataRefList):
-        """!
-        @brief No metadata to write, and not sure how to write it for a list of dataRefs.
+        """No metadata to write, and not sure how to write it for a list of dataRefs.
         """
         pass
 
 
 class CullPeaksConfig(Config):
-    """!
-    @anchor CullPeaksConfig_
-
-    @brief Configuration for culling garbage peaks after merging footprints.
+    """Configuration for culling garbage peaks after merging footprints.
 
     Peaks may also be culled after detection or during deblending; this configuration object
     only deals with culling after merging Footprints.
 
+    Notes
+    -----
     These cuts are based on three quantities:
-     - nBands: the number of bands in which the peak was detected
-     - peakRank: the position of the peak within its family, sorted from brightest to faintest.
-     - peakRankNormalized: the peak rank divided by the total number of peaks in the family.
+
+    - nBands: the number of bands in which the peak was detected
+    - peakRank: the position of the peak within its family, sorted from brightest to faintest.
+    - peakRankNormalized: the peak rank divided by the total number of peaks in the family.
 
     The formula that identifie peaks to cull is:
 
-      nBands < nBandsSufficient
-        AND (rank >= rankSufficient)
-        AND (rank >= rankConsider OR rank >= rankNormalizedConsider)
+    nBands < nBandsSufficient
+    AND (rank >= rankSufficient)
+    AND (rank >= rankConsider OR rank >= rankNormalizedConsider)
 
     To disable peak culling, simply set nBandsSufficient=1.
     """
@@ -590,10 +596,7 @@ class CullPeaksConfig(Config):
 
 
 class MergeDetectionsConfig(MergeSourcesConfig):
-    """!
-    @anchor MergeDetectionsConfig_
-
-    @brief Configuration parameters for the MergeDetectionsTask.
+    """Configuration parameters for the MergeDetectionsTask.
     """
     minNewPeak = Field(dtype=float, default=1,
                        doc="Minimum distance from closest peak to create a new one (in arcsec).")
@@ -622,60 +625,28 @@ class MergeDetectionsConfig(MergeSourcesConfig):
 
 
 class MergeDetectionsTask(MergeSourcesTask):
-    """!
-    @anchor MergeDetectionsTask_
-
-    @brief Merge coadd detections from multiple bands.
-
-    @section pipe_tasks_multiBand_Contents Contents
-
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Purpose
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Init
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Run
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Config
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Debug
-      - @ref pipe_tasks_multiband_MergeDetectionsTask_Example
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Purpose	Description
-
-    Command-line task that merges sources detected in coadds of exposures obtained with different filters.
+    """Command-line task that merges sources detected in coadds of exposures obtained with different filters.
 
     To perform photometry consistently across coadds in multiple filter bands, we create a master catalog of
     sources from all bands by merging the sources (peaks & footprints) detected in each coadd, while keeping
     track of which band each source originates in.
 
     The catalog merge is performed by @ref getMergedSourceCatalog. Spurious peaks detected around bright
-    objects are culled as described in @ref CullPeaksConfig_.
+    objects are culled as described in @ref CullPeaksConfig.
 
-      @par Inputs:
-        deepCoadd_det{tract,patch,filter}: SourceCatalog (only parent Footprints)
-      @par Outputs:
-        deepCoadd_mergeDet{tract,patch}: SourceCatalog (only parent Footprints)
-      @par Data Unit:
+    Parameters
+    ----------
+
+    deepCoadd_det :
+        {tract,patch,filter}. SourceCatalog (only parent Footprints)
+    deepCoadd_mergeDet :
+        {tract,patch}. SourceCatalog (only parent Footprints)
+    Data Unit:
         tract, patch
 
-    MergeDetectionsTask subclasses @ref MergeSourcesTask_ "MergeSourcesTask".
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Init       Task initialisation
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Run       Invoking the Task
-
-    @copydoc run
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Config       Configuration parameters
-
-    See @ref MergeDetectionsConfig_
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Debug		Debug variables
-
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a flag @c -d
-    to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py files.
-
-    MergeDetectionsTask has no debug variables.
-
-    @section pipe_tasks_multiband_MergeDetectionsTask_Example	A complete example of using MergeDetectionsTask
+    Examples
+    --------
+    A complete example of using MergeDetectionsTask
 
     MergeDetectionsTask is meant to be run after detecting sources in coadds generated for the chosen subset
     of the available bands.
@@ -686,21 +657,19 @@ class MergeDetectionsTask(MergeSourcesTask):
     Command-line usage of MergeDetectionsTask expects data references for all the coadds to be processed.
     A list of the available optional arguments can be obtained by calling mergeCoaddDetections.py with the
     `--help` command line argument:
-    @code
-    mergeCoaddDetections.py --help
-    @endcode
+
+    >>> mergeCoaddDetections.py --help
 
     To demonstrate usage of the DetectCoaddSourcesTask in the larger context of multi-band processing, we
     will process HSC data in the [ci_hsc](https://github.com/lsst/ci_hsc) package. Assuming one has finished
     step 5 at @ref pipeTasks_multiBand, one may merge the catalogs of sources from each coadd as follows:
-    @code
-    mergeCoaddDetections.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R
-    @endcode
+
+    >>> mergeCoaddDetections.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R
+
     This will merge the HSC-I & -R band parent source catalogs and write the results to
     `$CI_HSC_DIR/DATA/deepCoadd-results/merged/0/5,4/mergeDet-0-5,4.fits`.
 
-    The next step in the multi-band processing procedure is
-    @ref MeasureMergedCoaddSourcesTask_ "MeasureMergedCoaddSourcesTask"
+    The next step in the multi-band processing procedure is "MeasureMergedCoaddSourcesTask"
     """
     ConfigClass = MergeDetectionsConfig
     _DefaultName = "mergeCoaddDetections"
@@ -709,18 +678,21 @@ class MergeDetectionsTask(MergeSourcesTask):
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
     def __init__(self, butler=None, schema=None, **kwargs):
-        """!
-        @brief Initialize the merge detections task.
+        """Initialize the merge detections task.
 
-        A @ref FootprintMergeList_ "FootprintMergeList" will be used to
+        A FootprintMergeList "FootprintMergeList" will be used to
         merge the source catalogs.
 
+        Parameters
+        ----------
         Additional keyword arguments (forwarded to MergeSourcesTask.__init__):
-        @param[in] schema     the schema of the detection catalogs used as input to this one
-        @param[in] butler     a butler used to read the input schema from disk, if schema is None
-        @param[in] **kwargs   keyword arguments to be passed to MergeSourcesTask.__init__
-
-        The task will set its own self.schema attribute to the schema of the output merged catalog.
+        schema :
+            the schema of the detection catalogs used as input to this one
+        butler :
+            a butler used to read the input schema from disk, if schema is None
+        kwargs :
+            keyword arguments to be passed to MergeSourcesTask.__init__
+            the task will set its own self.schema attribute to the schema of the output merged catalog.
         """
         MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
         self.makeSubtask("skyObjects")
@@ -731,17 +703,19 @@ class MergeDetectionsTask(MergeSourcesTask):
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
 
     def run(self, catalogs, patchRef):
-        """!
-        @brief Merge multiple catalogs.
+        """Merge multiple catalogs.
+
 
         After ordering the catalogs and filters in priority order,
-        @ref getMergedSourceCatalog of the @ref FootprintMergeList_ "FootprintMergeList" created by
-        @ref \_\_init\_\_ is used to perform the actual merging. Finally, @ref cullPeaks is used to remove
+        getMergedSourceCatalog of the FootprintMergeList "FootprintMergeList" created by
+        \_\_init\_\_ is used to perform the actual merging. Finally, cullPeaks is used to remove
         garbage peaks detected around bright objects.
 
-        @param[in]  catalogs
-        @param[in]  patchRef
-        @param[out] mergedList
+        Parameters
+        ----------
+        catalogs :
+        patchRef :
+        mergedList :
         """
 
         # Convert distance to tract coordinate
@@ -780,10 +754,11 @@ class MergeDetectionsTask(MergeSourcesTask):
         return mergedList
 
     def cullPeaks(self, catalog):
-        """!
-        @brief Attempt to remove garbage peaks (mostly on the outskirts of large blends).
+        """Attempt to remove garbage peaks (mostly on the outskirts of large blends).
 
-        @param[in] catalog Source catalog
+        Parameters
+        ----------
+        catalog Source catalog
         """
         keys = [item.key for item in self.merged.getPeakSchema().extract("merge_peak_*").values()]
         assert len(keys) > 0, "Error finding flags that associate peaks with their detection bands."
@@ -808,10 +783,13 @@ class MergeDetectionsTask(MergeSourcesTask):
         self.log.info("Culled %d of %d peaks" % (culledPeaks, totalPeaks))
 
     def getSchemaCatalogs(self):
-        """!
+        """
         Return a dict of empty catalogs for each catalog dataset produced by this task.
 
-        @param[out] dictionary of empty catalogs
+        Parameters
+        ----------
+        result : `dict`
+            dictionary of empty catalogs
         """
         mergeDet = afwTable.SourceCatalog(self.schema)
         peak = afwDetect.PeakCatalog(self.merged.getPeakSchema())
@@ -819,12 +797,16 @@ class MergeDetectionsTask(MergeSourcesTask):
                 self.config.coaddName + "Coadd_peak": peak}
 
     def getSkySourceFootprints(self, mergedList, skyInfo, seed):
-        """!
-        @brief Return a list of Footprints of sky objects which don't overlap with anything in mergedList
+        """Return a list of Footprints of sky objects which don't overlap with anything in mergedList
 
-        @param mergedList  The merged Footprints from all the input bands
-        @param skyInfo     A description of the patch
-        @param seed        Seed for the random number generator
+        Parameters
+        ----------
+        mergedList :
+            The merged Footprints from all the input bands
+        skyInfo :
+            A description of the patch
+        seed :
+            Seed for the random number generator
         """
         mask = afwImage.Mask(skyInfo.patchInfo.getOuterBBox())
         detected = mask.getPlaneBitMask("DETECTED")
@@ -899,27 +881,23 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 
     Deblend sources from master catalog in each coadd.
     This can either be done separately in each band using the HSC-SDSS deblender
-    (`DeblendCoaddSourcesTask.config.simultaneous==False`)
+    ( `DeblendCoaddSourcesTask.config.simultaneous==False` )
     or use SCARLET to simultaneously fit the blend in all bands
-    (`DeblendCoaddSourcesTask.config.simultaneous==True`).
+    ( `DeblendCoaddSourcesTask.config.simultaneous==True` ).
     The task will set its own `self.schema` atribute to the `Schema` of the
     output deblended catalog.
     This will include all fields from the input `Schema`, as well as additional fields
     from the deblender.
 
-    `pipe.tasks.multiband.DeblendCoaddSourcesTask Description
-    ---------------------------------------------------------
-    `
-
     Parameters
     ----------
     butler: `Butler`
         Butler used to read the input schemas from disk or
-        construct the reference catalog loader, if `schema` or `peakSchema` or
+        construct the reference catalog loader, if `schema` or `peakSchema`
     schema: `Schema`
         The schema of the merged detection catalog as an input to this task.
     peakSchema: `Schema`
-        The schema of the `PeakRecord`s in the `Footprint`s in the merged detection catalog
+        The schema of the `PeakRecord` in the `Footprint` in the merged detection catalog
     """
     ConfigClass = DeblendCoaddSourcesConfig
     RunnerClass = DeblendCoaddSourcesRunner
@@ -957,7 +935,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 
         Returns
         -------
-        result: dict
+        result: `dict`
             Dictionary of empty catalogs, with catalog names as keys.
         """
         catalog = afwTable.SourceCatalog(self.schema)
@@ -975,7 +953,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 
         Parameters
         ----------
-        patchRefList: list
+        patchRefList: `list`
             List of data references for each filter
         """
         if self.config.simultaneous:
@@ -1060,9 +1038,10 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 
     def writeMetadata(self, dataRefList):
         """Write the metadata produced from processing the data.
+
         Parameters
         ----------
-        dataRefList
+        dataRefList : `list`
             List of Butler data references used to write the metadata.
             The metadata is written to dataset type `CmdLineTask._getMetadataName`.
         """
@@ -1081,10 +1060,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 
 
 class MeasureMergedCoaddSourcesConfig(Config):
-    """!
-    @anchor MeasureMergedCoaddSourcesConfig_
-
-    @brief Configuration parameters for the MeasureMergedCoaddSourcesTask
+    """Configuration parameters for the MeasureMergedCoaddSourcesTask
     """
     inputCatalog = Field(dtype=str, default="deblendedFlux",
                          doc=("Name of the input catalog to use."
@@ -1155,23 +1131,7 @@ class MeasureMergedCoaddSourcesRunner(ButlerInitializedTaskRunner):
 
 
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
-    """!
-    @anchor MeasureMergedCoaddSourcesTask_
-
-    @brief Deblend sources from master catalog in each coadd seperately and measure.
-
-    @section pipe_tasks_multiBand_Contents Contents
-
-      - @ref pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Purpose
-      - @ref pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Initialize
-      - @ref pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Run
-      - @ref pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Config
-      - @ref pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Debug
-      - @ref pipe_tasks_multiband_MeasureMergedCoaddSourcesTask_Example
-
-    @section pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Purpose	Description
-
-    Command-line task that uses peaks and footprints from a master catalog to perform deblending and
+    """Command-line task that uses peaks and footprints from a master catalog to perform deblending and
     measurement in each coadd.
 
     Given a master input catalog of sources (peaks and footprints) or deblender outputs
@@ -1180,60 +1140,34 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     consistent set of child sources.
 
     The deblender retains all peaks and deblends any missing peaks (dropouts in that band) as PSFs. Source
-    properties are measured and the @c is-primary flag (indicating sources with no children) is set. Visit
+    properties are measured and the is-primary flag (indicating sources with no children) is set. Visit
     flags are propagated to the coadd sources.
 
     Optionally, we can match the coadd sources to an external reference catalog.
 
-      @par Inputs:
-        deepCoadd_mergeDet{tract,patch} or deepCoadd_deblend{tract,patch}: SourceCatalog
-        @n deepCoadd_calexp{tract,patch,filter}: ExposureF
-      @par Outputs:
-        deepCoadd_meas{tract,patch,filter}: SourceCatalog
-      @par Data Unit:
-        tract, patch, filter
+    Parameters
+    ----------
+        deepCoadd_mergeDet{tract,patch} :
+        deepCoadd_deblend{tract,patch} :
+            SourceCatalog
+        deepCoadd_calexp{tract,patch,filter} :
+            ExposureF
+        deepCoadd_meas{tract,patch,filter} :
+            SourceCatalog
+        Data Unit :
+            tract, patch, filter
 
     MeasureMergedCoaddSourcesTask delegates most of its work to a set of sub-tasks:
 
-    <DL>
-      <DT> @ref SingleFrameMeasurementTask_ "measurement"
-      <DD> Measure source properties of deblended sources.</DD>
-      <DT> @ref SetPrimaryFlagsTask_ "setPrimaryFlags"
-      <DD> Set flag 'is-primary' as well as related flags on sources. 'is-primary' is set for sources that are
-      not at the edge of the field and that have either not been deblended or are the children of deblended
-      sources</DD>
-      <DT> @ref PropagateVisitFlagsTask_ "propagateFlags"
-      <DD> Propagate flags set in individual visits to the coadd.</DD>
-      <DT> @ref DirectMatchTask_ "match"
-      <DD> Match input sources to a reference catalog (optional).
-      </DD>
-    </DL>
-    These subtasks may be retargeted as required.
-
-    @section pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Initialize       Task initialization
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Run       Invoking the Task
-
-    @copydoc run
-
-    @section pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Config       Configuration parameters
-
-    See @ref MeasureMergedCoaddSourcesConfig_
-
-    @section pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Debug		Debug variables
-
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-    flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
+    The ``lsst.pipe.base.cmdLineTask.CmdLineTask`` command line task interface supports a
+    flag -d to import debug.py from your PYTHONPATH; see baseDebug for more about debug.py
     files.
 
     MeasureMergedCoaddSourcesTask has no debug variables of its own because it delegates all the work to
     the various sub-tasks. See the documetation for individual sub-tasks for more information.
 
-    @section pipe_tasks_multiband_MeasureMergedCoaddSourcesTask_Example	A complete example of using
-    MeasureMergedCoaddSourcesTask
-
+    Examples
+    --------
     After MeasureMergedCoaddSourcesTask has been run on multiple coadds, we have a set of per-band catalogs.
     The next stage in the multi-band processing procedure will merge these measurements into a suitable
     catalog for driving forced photometry.
@@ -1242,26 +1176,26 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     to be processed.
     A list of the available optional arguments can be obtained by calling measureCoaddSources.py with the
     `--help` command line argument:
-    @code
-    measureCoaddSources.py --help
-    @endcode
+
+    >>> measureCoaddSources.py --help
+
 
     To demonstrate usage of the DetectCoaddSourcesTask in the larger context of multi-band processing, we
     will process HSC data in the [ci_hsc](https://github.com/lsst/ci_hsc) package. Assuming one has finished
-    step 6 at @ref pipeTasks_multiBand, one may perform deblending and measure sources in the HSC-I band
+    step 6 at pipeTasks_multiBand, one may perform deblending and measure sources in the HSC-I band
     coadd as follows:
-    @code
-    measureCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I
-    @endcode
+
+    >>> measureCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I
+
     This will process the HSC-I band data. The results are written in
-    `$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I/0/5,4/meas-HSC-I-0-5,4.fits
+    `$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I/0/5,4/meas-HSC-I-0-5,4.fits`
 
     It is also necessary to run
-    @code
-    measureCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R
-    @endcode
+
+    >>> measureCoaddSources.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R
+
     to generate the sources catalogs for the HSC-R band required by the next step in the multi-band
-    procedure: @ref MergeMeasurementsTask_ "MergeMeasurementsTask".
+    procedure: "MergeMeasurementsTask" .
     """
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
@@ -1279,18 +1213,25 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         return parser
 
     def __init__(self, butler=None, schema=None, peakSchema=None, refObjLoader=None, **kwargs):
-        """!
-        @brief Initialize the task.
+        """Initialize the task.
 
+        Parameters
+        ----------
         Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
-        @param[in] schema: the schema of the merged detection catalog used as input to this one
-        @param[in] peakSchema: the schema of the PeakRecords in the Footprints in the merged detection catalog
-        @param[in] refObjLoader: an instance of LoadReferenceObjectsTasks that supplies an external reference
+        schema :
+            the schema of the merged detection catalog used as input to this one
+        peakSchema :
+            the schema of the PeakRecords in the Footprints in the merged detection catalog
+        refObjLoader :
+            an instance of LoadReferenceObjectsTasks that supplies an external reference
             catalog. May be None if the loader can be constructed from the butler argument or all steps
             requiring a reference catalog are disabled.
-        @param[in] butler: a butler used to read the input schemas from disk or construct the reference
+        butler :
+            a butler used to read the input schemas from disk or construct the reference
             catalog loader, if schema or peakSchema or refObjLoader is None
 
+        Notes
+        -----
         The task will set its own self.schema attribute to the schema of the output measurement catalog.
         This will include all fields from the input schema, as well as additional fields for all the
         measurements.
@@ -1320,11 +1261,15 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
             self.makeSubtask("catalogCalculation", schema=self.schema)
 
     def runDataRef(self, patchRef, psfCache=100):
-        """!
-        @brief Deblend and measure.
+        """Deblend and measure.
 
-        @param[in] patchRef: Patch reference.
+        Parameters
+        ----------
+        patchRef :
+            Patch reference.
 
+        Notes
+        -----
         Set 'is-primary' and related flags. Propagate flags
         from individual visits. Optionally match the sources to a reference catalog and write the matches.
         Finally, write the deblended sources and measurements out.
@@ -1364,12 +1309,20 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         self.write(patchRef, sources)
 
     def readSources(self, dataRef):
-        """!
-        @brief Read input sources.
+        """Read input sources.
 
-        @param[in] dataRef: Data reference for catalog of merged detections
-        @return List of sources in merged catalog
+        Parameters
+        ----------
+        dataRef :
+            Data reference for catalog of merged detections
 
+        Returns
+        -------
+        sources : `list`
+            List of sources in merged catalog
+
+        Notes
+        -----
         We also need to add columns to hold the measurements we're about to make
         so we can measure in-place.
         """
@@ -1384,14 +1337,18 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         return sources
 
     def writeMatches(self, dataRef, exposure, sources):
-        """!
-        @brief Write matches of the sources to the astrometric reference catalog.
+        """Write matches of the sources to the astrometric reference catalog.
 
         We use the Wcs in the exposure to match sources.
 
-        @param[in] dataRef: data reference
-        @param[in] exposure: exposure with Wcs
-        @param[in] sources: source catalog
+        Parameters
+        ----------
+        dataRef :
+            data reference
+        exposure :
+            exposure with Wcs
+        sources :
+            source catalog
         """
         result = self.match.run(sources, exposure.getInfo().getFilter().getName())
         if result.matches:
@@ -1403,11 +1360,14 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
                 dataRef.put(denormMatches, self.config.coaddName + "Coadd_measMatchFull")
 
     def write(self, dataRef, sources):
-        """!
-        @brief Write the source catalog.
+        """Write the source catalog.
 
-        @param[in] dataRef: data reference
-        @param[in] sources: source catalog
+        Parameters
+        ----------
+        dataRef :
+            data reference
+        sources :
+            source catalog
         """
         dataRef.put(sources, self.config.coaddName + "Coadd_meas")
         self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
@@ -1417,10 +1377,7 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
 
 
 class MergeMeasurementsConfig(MergeSourcesConfig):
-    """!
-    @anchor MergeMeasurementsConfig_
-
-    @brief Configuration parameters for the MergeMeasurementsTask
+    """Configuration parameters for the MergeMeasurementsTask
     """
     pseudoFilterList = ListField(dtype=str, default=["sky"],
                                  doc="Names of filters which may have no associated detection\n"
@@ -1448,77 +1405,40 @@ class MergeMeasurementsConfig(MergeSourcesConfig):
 
 
 class MergeMeasurementsTask(MergeSourcesTask):
-    """!
-    @anchor MergeMeasurementsTask_
-
-    @brief Merge measurements from multiple bands
-
-    @section pipe_tasks_multiBand_Contents Contents
-
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Purpose
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Initialize
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Run
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Config
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Debug
-      - @ref pipe_tasks_multiband_MergeMeasurementsTask_Example
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Purpose	Description
-
-    Command-line task that merges measurements from multiple bands.
+    """Command-line task that merges measurements from multiple bands.
 
     Combines consistent (i.e. with the same peaks and footprints) catalogs of sources from multiple filter
     bands to construct a unified catalog that is suitable for driving forced photometry. Every source is
     required to have centroid, shape and flux measurements in each band.
 
-      @par Inputs:
-        deepCoadd_meas{tract,patch,filter}: SourceCatalog
-      @par Outputs:
-        deepCoadd_ref{tract,patch}: SourceCatalog
-      @par Data Unit:
+    Parameters
+    ----------
+    deepCoadd_meas{tract,patch,filter} :
+        SourceCatalog
+    deepCoadd_ref{tract,patch} :
+        SourceCatalog
+    Data Unit:
         tract, patch
 
-    MergeMeasurementsTask subclasses @ref MergeSourcesTask_ "MergeSourcesTask".
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Initialize       Task initialization
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Run       Invoking the Task
-
-    @copydoc run
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Config       Configuration parameters
-
-    See @ref MergeMeasurementsConfig_
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Debug		Debug variables
-
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-    flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
-    files.
-
-    MergeMeasurementsTask has no debug variables.
-
-    @section pipe_tasks_multiband_MergeMeasurementsTask_Example	A complete example
-    of using MergeMeasurementsTask
-
+    Examples
+    --------
     MergeMeasurementsTask is meant to be run after deblending & measuring sources in every band.
     The purpose of the task is to generate a catalog of sources suitable for driving forced photometry in
     coadds and individual exposures.
     Command-line usage of MergeMeasurementsTask expects a data reference to the coadds to be processed. A list
     of the available optional arguments can be obtained by calling mergeCoaddMeasurements.py with the `--help`
     command line argument:
-    @code
-    mergeCoaddMeasurements.py --help
-    @endcode
+
+    >>> mergeCoaddMeasurements.py --help
+
 
     To demonstrate usage of the DetectCoaddSourcesTask in the larger context of multi-band processing, we
     will process HSC data in the [ci_hsc](https://github.com/lsst/ci_hsc) package. Assuming one has finished
     step 7 at @ref pipeTasks_multiBand, one may merge the catalogs generated after deblending and measuring
     as follows:
-    @code
-    mergeCoaddMeasurements.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R
-    @endcode
+
+    >>> mergeCoaddMeasurements.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R
+
     This will merge the HSC-I & HSC-R band catalogs. The results are written in
     `$CI_HSC_DIR/DATA/deepCoadd-results/`.
     """
@@ -1529,13 +1449,19 @@ class MergeMeasurementsTask(MergeSourcesTask):
     getSchemaCatalogs = _makeGetSchemaCatalogs("ref")
 
     def __init__(self, butler=None, schema=None, **kwargs):
-        """!
-        Initialize the task.
+        """Initialize the task.
 
-        Additional keyword arguments (forwarded to MergeSourcesTask.__init__):
-        @param[in] schema: the schema of the detection catalogs used as input to this one
-        @param[in] butler: a butler used to read the input schema from disk, if schema is None
+        Parameters
+        ----------
+        kwargs :
+            Additional keyword arguments (forwarded to MergeSourcesTask.__init__)
+        schema :
+            the schema of the detection catalogs used as input to this one
+        butler :
+            a butler used to read the input schema from disk, if schema is None
 
+        Notes
+        -----
         The task will set its own self.schema attribute to the schema of the output merged catalog.
         """
         MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
@@ -1574,12 +1500,17 @@ class MergeMeasurementsTask(MergeSourcesTask):
                 self.log.warn("Can't find flag %s in schema: %s" % (flag, exc,))
 
     def run(self, catalogs, patchRef):
-        """!
-        Merge measurement catalogs to create a single reference catalog for forced photometry
+        """Merge measurement catalogs to create a single reference catalog for forced photometry
 
-        @param[in] catalogs: the catalogs to be merged
-        @param[in] patchRef: patch reference for data
+        Parameters
+        ----------
+        catalogs :
+            the catalogs to be merged
+        patchRef :
+            patch reference for data
 
+        Notes
+        -----
         For parent sources, we choose the first band in config.priorityList for which the
         merge_footprint flag for that band is is True.
 

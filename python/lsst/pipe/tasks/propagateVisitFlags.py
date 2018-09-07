@@ -26,6 +26,7 @@ from lsst.pipe.base import Task
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 
+__all__=('PropagateVisitFlagsConfig','PropagateVisitFlagsTask')
 
 class PropagateVisitFlagsConfig(Config):
     """!Configuration for propagating flags to coadd"""
@@ -47,24 +48,10 @@ class PropagateVisitFlagsConfig(Config):
 ## \}
 
 class PropagateVisitFlagsTask(Task):
-    """!Task to propagate flags from single-frame measurements to coadd measurements
+    """Task to propagate flags from single-frame measurements to coadd measurements
 
-\anchor PropagateVisitFlagsTask_
-
-\brief Propagate flags from individual visit measurements to coadd measurements
-
-\section pipe_tasks_propagateVisitFlagsTask_Contents Contents
-
- - \ref pipe_tasks_propagateVisitFlagsTask_Description
- - \ref pipe_tasks_propagateVisitFlagsTask_Initialization
- - \ref pipe_tasks_propagateVisitFlagsTask_Config
- - \ref pipe_tasks_propagateVisitFlagsTask_Use
- - \ref pipe_tasks_propagateVisitFlagsTask_Example
-
-\section pipe_tasks_propagateVisitFlagsTask_Description Description
-
-\copybrief PropagateVisitFlagsTask
-
+Notes
+-----
 We want to be able to set a flag for sources on the coadds using flags
 that were determined from the individual visits.  A common example is sources
 that were used for PSF determination, since we do not do any PSF determination
@@ -93,38 +80,29 @@ confidence in the quality of the flagging, the lower the threshold can be.
 The relative occurrence accounts for the edge of the field-of-view of the
 camera, but does not include chip gaps, bad or saturated pixels, etc.
 
-\section pipe_tasks_propagateVisitFlagsTask_Initialization Initialization
+Initialization
 
 Beyond the usual Task initialization, PropagateVisitFlagsTask also requires
 a schema for the catalog that is being constructed.
-
-\section pipe_tasks_propagateVisitFlagsTask_Config Configuration parameters
-
-See \ref PropagateVisitFlagsConfig
-
-\section pipe_tasks_propagateVisitFlagsTask_Use Use
 
 The 'run' method (described below) is the entry-point for operations.  The
 'getCcdInputs' staticmethod is provided as a convenience for retrieving the
 'ccdInputs' (CCD inputs table) from an Exposure.
 
-\copydoc run
+.. code-block :: none
 
-\section pipe_tasks_propagateVisitFlagsTask_Example Example
+    # Requires:
+    # * butler: data butler, for retrieving the CCD catalogs
+    # * coaddCatalog: catalog of source measurements on the coadd (lsst.afw.table.SourceCatalog)
+    # * coaddExposure: coadd (lsst.afw.image.Exposure)
+    from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask, PropagateVisitFlagsConfig
+    config = PropagateVisitFlagsConfig()
+    config.flags["calib_psf_used"] = 0.3 # Relative threshold for this flag
+    config.matchRadius = 0.5 # Matching radius in arcsec
+    task = PropagateVisitFlagsTask(coaddCatalog.schema, config=config)
+    ccdInputs = task.getCcdInputs(coaddExposure)
+    task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
 
-\code{.py}
-# Requires:
-# * butler: data butler, for retrieving the CCD catalogs
-# * coaddCatalog: catalog of source measurements on the coadd (lsst.afw.table.SourceCatalog)
-# * coaddExposure: coadd (lsst.afw.image.Exposure)
-from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask, PropagateVisitFlagsConfig
-config = PropagateVisitFlagsConfig()
-config.flags["calib_psf_used"] = 0.3 # Relative threshold for this flag
-config.matchRadius = 0.5 # Matching radius in arcsec
-task = PropagateVisitFlagsTask(coaddCatalog.schema, config=config)
-ccdInputs = task.getCcdInputs(coaddExposure)
-task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
-\endcode
 """
     ConfigClass = PropagateVisitFlagsConfig
 

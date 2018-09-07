@@ -7,6 +7,7 @@ from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.pipe.base import InputOnlyArgumentParser
 from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, IngestTask
 
+__all__=('CalibsParseTask', 'CalibsRegisterConfig', 'CalibsRegisterTask', 'IngestCalibsArgumentParser', 'IngestCalibsConfig', 'IngestCalibsTask')
 
 def _convertToDate(dateString):
     """Convert a string into a date object"""

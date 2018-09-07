@@ -40,11 +40,9 @@ __all__ = ["CoaddBaseTask", "getSkyInfo"]
 
 
 class CoaddBaseConfig(pexConfig.Config):
-    """!Configuration parameters for CoaddBaseTask
+    """Configuration parameters for CoaddBaseTask
 
-    @anchor CoaddBaseConfig_
-
-    @brief Configuration parameters shared between MakeCoaddTempExp and AssembleCoadd
+    Configuration parameters shared between MakeCoaddTempExp and AssembleCoadd
     """
     coaddName = pexConfig.Field(
         doc="Coadd name: typically one of deep or goodSeeing.",
@@ -92,7 +90,7 @@ class CoaddTaskRunner(pipeBase.TaskRunner):
 
 
 class CoaddBaseTask(pipeBase.CmdLineTask):
-    """!Base class for coaddition.
+    """Base class for coaddition.
 
     Subclasses must specify _DefaultName
     """
@@ -105,18 +103,25 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         self.makeSubtask("inputRecorder")
 
     def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
-        """!
-        @brief Select exposures to coadd
+        """Select exposures to coadd
 
-        Get the corners of the bbox supplied in skyInfo using @ref afwGeom.Box2D and convert the pixel
-        positions of the bbox corners to sky coordinates using @ref skyInfo.wcs.pixelToSky. Use the
-        @ref WcsSelectImagesTask_ "WcsSelectImagesTask" to select exposures that lie inside the patch
+        Get the corners of the bbox supplied in skyInfo using afwGeom.Box2D and convert the pixel
+        positions of the bbox corners to sky coordinates using skyInfo.wcs.pixelToSky. Use the
+        "WcsSelectImagesTask" to select exposures that lie inside the patch
         indicated by the dataRef.
 
-        @param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
-                             plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] skyInfo   geometry for the patch; output from getSkyInfo
-        @return    a list of science exposures to coadd, as butler data references
+        Parameters
+        ----------
+        patchRef :
+            data reference for sky map patch. Must include keys "tract", "patch",
+            plus the camera-specific filter key (e.g. "filter" or "band")
+        skyInfo :
+            geometry for the patch; output from getSkyInfo
+
+        Returns
+        -------
+        self.select.runDataRef :
+            a list of science exposures to coadd, as butler data references
         """
         if skyInfo is None:
             skyInfo = self.getSkyInfo(patchRef)
@@ -125,31 +130,41 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
 
     def getSkyInfo(self, patchRef):
-        """!
-        @brief Use @ref getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
+        """Use getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
         of the patch.
 
-        @param[in] patchRef  data reference for sky map. Must include keys "tract" and "patch"
+        Parameters
+        ----------
+        patchRef :
+            data reference for sky map. Must include keys "tract" and "patch"
 
-        @return pipe_base Struct containing:
-        - skyMap: sky map
-        - tractInfo: information for chosen tract of sky map
-        - patchInfo: information about chosen patch of tract
-        - wcs: WCS of tract
-        - bbox: outer bbox of patch, as an afwGeom Box2I
+        Returns
+        -------
+        getSkyInfo : `struct`
+            pipe_base Struct containing:
+            - ``skyMap`` : sky map
+            - ``tractInfo`` : information for chosen tract of sky map
+            - ``patchInfo`` : information about chosen patch of tract
+            - ``wcs`` : WCS of tract
+            - ``bbox`` : outer bbox of patch, as an afwGeom Box2I
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
     def getCalExp(self, dataRef, bgSubtracted):
-        """!Return one "calexp" calibrated exposure
+        """Return one "calexp" calibrated exposure
 
-        @param[in] dataRef        a sensor-level data reference
-        @param[in] bgSubtracted   return calexp with background subtracted? If False get the
-                                  calexp's background background model and add it to the calexp.
-        @return calibrated exposure
+        dataRef :
+            a sensor-level data reference
+        bgSubtracted :
+            return calexp with background subtracted? If False get the
+            calexp's background background model and add it to the calexp.
 
-        If config.doApplyUberCal, meas_mosaic calibrations will be applied to
-        the returned exposure using applyMosaicResults.
+        Returns
+        -------
+        exposure :
+            calibrated exposure
+            If config.doApplyUberCal, meas_mosaic calibrations will be applied to
+            the returned exposure using applyMosaicResults.
         """
         exposure = dataRef.get("calexp", immediate=True)
         if not bgSubtracted:
@@ -178,7 +193,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
 
         Returns
         -------
-        CoaddDatasetName : `string`
+        CoaddDatasetName :
+            `string`
         """
         suffix = "" if warpType == "direct" else warpType[0].upper() + warpType[1:]
         return self.config.coaddName + "Coadd" + suffix
@@ -219,15 +235,13 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
 
     def getBadPixelMask(self):
-        """!
-        @brief Convenience method to provide the bitmask from the mask plane names
+        """Convenience method to provide the bitmask from the mask plane names
         """
         return afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
 
 
 class SelectDataIdContainer(pipeBase.DataIdContainer):
-    """!
-    @brief A dataId container for inputs to be selected.
+    """A dataId container for inputs to be selected.
 
     Read the header (including the size and Wcs) for all specified
     inputs and pass those along, ultimately for the SelectImagesTask.
@@ -251,18 +265,21 @@ class SelectDataIdContainer(pipeBase.DataIdContainer):
 
 
 def getSkyInfo(coaddName, patchRef):
-    """!
-    @brief Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
+    """Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
 
-    @param[in]  coaddName  coadd name; typically one of deep or goodSeeing
-    @param[in]  patchRef   data reference for sky map. Must include keys "tract" and "patch"
+    coaddName :
+        coadd name; typically one of deep or goodSeeing
+    patchRef :
+        data reference for sky map. Must include keys "tract" and "patch"
 
-    @return pipe_base Struct containing:
-    - skyMap: sky map
-    - tractInfo: information for chosen tract of sky map
-    - patchInfo: information about chosen patch of tract
-    - wcs: WCS of tract
-    - bbox: outer bbox of patch, as an afwGeom Box2I
+    Returns
+    -------
+    pipe_base Struct containing:
+        - ``skyMap`` : sky map
+        - ``tractInfo`` : information for chosen tract of sky map
+        - ``patchInfo`` : information about chosen patch of tract
+        - ``wcs`` : WCS of tract
+        - ``bbox`` : outer bbox of patch, as an afwGeom Box2I
     """
     skyMap = patchRef.get(coaddName + "Coadd_skyMap")
     tractId = patchRef.dataId["tract"]
@@ -282,22 +299,32 @@ def getSkyInfo(coaddName, patchRef):
 
 
 def scaleVariance(maskedImage, maskPlanes, log=None):
-    """!
-    @brief Scale the variance in a maskedImage
+    """Scale the variance in a maskedImage
 
+    This is deprecated. Use the ScaleVarianceTask instead.
+
+    Parameters
+    ----------
+    maskedImage :
+        MaskedImage to operate on; variance will be scaled
+    maskPlanes :
+        List of mask planes for pixels to reject
+    log :
+        Log for reporting the renormalization factor; or None
+
+    Returns
+    -------
+    task.run :
+        renormalisation factor
+
+    Notes
+    -----
     The variance plane in a convolved or warped image (or a coadd derived
     from warped images) does not accurately reflect the noise properties of
     the image because variance has been lost to covariance. This function
     attempts to correct for this by scaling the variance plane to match
     the observed variance in the image. This is not perfect (because we're
     not tracking the covariance) but it's simple and is often good enough.
-
-    @deprecated Use the ScaleVarianceTask instead.
-
-    @param maskedImage  MaskedImage to operate on; variance will be scaled
-    @param maskPlanes  List of mask planes for pixels to reject
-    @param log  Log for reporting the renormalization factor; or None
-    @return renormalisation factor
     """
     config = ScaleVarianceTask.ConfigClass()
     config.maskPlanes = maskPlanes

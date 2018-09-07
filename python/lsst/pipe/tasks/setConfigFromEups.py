@@ -24,12 +24,21 @@ def setAstrometryConfigFromEups(config, menu):
     """Set the astrometry configuration according to the astrometry_net_data being used
 
     The menu is a dict mapping the astrometry_net_data version to a dict of configuration
-    values to apply.  The menu key may also be a glob.  For example:
-    menu = { "ps1*": {}, # No changes
-             "ps1-without-y": { "solver.filterMap": {"y": "z"} }, # No y-band in this specific version
-             "sdss*": { "solver.filterMap": {"y": "z"} }, # No y-band, use z instead
-             "2mass*": { "solver.filterMap": {"y": "J"} }, # No y-band, use J instead
-           }
+    values to apply.  The menu key may also be a glob.
+
+
+    Examples
+    --------
+    For example:
+
+    .. code-block:: none
+
+        menu = { "ps1": {}, # No changes
+                "ps1-without-y": { "solver.filterMap": {"y": "z"} }, # No y-band in this specific version
+                "sdss": { "solver.filterMap": {"y": "z"} }, # No y-band, use z instead
+                "2mass": { "solver.filterMap": {"y": "J"} }, # No y-band, use J instead
+            }
+
     """
     version = getAndVersion()
 

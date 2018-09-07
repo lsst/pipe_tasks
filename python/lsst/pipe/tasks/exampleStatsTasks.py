@@ -40,7 +40,7 @@ __all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "Ex
 
 
 class ExampleSigmaClippedStatsConfig(pexConfig.Config):
-    """!Configuration for ExampleSigmaClippedStatsTask
+    """Configuration for ExampleSigmaClippedStatsTask
     """
     badMaskPlanes = pexConfig.ListField(
         dtype=str,
@@ -61,46 +61,16 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
 
 
 class ExampleSigmaClippedStatsTask(pipeBase.Task):
-    """!Example task to compute sigma-clipped mean and standard deviation of an image
-
-    \section pipeTasks_ExampleSigmaClippedStatsTask_Contents Contents
-
-     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Purpose
-     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Config
-     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Debug
-     - \ref pipeTasks_ExampleSigmaClippedStatsTask_Example
-
-    \section pipeTasks_ExampleSigmaClippedStatsTask_Purpose Description
-
-    \copybrief ExampleSigmaClippedStatsTask
+    """Example task to compute sigma-clipped mean and standard deviation of an image
 
     This is a simple example task designed to be run as a subtask by ExampleCmdLineTask.
     See also ExampleSimpleStatsTask as a variant that is even simpler.
-
-    The main method is \ref ExampleSigmaClippedStatsTask.run "run".
-
-    \section pipeTasks_ExampleSigmaClippedStatsTask_Config  Configuration parameters
-
-    See \ref ExampleSigmaClippedStatsConfig
-
-    \section pipeTasks_ExampleSigmaClippedStatsTask_Debug   Debug variables
-
-    This task has no debug variables.
-
-    \section pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example
-    of using ExampleSigmaClippedStatsTask
-
-    This code is in examples/exampleStatsTask.py (this one example runs both
-    ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run as:
-    \code
-    examples/exampleStatsTask.py [fitsFile]
-    \endcode
     """
     ConfigClass = ExampleSigmaClippedStatsConfig
     _DefaultName = "exampleSigmaClippedStats"
 
     def __init__(self, *args, **kwargs):
-        """!Construct an ExampleSigmaClippedStatsTask
+        """Construct an ExampleSigmaClippedStatsTask
 
         The init method may compute anything that that does not require data.
         In this case we create a statistics control object using the config
@@ -117,14 +87,19 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, maskedImage):
-        """!Compute and return statistics for a masked image
+        """Compute and return statistics for a masked image
 
-        @param[in] maskedImage: masked image (an lsst::afw::MaskedImage)
-        @return a pipeBase Struct containing:
-        - mean: mean of image plane
-        - meanErr: uncertainty in mean
-        - stdDev: standard deviation of image plane
-        - stdDevErr: uncertainty in standard deviation
+        Parameters
+        ----------
+        maskedImage :
+            masked image (an lsst::afw::MaskedImage)
+        Returns
+        -------
+        a pipeBase Struct containing :
+        - ``mean`` : mean of image plane
+        - ``meanErr`` : uncertainty in mean
+        - ``stdDev`` : standard deviation of image plane
+        - ``stdDevErr`` : uncertainty in standard deviation
         """
         statObj = afwMath.makeStatistics(maskedImage, afwMath.MEANCLIP | afwMath.STDEVCLIP | afwMath.ERRORS,
                                          self._statsControl)
@@ -141,40 +116,12 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
 
 class ExampleSimpleStatsTask(pipeBase.Task):
-    """!Example task to compute mean and standard deviation of an image
-
-    \section pipeTasks_ExampleSimpleStatsTask_Contents Contents
-
-     - \ref pipeTasks_ExampleSimpleStatsTask_Purpose
-     - \ref pipeTasks_ExampleSimpleStatsTask_Config
-     - \ref pipeTasks_ExampleSimpleStatsTask_Debug
-     - \ref pipeTasks_ExampleSimpleStatsTask_Example
-
-    \section pipeTasks_ExampleSimpleStatsTask_Purpose Description
-
-    \copybrief ExampleSimpleStatsTask
+    """Example task to compute mean and standard deviation of an image
 
     This was designed to be run as a subtask by ExampleCmdLineTask.
     It is about as simple as a task can be; it has no configuration parameters and requires no special
     initialization. See also ExampleSigmaClippedStatsTask as a variant that is slightly more complicated.
 
-    The main method is \ref ExampleSimpleTask.run "run".
-
-    \section pipeTasks_ExampleSimpleStatsTask_Config    Configuration parameters
-
-    This task has no configuration parameters.
-
-    \section pipeTasks_ExampleSimpleStatsTask_Debug     Debug variables
-
-    This task has no debug variables.
-
-    \section pipeTasks_ExampleSimpleStatsTask_Example A complete example of using ExampleSimpleStatsTask
-
-    This code is in examples/exampleStatsTask.py (this one example runs both
-    ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run as:
-    \code
-    examples/exampleStatsTask.py [fitsFile]
-    \endcode
     """
     # Even a task with no configuration requires setting ConfigClass
     ConfigClass = pexConfig.Config
@@ -190,14 +137,20 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     # and all of its subtasks whenver the task is run.
     @pipeBase.timeMethod
     def run(self, maskedImage):
-        """!Compute and return statistics for a masked image
+        """Compute and return statistics for a masked image
 
-        @param[in] maskedImage: masked image (an lsst::afw::MaskedImage)
-        @return a pipeBase Struct containing:
-        - mean: mean of image plane
-        - meanErr: uncertainty in mean
-        - stdDev: standard deviation of image plane
-        - stdDevErr: uncertainty in standard deviation
+        Parameters
+        ----------
+        maskedImage :
+            masked image (an lsst::afw::MaskedImage)
+        
+        Returns
+        -------
+        a pipeBase Struct containing :
+            - mean: mean of image plane
+            - meanErr: uncertainty in mean
+            - stdDev: standard deviation of image plane
+            - stdDevErr: uncertainty in standard deviation
         """
         self._statsControl = afwMath.StatisticsControl()
         statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV | afwMath.ERRORS,

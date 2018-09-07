@@ -30,6 +30,7 @@ import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
 from lsst.pipe.base import ArgumentParser
 
+__all__ =('MakeDiscreteSkyMapConfig','MakeDiscreteSkyMapRunner','MakeDiscreteSkyMapTask')
 
 class MakeDiscreteSkyMapConfig(pexConfig.Config):
     """Config for MakeDiscreteSkyMapTask
@@ -66,6 +67,8 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
 class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
     """Run a task with all dataRefs at once, rather than one dataRef at a time.
 
+    Notes
+    -----
     Call the run method of the task using two positional arguments:
     - butler: data butler
     - dataRefList: list of all dataRefs,
@@ -76,14 +79,19 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
 
     def __call__(self, args):
         """
-        @param args     Arguments for Task.run()
+        Parameters
+        ----------
+        args :
+            Arguments for Task.run()
 
-        @return:
-        - None if self.doReturnResults false
-        - A pipe_base Struct containing these fields if self.doReturnResults true:
-            - dataRef: the provided data reference
-            - metadata: task metadata after execution of run
-            - result: result returned by task run, or None if the task fails
+        Returns
+        -------
+        result : `None` or `Struct`
+            None if self.doReturnResults false
+            A pipe_base Struct containing these fields if self.doReturnResults true:
+            - ``dataRef`` : the provided data reference
+            - ``metadata``: task metadata after execution of run
+            - ``result`` : result returned by task run, or None if the task fails
         """
         butler, dataRefList = args
         task = self.TaskClass(config=self.config, log=self.log)
@@ -116,7 +124,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
 
 
 class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
-    """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
+    """Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
 
     The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
     that we don't inherit from it, but it is a replacement, so we use the same config/metadata names.
@@ -130,12 +138,20 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def runDataRef(self, butler, dataRefList):
-        """!Make a skymap from the bounds of the given set of calexps.
+        """Make a skymap from the bounds of the given set of calexps.
 
-        @param[in]  butler        data butler used to save the SkyMap
-        @param[in]  dataRefList   dataRefs of calexps used to determine the size and pointing of the SkyMap
-        @return     a pipeBase Struct containing:
-                    - skyMap: the constructed SkyMap
+        Parameters
+        ----------
+        butler :
+            data butler used to save the SkyMap
+        dataRefList :
+            dataRefs of calexps used to determine the size and pointing of the SkyMap
+
+        Returns
+        -------
+        result :
+            a pipeBase Struct containing:
+            - ``skyMap`` : the constructed SkyMap
         """
         self.log.info("Extracting bounding boxes of %d images" % len(dataRefList))
         points = []

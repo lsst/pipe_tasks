@@ -267,6 +267,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             supplementaryData=None):
         """Assemble the coadd.
 
+        Notes
+        -----
         Requires additional inputs Struct ``supplementaryData`` to contain a
         ``templateCoadd`` that serves as the model of the static sky.
 
@@ -286,7 +288,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Once the ``DcrModel`` reaches convergence or the maximum number of
         iterations has been reached, fill the metadata for each subfilter
-        image and make them proper ``coaddExposure``s.
+        image and make them proper ``coaddExposure`` .
 
         Parameters
         ----------
@@ -300,7 +302,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The weight to give each input exposure in the coadd
         supplementaryData : `lsst.pipe.base.Struct`
             Result struct returned by ``makeSupplementaryData`` with components:
-
             - ``templateCoadd``: coadded exposure (`lsst.afw.image.Exposure`)
 
         Returns

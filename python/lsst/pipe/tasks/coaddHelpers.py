@@ -39,9 +39,18 @@ def groupDataRefs(keys, dataRefIterable):
     The effect is that the data references in each group have the same
     values for the provided keys.
 
-    @param keys: List of keys to consider when grouping (order is important)
-    @param dataRefIterable: Iterable of data references to group
-    @return Dict of <value-tuple>: <list of data references for group>
+    Parameters
+    ----------
+    keys:
+        List of keys to consider when grouping (order is important)
+
+    dataRefIterable:
+        Iterable of data references to group
+
+    Returns
+    -------
+    groupDict :
+        Dict of <value-tuple>: <list of data references for group>
     """
     groupDict = dict()
     for dataRef in dataRefIterable:
@@ -65,9 +74,11 @@ def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepC
     consist of the subset of CCD exposures from a single camera exposure
     that potentially overlap the patch.
 
-    @return Struct with:
-    - groups: Dict of <group tuple>: <list of data references for group>
-    - keys: List of keys for group tuple
+    Returns
+    -------
+    Struct with:
+        - ``groups`` : Dict of <group tuple>: <list of data references for group>
+        - ``keys`` : List of keys for group tuple
     """
     butler = patchDataRef.getButler()
     tempExpKeys = butler.getKeys(datasetType=tempExpDatasetType)
@@ -87,9 +98,17 @@ def groupPatchExposures(patchDataRef, calexpDataRefList, coaddDatasetType="deepC
 def getGroupDataId(groupTuple, keys):
     """Reconstitute a data identifier from a tuple and corresponding keys
 
-    @param groupTuple: Tuple with values specifying a group
-    @param keys: List of keys for group tuple
-    @return Data identifier dict
+    Parameters
+    ----------
+    groupTuple:
+        Tuple with values specifying a group
+    keys:
+        List of keys for group tuple
+
+    Returns
+    -------
+    dict :
+        Data identifier dict
     """
     if len(groupTuple) != len(keys):
         raise RuntimeError("Number of values (%d) and keys (%d) do not match" % (len(groupTuple), len(keys)))
@@ -99,11 +118,21 @@ def getGroupDataId(groupTuple, keys):
 def getGroupDataRef(butler, datasetType, groupTuple, keys):
     """Construct a data reference from a tuple and corresponding keys
 
-    @param butler: Data butler
-    @param datasetType: Name of dataset
-    @param groupTuple: Tuple with values specifying a group
-    @param keys: List of keys for group tuple
-    @return Data reference
+    Parameters
+    ----------
+    butler:
+        Data butler
+    datasetType:
+        Name of dataset
+    groupTuple:
+        Tuple with values specifying a group
+    keys:
+        List of keys for group tuple
+    
+    Returns
+    -------
+    butler.dataRef :
+        Data reference
     """
     dataId = getGroupDataId(groupTuple, keys)
     return butler.dataRef(datasetType=datasetType, dataId=dataId)
