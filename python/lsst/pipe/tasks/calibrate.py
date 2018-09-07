@@ -180,35 +180,20 @@ class CalibrateConfig(pexConfig.Config):
 ## \}
 
 class CalibrateTask(pipeBase.CmdLineTask):
-    """!Calibrate an exposure: measure sources and perform astrometric and
-        photometric calibration
+    """Calibrate an exposure: measure sources and perform astrometric and
+    photometric calibration
 
-    @anchor CalibrateTask_
-
-    @section pipe_tasks_calibrate_Contents  Contents
-
-     - @ref pipe_tasks_calibrate_Purpose
-     - @ref pipe_tasks_calibrate_Initialize
-     - @ref pipe_tasks_calibrate_IO
-     - @ref pipe_tasks_calibrate_Config
-     - @ref pipe_tasks_calibrate_Metadata
-     - @ref pipe_tasks_calibrate_Debug
-
-
-    @section pipe_tasks_calibrate_Purpose  Description
-
+    Notes
+    -----
     Given an exposure with a good PSF model and aperture correction map
     (e.g. as provided by @ref CharacterizeImageTask), perform the following
-     operations:
+    operations:
+
     - Run detection and measurement
     - Run astrometry subtask to fit an improved WCS
     - Run photoCal subtask to fit the exposure's photometric zero-point
 
-    @section pipe_tasks_calibrate_Initialize  Task initialisation
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_calibrate_IO  Invoking the Task
+    Invoking the Task
 
     If you want this task to unpersist inputs or persist outputs, then call
     the `runDataRef` method (a wrapper around the `run` method).
@@ -216,39 +201,42 @@ class CalibrateTask(pipeBase.CmdLineTask):
     If you already have the inputs unpersisted and do not want to persist the
     output then it is more direct to call the `run` method:
 
-    @section pipe_tasks_calibrate_Config  Configuration parameters
-
-    See @ref CalibrateConfig
-
-    @section pipe_tasks_calibrate_Metadata  Quantities set in exposure Metadata
+    Quantities set in exposure Metadata
 
     Exposure metadata
-    <dl>
-        <dt>MAGZERO_RMS  <dd>MAGZERO's RMS == sigma reported by photoCal task
-        <dt>MAGZERO_NOBJ <dd>Number of stars used == ngood reported by photoCal
-                             task
-        <dt>COLORTERM1   <dd>?? (always 0.0)
-        <dt>COLORTERM2   <dd>?? (always 0.0)
-        <dt>COLORTERM3   <dd>?? (always 0.0)
-    </dl>
 
-    @section pipe_tasks_calibrate_Debug  Debug variables
+    .. code-block:: none
 
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink
+        MAGZERO_RMS  MAGZERO's RMS == sigma reported by photoCal task
+        ERO_NOBJ Number of stars used == ngood reported by photoCal
+        task
+        COLORTERM1    (always 0.0)
+        COLORTERM2    (always 0.0)
+        COLORTERM3    (always 0.0)
+
+    Debug variables
+
+    The `lsst.pipe.base.cmdLineTask.CmdLineTask` command line task
     interface supports a flag
     `--debug` to import `debug.py` from your `$PYTHONPATH`; see @ref baseDebug
     for more about `debug.py`.
 
     CalibrateTask has a debug dictionary containing one key:
-    <dl>
-    <dt>calibrate
-    <dd>frame (an int; <= 0 to not display) in which to display the exposure,
+
+    .. code-block:: none
+
+        calibrate
+        frame (an int; <= 0 to not display) in which to display the exposure,
         sources and matches. See @ref lsst.meas.astrom.displayAstrometry for
         the meaning of the various symbols.
-    </dl>
 
+
+    Examples
+    --------
     For example, put something like:
-    @code{.py}
+
+    .. code-block:: py
+
         import lsstDebug
         def DebugInfo(name):
             di = lsstDebug.getInfo(name)  # N.b. lsstDebug.Info(name) would
@@ -261,7 +249,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             return di
 
         lsstDebug.Info = DebugInfo
-    @endcode
+
     into your `debug.py` file and run `calibrateTask.py` with the `--debug`
     flag.
 
@@ -278,26 +266,33 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
     def __init__(self, butler=None, astromRefObjLoader=None,
                  photoRefObjLoader=None, icSourceSchema=None, **kwargs):
-        """!Construct a CalibrateTask
+        """Construct a CalibrateTask
 
-        @param[in] butler  The butler is passed to the refObjLoader constructor
+        Parameters
+        ----------
+        butler :
+            The butler is passed to the refObjLoader constructor
             in case it is needed.  Ignored if the refObjLoader argument
             provides a loader directly.
-        @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks
+        astromRefObjLoader :
+            An instance of LoadReferenceObjectsTasks
             that supplies an external reference catalog for astrometric
             calibration.  May be None if the desired loader can be constructed
             from the butler argument or all steps requiring a reference catalog
             are disabled.
-        @param[in] photoRefObjLoader  An instance of LoadReferenceObjectsTasks
+        photoRefObjLoader :
+            An instance of LoadReferenceObjectsTasks
             that supplies an external reference catalog for photometric
             calibration.  May be None if the desired loader can be constructed
             from the butler argument or all steps requiring a reference catalog
             are disabled.
-        @param[in] icSourceSchema  schema for icSource catalog, or None.
+        icSourceSchema :
+            schema for icSource catalog, or None.
             Schema values specified in config.icSourceFieldsToCopy will be
             taken from this schema. If set to None, no values will be
             propagated from the icSourceCatalog
-        @param[in,out] kwargs  other keyword arguments for
+        kwargs :
+            other keyword arguments for
             lsst.pipe.base.CmdLineTask
         """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
@@ -382,33 +377,52 @@ class CalibrateTask(pipeBase.CmdLineTask):
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,
                    doUnpersist=True):
-        """!Calibrate an exposure, optionally unpersisting inputs and
+        """Calibrate an exposure, optionally unpersisting inputs and
             persisting outputs.
 
         This is a wrapper around the `run` method that unpersists inputs
         (if `doUnpersist` true) and persists outputs (if `config.doWrite` true)
 
-        @param[in] dataRef  butler data reference corresponding to a science
+        Parameters
+        ----------
+        dataRef :
+            butler data reference corresponding to a science
             image
-        @param[in,out] exposure  characterized exposure (an
+        exposure :
+            characterized exposure (an
             lsst.afw.image.ExposureF or similar), or None to unpersist existing
             icExp and icBackground. See `run` method for details of what is
             read and written.
-        @param[in,out] background  initial model of background already
+        background :
+            initial model of background already
             subtracted from exposure (an lsst.afw.math.BackgroundList). May be
             None if no background has been subtracted, though that is unusual
             for calibration. A refined background model is output. Ignored if
             exposure is None.
-        @param[in] icSourceCat  catalog from which to copy the fields specified
+        icSourceCat :
+            catalog from which to copy the fields specified
             by icSourceKeys, or None;
-        @param[in] doUnpersist  unpersist data:
+        doUnpersist :
+            unpersist data:
             - if True, exposure, background and icSourceCat are read from
-              dataRef and those three arguments must all be None;
+            dataRef and those three arguments must all be None;
             - if False the exposure must be provided; background and
-              icSourceCat are optional. True is intended for running as a
-              command-line task, False for running as a subtask
+            icSourceCat are optional. True is intended for running as a
+            command-line task, False for running as a subtask
 
-        @return same data as the calibrate method
+        Returns
+        -------
+        calRes :
+        same data as the calibrate method
+
+        Raises
+        ------
+        RuntimeError
+        doUnpersist true; exposure, background
+        and icSourceCat must all be None
+
+        RuntimeError
+        doUnpersist false; exposure must be provided
         """
         self.log.info("Processing %s" % (dataRef.dataId))
 
@@ -446,34 +460,41 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
     def run(self, exposure, exposureIdInfo=None, background=None,
             icSourceCat=None):
-        """!Calibrate an exposure (science image or coadd)
+        """Calibrate an exposure (science image or coadd)
 
-        @param[in,out] exposure  exposure to calibrate (an
-            lsst.afw.image.ExposureF or similar);
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            exposure to calibrate (an lsst.afw.image.ExposureF or similar);
             in:
             - MaskedImage
             - Psf
+
             out:
             - MaskedImage has background subtracted
             - Wcs is replaced
             - Calib zero-point is set
-        @param[in] exposureIdInfo  ID info for exposure (an
-            lsst.obs.base.ExposureIdInfo) If not provided, returned
+
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+            ID info for exposure. If not provided, returned
             SourceCatalog IDs will not be globally unique.
-        @param[in,out] background  background model already subtracted from
+        background : `lsst.afw.math.BackgroundList`
+            background model already subtracted from
             exposure (an lsst.afw.math.BackgroundList). May be None if no
             background has been subtracted, though that is unusual for
             calibration. A refined background model is output.
-        @param[in] icSourceCat  A SourceCatalog from CharacterizeImageTask
+        icSourceCat :
+            A SourceCatalog from CharacterizeImageTask
             from which we can copy some fields.
 
-        @return pipe_base Struct containing these fields:
-        - exposure  calibrate science exposure with refined WCS and Calib
-        - background  model of background subtracted from exposure (an
-          lsst.afw.math.BackgroundList)
-        - sourceCat  catalog of measured sources
-        - astromMatches  list of source/refObj matches from the astrometry
-          solver
+        Returns
+        -------
+        pipe_base Struct : `struct`
+            - ``exposure`` :  calibrate science exposure with refined WCS and Calib
+            - ``background`` : model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
+            - ``sourceCat`` :  catalog of measured sources
+            - ``astromMatches`` :  list of source/refObj matches from the astrometry solver
+
         """
         # detect, deblend and measure sources
         if exposureIdInfo is None:
@@ -604,12 +625,18 @@ class CalibrateTask(pipeBase.CmdLineTask):
                      astromMatches, matchMeta):
         """Write output data to the output repository
 
-        @param[in] dataRef  butler data reference corresponding to a science
-            image
-        @param[in] exposure  exposure to write
-        @param[in] background  background model for exposure
-        @param[in] sourceCat  catalog of measured sources
-        @param[in] astromMatches  list of source/refObj matches from the
+        Parameters
+        ----------
+        dataRef :
+            butler data reference corresponding to a science
+        exposure :
+            exposure to write
+        background :
+            background model for exposure
+        sourceCat :
+            catalog of measured sources
+        astromMatches :
+            list of source/refObj matches from the
             astrometry solver
         """
         dataRef.put(sourceCat, "src")
@@ -632,12 +659,16 @@ class CalibrateTask(pipeBase.CmdLineTask):
         return {"src": sourceCat}
 
     def setMetadata(self, exposure, photoRes=None):
-        """!Set task and exposure metadata
+        """Set task and exposure metadata
 
         Logs a warning and continues if needed data is missing.
 
-        @param[in,out] exposure  exposure whose metadata is to be set
-        @param[in]  photoRes  results of running photoCal; if None then it was
+        Parameters
+        ----------
+        exposure :
+            exposure whose metadata is to be set
+        photoRes :
+            results of running photoCal; if None then it was
             not run
         """
         if photoRes is None:
@@ -663,11 +694,17 @@ class CalibrateTask(pipeBase.CmdLineTask):
             self.log.warn("Could not set exposure metadata: %s" % (e,))
 
     def copyIcSourceFields(self, icSourceCat, sourceCat):
-        """!Match sources in icSourceCat and sourceCat and copy the specified fields
+        """Match sources in icSourceCat and sourceCat and copy the specified fields
 
-        @param[in] icSourceCat  catalog from which to copy fields
-        @param[in,out] sourceCat  catalog to which to copy fields
+        Parameters
+        ----------
+        icSourceCat :
+            catalog from which to copy fields
+        sourceCat :
+            catalog to which to copy fields
 
+        Notes
+        -----
         The fields copied are those specified by `config.icSourceFieldsToCopy`
         that actually exist in the schema. This was set up by the constructor
         using self.schemaMapper.
