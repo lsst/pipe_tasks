@@ -37,7 +37,7 @@ __all__ = ["ExampleCmdLineConfig", "ExampleCmdLineTask"]
 
 
 class ExampleCmdLineConfig(pexConfig.Config):
-    """!Configuration for ExampleCmdLineTask
+    """Configuration for ExampleCmdLineTask
     """
     stats = pexConfig.ConfigurableField(
         doc="Subtask to compute statistics of an image",
@@ -52,76 +52,78 @@ class ExampleCmdLineConfig(pexConfig.Config):
 
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
-    r"""!Example command-line task that computes simple statistics on an image
+    # """!Example command-line task that computes simple statistics on an image
 
-    \section pipeTasks_ExampleCmdLineTask_Contents Contents
+    # \section pipeTasks_ExampleCmdLineTask_Contents Contents
 
-     - \ref pipeTasks_ExampleCmdLineTask_Purpose
-     - \ref pipeTasks_ExampleCmdLineTask_Config
-     - \ref pipeTasks_ExampleCmdLineTask_Debug
-     - \ref pipeTasks_ExampleCmdLineTask_Example
+    #  - \ref pipeTasks_ExampleCmdLineTask_Purpose
+    #  - \ref pipeTasks_ExampleCmdLineTask_Config
+    #  - \ref pipeTasks_ExampleCmdLineTask_Debug
+    #  - \ref pipeTasks_ExampleCmdLineTask_Example
 
-    \section pipeTasks_ExampleCmdLineTask_Purpose Description
+    # \section pipeTasks_ExampleCmdLineTask_Purpose Description
 
-    \copybrief ExampleCmdLineTask
+    # \copybrief ExampleCmdLineTask
 
-    This task was written as an example for the documents \ref pipeTasks_writeTask
-    and \ref pipeTasks_writeCmdLineTask.
-    The task reads in a "calexp" (a calibrated science \ref lsst::afw::image::Exposure "exposure"),
-    computes statistics on the image plane, and logs and returns the statistics.
-    In addition, if debugging is enabled, it displays the image in ds9.
+    # This task was written as an example for the documents \ref pipeTasks_writeTask
+    # and \ref pipeTasks_writeCmdLineTask.
+    # The task reads in a "calexp" (a calibrated science \ref lsst::afw::image::Exposure "exposure"),
+    # computes statistics on the image plane, and logs and returns the statistics.
+    # In addition, if debugging is enabled, it displays the image in ds9.
 
-    The image statistics are computed using a subtask, in order to show how to call subtasks and how to
-    \ref pipeBase_argumentParser_retargetSubtasks "retarget" (replace) them with variant subtasks.
+    # The image statistics are computed using a subtask, in order to show how to call subtasks and how to
+    # \ref pipeBase_argumentParser_retargetSubtasks "retarget" (replace) them with variant subtasks.
 
-    The main method is \ref ExampleCmdLineTask.runDataRef "runDataRef".
+    # The main method is \ref ExampleCmdLineTask.runDataRef "runDataRef".
 
-    \section pipeTasks_ExampleCmdLineTask_Config    Configuration parameters
+    # \section pipeTasks_ExampleCmdLineTask_Config    Configuration parameters
 
-    See \ref ExampleCmdLineConfig
+    # See \ref ExampleCmdLineConfig
 
-    \section pipeTasks_ExampleCmdLineTask_Debug     Debug variables
+    # \section pipeTasks_ExampleCmdLineTask_Debug     Debug variables
 
-    This task supports the following debug variables:
-    <dl>
-        <dt>`display`
-        <dd>If True then display the exposure in ds9
-    </dl>
+    # This task supports the following debug variables:
+    # <dl>
+    #     <dt>`display`
+    #     <dd>If True then display the exposure in ds9
+    # </dl>
 
-    To enable debugging, see \ref baseDebug.
+    # To enable debugging, see \ref baseDebug.
 
-    \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
+    # \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
 
-    This code is in examples/exampleCmdLineTask.py, and can be run as follows:
-    \code
-    examples/exampleCmdLineTask.py $OBS_TEST_DIR/data/input --id
-    # that will process all data; you can also try any combination of these flags:
-    --id filter=g
-    --config doFail=True --doraise
-    --show config data
-    \endcode
-    """
+    # This code is in examples/exampleCmdLineTask.py, and can be run as follows:
+    # \code
+    # examples/exampleCmdLineTask.py $OBS_TEST_DIR/data/input --id
+    # # that will process all data; you can also try any combination of these flags:
+    # --id filter=g
+    # --config doFail=True --doraise
+    # --show config data
+    # \endcode
+    # """
     ConfigClass = ExampleCmdLineConfig
     _DefaultName = "exampleTask"
 
     def __init__(self, *args, **kwargs):
-        """Construct an ExampleCmdLineTask
-
-        Call the parent class constructor and make the "stats" subtask from the config field of the same name.
-        """
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("stats")
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef):
-        """!Compute a few statistics on the image plane of an exposure
+        """Compute a few statistics on the image plane of an exposure
 
-        @param dataRef: data reference for a calibrated science exposure ("calexp")
-        @return a pipeBase Struct containing:
-        - mean: mean of image plane
-        - meanErr: uncertainty in mean
-        - stdDev: standard deviation of image plane
-        - stdDevErr: uncertainty in standard deviation
+        Parameters
+        ----------
+        dataRef :
+            data reference for a calibrated science exposure ("calexp")
+
+        Returns
+        -------
+        a pipeBase Struct containing :
+            - ``mean`` : mean of image plane
+            - ``meanErr`` : uncertainty in mean
+            - ``stdDev`` : standard deviation of image plane
+            - ``stdDevErr`` : uncertainty in standard deviation
         """
         self.log.info("Processing data ID %s" % (dataRef.dataId,))
         if self.config.doFail:
@@ -143,7 +145,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         return self.stats.run(maskedImage)
 
     def _getConfigName(self):
-        """!Get the name prefix for the task config's dataset type, or None to prevent persisting the config
+        """Get the name prefix for the task config's dataset type, or None to prevent persisting the config
 
         This override returns None to avoid persisting metadata for this trivial task.
 
@@ -151,23 +153,25 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         The default CmdLineTask._getConfigName returns _DefaultName,
         which for this task would result in a dataset name of "exampleTask_config".
 
+        Notes
+        -----
         Normally you can use the default CmdLineTask._getConfigName, but here are two reasons
         why you might want to override it:
         - If you do not want your task to write its config, then have the override return None.
-          That is done for this example task, because I didn't want to clutter up the
-          repository with config information for a trivial task.
+        That is done for this example task, because I didn't want to clutter up the
+        repository with config information for a trivial task.
         - If the default name would not be unique. An example is
-          \ref lsst.pipe.tasks.makeSkyMap.MakeSkyMapTask "MakeSkyMapTask": it makes a
-          \ref lsst.skymap.SkyMap "sky map" (sky pixelization for a coadd)
-          for any of several different types of coadd, such as deep or goodSeeing.
-          As such, the name of the persisted config must include the coadd type in order to be unique.
+        \ref lsst.pipe.tasks.makeSkyMap.MakeSkyMapTask "MakeSkyMapTask": it makes a
+        \ref lsst.skymap.SkyMap "sky map" (sky pixelization for a coadd)
+        for any of several different types of coadd, such as deep or goodSeeing.
+        As such, the name of the persisted config must include the coadd type in order to be unique.
 
         Normally if you override _getConfigName then you override _getMetadataName to match.
         """
         return None
 
     def _getMetadataName(self):
-        """!Get the name prefix for the task metadata's dataset type, or None to prevent persisting metadata
+        """Get the name prefix for the task metadata's dataset type, or None to prevent persisting metadata
 
         This override returns None to avoid persisting metadata for this trivial task.
 
@@ -175,6 +179,8 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         The default CmdLineTask._getConfigName returns _DefaultName,
         which for this task would result in a dataset name of "exampleTask_metadata".
 
+        Notes
+        -----
         See the description of _getConfigName for reasons to override this method.
         """
         return None

@@ -37,10 +37,12 @@ class ColortermNotFoundError(LookupError):
 
 
 class Colorterm(Config):
-    """!Colorterm correction for one pair of filters
+    """Colorterm correction for one pair of filters
 
-    The transformed magnitude p' is given by
-        p' = primary + c0 + c1*(primary - secondary) + c2*(primary - secondary)**2
+    Notes
+    -----
+    The transformed magnitude p' is given by:
+    p' = primary + c0 + c1*(primary - secondary) + c2*(primary - secondary)**2
 
     To construct a Colorterm, use keyword arguments:
     Colorterm(primary=primaryFilterName, secondary=secondaryFilterName, c0=c0value, c1=c1Coeff, c2=c2Coeff)
@@ -59,20 +61,35 @@ class Colorterm(Config):
     c2 = Field(dtype=float, default=0.0, doc="Second-order parameter")
 
     def transformSource(self, source):
-        """!Transform the brightness of a source
+        """Transform the brightness of a source
 
-        @param[in] source  source whose brightness is to be converted; must support get(filterName)
-                    (e.g. source.get("r")) method, as do afw::table::Source and dicts.
-        @return the transformed source magnitude
+        Parameters
+        ----------
+        source :
+            source whose brightness is to be converted; must support get(filterName)
+            (e.g. source.get("r")) method, as do afw::table::Source and dicts.
+
+        Returns
+        -------
+        self.transformMags :
+            the transformed source magnitude
         """
         return self.transformMags(source.get(self.primary), source.get(self.secondary))
 
     def transformMags(self, primary, secondary):
-        """!Transform brightness
+        """Transform brightness
 
-        @param[in] primary  brightness in primary filter (magnitude)
-        @param[in] secondary  brightness in secondary filter (magnitude)
-        @return the transformed brightness (as a magnitude)
+        Parameters
+        ----------
+        primary :
+            brightness in primary filter (magnitude)
+        secondary :
+            brightness in secondary filter (magnitude)
+
+        Returns
+        -------
+        ``primary + self.c0 + color*(self.c1 + color*self.c2)`` :
+        the transformed brightness (as a magnitude)
         """
         color = primary - secondary
         return primary + self.c0 + color*(self.c1 + color*self.c2)
@@ -82,20 +99,28 @@ class Colorterm(Config):
 
 
 class ColortermDict(Config):
-    """!A mapping of filterName to Colorterm
+    """A mapping of filterName to Colorterm
 
+    Notes
+    -----
     Different reference catalogs may need different ColortermDicts; see ColortermLibrary
 
     To construct a ColortermDict use keyword arguments:
     ColortermDict(data=dataDict)
     where dataDict is a Python dict of filterName: Colorterm
+
+    Examples
+    --------
     For example:
-    ColortermDict(data={
-        'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
-        'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
-        'i':    Colorterm(primary="i", secondary="z", c0= 0.00130204, c1=-0.16922042, c2=-0.01374245),
-    })
-    The constructor will likely be simplified at some point.
+
+    .. code-block:: none
+
+        ColortermDict(data={
+            'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
+            'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+            'i':    Colorterm(primary="i", secondary="z", c0= 0.00130204, c1=-0.16922042, c2=-0.01374245),
+        })
+        The constructor will likely be simplified at some point.
 
     This is subclass of Config. That is a bit of a hack to make it easy to store the data
     in an appropriate obs_* package as a config override file. In the long term some other
@@ -110,30 +135,37 @@ class ColortermDict(Config):
 
 
 class ColortermLibrary(Config):
-    """!A mapping of photometric reference catalog name or glob to ColortermDict
+    """A mapping of photometric reference catalog name or glob to ColortermDict
 
+    Notes
+    -----
     This allows photometric calibration using a variety of reference catalogs.
 
     To construct a ColortermLibrary, use keyword arguments:
     ColortermLibrary(data=dataDict)
     where dataDict is a Python dict of catalog_name_or_glob: ColortermDict
 
-    For example:
-    ColortermLibrary(data = {
-        "hsc*": ColortermDict(data={
-            'g': Colorterm(primary="g", secondary="g"),
-            'r': Colorterm(primary="r", secondary="r"),
-            ...
-        }),
-        "sdss*": ColortermDict(data={
-            'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
-            'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
-            ...
-        }),
-    })
+    Examples
+    --------
+
+    .. code-block:: none
+
+        For example:
+            ColortermLibrary(data = {
+                "hsc": ColortermDict(data={
+                    'g': Colorterm(primary="g", secondary="g"),
+                    'r': Colorterm(primary="r", secondary="r"),
+                    ...
+                }),
+                "sdss": ColortermDict(data={
+                    'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
+                    'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+                    ...
+                }),
+            })
 
     This is subclass of Config. That is a bit of a hack to make it easy to store the data
-    in an appropriate obs_* package as a config override file. In the long term some other
+    in an appropriate obs package as a config override file. In the long term some other
     means of persistence will be used, at which point the constructor can be made saner.
     """
     data = ConfigDictField(
@@ -144,24 +176,36 @@ class ColortermLibrary(Config):
     )
 
     def getColorterm(self, filterName, photoCatName, doRaise=True):
-        """!Get the appropriate Colorterm from the library
+        """Get the appropriate Colorterm from the library
 
         Use dict of color terms in the library that matches the photoCatName.
         If the photoCatName exactly matches an entry in the library, that
         dict is used; otherwise if the photoCatName matches a single glob (shell syntax,
-        e.g., "sdss-*" will match "sdss-dr8"), then that is used. If there is no
+        e.g., "sdss-" will match "sdss-dr8"), then that is used. If there is no
         exact match and no unique match to the globs, raise an exception.
 
-        @param filterName  name of filter
-        @param photoCatName  name of photometric reference catalog from which to retrieve the data.
+        Parameters
+        ----------
+        filterName :
+            name of filter
+        photoCatName :
+            name of photometric reference catalog from which to retrieve the data.
             This argument is not glob-expanded (but the catalog names in the library are,
             if no exact match is found).
-        @param[in] doRaise  if True then raise ColortermNotFoundError if no suitable Colorterm found;
+        doRaise :
+            if True then raise ColortermNotFoundError if no suitable Colorterm found;
             if False then return a null Colorterm with filterName as the primary and secondary filter
-        @return the appropriate Colorterm
 
-        @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true;
-        other exceptions may be raised for unexpected errors, regardless of the value of doRaise
+        Returns
+        -------
+        ctDict :
+            the appropriate Colorterm
+
+        Raises
+        ------
+        ColortermNotFoundError
+            if no suitable Colorterm found and doRaise true;
+            other exceptions may be raised for unexpected errors, regardless of the value of doRaise
         """
         try:
             trueRefCatName = None

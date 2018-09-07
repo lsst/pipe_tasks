@@ -53,16 +53,17 @@ class DatabaseSelectImagesConfig(pexConfig.Config):
 
 class BaseExposureInfo(pipeBase.Struct):
     """Data about a selected exposure
+
+    Parameters
+    ----------
+    dataId :
+        data ID of exposure (a dict)
+    coordList :
+        ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
+        plus any others items that are desired
     """
 
     def __init__(self, dataId, coordList):
-        """Create exposure information that can be used to generate data references
-
-        The object has the following fields:
-        - dataId: data ID of exposure (a dict)
-        - coordList: ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
-        plus any others items that are desired
-        """
         super(BaseExposureInfo, self).__init__(dataId=dataId, coordList=coordList)
 
 
@@ -76,21 +77,30 @@ class BaseSelectImagesTask(pipeBase.Task):
     def run(self, coordList):
         """Select images suitable for coaddition in a particular region
 
-        @param[in] coordList: list of coordinates defining region of interest; if None then select all images
-        subclasses may add additional keyword arguments, as required
+        Parameters
+        ----------
+        coordList :
+            list of coordinates defining region of interest; if None then select all images
+            subclasses may add additional keyword arguments, as required
 
-        @return a pipeBase Struct containing:
-        - exposureInfoList: a list of exposure information objects (subclasses of BaseExposureInfo),
-            which have at least the following fields:
-            - dataId: data ID dictionary
-            - coordList: ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
+        Returns
+        -------
+        result : `pipeBase.Struct`
+        return a pipeBase Struct containing:
+        - ``exposureInfoList`` : a list of exposure information objects (subclasses of BaseExposureInfo),
+        which have at least the following fields:
+        - ``dataId`` : data ID dictionary
+        - ``coordList`` : ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
         """
         raise NotImplementedError()
 
     def _runArgDictFromDataId(self, dataId):
         """Extract keyword arguments for run (other than coordList) from a data ID
 
-        @return keyword arguments for run (other than coordList), as a dict
+        Returns
+        -------
+        result :
+            keyword arguments for run (other than coordList), as a dict
         """
         raise NotImplementedError()
 
@@ -102,13 +112,23 @@ class BaseSelectImagesTask(pipeBase.Task):
         be used to further restrict the selection, providing the user with
         additional control over the selection.
 
-        @param[in] dataRef: data reference; must contain any extra keys needed by the subclass
-        @param[in] coordList: list of coordinates defining region of interest; if None, search the whole sky
-        @param[in] makeDataRefList: if True, return dataRefList
-        @param[in] selectDataList: List of SelectStruct with dataRefs to consider for selection
-        @return a pipeBase Struct containing:
-        - exposureInfoList: a list of objects derived from ExposureInfo
-        - dataRefList: a list of data references (None if makeDataRefList False)
+        Parameters
+        ----------
+        dataRef :
+        data reference; must contain any extra keys needed by the subclass
+        coordList :
+            list of coordinates defining region of interest; if None, search the whole sky
+        makeDataRefList :
+            if True, return dataRefList
+        selectDataList :
+            List of SelectStruct with dataRefs to consider for selection
+
+        Returns
+        -------
+        result : `pipeBase.Struct`
+            return a pipeBase Struct containing:
+            - ``exposureInfoList``: a list of objects derived from ExposureInfo
+            - ``dataRefList``: a list of data references (None if makeDataRefList False)
         """
         runArgDict = self._runArgDictFromDataId(dataRef.dataId)
         exposureInfoList = self.run(coordList, **runArgDict).exposureInfoList
@@ -181,10 +201,16 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         directly because the standard for the inputs to ConvexPolygon
         are pretty high and we don't want to be responsible for reaching them.
 
-        @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
-        @param makeDataRefList: Construct a list of data references?
-        @param selectDataList: List of SelectStruct, to consider for selection
+        Parameters
+        ----------
+        dataRef :
+            Data reference for coadd/tempExp (with tract, patch)
+        coordList :
+            List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
+        makeDataRefList :
+            Construct a list of data references?
+        selectDataList :
+            List of SelectStruct, to consider for selection
         """
         dataRefList = []
         exposureInfoList = []
@@ -272,15 +298,21 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         adaptive second moments of the star and the PSF.
 
         The criteria are:
-          - the median of the ellipticty residuals
-          - the robust scatter of the size residuals (using the median absolute deviation)
-          - the robust scatter of the size residuals scaled by the square of
-            the median size
+        - the median of the ellipticty residuals
+        - the robust scatter of the size residuals (using the median absolute deviation)
+        - the robust scatter of the size residuals scaled by the square of
+        the median size
 
-        @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
-        @param makeDataRefList: Construct a list of data references?
-        @param selectDataList: List of SelectStruct, to consider for selection
+        Parameters
+        ----------
+        dataRef :
+            Data reference for coadd/tempExp (with tract, patch)
+        coordList :
+            List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
+        makeDataRefList :
+            Construct a list of data references?
+        selectDataList :
+            List of SelectStruct, to consider for selection
         """
         result = super(PsfWcsSelectImagesTask, self).runDataRef(dataRef, coordList, makeDataRefList,
                                                                 selectDataList)
@@ -385,10 +417,10 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
         result : `lsst.pipe.base.Struct`
             Result struct with components:
             - ``exposureList``: the selected exposures
-                (`list` of `lsst.pipe.tasks.selectImages.BaseExposureInfo`).
+            (`list` of `lsst.pipe.tasks.selectImages.BaseExposureInfo`).
             - ``dataRefList``: the optional data references corresponding to
-                each element of ``exposureList``
-                (`list` of `lsst.daf.persistence.ButlerDataRef`, or `None`).
+            each element of ``exposureList``
+            (`list` of `lsst.daf.persistence.ButlerDataRef`, or `None`).
         """
         if self.config.nImagesMax <= 0:
             raise RuntimeError(f"nImagesMax must be greater than zero: {self.config.nImagesMax}")

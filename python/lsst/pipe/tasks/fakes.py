@@ -41,21 +41,19 @@ class BaseFakeSourcesTask(lsst.pipe.base.Task, metaclass=abc.ABCMeta):
 
     This is an abstract base class (abc) and is not intended to be directly used. To create a fake sources
     injector, create a child class and re-implement the required methods.
+
+    Subclasses that define their own __init__ should simply forward all arguments to the base
+    class constructor.  They can then assume self.config is an instance of their ConfigClass.
+
+    If an external catalog is used to add sources consistently to multiple overlapping images,
+    that catalog should generally be loaded and attached to self here, so it can be used
+    multiple times by the run() method.
     """
 
     ConfigClass = BaseFakeSourcesConfig
     _DefaultName = "baseFakeSources"
 
     def __init__(self, **kwargs):
-        """Initialize the Task.
-
-        Subclasses that define their own __init__ should simply forward all arguments to the base
-        class constructor.  They can then assume self.config is an instance of their ConfigClass.
-
-        If an external catalog is used to add sources consistently to multiple overlapping images,
-        that catalog should generally be loaded and attached to self here, so it can be used
-        multiple times by the run() method.
-        """
         lsst.pipe.base.Task.__init__(self, **kwargs)
         lsst.afw.image.Mask[lsst.afw.image.MaskPixel].addMaskPlane(self.config.maskPlaneName)
         self.bitmask = lsst.afw.image.Mask[lsst.afw.image.MaskPixel]\

@@ -34,11 +34,21 @@ STR_PADDING = 5  # used by _getDTypeList; the number of characters to add to the
 def _getDTypeList(keyTuple, valTuple):
     """Construct a numpy dtype for a data ID or repository ID
 
-    @param[in] keyTuple: ID key names, in order
-    @param[in] valTuple: a value tuple
-    @return numpy dtype as a list
+    Parameters
+    ----------
+    keyTuple :
+        ID key names, in order
+    valTuple :
+        a value tuple
 
-    @warning: this guesses at string length (STR_PADDING + length of string in valTuple);
+    Returns
+    -------
+    typeList : `list`
+        numpy dtype as a list
+
+    Notes
+    -----
+    warning: this guesses at string length (STR_PADDING + length of string in valTuple);
     longer strings will be truncated when inserted into numpy structured arrays
     """
     typeList = []
@@ -54,6 +64,15 @@ def _getDTypeList(keyTuple, valTuple):
 class SourceData:
     """Accumulate a set of measurements from a set of source tables
 
+    Parameters
+    ----------
+    datasetType :
+        dataset type for source
+    sourceKeyTuple :
+        list of keys of data items to extract from the source tables
+
+    Notes
+    -----
     To use:
     - specify the desired source measurements when constructing this object
     - call addSourceMetrics for each repository you harvest data from
@@ -61,24 +80,23 @@ class SourceData:
 
     Data available after calling finalize:
     - self.sourceArr: a numpy structured array of shape (num repositories, num sources)
-        containing named columns for:
-        - source ID
-        - each data ID key
-        - each item of data extracted from the source table
+    containing named columns for:
+    - source ID
+    - each data ID key
+    - each item of data extracted from the source table
     - self.sourceIdDict: a dict of (source ID: index of axis 1 of self.sourceArr)
     - self.repoArr: a numpy structured array of shape (num repositories,)
-        containing a named column for each repository key (see RepositoryIterator)
+    containing a named column for each repository key (see RepositoryIterator)
 
-    @note: sources that had non-finite data (e.g. NaN) for every value extracted are silently omitted
+    sources that had non-finite data (e.g. NaN) for every value extracted are silently omitted
+
+    Raises
+    ------
+    RuntimeError
+        if sourceKeyTuple is empty
     """
 
     def __init__(self, datasetType, sourceKeyTuple):
-        """
-        @param[in] datasetType: dataset type for source
-        @param[in] sourceKeyTuple: list of keys of data items to extract from the source tables
-
-        @raise RuntimeError if sourceKeyTuple is empty
-        """
         if len(sourceKeyTuple) < 1:
             raise RuntimeError("Must specify at least one key in sourceKeyTuple")
         self.datasetType = datasetType
@@ -105,22 +123,36 @@ class SourceData:
         Extracts a set of source measurements (specified by sourceKeyTuple) from a list of source tables
         (one per data ID) and saves them as a dict of source ID: list of data
 
-        @param[in] idKeyTuple: a tuple of data ID keys; must be the same for each call
-        @param[in] idValList: a list of data ID value tuples;
+        Parameters
+        ----------
+        idKeyTuple :
+            a tuple of data ID keys; must be the same for each call
+        idValList :
+            a list of data ID value tuples;
             each tuple contains values in the order in idKeyTuple
-        @param[in] sourceTableList: a list of source tables, one per entry in idValList
+        sourceTableList :
+            a list of source tables, one per entry in idValList
 
-        @return a dict of source id: data id tuple + source data tuple
+        Returns
+        -------
+        dataDict : `dict`
+            a dict of source id: data id tuple + source data tuple
             where source data tuple order matches sourceKeyTuple
             and data id tuple matches self._idKeyTuple (which is set from the first idKeyTuple)
 
-        @raise RuntimeError if idKeyTuple is different than it was for the first call.
+        Raises
+        ------
+        RuntimeError
+            if idKeyTuple is different than it was for the first call.
 
+        Notes
+        -----
         GetRepositoryDataTask.run returns idKeyTuple and idValList; you can easily make
         a subclass of GetRepositoryDataTask that also returns sourceTableList.
 
         Updates instance variables:
         - self._idKeyTuple if not already set.
+
         """
         if self._idKeyTuple is None:
             self._idKeyTuple = tuple(idKeyTuple)
@@ -155,17 +187,33 @@ class SourceData:
 
         Once you have accumulated all source measurements, call finalize to process the data.
 
-        @param[in] repoInfo: a RepositoryInfo instance
-        @param[in] idKeyTuple: a tuple of data ID keys; must be the same for each call
-        @param[in] idValList: a list of data ID value tuples;
+        Parameters
+        ----------
+        repoInfo :
+            a RepositoryInfo instance
+        idKeyTuple :
+            a tuple of data ID keys; must be the same for each call
+        idValList :
+            a list of data ID value tuples;
             each tuple contains values in the order in idKeyTuple
-        @param[in] sourceTableList: a list of source tables, one per entry in idValList
+        sourceTableList :
+            a list of source tables, one per entry in idValList
 
-        @raise RuntimeError if idKeyTuple is different than it was for the first call.
+        Raises
+        ------
+        RuntimeError
+            if idKeyTuple is different than it was for the first call.
 
+        Returns
+        -------
+
+        result : `len(dataDict)`
+            number of sources
+
+        Notes
+        -----
         Accumulates the data in temporary cache self._tempDataList.
 
-        @return number of sources
         """
         if self._repoKeyTuple is None:
             self._repoKeyTuple = repoInfo.keyTuple
@@ -228,14 +276,16 @@ class RepositoryInfo:
 
 class RepositoryIterator:
     """Iterate over a set of data repositories that use a naming convention based on parameter values
+
+    Parameters
+    ----------
+    formatStr :
+        format string using dictionary notation, e.g.: "%(foo)s_%(bar)d"
+    dataDict :
+        name=valueList pairs
     """
 
     def __init__(self, formatStr, **dataDict):
-        """Construct a repository iterator from a dict of name: valueList
-
-        @param[in] formatStr: format string using dictionary notation, e.g.: "%(foo)s_%(bar)d"
-        @param[in] **dataDict: name=valueList pairs
-        """
         self._formatStr = formatStr
         self._keyTuple = tuple(sorted(dataDict.keys()))
         self._valListOfLists = [numpy.array(dataDict[key]) for key in self._keyTuple]
@@ -260,7 +310,10 @@ class RepositoryIterator:
     def format(self, valDict):
         """Return formatted string for a specified value dictionary
 
-        @param[in] valDict: a dict of key: value pairs that identify a repository
+        Parameters
+        ----------
+        valDict :
+            a dict of key: value pairs that identify a repository
         """
         return self._formatStr % valDict
 

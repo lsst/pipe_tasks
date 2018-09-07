@@ -37,7 +37,7 @@ from .repair import RepairTask
 
 
 class InitialPsfConfig(pexConfig.Config):
-    """!Describes the initial PSF used for detection and measurement before we do PSF determination."""
+    """Describes the initial PSF used for detection and measurement before we do PSF determination."""
 
     model = pexConfig.ChoiceField(
         dtype=str,
@@ -133,34 +133,26 @@ class SnapCombineConfig(pexConfig.Config):
 
 
 class SnapCombineTask(pipeBase.Task):
-    r"""!
-    \anchor SnapCombineTask_
+    """
+    The lsst.pipe.base.cmdLineTask.CmdLineTask command line task interface supports a
+    flag -d to import debug.py from your PYTHONPATH; see
+    "http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html"
+    Using lsstDebug to control debugging output for more about debug.py files.
 
-    \brief Combine snaps.
-
-    \section pipe_tasks_snapcombine_Contents Contents
-
-     - \ref pipe_tasks_snapcombine_Debug
-
-    \section pipe_tasks_snapcombine_Debug Debug variables
-
-    The \link lsst.pipe.base.cmdLineTask.CmdLineTask command line task\endlink interface supports a
-    flag \c -d to import \b debug.py from your \c PYTHONPATH; see <a
-    href="http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html">
-    Using lsstDebug to control debugging output</a> for more about \b debug.py files.
-
+    Notes
+    -----
     The available variables in SnapCombineTask are:
-    <DL>
-      <DT> \c display
-      <DD> A dictionary containing debug point names as keys with frame number as value. Valid keys are:
-        <DL>
-          <DT> repair0
-          <DD> Display the first snap after repairing.
-          <DT> repair1
-          <DD> Display the second snap after repairing.
-        </DL>
-      </DD>
-    </DL>
+
+    display
+    A dictionary containing debug point names as keys with frame number as value. Valid keys are:
+
+    .. code-block:: none
+
+        repair0
+        Display the first snap after repairing.
+        repair1
+        Display the second snap after repairing.
+
     """
     ConfigClass = SnapCombineConfig
     _DefaultName = "snapCombine"
@@ -179,12 +171,21 @@ class SnapCombineTask(pipeBase.Task):
     def run(self, snap0, snap1, defects=None):
         """Combine two snaps
 
-        @param[in] snap0: snapshot exposure 0
-        @param[in] snap1: snapshot exposure 1
-        @defects[in] defect list (for repair task)
-        @return a pipe_base Struct with fields:
-        - exposure: snap-combined exposure
-        - sources: detected sources, or None if detection not performed
+        Parameters
+        ----------
+        snap0 :
+            snapshot exposure 0
+        snap1 :
+            snapshot exposure 1
+        defect :
+            list (for repair task)
+
+        Returns
+        -------
+        result : `Struct`
+            a pipe_base Struct with fields:
+            - ``exposure`` : snap-combined exposure
+            - ``sources`` : detected sources, or None if detection not performed
         """
         # initialize optional outputs
         sources = None
@@ -249,9 +250,17 @@ class SnapCombineTask(pipeBase.Task):
     def addSnaps(self, snap0, snap1):
         """Add two snap exposures together, returning a new exposure
 
-        @param[in] snap0 snap exposure 0
-        @param[in] snap1 snap exposure 1
-        @return combined exposure
+        Parameters
+        ----------
+        snap0 :
+            snap exposure 0
+        snap1 :
+            snap exposure 1
+
+        Returns
+        -------
+        combinedExp :
+            combined exposure
         """
         self.log.info("snapCombine addSnaps")
 
@@ -288,12 +297,19 @@ class SnapCombineTask(pipeBase.Task):
         which have data type restrictions. To handle other data types (such as sexagesimal
         positions and ISO dates) you must supplement this method with your own code.
 
-        @param[in,out] combinedMetadata metadata of combined exposure;
+        Parameters
+        ----------
+        combinedMetadata :
+            metadata of combined exposure;
             on input this is a deep copy of metadata0 (a PropertySet)
-        @param[in] metadata0 metadata of snap0 (a PropertySet)
-        @param[in] metadata1 metadata of snap1 (a PropertySet)
+        metadata0 :
+            metadata of snap0 (a PropertySet)
+        metadata1 :
+            metadata of snap1 (a PropertySet)
 
-        @note the inputs are presently PropertySets due to ticket #2542. However, in some sense
+        Notes
+        -----
+        the inputs are presently PropertySets due to ticket #2542. However, in some sense
         they are just PropertyLists that are missing some methods. In particular: comments and order
         are preserved if you alter an existing value with set(key, value).
         """
@@ -325,8 +341,14 @@ class SnapCombineTask(pipeBase.Task):
     def makeInitialPsf(self, exposure, fwhmPix=None):
         """Initialise the detection procedure by setting the PSF and WCS
 
-        @param exposure Exposure to process
-        @return PSF, WCS
+        Parameters
+        ----------
+        exposure : Exposure to process
+
+        Returns
+        -------
+        PSF :
+        WCS :
         """
         assert exposure, "No exposure provided"
         wcs = exposure.getWcs()

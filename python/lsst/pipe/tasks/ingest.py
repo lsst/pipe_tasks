@@ -12,6 +12,9 @@ from lsst.afw.fits import readMetadata
 from lsst.pipe.base import Task, InputOnlyArgumentParser
 from lsst.afw.fits import DEFAULT_HDU
 
+__all__ = ('IngestArgumentParser', 'ParseConfig', 'ParseConfig', 'ParseTask', 'RegisterConfig',
+           'RegistryContext', 'RegisterTask', 'IngestConfig', 'IngestTask')
+
 
 class IngestArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting images into the image repository"""
@@ -54,8 +57,16 @@ class ParseTask(Task):
         Here, we open the image and parse the header, but one could also look at the filename itself
         and derive information from that, or set values from the configuration.
 
-        @param filename    Name of file to inspect
-        @return File properties; list of file properties for each extension
+        Parameters
+        ----------
+        filename :
+            Name of file to inspect
+
+        Returns
+        -------
+        phuInfo :
+        infoList :
+            File properties; list of file properties for each extension
         """
         md = readMetadata(filename, self.config.hdu)
         phuInfo = self.getInfoFromMetadata(md)
@@ -85,8 +96,16 @@ class ParseTask(Task):
     @staticmethod
     def getExtensionName(md):
         """ Get the name of an extension.
-        @param md: PropertySet like one obtained from lsst.afw.fits.readMetadata)
-        @return Name of the extension if it exists.  None otherwise.
+
+        Parameters
+        ----------
+        md :
+            PropertySet like one obtained from lsst.afw.fits.readMetadata)
+
+        Returns
+        -------
+        result : `None` or `str`
+            Name of the extension if it exists.  None otherwise.
         """
         try:
             # This returns a tuple
@@ -99,15 +118,23 @@ class ParseTask(Task):
         """Attempt to pull the desired information out of the header
 
         This is done through two mechanisms:
-        * translation: a property is set directly from the relevant header keyword
-        * translator: a property is set with the result of calling a method
+        - translation: a property is set directly from the relevant header keyword
+        - translator: a property is set with the result of calling a method
 
         The translator methods receive the header metadata and should return the
         appropriate value, or None if the value cannot be determined.
 
-        @param md      FITS header
-        @param info    File properties, to be supplemented
-        @return info
+        Parameters
+        ----------
+        md :
+            FITS header
+        info :
+            File properties, to be supplemented
+
+        Returns
+        -------
+        info :
+
         """
         if info is None:
             info = {}
@@ -160,10 +187,19 @@ class ParseTask(Task):
     def getDestination(self, butler, info, filename):
         """Get destination for the file
 
-        @param butler      Data butler
-        @param info        File properties, used as dataId for the butler
-        @param filename    Input filename
-        @return Destination filename
+        Parameters
+        ----------
+        butler :
+            Data butler
+        info :
+            File properties, used as dataId for the butler
+        filename :
+            Input filename
+
+        Returns
+        -------
+        raw :
+            Destination filename
         """
         raw = butler.get("raw_filename", info)[0]
         # Ensure filename is devoid of cfitsio directions about HDUs
@@ -201,16 +237,20 @@ class RegistryContext:
     An existing registry is copied, so that it may continue
     to be used while we add to this new registry.  Finally,
     the new registry is moved into the right place.
+
+    Parameters
+    ----------
+    registryName :
+        Name of registry file
+    createTableFunc :
+        Function to create tables
+    forceCreateTables :
+        Force the (re-)creation of tables?
+    permissions :
+        Permissions to set on database file
     """
 
     def __init__(self, registryName, createTableFunc, forceCreateTables, permissions):
-        """Construct a context manager
-
-        @param registryName: Name of registry file
-        @param createTableFunc: Function to create tables
-        @param forceCreateTables: Force the (re-)creation of tables?
-        @param permissions: Permissions to set on database file
-        """
         self.registryName = registryName
         self.permissions = permissions
 
@@ -264,11 +304,19 @@ class RegisterTask(Task):
     def openRegistry(self, directory, create=False, dryrun=False, name="registry.sqlite3"):
         """Open the registry and return the connection handle.
 
-        @param directory  Directory in which the registry file will be placed
-        @param create  Clobber any existing registry and create a new one?
-        @param dryrun  Don't do anything permanent?
-        @param name    Filename of the registry
-        @return Database connection
+        directory :
+            Directory in which the registry file will be placed
+        create :
+            Clobber any existing registry and create a new one?
+        dryrun :
+            Don't do anything permanent?
+        name :
+            Filename of the registry
+
+        Returns
+        -------
+        result :
+            Database connection
         """
         if dryrun:
             return fakeContext()
@@ -283,8 +331,12 @@ class RegisterTask(Task):
         One table (typically 'raw') contains information on all files, and the
         other (typically 'raw_visit') contains information on all visits.
 
-        @param conn    Database connection
-        @param table   Name of table to create in database
+        Parameters
+        ----------
+        conn :
+            Database connection
+        table :
+            Name of table to create in database
         """
         if table is None:
             table = self.config.table
@@ -325,9 +377,14 @@ class RegisterTask(Task):
     def addRow(self, conn, info, dryrun=False, create=False, table=None):
         """Add a row to the file table (typically 'raw').
 
-        @param conn    Database connection
-        @param info    File properties to add to database
-        @param table   Name of table in database
+        Parameters
+        ----------
+        conn :
+            Database connection
+        info :
+            File properties to add to database
+        table :
+            Name of table in database
         """
         if table is None:
             table = self.config.table
@@ -350,8 +407,12 @@ class RegisterTask(Task):
         """Generate the visits table (typically 'raw_visits') from the
         file table (typically 'raw').
 
-        @param conn    Database connection
-        @param table   Name of table in database
+        Parameters
+        ----------
+        conn :
+            Database connection
+        table :
+            Name of table in database
         """
         if table is None:
             table = self.config.table
@@ -397,11 +458,18 @@ class IngestTask(Task):
     def ingest(self, infile, outfile, mode="move", dryrun=False):
         """Ingest a file into the image repository.
 
-        @param infile  Name of input file
-        @param outfile Name of output file (file in repository)
-        @param mode    Mode of ingest (copy/link/move/skip)
-        @param dryrun  Only report what would occur?
-        @param Success boolean
+        Parameters
+        ----------
+        infile : `str`
+            Name of input file
+        outfile : `str`
+            Name of output file (file in repository)
+        mode :
+            Mode of ingest (copy/link/move/skip)
+        dryrun :
+            Only report what would occur?
+        Success : `bool`
+            boolean
         """
         if mode == "skip":
             return True
@@ -467,10 +535,15 @@ class IngestTask(Task):
         return False
 
     def expandFiles(self, fileNameList):
-        """!Expand a set of filenames and globs, returning a list of filenames
+        """Expand a set of filenames and globs, returning a list of filenames
 
-        @param fileNameList A list of files and glob patterns
+        Parameters
+        ----------
+        fileNameList :
+            A list of files and glob patterns
 
+        Notes
+        -----
         N.b. globs obey Posix semantics, so a pattern that matches nothing is returned unchanged
         """
         filenameList = []
@@ -486,11 +559,19 @@ class IngestTask(Task):
         return filenameList
 
     def runFile(self, infile, registry, args):
-        """!Examine and ingest a single file
+        """Examine and ingest a single file
 
-        @param infile: File to process
-        @param args: Parsed command-line arguments
-        @return parsed information from FITS HDUs or None
+        Parameters
+        ----------
+        infile :
+            File to process
+        args:
+            Parsed command-line arguments
+
+        Returns
+        -------
+        result :
+            parsed information from FITS HDUs or None
         """
         if self.isBadFile(infile, args.badFile):
             self.log.info("Skipping declared bad file %s" % infile)
@@ -536,8 +617,12 @@ class IngestTask(Task):
 def assertCanCopy(fromPath, toPath):
     """Can I copy a file?  Raise an exception is space constraints not met.
 
-    @param fromPath    Path from which the file is being copied
-    @param toPath      Path to which the file is being copied
+    Parameters
+    ----------
+    fromPath :
+        Path from which the file is being copied
+    toPath :
+        Path to which the file is being copied
     """
     req = os.stat(fromPath).st_size
     st = os.statvfs(os.path.dirname(toPath))

@@ -63,13 +63,23 @@ class RegisterTask(Task):
         'matchRadius' of the configuration in order to facilitate source
         matching.  We fit a new Wcs, but do NOT set it in the input exposure.
 
-        @param inputSources: Sources from input exposure
-        @param inputWcs: Wcs of input exposure
-        @param inputBBox: Bounding box of input exposure
-        @param templateSources: Sources from template exposure
-        @return Struct(matches: Matches between sources,
-                       wcs: Wcs for input in frame of template,
-                       )
+        Parameters
+        ----------
+        inputSources :
+            Sources from input exposure
+        inputWcs :
+            Wcs of input exposure
+        inputBBox :
+            Bounding box of input exposure
+        templateSources :
+            Sources from template exposure
+
+        Returns
+        -------
+        result : `Struct`
+            Struct with contents:
+            - ``matches`` : Matches between sources,
+            - ``wcs`` : Wcs for input in frame of template
         """
         matches = self.matchSources(inputSources, templateSources)
         wcs = self.fitWcs(matches, inputWcs, inputBBox)
@@ -81,9 +91,17 @@ class RegisterTask(Task):
         The order of the input arguments matters (because the later Wcs
         fitting assumes a particular order).
 
-        @param inputSources: Source catalog of the input frame
-        @param templateSources: Source of the target frame
-        @return Match list
+        Parameters
+        ----------
+        inputSources :
+            Source catalog of the input frame
+        templateSources :
+            Source of the target frame
+
+        Returns
+        -------
+        matches :
+            Match list
         """
         matches = afwTable.matchRaDec(templateSources, inputSources,
                                       self.config.matchRadius*afwGeom.arcseconds)
@@ -98,10 +116,19 @@ class RegisterTask(Task):
 
         The fitting includes iterative sigma-clipping.
 
-        @param matches: List of matches (first is target, second is input)
-        @param inputWcs: Original input Wcs
-        @param inputBBox: Bounding box of input image
-        @return Wcs
+        Parameters
+        ----------
+        matches :
+            List of matches (first is target, second is input)
+        inputWcs :
+            Original input Wcs
+        inputBBox :
+            Bounding box of input image
+
+        Returns
+        -------
+        wcs :
+
         """
         copyMatches = type(matches)(matches)
         refCoordKey = copyMatches[0].first.getTable().getCoordKey()
@@ -141,11 +168,21 @@ class RegisterTask(Task):
         and other metadata), but we do not attempt to warp these to the template
         frame.
 
-        @param inputExp: Input exposure, to be warped
-        @param newWcs: Revised Wcs for input exposure
-        @param templateWcs: Target Wcs
-        @param templateBBox: Target bounding box
-        @return Warped exposure
+        Parameters
+        ----------
+        inputExp :
+            Input exposure, to be warped
+        newWcs :
+            Revised Wcs for input exposure
+        templateWcs :
+            Target Wcs
+        templateBBox :
+            Target bounding box
+
+        Returns
+        -------
+        alignedExp :
+            Warped exposure
         """
         warper = Warper.fromConfig(self.config.warper)
         copyExp = inputExp.Factory(inputExp.getMaskedImage(), newWcs)
@@ -159,11 +196,21 @@ class RegisterTask(Task):
         interest between the two frames.  We therefore update only the sky and
         pixel coordinates.
 
-        @param inputSources: Sources on input exposure, to be warped
-        @param newWcs: Revised Wcs for input exposure
-        @param templateWcs: Target Wcs
-        @param templateBBox: Target bounding box
-        @return Warped sources
+        Parameters
+        ----------
+        inputSources :
+            Sources on input exposure, to be warped
+        newWcs :
+            Revised Wcs for input exposure
+        templateWcs :
+            Target Wcs
+        templateBBox :
+            Target bounding box
+
+        Returns
+        -------
+        alignedSources :
+            Warped sources
         """
         alignedSources = inputSources.copy(True)
         if not isinstance(templateBBox, afwGeom.Box2D):

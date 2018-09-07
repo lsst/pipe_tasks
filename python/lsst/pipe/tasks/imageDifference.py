@@ -46,6 +46,8 @@ import lsst.ip.diffim.utils as diUtils
 FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
 IqrToSigma = 0.741
 
+__all__ = ('ImageDifferenceConfig', 'ImageDifferenceTaskRunner',
+           'Winter2013ImageDifferenceConfig', 'Winter2013ImageDifferenceTask')
 
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
@@ -229,16 +231,17 @@ class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
     """Subtract an image from a template and measure the result
+
+    Parameters
+    ----------
+    butler :
+        Butler object to use in constructing reference object loaders
     """
     ConfigClass = ImageDifferenceConfig
     RunnerClass = ImageDifferenceTaskRunner
     _DefaultName = "imageDifference"
 
     def __init__(self, butler=None, **kwargs):
-        """!Construct an ImageDifference Task
-
-        @param[in] butler  Butler object to use in constructing reference object loaders
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("getTemplate")
 
@@ -299,26 +302,33 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - detect sources
         - measure sources
 
-        @param sensorRef: sensor-level butler data reference, used for the following data products:
-        Input only:
-        - calexp
-        - psf
-        - ccdExposureId
-        - ccdExposureId_bits
-        - self.config.coaddName + "Coadd_skyMap"
-        - self.config.coaddName + "Coadd"
-        Input or output, depending on config:
-        - self.config.coaddName + "Diff_subtractedExp"
-        Output, depending on config:
-        - self.config.coaddName + "Diff_matchedExp"
-        - self.config.coaddName + "Diff_src"
+        Parameters
+        ----------
+        sensorRef :
+            sensor-level butler data reference, used for the following data products:
+            Input only:
+            - calexp
+            - psf
+            - ccdExposureId
+            - ccdExposureId_bits
+            - self.config.coaddName + "Coadd_skyMap"
+            - self.config.coaddName + "Coadd"
+            Input or output, depending on config:
+            - self.config.coaddName + "Diff_subtractedExp"
+            Output, depending on config:
+            - self.config.coaddName + "Diff_matchedExp"
+            - self.config.coaddName + "Diff_src"
 
-        @return pipe_base Struct containing these fields:
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+        pipe_base Struct containing these fields:
         - subtractedExposure: exposure after subtracting template;
-            the unpersisted version if subtraction not run but detection run
-            None if neither subtraction nor detection run (i.e. nothing useful done)
+        the unpersisted version if subtraction not run but detection run
+        None if neither subtraction nor detection run (i.e. nothing useful done)
         - subtractRes: results of subtraction task; None if subtraction not run
         - sources: detected and possibly measured sources; None if detection not run
+
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
@@ -743,7 +753,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def fitAstrometry(self, templateSources, templateExposure, selectSources):
         """Fit the relative astrometry between templateSources and selectSources
 
-        @todo remove this method. It originally fit a new WCS to the template before calling register.run
+        Notes
+        -----
+        remove this method. It originally fit a new WCS to the template before calling register.run
         because our TAN-SIP fitter behaved badly for points far from CRPIX, but that's been fixed.
         It remains because a subtask overrides it.
         """
@@ -860,15 +872,14 @@ class Winter2013ImageDifferenceConfig(ImageDifferenceConfig):
         ImageDifferenceConfig.setDefaults(self)
         self.getTemplate.retarget(GetCalexpAsTemplateTask)
 
-
 class Winter2013ImageDifferenceTask(ImageDifferenceTask):
-    """!Image difference Task used in the Winter 2013 data challege.
+    """Image difference Task used in the Winter 2013 data challege.
     Enables testing the effects of registration shifts and scatter.
 
     For use with winter 2013 simulated images:
     Use --templateId visit=88868666 for sparse data
-        --templateId visit=22222200 for dense data (g)
-        --templateId visit=11111100 for dense data (i)
+    --templateId visit=22222200 for dense data (g)
+    --templateId visit=11111100 for dense data (i)
     """
     ConfigClass = Winter2013ImageDifferenceConfig
     _DefaultName = "winter2013ImageDifference"
