@@ -257,6 +257,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
         sources and matches. See @ref lsst.meas.astrom.displayAstrometry for
         the meaning of the various symbols.
 
+
+    Examples
+    --------
     For example, put something like:
 
     .. code-block:: py
@@ -290,6 +293,35 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
     def __init__(self, butler=None, astromRefObjLoader=None,
                  photoRefObjLoader=None, icSourceSchema=None, **kwargs):
+        """Construct a CalibrateTask
+
+        Parameters
+        ----------
+        butler :
+            The butler is passed to the refObjLoader constructor
+            in case it is needed.  Ignored if the refObjLoader argument
+            provides a loader directly.
+        astromRefObjLoader :
+            An instance of LoadReferenceObjectsTasks
+            that supplies an external reference catalog for astrometric
+            calibration.  May be None if the desired loader can be constructed
+            from the butler argument or all steps requiring a reference catalog
+            are disabled.
+        photoRefObjLoader :
+            An instance of LoadReferenceObjectsTasks
+            that supplies an external reference catalog for photometric
+            calibration.  May be None if the desired loader can be constructed
+            from the butler argument or all steps requiring a reference catalog
+            are disabled.
+        icSourceSchema :
+            schema for icSource catalog, or None.
+            Schema values specified in config.icSourceFieldsToCopy will be
+            taken from this schema. If set to None, no values will be
+            propagated from the icSourceCatalog
+        kwargs :
+            other keyword arguments for
+            lsst.pipe.base.CmdLineTask
+        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
         if icSourceSchema is None and butler is not None:

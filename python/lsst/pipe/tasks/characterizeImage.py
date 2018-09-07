@@ -273,6 +273,25 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
+        """Construct a CharacterizeImageTask
+
+        Parameters
+        ----------
+        butler :
+            A butler object is passed to the refObjLoader constructor in case
+            it is needed to load catalogs.  May be None if a catalog-based star selector is
+            not used, if the reference object loader constructor does not require a butler,
+            or if a reference object loader is passed directly via the refObjLoader argument.
+        refObjLoader :
+            An instance of LoadReferenceObjectsTasks that supplies an
+            external reference catalog to a catalog-based star selector.  May be None if a
+            catalog star selector is not used or the loader can be constructed from the
+            butler argument.
+        schema :
+            initial schema (an lsst.afw.table.SourceTable), or None
+        kwargs :
+            other keyword arguments for lsst.pipe.base.CmdLineTask
+        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         if schema is None:
             schema = SourceTable.makeMinimalSchema()
