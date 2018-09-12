@@ -263,8 +263,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
         if self.config.doForcedMeasurement:
-            self.schema.addField("totFlux", "D", "Forced flux measured on the PVI")
-            self.schema.addField("totFluxErr", "D", "Forced fluxe error measured on the PVI")
+            self.totFluxKey = self.schema.addField(
+                "totFlux", "D", "Forced flux measured on the PVI")
+            self.totFluxErrKey = self.schema.addField(
+                "totFluxErr", "D", "Forced flux error measured on the PVI")
             self.makeSubtask("forcedMeasurement", refSchema=self.schema)
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
@@ -621,9 +623,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         self.measurement.run(diaSources, subtractedExposure, exposure)
 
             if self.config.doForcedMeasurement:
+                # Run forced psf photometry on the PVI at the diaSource locations.
+                # Copy the measured flux and error into the diaSource.
                 forcedSources = self.forcedMeasurement.generateMeasCat(
                     exposure, diaSources, subtractedExposure.getWcs())
                 self.forcedMeasurement.run(forcedSources, exposure, diaSources, subtractedExposure.getWcs())
+                mapper = afwTable.SchemaMapper(forcedSources.schema, diaSources.schema)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_flux")[0], "totFlux", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_fluxErr")[0], "totFluxErr", True)
+                for diaSource, forcedSource in zip(diaSources, forcedSources):
+                    diaSource.assign(forcedSource, mapper)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
