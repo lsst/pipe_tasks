@@ -31,6 +31,37 @@ You can find Jira issues for this module under the `pipe_tasks <https://jira.lss
 
 .. _lsst.pipe.tasks-command-line-taskref:
 
+Task reference
+==============
+
+.. _lsst.pipe.tasks-command-line-tasks:
+
+Command-line tasks
+------------------
+
+.. lsst-cmdlinetasks::
+   :root: lsst.pipe.tasks
+
+.. _lsst.pipe.tasks-tasks:
+
+Tasks
+-----
+
+.. lsst-tasks::
+   :root: lsst.pipe.tasks
+   :toctree: tasks
+
+.. _lsst.pipe.tasks-configs:
+
+Configurations
+--------------
+
+.. lsst-configs::
+   :root: lsst.pipe.tasks
+   :toctree: configs
+
+.. _lsst.pipe.tasks-pyapi:
+
 Python API reference
 ====================
 
