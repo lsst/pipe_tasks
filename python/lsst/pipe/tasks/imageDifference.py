@@ -30,6 +30,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
+from lsst.meas.base import ForcedMeasurementTask
 from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, \
@@ -81,6 +82,8 @@ class ImageDifferenceConfig(pexConfig.Config):
                                      doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
     doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
+    doForcedMeasurement = pexConfig.Field(dtype=bool, default=True,
+                                          doc="Force photometer diaSource locations on PVI?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
                                         doc="Write warped and PSF-matched template coadd exposure?")
@@ -130,6 +133,10 @@ class ImageDifferenceConfig(pexConfig.Config):
     measurement = pexConfig.ConfigurableField(
         target=DipoleFitTask,
         doc="Enable updated dipole fitting method",
+    )
+    forcedMeasurement = pexConfig.ConfigurableField(
+        target=ForcedMeasurementTask,
+        doc="Subtask to force photometer PVI at diaSource location.",
     )
     getTemplate = pexConfig.ConfigurableField(
         target=GetCoaddAsTemplateTask,
@@ -188,6 +195,12 @@ class ImageDifferenceConfig(pexConfig.Config):
         # To change that you must modify algorithms.names in the task's applyOverrides method,
         # after the user has set doPreConvolve.
         self.measurement.algorithms.names.add('base_PeakLikelihoodFlux')
+
+        self.forcedMeasurement.plugins = ["base_TransformedCentroid", "base_PsfFlux"]
+        self.forcedMeasurement.copyColumns = {
+            "id": "objectId", "parent": "parentObjectId", "coord_ra": "coord_ra", "coord_dec": "coord_dec"}
+        self.forcedMeasurement.slots.centroid = "base_TransformedCentroid"
+        self.forcedMeasurement.slots.shape = None
 
         # For shuffling the control sample
         random.seed(self.controlRandomSeed)
@@ -249,6 +262,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
+        if self.config.doForcedMeasurement:
+            self.totFluxKey = self.schema.addField(
+                "totFlux", "D", "Forced flux measured on the PVI")
+            self.totFluxErrKey = self.schema.addField(
+                "totFluxErr", "D", "Forced flux error measured on the PVI")
+            self.makeSubtask("forcedMeasurement", refSchema=self.schema)
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
@@ -602,6 +621,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                              subtractRes.matchedExposure)
                     else:
                         self.measurement.run(diaSources, subtractedExposure, exposure)
+
+            if self.config.doForcedMeasurement:
+                # Run forced psf photometry on the PVI at the diaSource locations.
+                # Copy the measured flux and error into the diaSource.
+                forcedSources = self.forcedMeasurement.generateMeasCat(
+                    exposure, diaSources, subtractedExposure.getWcs())
+                self.forcedMeasurement.run(forcedSources, exposure, diaSources, subtractedExposure.getWcs())
+                mapper = afwTable.SchemaMapper(forcedSources.schema, diaSources.schema)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_flux")[0], "totFlux", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_fluxErr")[0], "totFluxErr", True)
+                for diaSource, forcedSource in zip(diaSources, forcedSources):
+                    diaSource.assign(forcedSource, mapper)
 
             # Match with the calexp sources if possible
             if self.config.doMatchSources:
