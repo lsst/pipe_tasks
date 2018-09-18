@@ -384,9 +384,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.useConvergence:
                 self.log.info("Final convergence improvement was %.4f%% overall",
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
+
         dcrCoadds = self.fillCoadd(dcrModels, skyInfo, tempExpRefList, weightList,
                                    calibration=self.scaleZeroPoint.getCalib(),
-                                   coaddInputs=self.inputRecorder.makeCoaddInputs())
+                                   coaddInputs=self.inputRecorder.makeCoaddInputs(),
+                                   mask=templateCoadd.mask)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
@@ -559,7 +561,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             New model of the true sky after correcting chromatic effects.
         """
         maskMap = self.setRejectedMaskMapping(statsCtrl)
-        clipped = dcrModels[0].mask.getPlaneBitMask("CLIPPED")
+        clipped = dcrModels.mask.getPlaneBitMask("CLIPPED")
         newModelImages = []
         for subfilter, model in enumerate(dcrModels):
             residualsList = [next(residualGenerator) for residualGenerator in residualGeneratorList]
@@ -682,7 +684,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             coaddExposure.maskedImage += coadd.maskedImage
         return coaddExposure
 
-    def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList, calibration=None, coaddInputs=None):
+    def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList, calibration=None, coaddInputs=None,
+                  mask=None):
         """Create a list of coadd exposures from a list of masked images.
 
         Parameters
@@ -699,6 +702,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Scale factor to set the photometric zero point of an exposure.
         coaddInputs : `lsst.afw.Image.CoaddInputs`, optional
             A record of the observations that are included in the coadd.
+        mask : `lsst.afw.image.Mask`, optional
+            Optional mask to override the values in the final coadd.
 
         Returns
         -------
@@ -717,6 +722,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
             coaddUtils.setCoaddEdgeBits(model[skyInfo.bbox].mask, model[skyInfo.bbox].variance)
             coaddExposure.setMaskedImage(model[skyInfo.bbox])
+            if mask is not None:
+                coaddExposure.setMask(mask)
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
