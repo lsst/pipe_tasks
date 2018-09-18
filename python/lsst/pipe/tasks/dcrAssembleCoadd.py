@@ -72,33 +72,33 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     modelClampFactor = pexConfig.Field(
         dtype=float,
-        doc="Maximum relative change of the model allowed between iterations.",
+        doc="Maximum relative change of the model allowed between iterations. Set to zero to disable.",
         default=2.,
     )
-    regularizeSigma = pexConfig.Field(
+    modelClampSigma = pexConfig.Field(
         dtype=float,
-        doc="Threshold to exclude noise-like pixels from regularization.",
-        default=3.,
-    )
-    clampFrequency = pexConfig.Field(
-        dtype=float,
-        doc="Maximum relative change of the model allowed between subfilters.",
+        doc="Threshold to exclude noise-like pixels from regularization between iterations.",
         default=2.,
     )
-    maxGain = pexConfig.Field(
+    frequencyClampSigma = pexConfig.Field(
         dtype=float,
-        doc="Maximum convergence-weighted gain to apply between forward modeling iterations.",
-        default=2.,
+        doc="Threshold to exclude noise-like pixels from regularization across subfilters.",
+        default=1.,
     )
-    minGain = pexConfig.Field(
+    frequencyClampFactor = pexConfig.Field(
         dtype=float,
-        doc="Minimum convergence-weighted gain to apply between forward modeling iterations.",
-        default=0.5,
+        doc="Maximum relative change of the model allowed between subfilters. Set to zero to disable.",
+        default=2.,
     )
     convergenceMaskPlanes = pexConfig.ListField(
         dtype=str,
         default=["DETECTED"],
         doc="Mask planes to use to calculate convergence."
+    )
+    regularizationWidth = pexConfig.Field(
+        dtype=int,
+        default=2,
+        doc="Minimum radius of a region to include in regularization, in pixels."
     )
     imageWarpMethod = pexConfig.Field(
         dtype=str,
@@ -157,7 +157,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     typically appears in the form of holes next to sources in one subfilter,
     and corresponding extended wings in another. Because each subfilter has
     a narrow bandwidth we assume that physical sources that are above the noise
-    level will not vary in flux by more than a factor of `clampFrequency`
+    level will not vary in flux by more than a factor of `frequencyClampFactor`
     between subfilters, and pixels that have flux deviations larger than that
     factor will have the excess flux distributed evenly among all subfilters.
     """
@@ -441,7 +441,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Restrict the new model solutions from varying by more than a factor of
         `modelClampFactor` from the last solution, and additionally restrict the
         individual subfilter models from varying by more than a factor of
-        `clampFrequency` from their average.
+        `frequencyClampFactor` from their average.
         Finally, mitigate potentially oscillating solutions by averaging the new
         solution with the solution from the previous iteration, weighted by
         their convergence metric.
@@ -498,8 +498,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                            dcrModels.filter))
 
         dcrSubModelOut = self.newModelFromResidual(dcrModels, residualGeneratorList, bboxGrow,
-        dcrSubModelOut.regularizeModel(bboxGrow, baseMask, statsCtrl, self.config.regularizeSigma,
-                                       self.config.clampFrequency, self.config.convergenceMaskPlanes)
                                                    statsFlags, statsCtrl, weightList,
                                                    mask=baseMask, gain=gain)
         dcrModels.assign(dcrSubModelOut, bbox)
@@ -571,9 +569,24 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             # `MaskedImage`s only support in-place addition, so rename for readability
             residual += model[bbox]
             newModel = residual
-            dcrModels.clampModel(subfilter, newModel, bbox, statsCtrl, self.config.regularizeSigma,
-                                 self.config.modelClampFactor, self.config.convergenceMaskPlanes)
+            # Catch any invalid values
+            badPixels = ~np.isfinite(newModel.image.array)
+            newModel.image.array[badPixels] = model[bbox].image.array[badPixels]
+            if self.config.modelClampFactor > 0:
+                dcrModels.clampModel(subfilter, newModel, bbox, statsCtrl,
+                                     self.config.modelClampFactor,
+                                     self.config.modelClampSigma,
+                                     self.bufferSize,
+                                     self.config.convergenceMaskPlanes,
+                                     self.config.regularizationWidth)
             newModelImages.append(newModel)
+        if self.config.frequencyClampFactor > 0:
+            dcrModels.regularizeModel(newModelImages, bbox, mask, statsCtrl,
+                                      self.config.frequencyClampFactor,
+                                      self.config.frequencyClampSigma,
+                                      self.bufferSize,
+                                      self.config.convergenceMaskPlanes,
+                                      self.config.regularizationWidth)
         dcrModels.conditionDcrModel(newModelImages, bbox, gain=gain)
         return DcrModel(newModelImages, dcrModels.filter, dcrModels.psf)
 
@@ -603,7 +616,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         convergenceMetric : `float`
             Quality of fit metric for all input exposures, within the sub-region
         """
-        significanceImage = dcrModels.getReferenceImage(bbox)
+        significanceImage = np.abs(dcrModels.getReferenceImage(bbox))
+        significanceImage += dcrModels.calculateNoiseCutoff(dcrModels[1], statsCtrl,
+                                                            sigma=3., bufferSize=self.bufferSize,)
         tempExpName = self.getTempExpDatasetName(self.warpType)
         weight = 0
         metric = 0.
