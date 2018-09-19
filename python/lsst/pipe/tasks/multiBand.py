@@ -23,7 +23,9 @@
 import numpy
 
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
-from lsst.pipe.base import CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner
+from lsst.pipe.base import (CmdLineTask, Struct, TaskRunner, ArgumentParser, ButlerInitializedTaskRunner,
+                            PipelineTask, InitOutputDatasetField, InputDatasetField, OutputDatasetField,
+                            QuantumConfig)
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, RangeField, ConfigField
 from lsst.meas.algorithms import DynamicDetectionTask, SkyObjectsTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
@@ -118,6 +120,42 @@ class DetectCoaddSourcesConfig(Config):
     insertFakes = ConfigurableField(target=BaseFakeSourcesTask,
                                     doc="Injection of fake sources for testing "
                                     "purposes (must be retargeted)")
+    detectionSchema = InitOutputDatasetField(
+        doc="Schema of the detection catalog",
+        name="{}Coadd_det_schema",
+        storageClass="SourceCatalog",
+    )
+    exposure = InputDatasetField(
+        doc="Exposure on which detections are to be performed",
+        name="deepCoadd",
+        scalar=True,
+        storageClass="Exposure",
+        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+    )
+    outputBackgrounds = OutputDatasetField(
+        doc="Output Backgrounds used in detection",
+        name="{}Coadd_calexp_background",
+        scalar=True,
+        storageClass="Background",
+        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+    )
+    outputSources = OutputDatasetField(
+        doc="Detected sources catalog",
+        name="{}Coadd_det",
+        scalar=True,
+        storageClass="SourceCatalog",
+        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+    )
+    outputExposure = OutputDatasetField(
+        doc="Exposure post detection",
+        name="{}Coadd_calexp",
+        scalar=True,
+        storageClass="Exposure",
+        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+    )
+    quantum = QuantumConfig(
+        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+    )
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -138,7 +176,7 @@ class DetectCoaddSourcesConfig(Config):
 ## @}
 
 
-class DetectCoaddSourcesTask(CmdLineTask):
+class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
     """!
     @anchor DetectCoaddSourcesTask_
 
@@ -241,6 +279,24 @@ class DetectCoaddSourcesTask(CmdLineTask):
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
 
+    @classmethod
+    def getOutputDatasetTypes(cls, config):
+        coaddName = config.coaddName
+        for name in ("outputBackgrounds", "outputSources", "outputExposure"):
+            attr = getattr(config, name)
+            setattr(attr, "name", attr.name.format(coaddName))
+        outputTypeDict = super().getOutputDatasetTypes(config)
+        return outputTypeDict
+
+    @classmethod
+    def getInitOutputDatasetTypes(cls, config):
+        coaddName = config.coaddName
+        attr = config.detectionSchema
+        setattr(attr, "name", attr.name.format(coaddName))
+        output = super().getInitOutputDatasetTypes(config)
+        print(output)
+        return output
+
     def __init__(self, schema=None, **kwargs):
         """!
         @brief Initialize the task. Create the @ref SourceDetectionTask_ "detection" subtask.
@@ -251,7 +307,9 @@ class DetectCoaddSourcesTask(CmdLineTask):
                              fields set by this task.  If None, the source minimal schema will be used.
         @param[in] **kwargs: keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
         """
-        CmdLineTask.__init__(self, **kwargs)
+        # N.B. Super is used here to handle the multiple inheritance of PipelineTasks, the init tree
+        # call structure has been reviewed carefully to be sure super will work as intended.
+        super().__init__(**kwargs)
         if schema is None:
             schema = afwTable.SourceTable.makeMinimalSchema()
         if self.config.doInsertFakes:
@@ -260,6 +318,9 @@ class DetectCoaddSourcesTask(CmdLineTask):
         self.makeSubtask("detection", schema=self.schema)
         if self.config.doScaleVariance:
             self.makeSubtask("scaleVariance")
+
+    def getInitOutputDatasets(self):
+        return {"detectionSchema": afwTable.SourceCatalog(self.schema)}
 
     def runDataRef(self, patchRef):
         """!
@@ -273,8 +334,14 @@ class DetectCoaddSourcesTask(CmdLineTask):
         exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
         expId = int(patchRef.get(self.config.coaddName + "CoaddId"))
         results = self.run(exposure, self.makeIdFactory(patchRef), expId=expId)
-        self.write(exposure, results, patchRef)
+        self.write(results, patchRef)
         return results
+
+    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds):
+        # FINDME: DM-15843 needs to come back and address these next two lines with a final solution
+        inputData["idFactory"] = afwTable.IdFactory.makeSimple()
+        inputData["expId"] = 0
+        return self.run(**inputData)
 
     def run(self, exposure, idFactory, expId):
         """!
@@ -306,9 +373,9 @@ class DetectCoaddSourcesTask(CmdLineTask):
         if hasattr(fpSets, "background") and fpSets.background:
             for bg in fpSets.background:
                 backgrounds.append(bg)
-        return Struct(sources=sources, backgrounds=backgrounds)
+        return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
 
-    def write(self, exposure, results, patchRef):
+    def write(self, results, patchRef):
         """!
         @brief Write out results from runDetection.
 
@@ -317,9 +384,9 @@ class DetectCoaddSourcesTask(CmdLineTask):
         @param[in] patchRef: data reference for patch
         """
         coaddName = self.config.coaddName + "Coadd"
-        patchRef.put(results.backgrounds, coaddName + "_calexp_background")
-        patchRef.put(results.sources, coaddName + "_det")
-        patchRef.put(exposure, coaddName + "_calexp")
+        patchRef.put(results.outputBackgrounds, coaddName + "_calexp_background")
+        patchRef.put(results.outputSources, coaddName + "_det")
+        patchRef.put(results.outputExposure, coaddName + "_calexp")
 
 ##############################################################################################################
 
