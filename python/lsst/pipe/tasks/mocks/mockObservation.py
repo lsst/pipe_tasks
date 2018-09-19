@@ -241,8 +241,8 @@ class MockObservationTask(lsst.pipe.base.Task):
         bbox = detector.getBBox()
         apCorrMap = lsst.afw.image.ApCorrMap()
         for name in getApCorrNameSet():
-            apCorrMap.set(name + "_flux", makeRandomBoundedField())
-            apCorrMap.set(name + "_fluxErr", makeRandomBoundedField())
+            apCorrMap.set(name + "_instFlux", makeRandomBoundedField())
+            apCorrMap.set(name + "_instFluxErr", makeRandomBoundedField())
         return apCorrMap
 
     def buildTransmissionCurve(self, detector):

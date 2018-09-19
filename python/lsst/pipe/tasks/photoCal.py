@@ -43,8 +43,8 @@ class PhotoCalConfig(pexConf.Config):
     reserve = pexConf.ConfigurableField(target=ReserveSourcesTask, doc="Reserve sources from fitting")
     fluxField = pexConf.Field(
         dtype=str,
-        default="slot_CalibFlux_flux",
-        doc=("Name of the source flux field to use.  The associated flag field\n"
+        default="slot_CalibFlux_instFlux",
+        doc=("Name of the source instFlux field to use.  The associated flag field\n"
              "('<name>_flags') will be implicitly included in badFlags."),
     )
     applyColorTerms = pexConf.Field(
@@ -259,15 +259,26 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
                          doc="set if source was reserved from photometric calibration")
 
     def getSourceKeys(self, schema):
-        """!Return a struct containing the source catalog keys for fields used by PhotoCalTask.
+        """Return a struct containing the source catalog keys for fields used
+        by PhotoCalTask.
 
-        Returned fields include:
-        - flux
-        - fluxErr
+
+        Parameters
+        ----------
+        schema : `lsst.afw.table.schema`
+            Schema of the catalog to get keys from.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Result struct with components:
+
+            - ``instFlux``: Instrument flux key.
+            - ``instFluxErr``: Instrument flux error key.
         """
-        flux = schema.find(self.config.fluxField).key
-        fluxErr = schema.find(self.config.fluxField + "Err").key
-        return pipeBase.Struct(flux=flux, fluxErr=fluxErr)
+        instFlux = schema.find(self.config.fluxField).key
+        instFluxErr = schema.find(self.config.fluxField + "Err").key
+        return pipeBase.Struct(instFlux=instFlux, instFluxErr=instFluxErr)
 
     @pipeBase.timeMethod
     def extractMagArrays(self, matches, filterName, sourceKeys):
@@ -286,17 +297,17 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         @note These magnitude arrays are the @em inputs to the photometric calibration, some may have been
         discarded by clipping while estimating the calibration (https://jira.lsstcorp.org/browse/DM-813)
         """
-        srcFluxArr = np.array([m.second.get(sourceKeys.flux) for m in matches])
-        srcFluxErrArr = np.array([m.second.get(sourceKeys.fluxErr) for m in matches])
-        if not np.all(np.isfinite(srcFluxErrArr)):
+        srcInstFluxArr = np.array([m.second.get(sourceKeys.instFlux) for m in matches])
+        srcInstFluxErrArr = np.array([m.second.get(sourceKeys.instFluxErr) for m in matches])
+        if not np.all(np.isfinite(srcInstFluxErrArr)):
             # this is an unpleasant hack; see DM-2308 requesting a better solution
             self.log.warn("Source catalog does not have flux uncertainties; using sqrt(flux).")
-            srcFluxErrArr = np.sqrt(srcFluxArr)
+            srcInstFluxErrArr = np.sqrt(srcInstFluxArr)
 
-        # convert source flux from DN to an estimate of Jy
+        # convert source instFlux from DN to an estimate of Jy
         JanskysPerABFlux = 3631.0
-        srcFluxArr = srcFluxArr * JanskysPerABFlux
-        srcFluxErrArr = srcFluxErrArr * JanskysPerABFlux
+        srcInstFluxArr = srcInstFluxArr * JanskysPerABFlux
+        srcInstFluxErrArr = srcInstFluxErrArr * JanskysPerABFlux
 
         if not matches:
             raise RuntimeError("No reference stars are available")
@@ -364,16 +375,19 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         else:
             refMagArr = np.array([abMagFromFlux(rf) for rf in refFluxArrList[0]])
 
-        srcMagArr = np.array([abMagFromFlux(sf) for sf in srcFluxArr])
+        srcMagArr = np.array([abMagFromFlux(sf) for sf in srcInstFluxArr])
 
         # Fitting with error bars in both axes is hard
         # for now ignore reference flux error, but ticket DM-2308 is a request for a better solution
-        magErrArr = np.array([abMagErrFromFluxErr(fe, sf) for fe, sf in zip(srcFluxErrArr, srcFluxArr)])
+        magErrArr = np.array([abMagErrFromFluxErr(fe, sf)
+                             for fe, sf in zip(srcInstFluxErrArr, srcInstFluxArr)])
         if self.config.magErrFloor != 0.0:
             magErrArr = (magErrArr**2 + self.config.magErrFloor**2)**0.5
 
-        srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf) for sfe, sf in zip(srcFluxErrArr, srcFluxArr)])
-        refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf) for rfe, rf in zip(refFluxErrArr, refFluxArr)])
+        srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf)
+                                for sfe, sf in zip(srcInstFluxErrArr, srcInstFluxArr)])
+        refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf)
+                                for rfe, rf in zip(refFluxErrArr, refFluxArr)])
 
         good = np.isfinite(srcMagArr) & np.isfinite(refMagArr)
 

@@ -63,8 +63,8 @@ class PhotoCalTest(unittest.TestCase):
         self.srcCat = afwTable.SourceCatalog.readFits(
             os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
 
-        self.srcCat["slot_ApFlux_fluxErr"] = 1
-        self.srcCat["slot_PsfFlux_fluxErr"] = 1
+        self.srcCat["slot_ApFlux_instFluxErr"] = 1
+        self.srcCat["slot_PsfFlux_instFluxErr"] = 1
 
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
@@ -92,7 +92,7 @@ class PhotoCalTest(unittest.TestCase):
         self.config.match.matchRadius = 0.5
         self.config.match.referenceSelection.doMagLimit = True
         self.config.match.referenceSelection.magLimit.maximum = 22.0
-        self.config.match.referenceSelection.magLimit.fluxField = "i_flux"
+        self.config.match.referenceSelection.magLimit.fluxField = "i_instFlux"
         self.config.match.referenceSelection.doFlags = True
         self.config.match.referenceSelection.flags.good = ['photometric']
         self.config.match.referenceSelection.flags.bad = ['resolved']
@@ -100,7 +100,7 @@ class PhotoCalTest(unittest.TestCase):
 
         # The test and associated data have been prepared on the basis that we
         # use the PsfFlux to perform photometry.
-        self.config.fluxField = "base_PsfFlux_flux"
+        self.config.fluxField = "base_PsfFlux_instFlux"
 
     def tearDown(self):
         del self.srcCat
@@ -123,7 +123,7 @@ class PhotoCalTest(unittest.TestCase):
             if refFlux <= 0:
                 continue
             refMag = afwImage.abMagFromFlux(refFlux)  # reference catalog mag
-            instFlux = m[1].getPsfFlux()  # Instrumental Flux
+            instFlux = m[1].getPsfInstFlux()  # Instrumental Flux
             if instFlux <= 0:
                 continue
             instMag = pCal.calib.getMagnitude(instFlux)  # Instrumental mag

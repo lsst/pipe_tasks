@@ -170,7 +170,7 @@ class FakeProcessingTestCase(lsst.utils.tests.TestCase):
             for fakePos, fakeIntensity in FakeSourcesTestTask.fakeSources:
                 distSq = (srcX - fakePos.x)**2 + (srcY - fakePos.y)**2
                 if distSq <= thresh**2:
-                    fluxDiff = abs(source.getPsfFlux() - fakeIntensity)
+                    fluxDiff = abs(source.getPsfInstFlux() - fakeIntensity)
                     self.assertLessEqual(fluxDiff, 5*np.sqrt(fakeIntensity))
                     fakeSourceCounter += 1
         # Verify the correct number of fake sources were found

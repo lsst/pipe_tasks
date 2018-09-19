@@ -225,7 +225,7 @@ class RunTransformTestCase(lsst.utils.tests.TestCase):
         cfg.calibrate.measurement.slots.shape = None
         cfg.calibrate.measurement.slots.psfFlux = None
         cfg.calibrate.measurement.slots.apFlux = None
-        cfg.calibrate.measurement.slots.instFlux = None
+        cfg.calibrate.measurement.slots.gaussianFlux = None
         cfg.calibrate.measurement.slots.modelFlux = None
         cfg.calibrate.measurement.slots.calibFlux = None
         # no reference catalog, so...

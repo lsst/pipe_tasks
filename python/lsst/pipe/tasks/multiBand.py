@@ -1542,8 +1542,8 @@ class MergeMeasurementsTask(MergeSourcesTask):
         inputSchema = self.getInputSchema(butler=butler, schema=schema)
         self.schemaMapper = afwTable.SchemaMapper(inputSchema, True)
         self.schemaMapper.addMinimalSchema(inputSchema, True)
-        self.fluxKey = inputSchema.find(self.config.snName + "_flux").getKey()
-        self.fluxErrKey = inputSchema.find(self.config.snName + "_fluxErr").getKey()
+        self.instFluxKey = inputSchema.find(self.config.snName + "_instFlux").getKey()
+        self.instFluxErrKey = inputSchema.find(self.config.snName + "_instFluxErr").getKey()
         self.fluxFlagKey = inputSchema.find(self.config.snName + "_flag").getKey()
 
         self.flagKeys = {}
@@ -1626,10 +1626,10 @@ class MergeMeasurementsTask(MergeSourcesTask):
                         break
 
                 isBad = any(inputRecord.get(flag) for flag in self.badFlags)
-                if isBad or inputRecord.get(self.fluxFlagKey) or inputRecord.get(self.fluxErrKey) == 0:
+                if isBad or inputRecord.get(self.fluxFlagKey) or inputRecord.get(self.instFluxErrKey) == 0:
                     sn = 0.
                 else:
-                    sn = inputRecord.get(self.fluxKey)/inputRecord.get(self.fluxErrKey)
+                    sn = inputRecord.get(self.instFluxKey)/inputRecord.get(self.instFluxErrKey)
                 if numpy.isnan(sn) or sn < 0.:
                     sn = 0.
                 if (parent or child) and priorityRecord is None:

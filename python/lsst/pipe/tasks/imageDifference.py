@@ -629,8 +629,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     exposure, diaSources, subtractedExposure.getWcs())
                 self.forcedMeasurement.run(forcedSources, exposure, diaSources, subtractedExposure.getWcs())
                 mapper = afwTable.SchemaMapper(forcedSources.schema, diaSources.schema)
-                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_flux")[0], "totFlux", True)
-                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_fluxErr")[0], "totFluxErr", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_instFlux")[0], "totFlux", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_instFluxErr")[0],
+                                  "totFluxErr", True)
                 for diaSource, forcedSource in zip(diaSources, forcedSources):
                     diaSource.assign(forcedSource, mapper)
 

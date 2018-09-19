@@ -61,7 +61,7 @@ def loadData():
     # Read sources
     #
     srcCat = afwTable.SourceCatalog.readFits(os.path.join(mypath, "tests", "v695833-e0-c000.xy.fits"))
-    srcCat.getPsfFluxErr()[:] = np.sqrt(srcCat.getPsfFlux())
+    srcCat.getPsfInstFluxErr()[:] = np.sqrt(srcCat.getPsfInstFlux())
 
     return exposure, srcCat
 
@@ -88,7 +88,7 @@ def run():
     config = PhotoCalTask.ConfigClass()
     config.applyColorTerms = False      # we don't have any available, so this suppresses a warning
     # The associated data has been prepared on the basis that we use PsfFlux to perform photometry.
-    config.fluxField = "base_PsfFlux_flux"
+    config.fluxField = "base_PsfFlux_instFlux"
     pTask = PhotoCalTask(config=config, schema=schema)
     #
     # The tasks may have added extra elements to the schema (e.g. AstrometryTask's centroidKey to
@@ -102,7 +102,7 @@ def run():
         print("Adding columns to the source catalogue")
         cat = afwTable.SourceCatalog(schema)
         cat.table.defineCentroid(srcCat.table.getCentroidDefinition())
-        cat.table.definePsfFlux(srcCat.table.getPsfFluxDefinition())
+        cat.table.definePsfFlux(srcCat.table.schema.get("slot_psfFlux"))
 
         scm = afwTable.SchemaMapper(srcCat.getSchema(), schema)
         for schEl in srcCat.getSchema():
