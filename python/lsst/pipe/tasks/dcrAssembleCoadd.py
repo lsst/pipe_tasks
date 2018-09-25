@@ -60,9 +60,15 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
             "If not set, skips calculating convergence and runs for ``maxNumIter`` iterations",
         default=True,
     )
+    baseGain = pexConfig.Field(
+        dtype=float,
+        doc="Relative weight to give the new solution when updating the model."
+            "A value of 1.0 gives equal weight to both solutions.",
+        default=1.,
+    )
     useProgressiveGain = pexConfig.Field(
         dtype=bool,
-        doc="Allow the relative weight of the new model solution to increase with each iteration?",
+        doc="Use a gain that slowly increases above ``baseGain`` to accelerate convergence?",
         default=True,
     )
     doAirmassWeight = pexConfig.Field(
@@ -344,7 +350,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             subfilterVariance = None
             while (convergenceCheck > self.config.convergenceThreshold or
                    modelIter < self.config.minNumIter):
-                gain = self.calculateGain(modelIter)
+                gain = self.calculateGain(modelIter, self.config.baseGain)
                 self.dcrAssembleSubregion(dcrModels, subBBox, tempExpRefList, imageScalerList,
                                           weightList, spanSetMaskList, stats.flags, stats.ctrl,
                                           convergenceMetric, baseMask, subfilterVariance, gain)
@@ -541,8 +547,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
         mask : `lsst.afw.image.Mask`
-            Mask of the initial template coadd.
-        gain : `float`, optional
+            Mask to use for each new model image.
+        gain : `float`
             Relative weight to give the new solution when updating the model.
 
         Returns
@@ -563,6 +569,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             newModel = residual
             # Catch any invalid values
             badPixels = ~np.isfinite(newModel.image.array)
+            # Overwrite the mask with one calculated previously. If the mask is allowed to adjust
+            # every iteration, masked regions will continually expand.
+            newModel.setMask(mask[bbox])
             newModel.image.array[badPixels] = model[bbox].image.array[badPixels]
             if self.config.regularizeModelIterations > 0:
                 dcrModels.regularizeModelIter(subfilter, newModel, bbox,
@@ -729,24 +738,30 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
-    def calculateGain(self, modelIter):
+    def calculateGain(self, modelIter, baseGain=1.):
         """Calculate the gain to use for the current iteration.
+
+        After calculating a new DcrModel, each value is averaged with the
+        value in the corresponding pixel from the previous iteration. This
+        reduces oscillating solutions that iterative techniques are plagued by,
+        and speeds convergence. By far the biggest changes to the model
+        happen in the first couple iterations, so we can also use a more
+        aggressive gain later when the model is changing slowly.
 
         Parameters
         ----------
         modelIter : `int`
             The current iteration of forward modeling.
+        baseGain : `float`, optional
+            Description
 
         Returns
         -------
         gain : `float`
             Relative weight to give the new solution when updating the model.
+            A value of 1.0 gives equal weight to both solutions.
         """
         if self.config.useProgressiveGain:
-            baseGain = 0.5
-            if modelIter < 2:
-                return baseGain
-            else:
-                return np.log(modelIter)
-        else:
-            return 1.
+            iterGain = np.log(modelIter) if modelIter > 0 else baseGain
+            return max(baseGain, iterGain)
+        return baseGain
