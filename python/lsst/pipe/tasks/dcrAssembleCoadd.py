@@ -60,40 +60,43 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
             "If not set, skips calculating convergence and runs for ``maxNumIter`` iterations",
         default=True,
     )
+    baseGain = pexConfig.Field(
+        dtype=float,
+        doc="Relative weight to give the new solution when updating the model."
+            "A value of 1.0 gives equal weight to both solutions.",
+        default=1.,
+    )
+    useProgressiveGain = pexConfig.Field(
+        dtype=bool,
+        doc="Use a gain that slowly increases above ``baseGain`` to accelerate convergence?",
+        default=True,
+    )
     doAirmassWeight = pexConfig.Field(
         dtype=bool,
         doc="Weight exposures by airmass? Useful if there are relatively few high-airmass observations.",
         default=True,
     )
-    modelClampFactor = pexConfig.Field(
+    regularizeModelIterations = pexConfig.Field(
         dtype=float,
-        doc="Maximum relative change of the model allowed between iterations.",
+        doc="Maximum relative change of the model allowed between iterations."
+            "Set to zero to disable.",
         default=2.,
     )
-    regularizeSigma = pexConfig.Field(
+    regularizeModelFrequency = pexConfig.Field(
         dtype=float,
-        doc="Threshold to exclude noise-like pixels from regularization.",
-        default=3.,
-    )
-    clampFrequency = pexConfig.Field(
-        dtype=float,
-        doc="Maximum relative change of the model allowed between subfilters.",
+        doc="Maximum relative change of the model allowed between subfilters."
+            "Set to zero to disable.",
         default=2.,
-    )
-    maxGain = pexConfig.Field(
-        dtype=float,
-        doc="Maximum convergence-weighted gain to apply between forward modeling iterations.",
-        default=2.,
-    )
-    minGain = pexConfig.Field(
-        dtype=float,
-        doc="Minimum convergence-weighted gain to apply between forward modeling iterations.",
-        default=0.5,
     )
     convergenceMaskPlanes = pexConfig.ListField(
         dtype=str,
         default=["DETECTED"],
         doc="Mask planes to use to calculate convergence."
+    )
+    regularizationWidth = pexConfig.Field(
+        dtype=int,
+        default=2,
+        doc="Minimum radius of a region to include in regularization, in pixels."
     )
     imageWarpMethod = pexConfig.Field(
         dtype=str,
@@ -152,7 +155,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     typically appears in the form of holes next to sources in one subfilter,
     and corresponding extended wings in another. Because each subfilter has
     a narrow bandwidth we assume that physical sources that are above the noise
-    level will not vary in flux by more than a factor of `clampFrequency`
+    level will not vary in flux by more than a factor of `frequencyClampFactor`
     between subfilters, and pixels that have flux deviations larger than that
     factor will have the excess flux distributed evenly among all subfilters.
     """
@@ -347,9 +350,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             subfilterVariance = None
             while (convergenceCheck > self.config.convergenceThreshold or
                    modelIter < self.config.minNumIter):
+                gain = self.calculateGain(modelIter, self.config.baseGain)
                 self.dcrAssembleSubregion(dcrModels, subBBox, tempExpRefList, imageScalerList,
                                           weightList, spanSetMaskList, stats.flags, stats.ctrl,
-                                          convergenceMetric, baseMask, subfilterVariance)
+                                          convergenceMetric, baseMask, subfilterVariance, gain)
                 if self.config.useConvergence:
                     convergenceMetric = self.calculateConvergence(dcrModels, subBBox, tempExpRefList,
                                                                   imageScalerList, weightList,
@@ -366,8 +370,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     break
 
                 if self.config.useConvergence:
-                    self.log.info("Iteration %s with convergence metric %s, %.4f%% improvement",
-                                  modelIter, convergenceMetric, 100.*convergenceCheck)
+                    self.log.info("Iteration %s with convergence metric %s, %.4f%% improvement (gain: %.1f)",
+                                  modelIter, convergenceMetric, 100.*convergenceCheck, gain)
                 modelIter += 1
             else:
                 if self.config.useConvergence:
@@ -378,9 +382,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.useConvergence:
                 self.log.info("Final convergence improvement was %.4f%% overall",
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
+
         dcrCoadds = self.fillCoadd(dcrModels, skyInfo, tempExpRefList, weightList,
                                    calibration=self.scaleZeroPoint.getCalib(),
-                                   coaddInputs=self.inputRecorder.makeCoaddInputs())
+                                   coaddInputs=self.inputRecorder.makeCoaddInputs(),
+                                   mask=templateCoadd.mask)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
@@ -423,7 +429,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
                              spanSetMaskList, statsFlags, statsCtrl, convergenceMetric,
-                             baseMask, subfilterVariance):
+                             baseMask, subfilterVariance, gain):
         """Assemble the DCR coadd for a sub-region.
 
         Build a DCR-matched template for each input exposure, then shift the
@@ -433,7 +439,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Restrict the new model solutions from varying by more than a factor of
         `modelClampFactor` from the last solution, and additionally restrict the
         individual subfilter models from varying by more than a factor of
-        `clampFrequency` from their average.
+        `frequencyClampFactor` from their average.
         Finally, mitigate potentially oscillating solutions by averaging the new
         solution with the solution from the previous iteration, weighted by
         their convergence metric.
@@ -462,6 +468,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Mask of the initial template coadd.
         subfilterVariance : `list` of `numpy.ndarray`
             The variance of each coadded subfilter image.
+        gain : `float`, optional
+            Relative weight to give the new solution when updating the model.
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
@@ -488,9 +496,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                            dcrModels.filter))
 
         dcrSubModelOut = self.newModelFromResidual(dcrModels, residualGeneratorList, bboxGrow,
-                                                   statsFlags, statsCtrl, weightList)
-        dcrSubModelOut.regularizeModel(bboxGrow, baseMask, statsCtrl, self.config.regularizeSigma,
-                                       self.config.clampFrequency, self.config.convergenceMaskPlanes)
+                                                   statsFlags, statsCtrl, weightList,
+                                                   mask=baseMask, gain=gain)
         dcrModels.assign(dcrSubModelOut, bbox)
 
     def dcrResiduals(self, residual, visitInfo, bbox, wcs, filterInfo):
@@ -520,7 +527,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for dcr in dcrShift:
             yield applyDcr(residual, dcr, self.warpCtrl, bbox=bbox, useInverse=True)
 
-    def newModelFromResidual(self, dcrModels, residualGeneratorList, bbox, statsFlags, statsCtrl, weightList):
+    def newModelFromResidual(self, dcrModels, residualGeneratorList, bbox,
+                             statsFlags, statsCtrl, weightList,
+                             mask, gain):
         """Calculate a new DcrModel from a set of image residuals.
 
         Parameters
@@ -537,6 +546,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Statistics control object for coadd
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
+        mask : `lsst.afw.image.Mask`
+            Mask to use for each new model image.
+        gain : `float`
+            Relative weight to give the new solution when updating the model.
 
         Returns
         -------
@@ -544,7 +557,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             New model of the true sky after correcting chromatic effects.
         """
         maskMap = self.setRejectedMaskMapping(statsCtrl)
-        clipped = dcrModels[0].mask.getPlaneBitMask("CLIPPED")
+        clipped = dcrModels.mask.getPlaneBitMask("CLIPPED")
         newModelImages = []
         for subfilter, model in enumerate(dcrModels):
             residualsList = [next(residualGenerator) for residualGenerator in residualGeneratorList]
@@ -554,10 +567,22 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             # `MaskedImage`s only support in-place addition, so rename for readability
             residual += model[bbox]
             newModel = residual
-            dcrModels.clampModel(subfilter, newModel, bbox, statsCtrl, self.config.regularizeSigma,
-                                 self.config.modelClampFactor, self.config.convergenceMaskPlanes)
-            dcrModels.conditionDcrModel(subfilter, newModel, bbox, gain=1.)
+            # Catch any invalid values
+            badPixels = ~np.isfinite(newModel.image.array)
+            # Overwrite the mask with one calculated previously. If the mask is allowed to adjust
+            # every iteration, masked regions will continually expand.
+            newModel.setMask(mask[bbox])
+            newModel.image.array[badPixels] = model[bbox].image.array[badPixels]
+            if self.config.regularizeModelIterations > 0:
+                dcrModels.regularizeModelIter(subfilter, newModel, bbox,
+                                              self.config.regularizeModelIterations,
+                                              self.config.regularizationWidth)
             newModelImages.append(newModel)
+        if self.config.regularizeModelFrequency > 0:
+            dcrModels.regularizeModelFreq(newModelImages, bbox,
+                                          self.config.regularizeModelFrequency,
+                                          self.config.regularizationWidth)
+        dcrModels.conditionDcrModel(newModelImages, bbox, gain=gain)
         return DcrModel(newModelImages, dcrModels.filter, dcrModels.psf)
 
     def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
@@ -586,7 +611,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         convergenceMetric : `float`
             Quality of fit metric for all input exposures, within the sub-region
         """
-        significanceImage = dcrModels.getReferenceImage(bbox)
+        significanceImage = np.abs(dcrModels.getReferenceImage(bbox))
+        nSigma = 3.
+        significanceImage += nSigma*dcrModels.calculateNoiseCutoff(dcrModels[1], statsCtrl,
+                                                                   bufferSize=self.bufferSize)
         tempExpName = self.getTempExpDatasetName(self.warpType)
         weight = 0
         metric = 0.
@@ -667,7 +695,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             coaddExposure.maskedImage += coadd.maskedImage
         return coaddExposure
 
-    def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList, calibration=None, coaddInputs=None):
+    def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList, calibration=None, coaddInputs=None,
+                  mask=None):
         """Create a list of coadd exposures from a list of masked images.
 
         Parameters
@@ -684,6 +713,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Scale factor to set the photometric zero point of an exposure.
         coaddInputs : `lsst.afw.Image.CoaddInputs`, optional
             A record of the observations that are included in the coadd.
+        mask : `lsst.afw.image.Mask`, optional
+            Optional mask to override the values in the final coadd.
 
         Returns
         -------
@@ -702,5 +733,35 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
             coaddUtils.setCoaddEdgeBits(model[skyInfo.bbox].mask, model[skyInfo.bbox].variance)
             coaddExposure.setMaskedImage(model[skyInfo.bbox])
+            if mask is not None:
+                coaddExposure.setMask(mask)
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
+
+    def calculateGain(self, modelIter, baseGain=1.):
+        """Calculate the gain to use for the current iteration.
+
+        After calculating a new DcrModel, each value is averaged with the
+        value in the corresponding pixel from the previous iteration. This
+        reduces oscillating solutions that iterative techniques are plagued by,
+        and speeds convergence. By far the biggest changes to the model
+        happen in the first couple iterations, so we can also use a more
+        aggressive gain later when the model is changing slowly.
+
+        Parameters
+        ----------
+        modelIter : `int`
+            The current iteration of forward modeling.
+        baseGain : `float`, optional
+            Description
+
+        Returns
+        -------
+        gain : `float`
+            Relative weight to give the new solution when updating the model.
+            A value of 1.0 gives equal weight to both solutions.
+        """
+        if self.config.useProgressiveGain:
+            iterGain = np.log(modelIter) if modelIter > 0 else baseGain
+            return max(baseGain, iterGain)
+        return baseGain
