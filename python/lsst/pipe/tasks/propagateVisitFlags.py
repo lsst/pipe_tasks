@@ -37,6 +37,7 @@ class PropagateVisitFlagsConfig(Config):
                            "(valid range: [0-1], default is 0.2).  Coadd object will have flag set if the "
                            "fraction of input visits in which it is flagged is greater than the threshold."))
     matchRadius = Field(dtype=float, default=0.2, doc="Source matching radius (arcsec)")
+    ccdName = Field(dtype=str, default='ccd', doc="Name of ccd to give to butler")
 
 
 ## \addtogroup LSST_task_documentation
@@ -182,7 +183,8 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         for ccdRecord in ccdInputs:
             v = ccdRecord.get(visitKey)
             c = ccdRecord.get(ccdKey)
-            ccdSources = butler.get("src", visit=int(v), ccd=int(c), immediate=True)
+            dataId = {"visit": int(v), self.config.ccdName: int(c)}
+            ccdSources = butler.get("src", dataId=dataId, immediate=True)
             for sourceRecord in ccdSources:
                 sourceRecord.updateCoord(ccdRecord.getWcs())
             for flag in flags:
