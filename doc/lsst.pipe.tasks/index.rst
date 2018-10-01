@@ -4,7 +4,13 @@
 lsst.pipe.tasks
 ###############
 
-.. Paragraph that describes what this Python module does and links to related modules and frameworks.
+``lsst.pipe.tasks`` provides many of the `~lsst.pipe.base.Task` classes that drive the LSST Science Pipelines.
+The `command-line tasks <pipe-tasks-command-line-tasks>` listed here are useful data processing entry points for most users.
+You can also assemble your own pipelines by combining individual tasks through their Python APIs.
+
+``lsst.pipe.tasks`` does not provide all the tasks and command-line tasks in the LSST Science Pipelines.
+For a complete overview of the available tasks, see the *Processing Data* documentation section (to be completed).
+To learn more about the task framework in general, see the :ref:`lsst.pipe.base <lsst.pipe.base>` module documentation.
 
 .. .. _lsst.pipe.tasks-using:
 
