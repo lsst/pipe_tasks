@@ -12,7 +12,9 @@ from lsst.afw.fits import readMetadata
 from lsst.pipe.base import Task, InputOnlyArgumentParser
 from lsst.afw.fits import DEFAULT_HDU
 
-__all__=('IngestArgumentParser','ParseConfig','ParseConfig','ParseTask','RegisterConfig','RegistryContext','RegisterTask','IngestConfig', 'IngestTask')
+__all__ = ('IngestArgumentParser', 'ParseConfig', 'ParseConfig', 'ParseTask', 'RegisterConfig',
+           'RegistryContext', 'RegisterTask', 'IngestConfig', 'IngestTask')
+
 
 class IngestArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting images into the image repository"""

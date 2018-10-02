@@ -26,7 +26,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsstDebug
 
-__all__=('MatchBackgroundsConfig', 'MatchBackgroundsTask','DataRefMatcher')
+__all__ = ('MatchBackgroundsConfig', 'MatchBackgroundsTask', 'DataRefMatcher')
+
 
 class MatchBackgroundsConfig(pexConfig.Config):
 
@@ -175,17 +176,20 @@ class MatchBackgroundsTask(pipeBase.Task):
         -------
         result : `pipeBase.Struct`
             a pipeBase.Struct containing these fields:
+
             - ``backgroundInfoList`` : a list of pipeBase.Struct, one per exposure in expRefList,
-            each of which contains these fields:
+                each of which contains these fields:
             - ``isReference`` : this is the reference exposure (only one returned Struct will
-            contain True for this value, unless the ref exposure is listed multiple times)
-            - ``backgroundModel`` : differential background model (afw.Math.Background or afw.Math.Approximate).
-            Add this to the science exposure to match the reference exposure.
+                contain True for this value, unless the ref exposure is listed multiple times)
+            - ``backgroundModel`` : differential background model
+                (afw.Math.Background or afw.Math.Approximate).
+                Add this to the science exposure to match the reference exposure.
             - ``fitRMS`` : rms of the fit. This is the sqrt(mean(residuals**2)).
-            - ``matchedMSE`` : the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
-            should be comparable to difference image's mean variance.
+            - ``matchedMSE`` : the MSE of the reference and matched
+                images: mean((refImage - matchedSciImage)**2);
+                should be comparable to difference image's mean variance.
             - ``diffImVar`` : the mean variance of the difference image.
-            All fields except isReference will be None if isReference True or the fit failed.
+                All fields except isReference will be None if isReference True or the fit failed.
 
         Notes
         -----
@@ -305,7 +309,7 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         Raises
         ------
-        pipeBase.TaskError 
+        pipeBase.TaskError
             if none of the exposures in expRefList are found.
         """
         self.log.info("Calculating best reference visit")
@@ -370,8 +374,9 @@ class MatchBackgroundsTask(pipeBase.Task):
             returns a pipeBase.Struct with fields:
             - ``backgroundModel`` : an afw.math.Approximate or an afw.math.Background.
             - ``fitRMS`` : rms of the fit. This is the sqrt(mean(residuals**2)).
-            - ``matchedMSE``: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
-            should be comparable to difference image's mean variance.
+            - ``matchedMSE``: the MSE of the reference and
+                matched images: mean((refImage - matchedSciImage)**2);
+                should be comparable to difference image's mean variance.
             - ``diffImVar`` : the mean variance of the difference image.
 
         Notes

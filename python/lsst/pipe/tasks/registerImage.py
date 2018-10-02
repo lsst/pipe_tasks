@@ -100,7 +100,7 @@ class RegisterTask(Task):
 
         Returns
         -------
-        matches : 
+        matches :
             Match list
         """
         matches = afwTable.matchRaDec(templateSources, inputSources,

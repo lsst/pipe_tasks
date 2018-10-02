@@ -52,12 +52,11 @@ import lsst.afw.math as afwMath
 import lsst.afw.detection as afwDetect
 from lsst.daf.base import PropertyList
 
-__all__=('DetectCoaddSourcesConfig','MergeSourcesRunner','MergeSourcesConfig','MergeSourcesTask',
-'CullPeaksConfig','MergeDetectionsConfig','MergeDetectionsTask','DeblendCoaddSourcesConfig',
-'DeblendCoaddSourcesRunner','DeblendCoaddSourcesTask','MeasureMergedCoaddSourcesConfig','MeasureMergedCoaddSourcesRunner',
-'MeasureMergedCoaddSourcesTask','MergeMeasurementsConfig','MergeMeasurementsTask')
-
-
+__all__ = ('DetectCoaddSourcesConfig', 'MergeSourcesRunner', 'MergeSourcesConfig', 'MergeSourcesTask',
+           'CullPeaksConfig', 'MergeDetectionsConfig', 'MergeDetectionsTask', 'DeblendCoaddSourcesConfig',
+           'DeblendCoaddSourcesRunner', 'DeblendCoaddSourcesTask', 'MeasureMergedCoaddSourcesConfig',
+           'MeasureMergedCoaddSourcesRunner', 'MeasureMergedCoaddSourcesTask', 'MergeMeasurementsConfig',
+           'MergeMeasurementsTask')
 
 
 def _makeGetSchemaCatalogs(datasetSuffix):

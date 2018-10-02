@@ -27,7 +27,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
 
-__all__=('MakeSkyMapConfig','MakeSkyMapRunner','MakeSkyMapTask')
+__all__ = ('MakeSkyMapConfig', 'MakeSkyMapRunner', 'MakeSkyMapTask')
+
 
 class MakeSkyMapConfig(pexConfig.Config):
     """Config for MakeSkyMapTask

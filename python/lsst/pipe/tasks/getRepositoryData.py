@@ -101,7 +101,8 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
         -------
         result : ``lsst.pipe.base.Struct``
             - ``idKeyTuple`` : a tuple of dataRef data ID keys
-            - ``idValList`` : a list of data ID value tuples, each tuple contains values in the order in idKeyTuple
+            - ``idValList`` : a list of data ID value tuples,
+                each tuple contains values in the order in idKeyTuple
         """
         if not dataRefList:
             raise RuntimeError("No data refs")

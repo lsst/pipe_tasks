@@ -232,8 +232,8 @@ class PhotoCalTask(pipeBase.Task):
             where magErr is an error in the magnitude; the error in srcMag - refMag
             If nonzero, config.magErrFloor will be added to magErr only (not srcMagErr or refMagErr), as
             magErr is what is later used to determine the zero point.
-            Struct also contains refFluxFieldList: a list of field names of the reference catalog used for fluxes
-            (1 or 2 strings)
+            Struct also contains refFluxFieldList: a list of field names of the reference
+            catalog used for fluxes (1 or 2 strings)
 
         Notes
         -----

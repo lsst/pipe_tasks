@@ -26,7 +26,9 @@ from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.pipe.base import Task
 from lsst.meas.algorithms import SubtractBackgroundTask
 
-__all__=('ScaleVarianceConfig', 'ScaleVarianceTask')
+__all__ = ('ScaleVarianceConfig', 'ScaleVarianceTask')
+
+
 class ScaleVarianceConfig(Config):
     background = ConfigurableField(target=SubtractBackgroundTask, doc="Background subtraction")
     maskPlanes = ListField(

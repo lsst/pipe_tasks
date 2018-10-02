@@ -35,7 +35,8 @@ import lsst.meas.algorithms as measAlg
 
 from .repair import RepairTask
 
-__all__=('InitialPsfConfig','SnapCombineConfig','SnapCombineTask')
+__all__ = ('InitialPsfConfig', 'SnapCombineConfig', 'SnapCombineTask')
+
 
 class InitialPsfConfig(pexConfig.Config):
     """Describes the initial PSF used for detection and measurement before we do PSF determination."""
@@ -136,7 +137,7 @@ class SnapCombineConfig(pexConfig.Config):
 class SnapCombineTask(pipeBase.Task):
     """
     The lsst.pipe.base.cmdLineTask.CmdLineTask command line task interface supports a
-    flag -d to import debug.py from your PYTHONPATH; see 
+    flag -d to import debug.py from your PYTHONPATH; see
     "http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html"
     Using lsstDebug to control debugging output for more about debug.py files.
 

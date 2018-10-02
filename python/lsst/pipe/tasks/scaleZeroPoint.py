@@ -26,8 +26,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
 
-__all__=("ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask", "ScaleZeroPointConfig",
-"SpatialScaleZeroPointConfig","SpatialScaleZeroPointTask")
+__all__ = ("ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask", "ScaleZeroPointConfig",
+           "SpatialScaleZeroPointConfig", "SpatialScaleZeroPointTask")
 
 
 class ImageScaler:
@@ -240,13 +240,15 @@ class ScaleZeroPointTask(pipeBase.Task):
         Parameters
         ----------
         fluxMag0 :
-        
+
         Returns
         -------
         result : `pipeBase.Struct`
             a pipeBase.Struct containing:
-            - ``scale`` : Compute scale, such that if pixelCalib describes the photometric zeropoint of a pixel
-            then the following scales that pixel to the photometric zeropoint specified by config.zeroPoint:
+
+            - ``scale`` : Compute scale, such that if pixelCalib describes the photometric
+                zeropoint of a pixel then the following scales that pixel to the photometric
+                zeropoint specified by config.zeroPoint:
         """
         calib = afwImage.Calib()
         calib.setFluxMag0(fluxMag0)

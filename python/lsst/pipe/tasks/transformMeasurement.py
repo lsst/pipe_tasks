@@ -26,8 +26,9 @@ import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__=('TransformConfig','TransformTask','RunTransformConfig','RunTransformTaskBase',
-'SrcTransformTask','ForcedSrcTransformTask', 'CoaddSrcTransformTask')
+__all__ = ('TransformConfig', 'TransformTask', 'RunTransformConfig', 'RunTransformTaskBase',
+           'SrcTransformTask', 'ForcedSrcTransformTask', 'CoaddSrcTransformTask')
+
 
 def makeContiguous(catalog):
     """Return a version of the input catalog which is contiguous in memory."""

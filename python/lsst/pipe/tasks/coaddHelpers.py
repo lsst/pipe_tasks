@@ -128,7 +128,7 @@ def getGroupDataRef(butler, datasetType, groupTuple, keys):
         Tuple with values specifying a group
     keys:
         List of keys for group tuple
-    
+
     Returns
     -------
     butler.dataRef :

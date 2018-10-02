@@ -137,7 +137,7 @@ class ExampleSimpleStatsTask(pipeBase.Task):
         ----------
         maskedImage :
             masked image (an lsst::afw::MaskedImage)
-        
+
         Returns
         -------
         a pipeBase Struct containing :

@@ -4,7 +4,8 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 from lsst.log import Log
 
-__all__=('ObjectMaskCatalog',)
+__all__ = ('ObjectMaskCatalog',)
+
 
 class ObjectMaskCatalog:
     """Class to support bright object masks
@@ -43,7 +44,6 @@ class ObjectMaskCatalog:
     def readFits(fileName, hdu=0, flags=0):
         # """Read a ds9 region file, returning a ObjectMaskCatalog object
 
-
         # Notes
         # -----
         # This method is called "readFits" to fool the butler. The corresponding mapper entry looks like
@@ -53,7 +53,7 @@ class ObjectMaskCatalog:
         #     persistable:   "PurePythonClass"
         #     storage:       "FitsCatalogStorage"
         # }
-        # and this is the only way I know to get it to read a random file type, in this case a ds9 region file.
+        # and this is the only way I know to get it to read a random file type, in this case a ds9 region file
 
         # This method expects to find files named as BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg
         # The files should be structured as follows:

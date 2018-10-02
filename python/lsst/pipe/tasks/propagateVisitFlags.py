@@ -26,10 +26,11 @@ from lsst.pipe.base import Task
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 
-__all__=('PropagateVisitFlagsConfig','PropagateVisitFlagsTask')
+__all__ = ('PropagateVisitFlagsConfig', 'PropagateVisitFlagsTask')
+
 
 class PropagateVisitFlagsConfig(Config):
-    """!Configuration for propagating flags to coadd"""
+    """Configuration for propagating flags to coadd"""
     flags = DictField(keytype=str, itemtype=float,
                       default={"calib_psf_candidate": 0.2, "calib_psf_used": 0.2, "calib_psf_reserved": 0.2,
                                "calib_astrometry_used": 0.2, "calib_photometry_used": 0.2,
@@ -118,7 +119,7 @@ The 'run' method (described below) is the entry-point for operations.  The
         return coaddExposure.getInfo().getCoaddInputs().ccds
 
     def run(self, butler, coaddSources, ccdInputs, coaddWcs):
-        """!Propagate flags from individual visit measurements to coadd
+        """Propagate flags from individual visit measurements to coadd
 
         This requires matching the coadd source catalog to each of the catalogs
         from the inputs, and thresholding on the number of times a source is

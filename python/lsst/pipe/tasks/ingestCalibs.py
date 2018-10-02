@@ -7,7 +7,9 @@ from lsst.pex.config import Config, Field, ListField, ConfigurableField
 from lsst.pipe.base import InputOnlyArgumentParser
 from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, IngestTask
 
-__all__=('CalibsParseTask', 'CalibsRegisterConfig', 'CalibsRegisterTask', 'IngestCalibsArgumentParser', 'IngestCalibsConfig', 'IngestCalibsTask')
+__all__ = ('CalibsParseTask', 'CalibsRegisterConfig', 'CalibsRegisterTask',
+           'IngestCalibsArgumentParser', 'IngestCalibsConfig', 'IngestCalibsTask')
+
 
 def _convertToDate(dateString):
     """Convert a string into a date object"""
@@ -44,10 +46,19 @@ class CalibsParseTask(ParseTask):
     def getDestination(self, butler, info, filename):
         """Get destination for the file
 
-        @param butler      Data butler
-        @param info        File properties, used as dataId for the butler
-        @param filename    Input filename
-        @return Destination filename
+        Parameters
+        ----------
+        butler :
+            Data butler
+        info :
+            File properties, used as dataId for the butler
+        filename :
+            Input filename
+
+        Returns
+        -------
+        raw :
+            Destination filename
         """
         # 'tempinfo' was added as part of DM-5466 to strip Nones from info.
         # The Butler should handle this behind-the-scenes in the future.
@@ -99,8 +110,12 @@ class CalibsRegisterTask(RegisterTask):
         """Loop over all tables, filters, and ccdnums,
         and update the validity ranges in the registry.
 
-        @param conn: Database connection
-        @param validity: Validity range (days)
+        Parameters
+        ----------
+        conn :
+            Database connection
+        validity :
+            Validity range (days)
         """
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -121,10 +136,16 @@ class CalibsRegisterTask(RegisterTask):
         so that the calibration data with whose date is nearest the date
         of the observation is used.
 
-        @param conn: Database connection
-        @param table: Name of table to be selected
-        @param detectorData: Values identifying a detector (from columns in self.config.detector)
-        @param validity: Validity range (days)
+        Parameters
+        ----------
+        conn :
+            Database connection
+        table :
+            Name of table to be selected
+        detectorData :
+            Values identifying a detector (from columns in self.config.detector)
+        validity :
+            Validity range (days)
         """
         columns = ", ".join([self.config.calibDate, self.config.validStart, self.config.validEnd])
         sql = "SELECT id, %s FROM %s" % (columns, table)
