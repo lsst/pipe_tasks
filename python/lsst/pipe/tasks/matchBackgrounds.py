@@ -623,17 +623,15 @@ class DataRefMatcher:
 
     Note that this is not exact, but should suffice for this task
     until there is better support for this kind of thing in the butler.
+
+    Parameters
+    ----------
+    butler :
+    datasetType :
+        dataset type to match
     """
 
     def __init__(self, butler, datasetType):
-        """Construct a DataRefMatcher
-
-        Parameters
-        ----------
-        butler :
-        datasetType :
-            dataset type to match
-        """
         self._datasetType = datasetType  # for diagnostics
         self._keyNames = butler.getKeys(datasetType)
 

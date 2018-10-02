@@ -59,6 +59,20 @@ class TransformTask(pipeBase.Task):
     an associated WCS and calibration, transform the raw measurement output to
     a calibrated form.
 
+    Parameters
+    ----------
+    measConfig :
+        Configuration for the measurement task which
+        produced the measurments being transformed.
+    inputSchema :
+        The schema of the input catalog.
+    outputDataset :
+        The butler dataset type of the output catalog.
+    args :
+        Passed through to pipeBase.Task.__init__()
+    kwargs :
+        Passed through to pipeBase.Task.__init__()
+
     Notes
     -----
     Transformations are defined on a per-measurement-plugin basis. In
@@ -78,22 +92,6 @@ class TransformTask(pipeBase.Task):
     _DefaultName = "transform"
 
     def __init__(self, measConfig, inputSchema, outputDataset, *args, **kwargs):
-        """Initialize TransformTask.
-
-        Parameters
-        ----------
-        measConfig :
-            Configuration for the measurement task which
-            produced the measurments being transformed.
-        inputSchema :
-            The schema of the input catalog.
-        outputDataset :
-            The butler dataset type of the output catalog.
-        args :
-            Passed through to pipeBase.Task.__init__()
-        kwargs :
-            Passed through to pipeBase.Task.__init__()
-        """
         pipeBase.Task.__init__(self, *args, **kwargs)
 
         # This task can be used to generate multiple different output dataset types. We

@@ -180,6 +180,23 @@ class CharacterizeImageConfig(pexConfig.Config):
 class CharacterizeImageTask(pipeBase.CmdLineTask):
     """Measure bright sources and use this to estimate background and PSF of an exposure
 
+    Parameters
+    ----------
+    butler :
+        A butler object is passed to the refObjLoader constructor in case
+        it is needed to load catalogs.  May be None if a catalog-based star selector is
+        not used, if the reference object loader constructor does not require a butler,
+        or if a reference object loader is passed directly via the refObjLoader argument.
+    refObjLoader :
+        An instance of LoadReferenceObjectsTasks that supplies an
+        external reference catalog to a catalog-based star selector.  May be None if a
+        catalog star selector is not used or the loader can be constructed from the
+        butler argument.
+    schema :
+        initial schema (an lsst.afw.table.SourceTable), or None
+    kwargs :
+        other keyword arguments for lsst.pipe.base.CmdLineTask
+
     Notes
     -----
     Given an exposure with defects repaired (masked and interpolated over, e.g. as output by IsrTask):
@@ -229,9 +246,6 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     measure:
         - `bool`; if True display image and sources after final measurement
 
-
-    Examples
-    --------
     For example, put something like:
 
     .. code-block:: none
@@ -259,25 +273,6 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
-        """Construct a CharacterizeImageTask
-
-        Parameters
-        ----------
-        butler :
-            A butler object is passed to the refObjLoader constructor in case
-            it is needed to load catalogs.  May be None if a catalog-based star selector is
-            not used, if the reference object loader constructor does not require a butler,
-            or if a reference object loader is passed directly via the refObjLoader argument.
-        refObjLoader :
-            An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog to a catalog-based star selector.  May be None if a
-            catalog star selector is not used or the loader can be constructed from the
-            butler argument.
-        schema :
-            initial schema (an lsst.afw.table.SourceTable), or None
-        kwargs :
-            other keyword arguments for lsst.pipe.base.CmdLineTask
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         if schema is None:
             schema = SourceTable.makeMinimalSchema()

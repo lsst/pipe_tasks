@@ -183,6 +183,33 @@ class CalibrateTask(pipeBase.CmdLineTask):
     """Calibrate an exposure: measure sources and perform astrometric and
     photometric calibration
 
+    Parameters
+    ----------
+    butler : `lsst.daf.persistence.Butler`
+        The butler is passed to the refObjLoader constructor
+        in case it is needed.  Ignored if the refObjLoader argument
+        provides a loader directly.
+    astromRefObjLoader :
+        An instance of LoadReferenceObjectsTasks
+        that supplies an external reference catalog for astrometric
+        calibration.  May be None if the desired loader can be constructed
+        from the butler argument or all steps requiring a reference catalog
+        are disabled.
+    photoRefObjLoader :
+        An instance of LoadReferenceObjectsTasks
+        that supplies an external reference catalog for photometric
+        calibration.  May be None if the desired loader can be constructed
+        from the butler argument or all steps requiring a reference catalog
+        are disabled.
+    icSourceSchema :
+        schema for icSource catalog, or None.
+        Schema values specified in config.icSourceFieldsToCopy will be
+        taken from this schema. If set to None, no values will be
+        propagated from the icSourceCatalog
+    kwargs :
+        other keyword arguments for
+        lsst.pipe.base.CmdLineTask
+
     Notes
     -----
     Given an exposure with a good PSF model and aperture correction map
@@ -230,9 +257,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
         sources and matches. See @ref lsst.meas.astrom.displayAstrometry for
         the meaning of the various symbols.
 
-
-    Examples
-    --------
     For example, put something like:
 
     .. code-block:: py
@@ -266,35 +290,6 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
     def __init__(self, butler=None, astromRefObjLoader=None,
                  photoRefObjLoader=None, icSourceSchema=None, **kwargs):
-        """Construct a CalibrateTask
-
-        Parameters
-        ----------
-        butler :
-            The butler is passed to the refObjLoader constructor
-            in case it is needed.  Ignored if the refObjLoader argument
-            provides a loader directly.
-        astromRefObjLoader :
-            An instance of LoadReferenceObjectsTasks
-            that supplies an external reference catalog for astrometric
-            calibration.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog
-            are disabled.
-        photoRefObjLoader :
-            An instance of LoadReferenceObjectsTasks
-            that supplies an external reference catalog for photometric
-            calibration.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog
-            are disabled.
-        icSourceSchema :
-            schema for icSource catalog, or None.
-            Schema values specified in config.icSourceFieldsToCopy will be
-            taken from this schema. If set to None, no values will be
-            propagated from the icSourceCatalog
-        kwargs :
-            other keyword arguments for
-            lsst.pipe.base.CmdLineTask
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
         if icSourceSchema is None and butler is not None:
@@ -388,14 +383,13 @@ class CalibrateTask(pipeBase.CmdLineTask):
         dataRef :
             butler data reference corresponding to a science
             image
-        exposure :
-            characterized exposure (an
-            lsst.afw.image.ExposureF or similar), or None to unpersist existing
+        exposure : `lsst.afw.image.ExposureF`
+            characterized exposure, or None to unpersist existing
             icExp and icBackground. See `run` method for details of what is
             read and written.
-        background :
+        background : lsst.afw.math.BackgroundList
             initial model of background already
-            subtracted from exposure (an lsst.afw.math.BackgroundList). May be
+            subtracted from exposure. May be
             None if no background has been subtracted, though that is unusual
             for calibration. A refined background model is output. Ignored if
             exposure is None.
@@ -405,10 +399,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
         doUnpersist :
             unpersist data:
             - if True, exposure, background and icSourceCat are read from
-            dataRef and those three arguments must all be None;
+                dataRef and those three arguments must all be None;
             - if False the exposure must be provided; background and
             icSourceCat are optional. True is intended for running as a
-            command-line task, False for running as a subtask
+                command-line task, False for running as a subtask
 
         Returns
         -------
@@ -480,7 +474,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
             SourceCatalog IDs will not be globally unique.
         background : `lsst.afw.math.BackgroundList`
             background model already subtracted from
-            exposure (an lsst.afw.math.BackgroundList). May be None if no
+            exposure. May be None if no
             background has been subtracted, though that is unusual for
             calibration. A refined background model is output.
         icSourceCat :
@@ -489,7 +483,8 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         Returns
         -------
-        pipe_base Struct : `struct`
+        result: `lsst.pipe.base.Struct`
+
             - ``exposure`` :  calibrate science exposure with refined WCS and Calib
             - ``background`` : model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
             - ``sourceCat`` :  catalog of measured sources
@@ -629,9 +624,9 @@ class CalibrateTask(pipeBase.CmdLineTask):
         ----------
         dataRef :
             butler data reference corresponding to a science
-        exposure :
+        exposure : `lsst.afw.image.ExposureF`
             exposure to write
-        background :
+        background :`lsst.afw.math.BackgroundList`
             background model for exposure
         sourceCat :
             catalog of measured sources
@@ -665,7 +660,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         Parameters
         ----------
-        exposure :
+        exposure : `lsst.afw.image.ExposureF`
             exposure whose metadata is to be set
         photoRes :
             results of running photoCal; if None then it was

@@ -230,16 +230,17 @@ class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
 
 class ImageDifferenceTask(pipeBase.CmdLineTask):
     """Subtract an image from a template and measure the result
+
+    Parameters
+    ----------
+    butler :
+        Butler object to use in constructing reference object loaders
     """
     ConfigClass = ImageDifferenceConfig
     RunnerClass = ImageDifferenceTaskRunner
     _DefaultName = "imageDifference"
 
     def __init__(self, butler=None, **kwargs):
-        """!Construct an ImageDifference Task
-
-        @param[in] butler  Butler object to use in constructing reference object loaders
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("getTemplate")
 
@@ -287,7 +288,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         Parameters
         ----------
-        sensorRef : 
+        sensorRef :
             sensor-level butler data reference, used for the following data products:
             Input only:
             - calexp

@@ -81,8 +81,6 @@ class RepairTask(pipeBase.Task):
     displayCR :
         If True, display the exposure on ds9's frame 1 and overlay bounding boxes around detects CRs.
 
-    Examples
-    --------
     To investigate the pipe_tasks_repair_Debug, put something like
 
     .. code-block :: none

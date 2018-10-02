@@ -170,9 +170,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     ```config.warpAndPsfMatch.psfMatch.kernel['AL']``` . Each item in the list is formatted as:
     Problem: Explanation. Solution
 
-    Examples
-    --------
-
     Troublshooting PSF-Matching Configuration:
 
     - Matched PSFs look boxy: The matching kernel is too small. _Increase the matching kernel size.

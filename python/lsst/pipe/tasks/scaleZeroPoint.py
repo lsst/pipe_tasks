@@ -34,16 +34,14 @@ class ImageScaler:
     """A class that scales an image
 
     This version uses a single scalar. Fancier versions may use a spatially varying scale.
+
+    Parameters
+    ----------
+    scale :
+        scale correction to apply (see scaleMaskedImage);
     """
 
     def __init__(self, scale=1.0):
-        """Construct an ImageScaler
-
-        Parameters
-        ----------
-        scale :
-            scale correction to apply (see scaleMaskedImage);
-        """
         self._scale = scale
 
     def scaleMaskedImage(self, maskedImage):
@@ -61,27 +59,25 @@ class SpatialImageScaler(ImageScaler):
     Interpolates only when scaleMaskedImage() or getInterpImage() is called.
 
     Currently the only type of 'interpolation' implemented is CONSTANT which calculates the mean.
+
+    Parameters
+    ----------
+    interpStyle :
+        interpolation style (CONSTANT is only option)
+    xList :
+        list of X pixel positions
+    yList :
+        list of Y pixel positions
+    scaleList :
+        list of multiplicative scale factors at (x,y)
+
+    Raises
+    ------
+    RuntimeError
+        if the lists have different lengths
     """
 
     def __init__(self, interpStyle, xList, yList, scaleList):
-        """Constructor
-
-        Parameters
-        ----------
-        interpStyle :
-            interpolation style (CONSTANT is only option)
-        xList :
-            list of X pixel positions
-        yList :
-            list of Y pixel positions
-        scaleList :
-            list of multiplicative scale factors at (x,y)
-
-        Raises
-        ------
-        RuntimeError
-            if the lists have different lengths
-        """
         if len(xList) != len(yList) or len(xList) != len(scaleList):
             raise RuntimeError(
                 "len(xList)=%s len(yList)=%s, len(scaleList)=%s but all lists must have the same length" %
@@ -157,8 +153,6 @@ class ScaleZeroPointTask(pipeBase.Task):
     _DefaultName = "scaleZeroPoint"
 
     def __init__(self, *args, **kwargs):
-        """Construct a ScaleZeroPointTask
-        """
         pipeBase.Task.__init__(self, *args, **kwargs)
 
         # flux at mag=0 is 10^(zeroPoint/2.5)   because m = -2.5*log10(F/F0)

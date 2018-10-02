@@ -171,9 +171,13 @@ class DetectCoaddSourcesTask(CmdLineTask):
         {tract,patch,filter}. BackgroundList
     Data Unit :
         tract, patch, filter
-
-    Examples
-    --------
+    schema :
+        initial schema for the output catalog, modified-in place to include all
+        fields set by this task.  If None, the source minimal schema will be used.
+    kwargs :
+        keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
+    Notes
+    -----
 
     DetectCoaddSourcesTask is meant to be run after assembling a coadded image in a given band. The purpose of
     the task is to update the background, detect all sources in a single band and generate a set of parent
@@ -214,18 +218,6 @@ class DetectCoaddSourcesTask(CmdLineTask):
         return parser
 
     def __init__(self, schema=None, **kwargs):
-        """Initialize the task. Create the @ref SourceDetectionTask_ "detection" subtask.
-
-        Keyword arguments (in addition to those forwarded to CmdLineTask.__init__):
-
-        Parameters
-        ----------
-        schema :
-            initial schema for the output catalog, modified-in place to include all
-            fields set by this task.  If None, the source minimal schema will be used.
-        kwargs :
-            keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
-        """
         CmdLineTask.__init__(self, **kwargs)
         if schema is None:
             schema = afwTable.SourceTable.makeMinimalSchema()
@@ -413,8 +405,19 @@ class MergeSourcesTask(CmdLineTask):
     Merging detections (MergeDetectionsTask) and merging measurements (MergeMeasurementsTask) are
     so similar that it makes sense to re-use the code, in the form of this abstract base class.
 
+    Parameters
+    ----------
+    Keyword arguments (in addition to those forwarded to CmdLineTask.__init__) :
+    schema :
+        the schema of the detection catalogs used as input to this one
+    butler :
+        a butler used to read the input schema from disk, if schema is None
+
     Notes
     -----
+    Derived classes should use the getInputSchema() method to handle the additional
+    arguments and retreive the actual input schema.
+
     NB: Do not use this class directly. Instead use one of the child classes that inherit from
     MergeSourcesTask such as MergeDetectionsTask "MergeDetectionsTask" or MergeMeasurementsTask
     "MergeMeasurementsTask"
@@ -466,21 +469,6 @@ class MergeSourcesTask(CmdLineTask):
         return schema
 
     def __init__(self, butler=None, schema=None, **kwargs):
-        """Initialize the task.
-
-        Parameters
-        ----------
-        Keyword arguments (in addition to those forwarded to CmdLineTask.__init__) :
-        schema :
-            the schema of the detection catalogs used as input to this one
-        butler :
-            a butler used to read the input schema from disk, if schema is None
-
-        Notes
-        -----
-        Derived classes should use the getInputSchema() method to handle the additional
-        arguments and retreive the actual input schema.
-        """
         CmdLineTask.__init__(self, **kwargs)
 
     def runDataRef(self, patchRefList):
@@ -643,6 +631,18 @@ class MergeDetectionsTask(MergeSourcesTask):
         {tract,patch}. SourceCatalog (only parent Footprints)
     Data Unit:
         tract, patch
+    schema :
+        the schema of the detection catalogs used as input to this one
+    butler :
+        a butler used to read the input schema from disk, if schema is None
+    kwargs :
+        keyword arguments to be passed to MergeSourcesTask.__init__
+        the task will set its own self.schema attribute to the schema of the output merged catalog.
+
+    Notes
+    -----
+    A FootprintMergeList "FootprintMergeList" will be used to
+    merge the source catalogs.
 
     Examples
     --------
@@ -678,22 +678,6 @@ class MergeDetectionsTask(MergeSourcesTask):
     makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
 
     def __init__(self, butler=None, schema=None, **kwargs):
-        """Initialize the merge detections task.
-
-        A FootprintMergeList "FootprintMergeList" will be used to
-        merge the source catalogs.
-
-        Parameters
-        ----------
-        Additional keyword arguments (forwarded to MergeSourcesTask.__init__):
-        schema :
-            the schema of the detection catalogs used as input to this one
-        butler :
-            a butler used to read the input schema from disk, if schema is None
-        kwargs :
-            keyword arguments to be passed to MergeSourcesTask.__init__
-            the task will set its own self.schema attribute to the schema of the output merged catalog.
-        """
         MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
         self.makeSubtask("skyObjects")
         self.schema = self.getInputSchema(butler=butler, schema=schema)
@@ -1157,6 +1141,8 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
         Data Unit :
             tract, patch, filter
 
+    Notes
+    -----
     MeasureMergedCoaddSourcesTask delegates most of its work to a set of sub-tasks:
 
     The ``lsst.pipe.base.cmdLineTask.CmdLineTask`` command line task interface supports a
@@ -1166,8 +1152,6 @@ class MeasureMergedCoaddSourcesTask(CmdLineTask):
     MeasureMergedCoaddSourcesTask has no debug variables of its own because it delegates all the work to
     the various sub-tasks. See the documetation for individual sub-tasks for more information.
 
-    Examples
-    --------
     After MeasureMergedCoaddSourcesTask has been run on multiple coadds, we have a set of per-band catalogs.
     The next stage in the multi-band processing procedure will merge these measurements into a suitable
     catalog for driving forced photometry.
@@ -1419,9 +1403,17 @@ class MergeMeasurementsTask(MergeSourcesTask):
         SourceCatalog
     Data Unit:
         tract, patch
+    kwargs :
+        Additional keyword arguments (forwarded to MergeSourcesTask.__init__)
+    schema :
+        the schema of the detection catalogs used as input to this one
+    butler :
+        a butler used to read the input schema from disk, if schema is None
 
-    Examples
-    --------
+    Notes
+    -----
+    The task will set its own self.schema attribute to the schema of the output merged catalog.
+
     MergeMeasurementsTask is meant to be run after deblending & measuring sources in every band.
     The purpose of the task is to generate a catalog of sources suitable for driving forced photometry in
     coadds and individual exposures.
@@ -1449,21 +1441,6 @@ class MergeMeasurementsTask(MergeSourcesTask):
     getSchemaCatalogs = _makeGetSchemaCatalogs("ref")
 
     def __init__(self, butler=None, schema=None, **kwargs):
-        """Initialize the task.
-
-        Parameters
-        ----------
-        kwargs :
-            Additional keyword arguments (forwarded to MergeSourcesTask.__init__)
-        schema :
-            the schema of the detection catalogs used as input to this one
-        butler :
-            a butler used to read the input schema from disk, if schema is None
-
-        Notes
-        -----
-        The task will set its own self.schema attribute to the schema of the output merged catalog.
-        """
         MergeSourcesTask.__init__(self, butler=butler, schema=schema, **kwargs)
         inputSchema = self.getInputSchema(butler=butler, schema=schema)
         self.schemaMapper = afwTable.SchemaMapper(inputSchema, True)

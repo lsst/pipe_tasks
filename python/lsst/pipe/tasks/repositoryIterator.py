@@ -64,6 +64,13 @@ def _getDTypeList(keyTuple, valTuple):
 class SourceData:
     """Accumulate a set of measurements from a set of source tables
 
+    Parameters
+    ----------
+    datasetType :
+        dataset type for source
+    sourceKeyTuple :
+        list of keys of data items to extract from the source tables
+
     Notes
     -----
     To use:
@@ -81,23 +88,15 @@ class SourceData:
     - self.repoArr: a numpy structured array of shape (num repositories,)
     containing a named column for each repository key (see RepositoryIterator)
 
-    @note: sources that had non-finite data (e.g. NaN) for every value extracted are silently omitted
+    sources that had non-finite data (e.g. NaN) for every value extracted are silently omitted
+
+    Raises
+    ------
+    RuntimeError
+        if sourceKeyTuple is empty
     """
 
     def __init__(self, datasetType, sourceKeyTuple):
-        """
-        Parameters
-        ----------
-        datasetType :
-            dataset type for source
-        sourceKeyTuple :
-            list of keys of data items to extract from the source tables
-
-        Raises
-        ------
-        RuntimeError 
-            if sourceKeyTuple is empty
-        """
         if len(sourceKeyTuple) < 1:
             raise RuntimeError("Must specify at least one key in sourceKeyTuple")
         self.datasetType = datasetType
@@ -277,18 +276,16 @@ class RepositoryInfo:
 
 class RepositoryIterator:
     """Iterate over a set of data repositories that use a naming convention based on parameter values
+
+    Parameters
+    ----------
+    formatStr :
+        format string using dictionary notation, e.g.: "%(foo)s_%(bar)d"
+    dataDict :
+        name=valueList pairs
     """
 
     def __init__(self, formatStr, **dataDict):
-        """Construct a repository iterator from a dict of name: valueList
-
-        Parameters
-        ----------
-        formatStr :
-            format string using dictionary notation, e.g.: "%(foo)s_%(bar)d"
-        dataDict :
-            name=valueList pairs
-        """
         self._formatStr = formatStr
         self._keyTuple = tuple(sorted(dataDict.keys()))
         self._valListOfLists = [numpy.array(dataDict[key]) for key in self._keyTuple]

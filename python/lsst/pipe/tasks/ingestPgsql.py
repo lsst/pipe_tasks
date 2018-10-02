@@ -14,19 +14,17 @@ __all__=('PgsqlRegistryContext','PgsqlRegisterTask','PgsqlIngestConfig','PgsqlIn
 
 class PgsqlRegistryContext(RegistryContext):
     """Context manager to provide a pgsql registry
+
+    Parameters
+    ----------
+    registryName :
+        Name of registry file
+    createTableFunc :
+        Function to create tables
+    forceCreateTables :
+        Force the (re-)creation of tables?
     """
     def __init__(self, registryName, createTableFunc, forceCreateTables):
-        """Construct a context manager
-
-        Parameters
-        ----------
-        registryName :
-            Name of registry file
-        createTableFunc :
-            Function to create tables
-        forceCreateTables :
-            Force the (re-)creation of tables?
-        """
         self.registryName = registryName
         data = PgsqlRegistry.readYaml(registryName)
         self.conn = pgsql.connect(host=data["host"], port=data["port"], user=data["user"],

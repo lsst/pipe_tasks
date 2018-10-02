@@ -57,100 +57,95 @@ class MeasurePsfConfig(pexConfig.Config):
 class MeasurePsfTask(pipeBase.Task):
     """A task that selects stars from a catalog of sources and uses those to measure the PSF.
 
-Notes
------
-The star selector is a subclass of
-``lsst.meas.algorithms.starSelector.BaseStarSelectorTask`` "lsst.meas.algorithms.BaseStarSelectorTask"
-and the PSF determiner is a sublcass of
-``lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask`` "lsst.meas.algorithms.BasePsfDeterminerTask"
+    Parameters
+    ----------
+    schema : `lsst.sfw.table.Schema`
+        An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
+    kwargs :
+        Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
 
-There is no establised set of configuration parameters for these algorithms, so once you start modifying
-parameters (as we do in @ref pipe_tasks_measurePsf_Example) your code is no longer portable.
+    Notes
+    -----
+    If schema is not None, 'calib_psf_candidate' and 'calib_psf_used' fields will be added to
+    identify which stars were employed in the PSF estimation.
 
-@section pipe_tasks_measurePsf_Debug		Debug variables
+    This task can add fields to the schema, so any code calling this task must ensure that
+    these fields are indeed present in the input table.
 
-The  ``lsst.pipe.base.cmdLineTask.CmdLineTask`` command line task interface supports a
-flag -d to import debug.py from your PYTHONPATH; see baseDebug for more about debug.py files.
+    The star selector is a subclass of
+    ``lsst.meas.algorithms.starSelector.BaseStarSelectorTask`` "lsst.meas.algorithms.BaseStarSelectorTask"
+    and the PSF determiner is a sublcass of
+    ``lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask`` "lsst.meas.algorithms.BasePsfDeterminerTask"
 
-.. code-block:: none
+    There is no establised set of configuration parameters for these algorithms, so once you start modifying
+    parameters (as we do in @ref pipe_tasks_measurePsf_Example) your code is no longer portable.
 
-    display
-    If True, display debugging plots
-    displayExposure
-    display the Exposure + spatialCells
-    displayPsfCandidates
-    show mosaic of candidates
-    showBadCandidates
-    Include bad candidates
-    displayPsfMosaic
-    show mosaic of reconstructed PSF(xy)
-    displayResiduals
-    show residuals
-    normalizeResiduals
-    Normalise residuals by object amplitude
+    @section pipe_tasks_measurePsf_Debug		Debug variables
 
+    The  ``lsst.pipe.base.cmdLineTask.CmdLineTask`` command line task interface supports a
+    flag -d to import debug.py from your PYTHONPATH; see baseDebug for more about debug.py files.
 
-Additionally you can enable any debug outputs that your chosen star selector and psf determiner support.
+    .. code-block:: none
 
-A complete example of using MeasurePsfTask
-
-This code is in ``measurePsfTask.py`` in the examples directory, and can be run as e.g.
-
-.. code-block:: none
-
-    examples/measurePsfTask.py --ds9
-
-The example also runs SourceDetectionTask and SourceMeasurementTask;
-see ``meas_algorithms_measurement_Example`` for more explanation.
-
-Import the tasks (there are some other standard imports; read the file to see them all):
+        display
+        If True, display debugging plots
+        displayExposure
+        display the Exposure + spatialCells
+        displayPsfCandidates
+        show mosaic of candidates
+        showBadCandidates
+        Include bad candidates
+        displayPsfMosaic
+        show mosaic of reconstructed PSF(xy)
+        displayResiduals
+        show residuals
+        normalizeResiduals
+        Normalise residuals by object amplitude
 
 
-To investigate the @ref pipe_tasks_measurePsf_Debug, put something like
+    Additionally you can enable any debug outputs that your chosen star selector and psf determiner support.
 
-.. code-block :: none
+    A complete example of using MeasurePsfTask
 
-    import lsstDebug
-    def DebugInfo(name):
-        di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
+    This code is in ``measurePsfTask.py`` in the examples directory, and can be run as e.g.
 
-        if name == "lsst.pipe.tasks.measurePsf" :
-            di.display = True
-            di.displayExposure = False          # display the Exposure + spatialCells
-            di.displayPsfCandidates = True      # show mosaic of candidates
-            di.displayPsfMosaic = True          # show mosaic of reconstructed PSF(xy)
-            di.displayResiduals = True          # show residuals
-            di.showBadCandidates = True         # Include bad candidates
-            di.normalizeResiduals = False       # Normalise residuals by object amplitude
+    .. code-block:: none
 
-        return di
+        examples/measurePsfTask.py --ds9
 
-    lsstDebug.Info = DebugInfo
+    The example also runs SourceDetectionTask and SourceMeasurementTask;
+    see ``meas_algorithms_measurement_Example`` for more explanation.
 
-into your debug.py file and run measurePsfTask.py with the --debug flag.
+    Import the tasks (there are some other standard imports; read the file to see them all):
+
+
+    To investigate the @ref pipe_tasks_measurePsf_Debug, put something like
+
+    .. code-block :: none
+
+        import lsstDebug
+        def DebugInfo(name):
+            di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
+
+            if name == "lsst.pipe.tasks.measurePsf" :
+                di.display = True
+                di.displayExposure = False          # display the Exposure + spatialCells
+                di.displayPsfCandidates = True      # show mosaic of candidates
+                di.displayPsfMosaic = True          # show mosaic of reconstructed PSF(xy)
+                di.displayResiduals = True          # show residuals
+                di.showBadCandidates = True         # Include bad candidates
+                di.normalizeResiduals = False       # Normalise residuals by object amplitude
+
+            return di
+
+        lsstDebug.Info = DebugInfo
+
+    into your debug.py file and run measurePsfTask.py with the --debug flag.
     """
     ConfigClass = MeasurePsfConfig
     _DefaultName = "measurePsf"
 
     def __init__(self, schema=None, **kwargs):
-        """Create the detection task.  Most arguments are simply passed onto pipe.base.Task.
-
-        Parameters
-        ----------
-        schema : `lsst.sfw.table.Schema`
-            An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
-        kwargs :
-            Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
-
-        Notes
-        -----
-        If schema is not None, 'calib_psf_candidate' and 'calib_psf_used' fields will be added to
-        identify which stars were employed in the PSF estimation.
-
-        This task can add fields to the schema, so any code calling this task must ensure that
-        these fields are indeed present in the input table.
-        """
-
         pipeBase.Task.__init__(self, **kwargs)
         if schema is not None:
             self.candidateKey = schema.addField(

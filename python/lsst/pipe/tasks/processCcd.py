@@ -77,6 +77,29 @@ class ProcessCcdConfig(pexConfig.Config):
 class ProcessCcdTask(pipeBase.CmdLineTask):
     """Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
 
+    Parameters
+    ----------
+    butler :
+        The butler is passed to the refObjLoader constructor in case it is
+        needed.  Ignored if the refObjLoader argument provides a loader directly.
+    psfRefObjLoader :
+        An instance of LoadReferenceObjectsTasks that supplies an
+        external reference catalog for image characterization.  An example of when this would
+        be used is when a CatalogStarSelector is used.  May be None if the desired loader can
+        be constructed from the butler argument or all steps requiring a catalog are disabled.
+    astromRefObjLoader :
+        An instance of LoadReferenceObjectsTasks that supplies an
+        external reference catalog for astrometric calibration.  May be None if the desired
+        loader can be constructed from the butler argument or all steps requiring a reference
+        catalog are disabled.
+    photoRefObjLoader :
+        An instance of LoadReferenceObjectsTasks that supplies an
+        external reference catalog for photometric calibration.  May be None if the desired
+        loader can be constructed from the butler argument or all steps requiring a reference
+        catalog are disabled.
+    kwargs :
+        other keyword arguments for lsst.pipe.base.CmdLineTask
+
     Notes
     -----
 
@@ -104,30 +127,6 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
     def __init__(self, butler=None, psfRefObjLoader=None, astromRefObjLoader=None, photoRefObjLoader=None,
                  **kwargs):
-        """
-        Parameters
-        ----------
-        butler :
-            The butler is passed to the refObjLoader constructor in case it is
-            needed.  Ignored if the refObjLoader argument provides a loader directly.
-        psfRefObjLoader :
-            An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for image characterization.  An example of when this would
-            be used is when a CatalogStarSelector is used.  May be None if the desired loader can
-            be constructed from the butler argument or all steps requiring a catalog are disabled.
-        astromRefObjLoader :
-            An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for astrometric calibration.  May be None if the desired
-            loader can be constructed from the butler argument or all steps requiring a reference
-            catalog are disabled.
-        photoRefObjLoader :
-            An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for photometric calibration.  May be None if the desired
-            loader can be constructed from the butler argument or all steps requiring a reference
-            catalog are disabled.
-        kwargs :
-            other keyword arguments for lsst.pipe.base.CmdLineTask
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
         self.makeSubtask("charImage", butler=butler, refObjLoader=psfRefObjLoader)

@@ -235,22 +235,20 @@ class RegistryContext:
     An existing registry is copied, so that it may continue
     to be used while we add to this new registry.  Finally,
     the new registry is moved into the right place.
+
+    Parameters
+    ----------
+    registryName :
+        Name of registry file
+    createTableFunc :
+        Function to create tables
+    forceCreateTables :
+        Force the (re-)creation of tables?
+    permissions :
+        Permissions to set on database file
     """
 
     def __init__(self, registryName, createTableFunc, forceCreateTables, permissions):
-        """Construct a context manager
-
-        Parameters
-        ----------
-        registryName :
-            Name of registry file
-        createTableFunc :
-            Function to create tables
-        forceCreateTables :
-            Force the (re-)creation of tables?
-        permissions :
-            Permissions to set on database file
-        """
         self.registryName = registryName
         self.permissions = permissions
 

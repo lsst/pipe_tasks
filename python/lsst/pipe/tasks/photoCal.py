@@ -125,62 +125,58 @@ class PhotoCalTask(pipeBase.Task):
     """Calculate an Exposure's zero-point given a set of flux measurements
     of stars matched to an input catalogue.
 
-Notes
------
-The type of flux to use is specified by PhotoCalConfig.fluxField.
+    Notes
+    -----
+    The type of flux to use is specified by PhotoCalConfig.fluxField.
 
-The algorithm clips outliers iteratively, with parameters set in the configuration.
+    The algorithm clips outliers iteratively, with parameters set in the configuration.
 
-This task can adds fields to the schema, so any code calling this task must ensure that
-these columns are indeed present in the input match list; see @ref pipe_tasks_photocal_Example
+    This task can adds fields to the schema, so any code calling this task must ensure that
+    these columns are indeed present in the input match list; see @ref pipe_tasks_photocal_Example
 
-Debug variables
+    Debug variables
 
-The available variables in PhotoCalTask are:
+    The available variables in PhotoCalTask are:
 
-display :
-    If True enable other debug outputs
-displaySources :
-    If True, display the exposure on ds9's frame 1 and overlay the source catalogue.
+    display :
+        If True enable other debug outputs
+    displaySources :
+        If True, display the exposure on ds9's frame 1 and overlay the source catalogue.
 
-red o :
-    Reserved objects
-green o :
-    Objects used in the photometric calibration
+    red o :
+        Reserved objects
+    green o :
+        Objects used in the photometric calibration
 
-scatterPlot :
-    Make a scatter plot of flux v. reference magnitude as a function of reference magnitude:
+    scatterPlot :
+        Make a scatter plot of flux v. reference magnitude as a function of reference magnitude:
 
-    - good objects in blue
-    - rejected objects in red
+        - good objects in blue
+        - rejected objects in red
 
-(if scatterPlot is 2 or more, prompt to continue after each iteration)
+    (if scatterPlot is 2 or more, prompt to continue after each iteration)
 
-Examples
---------
-To investigate the @ref pipe_tasks_photocal_Debug, put something like
+    To investigate the @ref pipe_tasks_photocal_Debug, put something like
 
-.. code-block:: none
+    .. code-block:: none
 
 
-    import lsstDebug
-    def DebugInfo(name):
-        di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-        if name.endswith(".PhotoCal"):
-            di.display = 1
+        import lsstDebug
+        def DebugInfo(name):
+            di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
+            if name.endswith(".PhotoCal"):
+                di.display = 1
 
-        return di
+            return di
 
-    lsstDebug.Info = DebugInfo
+        lsstDebug.Info = DebugInfo
 
-into your debug.py file and run photoCalTask.py with the @c --debug flag.
+    into your debug.py file and run photoCalTask.py with the @c --debug flag.
     """
     ConfigClass = PhotoCalConfig
     _DefaultName = "photoCal"
 
     def __init__(self, refObjLoader, schema=None, **kwds):
-        """Create the photometric calibration task.  See PhotoCalTask.init for documentation
-        """
         pipeBase.Task.__init__(self, **kwds)
         self.scatterPlot = None
         self.fig = None

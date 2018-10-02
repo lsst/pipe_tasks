@@ -105,10 +105,6 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
     _DefaultName = "exampleTask"
 
     def __init__(self, *args, **kwargs):
-        """Construct an ExampleCmdLineTask
-
-        Call the parent class constructor and make the "stats" subtask from the config field of the same name.
-        """
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("stats")
 

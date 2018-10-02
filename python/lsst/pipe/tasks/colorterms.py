@@ -109,8 +109,6 @@ class ColortermDict(Config):
     ColortermDict(data=dataDict)
     where dataDict is a Python dict of filterName: Colorterm
 
-    Examples
-    --------
     For example:
 
     .. code-block:: none
@@ -144,9 +142,6 @@ class ColortermLibrary(Config):
     To construct a ColortermLibrary, use keyword arguments:
     ColortermLibrary(data=dataDict)
     where dataDict is a Python dict of catalog_name_or_glob: ColortermDict
-
-    Examples
-    --------
 
     .. code-block:: none
 

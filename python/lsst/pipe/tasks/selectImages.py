@@ -53,19 +53,17 @@ class DatabaseSelectImagesConfig(pexConfig.Config):
 
 class BaseExposureInfo(pipeBase.Struct):
     """Data about a selected exposure
+
+    Parameters
+    ----------
+    dataId :
+        data ID of exposure (a dict)
+    coordList :
+        ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
+        plus any others items that are desired
     """
 
     def __init__(self, dataId, coordList):
-        """Create exposure information that can be used to generate data references
-
-        Parameters
-        ----------
-        dataId :
-            data ID of exposure (a dict)
-        coordList :
-            ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
-            plus any others items that are desired
-        """
         super(BaseExposureInfo, self).__init__(dataId=dataId, coordList=coordList)
 
 
