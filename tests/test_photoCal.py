@@ -92,7 +92,7 @@ class PhotoCalTest(unittest.TestCase):
         self.config.match.matchRadius = 0.5
         self.config.match.referenceSelection.doMagLimit = True
         self.config.match.referenceSelection.magLimit.maximum = 22.0
-        self.config.match.referenceSelection.magLimit.fluxField = "i_instFlux"
+        self.config.match.referenceSelection.magLimit.fluxField = "i_flux"
         self.config.match.referenceSelection.doFlags = True
         self.config.match.referenceSelection.flags.good = ['photometric']
         self.config.match.referenceSelection.flags.bad = ['resolved']
