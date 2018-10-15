@@ -1,15 +1,6 @@
 # Documentation manifest.
 
-# Name of this package
-# Also the name of the package documentation subdirectory.
-package: "pipe_tasks"
-
 # List of names of Python modules in this package.
 # For each module there is a corresponding module doc subdirectory.
 modules:
   - "lsst.pipe.tasks"
-
-# Name of the static content directories (subdirectories of `_static`).
-# Static content directories are usually named after the package.
-statics:
-  - "_static/pipe_tasks"

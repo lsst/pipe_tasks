@@ -9,5 +9,4 @@ pipe_tasks documentation preview
 .. toctree::
    :maxdepth: 1
 
-   pipe_tasks/index
    lsst.pipe.tasks/index
