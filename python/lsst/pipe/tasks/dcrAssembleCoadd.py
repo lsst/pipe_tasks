@@ -350,7 +350,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             subfilterVariance = None
             while (convergenceCheck > self.config.convergenceThreshold or
                    modelIter < self.config.minNumIter):
-                gain = self.calculateGain(modelIter, self.config.baseGain)
+                gain = self.calculateGain(modelIter)
                 self.dcrAssembleSubregion(dcrModels, subBBox, tempExpRefList, imageScalerList,
                                           weightList, spanSetMaskList, stats.flags, stats.ctrl,
                                           convergenceMetric, baseMask, subfilterVariance, gain)
@@ -738,7 +738,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
-    def calculateGain(self, modelIter, baseGain=1.):
+    def calculateGain(self, modelIter):
         """Calculate the gain to use for the current iteration.
 
         After calculating a new DcrModel, each value is averaged with the
@@ -752,8 +752,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         modelIter : `int`
             The current iteration of forward modeling.
-        baseGain : `float`, optional
-            Description
 
         Returns
         -------
@@ -762,6 +760,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             A value of 1.0 gives equal weight to both solutions.
         """
         if self.config.useProgressiveGain:
-            iterGain = np.log(modelIter) if modelIter > 0 else baseGain
-            return max(baseGain, iterGain)
-        return baseGain
+            iterGain = np.log(modelIter)*self.config.baseGain if modelIter > 0 else self.config.baseGain
+            return max(self.config.baseGain, iterGain)
+        return self.config.baseGain
