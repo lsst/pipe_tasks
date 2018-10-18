@@ -21,6 +21,7 @@
 #
 
 import numpy as np
+from scipy import ndimage
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -75,6 +76,12 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         dtype=bool,
         doc="Weight exposures by airmass? Useful if there are relatively few high-airmass observations.",
         default=True,
+    )
+    modelWidth = pexConfig.Field(
+        dtype=int,
+        doc="Width of the region around detected sources to include in the DcrModel."
+            "Set to a negative number to disable, which will include all pixels.",
+        default=3,
     )
     regularizeModelIterations = pexConfig.Field(
         dtype=float,
@@ -341,6 +348,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
             self.log.info("Computing coadd over %s", subBBox)
+            modelWeights = self.calculateModelWeights(templateCoadd.maskedImage[subBBox])
             convergenceMetric = self.calculateConvergence(dcrModels, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, spanSetMaskList,
                                                           stats.ctrl)
@@ -353,7 +361,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 gain = self.calculateGain(modelIter)
                 self.dcrAssembleSubregion(dcrModels, subBBox, tempExpRefList, imageScalerList,
                                           weightList, spanSetMaskList, stats.flags, stats.ctrl,
-                                          convergenceMetric, baseMask, subfilterVariance, gain)
+                                          convergenceMetric, baseMask, subfilterVariance, gain,
+                                          modelWeights)
                 if self.config.useConvergence:
                     convergenceMetric = self.calculateConvergence(dcrModels, subBBox, tempExpRefList,
                                                                   imageScalerList, weightList,
@@ -429,7 +438,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
                              spanSetMaskList, statsFlags, statsCtrl, convergenceMetric,
-                             baseMask, subfilterVariance, gain):
+                             baseMask, subfilterVariance, gain, modelWeights):
         """Assemble the DCR coadd for a sub-region.
 
         Build a DCR-matched template for each input exposure, then shift the
@@ -470,6 +479,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The variance of each coadded subfilter image.
         gain : `float`, optional
             Relative weight to give the new solution when updating the model.
+        modelWeights : `numpy.ndarray` or `float`
+            A 2D array of weight values that tapers smoothly to zero away from detected sources.
+            Or a placeholder value of 1.0 if ``self.config.modelWidth`` is set to a negative number.
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
@@ -492,6 +504,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.removeMaskPlanes:
                 self.removeMaskPlanes(maskedImage)
             maskedImage -= templateImage
+            maskedImage.image.array *= modelWeights
             residualGeneratorList.append(self.dcrResiduals(maskedImage, visitInfo, bboxGrow, wcs,
                                                            dcrModels.filter))
 
@@ -763,3 +776,27 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             iterGain = np.log(modelIter)*self.config.baseGain if modelIter > 0 else self.config.baseGain
             return max(self.config.baseGain, iterGain)
         return self.config.baseGain
+
+    def calculateModelWeights(self, maskedImage):
+        """Build an array that smoothly tapers to 0 away from detected sources.
+
+        Parameters
+        ----------
+        maskedImage : `numpy.ndarray`
+            The input masked image to calculate weights for.
+
+        Returns
+        -------
+        weights : `numpy.ndarray` or `float`
+            A 2D array of weight values that tapers smoothly to zero away from detected sources.
+            Or a placeholder value of 1.0 if ``self.config.modelWidth`` is set to a negative number.
+        """
+        if self.config.modelWidth < 0:
+            return 1.
+        convergeMask = maskedImage.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+        convergeMaskPixels = maskedImage.mask.array & convergeMask > 0
+        weights = np.zeros_like(maskedImage.image.array)
+        weights[convergeMaskPixels] = 1.
+        weights = ndimage.filters.gaussian_filter(weights, self.config.modelWidth)
+        weights /= np.max(weights)
+        return weights
