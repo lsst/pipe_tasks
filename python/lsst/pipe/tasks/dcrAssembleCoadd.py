@@ -83,6 +83,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
             "Set to a negative number to disable, which will include all pixels.",
         default=3,
     )
+    useSubfilterMidpoint = pexConfig.Field(
+        dtype=bool,
+        doc="Use the midpoint of each subfilter to calculate DCR.",
+        default=True,
+    )
     regularizeModelIterations = pexConfig.Field(
         dtype=float,
         doc="Maximum relative change of the model allowed between iterations."
@@ -496,7 +501,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             wcs = exposure.getInfo().getWcs()
             maskedImage = exposure.maskedImage
             templateImage = dcrModels.buildMatchedTemplate(warpCtrl=self.warpCtrl, visitInfo=visitInfo,
-                                                           bbox=bboxGrow, wcs=wcs, mask=baseMask)
+                                                           bbox=bboxGrow, wcs=wcs, mask=baseMask,
+                                                           useMidpoint=self.config.useSubfilterMidpoint)
             imageScaler.scaleMaskedImage(maskedImage)
             if altMaskSpans is not None:
                 self.applyAltMaskPlanes(maskedImage.mask, altMaskSpans)
