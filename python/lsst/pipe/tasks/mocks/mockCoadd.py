@@ -165,6 +165,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
         catalog = self.mockObservation.run(butler=butler,
                                            n=self.config.nObservations, camera=camera,
                                            tractInfo=skyMap[tract])
+        catalog.sort()
         if butler is not None:
             butler.put(catalog, "observations", tract=tract)
         return catalog
