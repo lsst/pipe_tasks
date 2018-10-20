@@ -77,11 +77,15 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Weight exposures by airmass? Useful if there are relatively few high-airmass observations.",
         default=True,
     )
-    modelWidth = pexConfig.Field(
-        dtype=int,
-        doc="Width of the region around detected sources to include in the DcrModel."
-            "Set to a negative number to disable, which will include all pixels.",
+    modelWeightsWidth = pexConfig.Field(
+        dtype=float,
+        doc="Width of the region around detected sources to include in the DcrModel.",
         default=3,
+    )
+    useModelWeights = pexConfig.Field(
+        dtype=bool,
+        doc="Width of the region around detected sources to include in the DcrModel.",
+        default=True,
     )
     splitSubfilters = pexConfig.Field(
         dtype=bool,
@@ -354,7 +358,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
             self.log.info("Computing coadd over %s", subBBox)
-            modelWeights = self.calculateModelWeights(templateCoadd.maskedImage[subBBox])
+            if self.config.useModelWeights:
+                modelWeights = self.calculateModelWeights(templateCoadd.maskedImage[subBBox])
+            else:
+                return 1.
             convergenceMetric = self.calculateConvergence(dcrModels, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, spanSetMaskList,
                                                           stats.ctrl)
@@ -487,7 +494,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Relative weight to give the new solution when updating the model.
         modelWeights : `numpy.ndarray` or `float`
             A 2D array of weight values that tapers smoothly to zero away from detected sources.
-            Or a placeholder value of 1.0 if ``self.config.modelWidth`` is set to a negative number.
+            Set to a placeholder value of 1.0 if ``self.config.useModelWeights`` is False.
         """
         bboxGrow = afwGeom.Box2I(bbox)
         bboxGrow.grow(self.bufferSize)
@@ -796,14 +803,19 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         -------
         weights : `numpy.ndarray` or `float`
             A 2D array of weight values that tapers smoothly to zero away from detected sources.
-            Or a placeholder value of 1.0 if ``self.config.modelWidth`` is set to a negative number.
+            Set to a placeholder value of 1.0 if ``self.config.useModelWeights`` is False.
+
+        Raises
+        ------
+        ValueError
+            If ``useModelWeights`` is set and ``modelWeightsWidth`` is negative.
         """
-        if self.config.modelWidth < 0:
-            return 1.
+        if self.config.modelWeightsWidth < 0:
+            raise ValueError("modelWeightsWidth must not be negative if useModelWeights is set")
         convergeMask = maskedImage.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         convergeMaskPixels = maskedImage.mask.array & convergeMask > 0
         weights = np.zeros_like(maskedImage.image.array)
         weights[convergeMaskPixels] = 1.
-        weights = ndimage.filters.gaussian_filter(weights, self.config.modelWidth)
+        weights = ndimage.filters.gaussian_filter(weights, self.config.modelWeightsWidth)
         weights /= np.max(weights)
         return weights
