@@ -400,7 +400,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
         if selectDataList is None:
             selectDataList = []
 
-        result = super().runDataRef(dataRef, coordList, makeDataRefList, selectDataList)
+        result = super().runDataRef(dataRef, coordList, makeDataRefList=True, selectDataList=selectDataList)
 
         for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
             cal = dataRef.get("calexp", immediate=True)
