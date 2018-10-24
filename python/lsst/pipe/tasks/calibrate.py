@@ -249,6 +249,13 @@ class CalibrateConfig(PipelineTaskConfig):
         scalar=True
     )
 
+    doWriteExposure = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Write the calexp? If fakes have been added then we do not want to write out the calexp as a "
+            "normal calexp but as a fakes_calexp."
+    )
+
     def setDefaults(self):
         super().setDefaults()
         self.quantum.dimensions = ("instrument", "visit", "detector")
@@ -767,8 +774,9 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
             if self.config.doWriteMatchesDenormalized:
                 denormMatches = denormalizeMatches(astromMatches, matchMeta)
                 dataRef.put(denormMatches, "srcMatchFull")
-        dataRef.put(exposure, "calexp")
-        dataRef.put(background, "calexpBackground")
+        if self.config.doWriteExposure:
+            dataRef.put(exposure, "calexp")
+            dataRef.put(background, "calexpBackground")
 
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced

@@ -189,6 +189,12 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         scalar=True
     )
 
+    hasFakes = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Should be set to True if fake sources have been inserted into the input data."
+    )
+
     def setDefaults(self):
         super().setDefaults()
         self.badMaskPlanes = ["NO_DATA", "BAD", "SAT", "EDGE"]
@@ -519,8 +525,12 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         self.processResults(retStruct.coaddExposure, dataRef)
         if self.config.doWrite:
-            self.log.info("Persisting %s" % self.getCoaddDatasetName(self.warpType))
-            dataRef.put(retStruct.coaddExposure, self.getCoaddDatasetName(self.warpType))
+            if self.getCoaddDatasetName(self.warpType) == "deepCoadd" and self.config.hasFakes:
+                coaddDatasetName = "fakes_" + self.getCoaddDatasetName(self.warpType)
+            else:
+                coaddDatasetName = self.getCoaddDatasetName(self.warpType)
+            self.log.info("Persisting %s" % coaddDatasetName)
+            dataRef.put(retStruct.coaddExposure, coaddDatasetName)
         if self.config.doNImage and retStruct.nImage is not None:
             dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
 
