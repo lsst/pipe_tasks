@@ -212,7 +212,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         if self.doMerge and not self.doDetection:
             raise ValueError("Cannot run source merging without source detection.")
         if self.doUseRegister and not self.doSelectSources:
-            raise ValueError("doUseRegister=True and doSelectSources=False. " +
+            raise ValueError("doUseRegister=True and doSelectSources=False. "
                              "Cannot run RegisterTask without selecting sources.")
         if hasattr(self.getTemplate, "coaddName"):
             if self.getTemplate.coaddName != self.coaddName:
@@ -414,9 +414,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds,
                                                       mc)
                     else:
-                        raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False," +
-                                           "but template sources not available. Cannot match science " +
-                                           "sources with template sources. Run process* on data from " +
+                        raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False,"
+                                           "but template sources not available. Cannot match science "
+                                           "sources with template sources. Run process* on data from "
                                            "which templates are built.")
 
                     kernelSources = self.sourceSelector.run(selectSources, exposure=exposure,
