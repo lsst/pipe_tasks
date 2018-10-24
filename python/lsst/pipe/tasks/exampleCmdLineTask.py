@@ -52,7 +52,7 @@ class ExampleCmdLineConfig(pexConfig.Config):
 
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
-    """!Example command-line task that computes simple statistics on an image
+    r"""!Example command-line task that computes simple statistics on an image
 
     \section pipeTasks_ExampleCmdLineTask_Contents Contents
 

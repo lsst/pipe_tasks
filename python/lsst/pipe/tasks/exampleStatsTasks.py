@@ -61,7 +61,7 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
 
 
 class ExampleSigmaClippedStatsTask(pipeBase.Task):
-    """!Example task to compute sigma-clipped mean and standard deviation of an image
+    r"""!Example task to compute sigma-clipped mean and standard deviation of an image
 
     \section pipeTasks_ExampleSigmaClippedStatsTask_Contents Contents
 
@@ -141,7 +141,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
 
 class ExampleSimpleStatsTask(pipeBase.Task):
-    """!Example task to compute mean and standard deviation of an image
+    r"""!Example task to compute mean and standard deviation of an image
 
     \section pipeTasks_ExampleSimpleStatsTask_Contents Contents
 

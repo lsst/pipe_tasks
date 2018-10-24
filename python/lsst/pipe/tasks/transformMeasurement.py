@@ -52,7 +52,7 @@ class TransformConfig(pexConfig.Config):
 
 
 class TransformTask(pipeBase.Task):
-    """!
+    r"""!
     \anchor TransformTask_
 
     \brief Transform a SourceCatalog containing raw measurements to calibrated form.
@@ -163,7 +163,7 @@ class RunTransformConfig(pexConfig.Config):
 
 
 class RunTransformTaskBase(pipeBase.CmdLineTask):
-    """!
+    r"""!
     \anchor RunTransformTaskBase_
 
     \brief Command line interface for TransformTask.

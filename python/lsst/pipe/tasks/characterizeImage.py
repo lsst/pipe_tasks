@@ -178,7 +178,7 @@ class CharacterizeImageConfig(pexConfig.Config):
 
 
 class CharacterizeImageTask(pipeBase.CmdLineTask):
-    """!Measure bright sources and use this to estimate background and PSF of an exposure
+    r"""!Measure bright sources and use this to estimate background and PSF of an exposure
 
     @anchor CharacterizeImageTask_
 
