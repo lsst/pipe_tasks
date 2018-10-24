@@ -180,7 +180,7 @@ class CalibrateConfig(pexConfig.Config):
 ## \}
 
 class CalibrateTask(pipeBase.CmdLineTask):
-    """!Calibrate an exposure: measure sources and perform astrometric and
+    r"""!Calibrate an exposure: measure sources and perform astrometric and
         photometric calibration
 
     @anchor CalibrateTask_

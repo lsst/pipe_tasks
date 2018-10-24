@@ -44,7 +44,7 @@ class ExampleCmdLineConfig(pexConfig.Config):
         target=ExampleSigmaClippedStatsTask,
     )
     doFail = pexConfig.Field(
-        doc="Raise an lsst.base.TaskError exception when processing each image? " +
+        doc="Raise an lsst.base.TaskError exception when processing each image? "
             "This allows one to see the effects of the --doraise command line flag",
         dtype=bool,
         default=False,
@@ -52,7 +52,7 @@ class ExampleCmdLineConfig(pexConfig.Config):
 
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
-    """!Example command-line task that computes simple statistics on an image
+    r"""!Example command-line task that computes simple statistics on an image
 
     \section pipeTasks_ExampleCmdLineTask_Contents Contents
 

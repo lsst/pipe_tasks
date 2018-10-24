@@ -133,7 +133,7 @@ class SnapCombineConfig(pexConfig.Config):
 
 
 class SnapCombineTask(pipeBase.Task):
-    """!
+    r"""!
     \anchor SnapCombineTask_
 
     \brief Combine snaps.

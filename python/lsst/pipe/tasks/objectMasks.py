@@ -114,18 +114,18 @@ class ObjectMaskCatalog:
                 # This regular expression parses the regions file for each region to be masked,
                 # with the format as specified in the above docstring.
                 mat = re.search(r"^\s*(box|circle)"
-                                "(?:\s+|\s*\(\s*)"   # open paren or space
-                                "(\d+(?:\.\d*)?([d]*))" "(?:\s+|\s*,\s*)"
-                                "([+-]?\d+(?:\.\d*)?)([d]*)" "(?:\s+|\s*,\s*)"
-                                "([+-]?\d+(?:\.\d*)?)([d]*)" "(?:\s+|\s*,\s*)?"
-                                "(?:([+-]?\d+(?:\.\d*)?)([d]*)"
-                                "\s*,\s*"
-                                "([+-]?\d+(?:\.\d*)?)([d]*)"
+                                r"(?:\s+|\s*\(\s*)"   # open paren or space
+                                r"(\d+(?:\.\d*)?([d]*))" r"(?:\s+|\s*,\s*)"
+                                r"([+-]?\d+(?:\.\d*)?)([d]*)" r"(?:\s+|\s*,\s*)"
+                                r"([+-]?\d+(?:\.\d*)?)([d]*)" r"(?:\s+|\s*,\s*)?"
+                                r"(?:([+-]?\d+(?:\.\d*)?)([d]*)"
+                                r"\s*,\s*"
+                                r"([+-]?\d+(?:\.\d*)?)([d]*)"
                                 ")?"
-                                "(?:\s*|\s*\)\s*)"   # close paren or space
-                                "\s*#\s*ID:\s*(\d+)"  # start comment
-                                "(?:\s*,\s*mag:\s*(\d+\.\d*))?"
-                                "\s*$", line)
+                                r"(?:\s*|\s*\)\s*)"   # close paren or space
+                                r"\s*#\s*ID:\s*(\d+)"  # start comment
+                                r"(?:\s*,\s*mag:\s*(\d+\.\d*))?"
+                                r"\s*$", line)
                 if mat:
                     _type, ra, raUnit, dec, decUnit, \
                         param1, param1Unit, param2, param2Unit, param3, param3Unit, \

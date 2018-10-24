@@ -47,7 +47,7 @@ class PropagateVisitFlagsConfig(Config):
 ## \}
 
 class PropagateVisitFlagsTask(Task):
-    """!Task to propagate flags from single-frame measurements to coadd measurements
+    r"""!Task to propagate flags from single-frame measurements to coadd measurements
 
 \anchor PropagateVisitFlagsTask_
 

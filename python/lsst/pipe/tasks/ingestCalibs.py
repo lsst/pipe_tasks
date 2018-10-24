@@ -136,7 +136,7 @@ class CalibsRegisterTask(RegisterTask):
         try:
             valids = collections.OrderedDict([(_convertToDate(row[self.config.calibDate]), [None, None]) for
                                               row in rows])
-        except Exception as e:
+        except Exception:
             det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
             # Sqlite returns unicode strings, which cannot be passed through SWIG.
             self.log.warn(str("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
@@ -188,8 +188,8 @@ class IngestCalibsArgumentParser(InputOnlyArgumentParser):
         self.add_argument("--validity", type=int, required=True, help="Calibration validity period (days)")
         self.add_argument("--calibType", type=str, default=None,
                           choices=[None, "bias", "dark", "flat", "fringe", "sky", "defect"],
-                          help="Type of the calibration data to be ingested;" +
-                               " if omitted, the type is determined from" +
+                          help="Type of the calibration data to be ingested;"
+                               " if omitted, the type is determined from"
                                " the file header information")
         self.add_argument("--ignore-ingested", dest="ignoreIngested", action="store_true",
                           help="Don't register files that have already been registered")

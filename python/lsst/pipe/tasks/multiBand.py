@@ -177,7 +177,7 @@ class DetectCoaddSourcesConfig(Config):
 
 
 class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
-    """!
+    r"""!
     @anchor DetectCoaddSourcesTask_
 
     @brief Detect sources on a coadd
@@ -689,7 +689,7 @@ class MergeDetectionsConfig(MergeSourcesConfig):
 
 
 class MergeDetectionsTask(MergeSourcesTask):
-    """!
+    r"""!
     @anchor MergeDetectionsTask_
 
     @brief Merge coadd detections from multiple bands.
@@ -798,7 +798,7 @@ class MergeDetectionsTask(MergeSourcesTask):
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
 
     def run(self, catalogs, patchRef):
-        """!
+        r"""!
         @brief Merge multiple catalogs.
 
         After ordering the catalogs and filters in priority order,
@@ -1222,7 +1222,7 @@ class MeasureMergedCoaddSourcesRunner(ButlerInitializedTaskRunner):
 
 
 class MeasureMergedCoaddSourcesTask(CmdLineTask):
-    """!
+    r"""!
     @anchor MeasureMergedCoaddSourcesTask_
 
     @brief Deblend sources from master catalog in each coadd seperately and measure.
@@ -1515,7 +1515,7 @@ class MergeMeasurementsConfig(MergeSourcesConfig):
 
 
 class MergeMeasurementsTask(MergeSourcesTask):
-    """!
+    r"""!
     @anchor MergeMeasurementsTask_
 
     @brief Merge measurements from multiple bands
