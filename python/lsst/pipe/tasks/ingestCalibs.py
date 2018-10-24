@@ -136,7 +136,7 @@ class CalibsRegisterTask(RegisterTask):
         try:
             valids = collections.OrderedDict([(_convertToDate(row[self.config.calibDate]), [None, None]) for
                                               row in rows])
-        except Exception as e:
+        except Exception:
             det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
             # Sqlite returns unicode strings, which cannot be passed through SWIG.
             self.log.warn(str("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
