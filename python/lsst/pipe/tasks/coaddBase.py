@@ -22,6 +22,7 @@
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
+import lsst.daf.persistence
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 
@@ -30,11 +31,6 @@ from lsst.coadd.utils import CoaddDataIdContainer
 from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
 from .scaleVariance import ScaleVarianceTask
-
-try:
-    from lsst.meas.mosaic import applyMosaicResults
-except ImportError:
-    applyMosaicResults = None
 
 __all__ = ["CoaddBaseTask", "getSkyInfo"]
 
@@ -70,9 +66,9 @@ class CoaddBaseConfig(pexConfig.Config):
         default=False
     )
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
-    doApplyUberCal = pexConfig.Field(
+    doApplyJointcal = pexConfig.Field(
         dtype=bool,
-        doc="Apply meas_mosaic ubercal results to input calexps?",
+        doc="Apply jointcal WCS and PhotoCalib results to input calexps?",
         default=False
     )
     matchingKernelSize = pexConfig.Field(
@@ -140,16 +136,18 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
-    def getCalExp(self, dataRef, bgSubtracted):
-        """!Return one "calexp" calibrated exposure
+    def getCalibratedExposure(self, dataRef, bgSubtracted):
+        """Return one calibrated Exposure, possibly with an updated SkyWcs.
 
         @param[in] dataRef        a sensor-level data reference
         @param[in] bgSubtracted   return calexp with background subtracted? If False get the
                                   calexp's background background model and add it to the calexp.
         @return calibrated exposure
 
-        If config.doApplyUberCal, meas_mosaic calibrations will be applied to
-        the returned exposure using applyMosaicResults.
+        If config.doApplyJointcal, the exposure will be photometrically
+        calibrated via the `jointcal_photoCalib` dataset and have its SkyWcs
+        updated to the `jointcal_wcs`, otherwise it will be calibrated via the
+        Exposure's own Calib and have the original SkyWcs.
         """
         exposure = dataRef.get("calexp", immediate=True)
         if not bgSubtracted:
@@ -157,15 +155,29 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             mi = exposure.getMaskedImage()
             mi += background.getImage()
             del mi
-        if not self.config.doApplyUberCal:
-            return exposure
-        if applyMosaicResults is None:
-            raise RuntimeError(
-                "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
-                % dataRef.dataId
-            )
+
+        if self.config.doApplyJointcal:
+            try:
+                photoCalib = dataRef.get("jointcal_photoCalib")
+            except lsst.daf.persistence.NoResults:
+                msg = "Cannot apply jointcal calibration: `jointcal_photoCalib` not found for dataRef {}."
+                raise RuntimeError(msg.format(dataRef.dataId))
+            try:
+                skyWcs = dataRef.get("jointcal_wcs")
+                exposure.setWcs(skyWcs)
+            except lsst.daf.persistence.NoResults:
+                msg = "Cannot update to jointcal SkyWcs: `jointcal_wcs` not found for dataRef {}."
+                raise RuntimeError(msg.format(dataRef.dataId))
         else:
-            applyMosaicResults(dataRef, calexp=exposure)
+            fluxMag0 = exposure.getCalib().getFluxMag0()
+            photoCalib = afwImage.PhotoCalib(1.0/fluxMag0[0],
+                                             fluxMag0[1]/fluxMag0[0]**2,
+                                             exposure.getBBox())
+
+        exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage)
+        # The images now have a calibration of 1.0 everywhere.
+        exposure.setCalib(afwImage.Calib(1.0))
+
         return exposure
 
     def getCoaddDatasetName(self, warpType="direct"):
