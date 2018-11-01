@@ -332,3 +332,9 @@ class MergeMeasurementsTask(CmdLineTask):
         mergeDataId = patchRef.dataId.copy()
         del mergeDataId["filter"]
         self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
+
+    def writeMetadata(self, dataRefList):
+        """!
+        @brief No metadata to write, and not sure how to write it for a list of dataRefs.
+        """
+        pass
