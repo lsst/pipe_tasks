@@ -225,7 +225,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
          --id patch=5,4 tract=0 filter=HSC-I \
          --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 \
          --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24 \
-         --config doApplyUberCal=False makePsfMatched=True modelPsf.defaultFwhm=11
+         --config doApplyJointcal=False makePsfMatched=True modelPsf.defaultFwhm=11
 
     writes a direct and PSF-Matched Warp to
     - `$CI_HSC_DIR/DATA/rerun/ci_hsc/deepCoadd/HSC-I/0/5,4/warp-HSC-I-0-5,4-903988.fits` and
@@ -364,7 +364,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 # which do.
                 calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
                                                                   tract=skyInfo.tractInfo.getId())
-                calExp = self.getCalExp(calExpRef, bgSubtracted=self.config.bgSubtracted)
+                calExp = self.getCalibratedExposure(calExpRef, bgSubtracted=self.config.bgSubtracted)
             except Exception as e:
                 self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
                 continue
