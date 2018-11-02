@@ -262,10 +262,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             warps are requested.
 
         @warning: this task assumes that all exposures in a warp (coaddTempExp) have the same filter.
-
-        @warning: this task sets the Calib of the coaddTempExp to the Calib of the first calexp
-        with any good pixels in the patch. For a mosaic camera the resulting Calib should be ignored
-        (assembleCoadd should determine zeropoint scaling without referring to it).
         """
         skyInfo = self.getSkyInfo(patchRef)
 

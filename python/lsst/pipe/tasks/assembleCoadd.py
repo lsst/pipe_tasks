@@ -35,7 +35,6 @@ import lsst.log as log
 import lsstDebug
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer
 from .interpImage import InterpImageTask
-from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .scaleVariance import ScaleVarianceTask
 from lsst.meas.algorithms import SourceDetectionTask
@@ -97,10 +96,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc="Calculate coadd variance from input variance by stacking statistic."
             "Passed to StatisticsControl.setCalcErrorFromInputVariance()",
         default=True,
-    )
-    scaleZeroPoint = pexConfig.ConfigurableField(
-        target=ScaleZeroPointTask,
-        doc="Task to adjust the photometric zero point of the coadd temp exposures",
     )
     doInterp = pexConfig.Field(
         doc="Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
@@ -185,9 +180,9 @@ class AssembleCoaddTask(CoaddBaseTask):
     run/visit/exposure of the covered patch. We provide the task with a list
     of Warps (``selectDataList``) from which it selects Warps that cover the
     specified patch (pointed at by ``dataRef``).
-    Each Warp that goes into a coadd will typically have an independent
-    photometric zero-point. Therefore, we must scale each Warp to set it to
-    a common photometric zeropoint. WarpType may be one of 'direct' or
+    Each Warp that goes into a coadd should be photometrically calibrated
+    by its PhotoCalib objectm, to put them all on the same physical flux scale.
+    WarpType may be one of 'direct' or
     'psfMatched', and the boolean configs `config.makeDirect` and
     `config.makePsfMatched` set which of the warp types will be coadded.
     The coadd is computed as a mean with optional outlier rejection.
@@ -197,8 +192,6 @@ class AssembleCoaddTask(CoaddBaseTask):
 
     `AssembleCoaddTask` uses several sub-tasks. These are
 
-    - `ScaleZeroPointTask`
-    - create and use an ``imageScaler`` object to scale the photometric zeropoint for each Warp
     - `InterpImageTask`
     - interpolate across bad pixels (NaN) in the final coadd
 
@@ -296,7 +289,6 @@ class AssembleCoaddTask(CoaddBaseTask):
     def __init__(self, *args, **kwargs):
         CoaddBaseTask.__init__(self, *args, **kwargs)
         self.makeSubtask("interpImage")
-        self.makeSubtask("scaleZeroPoint")
 
         if self.config.doMaskBrightObjects:
             mask = afwImage.Mask()
@@ -313,8 +305,7 @@ class AssembleCoaddTask(CoaddBaseTask):
     def runDataRef(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of Warps.
 
-        Coadd a set of Warps. Compute weights to be applied to each Warp and
-        find scalings to match the photometric zeropoint to a reference Warp.
+        Coadd a set of Warps. Compute weights to be applied to each Warp.
         Assemble the Warps using `run`. Interpolate over NaNs and
         optionally write the coadd to disk. Return the coadded exposure.
 
@@ -357,7 +348,7 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
 
-        retStruct = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
+        retStruct = self.run(skyInfo, inputData.tempExpRefList,
                              inputData.weightList, supplementaryData=supplementaryData)
 
         self.processResults(retStruct.coaddExposure, dataRef)
@@ -432,11 +423,10 @@ class AssembleCoaddTask(CoaddBaseTask):
 
     def prepareInputs(self, refList):
         """Prepare the input warps for coaddition by measuring the weight for
-        each warp and the scaling for the photometric zero point.
+        each warp.
 
-        Each Warp has its own photometric zeropoint and background variance.
-        Before coadding these Warps together, compute a scale factor to
-        normalize the photometric zeropoint and compute the weight for each Warp.
+        Each Warp has its own background variance.
+        Before coadding these Warps together, compute the weight for each Warp.
 
         Parameters
         ----------
@@ -450,7 +440,6 @@ class AssembleCoaddTask(CoaddBaseTask):
 
            - ``tempExprefList``: `list` of data references to tempExp.
            - ``weightList``: `list` of weightings.
-           - ``imageScalerList``: `list` of image scalers.
         """
         statsCtrl = afwMath.StatisticsControl()
         statsCtrl.setNumSigmaClip(self.config.sigmaClip)
@@ -459,10 +448,8 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsCtrl.setNanSafe(True)
         # compute tempExpRefList: a list of tempExpRef that actually exist
         # and weightList: a list of the weight of the associated coadd tempExp
-        # and imageScalerList: a list of scale factors for the associated coadd tempExp
         tempExpRefList = []
         weightList = []
-        imageScalerList = []
         tempExpName = self.getTempExpDatasetName(self.warpType)
         for tempExpRef in refList:
             if not tempExpRef.datasetExists(tempExpName):
@@ -471,15 +458,6 @@ class AssembleCoaddTask(CoaddBaseTask):
 
             tempExp = tempExpRef.get(tempExpName, immediate=True)
             maskedImage = tempExp.getMaskedImage()
-            imageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure=tempExp,
-                dataRef=tempExpRef,
-            )
-            try:
-                imageScaler.scaleMaskedImage(maskedImage)
-            except Exception as e:
-                self.log.warn("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
-                continue
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                                              afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP)
@@ -494,10 +472,8 @@ class AssembleCoaddTask(CoaddBaseTask):
 
             tempExpRefList.append(tempExpRef)
             weightList.append(weight)
-            imageScalerList.append(imageScaler)
 
-        return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList,
-                               imageScalerList=imageScalerList)
+        return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList)
 
     def prepareStats(self, mask=None):
         """Prepare the statistics for coadding images.
@@ -531,7 +507,7 @@ class AssembleCoaddTask(CoaddBaseTask):
         statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
         return pipeBase.Struct(ctrl=statsCtrl, flags=statsFlags)
 
-    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+    def run(self, skyInfo, tempExpRefList, weightList,
             altMaskList=None, mask=None, supplementaryData=None):
         """Assemble a coadd from input warps
 
@@ -549,8 +525,6 @@ class AssembleCoaddTask(CoaddBaseTask):
             Struct with geometric information about the patch.
         tempExpRefList : `list`
             List of data references to Warps (previously called CoaddTempExps).
-        imageScalerList : `list`
-            List of image scalers.
         weightList : `list`
             List of weights
         altMaskList : `list`, optional
@@ -579,7 +553,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             altMaskList = [None]*len(tempExpRefList)
 
         coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
-        coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
+        coaddExposure.getCalib().setFluxMag0(1.0)
         coaddExposure.getInfo().setCoaddInputs(self.inputRecorder.makeCoaddInputs())
         self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
         coaddMaskedImage = coaddExposure.getMaskedImage()
@@ -592,7 +566,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             nImage = None
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             try:
-                self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
+                self.assembleSubregion(coaddExposure, subBBox, tempExpRefList,
                                        weightList, altMaskList, stats.flags, stats.ctrl,
                                        nImage=nImage)
             except Exception as e:
@@ -659,7 +633,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             transmissionCurve = measAlg.makeCoaddTransmissionCurve(coaddExposure.getWcs(), coaddInputs.ccds)
             coaddExposure.getInfo().setTransmissionCurve(transmissionCurve)
 
-    def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, imageScalerList, weightList,
+    def assembleSubregion(self, coaddExposure, bbox, tempExpRefList, weightList,
                           altMaskList, statsFlags, statsCtrl, nImage=None):
         """Assemble the coadd for a sub-region.
 
@@ -680,8 +654,6 @@ class AssembleCoaddTask(CoaddBaseTask):
             Sub-region to coadd.
         tempExpRefList : `list`
             List of data reference to tempExp.
-        imageScalerList : `list`
-            List of image scalers.
         weightList : `list`
             List of weights.
         altMaskList : `list`
@@ -705,13 +677,12 @@ class AssembleCoaddTask(CoaddBaseTask):
         maskedImageList = []
         if nImage is not None:
             subNImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
-        for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
+        for tempExpRef, altMask in zip(tempExpRefList, altMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
             maskedImage = exposure.getMaskedImage()
             mask = maskedImage.getMask()
             if altMask is not None:
                 self.applyAltMaskPlanes(mask, altMask)
-            imageScaler.scaleMaskedImage(maskedImage)
 
             # Add 1 for each pixel which is not excluded by the exclude mask.
             # In legacyCoadd, pixels may also be excluded by afwMath.statisticsStack.
@@ -1217,7 +1188,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
 
-    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
+    def run(self, skyInfo, tempExpRefList, weightList, *args, **kwargs):
         """Assemble the coadd for a region.
 
         Compute the difference of coadds created with and without outlier
@@ -1245,8 +1216,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
             Patch geometry information, from getSkyInfo
         tempExpRefList : `list`
             List of data reference to tempExp
-        imageScalerList : `list`
-            List of image scalers
         weightList : `list`
             List of weights
 
@@ -1263,7 +1232,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         args and kwargs are passed but ignored in order to match the call
         signature expected by the parent task.
         """
-        exp = self.buildDifferenceImage(skyInfo, tempExpRefList, imageScalerList, weightList)
+        exp = self.buildDifferenceImage(skyInfo, tempExpRefList, weightList)
         mask = exp.getMaskedImage().getMask()
         mask.addMaskPlane("CLIPPED")
 
@@ -1289,10 +1258,10 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
-        return AssembleCoaddTask.run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+        return AssembleCoaddTask.run(self, skyInfo, tempExpRefList, weightList,
                                      result.clipSpans, mask=badPixelMask)
 
-    def buildDifferenceImage(self, skyInfo, tempExpRefList, imageScalerList, weightList):
+    def buildDifferenceImage(self, skyInfo, tempExpRefList, weightList):
         """Return an exposure that contains the difference between unclipped
         and clipped coadds.
 
@@ -1306,8 +1275,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
             Patch geometry information, from getSkyInfo
         tempExpRefList : `list`
             List of data reference to tempExp
-        imageScalerList : `list`
-            List of image scalers
         weightList : `list`
             List of weights
 
@@ -1326,11 +1293,11 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
         config.statistic = 'MEAN'
         task = AssembleCoaddTask(config=config)
-        coaddMean = task.run(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
+        coaddMean = task.run(skyInfo, tempExpRefList, weightList).coaddExposure
 
         config.statistic = 'MEANCLIP'
         task = AssembleCoaddTask(config=config)
-        coaddClip = task.run(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
+        coaddClip = task.run(skyInfo, tempExpRefList, weightList).coaddExposure
 
         coaddDiff = coaddMean.getMaskedImage().Factory(coaddMean.getMaskedImage())
         coaddDiff -= coaddClip.getMaskedImage()
@@ -1815,7 +1782,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
                                nImage=templateCoadd.nImage)
 
-    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+    def run(self, skyInfo, tempExpRefList, weightList,
             supplementaryData, *args, **kwargs):
         """Assemble the coadd.
 
@@ -1830,8 +1797,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             Patch geometry information.
         tempExpRefList : `list`
             List of data references to warps.
-        imageScalerList : `list`
-            List of image scalers.
         weightList : `list`
             List of weights.
         supplementaryData : `lsst.pipe.base.Struct`
@@ -1847,12 +1812,12 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
            - ``nImage``: exposure count image (``lsst.afw.image.Image``), if requested.
         """
         templateCoadd = supplementaryData.templateCoadd
-        spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
+        spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
-        result = AssembleCoaddTask.run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+        result = AssembleCoaddTask.run(self, skyInfo, tempExpRefList, weightList,
                                        spanSetMaskList, mask=badPixelMask)
 
         # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
@@ -1879,7 +1844,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 for spanSet in visitMask['EDGE']:
                     spanSet.clippedTo(mask.getBBox()).setMask(mask, maskValue)
 
-    def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList):
+    def findArtifacts(self, templateCoadd, tempExpRefList):
         """Find artifacts.
 
         Loop through warps twice. The first loop builds a map with the count
@@ -1895,8 +1860,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             Exposure to serve as model of static sky.
         tempExpRefList : `list`
             List of data references to warps.
-        imageScalerList : `list`
-            List of image scalers.
 
         Returns
         -------
@@ -1923,8 +1886,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         else:
             templateFootprints = None
 
-        for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
-            warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
+        for warpRef in tempExpRefList:
+            warpDiffExp = self._readAndComputeWarpDiff(warpRef, templateCoadd)
             if warpDiffExp is not None:
                 # This nImage only approximates the final nImage because it uses the PSF-matched mask
                 nImage.array += (numpy.isfinite(warpDiffExp.image.array) *
@@ -2067,15 +2030,13 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         return maskSpanSetList
 
-    def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
+    def _readAndComputeWarpDiff(self, warpRef, templateCoadd):
         """Fetch a warp from the butler and return a warpDiff.
 
         Parameters
         ----------
         warpRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
             Butler dataRef for the warp.
-        imageScaler : `lsst.pipe.tasks.scaleZeroPoint.ImageScaler`
-            An image scaler object.
         templateCoadd : `lsst.afw.image.Exposure`
             Exposure to be substracted from the scaled warp.
 
@@ -2092,7 +2053,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             return None
         warp = warpRef.get(warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
-        imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
         if self.config.doScaleWarpVariance:
             try:

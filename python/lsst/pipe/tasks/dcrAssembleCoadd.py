@@ -184,8 +184,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     def runDataRef(self, dataRef, selectDataList=[]):
         """Assemble a coadd from a set of warps.
 
-        Coadd a set of Warps. Compute weights to be applied to each Warp and
-        find scalings to match the photometric zeropoint to a reference Warp.
+        Coadd a set of Warps. Compute weights to be applied to each Warp.
         Assemble the Warps using run method.
         Forward model chromatic effects across multiple subfilters,
         and subtract from the input Warps to build sets of residuals.
@@ -280,7 +279,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        psf=templateCoadd.getPsf())
         return dcrModels
 
-    def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
+    def run(self, skyInfo, tempExpRefList, weightList,
             supplementaryData=None):
         """Assemble the coadd.
 
@@ -311,8 +310,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Patch geometry information, from getSkyInfo
         tempExpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
             The data references to the input warped exposures.
-        imageScalerList : `list` of `lsst.pipe.task.ImageScaler`
-            The image scalars correct for the zero point of the exposures.
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
         supplementaryData : `lsst.pipe.base.Struct`
@@ -331,7 +328,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - ``dcrNImages``: `list` of exposure count images for each subfilter
         """
         templateCoadd = supplementaryData.templateCoadd
-        spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
+        spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
@@ -363,7 +360,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             else:
                 return 1.
             convergenceMetric = self.calculateConvergence(dcrModels, subBBox, tempExpRefList,
-                                                          imageScalerList, weightList, spanSetMaskList,
+                                                          weightList, spanSetMaskList,
                                                           stats.ctrl)
             self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
@@ -372,13 +369,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             while (convergenceCheck > self.config.convergenceThreshold or
                    modelIter < self.config.minNumIter):
                 gain = self.calculateGain(modelIter)
-                self.dcrAssembleSubregion(dcrModels, subBBox, tempExpRefList, imageScalerList,
+                self.dcrAssembleSubregion(dcrModels, subBBox, tempExpRefList,
                                           weightList, spanSetMaskList, stats.flags, stats.ctrl,
                                           convergenceMetric, baseMask, subfilterVariance, gain,
                                           modelWeights)
                 if self.config.useConvergence:
                     convergenceMetric = self.calculateConvergence(dcrModels, subBBox, tempExpRefList,
-                                                                  imageScalerList, weightList,
+                                                                  weightList,
                                                                   spanSetMaskList,
                                                                   stats.ctrl)
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
@@ -406,7 +403,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
 
         dcrCoadds = self.fillCoadd(dcrModels, skyInfo, tempExpRefList, weightList,
-                                   calibration=self.scaleZeroPoint.getCalib(),
                                    coaddInputs=self.inputRecorder.makeCoaddInputs(),
                                    mask=templateCoadd.mask)
         coaddExposure = self.stackCoadd(dcrCoadds)
@@ -449,7 +445,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 dcrNImage.array[shiftedImage.mask.array & statsCtrl.getAndMask() == 0] += 1
         return dcrNImages
 
-    def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, imageScalerList, weightList,
+    def dcrAssembleSubregion(self, dcrModels, bbox, tempExpRefList, weightList,
                              spanSetMaskList, statsFlags, statsCtrl, convergenceMetric,
                              baseMask, subfilterVariance, gain, modelWeights):
         """Assemble the DCR coadd for a sub-region.
@@ -474,8 +470,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Bounding box of the subregion to coadd.
         tempExpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
             The data references to the input warped exposures.
-        imageScalerList : `list` of `lsst.pipe.task.ImageScaler`
-            The image scalars correct for the zero point of the exposures.
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
         spanSetMaskList : `list` of `dict` containing spanSet lists, or None
@@ -503,7 +497,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         tempExpName = self.getTempExpDatasetName(self.warpType)
         residualGeneratorList = []
 
-        for tempExpRef, imageScaler, altMaskSpans in zip(tempExpRefList, imageScalerList, spanSetMaskList):
+        for tempExpRef, altMaskSpans in zip(tempExpRefList, spanSetMaskList):
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bboxGrow)
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
@@ -511,7 +505,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             templateImage = dcrModels.buildMatchedTemplate(warpCtrl=self.warpCtrl, visitInfo=visitInfo,
                                                            bbox=bboxGrow, wcs=wcs, mask=baseMask,
                                                            splitSubfilters=self.config.splitSubfilters)
-            imageScaler.scaleMaskedImage(maskedImage)
             if altMaskSpans is not None:
                 self.applyAltMaskPlanes(maskedImage.mask, altMaskSpans)
 
@@ -612,7 +605,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         dcrModels.conditionDcrModel(newModelImages, bbox, gain=gain)
         return DcrModel(newModelImages, dcrModels.filter, dcrModels.psf)
 
-    def calculateConvergence(self, dcrModels, bbox, tempExpRefList, imageScalerList,
+    def calculateConvergence(self, dcrModels, bbox, tempExpRefList,
                              weightList, spanSetMaskList, statsCtrl):
         """Calculate a quality of fit metric for the matched templates.
 
@@ -624,8 +617,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Sub-region to coadd
         tempExpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
             The data references to the input warped exposures.
-        imageScalerList : `list` of `lsst.pipe.task.ImageScaler`
-            The image scalars correct for the zero point of the exposures.
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
         spanSetMaskList : `list` of `dict` containing spanSet lists, or None
@@ -646,10 +637,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         weight = 0
         metric = 0.
         metricList = {}
-        zipIterables = zip(tempExpRefList, weightList, imageScalerList, spanSetMaskList)
-        for tempExpRef, expWeight, imageScaler, altMaskSpans in zipIterables:
+        zipIterables = zip(tempExpRefList, weightList, spanSetMaskList)
+        for tempExpRef, expWeight, altMaskSpans in zipIterables:
             exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
-            imageScaler.scaleMaskedImage(exposure.maskedImage)
             singleMetric = self.calculateSingleConvergence(dcrModels, exposure, significanceImage, statsCtrl,
                                                            altMaskSpans=altMaskSpans)
             metric += singleMetric*expWeight
