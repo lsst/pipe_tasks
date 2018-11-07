@@ -189,6 +189,9 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             visit = obsRecord.getI(visitKey)
             self.log.info("Generating image for visit={visit}, ccd={ccd}".format(ccd=ccd, visit=visit))
             exposure = lsst.afw.image.ExposureF(obsRecord.getBBox())
+            # Apply a tiny offset to the images, so that they have non-zero background.
+            # If the image background is identically zero, the calculated variance will be NaN.
+            exposure.maskedImage.image.array += 1e-8
             exposure.setCalib(obsRecord.getCalib())
             exposure.setWcs(obsRecord.getWcs())
             exposure.setPsf(obsRecord.getPsf())
