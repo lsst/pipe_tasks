@@ -359,9 +359,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             modelIter = 0
             self.log.info("Computing coadd over %s", subBBox)
             if self.config.useModelWeights:
-                modelWeights = self.calculateModelWeights(templateCoadd.maskedImage[subBBox])
+                modelWeights = self.calculateModelWeights(dcrModels, subBBox)
             else:
-                return 1.
+                modelWeights = 1.
             convergenceMetric = self.calculateConvergence(dcrModels, subBBox, tempExpRefList,
                                                           imageScalerList, weightList, spanSetMaskList,
                                                           stats.ctrl)
@@ -791,7 +791,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             return max(self.config.baseGain, iterGain)
         return self.config.baseGain
 
-    def calculateModelWeights(self, maskedImage):
+    def calculateModelWeights(self, dcrModels, bbox):
         """Build an array that smoothly tapers to 0 away from detected sources.
 
         Parameters
@@ -812,9 +812,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         if self.config.modelWeightsWidth < 0:
             raise ValueError("modelWeightsWidth must not be negative if useModelWeights is set")
-        convergeMask = maskedImage.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
-        convergeMaskPixels = maskedImage.mask.array & convergeMask > 0
-        weights = np.zeros_like(maskedImage.image.array)
+        bboxGrow = afwGeom.Box2I(bbox)
+        bboxGrow.grow(self.bufferSize)
+        bboxGrow.clip(dcrModels.bbox)
+        convergeMask = dcrModels.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
+        convergeMaskPixels = dcrModels.mask.array & convergeMask > 0
+        weights = np.zeros_like(dcrModels[0][bboxGrow].image.array)
         weights[convergeMaskPixels] = 1.
         weights = ndimage.filters.gaussian_filter(weights, self.config.modelWeightsWidth)
         weights /= np.max(weights)
