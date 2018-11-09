@@ -250,7 +250,6 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         attr = config.detectionSchema
         setattr(attr, "name", attr.name.format(coaddName))
         output = super().getInitOutputDatasetTypes(config)
-        print(output)
         return output
 
     def __init__(self, schema=None, **kwargs):
