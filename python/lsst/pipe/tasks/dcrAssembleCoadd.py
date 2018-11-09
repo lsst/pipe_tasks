@@ -63,13 +63,19 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     baseGain = pexConfig.Field(
         dtype=float,
-        doc="Relative weight to give the new solution when updating the model."
-            "A value of 1.0 gives equal weight to both solutions.",
-        default=1.,
+        doc="Relative weight to give the new solution vs. the last solution when updating the model."
+            "A value of 1.0 gives equal weight to both solutions."
+            "Small values imply slower convergence of the solution, but can "
+            "help prevent overshooting and failures in the fit."
+            "If ``baseGain`` is None, a conservative gain "
+            "will be calculated from the number of subfilters. ",
+        default=None,
     )
     useProgressiveGain = pexConfig.Field(
         dtype=bool,
-        doc="Use a gain that slowly increases above ``baseGain`` to accelerate convergence?",
+        doc="Use a gain that slowly increases above ``baseGain`` to accelerate convergence? "
+        "When calculating the next gain, we use up to 5 previous gains and convergence values."
+        "Can be set to False to force the model to change at the rate of ``baseGain``. ",
         default=True,
     )
     doAirmassWeight = pexConfig.Field(
@@ -377,11 +383,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                           stats.ctrl)
             self.log.info("Initial convergence : %s", convergenceMetric)
             convergenceList = [convergenceMetric]
+            gainList = []
             convergenceCheck = 1.
             subfilterVariance = None
             while (convergenceCheck > self.config.convergenceThreshold or
                    modelIter < self.config.minNumIter):
-                gain = self.calculateGain(modelIter)
+                gain = self.calculateGain(convergenceList, gainList)
                 self.dcrAssembleSubregion(dcrModels, subBBox, dcrBBox, tempExpRefList, imageScalerList,
                                           weightList, spanSetMaskList, stats.flags, stats.ctrl,
                                           convergenceMetric, baseMask, subfilterVariance, gain,
@@ -779,7 +786,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
-    def calculateGain(self, modelIter):
+    def calculateGain(self, convergenceList, gainList):
         """Calculate the gain to use for the current iteration.
 
         After calculating a new DcrModel, each value is averaged with the
@@ -791,19 +798,74 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        modelIter : `int`
-            The current iteration of forward modeling.
+        convergenceList : `list` of `float`
+            The quality of fit metric from each previous iteration.
+        gainList : `list` of `float`
+            The gains used in each previous iteration: appended with the new
+            gain value.
+            Gains are numbers between ``self.config.baseGain`` and 1.
 
         Returns
         -------
         gain : `float`
             Relative weight to give the new solution when updating the model.
             A value of 1.0 gives equal weight to both solutions.
+
+        Raises
+        ------
+        ValueError
+            If ``len(convergenceList) != len(gainList)+1``.
         """
-        if self.config.useProgressiveGain:
-            iterGain = np.log(modelIter)*self.config.baseGain if modelIter > 0 else self.config.baseGain
-            return max(self.config.baseGain, iterGain)
-        return self.config.baseGain
+        nIter = len(convergenceList)
+        if nIter != len(gainList) + 1:
+            raise ValueError("convergenceList (%d) must be one element longer than gainList (%d)."
+                             % (len(convergenceList), len(gainList)))
+
+        if self.config.baseGain is None:
+            # If ``baseGain`` is not set, calculate it from the number of DCR subfilters
+            # The more subfilters being modeled, the lower the gain should be.
+            baseGain = 1./(self.config.dcrNumSubfilters - 1)
+        else:
+            baseGain = self.config.baseGain
+
+        if self.config.useProgressiveGain and nIter > 2:
+            # To calculate the best gain to use, compare the past gains that have been used
+            # with the resulting convergences to estimate the best gain to use.
+            # Algorithmically, this is a Kalman filter.
+            # If forward modeling proceeds perfectly, the convergence metric should
+            # asymptotically approach a final value.
+            # We can estimate that value from the measured changes in convergence
+            # weighted by the gains used in each previous iteration.
+            estFinalConv = [((1 + gainList[i])*convergenceList[i + 1] - convergenceList[i])/gainList[i]
+                            for i in range(nIter - 1)]
+            # The convergence metric is strictly positive, so if the estimated final convergence is
+            # less than zero, force it to zero.
+            estFinalConv = np.array(estFinalConv)
+            estFinalConv[estFinalConv < 0] = 0
+            # Because the estimate may slowly change over time, only use the most recent measurements.
+            estFinalConv = np.median(estFinalConv[max(nIter - 5, 0):])
+            lastGain = gainList[-1]
+            lastConv = convergenceList[-2]
+            newConv = convergenceList[-1]
+            # The predicted convergence is the value we would get if the new model calculated
+            # in the previous iteration was perfect. Recall that the updated model that is
+            # actually used is the gain-weighted average of the new and old model,
+            # so the convergence would be similarly weighted.
+            predictedConv = (estFinalConv*lastGain + lastConv)/(1. + lastGain)
+            # If the measured and predicted convergence are very close, that indicates
+            # that our forward model is accurate and we can use a more aggressive gain
+            # If the measured convergence is significantly worse (or better!) than predicted,
+            # that indicates that the model is not converging as expected and
+            # we should use a more conservative gain.
+            delta = (predictedConv - newConv)/((lastConv - estFinalConv)/(1 + lastGain))
+            newGain = 1 - abs(delta)
+            # Average the gains to prevent oscillating solutions.
+            newGain = (newGain + lastGain)/2.
+            gain = max(baseGain, newGain)
+        else:
+            gain = baseGain
+        gainList.append(gain)
+        return gain
 
     def calculateModelWeights(self, dcrModels, dcrBBox):
         """Build an array that smoothly tapers to 0 away from detected sources.
