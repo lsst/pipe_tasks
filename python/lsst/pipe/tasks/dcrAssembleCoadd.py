@@ -103,7 +103,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         dtype=float,
         doc="Maximum relative change of the model allowed between subfilters."
             "Set to zero to disable.",
-        default=2.,
+        default=4.,
     )
     convergenceMaskPlanes = pexConfig.ListField(
         dtype=str,
