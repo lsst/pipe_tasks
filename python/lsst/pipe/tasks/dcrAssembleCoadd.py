@@ -392,6 +392,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                                   spanSetMaskList,
                                                                   stats.ctrl)
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
+                    if convergenceCheck < 0:
+                        self.log.warn("Coadd %s diverged before reaching maximum iterations or"
+                                      " desired convergence improvement of %s."
+                                      " Divergence: %s",
+                                      subBBox, self.config.convergenceThreshold, convergenceCheck)
+                        break
                     convergenceList.append(convergenceMetric)
                 if modelIter > self.config.maxNumIter:
                     if self.config.useConvergence:
@@ -402,7 +408,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     break
 
                 if self.config.useConvergence:
-                    self.log.info("Iteration %s with convergence metric %s, %.4f%% improvement (gain: %.1f)",
+                    self.log.info("Iteration %s with convergence metric %s, %.4f%% improvement (gain: %.2f)",
                                   modelIter, convergenceMetric, 100.*convergenceCheck, gain)
                 modelIter += 1
             else:
