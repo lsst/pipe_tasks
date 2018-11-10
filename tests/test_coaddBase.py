@@ -85,20 +85,15 @@ class CoaddBaseTestCase(lsst.utils.tests.TestCase):
         self.dataRef = unittest.mock.Mock(spec=lsst.daf.persistence.ButlerDataRef)
         self.dataRef.get.side_effect = mockGet
         self.dataRef.dataId = {"ccd": 10000, "visit": 1}
-        # unittest.mock.patch()
-        # butlerPatcher = unittest.mock.patch("lsst.daf.persistence.Butler", autospec=True)
-        # self._butler = butlerPatcher.start()
-        # self._butler.getMapperClass.return_value = lsst.obs.test.TestMapper
-        # self._butler.return_value.get = mockGet
-        # self.addCleanup(butlerPatcher.stop)
 
     def test_getCalibratedExposure(self):
         expect = self.exposurePhotoCalib.calibrateImage(self.exposure.maskedImage)
+        expect /= self.exposurePhotoCalib.getCalibrationMean()
         result = self.task.getCalibratedExposure(self.dataRef, True)
 
         self.assertMaskedImagesEqual(result.maskedImage, expect)
-        # The new exposure has a flux calibration of 1.
-        self.assertEqual(result.getCalib().getFluxMag0()[0], 1.0)
+        # TODO: once RFC-545 is implemented, this should be 1.0
+        self.assertEqual(result.getCalib().getFluxMag0()[0], 1/self.exposurePhotoCalib.getCalibrationMean())
         self.assertEqual(result.getWcs(), self.skyWcs)
 
     def test_getCalibratedExposureNoJointcalPhotoCalib(self):
@@ -118,9 +113,11 @@ class CoaddBaseTestCase(lsst.utils.tests.TestCase):
         self.raiseOnGetWcs = False
 
         expect = self.jointcalPhotoCalib.calibrateImage(self.exposure.maskedImage)
+        expect /= self.jointcalPhotoCalib.getCalibrationMean()
         result = self.task.getCalibratedExposure(self.dataRef, True)
         self.assertMaskedImagesEqual(result.maskedImage, expect)
-        self.assertEqual(result.getCalib().getFluxMag0()[0], 1.0)
+        # TODO: once RFC-545 is implemented, this should be 1.0
+        self.assertEqual(result.getCalib().getFluxMag0()[0], 1/self.jointcalPhotoCalib.getCalibrationMean())
         self.assertEqual(result.getWcs(), self.jointcalSkyWcs)
 
 

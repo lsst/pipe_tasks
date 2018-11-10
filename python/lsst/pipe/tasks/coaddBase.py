@@ -196,9 +196,10 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
                                              exposure.getBBox())
 
         exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage)
-        # The images now have a calibration of 1.0 everywhere.
-        exposure.setCalib(afwImage.Calib(1.0))
-
+        exposure.maskedImage /= photoCalib.getCalibrationMean()
+        exposure.setCalib(afwImage.Calib(1/photoCalib.getCalibrationMean()))
+        # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
+        # exposure.setCalib(afwImage.Calib(1.0))
         return exposure
 
     def getCoaddDatasetName(self, warpType="direct"):
