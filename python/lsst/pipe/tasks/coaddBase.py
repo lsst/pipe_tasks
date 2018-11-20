@@ -22,7 +22,6 @@
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.daf.persistence
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 
@@ -141,66 +140,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         - bbox: outer bbox of patch, as an afwGeom Box2I
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
-
-    def getCalibratedExposure(self, dataRef, bgSubtracted):
-        """Return one calibrated Exposure, possibly with an updated SkyWcs.
-
-        @param[in] dataRef        a sensor-level data reference
-        @param[in] bgSubtracted   return calexp with background subtracted? If False get the
-                                  calexp's background background model and add it to the calexp.
-        @return calibrated exposure
-
-        If config.doApplyUberCal, the exposure will be photometrically
-        calibrated via the `jointcal_photoCalib` dataset and have its SkyWcs
-        updated to the `jointcal_wcs`, otherwise it will be calibrated via the
-        Exposure's own Calib and have the original SkyWcs.
-        """
-        exposure = dataRef.get("calexp", immediate=True)
-        if not bgSubtracted:
-            background = dataRef.get("calexpBackground", immediate=True)
-            mi = exposure.getMaskedImage()
-            mi += background.getImage()
-            del mi
-
-        if self.config.doApplyUberCal:
-            if self.config.useMeasMosaic:
-                try:
-                    from lsst.meas.mosaic import applyMosaicResultsExposure
-                    # NOTE: this changes exposure in-place, updating its Calib and Wcs.
-                    # Save the calibration error, as it gets overwritten with zero.
-                    fluxMag0Err = exposure.getCalib().getFluxMag0()[1]
-                    applyMosaicResultsExposure(dataRef, calexp=exposure)
-                    fluxMag0 = exposure.getCalib().getFluxMag0()[0]
-                    photoCalib = afwImage.PhotoCalib(1.0/fluxMag0,
-                                                     fluxMag0Err/fluxMag0**2,
-                                                     exposure.getBBox())
-                except ImportError:
-                    msg = "Cannot apply meas_mosaic calibration: meas_mosaic not available."
-                    raise RuntimeError(msg.format(dataRef.dataId))
-            else:
-                try:
-                    photoCalib = dataRef.get("jointcal_photoCalib")
-                except lsst.daf.persistence.NoResults:
-                    msg = "Cannot apply jointcal calibration: `jointcal_photoCalib` not found for dataRef {}."
-                    raise RuntimeError(msg.format(dataRef.dataId))
-                try:
-                    skyWcs = dataRef.get("jointcal_wcs")
-                    exposure.setWcs(skyWcs)
-                except lsst.daf.persistence.NoResults:
-                    msg = "Cannot update to jointcal SkyWcs: `jointcal_wcs` not found for dataRef {}."
-                    raise RuntimeError(msg.format(dataRef.dataId))
-        else:
-            fluxMag0 = exposure.getCalib().getFluxMag0()
-            photoCalib = afwImage.PhotoCalib(1.0/fluxMag0[0],
-                                             fluxMag0[1]/fluxMag0[0]**2,
-                                             exposure.getBBox())
-
-        exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage)
-        exposure.maskedImage /= photoCalib.getCalibrationMean()
-        exposure.setCalib(afwImage.Calib(1/photoCalib.getCalibrationMean()))
-        # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
-        # exposure.setCalib(afwImage.Calib(1.0))
-        return exposure
 
     def getCoaddDatasetName(self, warpType="direct"):
         """Return coadd name for given warpType and task config

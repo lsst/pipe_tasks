@@ -28,15 +28,14 @@ import lsst.utils.tests
 
 import lsst.afw.image
 import lsst.daf.persistence
-from lsst.pipe.tasks.coaddBase import CoaddBaseTask, CoaddBaseConfig
+from lsst.pipe.tasks.makeCoaddTempExp import MakeCoaddTempExpTask, MakeCoaddTempExpConfig
 
 
-class CoaddBaseTestCase(lsst.utils.tests.TestCase):
+class MakeCoaddTempExpTestCase(lsst.utils.tests.TestCase):
     def setUp(self):
         np.random.seed(10)
 
-        self.config = CoaddBaseConfig()
-        self.task = CoaddBaseTask(self.config, "testCoaddBase")
+        self.config = MakeCoaddTempExpConfig()
 
         # TODO DM-10156: once Calib is replaced, this will be much cleaner
         meanCalibration = 1e-4
@@ -87,9 +86,11 @@ class CoaddBaseTestCase(lsst.utils.tests.TestCase):
         self.dataRef.dataId = {"ccd": 10000, "visit": 1}
 
     def test_getCalibratedExposure(self):
+        task = MakeCoaddTempExpTask(config=self.config)
+
         expect = self.exposurePhotoCalib.calibrateImage(self.exposure.maskedImage)
         expect /= self.exposurePhotoCalib.getCalibrationMean()
-        result = self.task.getCalibratedExposure(self.dataRef, True)
+        result = task.getCalibratedExposure(self.dataRef, True)
 
         self.assertMaskedImagesEqual(result.maskedImage, expect)
         # TODO: once RFC-545 is implemented, this should be 1.0
@@ -98,23 +99,30 @@ class CoaddBaseTestCase(lsst.utils.tests.TestCase):
 
     def test_getCalibratedExposureNoJointcalPhotoCalib(self):
         self.config.doApplyUberCal = True
+        task = MakeCoaddTempExpTask(config=self.config)
+
         with(self.assertRaises(RuntimeError)):
-            self.task.getCalibratedExposure(self.dataRef, True)
+            task.getCalibratedExposure(self.dataRef, True)
 
     def test_getCalibratedExposureNoJointcalWcs(self):
-        self.raiseOnGetPhotoCalib = False
         self.config.doApplyUberCal = True
+        task = MakeCoaddTempExpTask(config=self.config)
+
+        self.raiseOnGetPhotoCalib = False
+
         with(self.assertRaises(RuntimeError)):
-            self.task.getCalibratedExposure(self.dataRef, True)
+            task.getCalibratedExposure(self.dataRef, True)
 
     def test_getCalibratedExposureJointcal(self):
         self.config.doApplyUberCal = True
+        task = MakeCoaddTempExpTask(config=self.config)
+
         self.raiseOnGetPhotoCalib = False
         self.raiseOnGetWcs = False
 
         expect = self.jointcalPhotoCalib.calibrateImage(self.exposure.maskedImage)
         expect /= self.jointcalPhotoCalib.getCalibrationMean()
-        result = self.task.getCalibratedExposure(self.dataRef, True)
+        result = task.getCalibratedExposure(self.dataRef, True)
         self.assertMaskedImagesEqual(result.maskedImage, expect)
         # TODO: once RFC-545 is implemented, this should be 1.0
         self.assertEqual(result.getCalib().getFluxMag0()[0], 1/self.jointcalPhotoCalib.getCalibrationMean())
