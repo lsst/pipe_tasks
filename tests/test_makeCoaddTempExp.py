@@ -27,11 +27,13 @@ import numpy as np
 import lsst.utils.tests
 
 import lsst.afw.image
-import lsst.daf.persistence
-from lsst.pipe.tasks.makeCoaddTempExp import MakeCoaddTempExpTask, MakeCoaddTempExpConfig
+from lsst.daf.persistence import NoResults, ButlerDataRef
+from lsst.pipe.tasks.makeCoaddTempExp import (MakeCoaddTempExpTask,
+                                              MakeCoaddTempExpConfig,
+                                              MissingExposureError)
 
 
-class MakeCoaddTempExpTestCase(lsst.utils.tests.TestCase):
+class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
     def setUp(self):
         np.random.seed(10)
 
@@ -61,29 +63,37 @@ class MakeCoaddTempExpTestCase(lsst.utils.tests.TestCase):
         self.exposure.getCalib().setFluxMag0(1/meanCalibration, calibrationErr/meanCalibration**2)
         self.exposure.setWcs(self.skyWcs)
 
-        # set to False in a test to return self.jointcalPhotoCalib for get('jointcal_PhotoCalib')
-        self.raiseOnGetPhotoCalib = True
-        # set to False in a test to return self.jointcalWcs for get('jointcal_Wcs')
-        self.raiseOnGetWcs = True
+        # set to True in a test to raise NoResults for get('calexp')
+        self.raiseOnGetCalexp = False
 
         def mockGet(datasetType, dataId=None, immediate=None):
             """Minimally fake a butler.get()."""
             if "calexp" in datasetType:
-                return self.exposure.clone()
+                if self.raiseOnGetCalexp:
+                    raise NoResults("failed!", datasetType, dataId)
+                else:
+                    return self.exposure.clone()
             if "jointcal_photoCalib" in datasetType:
-                if self.raiseOnGetPhotoCalib:
-                    raise lsst.daf.persistence.NoResults("failed!", datasetType, dataId)
-                else:
-                    return self.jointcalPhotoCalib
+                return self.jointcalPhotoCalib
             if "jointcal_wcs" in datasetType:
-                if self.raiseOnGetWcs:
-                    raise lsst.daf.persistence.NoResults("failed!", datasetType, dataId)
-                else:
-                    return self.jointcalSkyWcs
+                return self.jointcalSkyWcs
 
-        self.dataRef = unittest.mock.Mock(spec=lsst.daf.persistence.ButlerDataRef)
+        self.dataRef = unittest.mock.Mock(spec=ButlerDataRef)
         self.dataRef.get.side_effect = mockGet
         self.dataRef.dataId = {"ccd": 10000, "visit": 1}
+
+    def test_getCalibratedExposureGetCalexpRaises(self):
+        """If get('calexp') raises NoResults, we should get a usefully
+        chained exception.
+        """
+        task = MakeCoaddTempExpTask(config=self.config)
+
+        self.raiseOnGetCalexp = True
+
+        with self.assertRaises(MissingExposureError) as cm:
+            task.getCalibratedExposure(self.dataRef, True)
+        self.assertIsInstance(cm.exception.__cause__, NoResults)
+        self.assertIn('Exposure not found', str(cm.exception))
 
     def test_getCalibratedExposure(self):
         task = MakeCoaddTempExpTask(config=self.config)
@@ -97,28 +107,9 @@ class MakeCoaddTempExpTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(result.getCalib().getFluxMag0()[0], 1/self.exposurePhotoCalib.getCalibrationMean())
         self.assertEqual(result.getWcs(), self.skyWcs)
 
-    def test_getCalibratedExposureNoJointcalPhotoCalib(self):
-        self.config.doApplyUberCal = True
-        task = MakeCoaddTempExpTask(config=self.config)
-
-        with(self.assertRaises(RuntimeError)):
-            task.getCalibratedExposure(self.dataRef, True)
-
-    def test_getCalibratedExposureNoJointcalWcs(self):
-        self.config.doApplyUberCal = True
-        task = MakeCoaddTempExpTask(config=self.config)
-
-        self.raiseOnGetPhotoCalib = False
-
-        with(self.assertRaises(RuntimeError)):
-            task.getCalibratedExposure(self.dataRef, True)
-
     def test_getCalibratedExposureJointcal(self):
         self.config.doApplyUberCal = True
         task = MakeCoaddTempExpTask(config=self.config)
-
-        self.raiseOnGetPhotoCalib = False
-        self.raiseOnGetWcs = False
 
         expect = self.jointcalPhotoCalib.calibrateImage(self.exposure.maskedImage)
         expect /= self.jointcalPhotoCalib.getCalibrationMean()

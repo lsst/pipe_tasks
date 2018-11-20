@@ -22,8 +22,8 @@
 import numpy
 
 import lsst.pex.config as pexConfig
+import lsst.daf.persistence as dafPersist
 import lsst.afw.image as afwImage
-import lsst.daf.persistence as dafPersistence
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.log as log
@@ -33,6 +33,14 @@ from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 
 __all__ = ["MakeCoaddTempExpTask"]
+
+
+class MissingExposureError(Exception):
+    """Raised when data cannot be retrieved for an exposure.
+    When processing patches, sometimes one exposure is missing; this lets us
+    distinguish bewteen that case, and other errors.
+    """
+    pass
 
 
 class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
@@ -439,12 +447,18 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                   calexp's background background model and add it to the calexp.
         @return calibrated exposure
 
+        @raises MissingExposureError If data for the exposure is not available.
+
         If config.doApplyUberCal, the exposure will be photometrically
         calibrated via the `jointcal_photoCalib` dataset and have its SkyWcs
         updated to the `jointcal_wcs`, otherwise it will be calibrated via the
         Exposure's own Calib and have the original SkyWcs.
         """
-        exposure = dataRef.get("calexp", immediate=True)
+        try:
+            exposure = dataRef.get("calexp", immediate=True)
+        except dafPersist.NoResults as e:
+            raise MissingExposureError('Exposure not found: %s ' % str(e)) from e
+
         if not bgSubtracted:
             background = dataRef.get("calexpBackground", immediate=True)
             mi = exposure.getMaskedImage()
@@ -453,31 +467,22 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         if self.config.doApplyUberCal:
             if self.config.useMeasMosaic:
+                from lsst.meas.mosaic import applyMosaicResultsExposure
+                # NOTE: this changes exposure in-place, updating its Calib and Wcs.
+                # Save the calibration error, as it gets overwritten with zero.
+                fluxMag0Err = exposure.getCalib().getFluxMag0()[1]
                 try:
-                    from lsst.meas.mosaic import applyMosaicResultsExposure
-                    # NOTE: this changes exposure in-place, updating its Calib and Wcs.
-                    # Save the calibration error, as it gets overwritten with zero.
-                    fluxMag0Err = exposure.getCalib().getFluxMag0()[1]
                     applyMosaicResultsExposure(dataRef, calexp=exposure)
-                    fluxMag0 = exposure.getCalib().getFluxMag0()[0]
-                    photoCalib = afwImage.PhotoCalib(1.0/fluxMag0,
-                                                     fluxMag0Err/fluxMag0**2,
-                                                     exposure.getBBox())
-                except ImportError:
-                    msg = "Cannot apply meas_mosaic calibration: meas_mosaic not available."
-                    raise RuntimeError(msg.format(dataRef.dataId))
+                except dafPersist.NoResults as e:
+                    raise MissingExposureError('Mosaic calibration not found: %s ' % str(e)) from e
+                fluxMag0 = exposure.getCalib().getFluxMag0()[0]
+                photoCalib = afwImage.PhotoCalib(1.0/fluxMag0,
+                                                 fluxMag0Err/fluxMag0**2,
+                                                 exposure.getBBox())
             else:
-                try:
-                    photoCalib = dataRef.get("jointcal_photoCalib")
-                except dafPersistence.NoResults:
-                    msg = "Cannot apply jointcal calibration: `jointcal_photoCalib` not found for dataRef {}."
-                    raise RuntimeError(msg.format(dataRef.dataId))
-                try:
-                    skyWcs = dataRef.get("jointcal_wcs")
-                    exposure.setWcs(skyWcs)
-                except dafPersistence.NoResults:
-                    msg = "Cannot update to jointcal SkyWcs: `jointcal_wcs` not found for dataRef {}."
-                    raise RuntimeError(msg.format(dataRef.dataId))
+                photoCalib = dataRef.get("jointcal_photoCalib")
+                skyWcs = dataRef.get("jointcal_wcs")
+                exposure.setWcs(skyWcs)
         else:
             fluxMag0 = exposure.getCalib().getFluxMag0()
             photoCalib = afwImage.PhotoCalib(1.0/fluxMag0[0],
