@@ -97,18 +97,18 @@ class CoaddBaseTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(result.getWcs(), self.skyWcs)
 
     def test_getCalibratedExposureNoJointcalPhotoCalib(self):
-        self.config.doApplyJointcal = True
+        self.config.doApplyUberCal = True
         with(self.assertRaises(RuntimeError)):
             self.task.getCalibratedExposure(self.dataRef, True)
 
     def test_getCalibratedExposureNoJointcalWcs(self):
         self.raiseOnGetPhotoCalib = False
-        self.config.doApplyJointcal = True
+        self.config.doApplyUberCal = True
         with(self.assertRaises(RuntimeError)):
             self.task.getCalibratedExposure(self.dataRef, True)
 
     def test_getCalibratedExposureJointcal(self):
-        self.config.doApplyJointcal = True
+        self.config.doApplyUberCal = True
         self.raiseOnGetPhotoCalib = False
         self.raiseOnGetWcs = False
 

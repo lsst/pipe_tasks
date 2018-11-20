@@ -66,7 +66,7 @@ class CoaddBaseConfig(pexConfig.Config):
         default=False
     )
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
-    doApplyJointcal = pexConfig.Field(
+    doApplyUberCal = pexConfig.Field(
         dtype=bool,
         doc="Apply jointcal WCS and PhotoCalib results to input calexps?",
         default=False
@@ -150,7 +150,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
                                   calexp's background background model and add it to the calexp.
         @return calibrated exposure
 
-        If config.doApplyJointcal, the exposure will be photometrically
+        If config.doApplyUberCal, the exposure will be photometrically
         calibrated via the `jointcal_photoCalib` dataset and have its SkyWcs
         updated to the `jointcal_wcs`, otherwise it will be calibrated via the
         Exposure's own Calib and have the original SkyWcs.
@@ -162,7 +162,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
             mi += background.getImage()
             del mi
 
-        if self.config.doApplyJointcal:
+        if self.config.doApplyUberCal:
             if self.config.useMeasMosaic:
                 try:
                     from lsst.meas.mosaic import applyMosaicResultsExposure

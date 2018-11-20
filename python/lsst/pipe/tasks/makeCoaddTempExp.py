@@ -225,7 +225,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
          --id patch=5,4 tract=0 filter=HSC-I \
          --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 \
          --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24 \
-         --config doApplyJointcal=False makePsfMatched=True modelPsf.defaultFwhm=11
+         --config doApplyUberCal=False makePsfMatched=True modelPsf.defaultFwhm=11
 
     writes a direct and PSF-Matched Warp to
     - `$CI_HSC_DIR/DATA/rerun/ci_hsc/deepCoadd/HSC-I/0/5,4/warp-HSC-I-0-5,4-903988.fits` and
