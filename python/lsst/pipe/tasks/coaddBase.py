@@ -31,11 +31,6 @@ from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
 from .scaleVariance import ScaleVarianceTask
 
-try:
-    from lsst.meas.mosaic import applyMosaicResults
-except ImportError:
-    applyMosaicResults = None
-
 __all__ = ["CoaddBaseTask", "getSkyInfo"]
 
 
@@ -72,7 +67,13 @@ class CoaddBaseConfig(pexConfig.Config):
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype=bool,
-        doc="Apply meas_mosaic ubercal results to input calexps?",
+        doc="Apply jointcal WCS and PhotoCalib results to input calexps?",
+        default=False
+    )
+    useMeasMosaic = pexConfig.Field(
+        dtype=bool,
+        doc="Use meas_mosaic's applyMosaicResultsExposure() to do the photometric "
+        "calibration/wcs update (deprecated).",
         default=False
     )
     matchingKernelSize = pexConfig.Field(
@@ -139,34 +140,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         - bbox: outer bbox of patch, as an afwGeom Box2I
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
-
-    def getCalExp(self, dataRef, bgSubtracted):
-        """!Return one "calexp" calibrated exposure
-
-        @param[in] dataRef        a sensor-level data reference
-        @param[in] bgSubtracted   return calexp with background subtracted? If False get the
-                                  calexp's background background model and add it to the calexp.
-        @return calibrated exposure
-
-        If config.doApplyUberCal, meas_mosaic calibrations will be applied to
-        the returned exposure using applyMosaicResults.
-        """
-        exposure = dataRef.get("calexp", immediate=True)
-        if not bgSubtracted:
-            background = dataRef.get("calexpBackground", immediate=True)
-            mi = exposure.getMaskedImage()
-            mi += background.getImage()
-            del mi
-        if not self.config.doApplyUberCal:
-            return exposure
-        if applyMosaicResults is None:
-            raise RuntimeError(
-                "Cannot use improved calibrations for %s because meas_mosaic could not be imported."
-                % dataRef.dataId
-            )
-        else:
-            applyMosaicResults(dataRef, calexp=exposure)
-        return exposure
 
     def getCoaddDatasetName(self, warpType="direct"):
         """Return coadd name for given warpType and task config
