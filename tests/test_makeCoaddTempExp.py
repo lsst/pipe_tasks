@@ -34,6 +34,7 @@ from lsst.pipe.tasks.makeCoaddTempExp import (MakeCoaddTempExpTask,
 
 
 class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
+    """Tests of MakeCoaddTempExpTask.getCalibratedExposure()"""
     def setUp(self):
         np.random.seed(10)
 
@@ -118,6 +119,63 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
         # TODO: once RFC-545 is implemented, this should be 1.0
         self.assertEqual(result.getCalib().getFluxMag0()[0], 1/self.jointcalPhotoCalib.getCalibrationMean())
         self.assertEqual(result.getWcs(), self.jointcalSkyWcs)
+
+
+class MakeCoaddTempExpRunTestCase(lsst.utils.tests.TestCase):
+    """Tests of MakeCoaddTempExpTask.run()."""
+    def setUp(self):
+        self.config = MakeCoaddTempExpConfig()
+        self.task = MakeCoaddTempExpTask(self.config)
+        dataId = "visit=mock"
+        fakeDataRef = unittest.mock.NonCallableMock(lsst.daf.persistence.ButlerDataRef,
+                                                    dataId=dataId,
+                                                    butlerSubset=unittest.mock.Mock())
+        self.calexpRefList = [fakeDataRef]
+
+        bbox = lsst.geom.Box2I(lsst.geom.Point2I(0, 0), lsst.geom.Extent2I(100, 100))
+        self.skyInfo = unittest.mock.Mock(bbox=bbox)
+
+        self.fakeImage = lsst.afw.image.ExposureF(bbox)
+        self.fakeImage.getMaskedImage().set(np.nan, lsst.afw.image.Mask.getPlaneBitMask("NO_DATA"), np.inf)
+
+        target = "lsst.pipe.tasks.makeCoaddTempExp.MakeCoaddTempExpTask._prepareEmptyExposure"
+        preparePatch = unittest.mock.patch(target, return_value=self.fakeImage)
+        preparePatch.start()
+        self.addCleanup(preparePatch.stop)
+
+    def testGetCalibratedExposureRaisesRuntimeError(self):
+        """If getCalibratedExposure() raises anything other than
+        MissingExposureError, it should be passed up the chain.
+
+        Previously, all Exceptions were caught, logged at `warn` level,
+        and then dropped.
+        """
+        mockErr = "Mock Error!"
+        target = "lsst.pipe.tasks.makeCoaddTempExp.MakeCoaddTempExpTask.getCalibratedExposure"
+        patch = unittest.mock.patch(target,
+                                    new_callable=unittest.mock.Mock,
+                                    side_effect=RuntimeError(mockErr))
+        patch.start()
+        self.addCleanup(patch.stop)
+        with self.assertRaises(RuntimeError) as cm:
+            self.task.run(self.calexpRefList, self.skyInfo)
+        self.assertIn(mockErr, str(cm.exception))
+
+    def testGetCalibratedExposureRaisesMissingExposureError(self):
+        """If getCalibratedExposure() raises MissingExposureError,
+        processing should continue uninterrupted.
+        In this case, that means no data is returned, because there is only
+        one dataRef available (`self.fakeImage`).
+        """
+        mockErr = "No data files exist."
+        target = "lsst.pipe.tasks.makeCoaddTempExp.MakeCoaddTempExpTask.getCalibratedExposure"
+        patch = unittest.mock.patch(target,
+                                    new_callable=unittest.mock.Mock,
+                                    side_effect=MissingExposureError(mockErr))
+        patch.start()
+        self.addCleanup(patch.stop)
+        result = self.task.run(self.calexpRefList, self.skyInfo)
+        self.assertEqual(result.exposures, {"direct": None})
 
 
 def setup_module(module):
