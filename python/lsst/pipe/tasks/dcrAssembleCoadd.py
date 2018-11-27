@@ -63,6 +63,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     baseGain = pexConfig.Field(
         dtype=float,
+        optional=True,
         doc="Relative weight to give the new solution vs. the last solution when updating the model."
             "A value of 1.0 gives equal weight to both solutions."
             "Small values imply slower convergence of the solution, but can "
