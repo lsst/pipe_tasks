@@ -892,7 +892,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if self.config.modelWeightsWidth < 0:
             raise ValueError("modelWeightsWidth must not be negative if useModelWeights is set")
         convergeMask = dcrModels.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
-        convergeMaskPixels = dcrModels.mask.array & convergeMask > 0
+        convergeMaskPixels = dcrModels.mask[dcrBBox].array & convergeMask > 0
         weights = np.zeros_like(dcrModels[0][dcrBBox].image.array)
         weights[convergeMaskPixels] = 1.
         weights = ndimage.filters.gaussian_filter(weights, self.config.modelWeightsWidth)
