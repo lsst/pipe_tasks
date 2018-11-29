@@ -63,6 +63,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     baseGain = pexConfig.Field(
         dtype=float,
+        optional=True,
         doc="Relative weight to give the new solution vs. the last solution when updating the model."
             "A value of 1.0 gives equal weight to both solutions."
             "Small values imply slower convergence of the solution, but can "
@@ -891,7 +892,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if self.config.modelWeightsWidth < 0:
             raise ValueError("modelWeightsWidth must not be negative if useModelWeights is set")
         convergeMask = dcrModels.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
-        convergeMaskPixels = dcrModels.mask.array & convergeMask > 0
+        convergeMaskPixels = dcrModels.mask[dcrBBox].array & convergeMask > 0
         weights = np.zeros_like(dcrModels[0][dcrBBox].image.array)
         weights[convergeMaskPixels] = 1.
         weights = ndimage.filters.gaussian_filter(weights, self.config.modelWeightsWidth)
