@@ -138,7 +138,9 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         self.doNImage = True
         self.warpType = 'direct'
         self.assembleStaticSkyModel.warpType = self.warpType
-        self.assembleStaticSkyModel.doNImage = self.doNImage
+        # The deepCoadd and nImage files will be overwritten by this Task, so don't write them the first time
+        self.assembleStaticSkyModel.doNImage = False
+        self.assembleStaticSkyModel.doWrite = False
         self.statistic = 'MEAN'
 
 
