@@ -401,6 +401,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                                   imageScalerList, weightList,
                                                                   spanSetMaskList,
                                                                   stats.ctrl)
+                    if convergenceMetric == 0:
+                        self.log.warn("Coadd %s had convergence metric of 0.0 which is most likely"
+                                      " due to there being no valid data in the region.", subBBox)
+                        break
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                     if convergenceCheck < 0:
                         self.log.warn("Coadd %s diverged before reaching maximum iterations or"
@@ -427,7 +431,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                   subBBox, convergenceMetric, modelIter)
                 else:
                     self.log.info("Coadd %s finished after %s iterations", subBBox, modelIter)
-            if self.config.useConvergence:
+            if self.config.useConvergence and convergenceMetric > 0:
                 self.log.info("Final convergence improvement was %.4f%% overall",
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
 
