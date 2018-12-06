@@ -349,13 +349,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - ``dcrNImages``: `list` of exposure count images for each subfilter
         """
         templateCoadd = supplementaryData.templateCoadd
+        baseMask = templateCoadd.mask.clone()
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
+        # Note that the mask gets cleared in ``findArtifacts``, but we want to preserve the mask.
+        templateCoadd.setMask(baseMask)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
-        # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
-        # Psf-Matching moves the real edge inwards
-        self.applyAltEdgeMask(templateCoadd.mask, spanSetMaskList)
 
         stats = self.prepareStats(mask=badPixelMask)
         dcrModels = self.prepareDcrInputs(templateCoadd, tempExpRefList, weightList)
@@ -371,7 +371,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         else:
             dcrNImages = None
 
-        baseMask = templateCoadd.mask
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
         nSubregions = (ceil(skyInfo.bbox.getHeight()/subregionSize[1]) *
                        ceil(skyInfo.bbox.getWidth()/subregionSize[0]))
@@ -449,8 +448,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         dcrCoadds = self.fillCoadd(dcrModels, skyInfo, tempExpRefList, weightList,
                                    calibration=self.scaleZeroPoint.getCalib(),
-                                   coaddInputs=self.inputRecorder.makeCoaddInputs(),
-                                   mask=templateCoadd.mask)
+                                   coaddInputs=templateCoadd.getInfo().getCoaddInputs(),
+                                   mask=baseMask)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
