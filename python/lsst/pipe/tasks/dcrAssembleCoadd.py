@@ -20,6 +20,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
+from math import ceil
 import numpy as np
 from scipy import ndimage
 import lsst.afw.geom as afwGeom
@@ -371,9 +372,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         baseMask = templateCoadd.mask
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
+        nSubregions = (ceil(skyInfo.bbox.getHeight()/subregionSize[1]) *
+                       ceil(skyInfo.bbox.getWidth()/subregionSize[0]))
+        subIter = 0
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
-            self.log.info("Computing coadd over %s", subBBox)
+            subIter += 1
+            self.log.info("Computing coadd over patch %s subregion %s of %s: %s",
+                          skyInfo.patchInfo.getIndex(), subIter, nSubregions, subBBox)
             dcrBBox = afwGeom.Box2I(subBBox)
             dcrBBox.grow(self.bufferSize)
             dcrBBox.clip(dcrModels.bbox)
@@ -402,23 +408,26 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                                   spanSetMaskList,
                                                                   stats.ctrl)
                     if convergenceMetric == 0:
-                        self.log.warn("Coadd %s had convergence metric of 0.0 which is most likely"
-                                      " due to there being no valid data in the region.", subBBox)
+                        self.log.warn("Coadd patch %s subregion %s had convergence metric of 0.0 which is "
+                                      "most likely due to there being no valid data in the region.",
+                                      skyInfo.patchInfo.getIndex(), subIter)
                         break
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                     if convergenceCheck < 0:
-                        self.log.warn("Coadd %s diverged before reaching maximum iterations or"
-                                      " desired convergence improvement of %s."
+                        self.log.warn("Coadd patch %s subregion %s diverged before reaching maximum "
+                                      "iterations or desired convergence improvement of %s."
                                       " Divergence: %s",
-                                      subBBox, self.config.convergenceThreshold, convergenceCheck)
+                                      skyInfo.patchInfo.getIndex(), subIter,
+                                      self.config.convergenceThreshold, convergenceCheck)
                         break
                     convergenceList.append(convergenceMetric)
                 if modelIter > self.config.maxNumIter:
                     if self.config.useConvergence:
-                        self.log.warn("Coadd %s reached maximum iterations before reaching"
-                                      " desired convergence improvement of %s."
+                        self.log.warn("Coadd patch %s subregion %s reached maximum iterations "
+                                      "before reaching desired convergence improvement of %s."
                                       " Final convergence improvement: %s",
-                                      subBBox, self.config.convergenceThreshold, convergenceCheck)
+                                      skyInfo.patchInfo.getIndex(), subIter,
+                                      self.config.convergenceThreshold, convergenceCheck)
                     break
 
                 if self.config.useConvergence:
@@ -427,10 +436,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 modelIter += 1
             else:
                 if self.config.useConvergence:
-                    self.log.info("Coadd %s finished with convergence metric %s after %s iterations",
-                                  subBBox, convergenceMetric, modelIter)
+                    self.log.info("Coadd patch %s subregion %s finished with "
+                                  "convergence metric %s after %s iterations",
+                                  skyInfo.patchInfo.getIndex(), subIter, convergenceMetric, modelIter)
                 else:
-                    self.log.info("Coadd %s finished after %s iterations", subBBox, modelIter)
+                    self.log.info("Coadd patch %s subregion %s finished after %s iterations",
+                                  skyInfo.patchInfo.getIndex(), subIter, modelIter)
             if self.config.useConvergence and convergenceMetric > 0:
                 self.log.info("Final convergence improvement was %.4f%% overall",
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
