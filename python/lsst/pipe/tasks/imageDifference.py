@@ -263,10 +263,25 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
         if self.config.doForcedMeasurement:
-            self.totFluxKey = self.schema.addField(
-                "totFlux", "D", "Forced flux measured on the PVI")
-            self.totFluxErrKey = self.schema.addField(
-                "totFluxErr", "D", "Forced flux error measured on the PVI")
+            self.schema.addField(
+                "ip_diffim_forced_PsfFlux_instFlux", "D",
+                "Forced PSF flux measured on the direct image.")
+            self.schema.addField(
+                "ip_diffim_forced_PsfFlux_instFluxErr", "D",
+                "Forced PSF flux error measured on the direct image.")
+            self.schema.addField(
+                "ip_diffim_forced_PsfFlux_area", "F",
+                "Forced PSF flux effective area of PSF.",
+                units="pixel")
+            self.schema.addField(
+                "ip_diffim_forced_PsfFlux_flag", "Flag",
+                "Forced PSF flux general failure flag.")
+            self.schema.addField(
+                "ip_diffim_forced_PsfFlux_flag_noGoodPixels", "Flag",
+                "Forced PSF flux not enough non-rejected pixels in data to attempt the fit.")
+            self.schema.addField(
+                "ip_diffim_forced_PsfFlux_flag_edge", "Flag",
+                "Forced PSF flux object was too close to the edge of the image to use the full PSF model.")
             self.makeSubtask("forcedMeasurement", refSchema=self.schema)
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
@@ -629,9 +644,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     exposure, diaSources, subtractedExposure.getWcs())
                 self.forcedMeasurement.run(forcedSources, exposure, diaSources, subtractedExposure.getWcs())
                 mapper = afwTable.SchemaMapper(forcedSources.schema, diaSources.schema)
-                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_instFlux")[0], "totFlux", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_instFlux")[0],
+                                  "ip_diffim_forced_PsfFlux_instFlux", True)
                 mapper.addMapping(forcedSources.schema.find("base_PsfFlux_instFluxErr")[0],
-                                  "totFluxErr", True)
+                                  "ip_diffim_forced_PsfFlux_instFluxErr", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_area")[0],
+                                  "ip_diffim_forced_PsfFlux_area", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_flag")[0],
+                                  "ip_diffim_forced_PsfFlux_flag", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_flag_noGoodPixels")[0],
+                                  "ip_diffim_forced_PsfFlux_flag_noGoodPixels", True)
+                mapper.addMapping(forcedSources.schema.find("base_PsfFlux_flag_edge")[0],
+                                  "ip_diffim_forced_PsfFlux_flag_edge", True)
                 for diaSource, forcedSource in zip(diaSources, forcedSources):
                     diaSource.assign(forcedSource, mapper)
 
