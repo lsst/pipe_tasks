@@ -76,6 +76,11 @@ class CoaddBaseConfig(pexConfig.Config):
         "calibration/wcs update (deprecated).",
         default=False
     )
+    includeCalibVar = pexConfig.Field(
+        dtype=bool,
+        doc="Add photometric calibration variance to warp variance plane.",
+        default=False
+    )
     matchingKernelSize = pexConfig.Field(
         dtype=int,
         doc="Size in pixels of matching kernel. Must be odd.",
