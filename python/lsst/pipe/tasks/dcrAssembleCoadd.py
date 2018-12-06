@@ -136,6 +136,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
+        self.assembleStaticSkyModel.retarget(CompareWarpAssembleCoaddTask)
         self.doNImage = True
         self.warpType = 'direct'
         self.assembleStaticSkyModel.warpType = self.warpType
