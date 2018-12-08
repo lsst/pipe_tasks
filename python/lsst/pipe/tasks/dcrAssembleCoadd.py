@@ -136,6 +136,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
+        self.assembleStaticSkyModel.retarget(CompareWarpAssembleCoaddTask)
         self.doNImage = True
         self.warpType = 'direct'
         self.assembleStaticSkyModel.warpType = self.warpType
@@ -348,13 +349,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - ``dcrNImages``: `list` of exposure count images for each subfilter
         """
         templateCoadd = supplementaryData.templateCoadd
+        baseMask = templateCoadd.mask.clone()
+        # The variance plane is for each subfilter
+        # and should be proportionately lower than the full-band image
+        baseVariance = templateCoadd.variance.clone()/self.config.dcrNumSubfilters
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
+        # Note that the mask gets cleared in ``findArtifacts``, but we want to preserve the mask.
+        templateCoadd.setMask(baseMask)
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
-        # Propagate PSF-matched EDGE pixels to coadd SENSOR_EDGE and INEXACT_PSF
-        # Psf-Matching moves the real edge inwards
-        self.applyAltEdgeMask(templateCoadd.mask, spanSetMaskList)
 
         stats = self.prepareStats(mask=badPixelMask)
         dcrModels = self.prepareDcrInputs(templateCoadd, tempExpRefList, weightList)
@@ -370,7 +374,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         else:
             dcrNImages = None
 
-        baseMask = templateCoadd.mask
         subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
         nSubregions = (ceil(skyInfo.bbox.getHeight()/subregionSize[1]) *
                        ceil(skyInfo.bbox.getWidth()/subregionSize[0]))
@@ -448,8 +451,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         dcrCoadds = self.fillCoadd(dcrModels, skyInfo, tempExpRefList, weightList,
                                    calibration=self.scaleZeroPoint.getCalib(),
-                                   coaddInputs=self.inputRecorder.makeCoaddInputs(),
-                                   mask=templateCoadd.mask)
+                                   coaddInputs=templateCoadd.getInfo().getCoaddInputs(),
+                                   mask=baseMask,
+                                   variance=baseVariance)
         coaddExposure = self.stackCoadd(dcrCoadds)
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
@@ -762,7 +766,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return coaddExposure
 
     def fillCoadd(self, dcrModels, skyInfo, tempExpRefList, weightList, calibration=None, coaddInputs=None,
-                  mask=None):
+                  mask=None, variance=None):
         """Create a list of coadd exposures from a list of masked images.
 
         Parameters
@@ -781,6 +785,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             A record of the observations that are included in the coadd.
         mask : `lsst.afw.image.Mask`, optional
             Optional mask to override the values in the final coadd.
+        variance : `lsst.afw.image.Image`, optional
+            Optional variance plane to override the values in the final coadd.
 
         Returns
         -------
@@ -801,6 +807,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             coaddExposure.setMaskedImage(model[skyInfo.bbox])
             if mask is not None:
                 coaddExposure.setMask(mask)
+            if variance is not None:
+                coaddExposure.setVariance(variance)
             dcrCoadds.append(coaddExposure)
         return dcrCoadds
 
