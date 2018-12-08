@@ -352,7 +352,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         baseMask = templateCoadd.mask.clone()
         # The variance plane is for each subfilter
         # and should be proportionately lower than the full-band image
-        baseVariance = templateCoadd.variance.clone()/self.config.dcrNumSubfilters
+        baseVariance = templateCoadd.variance.clone()
+        baseVariance /= self.config.dcrNumSubfilters
         spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
         # Note that the mask gets cleared in ``findArtifacts``, but we want to preserve the mask.
         templateCoadd.setMask(baseMask)
