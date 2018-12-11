@@ -1,5 +1,6 @@
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
+import lsst.pex.exceptions as pexExceptions
 
 from lsst.coadd.utils import ExistingCoaddDataIdContainer
 from lsst.pipe.base import TaskRunner, ArgumentParser
@@ -142,7 +143,11 @@ def getShortFilterName(name):
     """
     # I'm not sure if this is the way this is supposed to be implemented, but it seems to work,
     # and its the only way I could get it to work.
-    return afwImage.Filter(name).getFilterProperty().getName()
+    try:
+        return afwImage.Filter(name).getFilterProperty().getName()
+    except pexExceptions.NotFoundError:
+        # No mapping could be found, try proceeding with given name
+        return name
 
 
 def readCatalog(task, patchRef):
