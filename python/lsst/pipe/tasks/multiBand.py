@@ -46,7 +46,7 @@ from .multiBandUtils import getInputSchema, getShortFilterName, readCatalog, _ma
 
 
 """
-New dataset types:
+New set types:
 * deepCoadd_det: detections from what used to be processCoadd (tract, patch, filter)
 * deepCoadd_mergeDet: merged detections (tract, patch)
 * deepCoadd_meas: measurements of merged detections (tract, patch, filter)
@@ -86,31 +86,31 @@ class DetectCoaddSourcesConfig(Config):
         name="deepCoadd",
         scalar=True,
         storageClass="Exposure",
-        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     outputBackgrounds = OutputDatasetField(
         doc="Output Backgrounds used in detection",
         name="{}Coadd_calexp_background",
         scalar=True,
         storageClass="Background",
-        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     outputSources = OutputDatasetField(
         doc="Detected sources catalog",
         name="{}Coadd_det",
         scalar=True,
         storageClass="SourceCatalog",
-        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     outputExposure = OutputDatasetField(
         doc="Exposure post detection",
         name="{}Coadd_calexp",
         scalar=True,
         storageClass="Exposure",
-        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     quantum = QuantumConfig(
-        units=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
 
     def setDefaults(self):
