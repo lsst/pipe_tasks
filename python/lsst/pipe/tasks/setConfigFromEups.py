@@ -33,10 +33,10 @@ def setAstrometryConfigFromEups(config, menu):
 
     .. code-block:: none
 
-        menu = { "ps1": {}, # No changes
+        menu = { "ps1*": {}, # No changes
                 "ps1-without-y": { "solver.filterMap": {"y": "z"} }, # No y-band in this specific version
-                "sdss": { "solver.filterMap": {"y": "z"} }, # No y-band, use z instead
-                "2mass": { "solver.filterMap": {"y": "J"} }, # No y-band, use J instead
+                "sdss*": { "solver.filterMap": {"y": "z"} }, # No y-band, use z instead
+                "2mass*": { "solver.filterMap": {"y": "J"} }, # No y-band, use J instead
             }
 
     """

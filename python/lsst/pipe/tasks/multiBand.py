@@ -32,11 +32,10 @@ In addition, we have a schema-only dataset, which saves the schema for the PeakR
 the mergeDet, meas, and ref dataset Footprints:
 - deepCoadd_peak_schema
 """
-import numpy
 
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializedTaskRunner,
-                            PipelineTask, InitOutputDatasetField, InputDatasetField, OutputDatasetField,
+                            InitOutputDatasetField, InputDatasetField, OutputDatasetField,
                             QuantumConfig)
 from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask
@@ -58,11 +57,6 @@ from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  #
 from .multiBandUtils import MergeSourcesRunner, CullPeaksConfig, _makeGetSchemaCatalogs  # noqa: F401
 from .multiBandUtils import getInputSchema, getShortFilterName, readCatalog, _makeMakeIdFactory  # noqa: F401
 
-
-
-
-
-##############################################################################################################
 
 class DetectCoaddSourcesConfig(Config):
     """Configuration parameters for the DetectCoaddSourcesTask

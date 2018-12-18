@@ -133,7 +133,8 @@ class SnapCombineConfig(pexConfig.Config):
 
 
 class SnapCombineTask(pipeBase.Task):
-    """
+    """Combine snaps.
+
     The lsst.pipe.base.cmdLineTask.CmdLineTask command line task interface supports a
     flag -d to import debug.py from your PYTHONPATH; see
     "http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html"

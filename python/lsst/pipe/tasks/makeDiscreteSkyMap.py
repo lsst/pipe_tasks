@@ -30,7 +30,7 @@ import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
 from lsst.pipe.base import ArgumentParser
 
-__all__ = ('MakeDiscreteSkyMapConfig', 'MakeDiscreteSkyMapRunner', 'MakeDiscreteSkyMapTask')
+__all__ = ['MakeDiscreteSkyMapConfig', 'MakeDiscreteSkyMapRunner', 'MakeDiscreteSkyMapTask']
 
 
 class MakeDiscreteSkyMapConfig(pexConfig.Config):

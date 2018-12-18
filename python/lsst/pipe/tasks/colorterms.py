@@ -158,8 +158,10 @@ class ColortermLibrary(Config):
                     ...
                 }),
                 "sdss": ColortermDict(data={
-                    'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
-                    'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
+                    'g': Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937,
+                            c2=-0.00726883),
+                    'r': Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177,
+                            c2=-0.03068248),
                     ...
                 }),
             })

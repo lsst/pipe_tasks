@@ -10,7 +10,7 @@ try:
 except ImportError:
     havePgSql = False
 
-__all__ = ('PgsqlRegistryContext', 'PgsqlRegisterTask', 'PgsqlIngestConfig', 'PgsqlIngestTask')
+__all__ = ['PgsqlRegistryContext', 'PgsqlRegisterTask', 'PgsqlIngestConfig', 'PgsqlIngestTask']
 
 
 class PgsqlRegistryContext(RegistryContext):

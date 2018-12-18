@@ -26,7 +26,7 @@ import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-__all__ = ('MeasurePsfConfig', 'MeasurePsfTask')
+__all__ = ['MeasurePsfConfig', 'MeasurePsfTask']
 
 
 class MeasurePsfConfig(pexConfig.Config):

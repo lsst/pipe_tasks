@@ -25,7 +25,7 @@ from lsst.pex.config import Config, Field, ListField
 from lsst.pipe.base import Task
 from lsst.afw.geom import Box2D
 
-__all__ = ('SetPrimaryFlagsConfig', 'SetPrimaryFlagsTask')
+__all__ = ['SetPrimaryFlagsConfig', 'SetPrimaryFlagsTask']
 
 
 class SetPrimaryFlagsConfig(Config):

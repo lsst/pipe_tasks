@@ -4,7 +4,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
 from lsst.log import Log
 
-__all__ = ('ObjectMaskCatalog',)
+__all__ = ['ObjectMaskCatalog', ]
 
 
 class ObjectMaskCatalog:

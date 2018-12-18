@@ -28,7 +28,7 @@ from lsstDebug import getDebugFrame
 from lsst.afw.display import getDisplay
 from lsst.pipe.tasks.interpImage import InterpImageTask
 
-__all__ = ('RepairConfig', 'RepairTask')
+__all__ = ['RepairConfig', 'RepairTask']
 
 
 class RepairConfig(pexConfig.Config):

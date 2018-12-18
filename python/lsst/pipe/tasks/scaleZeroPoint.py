@@ -26,8 +26,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
 
-__all__ = ("ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask", "ScaleZeroPointConfig",
-           "SpatialScaleZeroPointConfig", "SpatialScaleZeroPointTask")
+__all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask", "ScaleZeroPointConfig",
+           "SpatialScaleZeroPointConfig", "SpatialScaleZeroPointTask"]
 
 
 class ImageScaler:

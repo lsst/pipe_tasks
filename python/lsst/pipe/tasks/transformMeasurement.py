@@ -188,8 +188,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     @property
     def inputSchemaType(self):
-        """
-        The Butler dataset type for the schema of the input source catalog.
+        """The Butler dataset type for the schema of the input source catalog.
 
         By default, we append `_schema` to the input source type. Subclasses may customize
         if required.
@@ -198,8 +197,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     @property
     def outputDataset(self):
-        """
-        The Butler dataset type for the schema of the output catalog.
+        """The Butler dataset type for the schema of the output catalog.
 
         By default, we prepend `transformed` to the input source type. Subclasses may
         customize if required.
@@ -208,8 +206,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     @property
     def measurementConfig(self):
-        """
-        The configuration of the measurement operation used to generate the input catalog.
+        """The configuration of the measurement operation used to generate the input catalog.
 
         By default we look for `measurement` under the root configuration of the
         generating task. Subclasses may customize this (e.g. to `calibrate.measurement`)

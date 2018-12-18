@@ -26,7 +26,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsstDebug
 
-__all__ = ('MatchBackgroundsConfig', 'MatchBackgroundsTask', 'DataRefMatcher')
+__all__ = ['MatchBackgroundsConfig', 'MatchBackgroundsTask', 'DataRefMatcher']
 
 
 class MatchBackgroundsConfig(pexConfig.Config):
