@@ -292,7 +292,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         self.write(results, patchRef)
         return results
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds):
+    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         # FINDME: DM-15843 needs to come back and address these next two lines with a final solution
         inputData["idFactory"] = afwTable.IdFactory.makeSimple()
         inputData["expId"] = 0
