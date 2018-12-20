@@ -178,117 +178,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
 
 class AssembleCoaddTask(CoaddBaseTask):
     """Assemble a coadded image from a set of warps (coadded temporary exposures).
-
-    We want to assemble a coadded image from a set of Warps (also called
-    coadded temporary exposures or ``coaddTempExps``).
-    Each input Warp covers a patch on the sky and corresponds to a single
-    run/visit/exposure of the covered patch. We provide the task with a list
-    of Warps (``selectDataList``) from which it selects Warps that cover the
-    specified patch (pointed at by ``dataRef``).
-    Each Warp that goes into a coadd will typically have an independent
-    photometric zero-point. Therefore, we must scale each Warp to set it to
-    a common photometric zeropoint. WarpType may be one of 'direct' or
-    'psfMatched', and the boolean configs `config.makeDirect` and
-    `config.makePsfMatched` set which of the warp types will be coadded.
-    The coadd is computed as a mean with optional outlier rejection.
-    Criteria for outlier rejection are set in `AssembleCoaddConfig`.
-    Finally, Warps can have bad 'NaN' pixels which received no input from the
-    source calExps. We interpolate over these bad (NaN) pixels.
-
-    `AssembleCoaddTask` uses several sub-tasks. These are
-
-    - `ScaleZeroPointTask`
-    - create and use an ``imageScaler`` object to scale the photometric zeropoint for each Warp
-    - `InterpImageTask`
-    - interpolate across bad pixels (NaN) in the final coadd
-
-    You can retarget these subtasks if you wish.
-
-    Notes
-    -----
-    The `lsst.pipe.base.cmdLineTask.CmdLineTask` interface supports a
-    flag ``-d`` to import ``debug.py`` from your ``PYTHONPATH``; see
-    `baseDebug` for more about ``debug.py`` files. `AssembleCoaddTask` has
-    no debug variables of its own. Some of the subtasks may support debug
-    variables. See the documentation for the subtasks for further information.
-
-    Examples
-    --------
-    `AssembleCoaddTask` assembles a set of warped images into a coadded image.
-    The `AssembleCoaddTask` can be invoked by running ``assembleCoadd.py``
-    with the flag '--legacyCoadd'. Usage of assembleCoadd.py expects two
-    inputs: a data reference to the tract patch and filter to be coadded, and
-    a list of Warps to attempt to coadd. These are specified using ``--id`` and
-    ``--selectId``, respectively:
-
-    .. code-block:: none
-
-       --id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]
-       --selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]
-
-    Only the Warps that cover the specified tract and patch will be coadded.
-    A list of the available optional arguments can be obtained by calling
-    ``assembleCoadd.py`` with the ``--help`` command line argument:
-
-    .. code-block:: none
-
-       assembleCoadd.py --help
-
-    To demonstrate usage of the `AssembleCoaddTask` in the larger context of
-    multi-band processing, we will generate the HSC-I & -R band coadds from
-    HSC engineering test data provided in the ``ci_hsc`` package. To begin,
-    assuming that the lsst stack has been already set up, we must set up the
-    obs_subaru and ``ci_hsc`` packages. This defines the environment variable
-    ``$CI_HSC_DIR`` and points at the location of the package. The raw HSC
-    data live in the ``$CI_HSC_DIR/raw directory``. To begin assembling the
-    coadds, we must first
-
-    - processCcd
-    - process the individual ccds in $CI_HSC_RAW to produce calibrated exposures
-    - makeSkyMap
-    - create a skymap that covers the area of the sky present in the raw exposures
-    - makeCoaddTempExp
-    - warp the individual calibrated exposures to the tangent plane of the coadd
-
-    We can perform all of these steps by running
-
-    .. code-block:: none
-
-       $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
-
-    This will produce warped exposures for each visit. To coadd the warped
-    data, we call assembleCoadd.py as follows:
-
-    .. code-block:: none
-
-       assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
-       --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
-       --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
-       --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
-       --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
-       --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
-       --selectId visit=903988 ccd=24
-
-    that will process the HSC-I band data. The results are written in
-    ``$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I``.
-
-    You may also choose to run:
-
-    .. code-block:: none
-
-       scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346
-       assembleCoadd.py --legacyCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R \
-       --selectId visit=903334 ccd=16 --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 \
-       --selectId visit=903334 ccd=100 --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 \
-       --selectId visit=903338 ccd=18 --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 \
-       --selectId visit=903342 ccd=10 --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 \
-       --selectId visit=903344 ccd=5 --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 \
-       --selectId visit=903346 ccd=6 --selectId visit=903346 ccd=12
-
-    to generate the coadd for the HSC-R band if you are interested in
-    following multiBand Coadd processing as discussed in `pipeTasks_multiBand`
-    (but note that normally, one would use the `SafeClipAssembleCoaddTask`
-    rather than `AssembleCoaddTask` to make the coadd.
     """
     ConfigClass = AssembleCoaddConfig
     _DefaultName = "assembleCoadd"
@@ -1103,111 +992,6 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
 class SafeClipAssembleCoaddTask(AssembleCoaddTask):
     """Assemble a coadded image from a set of coadded temporary exposures,
     being careful to clip & flag areas with potential artifacts.
-
-    In ``AssembleCoaddTask``, we compute the coadd as an clipped mean (i.e.,
-    we clip outliers). The problem with doing this is that when computing the
-    coadd PSF at a given location, individual visit PSFs from visits with
-    outlier pixels contribute to the coadd PSF and cannot be treated correctly.
-    In this task, we correct for this behavior by creating a new
-    ``badMaskPlane`` 'CLIPPED'. We populate this plane on the input
-    coaddTempExps and the final coadd where
-
-        i. difference imaging suggests that there is an outlier and
-        ii. this outlier appears on only one or two images.
-
-    Such regions will not contribute to the final coadd. Furthermore, any
-    routine to determine the coadd PSF can now be cognizant of clipped regions.
-    Note that the algorithm implemented by this task is preliminary and works
-    correctly for HSC data. Parameter modifications and or considerable
-    redesigning of the algorithm is likley required for other surveys.
-
-    ``SafeClipAssembleCoaddTask`` uses a ``SourceDetectionTask``
-    "clipDetection" subtask and also sub-classes ``AssembleCoaddTask``.
-    You can retarget the ``SourceDetectionTask`` "clipDetection" subtask
-    if you wish.
-
-    Notes
-    -----
-    The `lsst.pipe.base.cmdLineTask.CmdLineTask` interface supports a
-    flag ``-d`` to import ``debug.py`` from your ``PYTHONPATH``;
-    see `baseDebug` for more about ``debug.py`` files.
-    `SafeClipAssembleCoaddTask` has no debug variables of its own.
-    The ``SourceDetectionTask`` "clipDetection" subtasks may support debug
-    variables. See the documetation for `SourceDetectionTask` "clipDetection"
-    for further information.
-
-    Examples
-    --------
-    `SafeClipAssembleCoaddTask` assembles a set of warped ``coaddTempExp``
-    images into a coadded image. The `SafeClipAssembleCoaddTask` is invoked by
-    running assembleCoadd.py *without* the flag '--legacyCoadd'.
-
-    Usage of ``assembleCoadd.py`` expects a data reference to the tract patch
-    and filter to be coadded (specified using
-    '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]')
-    along with a list of coaddTempExps to attempt to coadd (specified using
-    '--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]').
-    Only the coaddTempExps that cover the specified tract and patch will be
-    coadded. A list of the available optional arguments can be obtained by
-    calling assembleCoadd.py with the --help command line argument:
-
-    .. code-block:: none
-
-       assembleCoadd.py --help
-
-    To demonstrate usage of the `SafeClipAssembleCoaddTask` in the larger
-    context of multi-band processing, we will generate the HSC-I & -R band
-    coadds from HSC engineering test data provided in the ci_hsc package.
-    To begin, assuming that the lsst stack has been already set up, we must
-    set up the obs_subaru and ci_hsc packages. This defines the environment
-    variable $CI_HSC_DIR and points at the location of the package. The raw
-    HSC data live in the ``$CI_HSC_DIR/raw`` directory. To begin assembling
-    the coadds, we must first
-
-    - ``processCcd``
-        process the individual ccds in $CI_HSC_RAW to produce calibrated exposures
-    - ``makeSkyMap``
-        create a skymap that covers the area of the sky present in the raw exposures
-    - ``makeCoaddTempExp``
-        warp the individual calibrated exposures to the tangent plane of the coadd</DD>
-
-    We can perform all of these steps by running
-
-    .. code-block:: none
-
-       $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
-
-    This will produce warped coaddTempExps for each visit. To coadd the
-    warped data, we call ``assembleCoadd.py`` as follows:
-
-    .. code-block:: none
-
-       assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
-       --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
-       --selectId visit=903986 ccd=100--selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
-       --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
-       --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
-       --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
-       --selectId visit=903988 ccd=24
-
-    This will process the HSC-I band data. The results are written in
-    ``$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I``.
-
-    You may also choose to run:
-
-    .. code-block:: none
-
-       scons warp-903334 warp-903336 warp-903338 warp-903342 warp-903344 warp-903346 nnn
-       assembleCoadd.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-R --selectId visit=903334 ccd=16 \
-       --selectId visit=903334 ccd=22 --selectId visit=903334 ccd=23 --selectId visit=903334 ccd=100 \
-       --selectId visit=903336 ccd=17 --selectId visit=903336 ccd=24 --selectId visit=903338 ccd=18 \
-       --selectId visit=903338 ccd=25 --selectId visit=903342 ccd=4 --selectId visit=903342 ccd=10 \
-       --selectId visit=903342 ccd=100 --selectId visit=903344 ccd=0 --selectId visit=903344 ccd=5 \
-       --selectId visit=903344 ccd=11 --selectId visit=903346 ccd=1 --selectId visit=903346 ccd=6 \
-       --selectId visit=903346 ccd=12
-
-    to generate the coadd for the HSC-R band if you are interested in following
-    multiBand Coadd processing as discussed in ``pipeTasks_multiBand``.
     """
     ConfigClass = SafeClipAssembleCoaddConfig
     _DefaultName = "safeClipAssembleCoadd"
@@ -1219,25 +1003,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
         """Assemble the coadd for a region.
-
-        Compute the difference of coadds created with and without outlier
-        rejection to identify coadd pixels that have outlier values in some
-        individual visits.
-        Detect clipped regions on the difference image and mark these regions
-        on the one or two individual coaddTempExps where they occur if there
-        is significant overlap between the clipped region and a source. This
-        leaves us with a set of footprints from the difference image that have
-        been identified as having occured on just one or two individual visits.
-        However, these footprints were generated from a difference image. It
-        is conceivable for a large diffuse source to have become broken up
-        into multiple footprints acrosss the coadd difference in this process.
-        Determine the clipped region from all overlapping footprints from the
-        detected sources in each visit - these are big footprints.
-        Combine the small and big clipped footprints and mark them on a new
-        bad mask plane.
-        Generate the coadd using `AssembleCoaddTask.run` without outlier
-        removal. Clipped footprints will no longer make it into the coadd
-        because they are marked in the new bad mask plane.
 
         Parameters
         ----------
@@ -1260,6 +1025,28 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
         Notes
         -----
+        Compute the difference of coadds created with and without outlier
+        rejection to identify coadd pixels that have outlier values in some
+        individual visits.
+
+        Detect clipped regions on the difference image and mark these regions
+        on the one or two individual coaddTempExps where they occur if there
+        is significant overlap between the clipped region and a source. This
+        leaves us with a set of footprints from the difference image that have
+        been identified as having occured on just one or two individual visits.
+        However, these footprints were generated from a difference image. It
+        is conceivable for a large diffuse source to have become broken up
+        into multiple footprints acrosss the coadd difference in this process.
+        Determine the clipped region from all overlapping footprints from the
+        detected sources in each visit - these are big footprints.
+
+        Combine the small and big clipped footprints and mark them on a new
+        bad mask plane.
+
+        Generate the coadd using `AssembleCoaddTask.run` without outlier
+        removal. Clipped footprints will no longer make it into the coadd
+        because they are marked in the new bad mask plane.
+
         args and kwargs are passed but ignored in order to match the call
         signature expected by the parent task.
         """
@@ -1643,123 +1430,6 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
 class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     """Assemble a compareWarp coadded image from a set of warps
     by masking artifacts detected by comparing PSF-matched warps.
-
-    In ``AssembleCoaddTask``, we compute the coadd as an clipped mean (i.e.,
-    we clip outliers). The problem with doing this is that when computing the
-    coadd PSF at a given location, individual visit PSFs from visits with
-    outlier pixels contribute to the coadd PSF and cannot be treated correctly.
-    In this task, we correct for this behavior by creating a new badMaskPlane
-    'CLIPPED' which marks pixels in the individual warps suspected to contain
-    an artifact. We populate this plane on the input warps by comparing
-    PSF-matched warps with a PSF-matched median coadd which serves as a
-    model of the static sky. Any group of pixels that deviates from the
-    PSF-matched template coadd by more than config.detect.threshold sigma,
-    is an artifact candidate. The candidates are then filtered to remove
-    variable sources and sources that are difficult to subtract such as
-    bright stars. This filter is configured using the config parameters
-    ``temporalThreshold`` and ``spatialThreshold``. The temporalThreshold is
-    the maximum fraction of epochs that the deviation can appear in and still
-    be considered an artifact. The spatialThreshold is the maximum fraction of
-    pixels in the footprint of the deviation that appear in other epochs
-    (where other epochs is defined by the temporalThreshold). If the deviant
-    region meets this criteria of having a significant percentage of pixels
-    that deviate in only a few epochs, these pixels have the 'CLIPPED' bit
-    set in the mask. These regions will not contribute to the final coadd.
-    Furthermore, any routine to determine the coadd PSF can now be cognizant
-    of clipped regions. Note that the algorithm implemented by this task is
-    preliminary and works correctly for HSC data. Parameter modifications and
-    or considerable redesigning of the algorithm is likley required for other
-    surveys.
-
-    ``CompareWarpAssembleCoaddTask`` sub-classes
-    ``AssembleCoaddTask`` and instantiates ``AssembleCoaddTask``
-    as a subtask to generate the TemplateCoadd (the model of the static sky).
-
-    Notes
-    -----
-    The `lsst.pipe.base.cmdLineTask.CmdLineTask` interface supports a
-    flag ``-d`` to import ``debug.py`` from your ``PYTHONPATH``; see
-    ``baseDebug`` for more about ``debug.py`` files.
-
-    This task supports the following debug variables:
-
-    - ``saveCountIm``
-        If True then save the Epoch Count Image as a fits file in the `figPath`
-    - ``figPath``
-        Path to save the debug fits images and figures
-
-    For example, put something like:
-
-    .. code-block:: python
-
-       import lsstDebug
-       def DebugInfo(name):
-           di = lsstDebug.getInfo(name)
-           if name == "lsst.pipe.tasks.assembleCoadd":
-               di.saveCountIm = True
-               di.figPath = "/desired/path/to/debugging/output/images"
-           return di
-       lsstDebug.Info = DebugInfo
-
-    into your ``debug.py`` file and run ``assemebleCoadd.py`` with the
-    ``--debug`` flag. Some subtasks may have their own debug variables;
-    see individual Task documentation.
-
-    Examples
-    --------
-    ``CompareWarpAssembleCoaddTask`` assembles a set of warped images into a
-    coadded image. The ``CompareWarpAssembleCoaddTask`` is invoked by running
-    ``assembleCoadd.py`` with the flag ``--compareWarpCoadd``.
-    Usage of ``assembleCoadd.py`` expects a data reference to the tract patch
-    and filter to be coadded (specified using
-    '--id = [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]')
-    along with a list of coaddTempExps to attempt to coadd (specified using
-    '--selectId [KEY=VALUE1[^VALUE2[^VALUE3...] [KEY=VALUE1[^VALUE2[^VALUE3...] ...]]').
-    Only the warps that cover the specified tract and patch will be coadded.
-    A list of the available optional arguments can be obtained by calling
-    ``assembleCoadd.py`` with the ``--help`` command line argument:
-
-    .. code-block:: none
-
-       assembleCoadd.py --help
-
-    To demonstrate usage of the ``CompareWarpAssembleCoaddTask`` in the larger
-    context of multi-band processing, we will generate the HSC-I & -R band
-    oadds from HSC engineering test data provided in the ``ci_hsc`` package.
-    To begin, assuming that the lsst stack has been already set up, we must
-    set up the ``obs_subaru`` and ``ci_hsc`` packages.
-    This defines the environment variable ``$CI_HSC_DIR`` and points at the
-    location of the package. The raw HSC data live in the ``$CI_HSC_DIR/raw``
-    directory. To begin assembling the coadds, we must first
-
-      - processCcd
-        process the individual ccds in $CI_HSC_RAW to produce calibrated exposures
-      - makeSkyMap
-        create a skymap that covers the area of the sky present in the raw exposures
-      - makeCoaddTempExp
-        warp the individual calibrated exposures to the tangent plane of the coadd
-
-    We can perform all of these steps by running
-
-    .. code-block:: none
-
-       $CI_HSC_DIR scons warp-903986 warp-904014 warp-903990 warp-904010 warp-903988
-
-    This will produce warped ``coaddTempExps`` for each visit. To coadd the
-    warped data, we call ``assembleCoadd.py`` as follows:
-
-    .. code-block:: none
-
-       assembleCoadd.py --compareWarpCoadd $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I \
-       --selectId visit=903986 ccd=16 --selectId visit=903986 ccd=22 --selectId visit=903986 ccd=23 \
-       --selectId visit=903986 ccd=100 --selectId visit=904014 ccd=1 --selectId visit=904014 ccd=6 \
-       --selectId visit=904014 ccd=12 --selectId visit=903990 ccd=18 --selectId visit=903990 ccd=25 \
-       --selectId visit=904010 ccd=4 --selectId visit=904010 ccd=10 --selectId visit=904010 ccd=100 \
-       --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 --selectId visit=903988 ccd=23 \
-       --selectId visit=903988 ccd=24
-
-    This will process the HSC-I band data. The results are written in
-    ``$CI_HSC_DIR/DATA/deepCoadd-results/HSC-I``.
     """
     ConfigClass = CompareWarpAssembleCoaddConfig
     _DefaultName = "compareWarpAssembleCoadd"
