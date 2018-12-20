@@ -18,7 +18,7 @@ Retargetable subtasks
 
 .. lsst-task-config-subtasks:: lsst.pipe.tasks.selectImages.BestSeeingWcsSelectImagesTask
 
-.. _lsst.pipe.tasks.selectImages.BestSeeingWcsSelectImagesTask-fields:
+.. _lsst.pipe.tasks.selectImages.BestSeeingWcsSelectImagesTask-configs:
 
 Configuration fields
 ====================
