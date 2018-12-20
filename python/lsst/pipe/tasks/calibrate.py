@@ -42,7 +42,8 @@ __all__ = ["CalibrateConfig", "CalibrateTask"]
 
 
 class CalibrateConfig(pexConfig.Config):
-    """Config for CalibrateTask"""
+    """Config for CalibrateTask.
+    """
     doWrite = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -172,16 +173,9 @@ class CalibrateConfig(pexConfig.Config):
         # aperture correction should already be measured
 
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page CalibrateTask
-## \ref CalibrateTask_ "CalibrateTask"
-## \copybrief CalibrateTask
-## \}
-
 class CalibrateTask(pipeBase.CmdLineTask):
     """Calibrate an exposure: measure sources and perform astrometric and
-    photometric calibration
+    photometric calibration.
 
     Parameters
     ----------
@@ -189,139 +183,32 @@ class CalibrateTask(pipeBase.CmdLineTask):
         The butler is passed to the refObjLoader constructor
         in case it is needed.  Ignored if the refObjLoader argument
         provides a loader directly.
-    astromRefObjLoader :
-        An instance of LoadReferenceObjectsTasks
+    astromRefObjLoader : `lsst.meas.algorithms.LoadReferenceObjectsTask`
+        An instance of LoadReferenceObjectsTask
         that supplies an external reference catalog for astrometric
         calibration.  May be None if the desired loader can be constructed
         from the butler argument or all steps requiring a reference catalog
         are disabled.
-    photoRefObjLoader :
-        An instance of LoadReferenceObjectsTasks
+    photoRefObjLoader : `lsst.meas.algorithms.LoadReferenceObjectsTask`
+        An instance of LoadReferenceObjectsTask
         that supplies an external reference catalog for photometric
         calibration.  May be None if the desired loader can be constructed
         from the butler argument or all steps requiring a reference catalog
         are disabled.
-    icSourceSchema :
-        schema for icSource catalog, or None.
+    icSourceSchema : `lsst.afw.table.SourceCatalog`
+        Schema for icSource catalog, or None.
         Schema values specified in config.icSourceFieldsToCopy will be
         taken from this schema. If set to None, no values will be
         propagated from the icSourceCatalog
-    kwargs :
-        other keyword arguments for
-        lsst.pipe.base.CmdLineTask
-
-    Notes
-    -----
-    Given an exposure with a good PSF model and aperture correction map
-    (e.g. as provided by @ref CharacterizeImageTask), perform the following
-    operations:
-
-    - Run detection and measurement
-    - Run astrometry subtask to fit an improved WCS
-    - Run photoCal subtask to fit the exposure's photometric zero-point
-
-    Invoking the Task
-
-    If you want this task to unpersist inputs or persist outputs, then call
-    the `runDataRef` method (a wrapper around the `run` method).
-
-    If you already have the inputs unpersisted and do not want to persist the
-    output then it is more direct to call the `run` method:
-
-    Quantities set in exposure Metadata
-
-    Exposure metadata
-
-    .. code-block:: none
-
-        MAGZERO_RMS  MAGZERO's RMS == sigma reported by photoCal task
-        ERO_NOBJ Number of stars used == ngood reported by photoCal
-        task
-        COLORTERM1    (always 0.0)
-        COLORTERM2    (always 0.0)
-        COLORTERM3    (always 0.0)
-
-    Debug variables
-
-    The `lsst.pipe.base.cmdLineTask.CmdLineTask` command line task
-    interface supports a flag
-    `--debug` to import `debug.py` from your `$PYTHONPATH`; see @ref baseDebug
-    for more about `debug.py`.
-
-    CalibrateTask has a debug dictionary containing one key:
-
-    .. code-block:: none
-
-        calibrate
-        frame (an int; <= 0 to not display) in which to display the exposure,
-        sources and matches. See @ref lsst.meas.astrom.displayAstrometry for
-        the meaning of the various symbols.
-
-
-    Examples
-    --------
-    For example, put something like:
-
-    .. code-block:: py
-
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)  # N.b. lsstDebug.Info(name) would
-                                          # call us recursively
-            if name == "lsst.pipe.tasks.calibrate":
-                di.display = dict(
-                    calibrate = 1,
-                )
-
-            return di
-
-        lsstDebug.Info = DebugInfo
-
-    into your `debug.py` file and run `calibrateTask.py` with the `--debug`
-    flag.
-
-    Some subtasks may have their own debug variables; see individual Task
-    documentation.
+    **kwargs
+        Other keyword arguments for `lsst.pipe.base.CmdLineTask`
     """
-
-    # Example description used to live here, removed 2-20-2017 as per
-    # https://jira.lsstcorp.org/browse/DM-9520
-
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, butler=None, astromRefObjLoader=None,
                  photoRefObjLoader=None, icSourceSchema=None, **kwargs):
-        """Construct a CalibrateTask
-
-        Parameters
-        ----------
-        butler :
-            The butler is passed to the refObjLoader constructor
-            in case it is needed.  Ignored if the refObjLoader argument
-            provides a loader directly.
-        astromRefObjLoader :
-            An instance of LoadReferenceObjectsTasks
-            that supplies an external reference catalog for astrometric
-            calibration.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog
-            are disabled.
-        photoRefObjLoader :
-            An instance of LoadReferenceObjectsTasks
-            that supplies an external reference catalog for photometric
-            calibration.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog
-            are disabled.
-        icSourceSchema :
-            schema for icSource catalog, or None.
-            Schema values specified in config.icSourceFieldsToCopy will be
-            taken from this schema. If set to None, no values will be
-            propagated from the icSourceCatalog
-        kwargs :
-            other keyword arguments for
-            lsst.pipe.base.CmdLineTask
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
         if icSourceSchema is None and butler is not None:
@@ -404,51 +291,58 @@ class CalibrateTask(pipeBase.CmdLineTask):
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,
                    doUnpersist=True):
-        """Calibrate an exposure, optionally unpersisting inputs and
-            persisting outputs.
+        """Calibrate an exposure, optionally unpersisting (loading) inputs and
+        persisting outputs.
 
         This is a wrapper around the `run` method that unpersists inputs
-        (if `doUnpersist` true) and persists outputs (if `config.doWrite` true)
+        (if `doUnpersist` true) and persists outputs (if `config.doWrite` true).
 
         Parameters
         ----------
-        dataRef :
-            butler data reference corresponding to a science
-            image
-        exposure : `lsst.afw.image.ExposureF`
-            characterized exposure, or None to unpersist existing
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Butler data reference corresponding to a science image.
+        exposure : `lsst.afw.image.Exposure`
+            Characterized exposure, or None to load existing
             icExp and icBackground. See `run` method for details of what is
             read and written.
-        background : lsst.afw.math.BackgroundList
-            initial model of background already
-            subtracted from exposure. May be
-            None if no background has been subtracted, though that is unusual
-            for calibration. A refined background model is output. Ignored if
-            exposure is None.
-        icSourceCat :
-            catalog from which to copy the fields specified
-            by icSourceKeys, or None;
-        doUnpersist :
-            unpersist data:
-            - if True, exposure, background and icSourceCat are read from
-                dataRef and those three arguments must all be None;
-            - if False the exposure must be provided; background and
-            icSourceCat are optional. True is intended for running as a
-                command-line task, False for running as a subtask
+        background : `lsst.afw.math.BackgroundList`
+            Initial model of background already subtracted from exposure.
+            May be None if no background has been subtracted, though that is
+            unusual for calibration. A refined background model is output.
+            Ignored if exposure is None.
+        icSourceCat : `lsst.afw.table.SourceCatalog`
+            Catalog from which to copy the fields specified by icSourceKeys,
+            or None.
+        doUnpersist : `bool`
+            If True, exposure, background and icSourceCat are read from
+            dataRef and those three arguments must all be None.
+            If False, the exposure must be provided; background and
+            icSourceCat are optional.
+            True is intended for running as a command-line task, which
+            loads existing inputs from disk, and False is intended
+            for running as a subtask, which requires an exposure.
 
         Returns
         -------
-        calRes :
-        same data as the calibrate method
+        calRes : `lsst.pipe.base.Struct`
+            Result struct with components:
+            - ``exposure`` : background-subtracted exposure with refined WCS and Calib
+                (an `lsst.afw.image.Exposure`)
+            - ``background`` : model of background subtracted from exposure
+                (an `lsst.afw.math.BackgroundList`)
+            - ``sourceCat`` : catalog of measured sources
+                (an `lsst.afw.table.SourceCatalog`)
+            - ``astromMatches`` : list of source/refObj matches from the astrometry solver
+                (a `list` of `lsst.afw.table.ReferenceMatch`)
+            - ``matchMeta`` : metadata needed to unpersist matches
+                (an ``lsst.daf.base.PropertyList``)
 
         Raises
         ------
         RuntimeError
-        doUnpersist true; exposure, background
-        and icSourceCat must all be None
-
-        RuntimeError
-        doUnpersist false; exposure must be provided
+            Raised if doUnpersist true but exposure, background
+            and icSourceCat are not all None;
+            also raised if doUnpersist false but exposure is not provided.
         """
         self.log.info("Processing %s" % (dataRef.dataId))
 
@@ -491,37 +385,33 @@ class CalibrateTask(pipeBase.CmdLineTask):
         Parameters
         ----------
         exposure : `lsst.afw.image.ExposureF`
-            exposure to calibrate (an lsst.afw.image.ExposureF or similar);
-            in:
-            - MaskedImage
-            - Psf
-
-            out:
-            - MaskedImage has background subtracted
-            - Wcs is replaced
-            - Calib zero-point is set
-
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+            Exposure to calibrate.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
             ID info for exposure. If not provided, returned
             SourceCatalog IDs will not be globally unique.
         background : `lsst.afw.math.BackgroundList`
-            background model already subtracted from
-            exposure. May be None if no
-            background has been subtracted, though that is unusual for
-            calibration. A refined background model is output.
-        icSourceCat :
-            A SourceCatalog from CharacterizeImageTask
-            from which we can copy some fields.
+            Initial model of background already subtracted from exposure.
+            May be None if no background has been subtracted, though that is
+            unusual for calibration. A refined background model is output.
+            Ignored if exposure is None.
+        icSourceCat : `lsst.afw.table.SourceCatalog`
+            A SourceCatalog from ``CharacterizeImageTask`` from which we can
+            copy some fields.
 
         Returns
         -------
-        result: `lsst.pipe.base.Struct`
+        result : `lsst.pipe.base.Struct`
 
-            - ``exposure`` :  calibrate science exposure with refined WCS and Calib
-            - ``background`` : model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
-            - ``sourceCat`` :  catalog of measured sources
-            - ``astromMatches`` :  list of source/refObj matches from the astrometry solver
-
+            - ``exposure`` : background-subtracted exposure with refined WCS and Calib
+                (an `lsst.afw.image.Exposure`)
+            - ``background`` : model of background subtracted from exposure
+                (an ``lsst.afw.math.BackgroundList``)
+            - ``sourceCat`` : catalog of measured sources
+                (an `lsst.afw.table.SourceCatalog`)
+            - ``astromMatches`` : list of source/refObj matches from the astrometry solver
+                (a `list` of `lsst.afw.table.ReferenceMatch`)
+            - ``matchMeta`` : metadata needed to unpersist matches
+                (an ``lsst.daf.base.PropertyList``)
         """
         # detect, deblend and measure sources
         if exposureIdInfo is None:
@@ -650,21 +540,22 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
     def writeOutputs(self, dataRef, exposure, background, sourceCat,
                      astromMatches, matchMeta):
-        """Write output data to the output repository
+        """Write output data to the output repository.
 
         Parameters
         ----------
-        dataRef :
-            butler data reference corresponding to a science
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Butler data reference corresponding to a science image.
         exposure : `lsst.afw.image.ExposureF`
-            exposure to write
+            Exposure to write.
         background :`lsst.afw.math.BackgroundList`
-            background model for exposure
-        sourceCat :
-            catalog of measured sources
-        astromMatches :
-            list of source/refObj matches from the
-            astrometry solver
+            Background model for exposure.
+        sourceCat : `lsst.afw.table.SourceCatalog`
+            Catalog of measured sources.
+        astromMatches : `list` of `lsst.afw.table.ReferenceMatch`
+            List of source/refObj matches from the astrometry solver.
+        matchMeta : `lsst.daf.base.PropertyList`
+            Metadata needed to unpersist matches.
         """
         dataRef.put(sourceCat, "src")
         if self.config.doWriteMatches and astromMatches is not None:
@@ -692,11 +583,11 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         Parameters
         ----------
-        exposure : `lsst.afw.image.ExposureF`
-            exposure whose metadata is to be set
-        photoRes :
-            results of running photoCal; if None then it was
-            not run
+        exposure : `lsst.afw.image.Exposure`
+            Exposure whose metadata is to be set.
+        photoRes : `lsst.pipe.base.Struct`
+            Results of running photoCal, optional.
+            If None, then photoCal was not run.
         """
         if photoRes is None:
             return
@@ -725,10 +616,10 @@ class CalibrateTask(pipeBase.CmdLineTask):
 
         Parameters
         ----------
-        icSourceCat :
-            catalog from which to copy fields
-        sourceCat :
-            catalog to which to copy fields
+        icSourceCat : `lsst.afw.table.SourceCatalog`
+            Catalog from which to copy fields.
+        sourceCat : `lsst.afw.table.SourceCatalog`
+            Catalog to which to copy fields.
 
         Notes
         -----
@@ -738,7 +629,7 @@ class CalibrateTask(pipeBase.CmdLineTask):
         """
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify "
-                               "icSourceSchema nd icSourceKeys when "
+                               "icSourceSchema and icSourceKeys when "
                                "constructing this task")
         if icSourceCat is None or sourceCat is None:
             raise RuntimeError("icSourceCat and sourceCat must both be "
