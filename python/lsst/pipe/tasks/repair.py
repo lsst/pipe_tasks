@@ -56,52 +56,13 @@ class RepairConfig(pexConfig.Config):
         self.interp.fallbackValueType = "MEANCLIP"
         self.interp.negativeFallbackAllowed = True
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page RepairTask
-## @ref RepairTask_ "RepairTask"
-## @copybrief RepairTask
-## @}
-
 
 class RepairTask(pipeBase.Task):
-    """This task operates on an lsst.afw.image.Exposure in place to interpolate over a set of
-    lsst.meas.algorithms.Defect objects.
-    It will also, optionally, find and interpolate any cosmic rays in the lsst.afw.image.Exposure.
-
-    Notes
-    -----
-    The available debug variables in RepairTask are:
-
-    display :
-        A dictionary containing debug point names as keys with frame number as value. Valid keys are:
-    repair.before :
-        display image before any repair is done
-    repair.after :
-        display image after cosmic ray and defect correction
-    displayCR :
-        If True, display the exposure on ds9's frame 1 and overlay bounding boxes around detects CRs.
-
-    Examples
-    --------
-    To investigate the pipe_tasks_repair_Debug, put something like
-
-    .. code-block :: none
-
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-            if name == "lsst.pipe.tasks.repair":
-                di.display = {'repair.before':2, 'repair.after':3}
-                di.displayCR = True
-            return di
-
-    lsstDebug.Info = DebugInfo
-    into your debug.py file and run runRepair.py with the --debug flag.
-
-
-    Conversion notes:
-        Display code should be updated once we settle on a standard way of controlling what is displayed.
+    """Repair image defects and find and repair cosmic rays in an exposure.
+    
+    This task operates on an exposure in place to interpolate over a list of
+    lsst.meas.algorithms.Defect objects. It will also, optionally, find and
+    interpolate any cosmic rays.
     """
     ConfigClass = RepairConfig
     _DefaultName = "repair"
@@ -113,34 +74,18 @@ class RepairTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, exposure, defects=None, keepCRs=None):
-        """Repair an Exposure's defects and cosmic rays
+        """Repair an exposure's defects and cosmic rays.
 
         Parameters
         ----------
         exposure : `lsst.afw.image.Exposure`
-            Exposure must have a valid Psf.
-            Modified in place.
-        defects :`lsst.meas.algorithms.DefectListT`
-            If None, do no
-            defect correction.
-        keepCRs :
-            don't interpolate over the CR pixels (defer to RepairConfig if None)
-
-        Raises
-        ------
-        AssertionError
-            with the following strings:
-
-        Notes
-        -----
-
-        .. code-block:: none
-
-            No exposure provided
-            The object provided as exposure evaluates to False
-            No PSF provided
-            The Exposure has no associated Psf
-
+            Exposure with a valid Psf, which will be modified in place.
+        defects : `list` of `lsst.meas.algorithms.Defect`, optional
+            If None, do no defect correction.
+        keepCRs : `bool`, optional
+            If True, don't interpolate over the CR pixels (keep them).
+            If False, interpolate over the CR pixels (don't keep them).
+            If None, defer to the setting in RepairConfig.cosmicray.
         """
         assert exposure, "No exposure provided"
         psf = exposure.getPsf()
@@ -161,12 +106,16 @@ class RepairTask(pipeBase.Task):
             getDisplay(frame).mtv(exposure)
 
     def cosmicRay(self, exposure, keepCRs=None):
-        """Mask cosmic rays
+        """Mask cosmic rays.
 
-        exposure :
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
             Exposure to process
-        keepCRs :
-            Don't interpolate over the CR pixels (defer to pex_config if None)
+        keepCRs : `bool`, optional
+            If True, don't interpolate over the CR pixels (keep them).
+            If False, interpolate over the CR pixels (don't keep them).
+            If None, defer to the setting in RepairConfig.cosmicray.
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display
