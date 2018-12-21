@@ -41,7 +41,7 @@ __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
 
 class CharacterizeImageConfig(pexConfig.Config):
-    """!Config for CharacterizeImageTask"""
+    """Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -169,116 +169,55 @@ class CharacterizeImageConfig(pexConfig.Config):
                                "because flags determined by PSF measurement are used to identify "
                                "sources used to measure aperture correction")
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page CharacterizeImageTask
-## \ref CharacterizeImageTask_ "CharacterizeImageTask"
-## \copybrief CharacterizeImageTask
-## \}
-
 
 class CharacterizeImageTask(pipeBase.CmdLineTask):
-    r"""!Measure bright sources and use this to estimate background and PSF of an exposure
+    """Measure bright sources and use this to estimate background and PSF of
+    an exposure.
 
-    @anchor CharacterizeImageTask_
+    Given an exposure (typically, e.g., as output by IsrTask):
+        (1) Iterate over the following config.psfIteration times, or once if
+        config.doMeasurePsf is False:
+            - detect and measure bright sources
+            - do an initial repair of cosmic rays (no interpolation yet)
+            - measure and subtract background
+            - do an initial PSF measurement estimate
+        (2) Update or set final PSF
+        (3) Do final cosmic ray repair, including interpolation
+        (4) Perform final measurement with final PSF, including measuring and
+            applying aperture correction, if applicable
 
-    @section pipe_tasks_characterizeImage_Contents  Contents
+    Parameters
+    ----------
+    butler : `lsst.daf.persistence.Butler`, optional
+        A butler object is passed to the refObjLoader constructor in case
+        it is needed to load catalogs.
+        May be None if a catalog-based star selector is not used, if the
+        reference object loader constructor does not require a butler, or if a
+        reference object loader is passed directly via the refObjLoader
+        argument.
+    refObjLoader : `lsst.meas.algorithms.LoadReferenceObjectsTask`, optional
+        An instance of LoadReferenceObjectsTask that supplies an
+        external reference catalog to a catalog-based star selector.
+        May be None if a catalog star selector is not used or the loader
+        can be constructed from the butler argument.
+    schema : `lsst.afw.table.SourceTable`, optional
+        Initial schema, or None.
+    **kwargs
+        Other keyword arguments for `lsst.pipe.base.CmdLineTask`
 
-     - @ref pipe_tasks_characterizeImage_Purpose
-     - @ref pipe_tasks_characterizeImage_Initialize
-     - @ref pipe_tasks_characterizeImage_IO
-     - @ref pipe_tasks_characterizeImage_Config
-     - @ref pipe_tasks_characterizeImage_Debug
-
-
-    @section pipe_tasks_characterizeImage_Purpose  Description
-
-    Given an exposure with defects repaired (masked and interpolated over, e.g. as output by IsrTask):
-    - detect and measure bright sources
-    - repair cosmic rays
-    - measure and subtract background
-    - measure PSF
-
-    @section pipe_tasks_characterizeImage_Initialize  Task initialisation
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_characterizeImage_IO  Invoking the Task
-
-    If you want this task to unpersist inputs or persist outputs, then call
+    Notes
+    -----
+    If you want this task to load inputs or persist outputs, then call
     the `runDataRef` method (a thin wrapper around the `run` method).
 
-    If you already have the inputs unpersisted and do not want to persist the output
-    then it is more direct to call the `run` method:
-
-    @section pipe_tasks_characterizeImage_Config  Configuration parameters
-
-    See @ref CharacterizeImageConfig
-
-    @section pipe_tasks_characterizeImage_Debug  Debug variables
-
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a flag
-    `--debug` to import `debug.py` from your `$PYTHONPATH`; see @ref baseDebug for more about `debug.py`.
-
-    CharacterizeImageTask has a debug dictionary with the following keys:
-    <dl>
-    <dt>frame
-    <dd>int: if specified, the frame of first debug image displayed (defaults to 1)
-    <dt>repair_iter
-    <dd>bool; if True display image after each repair in the measure PSF loop
-    <dt>background_iter
-    <dd>bool; if True display image after each background subtraction in the measure PSF loop
-    <dt>measure_iter
-    <dd>bool; if True display image and sources at the end of each iteration of the measure PSF loop
-        See @ref lsst.meas.astrom.displayAstrometry for the meaning of the various symbols.
-    <dt>psf
-    <dd>bool; if True display image and sources after PSF is measured;
-        this will be identical to the final image displayed by measure_iter if measure_iter is true
-    <dt>repair
-    <dd>bool; if True display image and sources after final repair
-    <dt>measure
-    <dd>bool; if True display image and sources after final measurement
-    </dl>
-
-    For example, put something like:
-    @code{.py}
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)  # N.b. lsstDebug.Info(name) would call us recursively
-            if name == "lsst.pipe.tasks.characterizeImage":
-                di.display = dict(
-                    repair = True,
-                )
-
-            return di
-
-        lsstDebug.Info = DebugInfo
-    @endcode
-    into your `debug.py` file and run `calibrateTask.py` with the `--debug` flag.
-
-    Some subtasks may have their own debug variables; see individual Task documentation.
+    If you already have the inputs loaded and do not want to persist the
+    output, then it is more direct to call the `run` method.
     """
-
-    # Example description used to live here, removed 2-20-2017 by MSSG
-
     ConfigClass = CharacterizeImageConfig
     _DefaultName = "characterizeImage"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
-        """!Construct a CharacterizeImageTask
-
-        @param[in] butler  A butler object is passed to the refObjLoader constructor in case
-            it is needed to load catalogs.  May be None if a catalog-based star selector is
-            not used, if the reference object loader constructor does not require a butler,
-            or if a reference object loader is passed directly via the refObjLoader argument.
-        @param[in] refObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog to a catalog-based star selector.  May be None if a
-            catalog star selector is not used or the loader can be constructed from the
-            butler argument.
-        @param[in,out] schema  initial schema (an lsst.afw.table.SourceTable), or None
-        @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         if schema is None:
             schema = SourceTable.makeMinimalSchema()
@@ -307,29 +246,51 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, doUnpersist=True):
-        """!Characterize a science image and, if wanted, persist the results
+        """Characterize a science image and optionally persist the results.
 
-        This simply unpacks the exposure and passes it to the characterize method to do the work.
+        This unpacks an exposure and passes it to the characterize method
+        to do the work.
 
-        @param[in] dataRef: butler data reference for science exposure
-        @param[in,out] exposure  exposure to characterize (an lsst.afw.image.ExposureF or similar).
-            If None then unpersist from "postISRCCD".
-            The following changes are made, depending on the config:
-            - set psf to the measured PSF
-            - set apCorrMap to the measured aperture correction
-            - subtract background
-            - interpolate over cosmic rays
-            - update detection and cosmic ray mask planes
-        @param[in,out] background  initial model of background already subtracted from exposure
-            (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
-            which is typical for image characterization.
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Butler data reference for science exposure
+        exposure : `lsst.afw.image.Exposure`, optional
+            Exposure to characterize.
+            If None, then use the butler to get the "postISRCCD" dataset type.
+        background : `lsst.afw.math.BackgroundList`, optional
+            Initial model of background already subtracted from exposure
+            (an lsst.afw.math.BackgroundList). May be None if no background has
+            been subtracted, which is typical for image characterization.
             A refined background model is output.
-        @param[in] doUnpersist  if True the exposure is read from the repository
-            and the exposure and background arguments must be None;
-            if False the exposure must be provided.
-            True is intended for running as a command-line task, False for running as a subtask
+        doUnpersist : `bool`
+            If True, the exposure is read from the repository
+            and the exposure and background arguments must be None.
+            If False, the exposure must be provided.
+            True is intended for running as a command-line task, False for
+            running as a subtask.
 
-        @return same data as the characterize method
+        Returns
+        -------
+        charRes : `lsst.pipe.base.Struct`
+            Result struct from the final iteration of
+            detectMeasureAndEstimatePsf with components:
+            - ``exposure`` : characterized exposure; image is repaired by
+                interpolating over cosmic rays, mask is updated accordingly,
+                and the PSF model is set (an `lsst.afw.image.Exposure`)
+            - ``sourceCat`` : catalog of detected sources
+                (an `lsst.afw.table.SourceCatalog`)
+            - ``background`` : model of background subtracted from exposure
+                (an `lsst.afw.math.BackgroundList`)
+            - ``psfCellSet`` : spatial cells of PSF candidates
+                (an `lsst.afw.math.SpatialCellSet`)
+
+        Raises
+        ------
+        RuntimeError
+            Raised if doUnpersist True but exposure and background
+            are not both None; also raised if doUnpersist False but
+            exposure is not provided.
         """
         self._frame = self._initialFrame  # reset debug display frame
         self.log.info("Processing %s" % (dataRef.dataId))
@@ -359,33 +320,34 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None):
-        """!Characterize a science image
+        """Characterize a science image.
 
-        Peforms the following operations:
-        - Iterate the following config.psfIterations times, or once if config.doMeasurePsf false:
-            - detect and measure sources and estimate PSF (see detectMeasureAndEstimatePsf for details)
-        - interpolate over cosmic rays
-        - perform final measurement
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to characterize.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
+            ID info for exposure. If not provided, returned SourceCatalog IDs
+            will not be globally unique.
+        background : `lsst.afw.math.BackgroundList`, optional
+            initial model of background already subtracted from exposure.
+            May be None if no background has been subtracted, which is typical
+            for image characterization.
 
-        @param[in,out] exposure  exposure to characterize (an lsst.afw.image.ExposureF or similar).
-            The following changes are made:
-            - update or set psf
-            - set apCorrMap
-            - update detection and cosmic ray mask planes
-            - subtract background and interpolate over cosmic rays
-        @param[in] exposureIdInfo  ID info for exposure (an lsst.obs.base.ExposureIdInfo).
-            If not provided, returned SourceCatalog IDs will not be globally unique.
-        @param[in,out] background  initial model of background already subtracted from exposure
-            (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
-            which is typical for image characterization.
-
-        @return pipe_base Struct containing these fields, all from the final iteration
-        of detectMeasureAndEstimatePsf:
-        - exposure: characterized exposure; image is repaired by interpolating over cosmic rays,
-            mask is updated accordingly, and the PSF model is set
-        - sourceCat: detected sources (an lsst.afw.table.SourceCatalog)
-        - background: model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
-        - psfCellSet: spatial cells of PSF candidates (an lsst.afw.math.SpatialCellSet)
+        Returns
+        -------
+        dmeRes : `lsst.pipe.base.Struct`
+            Result struct from the final iteration of
+            detectMeasureAndEstimatePsf with components:
+            - ``exposure`` : characterized exposure; image is repaired by
+                interpolating over cosmic rays, mask is updated accordingly,
+                and the PSF model is set (an `lsst.afw.image.Exposure`)
+            - ``sourceCat`` : catalog of detected sources
+                (an `lsst.afw.table.SourceCatalog`)
+            - ``background`` : model of background subtracted from exposure
+                (an `lsst.afw.math.BackgroundList`)
+            - ``psfCellSet`` : spatial cells of PSF candidates
+                (an `lsst.afw.math.SpatialCellSet`)
         """
         self._frame = self._initialFrame  # reset debug display frame
 
@@ -420,8 +382,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         self.repair.run(exposure=dmeRes.exposure)
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
-        # perform final measurement with final PSF, including measuring and applying aperture correction,
-        # if wanted
+        # perform final measurement with final PSF, including measuring and
+        # applying aperture correction, if wanted
         self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
                              exposureId=exposureIdInfo.expId)
         if self.config.doApCorr:
@@ -436,40 +398,59 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def detectMeasureAndEstimatePsf(self, exposure, exposureIdInfo, background):
-        """!Perform one iteration of detect, measure and estimate PSF
+        """Perform one iteration of detect, measure, and estimate PSF.
 
-        Performs the following operations:
-        - if config.doMeasurePsf or not exposure.hasPsf():
-            - install a simple PSF model (replacing the existing one, if need be)
-        - interpolate over cosmic rays with keepCRs=True
-        - estimate background and subtract it from the exposure
-        - detect, deblend and measure sources, and subtract a refined background model;
-        - if config.doMeasurePsf:
-            - measure PSF
-
-        @param[in,out] exposure  exposure to characterize (an lsst.afw.image.ExposureF or similar)
-            The following changes are made:
+        The following changes are made to the input exposure:
             - update or set psf
             - update detection and cosmic ray mask planes
             - subtract background
-        @param[in] exposureIdInfo  ID info for exposure (an lsst.obs_base.ExposureIdInfo)
-        @param[in,out] background  initial model of background already subtracted from exposure
-            (an lsst.afw.math.BackgroundList).
 
-        @return pipe_base Struct containing these fields, all from the final iteration
-        of detect sources, measure sources and estimate PSF:
-        - exposure  characterized exposure; image is repaired by interpolating over cosmic rays,
-            mask is updated accordingly, and the PSF model is set
-        - sourceCat  detected sources (an lsst.afw.table.SourceCatalog)
-        - background  model of background subtracted from exposure (an lsst.afw.math.BackgroundList)
-        - psfCellSet  spatial cells of PSF candidates (an lsst.afw.math.SpatialCellSet)
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to characterize.
+        exposureIdInfo : `lsst.afw.math.BackgroundList`
+            ID info for exposure.
+        background : `lsst.afw.math.BackgroundList`
+            Initial model of background already subtracted from exposure.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Result struct (from the final iteration of detect sources, measure
+            sources, and estimate PSF) with components:
+            - ``exposure`` : characterized exposure; image is repaired by
+                interpolating over cosmic rays, mask is updated accordingly,
+                and the PSF model is set (an `lsst.afw.image.Exposure`)
+            - ``sourceCat`` : catalog of detected sources
+                (an `lsst.afw.table.SourceCatalog`)
+            - ``background`` : model of background subtracted from exposure
+                (an `lsst.afw.math.BackgroundList`)
+            - ``psfCellSet`` : spatial cells of PSF candidates
+                (an `lsst.afw.math.SpatialCellSet`)
+
+        Notes
+        -----
+        ``detectMeasureAndEstimatePsf`` performs the following operations:
+
+        if the exposure doesn't have a PSF and/or the user wants to make and
+        use a simple one:
+        - install a simple PSF model (replacing the existing one, if relevant)
+        - interpolate over cosmic rays with keepCRs=True
+        - estimate background and subtract it from the exposure
+        - detect, deblend and measure sources, and subtract a refined
+          background model
+
+        if ``config.doMeasurePsf``:
+        - measure PSF
         """
         # install a simple PSF model, if needed or wanted
         if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
             self.log.warn("Source catalog detected and measured with placeholder or default PSF")
             self.installSimplePsf.run(exposure=exposure)
 
-        # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
+        # run repair, but do not interpolate over cosmic rays
+        # (do that later in `run` with the final PSF model)
         self.repair.run(exposure=exposure, keepCRs=True)
         self.display("repair_iter", exposure=exposure)
 
@@ -509,18 +490,25 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         )
 
     def getSchemaCatalogs(self):
-        """Return a dict of empty catalogs for each catalog dataset produced by this task.
+        """Return a dict of empty catalogs for each catalog dataset produced
+        by this task.
         """
         sourceCat = SourceCatalog(self.schema)
         sourceCat.getTable().setMetadata(self.algMetadata)
         return {"icSrc": sourceCat}
 
     def display(self, itemName, exposure, sourceCat=None):
-        """Display exposure and sources on next frame, if display of itemName has been requested
+        """Display exposure and sources on next frame, if display of itemName
+        has been requested.
 
-        @param[in] itemName  name of item in debugInfo
-        @param[in] exposure  exposure to display
-        @param[in] sourceCat  source catalog to display
+        Parameters
+        ----------
+        itemName : `str`
+            Name of item in debugInfo.
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to display.
+        sourceCat : `lsst.afw.table.SourceCatalog`, optional
+            Source catalog to display.
         """
         val = getDebugFrame(self._display, itemName)
         if not val:

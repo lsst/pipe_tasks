@@ -44,14 +44,19 @@ class DataRefListRunner(pipeBase.TaskRunner):
     def __call__(self, dataRefList):
         """Run GetRepositoryDataTask.run on a single target
 
-        @param dataRefList: argument dict for run; contains one key: dataRefList
+        Parameters
+        ----------
+        dataRefList :
+            argument dict for run; contains one key: dataRefList
 
-        @return:
-        - None if doReturnResults false
-        - A pipe_base Struct containing these fields if doReturnResults true:
-            - dataRefList: the argument dict sent to runDataRef
-            - metadata: task metadata after execution of runDataRef
-            - result: result returned by task runDataRef
+        Returns
+        -------
+        None
+            if doReturnResults false
+        Struct :
+            - ``dataRefList`` : the argument dict sent to runDataRef
+            - ``metadata`` : task metadata after execution of runDataRef
+            - ``result`` : result returned by task runDataRef
         """
         task = self.TaskClass(config=self.config, log=self.log)
         result = task.runDataRef(dataRefList)
@@ -78,17 +83,26 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
     def runDataRef(self, dataRefList):
         """Get data from a repository for a collection of data references
 
-        @param dataRefList: a list of data references
+        Parameters
+        ----------
+        dataRefList : a list of data references
         """
         raise NotImplementedError("subclass must specify a run method")
 
     def getIdList(self, dataRefList):
         """Get a list of data IDs in a form that can be used as dictionary keys
 
-        @param dataRefList: a list of data references
-        @return a pipe_base Struct with fields:
-        - idKeyTuple: a tuple of dataRef data ID keys
-        - idValList: a list of data ID value tuples, each tuple contains values in the order in idKeyTuple
+        Parameters
+        ----------
+        dataRefList :
+            a list of data references
+
+        Returns
+        -------
+        result : ``lsst.pipe.base.Struct``
+            - ``idKeyTuple`` : a tuple of dataRef data ID keys
+            - ``idValList`` : a list of data ID value tuples,
+                each tuple contains values in the order in idKeyTuple
         """
         if not dataRefList:
             raise RuntimeError("No data refs")
@@ -107,20 +121,34 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
     def getDataList(self, dataRefList, datasetType):
         """Retrieve a list of data
 
-        @param dataRefList: a list of data references
-        @param datasetType: datasetType of data to be retrieved
-        @return a list of data, one entry per dataRef in dataRefList (in order)
+        Parameters
+        ----------
+        dataRefList :
+            a list of data references
+        datasetType :
+            datasetType of data to be retrieved
+
+        Returns
+        -------
+        result : `list`
+            a list of data, one entry per dataRef in dataRefList (in order)
         """
         return [dataRef.get(datasetType=datasetType) for dataRef in dataRefList]
 
     def getMetadataItems(self, dataRefList, datasetType, nameList):
         """Retrieve a list of dictionaries of metadata
 
-        @param dataRefList: a list of data references
-        @param datasetType: datasetType of metadata (or any object that supports get(name))
-        @return a list of dicts of metadata:
-        - each entry in the list corresponds to a dataRef in dataRefList
-        - each dict contains name: item of metadata, for each name in nameList;
+        Parameters
+        ----------
+        dataRefList: a list of data references
+        datasetType: datasetType of metadata (or any object that supports get(name))
+
+        Returns
+        -------
+        valList : `list` of `dict`
+            a list of dicts of metadata:
+            - each entry in the list corresponds to a dataRef in dataRefList
+            - each dict contains name: item of metadata, for each name in nameList;
             numeric and string values will be returned as arrays
         """
         valList = []

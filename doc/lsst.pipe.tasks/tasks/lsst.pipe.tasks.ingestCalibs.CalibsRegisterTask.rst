@@ -18,7 +18,7 @@ Retargetable subtasks
 
 .. lsst-task-config-subtasks:: lsst.pipe.tasks.ingestCalibs.CalibsRegisterTask
 
-.. _lsst.pipe.tasks.ingestCalibs.CalibsRegisterTask-fields:
+.. _lsst.pipe.tasks.ingestCalibs.CalibsRegisterTask-configs:
 
 Configuration fields
 ====================

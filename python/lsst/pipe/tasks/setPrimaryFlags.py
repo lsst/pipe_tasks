@@ -25,6 +25,8 @@ from lsst.pex.config import Config, Field, ListField
 from lsst.pipe.base import Task
 from lsst.afw.geom import Box2D
 
+__all__ = ['SetPrimaryFlagsConfig', 'SetPrimaryFlagsTask']
+
 
 class SetPrimaryFlagsConfig(Config):
     nChildKeyName = Field(dtype=str, default="deblend_nChild",
@@ -57,13 +59,20 @@ class SetPrimaryFlagsTask(Task):
     def run(self, sources, skyMap, tractInfo, patchInfo, includeDeblend=True):
         """Set is-primary and related flags on sources
 
-        @param[in,out] sources   a SourceTable
+        Parameters
+        ----------
+        sources :
+            a SourceTable
             - reads centroid fields and an nChild field
             - writes is-patch-inner, is-tract-inner and is-primary flags
-        @param[in] skyMap   sky tessellation object (subclass of lsst.skymap.BaseSkyMap)
-        @param[in] tractInfo   tract object (subclass of lsst.skymap.TractInfo)
-        @param[in] patchInfo   patch object (subclass of lsst.skymap.PatchInfo)
-        @param[in] includeDeblend   include deblend information in isPrimary?
+        skyMap :
+            sky tessellation object (subclass of lsst.skymap.BaseSkyMap)
+        tractInfo :
+            tract object (subclass of lsst.skymap.TractInfo)
+        patchInfo :
+            patch object (subclass of lsst.skymap.PatchInfo)
+        includeDeblend :
+            include deblend information in isPrimary?
         """
         nChildKey = None
         if includeDeblend:

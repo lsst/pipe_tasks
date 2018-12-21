@@ -30,6 +30,7 @@ __all__ = ["ProcessCcdConfig", "ProcessCcdTask"]
 
 class ProcessCcdConfig(pexConfig.Config):
     """Config for ProcessCcd"""
+
     isr = pexConfig.ConfigurableField(
         target=IsrTask,
         doc="""Task to perform instrumental signature removal or load a post-ISR image; ISR consists of:
@@ -77,54 +78,47 @@ class ProcessCcdConfig(pexConfig.Config):
 
 
 class ProcessCcdTask(pipeBase.CmdLineTask):
-    r"""!Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
+    """Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
 
-    @anchor ProcessCcdTask_
+    Parameters
+    ----------
+    butler :
+        The butler is passed to the refObjLoader constructor in case it is
+        needed.  Ignored if the refObjLoader argument provides a loader directly.
+    psfRefObjLoader :
+        An instance of LoadReferenceObjectsTasks that supplies an
+        external reference catalog for image characterization.  An example of when this would
+        be used is when a CatalogStarSelector is used.  May be None if the desired loader can
+        be constructed from the butler argument or all steps requiring a catalog are disabled.
+    astromRefObjLoader :
+        An instance of LoadReferenceObjectsTasks that supplies an
+        external reference catalog for astrometric calibration.  May be None if the desired
+        loader can be constructed from the butler argument or all steps requiring a reference
+        catalog are disabled.
+    photoRefObjLoader :
+        An instance of LoadReferenceObjectsTasks that supplies an
+        external reference catalog for photometric calibration.  May be None if the desired
+        loader can be constructed from the butler argument or all steps requiring a reference
+        catalog are disabled.
+    kwargs :
+        other keyword arguments for lsst.pipe.base.CmdLineTask
 
-    @section pipe_tasks_processCcd_Contents  Contents
-
-     - @ref pipe_tasks_processCcd_Purpose
-     - @ref pipe_tasks_processCcd_Initialize
-     - @ref pipe_tasks_processCcd_IO
-     - @ref pipe_tasks_processCcd_Config
-     - @ref pipe_tasks_processCcd_Debug
-     - @ref pipe_tasks_processCcd_Example
-
-    @section pipe_tasks_processCcd_Purpose  Description
+    Notes
+    -----
 
     Perform the following operations:
     - Call isr to unpersist raw data and assemble it into a post-ISR exposure
     - Call charImage subtract background, fit a PSF model, repair cosmic rays,
-        detect and measure bright sources, and measure aperture correction
+    detect and measure bright sources, and measure aperture correction
     - Call calibrate to perform deep detection, deblending and single-frame measurement,
-        refine the WCS and fit the photometric zero-point
-
-    @section pipe_tasks_processCcd_Initialize  Task initialisation
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_processCcd_IO  Invoking the Task
-
-    This task is primarily designed to be run from the command line.
-
-    The main method is `runDataRef`, which takes a single butler data reference for the raw input data.
-
-    @section pipe_tasks_processCcd_Config  Configuration parameters
-
-    See @ref ProcessCcdConfig
-
-    @section pipe_tasks_processCcd_Debug  Debug variables
-
-    ProcessCcdTask has no debug output, but its subtasks do.
-
-    @section pipe_tasks_processCcd_Example   A complete example of using ProcessCcdTask
+    refine the WCS and fit the photometric zero-point
 
     The following commands will process all raw data in obs_test's data repository.
     Note: be sure to specify an `--output` that does not already exist:
 
-        setup obs_test
-        setup pipe_tasks
-        processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id
+    - setup obs_test
+    - setup pipe_tasks
+    - processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id
 
     The data is read from the small repository in the `obs_test` package and written `./processCcdOut`
     (or whatever output you specified). Specifying `--id` with no values processes all data.
@@ -136,23 +130,6 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
     def __init__(self, butler=None, psfRefObjLoader=None, astromRefObjLoader=None, photoRefObjLoader=None,
                  **kwargs):
-        """!
-        @param[in] butler  The butler is passed to the refObjLoader constructor in case it is
-            needed.  Ignored if the refObjLoader argument provides a loader directly.
-        @param[in] psfRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for image characterization.  An example of when this would
-            be used is when a CatalogStarSelector is used.  May be None if the desired loader can
-            be constructed from the butler argument or all steps requiring a catalog are disabled.
-        @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for astrometric calibration.  May be None if the desired
-            loader can be constructed from the butler argument or all steps requiring a reference
-            catalog are disabled.
-        @param[in] photoRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for photometric calibration.  May be None if the desired
-            loader can be constructed from the butler argument or all steps requiring a reference
-            catalog are disabled.
-        @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
-        """
         pipeBase.CmdLineTask.__init__(self, **kwargs)
         self.makeSubtask("isr")
         self.makeSubtask("charImage", butler=butler, refObjLoader=psfRefObjLoader)
@@ -168,15 +145,21 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         - characterize image to estimate PSF and background
         - calibrate astrometry and photometry
 
-        @param sensorRef: butler data reference for raw data
+        Parameters
+        ----------
+        sensorRef :
+            butler data reference for raw data
 
-        @return pipe_base Struct containing these fields:
-        - charRes: object returned by image characterization task; an lsst.pipe.base.Struct
-            that will include "background" and "sourceCat" fields
-        - calibRes: object returned by calibration task: an lsst.pipe.base.Struct
-            that will include "background" and "sourceCat" fields
-        - exposure: final exposure (an lsst.afw.image.ExposureF)
-        - background: final background model (an lsst.afw.math.BackgroundList)
+        Returns
+        -------
+        result : `Struct`
+        pipe_base Struct containing these fields:
+        - ``charRes`` : object returned by image characterization task; an lsst.pipe.base.Struct
+        that will include "background" and "sourceCat" fields
+        - ``calibRes`` : object returned by calibration task: an lsst.pipe.base.Struct
+        that will include "background" and "sourceCat" fields
+        - ``exposure`` : final exposure (an lsst.afw.image.ExposureF)
+        - ``background`` : final background model (an lsst.afw.math.BackgroundList)
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
@@ -207,13 +190,22 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
 
     @classmethod
     def _makeArgumentParser(cls):
-        """!Create and return an argument parser
+        """Create and return an argument parser
 
-        @param[in] cls      the class object
-        @return the argument parser for this task.
+        Parameters
+        ----------
+        cls :
+            the class object
 
+        Returns
+        -------
+        parser :
+            the argument parser for this task.
+
+        Notes
+        -----
         This override is used to delay making the data ref list until the dataset type is known;
-        this is done in @ref parseAndRun.
+        this is done in parseAndRun.
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
         parser.add_id_argument(name="--id",

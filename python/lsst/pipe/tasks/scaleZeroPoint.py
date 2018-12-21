@@ -26,20 +26,22 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
 
-__all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask"]
+__all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask", "ScaleZeroPointConfig",
+           "SpatialScaleZeroPointConfig", "SpatialScaleZeroPointTask"]
 
 
 class ImageScaler:
     """A class that scales an image
 
     This version uses a single scalar. Fancier versions may use a spatially varying scale.
+
+    Parameters
+    ----------
+    scale :
+        scale correction to apply (see scaleMaskedImage);
     """
 
     def __init__(self, scale=1.0):
-        """Construct an ImageScaler
-
-        @param[in] scale: scale correction to apply (see scaleMaskedImage);
-        """
         self._scale = scale
 
     def scaleMaskedImage(self, maskedImage):
@@ -57,18 +59,25 @@ class SpatialImageScaler(ImageScaler):
     Interpolates only when scaleMaskedImage() or getInterpImage() is called.
 
     Currently the only type of 'interpolation' implemented is CONSTANT which calculates the mean.
+
+    Parameters
+    ----------
+    interpStyle :
+        interpolation style (CONSTANT is only option)
+    xList :
+        list of X pixel positions
+    yList :
+        list of Y pixel positions
+    scaleList :
+        list of multiplicative scale factors at (x,y)
+
+    Raises
+    ------
+    RuntimeError
+        if the lists have different lengths
     """
 
     def __init__(self, interpStyle, xList, yList, scaleList):
-        """Constructor
-
-        @param[in] interpStyle: interpolation style (CONSTANT is only option)
-        @param[in] xList: list of X pixel positions
-        @param[in] yList: list of Y pixel positions
-        @param[in] scaleList: list of multiplicative scale factors at (x,y)
-
-        @raise RuntimeError if the lists have different lengths
-        """
         if len(xList) != len(yList) or len(xList) != len(scaleList):
             raise RuntimeError(
                 "len(xList)=%s len(yList)=%s, len(scaleList)=%s but all lists must have the same length" %
@@ -82,7 +91,10 @@ class SpatialImageScaler(ImageScaler):
     def scaleMaskedImage(self, maskedImage):
         """Apply scale correction to the specified masked image
 
-        @param[in,out] image to scale; scale is applied in place
+        Parameters
+        ----------
+        maskedImage :
+            image to scale; scale is applied in place
         """
         scale = self.getInterpImage(maskedImage.getBBox())
         maskedImage *= scale
@@ -90,7 +102,10 @@ class SpatialImageScaler(ImageScaler):
     def getInterpImage(self, bbox):
         """Return an image containing the scale correction with same bounding box as supplied.
 
-        @param[in] bbox: integer bounding box for image (afwGeom.Box2I)
+        Parameters
+        ----------
+        bbox :
+            integer bounding box for image (afwGeom.Box2I)
         """
         npoints = len(self._xList)
 
@@ -138,8 +153,6 @@ class ScaleZeroPointTask(pipeBase.Task):
     _DefaultName = "scaleZeroPoint"
 
     def __init__(self, *args, **kwargs):
-        """Construct a ScaleZeroPointTask
-        """
         pipeBase.Task.__init__(self, *args, **kwargs)
 
         # flux at mag=0 is 10^(zeroPoint/2.5)   because m = -2.5*log10(F/F0)
@@ -150,12 +163,19 @@ class ScaleZeroPointTask(pipeBase.Task):
     def run(self, exposure, dataRef=None):
         """Scale the specified exposure to the desired photometric zeropoint
 
-        @param[in,out] exposure: exposure to scale; masked image is scaled in place
-        @param[in] dataRef: dataRef for exposure.
-                               Not used, but in API so that users can switch between spatially variant
-                               and invariant tasks
-        @return a pipeBase.Struct containing:
-        - imageScaler: the image scaling object used to scale exposure
+        Parameters
+        ----------
+        exposure :
+            exposure to scale; masked image is scaled in place
+        dataRef :
+            dataRef for exposure.
+            Not used, but in API so that users can switch between spatially variant
+            and invariant tasks
+        Returns
+        -------
+        result ; `pipeBase.Struct`
+            a pipeBase.Struct containing:
+            - ``imageScaler`` : the image scaling object used to scale exposure
         """
         imageScaler = self.computeImageScaler(exposure=exposure, dataRef=dataRef)
         mi = exposure.getMaskedImage()
@@ -167,10 +187,14 @@ class ScaleZeroPointTask(pipeBase.Task):
     def computeImageScaler(self, exposure, dataRef=None):
         """Compute image scaling object for a given exposure.
 
-        @param[in] exposure: exposure for which scaling is desired
-        @param[in] dataRef: dataRef for exposure.
-                               Not used, but in API so that users can switch between spatially variant
-                               and invariant tasks
+        Parameters
+        ----------
+        exposure :
+            exposure for which scaling is desired
+        dataRef :
+            dataRef for exposure.
+            Not used, but in API so that users can switch between spatially variant
+            and invariant tasks
         """
         scale = self.scaleFromCalib(exposure.getCalib()).scale
         return ImageScaler(scale)
@@ -178,7 +202,10 @@ class ScaleZeroPointTask(pipeBase.Task):
     def getCalib(self):
         """Get desired Calib
 
-        @return calibration (lsst.afw.image.Calib) with fluxMag0 set appropriately for config.zeroPoint
+        Returns
+        -------
+        result : `self._calib`
+            calibration (lsst.afw.image.Calib) with fluxMag0 set appropriately for config.zeroPoint
         """
         return self._calib
 
@@ -187,13 +214,18 @@ class ScaleZeroPointTask(pipeBase.Task):
 
         Compute scale, such that if pixelCalib describes the photometric zeropoint of a pixel
         then the following scales that pixel to the photometric zeropoint specified by config.zeroPoint:
-            scale = computeScale(pixelCalib)
-            pixel *= scale
+        scale = computeScale(pixelCalib)
+        pixel = scale
 
-        @return a pipeBase.Struct containing:
-        - scale, as described above.
+        Returns
+        -------
+        result : `pipeBase.Struct`
+            a pipeBase.Struct containing:
+            - ``scale`` : computeScale(pixelCalib)
 
-        @note: returns a struct to leave room for scaleErr in a future implementation.
+        Notes
+        -----
+        returns a struct to leave room for scaleErr in a future implementation.
         """
         fluxAtZeroPoint = calib.getFlux(self.config.zeroPoint)
         return pipeBase.Struct(
@@ -205,9 +237,18 @@ class ScaleZeroPointTask(pipeBase.Task):
 
         This is a wrapper around scaleFromCalib, which see for more information
 
-        @param[in] fluxMag0
-        @return a pipeBase.Struct containing:
-        - scale, as described in scaleFromCalib.
+        Parameters
+        ----------
+        fluxMag0 :
+
+        Returns
+        -------
+        result : `pipeBase.Struct`
+            a pipeBase.Struct containing:
+
+            - ``scale`` : Compute scale, such that if pixelCalib describes the photometric
+                zeropoint of a pixel then the following scales that pixel to the photometric
+                zeropoint specified by config.zeroPoint:
         """
         calib = afwImage.Calib()
         calib.setFluxMag0(fluxMag0)
@@ -227,11 +268,18 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
     def run(self, exposure, dataRef):
         """Scale the specified exposure to the desired photometric zeropoint
 
-        @param[in,out] exposure: exposure to scale; masked image is scaled in place
-        @param[in] dataRef: dataRef for exposure
+        Parameters
+        ----------
+        exposure :
+            exposure to scale; masked image is scaled in place
+        dataRef :
+            dataRef for exposure
 
-        @return a pipeBase.Struct containing:
-        - imageScaler: the image scaling object used to scale exposure
+        Returns
+        -------
+        result : `pipeBase.Struct`
+            a pipeBase.Struct containing:
+            - ``imageScaler`` : the image scaling object used to scale exposure
         """
         imageScaler = self.computeImageScaler(exposure=exposure, dataRef=dataRef)
         mi = exposure.getMaskedImage()
@@ -243,10 +291,17 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
     def computeImageScaler(self, exposure, dataRef):
         """Compute image scaling object for a given exposure.
 
-        @param[in] exposure: exposure for which scaling is desired. Only wcs and bbox are used.
-        @param[in] dataRef: dataRef of exposure
-                            dataRef.dataId used to retrieve all applicable fluxMag0's from a database.
-        @return a SpatialImageScaler
+        Parameters
+        ----------
+        exposure :
+            exposure for which scaling is desired. Only wcs and bbox are used.
+        dataRef :
+            dataRef of exposure
+            dataRef.dataId used to retrieve all applicable fluxMag0's from a database.
+
+        Returns
+        -------
+        SpatialImageScaler
         """
 
         wcs = exposure.getWcs()

@@ -79,11 +79,17 @@ class InterpImageTask(pipeBase.Task):
     def _setFallbackValue(self, mi=None):
         """Set the edge fallbackValue for interpolation
 
-        @param[in] mi  input maksedImage on which to calculate the statistics
-                       Must be provided if fallbackValueType != "USER".
+        Parameters
+        ----------
+        mi:
+            input maksedImage on which to calculate the statistics
+            Must be provided if fallbackValueType != "USER".
 
-        @return fallbackValue  The value set/computed based on the fallbackValueType
-                               and negativeFallbackAllowed config parameters
+        Returns
+        ------
+        fallbackValue :
+            The value set/computed based on the fallbackValueType
+            and negativeFallbackAllowed config parameters
         """
         if self.config.fallbackValueType != 'USER':
             assert mi, "No maskedImage provided"
@@ -111,12 +117,29 @@ class InterpImageTask(pipeBase.Task):
 
     @pipeBase.timeMethod
     def run(self, image, planeName=None, fwhmPixels=None, defects=None):
-        """!Interpolate in place over pixels in a maskedImage marked as bad
+        """Interpolate in place over pixels in a maskedImage marked as bad
 
         Pixels to be interpolated are set by either a mask planeName provided
         by the caller OR a defects list of type measAlg.DefectListT.  If both
         are provided an exception is raised.
 
+        Parameters
+        ----------
+        image :
+            MaskedImage OR Exposure to be interpolated
+        planeName :
+            name of mask plane over which to interpolate
+            If None, must provide a defects list.
+        fwhmPixels :
+            FWHM of core star (pixels)
+            If None the default is used, where the default
+            is set to the exposure psf if available
+        defects :
+            List of defects of type measAlg.DefectListT
+            over which to interpolate.
+
+        Notes
+        -----
         Note that the interpolation code in meas_algorithms currently doesn't
         use the input PSF (though it's a required argument), so it's not
         important to set the input PSF parameters exactly.  This PSF is set
@@ -125,15 +148,6 @@ class InterpImageTask(pipeBase.Task):
         measAlg.GaussianPsfFactory with the value of fwhmPixels (the value
         passed in by the caller, or the default defaultFwhm set in
         measAlg.GaussianPsfFactory if None).
-
-        @param[in,out] image       MaskedImage OR Exposure to be interpolated
-        @param[in]     planeName   name of mask plane over which to interpolate
-                                   If None, must provide a defects list.
-        @param[in]     fwhmPixels  FWHM of core star (pixels)
-                                   If None the default is used, where the default
-                                   is set to the exposure psf if available
-        @param[in]     defects     List of defects of type measAlg.DefectListT
-                                   over which to interpolate.
         """
         try:
             maskedImage = image.getMaskedImage()
