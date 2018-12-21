@@ -465,6 +465,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             mi += background.getImage()
             del mi
 
+        # TODO: this is needed until DM-10153 is done and Calib is gone
+        referenceFlux = 1e23 * 10**(48.6 / -2.5) * 1e9
         if self.config.doApplyUberCal:
             if self.config.useMeasMosaic:
                 from lsst.meas.mosaic import applyMosaicResultsExposure
@@ -476,8 +478,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 except dafPersist.NoResults as e:
                     raise MissingExposureError('Mosaic calibration not found: %s ' % str(e)) from e
                 fluxMag0 = exposure.getCalib().getFluxMag0()[0]
-                photoCalib = afwImage.PhotoCalib(1.0/fluxMag0,
-                                                 fluxMag0Err/fluxMag0**2,
+                photoCalib = afwImage.PhotoCalib(referenceFlux/fluxMag0,
+                                                 referenceFlux*fluxMag0Err/fluxMag0**2,
                                                  exposure.getBBox())
             else:
                 photoCalib = dataRef.get("jointcal_photoCalib")
@@ -485,14 +487,14 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 exposure.setWcs(skyWcs)
         else:
             fluxMag0 = exposure.getCalib().getFluxMag0()
-            photoCalib = afwImage.PhotoCalib(1.0/fluxMag0[0],
-                                             fluxMag0[1]/fluxMag0[0]**2,
+            photoCalib = afwImage.PhotoCalib(referenceFlux/fluxMag0[0],
+                                             referenceFlux*fluxMag0[1]/fluxMag0[0]**2,
                                              exposure.getBBox())
 
         exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage,
                                                          includeScaleUncertainty=self.config.includeCalibVar)
         exposure.maskedImage /= photoCalib.getCalibrationMean()
-        exposure.setCalib(afwImage.Calib(1/photoCalib.getCalibrationMean()))
+        exposure.setCalib(afwImage.Calib(photoCalib.getInstFluxAtZeroMagnitude()))
         # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
         # exposure.setCalib(afwImage.Calib(1.0))
         return exposure
