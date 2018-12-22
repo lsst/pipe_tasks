@@ -96,28 +96,28 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
         self.assertIn('Exposure not found', str(cm.exception))
 
     def test_getCalibratedExposure(self):
+        """Test that getCalibratedExposure returns expected Calib and WCS
+        """
+        self._checkCalibratedExposure(doApplyUberCal=False, includeCalibVar=True)
+        self._checkCalibratedExposure(doApplyUberCal=False, includeCalibVar=False)
+        self._checkCalibratedExposure(doApplyUberCal=True, includeCalibVar=True)
+        self._checkCalibratedExposure(doApplyUberCal=True, includeCalibVar=False)
+
+    def _checkCalibratedExposure(self, doApplyUberCal, includeCalibVar):
+        self.config.doApplyUberCal = doApplyUberCal
+        self.config.includeCalibVar = includeCalibVar
         task = MakeCoaddTempExpTask(config=self.config)
 
-        expect = self.exposurePhotoCalib.calibrateImage(self.exposure.maskedImage)
-        expect /= self.exposurePhotoCalib.getCalibrationMean()
-        result = task.getCalibratedExposure(self.dataRef, True)
-
-        self.assertMaskedImagesEqual(result.maskedImage, expect)
-        # TODO: once RFC-545 is implemented, this should be 1.0
-        self.assertEqual(result.getCalib().getFluxMag0()[0], 1/self.exposurePhotoCalib.getCalibrationMean())
-        self.assertEqual(result.getWcs(), self.skyWcs)
-
-    def test_getCalibratedExposureJointcal(self):
-        self.config.doApplyUberCal = True
-        task = MakeCoaddTempExpTask(config=self.config)
-
-        expect = self.jointcalPhotoCalib.calibrateImage(self.exposure.maskedImage)
-        expect /= self.jointcalPhotoCalib.getCalibrationMean()
+        photoCalib = self.jointcalPhotoCalib if doApplyUberCal else self.exposurePhotoCalib
+        expect = photoCalib.calibrateImage(self.exposure.maskedImage, includeCalibVar)
+        expect /= photoCalib.getCalibrationMean()
         result = task.getCalibratedExposure(self.dataRef, True)
         self.assertMaskedImagesEqual(result.maskedImage, expect)
         # TODO: once RFC-545 is implemented, this should be 1.0
-        self.assertEqual(result.getCalib().getFluxMag0()[0], 1/self.jointcalPhotoCalib.getCalibrationMean())
-        self.assertEqual(result.getWcs(), self.jointcalSkyWcs)
+        self.assertEqual(result.getCalib().getFluxMag0()[0], 1/photoCalib.getCalibrationMean())
+
+        targetWcs = self.jointcalSkyWcs if doApplyUberCal else self.skyWcs
+        self.assertEqual(result.getWcs(), targetWcs)
 
 
 def setup_module(module):

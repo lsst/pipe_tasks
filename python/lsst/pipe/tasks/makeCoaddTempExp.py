@@ -489,7 +489,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                              fluxMag0[1]/fluxMag0[0]**2,
                                              exposure.getBBox())
 
-        exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage)
+        exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage,
+                                                         includeScaleUncertainty=self.config.includeCalibVar)
         exposure.maskedImage /= photoCalib.getCalibrationMean()
         exposure.setCalib(afwImage.Calib(1/photoCalib.getCalibrationMean()))
         # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
