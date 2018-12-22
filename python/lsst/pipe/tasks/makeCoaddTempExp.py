@@ -363,19 +363,16 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         for calExpInd, calExpRef in enumerate(calexpRefList):
             self.log.info("Processing calexp %d of %d for this Warp: id=%s",
                           calExpInd+1, len(calexpRefList), calExpRef.dataId)
-            try:
-                ccdId = calExpRef.get("ccdExposureId", immediate=True)
-            except Exception:
-                ccdId = calExpInd
+            ccdId = calExpRef.get("ccdExposureId", immediate=True)
             try:
                 # We augment the dataRef here with the tract, which is harmless for loading things
-                # like calexps that don't need the tract, and necessary for meas_mosaic outputs,
+                # like calexps that don't need the tract, and necessary for jointcal outputs,
                 # which do.
                 calExpRef = calExpRef.butlerSubset.butler.dataRef("calexp", dataId=calExpRef.dataId,
                                                                   tract=skyInfo.tractInfo.getId())
                 calExp = self.getCalibratedExposure(calExpRef, bgSubtracted=self.config.bgSubtracted)
-            except Exception as e:
-                self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
+            except MissingExposureError as e:
+                self.log.warn("Skipping missing data: %s", e)
                 continue
 
             if self.config.doApplySkyCorr:
