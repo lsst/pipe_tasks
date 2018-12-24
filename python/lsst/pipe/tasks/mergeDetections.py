@@ -31,11 +31,12 @@ import lsst.afw.table as afwTable
 
 from lsst.meas.algorithms import SkyObjectsTask
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, ConfigField
-from lsst.pipe.base import CmdLineTask
+from lsst.pipe.base import (CmdLineTask, PipelineTask, PipelineTaskConfig, InitOutputDatasetField,
+                            InputDatasetField, InitInputDatasetField, OutputDatasetField, Struct)
 from lsst.pipe.tasks.coaddBase import getSkyInfo
 
 
-class MergeDetectionsConfig(Config):
+class MergeDetectionsConfig(PipelineTaskConfig):
     """!
     @anchor MergeDetectionsConfig_
 
@@ -57,17 +58,55 @@ class MergeDetectionsConfig(Config):
                              doc="Priority-ordered list of bands for the merge.")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
 
+    schema = InitInputDatasetField(
+        doc="Schema of the input detection catalog",
+        name="",
+        nameTemplate="{inputCoaddName}Coadd_det_schema",
+        storageClass="SourceCatalog"
+    )
+
+    outputSchema = InitOutputDatasetField(
+        doc="Schema of the merged detection catalog",
+        nameTemplate="{outputCoaddName}Coadd_mergeDet_schema",
+        storageClass="SourceCatalog"
+    )
+
+    catalogs = InputDatasetField(
+        doc="Detection Catalogs to be merged",
+        nameTemplate="{inputCoaddName}Coadd_det",
+        storageClass="SourceCatalog",
+        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter")
+    )
+
+    skyMap = InputDatasetField(
+        doc="SkyMap to be used in merging",
+        nameTemplate="{inputCoaddName}Coadd_skyMap",
+        storageClass="SkyMap",
+        dimensions=("SkyMap",),
+        scalar=True
+    )
+
+    outputCatalog = OutputDatasetField(
+        doc="Merged Detection catalog",
+        nameTemplate="{outputCoaddName}Coadd_mergeDet",
+        storageClass="SourceCatalog",
+        dimensions=("Tract", "Patch", "SkyMap"),
+        scalar=True
+    )
+
     def setDefaults(self):
         Config.setDefaults(self)
+        self.formatTemplateNames({"inputCoaddName": 'deep', "outputCoaddName": "deep"})
         self.skyObjects.avoidMask = ["DETECTED"]  # Nothing else is available in our custom mask
+        self.quantum.dimensions = ("Tract", "Patch", "SkyMap")
 
     def validate(self):
-        Config.validate(self)
+        super().validate()
         if len(self.priorityList) == 0:
             raise RuntimeError("No priority list provided")
 
 
-class MergeDetectionsTask(CmdLineTask):
+class MergeDetectionsTask(PipelineTask, CmdLineTask):
     r"""!
     @anchor MergeDetectionsTask_
 
@@ -160,7 +199,8 @@ class MergeDetectionsTask(CmdLineTask):
     def getInputSchema(self, butler=None, schema=None):
         return getInputSchema(self, butler, schema)
 
-    def __init__(self, butler=None, schema=None, **kwargs):
+    def __init__(self, butler=None, schema=None, initInputs=None, **kwargs):
+        # Make PipelineTask-only wording less transitional after cmdlineTask is removed
         """!
         @brief Initialize the merge detections task.
 
@@ -169,11 +209,16 @@ class MergeDetectionsTask(CmdLineTask):
 
         @param[in] schema     the schema of the detection catalogs used as input to this one
         @param[in] butler     a butler used to read the input schema from disk, if schema is None
+        @param[in] initInputs This a PipelineTask-only argument that holds all inputs passed in
+                              through the PipelineTask middleware
         @param[in] **kwargs   keyword arguments to be passed to CmdLineTask.__init__
 
         The task will set its own self.schema attribute to the schema of the output merged catalog.
         """
-        CmdLineTask.__init__(self, **kwargs)
+        super().__init__(**kwargs)
+        if initInputs is not None:
+            schema = initInputs['schema'].schema
+
         self.makeSubtask("skyObjects")
         self.schema = self.getInputSchema(butler=butler, schema=schema)
 
@@ -181,12 +226,40 @@ class MergeDetectionsTask(CmdLineTask):
         filterNames += [self.config.skyFilterName]
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
 
+    def getInitOutputDatasets(self):
+        return {"outputSchema": afwTable.SourceCatalog(self.schema)}
+
     def runDataRef(self, patchRefList):
         catalogs = dict(readCatalog(self, patchRef) for patchRef in patchRefList)
-        mergeCatalog = self.run(catalogs, patchRefList[0])
-        self.write(patchRefList[0], mergeCatalog)
+        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRefList[0])
+        idFactory = self.makeIdFactory(patchRefList[0])
+        skySeed = patchRefList[0].get(self.config.coaddName + "MergedCoaddId")
+        mergeCatalogStruct = self.run(catalogs, skyInfo, idFactory, skySeed)
+        self.write(patchRefList[0], mergeCatalogStruct.outputCatalog)
 
-    def run(self, catalogs, patchRef):
+    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
+        # FINDME: DM-15843 needs to come back and address this function with final solution
+        inputData["skySeed"] = 0
+        inputData["idFactory"] = afwTable.IdFactory.makeSimple()
+        catalogDict = {dataId['abstract_filter']: cat for dataId, cat in zip(inputDataIds['catalogs'],
+                       inputData['catalogs'])}
+        inputData['catalogs'] = catalogDict
+        skyMap = inputData.pop('skyMap')
+        # Can use the first dataId to find the tract and patch being worked on
+        tractNumber = inputDataIds['catalogs'][0]['tract']
+        tractInfo = skyMap[tractNumber]
+        patchInfo = tractInfo.getPatchInfo(inputDataIds['catalogs'][0]['patch'])
+        skyInfo = Struct(
+            skyMap=skyMap,
+            tractInfo=tractInfo,
+            patchInfo=patchInfo,
+            wcs=tractInfo.getWcs(),
+            bbox=patchInfo.getOuterBBox()
+        )
+        inputData['skyInfo'] = skyInfo
+        return self.run(**inputData)
+
+    def run(self, catalogs, skyInfo, idFactory, skySeed):
         r"""!
         @brief Merge multiple catalogs.
 
@@ -201,7 +274,6 @@ class MergeDetectionsTask(CmdLineTask):
         """
 
         # Convert distance to tract coordinate
-        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
         tractWcs = skyInfo.wcs
         peakDistance = self.config.minNewPeak / tractWcs.getPixelScale().asArcseconds()
         samePeakDistance = self.config.maxSamePeak / tractWcs.getPixelScale().asArcseconds()
@@ -212,13 +284,12 @@ class MergeDetectionsTask(CmdLineTask):
                         if band in catalogs.keys()]
 
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
-                                                        self.schema, self.makeIdFactory(patchRef),
+                                                        self.schema, idFactory,
                                                         samePeakDistance)
 
         #
         # Add extra sources that correspond to blank sky
         #
-        skySeed = patchRef.get(self.config.coaddName + "MergedCoaddId")
         skySourceFootprints = self.getSkySourceFootprints(mergedList, skyInfo, skySeed)
         if skySourceFootprints:
             key = mergedList.schema.find("merge_footprint_%s" % self.config.skyFilterName).key
@@ -233,7 +304,7 @@ class MergeDetectionsTask(CmdLineTask):
         self.log.info("Merged to %d sources" % len(mergedList))
         # Attempt to remove garbage peaks
         self.cullPeaks(mergedList)
-        return mergedList
+        return Struct(outputCatalog=mergedList)
 
     def cullPeaks(self, catalog):
         """!
