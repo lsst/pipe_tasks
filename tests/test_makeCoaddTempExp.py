@@ -60,7 +60,10 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
         # mask at least one pixel
         self.exposure.maskedImage.mask[5, 5] = 3
         # set the Calib and Wcs objects of this exposure.
-        self.exposure.getCalib().setFluxMag0(1/meanCalibration, calibrationErr/meanCalibration**2)
+        # TODO: this is needed until DM-10153 is done and Calib is gone
+        referenceFlux = 1e23 * 10**(48.6 / -2.5) * 1e9
+        self.exposure.getCalib().setFluxMag0(referenceFlux/meanCalibration,
+                                             referenceFlux*calibrationErr/meanCalibration**2)
         self.exposure.setWcs(self.skyWcs)
 
         # set to True in a test to raise NoResults for get('calexp')
@@ -114,7 +117,7 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
         result = task.getCalibratedExposure(self.dataRef, True)
         self.assertMaskedImagesEqual(result.maskedImage, expect)
         # TODO: once RFC-545 is implemented, this should be 1.0
-        self.assertEqual(result.getCalib().getFluxMag0()[0], 1/photoCalib.getCalibrationMean())
+        self.assertEqual(result.getCalib().getFluxMag0()[0], photoCalib.getInstFluxAtZeroMagnitude())
 
         targetWcs = self.jointcalSkyWcs if doApplyUberCal else self.skyWcs
         self.assertEqual(result.getWcs(), targetWcs)
