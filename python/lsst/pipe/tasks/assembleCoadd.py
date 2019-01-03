@@ -33,18 +33,19 @@ import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 import lsst.log as log
 import lsstDebug
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .scaleVariance import ScaleVarianceTask
 from lsst.meas.algorithms import SourceDetectionTask
+from lsst.pipe.base.shims import ShimButler  # Should add this to __init__
 
 __all__ = ["AssembleCoaddTask", "AssembleCoaddConfig", "SafeClipAssembleCoaddTask",
            "SafeClipAssembleCoaddConfig", "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
 
 
-class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
+class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig):
     """Configuration parameters for the `AssembleCoaddTask`.
 
     Notes
@@ -149,10 +150,51 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
         doc=("Attach a piecewise TransmissionCurve for the coadd? "
              "(requires all input Exposures to have TransmissionCurves).")
     )
+    warpList = pipeBase.InputDatasetField(
+        doc="Warp",
+        #  TODO: Change this to user-specified coaddName
+        nameTemplate="{inputCoaddName}Coadd_{warpType}Warp",
+        storageClass="ExposureF",
+        dimensions=("Tract", "Patch", "SkyMap", "Visit"),
+    )
+    skyMap = pipeBase.InputDatasetField(
+        doc="SkyMap to be used in merging",
+        nameTemplate="{inputCoaddName}Coadd_skyMap",
+        storageClass="SkyMap",
+        dimensions=("SkyMap", ),
+        scalar=True
+    )
+    # brightObjectMask = pipeBase.InputDatasetField(
+    #    doc="brightObjectMask",
+    #    nameTemplate="",
+    #    storageClass="ExposureF",
+    #    dimensions=("Tract", "Patch", "SkyMap"),
+    #    scalar=True
+    # )
+    coaddExposure = pipeBase.OutputDatasetField(
+        doc="Output coadd",
+        nameTemplate="{outputCoaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter"),
+        scalar=True
+    )
+    nImage = pipeBase.OutputDatasetField(
+        doc="N Image",
+        nameTemplate="{outputCoaddName}Coadd_nImage",
+        storageClass="ImageU",
+        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter"),
+        scalar=True
+    )
+    quantum = pipeBase.QuantumConfig(
+        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter")
+    )
 
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.badMaskPlanes = ["NO_DATA", "BAD", "SAT", "EDGE"]
+        self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep",
+                                  "warpType": self.warpType})
+        self.quantum.dimensions = ("Tract", "Patch", "AbstractFilter", "SkyMap")
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
@@ -176,7 +218,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass):
                              % (self.statistic, stackableStats))
 
 
-class AssembleCoaddTask(CoaddBaseTask):
+class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
     """Assemble a coadded image from a set of warps (coadded temporary exposures).
 
     We want to assemble a coadded image from a set of Warps (also called
@@ -309,8 +351,52 @@ class AssembleCoaddTask(CoaddBaseTask):
 
         self.warpType = self.config.warpType
 
+    @classmethod
+    def getOutputDatasetTypes(cls, config):
+        outputTypeDict = super().getOutputDatasetTypes(config)
+        if not config.doNImage:
+            outputTypeDict.pop("nImage", None)
+        return outputTypeDict
+
+    #@classmethod
+    #def getInputDatasetTypes(cls, config):
+    #    inputTypeDict = super().getInputDatasetTypes(config)
+    #    # remove all optional datasets from InputDatasetsTypes per configs
+    #    #if config.warpType != 'direct':
+    ##        # inputTypeDict['deepCoadd_directWarp']
+     #   return inputTypeDict
+
+    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
+        # Problem is, the inputData is already in memory here. How do I prevent this?
+        butlerShim = ShimButler(butler)
+
+        # Make list of dataRefs:
+        directWarpRefList = [butlerShim.dataRef("deepCoadd_directWarp", dataId=dataId)
+                             for dataId in inputDataIds['warpList']]
+        inputData['directWarpRefList'] = directWarpRefList
+        skyMap = inputData.pop("skyMap")
+        outputDataId = next(iter(outputDataIds.values()))
+        inputData['skyInfo'] = makeSkyInfo(skyMap,
+                                           tractId=outputDataId['tract'],
+                                           patchId=outputDataId['patch'])
+        input = self.prepareInputs(directWarpRefList)
+        self.log.info("Found %d %s", len(input.tempExpRefList),
+                      self.getTempExpDatasetName(self.warpType))
+        if len(input.tempExpRefList) == 0:
+            self.log.warn("No coadd temporary exposures found")
+            return
+
+        patchRef = butlerShim.dataRef('deepCoadd', dataIda=outputDataIds['coaddExposure'])
+        supplementaryData = self.makeSupplementaryData(patchRef, warpRefList=input.tempExpRefList)
+
+        retStruct = self.run(inputData['skyInfo'], input.tempExpRefList, input.imageScalerList,
+                             input.weightList, supplementaryData=supplementaryData)
+
+        self.processResults(retStruct.coaddExposure, patchRef)
+        return retStruct
+
     @pipeBase.timeMethod
-    def runDataRef(self, dataRef, selectDataList=[]):
+    def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
         """Assemble a coadd from a set of Warps.
 
         Coadd a set of Warps. Compute weights to be applied to each Warp and
@@ -328,9 +414,13 @@ class AssembleCoaddTask(CoaddBaseTask):
             - ``self.config.coaddName + "Coadd_ + <warpType> + "Warp"`` (optionally)
             - ``self.config.coaddName + "Coadd"``
         selectDataList : `list`
-            List of data references to Warps. Data to be coadded will be
+            List of data references to Calexps. Data to be coadded will be
             selected from this list based on overlap with the patch defined
-            by dataRef.
+            by dataRef, grouped by visit, and converted to a list of data
+            references to warps.
+        warpRefList : `list`
+            List of data references to Warps to be coadded.
+            Note: `warpRefList` is just the new name for `tempExpRefList`.
 
         Returns
         -------
@@ -340,22 +430,27 @@ class AssembleCoaddTask(CoaddBaseTask):
            - ``coaddExposure``: coadded exposure (``Exposure``).
            - ``nImage``: exposure count image (``Image``).
         """
-        skyInfo = self.getSkyInfo(dataRef)
-        calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
-        if len(calExpRefList) == 0:
-            self.log.warn("No exposures to coadd")
-            return
-        self.log.info("Coadding %d exposures", len(calExpRefList))
+        if (selectDataList is None and warpRefList is None) or (selectDataList and warpRefList):
+            raise RuntimeError("runDataRef must be supplied either a selectDataList or warpRefList")
 
-        tempExpRefList = self.getTempExpRefList(dataRef, calExpRefList)
-        inputData = self.prepareInputs(tempExpRefList)
+        skyInfo = self.getSkyInfo(dataRef)
+        if warpRefList is None:
+            calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
+            if len(calExpRefList) == 0:
+                self.log.warn("No exposures to coadd")
+                return
+            self.log.info("Coadding %d exposures", len(calExpRefList))
+
+            warpRefList = self.getTempExpRefList(dataRef, calExpRefList)
+
+        inputData = self.prepareInputs(warpRefList)
         self.log.info("Found %d %s", len(inputData.tempExpRefList),
                       self.getTempExpDatasetName(self.warpType))
         if len(inputData.tempExpRefList) == 0:
             self.log.warn("No coadd temporary exposures found")
             return
 
-        supplementaryData = self.makeSupplementaryData(dataRef, selectDataList)
+        supplementaryData = self.makeSupplementaryData(dataRef, warpRefList=inputData.tempExpRefList)
 
         retStruct = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                              inputData.weightList, supplementaryData=supplementaryData)
@@ -390,7 +485,7 @@ class AssembleCoaddTask(CoaddBaseTask):
             brightObjectMasks = self.readBrightObjectMasks(dataRef)
             self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
 
-    def makeSupplementaryData(self, dataRef, selectDataList):
+    def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
         """Make additional inputs to run() specific to subclasses.
 
         Available to be implemented by subclasses only if they need the
@@ -624,8 +719,9 @@ class AssembleCoaddTask(CoaddBaseTask):
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
         tempExpList = [tempExpRef.get(tempExpName + "_sub",
-                                      bbox=afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1, 1)),
-                                      imageOrigin="LOCAL", immediate=True) for tempExpRef in tempExpRefList]
+                                      bbox=afwGeom.Box2I(coaddExposure.getBBox().getMin(),
+                                                         afwGeom.Extent2I(1, 1)), immediate=True)
+                       for tempExpRef in tempExpRefList]
         numCcds = sum(len(tempExp.getInfo().getCoaddInputs().ccds) for tempExp in tempExpList)
 
         coaddExposure.setFilter(tempExpList[0].getFilter())
@@ -1774,7 +1870,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if self.config.doScaleWarpVariance:
             self.makeSubtask("scaleWarpVariance")
 
-    def makeSupplementaryData(self, dataRef, selectDataList):
+    def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
         """Make inputs specific to Subclass.
 
         Generate a templateCoadd to use as a native model of static sky to
