@@ -31,7 +31,7 @@ from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
 from .scaleVariance import ScaleVarianceTask
 
-__all__ = ["CoaddBaseTask", "getSkyInfo"]
+__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
 
 
 class CoaddBaseConfig(pexConfig.Config):
@@ -105,8 +105,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
     ConfigClass = CoaddBaseConfig
     RunnerClass = CoaddTaskRunner
 
-    def __init__(self, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.makeSubtask("select")
         self.makeSubtask("inputRecorder")
 
@@ -243,11 +243,31 @@ def getSkyInfo(coaddName, patchRef):
     - bbox: outer bbox of patch, as an afwGeom Box2I
     """
     skyMap = patchRef.get(coaddName + "Coadd_skyMap")
-    tractId = patchRef.dataId["tract"]
+    return makeSkyInfo(skyMap, patchRef.dataId["tract"], patchRef.dataId["patch"])
+
+
+def makeSkyInfo(skyMap, tractId, patchId):
+    """Return SkyInfo Struct
+
+    Constructs SkyInfo used by coaddition tasks for multiple
+    patchId formats.
+
+    Parameters
+    ----------
+    skyMap : `lsst.skyMap.SkyMap`
+    tractId : int
+    patchId : str or int or tuple of int
+        Either Gen2-style comma delimited string (e.g. '4,5'),
+        tuple of integers (e.g (4, 5), Gen3-style integer.
+    """
     tractInfo = skyMap[tractId]
 
-    # patch format is "xIndex,yIndex"
-    patchIndex = tuple(int(i) for i in patchRef.dataId["patch"].split(","))
+    if isinstance(patchId, str) and ',' in patchId:
+        #  patch format is "xIndex,yIndex"
+        patchIndex = tuple(int(i) for i in patchId.split(","))
+    else:
+        patchIndex = patchId
+
     patchInfo = tractInfo.getPatchInfo(patchIndex)
 
     return pipeBase.Struct(
