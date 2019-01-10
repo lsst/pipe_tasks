@@ -24,6 +24,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 
+from lsst.pipe.base import ArgumentParser, ConfigDatasetType
 from lsst.pex.config import Config, Field, ConfigurableField, ConfigField
 from lsst.ctrl.pool.pool import Pool
 from lsst.ctrl.pool.parallel import BatchPoolTask
@@ -121,6 +122,8 @@ class SkyCorrectionConfig(pipeBase.PipelineTaskConfig, Config):
     doBgModel2 = Field(dtype=bool, default=True, doc="Do cleanup background model subtraction?")
     doSky = Field(dtype=bool, default=True, doc="Do sky frame subtraction?")
     binning = Field(dtype=int, default=8, doc="Binning factor for constructing focal-plane images")
+    calexpType = Field(dtype=str, default="calexp",
+                       doc="Should be set to fakes_calexp if you want to process calexps with fakes in.")
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -162,8 +165,9 @@ class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
     @classmethod
     def _makeArgumentParser(cls, *args, **kwargs):
         kwargs.pop("doBatch", False)
-        parser = pipeBase.ArgumentParser(name="skyCorr", *args, **kwargs)
-        parser.add_id_argument("--id", datasetType="calexp", level="visit",
+        datasetType = ConfigDatasetType(name="calexpType")
+        parser = ArgumentParser(name="skyCorr", *args, **kwargs)
+        parser.add_id_argument("--id", datasetType=datasetType, level="visit",
                                help="data ID, e.g. --id visit=12345")
         return parser
 
@@ -220,7 +224,7 @@ class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
             camera = expRef.get("camera")
 
             dataIdList = [ccdRef.dataId for ccdRef in expRef.subItems("ccd") if
-                          ccdRef.datasetExists("calexp")]
+                          ccdRef.datasetExists(self.config.calexpType)]
 
             exposures = pool.map(self.loadImage, dataIdList)
             if DEBUG:
@@ -454,7 +458,7 @@ class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
             Resultant exposure.
         """
         cache.dataId = dataId
-        cache.exposure = cache.butler.get("calexp", dataId, immediate=True).clone()
+        cache.exposure = cache.butler.get(self.config.calexpType, dataId, immediate=True).clone()
         bgOld = cache.butler.get("calexpBackground", dataId, immediate=True)
         image = cache.exposure.getMaskedImage()
 
