@@ -41,7 +41,7 @@ class DeblendCoaddSourcesBaseConfig(PipelineTaskConfig):
     peakSchema = InitInputDatasetField(
         doc="Schema of the footprint peak catalogs",
         nameTemplate="{inputCoaddName}Coadd_peak_schema",
-        storageClass="SourceCatalog"
+        storageClass="PeakCatalog"
     )
     mergedDetections = InputDatasetField(
         doc="Detection catalog merged across bands",
