@@ -89,7 +89,7 @@ class DetectCoaddSourcesConfig(Config):
         doc="Exposure on which detections are to be performed",
         name="deepCoadd",
         scalar=True,
-        storageClass="Exposure",
+        storageClass="ExposureF",
         dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     outputBackgrounds = OutputDatasetField(
@@ -110,7 +110,7 @@ class DetectCoaddSourcesConfig(Config):
         doc="Exposure post detection",
         name="{}Coadd_calexp",
         scalar=True,
-        storageClass="Exposure",
+        storageClass="ExposureF",
         dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     quantum = QuantumConfig(
