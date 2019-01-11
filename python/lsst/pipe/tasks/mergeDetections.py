@@ -71,6 +71,12 @@ class MergeDetectionsConfig(PipelineTaskConfig):
         storageClass="SourceCatalog"
     )
 
+    outputPeakSchema = InitOutputDatasetField(
+        doc="Output schema of the Footprint peak catalog",
+        nameTemplate="{outputCoaddName}Coadd_peak_schema",
+        storageClass="PeakCatalog"
+    )
+
     catalogs = InputDatasetField(
         doc="Detection Catalogs to be merged",
         nameTemplate="{inputCoaddName}Coadd_det",
@@ -227,7 +233,8 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
 
     def getInitOutputDatasets(self):
-        return {"outputSchema": afwTable.SourceCatalog(self.schema)}
+        return {"outputSchema": afwTable.SourceCatalog(self.schema),
+                "outputPeakSchema": afwDetect.PeakCatalog(self.merged.getPeakSchema())}
 
     def runDataRef(self, patchRefList):
         catalogs = dict(readCatalog(self, patchRef) for patchRef in patchRefList)
