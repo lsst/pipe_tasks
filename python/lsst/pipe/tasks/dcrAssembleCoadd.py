@@ -43,13 +43,15 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     )
     maxNumIter = pexConfig.Field(
         dtype=int,
+        optional=True,
         doc="Maximum number of iterations of forward modeling.",
-        default=8,
+        default=None,
     )
     minNumIter = pexConfig.Field(
         dtype=int,
+        optional=True,
         doc="Minimum number of iterations of forward modeling.",
-        default=3,
+        default=None,
     )
     convergenceThreshold = pexConfig.Field(
         dtype=float,
@@ -352,6 +354,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             - ``dcrCoadds``: `list` of coadded exposures for each subfilter
             - ``dcrNImages``: `list` of exposure count images for each subfilter
         """
+        minNumIter = self.config.minNumIter or self.config.dcrNumSubfilters
+        maxNumIter = self.config.maxNumIter or self.config.dcrNumSubfilters*3
         templateCoadd = supplementaryData.templateCoadd
         baseMask = templateCoadd.mask.clone()
         # The variance plane is for each subfilter
@@ -403,8 +407,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             gainList = []
             convergenceCheck = 1.
             subfilterVariance = None
-            while (convergenceCheck > self.config.convergenceThreshold or
-                   modelIter < self.config.minNumIter):
+            while (convergenceCheck > self.config.convergenceThreshold or modelIter <= minNumIter):
                 gain = self.calculateGain(convergenceList, gainList)
                 self.dcrAssembleSubregion(dcrModels, subBBox, dcrBBox, tempExpRefList, imageScalerList,
                                           weightList, spanSetMaskList, stats.flags, stats.ctrl,
@@ -421,7 +424,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                       skyInfo.patchInfo.getIndex(), subIter)
                         break
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
-                    if convergenceCheck < 0:
+                    if (convergenceCheck < 0) & (modelIter > minNumIter):
                         self.log.warn("Coadd patch %s subregion %s diverged before reaching maximum "
                                       "iterations or desired convergence improvement of %s."
                                       " Divergence: %s",
@@ -429,7 +432,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                       self.config.convergenceThreshold, convergenceCheck)
                         break
                     convergenceList.append(convergenceMetric)
-                if modelIter > self.config.maxNumIter:
+                if modelIter > maxNumIter:
                     if self.config.useConvergence:
                         self.log.warn("Coadd patch %s subregion %s reached maximum iterations "
                                       "before reaching desired convergence improvement of %s."
