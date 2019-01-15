@@ -747,8 +747,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         altMaskList : `list`, optional
             List of alternate masks to use rather than those stored with
             tempExp.
-        mask : `lsst.afw.image.Mask`, optional
-            Mask to ignore when coadding
+        mask : `int`, optional
+            Bit mask value to exclude from coaddition.
         supplementaryData : lsst.pipe.base.Struct, optional
             Struct with additional data products needed to assemble coadd.
             Only used by subclasses that implement `makeSupplementaryData`
