@@ -45,7 +45,7 @@ __all__ = ["AssembleCoaddTask", "AssembleCoaddConfig", "SafeClipAssembleCoaddTas
            "SafeClipAssembleCoaddConfig", "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
 
 
-class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig):
+class AssembleCoaddConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass):
     """Configuration parameters for the `AssembleCoaddTask`.
 
     Notes
@@ -1870,6 +1870,14 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if self.config.doScaleWarpVariance:
             self.makeSubtask("scaleWarpVariance")
 
+    def makeSupplementaryDataGen3(self):
+        """Make inputs specific to Subclass with Gen 3 API
+
+        Calls Gen3 `adaptArgsAndRun` instead of the Gen2 specific `runDataRef`
+
+        """
+
+
     def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
         """Make inputs specific to Subclass.
 
@@ -1890,8 +1898,18 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
            - ``templateCoaddcoadd``: coadded exposure (``lsst.afw.image.Exposure``).
         """
-        templateCoadd = self.assembleStaticSkyModel.runDataRef(dataRef, selectDataList)
+        templateCoadd = self.assembleStaticSkyModel.runDataRef(dataRef, selectDataList, warpRefList)
+        inputData = self.prepareInputs(warpRefList)
+        self.log.info("Found %d %s", len(inputData.tempExpRefList),
+                      self.getTempExpDatasetName(self.warpType))
+        if len(inputData.tempExpRefList) == 0:
+            self.log.warn("No coadd temporary exposures found")
+            return
 
+        retStruct = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
+                             inputData.weightList, supplementaryData=supplementaryData)
+
+        self.processResults(retStruct.coaddExposure, dataRef)
         if templateCoadd is None:
             warpName = (self.assembleStaticSkyModel.warpType[0].upper() +
                         self.assembleStaticSkyModel.warpType[1:])
