@@ -555,7 +555,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         calexp -= bg.getImage()
 
 
-class MakeWarpConfig(MakeCoaddTempExpConfig):
+class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
     calExpList = pipeBase.InputDatasetField(
         doc="Exposures which are resampled and optionally PSF-Matched onto SkyMap projection and pixelation",
         name="calexp",
@@ -590,49 +590,31 @@ class MakeWarpConfig(MakeCoaddTempExpConfig):
     )
     skyMap = pipeBase.InputDatasetField(
         doc="SkyMap to be used in merging",
-        name="deepCoadd_skyMap",
+        nameTemplate="{coaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("SkyMap",),
         scalar=True
     )
     direct = pipeBase.OutputDatasetField(
         doc="Warp",
-        #  TODO: Change this to user-specified coaddName
-        name="deepCoadd_directWarp",
-        # stac complains if I use `Exposure` here. Why??
-        #    "ValueError: DatasetType configuration does not match Registry:
-        #    DatasetType(deepCoadd_directWarp, DimensionGraph({Instrument, SkyMap, Tract, Patch, Visit},
-        #    joins={VisitPatchJoin, VisitTractJoin}), Exposure) !=
-        #    DatasetType(deepCoadd_directWarp, DimensionGraph({Instrument, SkyMap, Tract, Patch, Visit},
-        #    joins={VisitPatchJoin, VisitTractJoin}), ExposureF)""
-        # In commandline Task, the "abstract filter" is user-specified here:
+        nameTemplate="{coaddName}Coadd_directWarp",
         storageClass="ExposureF",
         dimensions=("Tract", "Patch", "SkyMap", "Visit"),
         scalar=True
     )
     psfMatched = pipeBase.OutputDatasetField(
         doc="Warp",
-        #  TODO: Change this to user-specified coaddName
-        name="deepCoadd_psfMatchedWarp",
-        # stac complains if I use `Exposure` here. Why??
-        #    "ValueError: DatasetType configuration does not match Registry:
-        #    DatasetType(deepCoadd_directWarp, DimensionGraph({Instrument, SkyMap, Tract, Patch, Visit},
-        #    joins={VisitPatchJoin, VisitTractJoin}), Exposure) !=
-        #    DatasetType(deepCoadd_directWarp, DimensionGraph({Instrument, SkyMap, Tract, Patch, Visit},
-        #    joins={VisitPatchJoin, VisitTractJoin}), ExposureF)""
-        # In commandline Task, the "abstract filter" is user-specified here:
+        nameTemplate="{coaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
         dimensions=("Tract", "Patch", "SkyMap", "Visit"),
         scalar=True
     )
     quantum = pipeBase.QuantumConfig(
-        #  Do I need `PhysicalFilter` here?
-        #  Is `Exposure` what we're calling visit now?
-        #  Detector is missing on purpose here so that it runs on a list of detectors for given visit:
-        #  TODO: NEED a way to ensure the butler doesn't load a whole focal plane!
-        #      Where should I short circuit this?
-        dimensions=("Visit", "Tract", "Patch", "SkyMap")
+        dimensions=("Tract", "Patch", "SkyMap", "Visit")
     )
+
+    def setDefaults(self):
+        self.formatTemplateNames({"coaddName": "deep"})
 
     def validate(self):
         super().validate(self)
@@ -641,8 +623,8 @@ class MakeWarpConfig(MakeCoaddTempExpConfig):
                      "Please set doApplyUbercal=False.")
 
 
-class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
-    """ First Draft of a Gen3 compatible MakeWarp Task
+class MakeWarpTask(pipeBase.PipelineTask, MakeCoaddTempExpTask):
+    """First Draft of a Gen3 compatible MakeWarp Task
 
     Currently doesn't not handle doApplyUbercal=True
     """
@@ -672,7 +654,7 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         return outputTypeDict
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        self.prepareCalibratedExposureList(**inputData)
+        self.prepareCalibratedExposures(**inputData)
         dataIdList = inputDataIds['calExpList']
         inputData['dataIdList'] = dataIdList
         inputData['ccdIdList'] = [dataId['detector'] for dataId in dataIdList]
@@ -687,10 +669,19 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         results = self.run(**inputData)
         return pipeBase.Struct(**results.exposures)
 
-    def prepareCalibratedExposureList(self, calExpList, backgroundList=None, skyCorrList=None, **kwargs):
+    def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None, **kwargs):
         """Calibrate and add backgrounds to input calExpList in place
 
-       TODO: apply jointcal/meas_mosaic here"
+        TODO DM-17062: apply jointcal/meas_mosaic here
+
+        Parameters
+        ----------
+        calExpList : `list` of `lsst.afw.image.Exposure`
+            Sequence of calexps to be modified in place
+        backgroundList : `list` of `lsst.afw.math.backgroundList`
+            Sequence of backgrounds to be added back in if bgSubtracted=False
+        skyCorrList : `list` of `lsst.afw.math.backgroundList`
+            Sequence of background corrections to be subtracted if doApplySkyCorr=True
         """
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
         skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
