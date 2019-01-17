@@ -276,18 +276,21 @@ class SkyMeasurementTask(Task):
         """
         if isinstance(image, afwImage.Exposure):
             image = image.getMaskedImage()
-        xLimits = numpy.linspace(0, image.getWidth() - 1, self.config.xNumSamples + 1, dtype=int)
-        yLimits = numpy.linspace(0, image.getHeight() - 1, self.config.yNumSamples + 1, dtype=int)
+        # Ensure more samples than pixels
+        xNumSamples = min(self.config.xNumSamples, image.getWidth())
+        yNumSamples = min(self.config.yNumSamples, image.getHeight())
+        xLimits = numpy.linspace(0, image.getWidth(), xNumSamples + 1, dtype=int)
+        yLimits = numpy.linspace(0, image.getHeight(), yNumSamples + 1, dtype=int)
         sky = skyBackground.getImage()
         maskVal = image.getMask().getPlaneBitMask(self.config.stats.mask)
         ctrl = afwMath.StatisticsControl(self.config.stats.clip, self.config.stats.nIter, maskVal)
         statistic = afwMath.stringToStatisticsProperty(self.config.stats.statistic)
         imageSamples = []
         skySamples = []
-        for xIndex, yIndex in itertools.product(range(self.config.xNumSamples),
-                                                range(self.config.yNumSamples)):
-            xStart, xStop = xLimits[xIndex], xLimits[xIndex + 1]
-            yStart, yStop = yLimits[yIndex], yLimits[yIndex + 1]
+        for xIndex, yIndex in itertools.product(range(xNumSamples), range(yNumSamples)):
+            # -1 on the stop because Box2I is inclusive of the end point and we don't want to overlap boxes
+            xStart, xStop = xLimits[xIndex], xLimits[xIndex + 1] - 1
+            yStart, yStop = yLimits[yIndex], yLimits[yIndex + 1] - 1
             box = afwGeom.Box2I(afwGeom.Point2I(xStart, yStart), afwGeom.Point2I(xStop, yStop))
             subImage = image.Factory(image, box)
             subSky = sky.Factory(sky, box)
