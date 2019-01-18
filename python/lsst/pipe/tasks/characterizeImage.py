@@ -40,7 +40,37 @@ from .repair import RepairTask
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
 
-class CharacterizeImageConfig(pexConfig.Config):
+class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
+    # Gen3 IO options
+    exposure = pipeBase.InputDatasetField(
+        doc="Input exposure data",
+        name="postISRCCD",
+        scalar=True,
+        storageClass="ExposureF",
+        dimensions=["Instrument", "Visit", "Detector"],
+    )
+    characterized = pipeBase.OutputDatasetField(
+        doc="Output characterized data.",
+        name="icExp",
+        scalar=True,
+        storageClass="Exposure",
+        dimensions=["Instrument", "Visit", "Detector"],
+    )
+    sourceCat = pipeBase.OutputDatasetField(
+        doc="Output source catalog.",
+        name="icSrc",
+        scalar=True,
+        storageClass="SourceCatalog",
+        dimensions=["Instrument", "Visit", "Detector"],
+    )
+    backgroundModel = pipeBase.OutputDatasetField(
+        doc="Output background model.",
+        name="icExpBackground",
+        scalar=True,
+        storageClass="Background",
+        dimensions=["Instrument", "Visit", "Detector"],
+    )
+
     """!Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(
         dtype=bool,
@@ -143,7 +173,7 @@ class CharacterizeImageConfig(pexConfig.Config):
     )
 
     def setDefaults(self):
-        pexConfig.Config.setDefaults(self)
+        super().setDefaults()
         # just detect bright stars; includeThresholdMultipler=10 seems large,
         # but these are the values we have been using
         self.detection.thresholdValue = 5.0
@@ -162,6 +192,7 @@ class CharacterizeImageConfig(pexConfig.Config):
             "base_PsfFlux",
             "base_CircularApertureFlux",
         ]
+        self.quantum.dimensions = ("Instrument", "Visit", "Detector")
 
     def validate(self):
         if self.doApCorr and not self.measurePsf:
@@ -177,7 +208,7 @@ class CharacterizeImageConfig(pexConfig.Config):
 ## \}
 
 
-class CharacterizeImageTask(pipeBase.CmdLineTask):
+class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     r"""!Measure bright sources and use this to estimate background and PSF of an exposure
 
     @anchor CharacterizeImageTask_
@@ -265,6 +296,17 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
     _DefaultName = "characterizeImage"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
+    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
+        if 'exposureIdInfo' not in inputData.keys():
+            packer = butler.registry.makeDataIdPacker("VisitDetector",
+                                                      inputDataIds['exposure'])
+            exposureIdInfo = ExposureIdInfo()
+            exposureIdInfo.expId = packer.pack(inputDataIds['exposure'])
+            exposureIdInfo.expBits = packer.maxBits
+            inputData['exposureIdInfo'] = exposureIdInfo
+
+        return super().adaptArgsAndRun(inputData, inputDataIds, outputDataIds, butler)
+
     def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
         """!Construct a CharacterizeImageTask
 
@@ -279,7 +321,8 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
         @param[in,out] schema  initial schema (an lsst.afw.table.SourceTable), or None
         @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
         """
-        pipeBase.CmdLineTask.__init__(self, **kwargs)
+        super().__init__(**kwargs)
+
         if schema is None:
             schema = SourceTable.makeMinimalSchema()
         self.schema = schema
@@ -432,7 +475,15 @@ class CharacterizeImageTask(pipeBase.CmdLineTask):
 
         self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
-        return dmeRes
+        return pipeBase.Struct(
+            exposure=dmeRes.exposure,
+            sourceCat=dmeRes.sourceCat,
+            background=dmeRes.background,
+            psfCellSet=dmeRes.psfCellSet,
+
+            characterized=dmeRes.exposure,
+            backgroundModel=dmeRes.background
+        )
 
     @pipeBase.timeMethod
     def detectMeasureAndEstimatePsf(self, exposure, exposureIdInfo, background):
