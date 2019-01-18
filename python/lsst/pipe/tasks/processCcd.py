@@ -140,9 +140,9 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         @param[in] butler  The butler is passed to the refObjLoader constructor in case it is
             needed.  Ignored if the refObjLoader argument provides a loader directly.
         @param[in] psfRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
-            external reference catalog for image characterization.  An example of when this would
-            be used is when a CatalogStarSelector is used.  May be None if the desired loader can
-            be constructed from the butler argument or all steps requiring a catalog are disabled.
+            external reference catalog for image characterization.  May be None if the desired
+            loader can be constructed from the butler argument or all steps requiring a catalog
+            are disabled.
         @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
             external reference catalog for astrometric calibration.  May be None if the desired
             loader can be constructed from the butler argument or all steps requiring a reference
