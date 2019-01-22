@@ -1,7 +1,9 @@
 import re
+import os.path
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.afw.table as afwTable
+from lsst.daf.butler.formatters.fileFormatter import FileFormatter
 from lsst.log import Log
 
 
@@ -227,3 +229,20 @@ def convertToAngle(var, varUnit, what, fileName, lineNo):
                            (varUnit, what, fileName, lineNo))
 
     return var*afwGeom.degrees
+
+
+class RegionFileFormatter(FileFormatter):
+    """Plugin for reading DS9 region file catalogs with Gen3 Butler.
+    """
+    extension = ".reg"
+
+    def _readFile(self, path, pytype):
+        # Docstring inherited from FileFormatter._readFile
+        if not os.path.exists(path):
+            return None
+
+        return pytype.read(path)
+
+    def _writeFile(self, inMemoryDataset, fileDescriptor):
+        # Docstring inherited from FileFormatter._writeFile
+        raise NotImplementedError("Write not implemented.")
