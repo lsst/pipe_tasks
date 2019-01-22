@@ -609,12 +609,10 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
         dimensions=("Tract", "Patch", "SkyMap", "Visit"),
         scalar=True
     )
-    quantum = pipeBase.QuantumConfig(
-        dimensions=("Tract", "Patch", "SkyMap", "Visit")
-    )
 
     def setDefaults(self):
         self.formatTemplateNames({"coaddName": "deep"})
+        self.quantum.dimensions = ("Tract", "Patch", "SkyMap", "Visit")
 
     def validate(self):
         super().validate(self)
@@ -623,7 +621,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
                      "Please set doApplyUbercal=False.")
 
 
-class MakeWarpTask(pipeBase.PipelineTask, MakeCoaddTempExpTask):
+class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
     """First Draft of a Gen3 compatible MakeWarp Task
 
     Currently doesn't not handle doApplyUbercal=True
