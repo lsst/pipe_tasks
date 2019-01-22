@@ -85,7 +85,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
     doAirmassWeight = pexConfig.Field(
         dtype=bool,
         doc="Weight exposures by airmass? Useful if there are relatively few high-airmass observations.",
-        default=True,
+        default=False,
     )
     modelWeightsWidth = pexConfig.Field(
         dtype=float,
@@ -101,7 +101,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         dtype=bool,
         doc="Calculate DCR for two evenly-spaced wavelengths in each subfilter."
             "Instead of at the midpoint",
-        default=False,
+        default=True,
     )
     regularizeModelIterations = pexConfig.Field(
         dtype=float,
@@ -145,6 +145,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         # The deepCoadd and nImage files will be overwritten by this Task, so don't write them the first time
         self.assembleStaticSkyModel.doNImage = False
         self.assembleStaticSkyModel.doWrite = False
+        self.sigmaClip = 10
         self.statistic = 'MEAN'
 
 
@@ -366,7 +367,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         # Note that the mask gets cleared in ``findArtifacts``, but we want to preserve the mask.
         templateCoadd.setMask(baseMask)
         badMaskPlanes = self.config.badMaskPlanes[:]
-        badMaskPlanes.append("CLIPPED")
+        # Note that is important that we do not add "CLIPPED" to ``badMaskPlanes``
+        # This is because pixels in observations that are significantly affect by DCR
+        # are likely to have many pixels that are both "DETECTED" and "CLIPPED",
+        # but those are necessary to constrain the DCR model.
         badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
 
         stats = self.prepareStats(mask=badPixelMask)
