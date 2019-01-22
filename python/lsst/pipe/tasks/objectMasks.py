@@ -38,20 +38,37 @@ class ObjectMaskCatalog:
     def __setitem__(self, i, v):
         return self._catalog.__setitem__(i, v)
 
+    @classmethod
+    def readFits(cls, fileName, hdu=0, flags=0):
+        """FitsCatalogStorage facade for `read`.
+
+        This method is intended for use by the Gen2 Butler only.
+
+        Parameters
+        ----------
+        fileName : `str`
+            Name of the file to read.
+        hdu : `int`
+            Provided for compatibility with the "FitsCatalogStorage" read API
+            defined in `lsst.daf.persistence`, and ignored here.
+        flags : `int`
+            Provided for compatibility with the "FitsCatalogStorage" read API
+            defined in `lsst.daf.persistence`, and ignored here.
+
+        Notes
+        -----
+        Having a `readFits` method makes the `ObjectCatalogMask` class
+        duck-type compatible with `lsst.afw.table` catalogs, to the extent
+        needed to support reading by the Gen2 Butler with no specialized code
+        in `lsst.daf.persistence`. The on-disk type should actually be an
+        ASCII ds9 region file, typically with a ".reg" suffix.
+        """
+        return cls.read(fileName)
+
     @staticmethod
-    def readFits(fileName, hdu=0, flags=0):
+    def read(fileName):
         """Read a ds9 region file, returning a ObjectMaskCatalog object
 
-        This method is called "readFits" to fool the butler. The corresponding mapper entry looks like
-        brightObjectMask: {
-            template:      "deepCoadd/BrightObjectMasks/%(tract)d/BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg"  # noqa E501
-            python:        "lsst.obs.subaru.objectMasks.ObjectMaskCatalog"
-            persistable:   "PurePythonClass"
-            storage:       "FitsCatalogStorage"
-        }
-        and this is the only way I know to get it to read a random file type, in this case a ds9 region file.
-
-        This method expects to find files named as BrightObjectMask-%(tract)d-%(patch)s-%(filter)s.reg
         The files should be structured as follows:
 
         # Description of catalogue as a comment
@@ -68,11 +85,14 @@ class ObjectMaskCatalog:
 
         The ", mag: XX.YY" is optional
 
-        The commented lines must be present, with the relevant fields such as tract patch and filter filled
-        in. The coordinate system must be listed as above. Each patch is specified as a box or circle, with
-        RA, DEC, and dimensions specified in decimal degrees (with or without an explicit "d").
+        The commented lines must be present, with the relevant fields such as
+        tract patch and filter filled in. The coordinate system must be listed
+        as above. Each patch is specified as a box or circle, with RA, DEC,
+        and dimensions specified in decimal degrees (with or without an
+        explicit "d").
 
-        Only (axis-aligned) boxes and circles are currently supported as region definitions.
+        Only (axis-aligned) boxes and circles are currently supported as
+        region definitions.
         """
 
         log = Log.getLogger("ObjectMaskCatalog")
