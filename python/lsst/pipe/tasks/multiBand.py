@@ -23,8 +23,7 @@
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializedTaskRunner,
                             PipelineTask, PipelineTaskConfig, InitInputDatasetField,
-                            InitOutputDatasetField, InputDatasetField, OutputDatasetField,
-                            QuantumConfig)
+                            InitOutputDatasetField, InputDatasetField, OutputDatasetField)
 from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
@@ -66,7 +65,7 @@ the mergeDet, meas, and ref dataset Footprints:
 
 ##############################################################################################################
 
-class DetectCoaddSourcesConfig(Config):
+class DetectCoaddSourcesConfig(PipelineTaskConfig):
     """!
     @anchor DetectCoaddSourcesConfig_
 
@@ -83,43 +82,42 @@ class DetectCoaddSourcesConfig(Config):
                                     "purposes (must be retargeted)")
     detectionSchema = InitOutputDatasetField(
         doc="Schema of the detection catalog",
-        name="{}Coadd_det_schema",
+        nameTemplate="{outputCoaddName}Coadd_det_schema",
         storageClass="SourceCatalog",
     )
     exposure = InputDatasetField(
         doc="Exposure on which detections are to be performed",
-        name="deepCoadd",
+        nameTemplate="{inputCoaddName}Coadd",
         scalar=True,
         storageClass="ExposureF",
         dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     outputBackgrounds = OutputDatasetField(
         doc="Output Backgrounds used in detection",
-        name="{}Coadd_calexp_background",
+        nameTemplate="{outputCoaddName}Coadd_calexp_background",
         scalar=True,
         storageClass="Background",
         dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     outputSources = OutputDatasetField(
         doc="Detected sources catalog",
-        name="{}Coadd_det",
+        nameTemplate="{outputCoaddName}Coadd_det",
         scalar=True,
         storageClass="SourceCatalog",
         dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
     outputExposure = OutputDatasetField(
         doc="Exposure post detection",
-        name="{}Coadd_calexp",
+        nameTemplate="{outputCoaddName}Coadd_calexp",
         scalar=True,
         storageClass="ExposureF",
         dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
     )
-    quantum = QuantumConfig(
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
-    )
 
     def setDefaults(self):
-        Config.setDefaults(self)
+        super().setDefaults()
+        self.quantum.dimensions = ("Tract", "Patch", "AbstractFilter", "SkyMap")
+        self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep"})
         self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
         # Coadds are made from background-subtracted CCDs, so any background subtraction should be very basic
@@ -239,23 +237,6 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2 filter=r",
                                ContainerClass=ExistingCoaddDataIdContainer)
         return parser
-
-    @classmethod
-    def getOutputDatasetTypes(cls, config):
-        coaddName = config.coaddName
-        for name in ("outputBackgrounds", "outputSources", "outputExposure"):
-            attr = getattr(config, name)
-            setattr(attr, "name", attr.name.format(coaddName))
-        outputTypeDict = super().getOutputDatasetTypes(config)
-        return outputTypeDict
-
-    @classmethod
-    def getInitOutputDatasetTypes(cls, config):
-        coaddName = config.coaddName
-        attr = config.detectionSchema
-        setattr(attr, "name", attr.name.format(coaddName))
-        output = super().getInitOutputDatasetTypes(config)
-        return output
 
     def __init__(self, schema=None, **kwargs):
         """!
