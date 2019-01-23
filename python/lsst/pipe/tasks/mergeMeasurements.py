@@ -26,42 +26,98 @@ from .multiBandUtils import (MergeSourcesRunner, _makeGetSchemaCatalogs, makeMer
                              getInputSchema, getShortFilterName, readCatalog)
 
 import lsst.afw.table as afwTable
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
 
-from lsst.pex.config import Config, Field, ListField
-from lsst.pipe.base import CmdLineTask, Struct
 
-
-class MergeMeasurementsConfig(Config):
+class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
     """!
     @anchor MergeMeasurementsConfig_
 
     @brief Configuration parameters for the MergeMeasurementsTask
     """
-    pseudoFilterList = ListField(dtype=str, default=["sky"],
-                                 doc="Names of filters which may have no associated detection\n"
-                                     "(N.b. should include MergeDetectionsConfig.skyFilterName)")
-    snName = Field(dtype=str, default="base_PsfFlux",
-                   doc="Name of flux measurement for calculating the S/N when choosing the reference band.")
-    minSN = Field(dtype=float, default=10.,
-                  doc="If the S/N from the priority band is below this value (and the S/N "
-                      "is larger than minSNDiff compared to the priority band), use the band with "
-                      "the largest S/N as the reference band.")
-    minSNDiff = Field(dtype=float, default=3.,
-                      doc="If the difference in S/N between another band and the priority band is larger "
-                      "than this value (and the S/N in the priority band is less than minSN) "
-                      "use the band with the largest S/N as the reference band")
-    flags = ListField(dtype=str, doc="Require that these flags, if available, are not set",
-                      default=["base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag",
-                               "ext_photometryKron_KronFlux_flag", "modelfit_CModel_flag", ])
-    priorityList = ListField(dtype=str, default=[],
-                             doc="Priority-ordered list of bands for the merge.")
-    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    # Gen 3 options
+    inputSchema = pipeBase.InitInputDatasetField(
+        doc="Schema for the input measurement catalogs.",
+        name="",
+        nameTemplate="{inputCoaddName}Coadd_meas_schema",
+        storageClass="SourceCatalog",
+    )
+    outputSchema = pipeBase.InitOutputDatasetField(
+        doc="Schema for the output merged measurement catalog.",
+        name="",
+        nameTemplate="{outputCoaddName}Coadd_ref_schema",
+        storageClass="SourceCatalog",
+    )
+    catalogs = pipeBase.InputDatasetField(
+        doc="Input catalogs to merge.",
+        name="",
+        nameTemplate="{inputCoaddName}Coadd_meas",
+        scalar=False,
+        storageClass="SourceCatalog",
+        dimensions=["AbstractFilter", "SkyMap", "Tract", "Patch"],
+    )
+    mergedCatalog = pipeBase.OutputDatasetField(
+        doc="Output merged catalog.",
+        name="",
+        nameTemplate="{outputCoaddName}Coadd_ref",
+        scalar=True,
+        storageClass="SourceCatalog",
+        dimensions=["SkyMap", "Tract", "Patch"],
+    )
+    # Task configuration options
+    pseudoFilterList = pexConfig.ListField(
+        dtype=str,
+        default=["sky"],
+        doc="Names of filters which may have no associated detection\n"
+        "(N.b. should include MergeDetectionsConfig.skyFilterName)"
+    )
+    snName = pexConfig.Field(
+        dtype=str,
+        default="base_PsfFlux",
+        doc="Name of flux measurement for calculating the S/N when choosing the reference band."
+    )
+    minSN = pexConfig.Field(
+        dtype=float,
+        default=10.,
+        doc="If the S/N from the priority band is below this value (and the S/N "
+        "is larger than minSNDiff compared to the priority band), use the band with "
+        "the largest S/N as the reference band."
+    )
+    minSNDiff = pexConfig.Field(
+        dtype=float,
+        default=3.,
+        doc="If the difference in S/N between another band and the priority band is larger "
+        "than this value (and the S/N in the priority band is less than minSN) "
+        "use the band with the largest S/N as the reference band"
+    )
+    flags = pexConfig.ListField(
+        dtype=str,
+        doc="Require that these flags, if available, are not set",
+        default=["base_PixelFlags_flag_interpolatedCenter", "base_PsfFlux_flag",
+                 "ext_photometryKron_KronFlux_flag", "modelfit_CModel_flag", ]
+    )
+    priorityList = pexConfig.ListField(
+        dtype=str,
+        default=[],
+        doc="Priority-ordered list of bands for the merge."
+    )
+    coaddName = pexConfig.Field(
+        dtype=str,
+        default="deep",
+        doc="Name of coadd"
+    )
 
     def validate(self):
-        Config.validate(self)
+        super().validate()
         if len(self.priorityList) == 0:
             raise RuntimeError("No priority list provided")
 
+    def setDefaults(self):
+        super().setDefaults()
+        self.formatTemplateNames({"inputCoaddName": "deep",
+                                  "outputCoaddName": "deep"})
+        self.quantum.dimensions = ("SkyMap", "Tract", "Patch")
 
 ## @addtogroup LSST_task_documentation
 ## @{
@@ -71,7 +127,7 @@ class MergeMeasurementsConfig(Config):
 ## @}
 
 
-class MergeMeasurementsTask(CmdLineTask):
+class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     r"""!
     @anchor MergeMeasurementsTask_
 
@@ -160,7 +216,17 @@ class MergeMeasurementsTask(CmdLineTask):
     def getInputSchema(self, butler=None, schema=None):
         return getInputSchema(self, butler, schema)
 
-    def __init__(self, butler=None, schema=None, **kwargs):
+    def getInitOutputDatasets(self):
+        return {"outputSchema": afwTable.SourceCatalog(self.schema), }
+
+    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
+        catalogDict = {dataId['abstract_filter']: cat for dataId, cat in zip(inputDataIds['catalogs'],
+                                                                             inputData['catalogs'])}
+        inputData['catalogs'] = catalogDict
+
+        return super().adaptArgsAndRun(inputData, inputDataIds, outputDataIds, butler)
+
+    def __init__(self, butler=None, schema=None, initInputs=None, **kwargs):
         """!
         Initialize the task.
 
@@ -169,7 +235,11 @@ class MergeMeasurementsTask(CmdLineTask):
 
         The task will set its own self.schema attribute to the schema of the output merged catalog.
         """
-        CmdLineTask.__init__(self, **kwargs)
+        super().__init__(**kwargs)
+
+        if initInputs is not None:
+            schema = initInputs['inputSchema'].schema
+
         inputSchema = self.getInputSchema(butler=butler, schema=schema)
         self.schemaMapper = afwTable.SchemaMapper(inputSchema, True)
         self.schemaMapper.addMinimalSchema(inputSchema, True)
@@ -187,7 +257,7 @@ class MergeMeasurementsTask(CmdLineTask):
             )
             peakKey = inputSchema.find("merge_peak_%s" % short).key
             footprintKey = inputSchema.find("merge_footprint_%s" % short).key
-            self.flagKeys[band] = Struct(peak=peakKey, footprint=footprintKey, output=outputKey)
+            self.flagKeys[band] = pipeBase.Struct(peak=peakKey, footprint=footprintKey, output=outputKey)
         self.schema = self.schemaMapper.getOutputSchema()
 
         self.pseudoFilterKeys = []
@@ -210,7 +280,7 @@ class MergeMeasurementsTask(CmdLineTask):
         @param[in] patchRefList list of data references for each filter
         """
         catalogs = dict(readCatalog(self, patchRef) for patchRef in patchRefList)
-        mergedCatalog = self.run(catalogs)
+        mergedCatalog = self.run(catalogs).mergedCatalog
         self.write(patchRefList[0], mergedCatalog)
 
     def run(self, catalogs):
@@ -314,7 +384,9 @@ class MergeMeasurementsTask(CmdLineTask):
                 raise ValueError("Mismatch between catalog sizes: %s != %s" %
                                  (len(mergedCatalog), len(orderedCatalogs)))
 
-        return mergedCatalog
+        return pipeBase.Struct(
+            mergedCatalog=mergedCatalog
+        )
 
     def write(self, patchRef, catalog):
         """!
