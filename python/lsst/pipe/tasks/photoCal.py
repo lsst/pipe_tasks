@@ -253,7 +253,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
                                            doc="set if source was used in photometric calibration")
         else:
             self.usedKey = None
-        self.match = DirectMatchTask(self.config.match, refObjLoader=refObjLoader,
+        self.match = DirectMatchTask(config=self.config.match, refObjLoader=refObjLoader,
                                      name="match", parentTask=self)
         self.makeSubtask("reserve", columnName="calib_photometry", schema=schema,
                          doc="set if source was reserved from photometric calibration")
