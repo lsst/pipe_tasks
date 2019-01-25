@@ -279,9 +279,11 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         return results
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        # FINDME: DM-15843 needs to come back and address these next two lines with a final solution
-        inputData["idFactory"] = afwTable.IdFactory.makeSimple()
-        inputData["expId"] = 0
+        packedId, maxBits = butler.registry.packDataId("TractPatchAbstractFilter",
+                                                       inputDataIds["exposure"],
+                                                       returnMaxBits=True)
+        inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        inputData["expId"] = packedId
         return self.run(**inputData)
 
     def run(self, exposure, idFactory, expId):
