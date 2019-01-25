@@ -912,16 +912,18 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         # move this to run after gen2 deprecation
         inputData['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
 
+        # Get unique integer ID for IdFactory and RNG seeds
+        packedId, maxBits = butler.registry.packDataId("TractPatch", outputDataIds["outputSources"],
+                                                       returnMaxBits=True)
+        inputData['exposureId'] = packedId
+        idFactory = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         # Transform inputCatalog
-        idFactory = afwTable.IdFactory.makeSimple()
         table = afwTable.SourceTable.make(self.schema, idFactory)
         sources = afwTable.SourceCatalog(table)
         sources.extend(inputData.pop('intakeCatalog'), self.schemaMapper)
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
         inputData['sources'] = sources
-
-        inputData['exposureId'] = 0
 
         skyMap = inputData.pop('skyMap')
         tractNumber = inputDataIds['intakeCatalog']['tract']
