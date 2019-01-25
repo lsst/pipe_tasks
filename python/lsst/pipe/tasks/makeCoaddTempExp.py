@@ -611,28 +611,34 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
     )
 
     def setDefaults(self):
+        super().setDefaults()
         self.formatTemplateNames({"coaddName": "deep"})
         self.quantum.dimensions = ("Tract", "Patch", "SkyMap", "Visit")
 
     def validate(self):
-        super().validate(self)
+        super().validate()
+        # TODO: Remove this constraint after DM-17062
         if self.doApplyUbercal:
-            log.warn("Gen3 MakeWarpTask cannot apply meas_mosaic or jointcal results."
-                     "Please set doApplyUbercal=False.")
+            raise RuntimeError("Gen3 MakeWarpTask cannot apply meas_mosaic or jointcal results."
+                               "Please set doApplyUbercal=False.")
 
 
 class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
-    """First Draft of a Gen3 compatible MakeWarp Task
+    """Warp and optionally PSF-Match calexps onto an a common projection
 
-    Currently doesn't not handle doApplyUbercal=True
+    First Draft of a Gen3 compatible MakeWarpTask which
+    currently does not handle doApplyUbercal=True.
     """
     ConfigClass = MakeWarpConfig
     _DefaultName = "makeWarp"
 
     @classmethod
     def getInputDatasetTypes(cls, config):
+        """Return input dataset type descriptors
+
+        Remove input dataset types not used by the Task
+        """
         inputTypeDict = super().getInputDatasetTypes(config)
-        # remove all optional datasets from InputDatasetsTypes per configs
         if config.bgSubtracted:
             inputTypeDict.pop("backgroundList", None)
         if not config.doApplySkyCorr:
@@ -644,6 +650,10 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
 
     @classmethod
     def getOutputDatasetTypes(cls, config):
+        """Return output dataset type descriptors
+
+        Remove output dataset types not produced by the Task
+        """
         outputTypeDict = super().getOutputDatasetTypes(config)
         if not config.makeDirect:
             outputTypeDict.pop("direct", None)
@@ -652,18 +662,62 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         return outputTypeDict
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        self.prepareCalibratedExposures(**inputData)
-        dataIdList = inputDataIds['calExpList']
-        inputData['dataIdList'] = dataIdList
-        inputData['ccdIdList'] = [dataId['detector'] for dataId in dataIdList]
-        visits = [dataId['visit'] for dataId in dataIdList]
-        assert(all(visits[0] == visit for visit in visits))
-        inputData["visitId"] = visits[0]
-        skyMap = inputData.pop("skyMap")
+        """Construct warps for requested warp type for single epoch
+
+        PipelineTask (Gen3) entry point to warp and optionally PSF-match
+        calexpes. This method is analogous to `runDataRef`, it prepares all
+        the data products to be passed to `run`.
+        Return a Struct with only requested warpTypes controlled by the configs
+        makePsfMatched and makeDirect.
+
+        Parameters
+        ----------
+        inputData : `dict`
+            Keys are the names of the configs describing input dataset types.
+            Values are input Python-domain data objects (or lists of objects)
+            retrieved from data butler.
+        inputDataIds : `dict`
+            Keys are the names of the configs describing input dataset types.
+            Values are DataIds (or lists of DataIds) that task consumes for
+            corresponding dataset type.
+        outputDataIds : `dict`
+            Keys are the names of the configs describing input dataset types.
+            Values are DataIds (or lists of DataIds) that task is to produce
+            for corresponding dataset type.
+        butler : `lsst.daf.butler.Butler`
+            Gen3 Butler object for fetching additional data products before
+            running the Task
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - ``direct`` : (optional) direct Warp Exposure
+                          (``lsst.afw.image.Exposure``)
+           - ``psfMatched``: (optional) PSF-Matched Warp Exposure
+                            (``lsst.afw.image.Exposure``)
+        """
+        # Construct skyInfo expected by `run`
+        skyMap = inputData["skyMap"]
         outputDataId = next(iter(outputDataIds.values()))
         inputData['skyInfo'] = makeSkyInfo(skyMap,
                                            tractId=outputDataId['tract'],
                                            patchId=outputDataId['patch'])
+
+        # Construct list of DataId's expected by `run`
+        dataIdList = inputDataIds['calExpList']
+        inputData['dataIdList'] = dataIdList
+
+        # Construct list of ccdIds expected by `run`
+        inputData['ccdIdList'] = [dataId['detector'] for dataId in dataIdList]
+
+        # Extract integer visitId requested by `run`
+        visits = [dataId['visit'] for dataId in dataIdList]
+        assert(all(visits[0] == visit for visit in visits))
+        inputData["visitId"] = visits[0]
+
+        self.prepareCalibratedExposures(**inputData)
         results = self.run(**inputData)
         return pipeBase.Struct(**results.exposures)
 
