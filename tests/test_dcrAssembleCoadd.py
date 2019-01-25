@@ -39,7 +39,7 @@ class DcrAssembleCoaddCalculateGainTestCase(lsst.utils.tests.TestCase):
         self.nextGain = (1 + self.baseGain) / 2
 
         self.config = DcrAssembleCoaddConfig()
-        self.task = DcrAssembleCoaddTask(self.config)
+        self.task = DcrAssembleCoaddTask(config=self.config)
 
     def testUnbalancedLists(self):
         gainList = [1, 2, 3, 4]
