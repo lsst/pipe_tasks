@@ -131,13 +131,12 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
         return {"outputSchema": afwTable.SourceCatalog(self.schema)}
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        # FINDME: DM-15843 needs to come back and address final solution
-        inputData["idFactory"] = afwTable.IdFactory.makeSimple()
+        packedId, maxBits = butler.registry.packDataId("TractPatch", inputDataIds["mergedDetections"],
+                                                       returnMaxBits=True)
+        inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         return self.run(**inputData)
 
     def _makeSourceCatalog(self, mergedDetections, idFactory):
-        # Need to do something more clever once we have a real Idfactory here
-        # see command line task version. FINDME DM-15843
         table = afwTable.SourceTable.make(self.schema, idFactory)
         sources = afwTable.SourceCatalog(table)
         sources.extend(mergedDetections, self.schemaMapper)
