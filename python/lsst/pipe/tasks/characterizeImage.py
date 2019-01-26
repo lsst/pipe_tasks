@@ -53,7 +53,7 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
         doc="Output characterized data.",
         name="icExp",
         scalar=True,
-        storageClass="Exposure",
+        storageClass="ExposureF",
         dimensions=["Instrument", "Visit", "Detector"],
     )
     sourceCat = pipeBase.OutputDatasetField(
