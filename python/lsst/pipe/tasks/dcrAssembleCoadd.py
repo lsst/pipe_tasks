@@ -240,6 +240,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         results = AssembleCoaddTask.runDataRef(self, dataRef, selectDataList=selectDataList,
                                                warpRefList=warpRefList)
+        if results is None:
+            skyInfo = self.getSkyInfo(dataRef)
+            self.log.warn("Could not construct DcrModel for patch %s: no data to coadd.",
+                          skyInfo.patchInfo.getIndex())
+            return
         for subfilter in range(self.config.dcrNumSubfilters):
             self.processResults(results.dcrCoadds[subfilter], dataRef)
             if self.config.doWrite:
