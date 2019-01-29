@@ -156,7 +156,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
              "WarpType (e.g. direct, psfMatched) is controlled by we warpType config parameter"),
         nameTemplate="{inputCoaddName}Coadd_{warpType}Warp",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "Visit"),
+        dimensions=("Tract", "Patch", "SkyMap", "Visit", "Instrument"),
         manualLoad=True,
     )
     skyMap = pipeBase.InputDatasetField(
@@ -660,6 +660,9 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 continue
 
             tempExp = tempExpRef.get(tempExpName, immediate=True)
+            # Ignore any input warp that is empty of data
+            if numpy.isnan(tempExp.image.array).all():
+                continue
             maskedImage = tempExp.getMaskedImage()
             imageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure=tempExp,

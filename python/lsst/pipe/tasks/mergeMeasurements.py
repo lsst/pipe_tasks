@@ -238,9 +238,9 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         super().__init__(**kwargs)
 
         if initInputs is not None:
-            schema = initInputs['inputSchema'].schema
-
-        inputSchema = self.getInputSchema(butler=butler, schema=schema)
+            inputSchema = initInputs['inputSchema'].schema
+        else:
+            inputSchema = self.getInputSchema(butler=butler, schema=schema)
         self.schemaMapper = afwTable.SchemaMapper(inputSchema, True)
         self.schemaMapper.addMinimalSchema(inputSchema, True)
         self.instFluxKey = inputSchema.find(self.config.snName + "_instFlux").getKey()

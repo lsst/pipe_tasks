@@ -74,6 +74,11 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype=bool,
         default=False,
     )
+    doWriteEmptyWarps = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Write out warps even if they are empty"
+    )
     doApplySkyCorr = pexConfig.Field(dtype=bool, default=False, doc="Apply sky correction?")
 
     def validate(self):
@@ -448,8 +453,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                         CoaddPsf(inputRecorder[warpType].coaddInputs.ccds, skyInfo.wcs,
                                  self.config.coaddPsf.makeControl()))
             else:
-                # No good pixels. Exposure still empty
-                coaddTempExps[warpType] = None
+                if not self.config.doWriteEmptyWarps:
+                    # No good pixels. Exposure still empty
+                    coaddTempExps[warpType] = None
 
         result = pipeBase.Struct(exposures=coaddTempExps)
         return result
@@ -560,19 +566,19 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="calexp",
         storageClass="ExposureF",
-        dimensions=("Visit", "Detector")
+        dimensions=("Instrument", "Visit", "Detector")
     )
     backgroundList = pipeBase.InputDatasetField(
         doc="Input backgrounds to be added back into the calexp if bgSubtracted=False",
         name="calexpBackground",
         storageClass="Background",
-        dimensions=("Visit", "Detector")
+        dimensions=("Instrument", "Visit", "Detector")
     )
     skyCorrList = pipeBase.InputDatasetField(
-        doc="SkyCorr",
-        name="Input Sky Correction to be subtracted from the calexp if doApplySkyCorr=True",
+        doc="Input Sky Correction to be subtracted from the calexp if doApplySkyCorr=True",
+        name="skyCorr",
         storageClass="Background",
-        dimensions=("Visit", "Detector")
+        dimensions=("Instrument", "Visit", "Detector")
     )
     skyMap = pipeBase.InputDatasetField(
         doc="Input definition of geometry/bbox and projection/wcs for warped exposures",
@@ -586,7 +592,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
              "calexps onto the skyMap patch geometry."),
         nameTemplate="{coaddName}Coadd_directWarp",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "Visit"),
+        dimensions=("Tract", "Patch", "SkyMap", "Visit", "Instrument"),
         scalar=True
     )
     psfMatched = pipeBase.OutputDatasetField(
@@ -594,7 +600,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
              "calexps onto the skyMap patch geometry and PSF-matching to a model PSF."),
         nameTemplate="{coaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "Visit"),
+        dimensions=("Tract", "Patch", "SkyMap", "Visit", "Instrument"),
         scalar=True
     )
 
@@ -630,7 +636,7 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         if config.bgSubtracted:
             inputTypeDict.pop("backgroundList", None)
         if not config.doApplySkyCorr:
-            inputTypeDict.pop("skyCorr", None)
+            inputTypeDict.pop("skyCorrList", None)
         return inputTypeDict
 
     @classmethod
