@@ -113,7 +113,6 @@ class PhotoCalTest(unittest.TestCase):
         task = PhotoCalTask(self.refObjLoader, config=self.config, schema=self.srcCat.schema)
         pCal = task.run(exposure=self.exposure, sourceCat=self.srcCat)
         matches = pCal.matches
-        print("Ref flux fields list =", pCal.arrays.refFluxFieldList)
         refFluxField = pCal.arrays.refFluxFieldList[0]
 
         # These are *all* the matches; we don't really expect to do that well.
