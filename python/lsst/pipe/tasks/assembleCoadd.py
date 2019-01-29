@@ -1053,21 +1053,11 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         brightObjectMasks : `lsst.afw.table`
             Table of bright objects to mask.
         """
-        #
-        # Check the metadata specifying the tract/patch/filter
-        #
+
         if brightObjectMasks is None:
             self.log.warn("Unable to apply bright object mask: none supplied")
             return
         self.log.info("Applying %d bright object masks to %s", len(brightObjectMasks), dataId)
-        md = brightObjectMasks.table.getMetadata()
-        for k in dataId:
-            if not md.exists(k):
-                self.log.warn("Expected to see %s in metadata", k)
-            else:
-                if md.getScalar(k) != dataId[k]:
-                    self.log.warn("Expected to see %s == %s in metadata, saw %s", k, md.get(k), dataId[k])
-
         mask = exposure.getMaskedImage().getMask()
         wcs = exposure.getWcs()
         plateScale = wcs.getPixelScale().asArcseconds()
