@@ -168,9 +168,9 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
     )
     brightObjectMask = pipeBase.InputDatasetField(
         doc=("Input Bright Object Mask mask produced with external catalogs to be applied to the mask plane"
-             "BRIGHT_OBJECT. Currently unavailable in Gen3 test repos. TODO: DM-17300"),
+             " BRIGHT_OBJECT."),
         name="brightObjectMask",
-        storageClass="",  # TODO: Change per storage chosen in DM-17300
+        storageClass="ObjectMaskCatalog",
         dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter"),
         scalar=True
     )
@@ -378,8 +378,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         inputTypeDict = super().getInputDatasetTypes(config)
         if not config.doMaskBrightObjects:
             inputTypeDict.pop("brightObjectMask", None)
-        else:  # TODO: remove this else branch after DM-17300
-            raise RuntimeError("Gen3 Bright object masks unavailable. Set config doMaskBrightObjects=False")
         return inputTypeDict
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
@@ -1055,21 +1053,11 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         brightObjectMasks : `lsst.afw.table`
             Table of bright objects to mask.
         """
-        #
-        # Check the metadata specifying the tract/patch/filter
-        #
+
         if brightObjectMasks is None:
             self.log.warn("Unable to apply bright object mask: none supplied")
             return
         self.log.info("Applying %d bright object masks to %s", len(brightObjectMasks), dataId)
-        md = brightObjectMasks.table.getMetadata()
-        for k in dataId:
-            if not md.exists(k):
-                self.log.warn("Expected to see %s in metadata", k)
-            else:
-                if md.getScalar(k) != dataId[k]:
-                    self.log.warn("Expected to see %s == %s in metadata, saw %s", k, md.get(k), dataId[k])
-
         mask = exposure.getMaskedImage().getMask()
         wcs = exposure.getWcs()
         plateScale = wcs.getPixelScale().asArcseconds()
