@@ -22,6 +22,7 @@
 import numpy as np
 
 from lsstDebug import getDebugFrame
+import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
@@ -69,6 +70,11 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
         scalar=True,
         storageClass="Background",
         dimensions=["Instrument", "Visit", "Detector"],
+    )
+    outputSchema = pipeBase.InitOutputDatasetField(
+        doc="Schema of the catalog produced by CharacterizeImage",
+        name="icSrc_schema",
+        storageClass="SourceCatalog",
     )
 
     """!Config for CharacterizeImageTask"""
@@ -347,6 +353,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
+
+    def getInitOutputDatasets(self):
+        outputCatSchema = afwTable.SourceCatalog(self.schema)
+        outputCatSchema.getTable().setMetadata(self.algMetadata)
+        return {'outputSchema': outputCatSchema}
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, doUnpersist=True):
