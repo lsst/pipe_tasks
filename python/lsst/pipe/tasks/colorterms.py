@@ -22,7 +22,9 @@
 import fnmatch
 
 import numpy as np
+import astropy.units as u
 
+from lsst.afw.image import abMagErrFromFluxErr
 import lsst.pex.exceptions as pexExcept
 from lsst.pex.config import Config, Field, ConfigDictField
 from lsst.afw.image import Filter
@@ -57,6 +59,60 @@ class Colorterm(Config):
     c0 = Field(dtype=float, default=0.0, doc="Constant parameter")
     c1 = Field(dtype=float, default=0.0, doc="First-order parameter")
     c2 = Field(dtype=float, default=0.0, doc="Second-order parameter")
+
+    def getCorrectedMagnitudes(self, refCat, filterName):
+        """Return the colorterm corrected magnitudes for a given filter.
+
+        Parameters
+        ----------
+        refCat : `lsst.afw.table.SimpleCatalog`
+            The reference catalog to apply color corrections to.
+        filterName : `str`
+            The camera filter to correct the reference catalog into.
+
+        Returns
+        -------
+        RefMag : `np.ndarray`
+            The corrected AB magnitudes.
+        RefMagErr : `np.ndarray`
+            The corrected AB magnitude errors.
+
+        Raises
+        ------
+        KeyError
+            Raised if the reference catalog does not have a flux uncertainty
+            for that filter.
+
+        Notes
+        -----
+        WARNING: I do not know that we can trust the propagation of magnitude
+        errors returned by this method. They need more thorough tests.
+        """
+
+        def getFluxes(fluxField):
+            """Get the flux and fluxErr of this field from refCat."""
+            fluxKey = refCat.schema.find(fluxField).key
+            refFlux = refCat[fluxKey]
+            try:
+                fluxErrKey = refCat.schema.find(fluxField + "Err").key
+                refFluxErr = refCat[fluxErrKey]
+            except KeyError as e:
+                raise KeyError("Reference catalog does not have flux uncertainties for %s" % fluxField) from e
+
+            return refFlux, refFluxErr
+
+        primaryFlux, primaryErr = getFluxes(self.primary + "_flux")
+        secondaryFlux, secondaryErr = getFluxes(self.secondary + "_flux")
+
+        primaryMag = u.Quantity(primaryFlux, u.Jy).to_value(u.ABmag)
+        secondaryMag = u.Quantity(secondaryFlux, u.Jy).to_value(u.ABmag)
+
+        refMag = self.transformMags(primaryMag, secondaryMag)
+        refFluxErrArr = self.propagateFluxErrors(primaryErr, secondaryErr)
+
+        refMagErr = abMagErrFromFluxErr(refFluxErrArr, primaryFlux)
+
+        return refMag, refMagErr
 
     def transformSource(self, source):
         """!Transform the brightness of a source
