@@ -48,14 +48,15 @@ else:
 
 
 class InterpolationTestCase(lsst.utils.tests.TestCase):
-    """A test case for interpolation"""
+    """A test case for interpolation.
+    """
 
     def setUp(self):
         self.FWHM = 5
 
     def testEdge(self):
-        """Test that we can interpolate to the edge"""
-
+        """Test that we can interpolate to the edge.
+        """
         mi = afwImage.MaskedImageF(80, 30)
         ima = mi.getImage().getArray()
         #
@@ -75,9 +76,9 @@ class InterpolationTestCase(lsst.utils.tests.TestCase):
         mi[0:nBadCol, :, afwImage.LOCAL] = (10, badBit, 0)  # Bad left edge
         # With another bad set of columns next to bad left edge
         mi[-nBadCol:, :, afwImage.LOCAL] = (10, badBit, 0)
-        mi[nBadCol+1:nBadCol+4, 0:10, afwImage.LOCAL] = (100, badBit, 0)  # Bad right edge
+        mi[nBadCol + 1:nBadCol + 4, 0:10, afwImage.LOCAL] = (100, badBit, 0)  # Bad right edge
         # more bad of columns next to bad right edge
-        mi[-nBadCol-4:-nBadCol-1, 0:10, afwImage.LOCAL] = (100, badBit, 0)
+        mi[-nBadCol - 4:-nBadCol - 1, 0:10, afwImage.LOCAL] = (100, badBit, 0)
 
         defectList = ipIsr.getDefectListFromMask(mi, pixelPlane)
 

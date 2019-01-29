@@ -84,9 +84,9 @@ def displayImages(root):
     coadds = [patchRef.get("deepCoadd", immediate=True)
               for patchRef in task.iterPatchRefs(butler, tractInfo)]
     for n, coadd in enumerate(coadds):
-        afwDisplay.Display(frame=n+1).mtv(coadd, title="displayImages: coadd")
+        afwDisplay.Display(frame=n + 1).mtv(coadd, title="displayImages: coadd")
     for n, coadd in enumerate(coadds):
-        afwDisplay.utils.drawCoaddInputs(coadd, frame=n+1)
+        afwDisplay.utils.drawCoaddInputs(coadd, frame=n + 1)
     return butler
 
 

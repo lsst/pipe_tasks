@@ -308,8 +308,8 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
 
         # convert source instFlux from DN to an estimate of Jy
         JanskysPerABFlux = 3631.0
-        srcInstFluxArr = srcInstFluxArr * JanskysPerABFlux
-        srcInstFluxErrArr = srcInstFluxErrArr * JanskysPerABFlux
+        srcInstFluxArr = srcInstFluxArr*JanskysPerABFlux
+        srcInstFluxErrArr = srcInstFluxErrArr*JanskysPerABFlux
 
         if not matches:
             raise RuntimeError("No reference stars are available")

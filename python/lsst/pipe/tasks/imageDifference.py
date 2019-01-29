@@ -33,18 +33,16 @@ from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, \
-    ObjectSizeStarSelectorTask
-from lsst.ip.diffim import DipoleAnalysis, \
-    SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
-    KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
-    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, \
-    DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry
+from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, ObjectSizeStarSelectorTask
+from lsst.ip.diffim import (DipoleAnalysis, SourceFlagChecker, KernelCandidateF, makeKernelBasisList,
+                            KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig,
+                            GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask,
+                            DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry)
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 import lsst.afw.display as afwDisplay
 
-FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
+FwhmPerSigma = 2*math.sqrt(2*math.log(2))
 IqrToSigma = 0.741
 
 
@@ -389,7 +387,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         preConvPsf = srcPsf
                     afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
                     exposure.setMaskedImage(destMI)
-                    scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
+                    scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
                 else:
                     scienceSigmaPost = scienceSigmaOrig
 
@@ -411,8 +409,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                     # Number of basis functions
                     nparam = len(makeKernelBasisList(self.subtract.config.kernel.active,
-                                                     referenceFwhmPix=scienceSigmaPost * FwhmPerSigma,
-                                                     targetFwhmPix=templateSigma * FwhmPerSigma))
+                                                     referenceFwhmPix=scienceSigmaPost*FwhmPerSigma,
+                                                     targetFwhmPix=templateSigma*FwhmPerSigma))
 
                     if self.config.doAddMetrics:
                         # Modify the schema of all Sources
@@ -515,16 +513,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         idx2 = numpy.where((colors >= self.sourceSelector.config.grMin) &
                                            (colors <= self.sourceSelector.config.grMax))
                         idx3 = numpy.where(colors > self.sourceSelector.config.grMax)
-                        rms1Long = IqrToSigma * \
-                            (numpy.percentile(dlong[idx1], 75)-numpy.percentile(dlong[idx1], 25))
+                        rms1Long = IqrToSigma*(
+                            (numpy.percentile(dlong[idx1], 75) - numpy.percentile(dlong[idx1], 25)))
                         rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75) -
                                               numpy.percentile(dlat[idx1], 25))
-                        rms2Long = IqrToSigma * \
-                            (numpy.percentile(dlong[idx2], 75)-numpy.percentile(dlong[idx2], 25))
+                        rms2Long = IqrToSigma*(
+                            (numpy.percentile(dlong[idx2], 75) - numpy.percentile(dlong[idx2], 25)))
                         rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75) -
                                               numpy.percentile(dlat[idx2], 25))
-                        rms3Long = IqrToSigma * \
-                            (numpy.percentile(dlong[idx3], 75)-numpy.percentile(dlong[idx3], 25))
+                        rms3Long = IqrToSigma*(
+                            (numpy.percentile(dlong[idx3], 75) - numpy.percentile(dlong[idx3], 25)))
                         rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75) -
                                               numpy.percentile(dlat[idx3], 25))
                         self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" %
@@ -665,7 +663,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if sensorRef.datasetExists("src"):
                     # Create key,val pair where key=diaSourceId and val=sourceId
                     matchRadAsec = self.config.diaSourceMatchRadius
-                    matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
+                    matchRadPixel = matchRadAsec/exposure.getWcs().pixelScale().asArcseconds()
 
                     srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel)
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for
@@ -713,12 +711,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # Get basis list to build control sample kernels
                 basisList = kernelCandList[0].getKernel(KernelCandidateF.ORIG).getKernelList()
 
-                controlCandList = \
+                controlCandList = (
                     diffimTools.sourceTableToCandidateList(controlSources,
                                                            subtractRes.warpedExposure, exposure,
                                                            self.config.subtract.kernel.active,
                                                            self.config.subtract.kernel.active.detectionConfig,
-                                                           self.log, doBuild=True, basisList=basisList)
+                                                           self.log, doBuild=True, basisList=basisList))
 
                 kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel,
                            dof=nparam)
@@ -887,14 +885,14 @@ class Winter2013ImageDifferenceTask(ImageDifferenceTask):
             cKey = templateSources[0].getTable().getCentroidKey()
             for source in templateSources:
                 centroid = source.get(cKey)
-                source.set(cKey, centroid+offset)
+                source.set(cKey, centroid + offset)
         elif self.config.winter2013WcsRms > 0.0:
             cKey = templateSources[0].getTable().getCentroidKey()
             for source in templateSources:
                 offset = afwGeom.Extent2D(self.config.winter2013WcsRms*numpy.random.normal(),
                                           self.config.winter2013WcsRms*numpy.random.normal())
                 centroid = source.get(cKey)
-                source.set(cKey, centroid+offset)
+                source.set(cKey, centroid + offset)
 
         results = self.register.run(templateSources, templateExposure.getWcs(),
                                     templateExposure.getBBox(), selectSources)
