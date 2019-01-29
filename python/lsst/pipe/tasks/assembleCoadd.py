@@ -660,6 +660,9 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 continue
 
             tempExp = tempExpRef.get(tempExpName, immediate=True)
+            # Ignore any input warp that is empty of data
+            if numpy.isnan(tempExp.image.array).all():
+                continue
             maskedImage = tempExp.getMaskedImage()
             imageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure=tempExp,
