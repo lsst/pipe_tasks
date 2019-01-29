@@ -74,6 +74,11 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype=bool,
         default=False,
     )
+    doWriteEmptyWarps = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Write out warps even if they are empty"
+    )
     doApplySkyCorr = pexConfig.Field(dtype=bool, default=False, doc="Apply sky correction?")
 
     def validate(self):
@@ -448,8 +453,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                         CoaddPsf(inputRecorder[warpType].coaddInputs.ccds, skyInfo.wcs,
                                  self.config.coaddPsf.makeControl()))
             else:
-                # No good pixels. Exposure still empty
-                coaddTempExps[warpType] = None
+                if not self.config.doWriteEmptyWarps:
+                    # No good pixels. Exposure still empty
+                    coaddTempExps[warpType] = None
 
         result = pipeBase.Struct(exposures=coaddTempExps)
         return result
