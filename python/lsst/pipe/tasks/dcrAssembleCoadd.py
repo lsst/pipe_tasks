@@ -289,13 +289,20 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                       " to the Mapper class in your obs package.")
         tempExpName = self.getTempExpDatasetName(self.warpType)
         dcrShifts = []
+        airmassList = {}
+        angleList = {}
         for visitNum, tempExpRef in enumerate(tempExpRefList):
             visitInfo = tempExpRef.get(tempExpName + "_visitInfo")
             airmass = visitInfo.getBoresightAirmass()
+            parallacticAngle = visitInfo.getBoresightParAngle().asDegrees()
+            airmassList[tempExpRef.dataId["visit"]] = airmass
+            angleList[tempExpRef.dataId["visit"]] = parallacticAngle
             if self.config.doAirmassWeight:
                 weightList[visitNum] *= airmass
             dcrShifts.append(np.max(np.abs(calculateDcr(visitInfo, templateCoadd.getWcs(),
                                                         filterInfo, self.config.dcrNumSubfilters))))
+        self.log.info("Selected airmasses:\n%s", airmassList)
+        self.log.info("Selected parallactic angles:\n%s", angleList)
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
         # Turn off the warping cache, since we set the linear interpolation length to the entire subregion
         # This warper is only used for applying DCR shifts, which are assumed to be uniform across a patch
