@@ -60,7 +60,6 @@ class MergeDetectionsConfig(PipelineTaskConfig):
 
     schema = InitInputDatasetField(
         doc="Schema of the input detection catalog",
-        name="",
         nameTemplate="{inputCoaddName}Coadd_det_schema",
         storageClass="SourceCatalog"
     )

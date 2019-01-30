@@ -39,19 +39,16 @@ class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
     # Gen 3 options
     inputSchema = pipeBase.InitInputDatasetField(
         doc="Schema for the input measurement catalogs.",
-        name="",
         nameTemplate="{inputCoaddName}Coadd_meas_schema",
         storageClass="SourceCatalog",
     )
     outputSchema = pipeBase.InitOutputDatasetField(
         doc="Schema for the output merged measurement catalog.",
-        name="",
         nameTemplate="{outputCoaddName}Coadd_ref_schema",
         storageClass="SourceCatalog",
     )
     catalogs = pipeBase.InputDatasetField(
         doc="Input catalogs to merge.",
-        name="",
         nameTemplate="{inputCoaddName}Coadd_meas",
         scalar=False,
         storageClass="SourceCatalog",
@@ -59,7 +56,6 @@ class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
     )
     mergedCatalog = pipeBase.OutputDatasetField(
         doc="Output merged catalog.",
-        name="",
         nameTemplate="{outputCoaddName}Coadd_ref",
         scalar=True,
         storageClass="SourceCatalog",
