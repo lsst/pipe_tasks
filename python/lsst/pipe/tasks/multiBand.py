@@ -977,8 +977,13 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
+        if self.config.doPropagateFlags:
+            ccdInputs = self.propagateFlags.getCcdInputs(exposure)
+        else:
+            ccdInputs = None
+
         results = self.run(exposure=exposure, sources=sources,
-                           ccdInputs=self.propagateFlags.getCcdInputs(exposure),
+                           ccdInputs=ccdInputs,
                            skyInfo=skyInfo, butler=patchRef.getButler(),
                            exposureId=self.getExposureId(patchRef))
 
