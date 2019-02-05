@@ -40,6 +40,7 @@ import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
 from lsst.skymap import BaseSkyMap
+from lsst.obs.base import ExposureIdInfo
 
 # NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
@@ -288,9 +289,9 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch_band", returnMaxBits=True)
-        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
-        inputs["expId"] = packedId
+        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch_band")
+        inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()
+        inputs["expId"] = exposureIdInfo.expId
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
@@ -944,9 +945,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
 
         # Get unique integer ID for IdFactory and RNG seeds
-        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
-        inputs['exposureId'] = packedId
-        idFactory = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch")
+        inputs['exposureId'] = exposureIdInfo.expId
+        idFactory = exposureIdInfo.makeSourceIdFactory()
         # Transform inputCatalog
         table = afwTable.SourceTable.make(self.schema, idFactory)
         sources = afwTable.SourceCatalog(table)

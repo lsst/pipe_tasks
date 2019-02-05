@@ -36,6 +36,7 @@ from lsst.pipe.base import (CmdLineTask, PipelineTask, PipelineTaskConfig, Struc
                             PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pipe.tasks.coaddBase import getSkyInfo
+from lsst.obs.base import ExposureIdInfo
 
 
 class MergeDetectionsConnections(PipelineTaskConnections,
@@ -246,9 +247,9 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
-        inputs["skySeed"] = packedId
-        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch")
+        inputs["skySeed"] = exposureIdInfo.expId
+        inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()
         catalogDict = {ref.dataId['band']: cat for ref, cat in zip(inputRefs.catalogs,
                        inputs['catalogs'])}
         inputs['catalogs'] = catalogDict

@@ -28,7 +28,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.afw.math import BackgroundList
-from lsst.afw.table import SourceTable, SourceCatalog, IdFactory
+from lsst.afw.table import SourceTable, SourceCatalog
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import RefMatchTask, displayAstrometry
@@ -334,10 +334,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         if 'exposureIdInfo' not in inputs.keys():
-            exposureIdInfo = ExposureIdInfo()
-            exposureIdInfo.expId, exposureIdInfo.expBits = butlerQC.quantum.dataId.pack("visit_detector",
-                                                                                        returnMaxBits=True)
-            inputs['exposureIdInfo'] = exposureIdInfo
+            inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
@@ -582,7 +579,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         if background is None:
             background = BackgroundList()
 
-        sourceIdFactory = IdFactory.makeSource(exposureIdInfo.expId, exposureIdInfo.unusedBits)
+        sourceIdFactory = exposureIdInfo.makeSourceIdFactory()
         table = SourceTable.make(self.schema, sourceIdFactory)
         table.setMetadata(self.algMetadata)
 

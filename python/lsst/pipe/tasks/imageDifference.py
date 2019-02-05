@@ -44,6 +44,7 @@ import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 import lsst.afw.display as afwDisplay
 from lsst.skymap import BaseSkyMap
+from lsst.obs.base import ExposureIdInfo
 
 __all__ = ["ImageDifferenceConfig", "ImageDifferenceTask"]
 FwhmPerSigma = 2*math.sqrt(2*math.log(2))
@@ -444,7 +445,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         -------
         idFactory: `lsst.afw.table.IdFactory`
         """
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
+        return ExposureIdInfo(expId, expBits).makeSourceIdFactory()
 
     @lsst.utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC: pipeBase.ButlerQuantumContext,

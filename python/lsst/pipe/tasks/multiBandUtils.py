@@ -23,6 +23,7 @@ import lsst.afw.table as afwTable
 from lsst.coadd.utils import ExistingCoaddDataIdContainer
 from lsst.pipe.base import TaskRunner, ArgumentParser
 from lsst.pex.config import Config, RangeField
+from lsst.obs.base import ExposureIdInfo
 
 
 class MergeSourcesRunner(TaskRunner):
@@ -222,7 +223,9 @@ def _makeMakeIdFactory(datasetName):
         The actual parameters used in the IdFactory are provided by
         the butler (through the provided data reference.
         """
-        expBits = dataRef.get(self.config.coaddName + datasetName + "_bits")
-        expId = int(dataRef.get(self.config.coaddName + datasetName))
-        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
+        info = ExposureIdInfo(
+            int(dataRef.get(self.config.coaddName + datasetName)),
+            dataRef.get(self.config.coaddName + datasetName + "_bits")
+        )
+        return info.makeSourceIdFactory()
     return makeIdFactory
