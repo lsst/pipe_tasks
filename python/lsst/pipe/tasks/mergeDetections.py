@@ -60,7 +60,6 @@ class MergeDetectionsConfig(PipelineTaskConfig):
 
     schema = InitInputDatasetField(
         doc="Schema of the input detection catalog",
-        name="",
         nameTemplate="{inputCoaddName}Coadd_det_schema",
         storageClass="SourceCatalog"
     )
@@ -245,9 +244,10 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         self.write(patchRefList[0], mergeCatalogStruct.outputCatalog)
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        # FINDME: DM-15843 needs to come back and address this function with final solution
-        inputData["skySeed"] = 0
-        inputData["idFactory"] = afwTable.IdFactory.makeSimple()
+        packedId, maxBits = butler.registry.packDataId("TractPatch", outputDataIds['outputCatalog'],
+                                                       returnMaxBits=True)
+        inputData["skySeed"] = packedId
+        inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         catalogDict = {dataId['abstract_filter']: cat for dataId, cat in zip(inputDataIds['catalogs'],
                        inputData['catalogs'])}
         inputData['catalogs'] = catalogDict
