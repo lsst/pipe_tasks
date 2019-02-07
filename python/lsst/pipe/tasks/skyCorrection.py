@@ -192,7 +192,7 @@ class SkyCorrectionTask(BatchPoolTask):
                                                       sigma=self.config.detectSigma, clearMask=True)
             if hasattr(results, "background") and results.background:
                 # Restore any background that was removed during detection
-                maskedImage += results.background.getImage()
+                image += results.background.getImage()
 
         # We're removing the old background, so change the sense of all its components
         for bgData in bgOld:
