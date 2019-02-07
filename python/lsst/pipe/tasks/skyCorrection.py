@@ -1,13 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
-import numpy
-
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 
-from lsst.afw.cameraGeom.utils import makeImageFromCamera
 from lsst.pipe.base import ArgumentParser, Struct
 from lsst.pex.config import Config, Field, ConfigurableField, ConfigField
 from lsst.ctrl.pool.pool import Pool
@@ -56,6 +53,7 @@ class SkyCorrectionConfig(Config):
         self.detection.doTempLocalBackground = False
         self.detection.thresholdType = "pixel_stdev"
         self.detection.thresholdValue = 3.0
+
 
 class SkyCorrectionTask(BatchPoolTask):
     """Correct sky over entire focal plane"""
