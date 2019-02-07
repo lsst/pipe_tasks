@@ -37,7 +37,7 @@ class BackgroundConfig(Config):
     statistic = ChoiceField(dtype=str, default="MEANCLIP", doc="type of statistic to use for grid points",
                             allowed={"MEANCLIP": "clipped mean",
                                      "MEAN": "unclipped mean",
-                                     "MEDIAN": "median",})
+                                     "MEDIAN": "median"})
     xBinSize = RangeField(dtype=int, default=32, min=1, doc="Superpixel size in x")
     yBinSize = RangeField(dtype=int, default=32, min=1, doc="Superpixel size in y")
     algorithm = ChoiceField(dtype=str, default="NATURAL_SPLINE", optional=True,
@@ -47,10 +47,11 @@ class BackgroundConfig(Config):
                                 "CONSTANT": "Use a single constant value",
                                 "LINEAR": "Use linear interpolation",
                                 "NATURAL_SPLINE": "cubic spline with zero second derivative at endpoints",
-                                "AKIMA_SPLINE": "higher-level nonlinear spline that is more robust to outliers",
+                                "AKIMA_SPLINE": "higher-level nonlinear spline that is more robust"
+                                                " to outliers",
                                 "NONE": "No background estimation is to be attempted",
                             })
-    mask = ListField(dtype=str, default=["SAT", "BAD", "EDGE", "DETECTED", "DETECTED_NEGATIVE", "NO_DATA",],
+    mask = ListField(dtype=str, default=["SAT", "BAD", "EDGE", "DETECTED", "DETECTED_NEGATIVE", "NO_DATA"],
                      doc="Names of mask planes to ignore while estimating the background")
 
 
@@ -59,11 +60,11 @@ class SkyStatsConfig(Config):
     statistic = ChoiceField(dtype=str, default="MEANCLIP", doc="type of statistic to use for grid points",
                             allowed={"MEANCLIP": "clipped mean",
                                      "MEAN": "unclipped mean",
-                                     "MEDIAN": "median",})
+                                     "MEDIAN": "median"})
     clip = Field(doc="Clipping threshold for background", dtype=float, default=3.0)
     nIter = Field(doc="Clipping iterations for background", dtype=int, default=3)
     mask = ListField(doc="Mask planes to reject", dtype=str,
-                     default=["SAT", "DETECTED", "DETECTED_NEGATIVE", "BAD", "NO_DATA",])
+                     default=["SAT", "DETECTED", "DETECTED_NEGATIVE", "BAD", "NO_DATA"])
 
 
 class SkyMeasurementConfig(Config):
@@ -130,11 +131,11 @@ class SkyMeasurementTask(Task):
         algorithm = header.get("ALGORITHM")
         bbox = afwGeom.Box2I(afwGeom.Point2I(xMin, yMin), afwGeom.Point2I(xMax, yMax))
         return afwMath.BackgroundList(
-                (afwMath.BackgroundMI(bbox, bgExp.getMaskedImage()),
-                 afwMath.stringToInterpStyle(algorithm),
-                 afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
-                 afwMath.ApproximateControl.UNKNOWN,
-                 0, 0, False))
+            (afwMath.BackgroundMI(bbox, bgExp.getMaskedImage()),
+             afwMath.stringToInterpStyle(algorithm),
+             afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
+             afwMath.ApproximateControl.UNKNOWN,
+             0, 0, False))
 
     def backgroundToExposure(self, statsImage, bbox):
         """Convert a background model to an exposure
@@ -399,7 +400,7 @@ def interpolate1D(method, xSample, ySample, xInterp):
     try:
         return afwMath.makeInterpolate(xSample.astype(float), ySample.astype(float),
                                        method).interpolate(xInterp.astype(float))
-    except:
+    except Exception:
         if method == afwMath.Interpolate.CONSTANT:
             # We've already tried the most basic interpolation and it failed
             return numpy.ones_like(xInterp)*numpy.nan
@@ -618,7 +619,7 @@ class FocalPlaneBackground(object):
             if not numpy.isfinite(mean) or not numpy.isfinite(num):
                 continue
             warped[xx, yy, afwImage.LOCAL] = mean*num
-            warpedCounts[xx, yy,afwImage.LOCAL] = num
+            warpedCounts[xx, yy, afwImage.LOCAL] = num
 
         self._values += warped
         self._numbers += warpedCounts
@@ -671,7 +672,7 @@ class FocalPlaneBackground(object):
              afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
              afwMath.ApproximateControl.UNKNOWN,
              0, 0, False)
-            )
+        )
 
     def merge(self, other):
         """Merge with another FocalPlaneBackground
@@ -725,5 +726,3 @@ class FocalPlaneBackground(object):
         isBad = self._numbers.getArray() < thresh
         interpolateBadPixels(values.getArray(), isBad, self.config.interpolation)
         return values
-
-
