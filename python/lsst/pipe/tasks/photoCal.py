@@ -24,10 +24,12 @@ import math
 import sys
 
 import numpy as np
+import astropy.units as u
 
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, Calib
+import lsst.afw.table as afwTable
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display.ds9 as ds9
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
@@ -326,68 +328,50 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         if applyColorTerms:
             self.log.info("Applying color terms for filterName=%r, config.photoCatName=%s because %s",
                           filterName, self.config.photoCatName, applyCTReason)
-            ct = self.config.colorterms.getColorterm(
+            colorterm = self.config.colorterms.getColorterm(
                 filterName=filterName, photoCatName=self.config.photoCatName, doRaise=True)
+            refCat = afwTable.SimpleCatalog(matches[0].first.schema)
+
+            # extract the matched refCat as a Catalog for the colorterm code
+            refCat.reserve(len(matches))
+            for x in matches:
+                record = refCat.addNew()
+                record.assign(x.first)
+
+            refMagArr, refMagErrArr = colorterm.getCorrectedMagnitudes(refCat, filterName)
+            fluxFieldList = [getRefFluxField(refSchema, filt) for filt in (colorterm.primary,
+                                                                           colorterm.secondary)]
         else:
+            # no colorterms to apply
             self.log.info("Not applying color terms because %s", applyCTReason)
-            ct = None
+            colorterm = None
 
-        if ct:                          # we have a color term to worry about
-            fluxFieldList = [getRefFluxField(refSchema, filt) for filt in (ct.primary, ct.secondary)]
-            missingFluxFieldList = []
-            for fluxField in fluxFieldList:
-                try:
-                    refSchema.find(fluxField).key
-                except KeyError:
-                    missingFluxFieldList.append(fluxField)
-
-            if missingFluxFieldList:
-                self.log.warn("Source catalog does not have fluxes for %s; ignoring color terms",
-                              " ".join(missingFluxFieldList))
-                ct = None
-
-        if not ct:
             fluxFieldList = [getRefFluxField(refSchema, filterName)]
-
-        refFluxArrList = []  # list of ref arrays, one per flux field
-        refFluxErrArrList = []  # list of ref flux arrays, one per flux field
-        for fluxField in fluxFieldList:
+            fluxField = getRefFluxField(refSchema, filterName)
             fluxKey = refSchema.find(fluxField).key
             refFluxArr = np.array([m.first.get(fluxKey) for m in matches])
+
             try:
                 fluxErrKey = refSchema.find(fluxField + "Err").key
                 refFluxErrArr = np.array([m.first.get(fluxErrKey) for m in matches])
             except KeyError:
-                # Reference catalogue may not have flux uncertainties; HACK
+                # Reference catalogue may not have flux uncertainties; HACK DM-2308
                 self.log.warn("Reference catalog does not have flux uncertainties for %s; using sqrt(flux).",
                               fluxField)
                 refFluxErrArr = np.sqrt(refFluxArr)
 
-            refFluxArrList.append(refFluxArr)
-            refFluxErrArrList.append(refFluxErrArr)
+            refMagArr = u.Quantity(refFluxArr, u.Jy).to_value(u.ABmag)
+            refMagErrArr = abMagErrFromFluxErr(refFluxErrArr, refFluxArr)
 
-        if ct:                          # we have a color term to worry about
-            refMagArr1 = np.array([abMagFromFlux(rf1) for rf1 in refFluxArrList[0]])  # primary
-            refMagArr2 = np.array([abMagFromFlux(rf2) for rf2 in refFluxArrList[1]])  # secondary
-
-            refMagArr = ct.transformMags(refMagArr1, refMagArr2)
-            refFluxErrArr = ct.propagateFluxErrors(refFluxErrArrList[0], refFluxErrArrList[1])
-        else:
-            refMagArr = np.array([abMagFromFlux(rf) for rf in refFluxArrList[0]])
-
+        # compute the source catalog magnitudes and errors
         srcMagArr = np.array([abMagFromFlux(sf) for sf in srcInstFluxArr])
-
         # Fitting with error bars in both axes is hard
         # for now ignore reference flux error, but ticket DM-2308 is a request for a better solution
-        magErrArr = np.array([abMagErrFromFluxErr(fe, sf)
-                             for fe, sf in zip(srcInstFluxErrArr, srcInstFluxArr)])
+        magErrArr = abMagErrFromFluxErr(srcInstFluxErrArr, srcInstFluxArr)
         if self.config.magErrFloor != 0.0:
             magErrArr = (magErrArr**2 + self.config.magErrFloor**2)**0.5
 
-        srcMagErrArr = np.array([abMagErrFromFluxErr(sfe, sf)
-                                for sfe, sf in zip(srcInstFluxErrArr, srcInstFluxArr)])
-        refMagErrArr = np.array([abMagErrFromFluxErr(rfe, rf)
-                                for rfe, rf in zip(refFluxErrArr, refFluxArr)])
+        srcMagErrArr = abMagErrFromFluxErr(srcInstFluxErrArr, srcInstFluxArr)
 
         good = np.isfinite(srcMagArr) & np.isfinite(refMagArr)
 

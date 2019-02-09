@@ -20,20 +20,13 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
-"""
-Tests for Colorterm
-
-Run with:
-   python colorterm.py
-or
-   python
-   >>> import colorterm; colorterm.run()
-"""
-
 import unittest
 import pickle
 
+import astropy.units as u
+
 import lsst.utils.tests
+from lsst.meas.algorithms import LoadReferenceObjectsTask
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary, ColortermNotFoundError
 
 # From the last page of http://www.naoj.org/staff/nakata/suprime/illustration/colorterm_report_ver3.pdf
@@ -115,6 +108,37 @@ class ColortermTestCase(unittest.TestCase):
         """Ensure color terms can be pickled"""
         colorterms = pickle.loads(pickle.dumps(self.colorterms))
         self.assertEqual(colorterms, self.colorterms)
+
+
+def make_fake_refcat(center, flux):
+    """Make a fake reference catalog."""
+    filters = ['f1', 'f2']
+    schema = LoadReferenceObjectsTask.makeMinimalSchema(filters)
+    catalog = lsst.afw.table.SimpleCatalog(schema)
+    record = catalog.addNew()
+    record.setCoord(center)
+    record[filters[0] + '_flux'] = flux
+    record[filters[0] + '_fluxErr'] = flux*0.1
+    record[filters[1] + '_flux'] = flux*10
+    record[filters[1] + '_fluxErr'] = flux*10*0.1
+    return catalog
+
+
+class ApplyColortermsTestCase(lsst.utils.tests.TestCase):
+    def setUp(self):
+        self.colorterm = Colorterm(primary="f1", secondary="f2", c0=2.0, c1=3.0)
+
+    def testGetCorrectedMagnitudes(self):
+        center = lsst.geom.SpherePoint(30, -30, lsst.geom.degrees)
+        flux = 100
+        refCat = make_fake_refcat(center, flux)
+
+        expectMag = self.colorterm.transformMags((u.Jy*refCat['f1_flux']).to_value(u.ABmag),
+                                                 (u.Jy*refCat['f2_flux']).to_value(u.ABmag))
+        refMag, refMagErr = self.colorterm.getCorrectedMagnitudes(refCat, 'r')
+        self.assertEqual(refMag, expectMag)
+        # TODO DM-17692: Not testing the returned errors, as I do not trust `propagateFluxErrors()`
+        # and there is some interesting logic involved in how the errors are propagated.
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
