@@ -937,8 +937,9 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         for maskPlane in self.config.removeMaskPlanes:
             try:
                 mask &= ~mask.getPlaneBitMask(maskPlane)
-            except Exception as e:
-                self.log.warn("Unable to remove mask plane %s: %s", maskPlane, e.args[0])
+            except pexExceptions.InvalidParameterError:
+                self.log.debug("Unable to remove mask plane %s: no mask plane with that name was found.",
+                               maskPlane)
 
     @staticmethod
     def setRejectedMaskMapping(statsCtrl):
