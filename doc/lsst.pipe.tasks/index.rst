@@ -72,3 +72,4 @@ Python API reference
 ====================
 
 .. automodapi:: lsst.pipe.tasks.assembleCoadd
+.. automodapi:: lsst.pipe.tasks.dcrAssembleCoadd
