@@ -31,7 +31,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask
-from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
+from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, \
     ObjectSizeStarSelectorTask
@@ -102,7 +102,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=True
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target=LoadAstrometryNetObjectsTask,
+        target=LoadIndexedReferenceObjectsTask,
         doc="reference object loader",
     )
     astrometer = pexConfig.ConfigurableField(

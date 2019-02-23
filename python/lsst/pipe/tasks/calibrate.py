@@ -28,7 +28,7 @@ from lsst.pipe.base import (InitInputDatasetField, InitOutputDatasetField, Input
                             OutputDatasetField, PipelineTaskConfig, PipelineTask)
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches
-from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
+from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
@@ -74,11 +74,11 @@ class CalibrateConfig(PipelineTaskConfig):
         doc="Perform astrometric calibration?",
     )
     astromRefObjLoader = pexConfig.ConfigurableField(
-        target=LoadAstrometryNetObjectsTask,
+        target=LoadIndexedReferenceObjectsTask,
         doc="reference object loader for astrometric calibration",
     )
     photoRefObjLoader = pexConfig.ConfigurableField(
-        target=LoadAstrometryNetObjectsTask,
+        target=LoadIndexedReferenceObjectsTask,
         doc="reference object loader for photometric calibration",
     )
     astrometry = pexConfig.ConfigurableField(
@@ -464,7 +464,7 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
             # used for photo calibration, and that the reference object loader is actually
             # None in gen3 world. It will be added in adaptArgsAndRun as a refObjLoader class
             # object.
-            if initInputs is not None and photoRefObjLoader is LoadAstrometryNetObjectsTask:
+            if initInputs is not None and photoRefObjLoader.__name__ == "LoadAstrometryNetObjectsTask":
                 raise RuntimeError("Astrometry Net tasks are not compatible with gen 3 middleware")
             self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader,
                              schema=self.schema)
