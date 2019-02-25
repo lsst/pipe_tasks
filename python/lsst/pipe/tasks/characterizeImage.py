@@ -31,7 +31,7 @@ from lsst.afw.table import SourceTable, SourceCatalog, IdFactory
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import RefMatchTask, displayAstrometry
-from lsst.meas.extensions.astrometryNet import LoadAstrometryNetObjectsTask
+from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.obs.base import ExposureIdInfo
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
@@ -155,7 +155,7 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
         doc="Install a simple PSF model",
     )
     refObjLoader = pexConfig.ConfigurableField(
-        target=LoadAstrometryNetObjectsTask,
+        target=LoadIndexedReferenceObjectsTask,
         doc="reference object loader",
     )
     ref_match = pexConfig.ConfigurableField(
