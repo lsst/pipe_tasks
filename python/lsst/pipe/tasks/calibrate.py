@@ -458,16 +458,12 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
                 self.makeSubtask('photoRefObjLoader', butler=butler)
                 photoRefObjLoader = self.photoRefObjLoader
                 self.pixelMargin = photoRefObjLoader.config.pixelMargin
-            # If this is gen 3 don't allow LoadAstometryNet loader. If this is a gen3 run
-            # then initInputs will be populated with data used to initialize the task from
-            # a pipeline activator. This verifies that LoadAstrometryNetObjects task is not
-            # used for photo calibration, and that the reference object loader is actually
-            # None in gen3 world. It will be added in adaptArgsAndRun as a refObjLoader class
-            # object.
-            if initInputs is not None and photoRefObjLoader.__name__ == "LoadAstrometryNetObjectsTask":
-                raise RuntimeError("Astrometry Net tasks are not compatible with gen 3 middleware")
             self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader,
                              schema=self.schema)
+
+        if initInputs is not None and (astromRefObjLoader is not None or photoRefObjLoader is not None):
+            raise RuntimeError("PipelineTask form of this task should not be initialized with "
+                               "reference object loaders.")
 
         if self.schemaMapper is not None:
             # finalize the schema
