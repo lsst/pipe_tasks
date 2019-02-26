@@ -158,16 +158,22 @@ class ObjectMaskCatalog:
                 # with the format as specified in the above docstring.
                 mat = re.search(r"^\s*(box|circle)"
                                 r"(?:\s+|\s*\(\s*)"   # open paren or space
-                                r"(\d+(?:\.\d*)?([d]*))" r"(?:\s+|\s*,\s*)"
-                                r"([+-]?\d+(?:\.\d*)?)([d]*)" r"(?:\s+|\s*,\s*)"
-                                r"([+-]?\d+(?:\.\d*)?)([d]*)" r"(?:\s+|\s*,\s*)?"
-                                r"(?:([+-]?\d+(?:\.\d*)?)([d]*)"
-                                r"\s*,\s*"
-                                r"([+-]?\d+(?:\.\d*)?)([d]*)"
-                                ")?"
+                                r"([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)([d]*)"  # ra + units
+                                r"(?:\s+|\s*,\s*)"  # sep
+                                r"([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)([d]*)"  # dec + units
+                                r"(?:\s+|\s*,\s*)"  # sep
+                                r"([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)([d]*)"  # param1 + units
+                                r"(?:"  # start optional 1
+                                r"(?:\s+|\s*,\s*)"  # sep
+                                r"([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)([d]*)"  # param2 + units
+                                r"(?:"  # start optional 2
+                                r"(?:\s+|\s*,\s*)"  # sep
+                                r"([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)([d]*)"  # param3 + units
+                                ")?"  # end optional 2
+                                ")?"  # end optional 1
                                 r"(?:\s*|\s*\)\s*)"   # close paren or space
-                                r"\s*#\s*ID:\s*(\d+)"  # start comment
-                                r"(?:\s*,\s*mag:\s*(\d+\.\d*))?"
+                                r"#\s*ID:[\w\s]*(\d+)"  # start comment, ID
+                                r"(?:\s*,?\s*mag:\s*([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?))?"
                                 r"\s*$", line)
                 if mat:
                     _type, ra, raUnit, dec, decUnit, \
@@ -186,12 +192,13 @@ class ObjectMaskCatalog:
                     radius = NaN
                     width = NaN
                     height = NaN
-                    angle = NaN
+                    angle = 0.0*afwGeom.degrees
 
                     if _type == "box":
                         width = convertToAngle(param1, param1Unit, "width", fileName, lineNo)
                         height = convertToAngle(param2, param2Unit, "height", fileName, lineNo)
-                        angle = convertToAngle(param3, param3Unit, "angle", fileName, lineNo)
+                        if param3 is not None:
+                            angle = convertToAngle(param3, param3Unit, "angle", fileName, lineNo)
 
                         if angle != 0.0:
                             log.warn("Rotated boxes are not supported: \"%s\" at %s:%d" % (
