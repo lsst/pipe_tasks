@@ -380,6 +380,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             inputTypeDict.pop("brightObjectMask", None)
         return inputTypeDict
 
+    @classmethod
+    def getPrerequisiteDatasetTypes(cls, config):
+        return frozenset(["brightObjectMask"])
+
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         """Assemble a coadd from a set of Warps.
 

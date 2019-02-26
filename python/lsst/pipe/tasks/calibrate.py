@@ -488,6 +488,10 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
             outputTypesDict.pop("matchesDenormalized")
         return outputTypesDict
 
+    @classmethod
+    def getPrerequisiteDatasetTypes(cls, config):
+        return frozenset(["astromRefCat", "photoRefCat"])
+
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,
                    doUnpersist=True):
