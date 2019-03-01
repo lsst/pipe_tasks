@@ -34,6 +34,7 @@ import unittest
 import numpy as np
 
 import lsst.utils.tests
+import lsst.geom
 import lsst.afw.image as afwImage
 import lsst.afw.display.ds9 as ds9
 import lsst.ip.isr as ipIsr
@@ -46,7 +47,7 @@ except NameError:
     display = False
 
 
-class InterpolationTestCase(unittest.TestCase):
+class InterpolationTestCase(lsst.utils.tests.TestCase):
     """A test case for interpolation"""
 
     def setUp(self):
@@ -139,6 +140,28 @@ class InterpolationTestCase(unittest.TestCase):
                 miInterp = mi.clone()
                 interpTask.run(miInterp, planeName=pixelPlane, fwhmPixels=self.FWHM)
                 validateInterp(miInterp, useFallbackValueAtEdge, 0)
+
+    def testTranspose(self):
+        """Test transposition before interpolation
+
+        Interpolate over a bad row (not a bad column).
+        """
+        box = lsst.geom.Box2I(lsst.geom.Point2I(12345, 6789), lsst.geom.Extent2I(123, 45))
+        value = 123.45
+        bad = "BAD"
+        image = afwImage.MaskedImageF(box)
+        image.image.set(value)
+        image.mask.set(0)
+
+        badRow = box.getHeight()//2
+        image.image.array[badRow] = 10*value
+        image.mask.array[badRow] = image.mask.getPlaneBitMask(bad)
+
+        config = InterpImageTask.ConfigClass()
+        config.transpose = True
+        task = InterpImageTask(config)
+        task.run(image, planeName=bad, fwhmPixels=self.FWHM)
+        self.assertFloatsEqual(image.image.array, value)
 
 
 def setup_module(module):

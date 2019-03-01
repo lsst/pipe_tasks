@@ -19,7 +19,10 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+from contextlib import contextmanager
 import lsst.pex.config as pexConfig
+import lsst.geom
+import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
@@ -60,6 +63,9 @@ class InterpImageConfig(pexConfig.Config):
              "fallbackValue to max(fallbackValue, 0.0)"),
         default=False,
     )
+    transpose = pexConfig.Field(dtype=int, default=False,
+                                doc="Transpose image before interpolating? "
+                                    "This allows the interpolation to act over columns instead of rows.")
 
     def validate(self):
         pexConfig.Config.validate(self)
@@ -168,7 +174,70 @@ class InterpImageTask(pipeBase.Task):
         if self.config.useFallbackValueAtEdge:
             fallbackValue = self._setFallbackValue(maskedImage)
 
-        measAlg.interpolateOverDefects(maskedImage, psf, defectList, fallbackValue,
-                                       self.config.useFallbackValueAtEdge)
+        self.interpolateImage(maskedImage, psf, defectList, fallbackValue)
 
         self.log.info("Interpolated over %d %s pixels." % (len(defectList), planeName))
+
+    @contextmanager
+    def transposeContext(self, maskedImage, defects):
+        """Context manager to potentially transpose an image
+
+        This applies the ``transpose`` configuration setting.
+
+        Transposing the image allows us to interpolate along columns instead
+        of rows, which is useful when the saturation trails are typically
+        oriented along rows on the warped/coadded images, instead of along
+        columns as they typically are in raw CCD images.
+
+        Parameters
+        ----------
+        maskedImage : `lsst.afw.image.MaskedImage`
+            Image on which to perform interpolation.
+        defects : iterable of `lsst.afw.image.Defect`
+            List of defects to interpolate over.
+
+        Yields
+        ------
+        useImage : `lsst.afw.image.MaskedImage`
+            Image to use for interpolation; it may have been transposed.
+        useDefects : iterable of `lsst.afw.image.Defect`
+            List of defects to use for interpolation; they may have been
+            transposed.
+        """
+        def transposeImage(image):
+            """Transpose an image"""
+            transposed = image.array.T.copy()  # Copy to force row-major; required for ndarray+pybind
+            return image.Factory(transposed, False, lsst.geom.Point2I(*reversed(image.getXY0())))
+
+        useImage = maskedImage
+        useDefects = defects
+        if self.config.transpose:
+            useImage = afwImage.makeMaskedImage(transposeImage(maskedImage.image),
+                                                transposeImage(maskedImage.mask),
+                                                transposeImage(maskedImage.variance))
+            useDefects = ipIsr.transposeDefectList(defects)
+        yield useImage, useDefects
+        if self.config.transpose:
+            maskedImage.image.array = useImage.image.array.T
+            maskedImage.mask.array = useImage.mask.array.T
+            maskedImage.variance.array = useImage.variance.array.T
+
+    def interpolateImage(self, maskedImage, psf, defectList, fallbackValue):
+        """Interpolate over defects in an image
+
+        Parameters
+        ----------
+        maskedImage : `lsst.afw.image.MaskedImage`
+            Image on which to perform interpolation.
+        psf : `lsst.afw.detection.Psf`
+            Point-spread function; currently unused.
+        defectList : iterable of `lsst.afw.image.Defect`
+            List of defects to interpolate over.
+        fallbackValue : `float`
+            Value to set when interpolation fails.
+        """
+        if not defectList:
+            return
+        with self.transposeContext(maskedImage, defectList) as (image, defects):
+            measAlg.interpolateOverDefects(image, psf, defects, fallbackValue,
+                                           self.config.useFallbackValueAtEdge)
