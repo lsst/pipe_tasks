@@ -900,6 +900,10 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
             outputDatasetTypes.pop("denormMatches")
         return outputDatasetTypes
 
+    @classmethod
+    def getPrerequisiteDatasetTypes(cls, config):
+        return frozenset(["refCat"])
+
     def getInitOutputDatasets(self):
         return {"outputSchema": afwTable.SourceCatalog(self.schema)}
 
