@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2016 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,9 +16,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 # @package lsst.pipe.tasks.
 import math
@@ -31,7 +31,7 @@ import lsst.pipe.base as pipeBase
 from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, Calib
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
-import lsst.afw.display.ds9 as ds9
+import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from .colorterms import ColortermLibrary
 
@@ -172,7 +172,7 @@ The available variables in PhotoCalTask are:
   <DT> @c display
   <DD> If True enable other debug outputs
   <DT> @c displaySources
-  <DD> If True, display the exposure on ds9's frame 1 and overlay the source catalogue.
+  <DD> If True, display the exposure on the display's frame 1 and overlay the source catalogue.
     <DL>
       <DT> red o
       <DD> Reserved objects
@@ -308,8 +308,8 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
 
         # convert source instFlux from DN to an estimate of Jy
         JanskysPerABFlux = 3631.0
-        srcInstFluxArr = srcInstFluxArr * JanskysPerABFlux
-        srcInstFluxErrArr = srcInstFluxErrArr * JanskysPerABFlux
+        srcInstFluxArr = srcInstFluxArr*JanskysPerABFlux
+        srcInstFluxErrArr = srcInstFluxErrArr*JanskysPerABFlux
 
         if not matches:
             raise RuntimeError("No reference stars are available")
@@ -497,12 +497,13 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         frame : `int`
             Frame number for display.
         """
-        ds9.mtv(exposure, frame=frame, title="photocal")
-        with ds9.Buffering():
+        disp = afwDisplay.getDisplay(frame=frame)
+        disp.mtv(exposure, title="photocal")
+        with disp.Buffering():
             for mm, rr in zip(matches, reserved):
                 x, y = mm.second.getCentroid()
-                ctype = ds9.RED if rr else ds9.GREEN
-                ds9.dot("o", x, y, size=4, frame=frame, ctype=ctype)
+                ctype = afwDisplay.RED if rr else afwDisplay.GREEN
+                disp.dot("o", x, y, size=4, ctype=ctype)
 
     def getZeroPoint(self, src, ref, srcErr=None, zp0=None):
         """!Flux calibration code, returning (ZeroPoint, Distribution Width, Number of stars)

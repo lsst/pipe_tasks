@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2013 LSST Corporation.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import unittest
 
@@ -28,7 +27,6 @@ import lsst.utils.tests
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.geom as afwGeom
-import lsst.afw.display.ds9 as ds9
 from lsst.pipe.base import Struct
 from lsst.pipe.tasks.registerImage import RegisterConfig, RegisterTask
 
@@ -36,6 +34,9 @@ try:
     display
 except NameError:
     display = False
+else:
+    import lsst.afw.display as afwDisplay
+    afwDisplay.setDefaultMaskTransparency(75)
 
 
 class RegisterTestCase(unittest.TestCase):
@@ -206,11 +207,12 @@ class RegisterTestCase(unittest.TestCase):
         """
         if not display:
             return
-        ds9.mtv(image, title=title, frame=frame)
-        with ds9.Buffering():
+        disp = afwDisplay.Display(frame=frame)
+        disp.mtv(image, title=title)
+        with disp.Buffering():
             for s in sources:
                 center = s.getCentroid()
-                ds9.dot("o", center.getX(), center.getY(), frame=frame)
+                disp.dot("o", center.getX(), center.getY())
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-
 #
-# LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
+# This file is part of pipe_tasks.
 #
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,10 +18,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import sys
@@ -29,7 +28,7 @@ import numpy as np
 import lsst.utils
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
-import lsst.afw.display.ds9 as ds9
+import lsst.afw.display as afwDisplay
 import lsst.meas.algorithms as measAlg
 from lsst.meas.algorithms.detection import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
@@ -69,9 +68,10 @@ def run(display=False):
     config = SingleFrameMeasurementTask.ConfigClass()
     # Use the minimum set of plugins required.
     config.plugins.names.clear()
-    for plugin in ["base_SdssCentroid", "base_SdssShape", "base_CircularApertureFlux", "base_PixelFlags"]:
+    for plugin in ["base_SdssCentroid", "base_SdssShape", "base_CircularApertureFlux", "base_PixelFlags",
+                   "base_GaussianFlux", ]:
         config.plugins.names.add(plugin)
-    config.plugins["base_CircularApertureFlux"].radii = [7.0]
+    config.plugins["base_CircularApertureFlux"].radii = [7.0, 12.0]
     # Use of the PSF flux is hardcoded in secondMomentStarSelector
     config.slots.psfFlux = "base_CircularApertureFlux_7_0"
     measureTask = SingleFrameMeasurementTask(schema, config=config)
@@ -95,23 +95,24 @@ def run(display=False):
     # Process the data
     #
     sources = detectionTask.run(tab, exposure, sigma=2).sources
-    measureTask.measure(exposure, sources)
+    measureTask.measure(sources, exposure)
 
     result = measurePsfTask.run(exposure, sources)
     print("psf=", result.psf)
 
-    if display:                         # display on ds9 (see also --debug argparse option)
+    if display:
         frame = 1
-        ds9.mtv(exposure, frame=frame)
+        disp = afwDisplay.Display(frame=frame)  # see also --debug argparse option
+        disp.mtv(exposure)
 
-        with ds9.Buffering():
+        with disp.Buffering():
             for s in sources:
                 xy = s.getCentroid()
-                ds9.dot('+', *xy, frame=frame)
-                if s.get("calib.psf.candidate"):
-                    ds9.dot('x', *xy, ctype=ds9.YELLOW, frame=frame)
-                if s.get("calib.psf.used"):
-                    ds9.dot('o', *xy, size=4, ctype=ds9.RED, frame=frame)
+                disp.dot('+', *xy)
+                if s.get("calib_psf_candidate"):
+                    disp.dot('x', *xy, ctype=afwDisplay.YELLOW)
+                if s.get("calib_psf_used"):
+                    disp.dot('o', *xy, size=4, ctype=afwDisplay.RED)
 
 
 if __name__ == "__main__":
@@ -119,7 +120,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Demonstrate the use of MeasurePsfTask")
 
     parser.add_argument('--debug', '-d', action="store_true", help="Load debug.py?", default=False)
-    parser.add_argument('--ds9', action="store_true", help="Display sources on ds9", default=False)
+    parser.add_argument('--doDisplay', action="store_true", help="Display sources", default=False)
 
     args = parser.parse_args()
 
@@ -129,4 +130,4 @@ if __name__ == "__main__":
         except ImportError as e:
             print(e, file=sys.stderr)
 
-    run(display=args.ds9)
+    run(display=args.doDisplay)

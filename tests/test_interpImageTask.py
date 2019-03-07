@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,19 +16,16 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 Tests for bad pixel interpolation task
 
 Run with:
-   python testInterpImageTask.py
+   python test_interpImageTask.py
 or
-   python
-   >>> import testInterpImageTask; testInterpImageTask.run()
+   pytest test_interpImageTask.py
 """
 import unittest
 
@@ -36,26 +34,29 @@ import numpy as np
 import lsst.utils.tests
 import lsst.geom
 import lsst.afw.image as afwImage
-import lsst.afw.display.ds9 as ds9
 import lsst.ip.isr as ipIsr
 import lsst.pex.config as pexConfig
 from lsst.pipe.tasks.interpImage import InterpImageTask
 
 try:
-    type(display)
+    display
 except NameError:
     display = False
+else:
+    import lsst.afw.display as afwDisplay
+    afwDisplay.setDefaultMaskTransparency(75)
 
 
 class InterpolationTestCase(lsst.utils.tests.TestCase):
-    """A test case for interpolation"""
+    """A test case for interpolation.
+    """
 
     def setUp(self):
         self.FWHM = 5
 
     def testEdge(self):
-        """Test that we can interpolate to the edge"""
-
+        """Test that we can interpolate to the edge.
+        """
         mi = afwImage.MaskedImageF(80, 30)
         ima = mi.getImage().getArray()
         #
@@ -75,19 +76,19 @@ class InterpolationTestCase(lsst.utils.tests.TestCase):
         mi[0:nBadCol, :, afwImage.LOCAL] = (10, badBit, 0)  # Bad left edge
         # With another bad set of columns next to bad left edge
         mi[-nBadCol:, :, afwImage.LOCAL] = (10, badBit, 0)
-        mi[nBadCol+1:nBadCol+4, 0:10, afwImage.LOCAL] = (100, badBit, 0)  # Bad right edge
+        mi[nBadCol + 1:nBadCol + 4, 0:10, afwImage.LOCAL] = (100, badBit, 0)  # Bad right edge
         # more bad of columns next to bad right edge
-        mi[-nBadCol-4:-nBadCol-1, 0:10, afwImage.LOCAL] = (100, badBit, 0)
+        mi[-nBadCol - 4:-nBadCol - 1, 0:10, afwImage.LOCAL] = (100, badBit, 0)
 
         defectList = ipIsr.getDefectListFromMask(mi, pixelPlane)
 
         if display:
-            ds9.mtv(mi, frame=0)
+            afwDisplay.Display(frame=0).mtv(mi, title=self._testMethodName + ": image")
 
         def validateInterp(miInterp, useFallbackValueAtEdge, fallbackValue):
             imaInterp = miInterp.getImage().getArray()
             if display:
-                ds9.mtv(miInterp, frame=1)
+                afwDisplay.Display(frame=1).mtv(miInterp, title=self._testMethodName + ": interp image")
             self.assertGreater(np.min(imaInterp), min(-2, 2*fallbackValue))
             self.assertGreater(max(2, 2*fallbackValue), np.max(imaInterp))
             val0 = np.mean(miInterp.image[1:2, :, afwImage.LOCAL].array, dtype=float)

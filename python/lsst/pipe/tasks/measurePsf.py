@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011 LSST Corporation.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,12 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import lsst.afw.display as afwDisplay
 import lsst.afw.math as afwMath
-import lsst.afw.display.ds9 as ds9
 import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
@@ -121,7 +121,7 @@ Additionally you can enable any debug outputs that your chosen star selector and
 
 This code is in @link measurePsfTask.py@endlink in the examples directory, and can be run as @em e.g.
 @code
-examples/measurePsfTask.py --ds9
+examples/measurePsfTask.py --doDisplay
 @endcode
 @dontinclude measurePsfTask.py
 
@@ -171,7 +171,7 @@ We can then unpack and use the results:
 @skip psf
 @until cellSet
 
-If you specified @c --ds9 you can see the PSF candidates:
+If you specified @c  --doDisplay you can see the PSF candidates:
 
 @skip display
 @until RED
@@ -287,10 +287,11 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         self.log.info("Sending %d candidates to PSF determiner" % len(psfDeterminerList))
 
         if display:
-            frame = display
+            frame = 1
             if displayExposure:
-                ds9.mtv(exposure, frame=frame, title="psf determination")
-
+                disp = afwDisplay.Display(frame=frame)
+                disp.mtv(exposure, title="psf determination")
+                frame += 1
         #
         # Determine PSF
         #
@@ -304,11 +305,12 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         if display:
             frame = display
             if displayExposure:
+                disp = afwDisplay.Display(frame=frame)
                 showPsfSpatialCells(exposure, cellSet, showBadCandidates, frame=frame)
                 frame += 1
 
             if displayPsfCandidates:    # Show a mosaic of  PSF candidates
-                plotPsfCandidates(cellSet, showBadCandidates, frame)
+                plotPsfCandidates(cellSet, showBadCandidates=showBadCandidates, frame=frame)
                 frame += 1
 
             if displayResiduals:
@@ -317,8 +319,9 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
                                       normalizeResiduals=normalizeResiduals,
                                       frame=frame)
             if displayPsfMosaic:
-                maUtils.showPsfMosaic(exposure, psf, frame=frame, showFwhm=True)
-                ds9.scale(0, 1, "linear", frame=frame)
+                disp = afwDisplay.Display(frame=frame)
+                maUtils.showPsfMosaic(exposure, psf, display=disp, showFwhm=True)
+                disp.scale("linear", 0, 1)
                 frame += 1
 
         return pipeBase.Struct(
@@ -337,20 +340,19 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
 
 
 def showPsfSpatialCells(exposure, cellSet, showBadCandidates, frame=1):
+    disp = afwDisplay.Display(frame=frame)
     maUtils.showPsfSpatialCells(exposure, cellSet,
-                                symb="o", ctype=ds9.CYAN, ctypeUnused=ds9.YELLOW,
-                                size=4, frame=frame)
+                                symb="o", ctype=afwDisplay.CYAN, ctypeUnused=afwDisplay.YELLOW,
+                                size=4, display=disp)
     for cell in cellSet.getCellList():
         for cand in cell.begin(not showBadCandidates):  # maybe include bad candidates
             status = cand.getStatus()
-            ds9.dot('+', *cand.getSource().getCentroid(), frame=frame,
-                    ctype=ds9.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
-                    ds9.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else ds9.RED)
+            disp.dot('+', *cand.getSource().getCentroid(),
+                     ctype=afwDisplay.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
+                     afwDisplay.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else afwDisplay.RED)
 
 
 def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
-    import lsst.afw.display.utils as displayUtils
-
     stamps = []
     for cell in cellSet.getCellList():
         for cand in cell.begin(not showBadCandidates):  # maybe include bad candidates
@@ -369,7 +371,8 @@ def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
             except Exception:
                 continue
 
-    mos = displayUtils.Mosaic()
+    mos = afwDisplay.utils.Mosaic()
+    disp = afwDisplay.Display(frame=frame)
     for im, label, status in stamps:
         im = type(im)(im, True)
         try:
@@ -378,22 +381,23 @@ def plotPsfCandidates(cellSet, showBadCandidates=False, frame=1):
             pass
 
         mos.append(im, label,
-                   ds9.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
-                   ds9.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else ds9.RED)
+                   afwDisplay.GREEN if status == afwMath.SpatialCellCandidate.GOOD else
+                   afwDisplay.YELLOW if status == afwMath.SpatialCellCandidate.UNKNOWN else afwDisplay.RED)
 
     if mos.images:
-        mos.makeMosaic(frame=frame, title="Psf Candidates")
+        disp.mtv(mos.makeMosaic(), title="Psf Candidates")
 
 
 def plotResiduals(exposure, cellSet, showBadCandidates=False, normalizeResiduals=True, frame=2):
     psf = exposure.getPsf()
+    disp = afwDisplay.Display(frame=frame)
     while True:
         try:
-            maUtils.showPsfCandidates(exposure, cellSet, psf=psf, frame=frame,
+            maUtils.showPsfCandidates(exposure, cellSet, psf=psf, display=disp,
                                       normalize=normalizeResiduals,
                                       showBadCandidates=showBadCandidates)
             frame += 1
-            maUtils.showPsfCandidates(exposure, cellSet, psf=psf, frame=frame,
+            maUtils.showPsfCandidates(exposure, cellSet, psf=psf, display=disp,
                                       normalize=normalizeResiduals,
                                       showBadCandidates=showBadCandidates,
                                       variance=True)

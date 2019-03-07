@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2012 LSST Corporation.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -12,13 +13,12 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import math
 import random
 import numpy
@@ -33,17 +33,16 @@ from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, \
-    ObjectSizeStarSelectorTask
-from lsst.ip.diffim import DipoleAnalysis, \
-    SourceFlagChecker, KernelCandidateF, makeKernelBasisList, \
-    KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig, \
-    GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask, \
-    DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry
+from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, ObjectSizeStarSelectorTask
+from lsst.ip.diffim import (DipoleAnalysis, SourceFlagChecker, KernelCandidateF, makeKernelBasisList,
+                            KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig,
+                            GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask,
+                            DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry)
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
+import lsst.afw.display as afwDisplay
 
-FwhmPerSigma = 2 * math.sqrt(2 * math.log(2))
+FwhmPerSigma = 2*math.sqrt(2*math.log(2))
 IqrToSigma = 0.741
 
 
@@ -388,7 +387,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         preConvPsf = srcPsf
                     afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
                     exposure.setMaskedImage(destMI)
-                    scienceSigmaPost = scienceSigmaOrig * math.sqrt(2)
+                    scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
                 else:
                     scienceSigmaPost = scienceSigmaOrig
 
@@ -410,8 +409,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                     # Number of basis functions
                     nparam = len(makeKernelBasisList(self.subtract.config.kernel.active,
-                                                     referenceFwhmPix=scienceSigmaPost * FwhmPerSigma,
-                                                     targetFwhmPix=templateSigma * FwhmPerSigma))
+                                                     referenceFwhmPix=scienceSigmaPost*FwhmPerSigma,
+                                                     targetFwhmPix=templateSigma*FwhmPerSigma))
 
                     if self.config.doAddMetrics:
                         # Modify the schema of all Sources
@@ -514,16 +513,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         idx2 = numpy.where((colors >= self.sourceSelector.config.grMin) &
                                            (colors <= self.sourceSelector.config.grMax))
                         idx3 = numpy.where(colors > self.sourceSelector.config.grMax)
-                        rms1Long = IqrToSigma * \
-                            (numpy.percentile(dlong[idx1], 75)-numpy.percentile(dlong[idx1], 25))
+                        rms1Long = IqrToSigma*(
+                            (numpy.percentile(dlong[idx1], 75) - numpy.percentile(dlong[idx1], 25)))
                         rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75) -
                                               numpy.percentile(dlat[idx1], 25))
-                        rms2Long = IqrToSigma * \
-                            (numpy.percentile(dlong[idx2], 75)-numpy.percentile(dlong[idx2], 25))
+                        rms2Long = IqrToSigma*(
+                            (numpy.percentile(dlong[idx2], 75) - numpy.percentile(dlong[idx2], 25)))
                         rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75) -
                                               numpy.percentile(dlat[idx2], 25))
-                        rms3Long = IqrToSigma * \
-                            (numpy.percentile(dlong[idx3], 75)-numpy.percentile(dlong[idx3], 25))
+                        rms3Long = IqrToSigma*(
+                            (numpy.percentile(dlong[idx3], 75) - numpy.percentile(dlong[idx3], 25)))
                         rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75) -
                                               numpy.percentile(dlat[idx3], 25))
                         self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" %
@@ -664,7 +663,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if sensorRef.datasetExists("src"):
                     # Create key,val pair where key=diaSourceId and val=sourceId
                     matchRadAsec = self.config.diaSourceMatchRadius
-                    matchRadPixel = matchRadAsec / exposure.getWcs().pixelScale().asArcseconds()
+                    matchRadPixel = matchRadAsec/exposure.getWcs().pixelScale().asArcseconds()
 
                     srcMatches = afwTable.matchXy(sensorRef.get("src"), diaSources, matchRadPixel)
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for
@@ -712,12 +711,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 # Get basis list to build control sample kernels
                 basisList = kernelCandList[0].getKernel(KernelCandidateF.ORIG).getKernelList()
 
-                controlCandList = \
+                controlCandList = (
                     diffimTools.sourceTableToCandidateList(controlSources,
                                                            subtractRes.warpedExposure, exposure,
                                                            self.config.subtract.kernel.active,
                                                            self.config.subtract.kernel.active.detectionConfig,
-                                                           self.log, doBuild=True, basisList=basisList)
+                                                           self.log, doBuild=True, basisList=basisList))
 
                 kcQa.apply(kernelCandList, subtractRes.psfMatchingKernel, subtractRes.backgroundModel,
                            dof=nparam)
@@ -762,28 +761,30 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         showDipoles = lsstDebug.Info(__name__).showDipoles
         maskTransparency = lsstDebug.Info(__name__).maskTransparency
         if display:
-            import lsst.afw.display.ds9 as ds9
+            disp = afwDisplay.getDisplay(frame=lsstDebug.frame)
             if not maskTransparency:
                 maskTransparency = 0
-            ds9.setMaskTransparency(maskTransparency)
+            disp.setMaskTransparency(maskTransparency)
 
         if display and showSubtracted:
-            ds9.mtv(subtractRes.subtractedExposure, frame=lsstDebug.frame, title="Subtracted image")
+            disp.mtv(subtractRes.subtractedExposure, title="Subtracted image")
             mi = subtractRes.subtractedExposure.getMaskedImage()
             x0, y0 = mi.getX0(), mi.getY0()
-            with ds9.Buffering():
+            with disp.Buffering():
                 for s in diaSources:
                     x, y = s.getX() - x0, s.getY() - y0
-                    ctype = "red" if s.get("flags.negative") else "yellow"
-                    if (s.get("flags.pixel.interpolated.center") or s.get("flags.pixel.saturated.center") or
-                            s.get("flags.pixel.cr.center")):
+                    ctype = "red" if s.get("flags_negative") else "yellow"
+                    if (s.get("base_PixelFlags_flag_interpolatedCenter") or
+                            s.get("base_PixelFlags_flag_saturatedCenter") or
+                            s.get("base_PixelFlags_flag_crCenter")):
                         ptype = "x"
-                    elif (s.get("flags.pixel.interpolated.any") or s.get("flags.pixel.saturated.any") or
-                          s.get("flags.pixel.cr.any")):
+                    elif (s.get("base_PixelFlags_flag_interpolated") or
+                          s.get("base_PixelFlags_flag_saturated") or
+                          s.get("base_PixelFlags_flag_cr")):
                         ptype = "+"
                     else:
                         ptype = "o"
-                    ds9.dot(ptype, x, y, size=4, frame=lsstDebug.frame, ctype=ctype)
+                    disp.dot(ptype, x, y, size=4, ctype=ctype)
             lsstDebug.frame += 1
 
         if display and showPixelResiduals and selectSources:
@@ -813,7 +814,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if display and showDiaSources:
             flagChecker = SourceFlagChecker(diaSources)
             isFlagged = [flagChecker(x) for x in diaSources]
-            isDipole = [x.get("classification.dipole") for x in diaSources]
+            isDipole = [x.get("ip_diffim_ClassificationDipole_value") for x in diaSources]
             diUtils.showDiaSources(diaSources, subtractRes.subtractedExposure, isFlagged, isDipole,
                                    frame=lsstDebug.frame)
             lsstDebug.frame += 1
@@ -884,14 +885,14 @@ class Winter2013ImageDifferenceTask(ImageDifferenceTask):
             cKey = templateSources[0].getTable().getCentroidKey()
             for source in templateSources:
                 centroid = source.get(cKey)
-                source.set(cKey, centroid+offset)
+                source.set(cKey, centroid + offset)
         elif self.config.winter2013WcsRms > 0.0:
             cKey = templateSources[0].getTable().getCentroidKey()
             for source in templateSources:
                 offset = afwGeom.Extent2D(self.config.winter2013WcsRms*numpy.random.normal(),
                                           self.config.winter2013WcsRms*numpy.random.normal())
                 centroid = source.get(cKey)
-                source.set(cKey, centroid+offset)
+                source.set(cKey, centroid + offset)
 
         results = self.register.run(templateSources, templateExposure.getWcs(),
                                     templateExposure.getBBox(), selectSources)
