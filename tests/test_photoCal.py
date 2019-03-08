@@ -23,6 +23,7 @@ import os
 import unittest
 
 import numpy as np
+import astropy.units as u
 
 from lsst.daf.persistence import Butler
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
@@ -121,7 +122,7 @@ class PhotoCalTest(unittest.TestCase):
             refFlux = m[0].get(refFluxField)  # reference catalog flux
             if refFlux <= 0:
                 continue
-            refMag = afwImage.abMagFromFlux(refFlux)  # reference catalog mag
+            refMag = u.Quantity(refFlux, u.nJy).to_value(u.ABmag)
             instFlux = m[1].getPsfInstFlux()  # Instrumental Flux
             if instFlux <= 0:
                 continue

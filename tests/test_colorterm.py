@@ -133,8 +133,8 @@ class ApplyColortermsTestCase(lsst.utils.tests.TestCase):
         flux = 100
         refCat = make_fake_refcat(center, flux)
 
-        expectMag = self.colorterm.transformMags((u.Jy*refCat['f1_flux']).to_value(u.ABmag),
-                                                 (u.Jy*refCat['f2_flux']).to_value(u.ABmag))
+        expectMag = self.colorterm.transformMags((u.nJy*refCat['f1_flux']).to_value(u.ABmag),
+                                                 (u.nJy*refCat['f2_flux']).to_value(u.ABmag))
         refMag, refMagErr = self.colorterm.getCorrectedMagnitudes(refCat, 'r')
         self.assertEqual(refMag, expectMag)
         # TODO DM-17692: Not testing the returned errors, as I do not trust `propagateFluxErrors()`
