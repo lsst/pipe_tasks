@@ -28,7 +28,7 @@ import astropy.units as u
 
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
-from lsst.afw.image import abMagErrFromFluxErr, Calib
+from lsst.afw.image import abMagErrFromFluxErr, makePhotoCalibFromCalibZeroPoint
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display as afwDisplay
@@ -399,7 +399,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         (will not be modified  except to set the outputField if requested.).
 
         @return Struct of:
-         - calib -------  @link lsst::afw::image::Calib@endlink object containing the zero point
+         - photoCalib -- @link lsst::afw::image::PhotoCalib@endlink object containing the calibration
          - arrays ------ Magnitude arrays returned be PhotoCalTask.extractMagArrays
          - matches ----- Final ReferenceMatchVector, as returned by PhotoCalTask.selectMatches.
          - zp ---------- Photometric zero point (mag)
@@ -471,11 +471,10 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         # Prepare the results
         flux0 = 10**(0.4*r.zp)  # Flux of mag=0 star
         flux0err = 0.4*math.log(10)*flux0*r.sigma  # Error in flux0
-        calib = Calib()
-        calib.setFluxMag0(flux0, flux0err)
+        photoCalib = makePhotoCalibFromCalibZeroPoint(flux0, flux0err)
 
         return pipeBase.Struct(
-            calib=calib,
+            photoCalib=photoCalib,
             arrays=arrays,
             matches=matches,
             zp=r.zp,

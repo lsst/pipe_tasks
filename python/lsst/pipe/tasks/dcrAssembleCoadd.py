@@ -452,7 +452,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                               100*(convergenceList[0] - convergenceMetric)/convergenceMetric)
 
         dcrCoadds = self.fillCoadd(dcrModels, skyInfo, tempExpRefList, weightList,
-                                   calibration=self.scaleZeroPoint.getCalib(),
+                                   calibration=self.scaleZeroPoint.getPhotoCalib(),
                                    coaddInputs=templateCoadd.getInfo().getCoaddInputs(),
                                    mask=baseMask,
                                    variance=baseVariance)
@@ -780,8 +780,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The data references to the input warped exposures.
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
-        calibration : `lsst.afw.Image.Calib`, optional
-            Scale factor to set the photometric zero point of an exposure.
+        calibration : `lsst.afw.Image.PhotoCalib`, optional
+            Scale factor to set the photometric calibration of an exposure.
         coaddInputs : `lsst.afw.Image.CoaddInputs`, optional
             A record of the observations that are included in the coadd.
         mask : `lsst.afw.image.Mask`, optional
@@ -799,7 +799,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for model in dcrModels:
             coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
             if calibration is not None:
-                coaddExposure.setCalib(calibration)
+                coaddExposure.setPhotoCalib(calibration)
             if coaddInputs is not None:
                 coaddExposure.getInfo().setCoaddInputs(coaddInputs)
             # Set the metadata for the coadd, including PSF and aperture corrections.

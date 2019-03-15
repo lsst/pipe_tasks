@@ -774,7 +774,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             altMaskList = [None]*len(tempExpRefList)
 
         coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
-        coaddExposure.setCalib(self.scaleZeroPoint.getCalib())
+        coaddExposure.setPhotoCalib(self.scaleZeroPoint.getPhotoCalib())
         coaddExposure.getInfo().setCoaddInputs(self.inputRecorder.makeCoaddInputs())
         self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
         coaddMaskedImage = coaddExposure.getMaskedImage()

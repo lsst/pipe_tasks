@@ -103,9 +103,7 @@ class MockExposure:
         )
         expInfo.setWcs(wcs)
         expInfo.setPsf(GaussianPsf(5, 5, 2.5))
-        calib = lsst.afw.image.Calib()
-        calib.setFluxMag0(1.1e12, 2.2e10)
-        expInfo.setCalib(calib)
+        expInfo.setPhotoCalib(lsst.afw.image.makePhotoCalibFromCalibZeroPoint(1.1e12, 2.2e10))
         expInfo.setApCorrMap(self.makeApCorrMap())
         expInfo.setValidPolygon(lsst.afw.geom.Polygon(lsst.afw.geom.Box2D(bbox).getCorners()))
         if self.version > 1:
@@ -244,7 +242,7 @@ class CoaddInputsTestCase(lsst.utils.tests.TestCase):
                 self.assertEqual(expRec.getBBox(), exp.getBBox())
                 self.assertWcsAlmostEqualOverBBox(expRec.getWcs(), expInfo.getWcs(), expRec.getBBox())
                 self.assertPsfsAlmostEqual(expRec.getPsf(), exp.getPsf())
-                self.assertPairsAlmostEqual(expRec.getCalib().getFluxMag0(), (1.1e12, 2.2e10))
+                self.assertEqual(expRec.getPhotoCalib(), expInfo.getPhotoCalib())
                 self.assertEqual(len(expRec.getApCorrMap()), 3)
                 self.assertEqual(set(expRec.getApCorrMap().keys()), set(expInfo.getApCorrMap().keys()))
                 self.assertFloatsAlmostEqual(np.array(expRec.getValidPolygon().getVertices()),

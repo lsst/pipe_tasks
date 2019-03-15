@@ -57,7 +57,7 @@ class ProcessCcdConfig(pexConfig.Config):
         target=CalibrateTask,
         doc="""Task to perform astrometric and photometric calibration:
             - refine the WCS in the exposure
-            - refine the Calib photometric calibration object in the exposure
+            - refine the PhotoCalib object in the exposure
             - detect sources, usually at low S/N
             """,
     )

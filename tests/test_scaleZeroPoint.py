@@ -26,7 +26,7 @@ import lsst.utils.tests
 from lsst.pipe.tasks.scaleZeroPoint import ScaleZeroPointTask
 
 
-class ScaleZeroPointTaskTestCase(unittest.TestCase):
+class ScaleZeroPointTaskTestCase(lsst.utils.tests.TestCase):
 
     """A test case for ScaleZeroPointTask
     """
@@ -36,9 +36,9 @@ class ScaleZeroPointTaskTestCase(unittest.TestCase):
             config = ScaleZeroPointTask.ConfigClass()
             config.zeroPoint = outZeroPoint
             zpScaler = ScaleZeroPointTask(config=config)
-            outCalib = zpScaler.getCalib()
+            outPhotoCalib = zpScaler.getPhotoCalib()
 
-            self.assertAlmostEqual(outCalib.getMagnitude(1.0), outZeroPoint)
+            self.assertAlmostEqual(outPhotoCalib.instFluxToMagnitude(1.0), outZeroPoint)
 
             for inZeroPoint in (24, 25.5):
                 exposure = afwImage.ExposureF(10, 10)
@@ -47,30 +47,28 @@ class ScaleZeroPointTaskTestCase(unittest.TestCase):
                 var = mi.getVariance()
                 var.set(1.0)
 
-                inCalib = self.makeCalib(inZeroPoint)
-                exposure.setCalib(inCalib)
+                inPhotoCalib = self.makePhotoCalib(inZeroPoint)
+                exposure.setPhotoCalib(inPhotoCalib)
                 imageScaler = zpScaler.computeImageScaler(exposure)
 
-                predScale = 1.0 / inCalib.getFlux(outZeroPoint)
+                predScale = 1.0 / inPhotoCalib.magnitudeToInstFlux(outZeroPoint)
                 self.assertAlmostEqual(predScale, imageScaler._scale)
 
-                inFluxAtOutZeroPoint = exposure.getCalib().getFlux(outZeroPoint)
-                outFluxAtOutZeroPoint = outCalib.getFlux(outZeroPoint)
+                inFluxAtOutZeroPoint = exposure.getPhotoCalib().magnitudeToInstFlux(outZeroPoint)
+                outFluxAtOutZeroPoint = outPhotoCalib.magnitudeToInstFlux(outZeroPoint)
                 self.assertAlmostEqual(outFluxAtOutZeroPoint / imageScaler._scale, inFluxAtOutZeroPoint)
 
-                inFluxMag0 = exposure.getCalib().getFluxMag0()
-                outFluxMag0 = outCalib.getFluxMag0()
-                self.assertAlmostEqual(outFluxMag0[0] / imageScaler._scale, inFluxMag0[0], places=4)
+                inFluxMag0 = exposure.getPhotoCalib().getInstFluxAtZeroMagnitude()
+                outFluxMag0 = outPhotoCalib.getInstFluxAtZeroMagnitude()
+                self.assertFloatsAlmostEqual(outFluxMag0 / imageScaler._scale, inFluxMag0, rtol=5e-15)
 
                 imageScaler.scaleMaskedImage(mi)
                 self.assertAlmostEqual(mi.image[1, 1, afwImage.LOCAL], predScale)
                 self.assertAlmostEqual(mi.variance[1, 1, afwImage.LOCAL], predScale**2)
 
-    def makeCalib(self, zeroPoint):
-        calib = afwImage.Calib()
+    def makePhotoCalib(self, zeroPoint):
         fluxMag0 = 10**(0.4 * zeroPoint)
-        calib.setFluxMag0(fluxMag0, 1.0)
-        return calib
+        return afwImage.makePhotoCalibFromCalibZeroPoint(fluxMag0, 1.0)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

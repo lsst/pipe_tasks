@@ -107,7 +107,7 @@ class MockObjectTask(lsst.pipe.base.Task):
 
     def drawSource(self, record, exposure, buffer=0):
         """Draw the given truth catalog record on the given exposure, makings use of its Psf, Wcs,
-        Calib, and possibly filter to transform it appropriately.
+        PhotoCalib, and possibly filter to transform it appropriately.
 
         The mask and variance planes of the Exposure are ignored.
 
@@ -128,7 +128,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         overlap.clip(psfBBox)
         if overlap.isEmpty():
             return 0
-        flux = exposure.getCalib().getFlux(record.getD(self.magKey))
+        flux = exposure.getPhotoCalib().magnitudeToInstFlux(record.getD(self.magKey))
         normalization = flux / psfImage.getArray().sum()
         if psfBBox != overlap:
             psfImage = psfImage.Factory(psfImage, overlap)

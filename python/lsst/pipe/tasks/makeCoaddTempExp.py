@@ -277,8 +277,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         @warning: this task assumes that all exposures in a warp (coaddTempExp) have the same filter.
 
-        @warning: this task sets the Calib of the coaddTempExp to the Calib of the first calexp
-        with any good pixels in the patch. For a mosaic camera the resulting Calib should be ignored
+        @warning: this task sets the PhotoCalib of the coaddTempExp to the PhotoCalib of the first calexp
+        with any good pixels in the patch. For a mosaic camera the resulting PhotoCalib should be ignored
         (assembleCoadd should determine zeropoint scaling without referring to it).
         """
         skyInfo = self.getSkyInfo(patchRef)
@@ -418,8 +418,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     coaddTempExp = coaddTempExps[warpType]
                     if didSetMetadata[warpType]:
                         mimg = exposure.getMaskedImage()
-                        mimg *= (coaddTempExp.getCalib().getFluxMag0()[0] /
-                                 exposure.getCalib().getFluxMag0()[0])
+                        mimg *= (coaddTempExp.getPhotoCalib().getInstFluxAtZeroMagnitude() /
+                                 exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
                         del mimg
                     numGoodPix[warpType] = coaddUtils.copyGoodPixels(
                         coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
@@ -428,7 +428,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                    dataId, numGoodPix[warpType],
                                    100.0*numGoodPix[warpType]/skyInfo.bbox.getArea(), warpType)
                     if numGoodPix[warpType] > 0 and not didSetMetadata[warpType]:
-                        coaddTempExp.setCalib(exposure.getCalib())
+                        coaddTempExp.setPhotoCalib(exposure.getPhotoCalib())
                         coaddTempExp.setFilter(exposure.getFilter())
                         coaddTempExp.getInfo().setVisitInfo(exposure.getInfo().getVisitInfo())
                         # PSF replaced with CoaddPsf after loop if and only if creating direct warp
@@ -473,7 +473,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         If config.doApplyUberCal, the exposure will be photometrically
         calibrated via the `jointcal_photoCalib` dataset and have its SkyWcs
         updated to the `jointcal_wcs`, otherwise it will be calibrated via the
-        Exposure's own Calib and have the original SkyWcs.
+        Exposure's own PhotoCalib and have the original SkyWcs.
         """
         try:
             exposure = dataRef.get("calexp", immediate=True)
@@ -486,36 +486,30 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             mi += background.getImage()
             del mi
 
-        # TODO: this is needed until DM-10153 is done and Calib is gone
-        referenceFlux = 1e23 * 10**(48.6 / -2.5) * 1e9
         if self.config.doApplyUberCal:
             if self.config.useMeasMosaic:
                 from lsst.meas.mosaic import applyMosaicResultsExposure
                 # NOTE: this changes exposure in-place, updating its Calib and Wcs.
                 # Save the calibration error, as it gets overwritten with zero.
-                fluxMag0Err = exposure.getCalib().getFluxMag0()[1]
+                calibrationErr = exposure.getPhotoCalib().getCalibrationErr()
                 try:
                     applyMosaicResultsExposure(dataRef, calexp=exposure)
                 except dafPersist.NoResults as e:
                     raise MissingExposureError('Mosaic calibration not found: %s ' % str(e)) from e
-                fluxMag0 = exposure.getCalib().getFluxMag0()[0]
-                photoCalib = afwImage.PhotoCalib(referenceFlux/fluxMag0,
-                                                 referenceFlux*fluxMag0Err/fluxMag0**2,
+                photoCalib = afwImage.PhotoCalib(exposure.getPhotoCalib().getCalibrationMean(),
+                                                 calibrationErr,
                                                  exposure.getBBox())
             else:
                 photoCalib = dataRef.get("jointcal_photoCalib")
                 skyWcs = dataRef.get("jointcal_wcs")
                 exposure.setWcs(skyWcs)
         else:
-            fluxMag0 = exposure.getCalib().getFluxMag0()
-            photoCalib = afwImage.PhotoCalib(referenceFlux/fluxMag0[0],
-                                             referenceFlux*fluxMag0[1]/fluxMag0[0]**2,
-                                             exposure.getBBox())
+            photoCalib = exposure.getPhotoCalib()
 
         exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage,
                                                          includeScaleUncertainty=self.config.includeCalibVar)
         exposure.maskedImage /= photoCalib.getCalibrationMean()
-        exposure.setCalib(afwImage.Calib(photoCalib.getInstFluxAtZeroMagnitude()))
+        exposure.setPhotoCalib(photoCalib)
         # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
         # exposure.setCalib(afwImage.Calib(1.0))
         return exposure
