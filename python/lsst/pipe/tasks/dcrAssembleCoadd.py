@@ -129,6 +129,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="The order of the spline interpolation used to shift the image plane.",
         default=3,
     )
+    accelerateModel = pexConfig.Field(
+        dtype=float,
+        doc="Factor to amplify the differences between model planes by to speed convergence.",
+        default=3,
+    )
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
@@ -570,7 +575,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             wcs = exposure.getInfo().getWcs()
             templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
                                                            order=self.config.imageInterpOrder,
-                                                           splitSubfilters=self.config.splitSubfilters)
+                                                           splitSubfilters=self.config.splitSubfilters,
+                                                           amplifyModel=self.config.accelerateModel)
             residual = exposure.image.array - templateImage.array
             # Note that the variance plane here is used to store weights, not the actual variance
             residual *= exposure.variance.array
@@ -731,7 +737,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Quality of fit metric for one exposure, within the sub-region.
         """
         convergeMask = exposure.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
-        templateImage = dcrModels.buildMatchedTemplate(exposure=exposure, order=self.config.imageInterpOrder)
+        templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
+                                                       order=self.config.imageInterpOrder,
+                                                       splitSubfilters=self.config.splitSubfilters,
+                                                       amplifyModel=self.config.accelerateModel)
         diffVals = np.abs(exposure.image.array - templateImage.array)*significanceImage
         refVals = np.abs(exposure.image.array + templateImage.array)*significanceImage/2.
 
@@ -796,7 +805,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             the model for one subfilter.
         """
         dcrCoadds = []
+        refModel = dcrModels.getReferenceImage()
         for model in dcrModels:
+            if self.config.accelerateModel > 1:
+                model.array = (model.array - refModel)*self.config.accelerateModel + refModel
             coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
             if calibration is not None:
                 coaddExposure.setPhotoCalib(calibration)
