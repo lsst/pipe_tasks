@@ -2,14 +2,13 @@ from __future__ import absolute_import, division, print_function
 
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
-import lsst.afw.table as afwTable
-import lsst.meas.algorithms as measAlg
 
 from lsst.pipe.base import ArgumentParser, Struct
 from lsst.pex.config import Config, Field, ConfigurableField, ConfigField
 from lsst.ctrl.pool.pool import Pool
 from lsst.ctrl.pool.parallel import BatchPoolTask
-from lsst.pipe.drivers.background import SkyMeasurementTask, FocalPlaneBackground, FocalPlaneBackgroundConfig
+from lsst.pipe.drivers.background import (SkyMeasurementTask, FocalPlaneBackground,
+                                          FocalPlaneBackgroundConfig, MaskObjectsTask)
 import lsst.pipe.drivers.visualizeVisit as visualizeVisit
 
 DEBUG = False  # Debugging outputs?
@@ -39,20 +38,14 @@ class SkyCorrectionConfig(Config):
     """Configuration for SkyCorrectionTask"""
     bgModel = ConfigField(dtype=FocalPlaneBackgroundConfig, doc="Background model")
     sky = ConfigurableField(target=SkyMeasurementTask, doc="Sky measurement")
-    detection = ConfigurableField(target=measAlg.SourceDetectionTask, doc="Detection configuration")
-    doDetection = Field(dtype=bool, default=True, doc="Detect sources (to find good sky)?")
-    detectSigma = Field(dtype=float, default=5.0, doc="Detection PSF gaussian sigma")
+    maskObjects = ConfigurableField(target=MaskObjectsTask, doc="Mask Objects")
+    doMaskObjects = Field(dtype=bool, default=True, doc="Mask objects to find good sky?")
     doBgModel = Field(dtype=bool, default=True, doc="Do background model subtraction?")
     doSky = Field(dtype=bool, default=True, doc="Do sky frame subtraction?")
     binning = Field(dtype=int, default=8, doc="Binning factor for constructing focal-plane images")
 
     def setDefaults(self):
         Config.setDefaults(self)
-        self.detection.reEstimateBackground = False
-        self.detection.thresholdPolarity = "both"
-        self.detection.doTempLocalBackground = False
-        self.detection.thresholdType = "pixel_stdev"
-        self.detection.thresholdValue = 3.0
 
 
 class SkyCorrectionTask(BatchPoolTask):
@@ -62,9 +55,8 @@ class SkyCorrectionTask(BatchPoolTask):
 
     def __init__(self, *args, **kwargs):
         BatchPoolTask.__init__(self, *args, **kwargs)
+        self.makeSubtask("maskObjects")
         self.makeSubtask("sky")
-        # Disposable schema suppresses warning from SourceDetectionTask.__init__
-        self.makeSubtask("detection", schema=afwTable.Schema())
 
     @classmethod
     def _makeArgumentParser(cls, *args, **kwargs):
@@ -185,15 +177,6 @@ class SkyCorrectionTask(BatchPoolTask):
         bgOld = cache.butler.get("calexpBackground", dataId, immediate=True)
         image = cache.exposure.getMaskedImage()
 
-        if self.config.doDetection:
-            # We deliberately use the specified 'detectSigma' instead of the PSF, in order to better pick up
-            # the faint wings of objects.
-            results = self.detection.detectFootprints(cache.exposure, doSmooth=True,
-                                                      sigma=self.config.detectSigma, clearMask=True)
-            if hasattr(results, "background") and results.background:
-                # Restore any background that was removed during detection
-                image += results.background.getImage()
-
         # We're removing the old background, so change the sense of all its components
         for bgData in bgOld:
             statsImage = bgData[0].getStatsImage()
@@ -203,6 +186,9 @@ class SkyCorrectionTask(BatchPoolTask):
         cache.bgList = afwMath.BackgroundList()
         for bgData in bgOld:
             cache.bgList.append(bgData)
+
+        if self.config.doMaskObjects:
+            self.maskObjects.findObjects(cache.exposure)
 
         return self.collect(cache)
 
