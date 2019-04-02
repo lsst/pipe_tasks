@@ -125,7 +125,7 @@ examples/measurePsfTask.py --doDisplay
 @endcode
 @dontinclude measurePsfTask.py
 
-The example also runs SourceDetectionTask and SourceMeasurementTask;
+The example also runs SourceDetectionTask and SingleFrameMeasurementTask;
 see @ref meas_algorithms_measurement_Example for more explanation.
 
 Import the tasks (there are some other standard imports; read the file to see them all):
