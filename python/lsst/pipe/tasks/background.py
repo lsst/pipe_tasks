@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import numpy
 import itertools
+from scipy.ndimage import gaussian_filter
 
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
@@ -473,6 +474,8 @@ class FocalPlaneBackgroundConfig(Config):
             "NONE": "No background estimation is to be attempted",
         },
     )
+    doSmooth = Field(dtype=bool, default=False, doc="Do smoothing?")
+    smoothScale = Field(dtype=float, default=2.0, doc="Smoothing scale, as a multiple of the bin size")
     binning = Field(dtype=int, default=64, doc="Binning to use for CCD background model (pixels)")
 
 
@@ -726,7 +729,12 @@ class FocalPlaneBackground(object):
         values /= self._numbers
         thresh = self.config.minFrac*self.config.xSize*self.config.ySize
         isBad = self._numbers.getArray() < thresh
-        interpolateBadPixels(values.getArray(), isBad, self.config.interpolation)
+        if self.config.doSmooth:
+            array = values.getArray()
+            array[:] = smoothArray(array, isBad, self.config.smoothScale)
+            isBad = numpy.isnan(values.array)
+        if numpy.any(isBad):
+            interpolateBadPixels(values.getArray(), isBad, self.config.interpolation)
         return values
 
 
@@ -835,3 +843,30 @@ class MaskObjectsTask(Task):
         else:
             replace = numpy.median(image.array[~isBad])
         image.array[isBad] = replace
+
+
+def smoothArray(array, bad, sigma):
+    """Gaussian-smooth an array while ignoring bad pixels
+
+    It's not sufficient to set the bad pixels to zero, as then they're treated
+    as if they are zero, rather than being ignored altogether. We need to apply
+    a correction to that image that removes the effect of the bad pixels.
+
+    Parameters
+    ----------
+    array : `numpy.ndarray` of floating-point
+        Array to smooth.
+    bad : `numpy.ndarray` of `bool`
+        Flag array indicating bad pixels.
+    sigma : `float`
+        Gaussian sigma.
+
+    Returns
+    -------
+    convolved : `numpy.ndarray`
+        Smoothed image.
+    """
+    convolved = gaussian_filter(numpy.where(bad, 0.0, array), sigma, mode="constant", cval=0.0)
+    numerator = gaussian_filter(numpy.ones_like(array), sigma, mode="constant", cval=0.0)
+    denominator = gaussian_filter(numpy.where(bad, 0.0, 1.0), sigma, mode="constant", cval=0.0)
+    return convolved*numerator/denominator
