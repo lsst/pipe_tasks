@@ -137,7 +137,7 @@ class RegisterTask(Task):
     def warpExposure(self, inputExp, newWcs, templateWcs, templateBBox):
         """Warp input exposure to template frame
 
-        There are a variety of data attached to the exposure (e.g., PSF, Calib
+        There are a variety of data attached to the exposure (e.g., PSF, PhotoCalib
         and other metadata), but we do not attempt to warp these to the template
         frame.
 

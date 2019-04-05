@@ -84,21 +84,21 @@ class TrivialMeasurementTransform(measBase.transforms.MeasurementTransform):
             mapper.addMapping(key)
         self.key = mapper.editOutputSchema().addField(name + "_transform", type="D", doc="transformed dummy")
 
-    def __call__(self, inputCatalog, outputCatalog, wcs, calib):
+    def __call__(self, inputCatalog, outputCatalog, wcs, photoCalib):
         """Transform inputCatalog to outputCatalog.
 
-        We update the wcs and calib placeholders to indicate that they have
+        We update the wcs and photoCalib placeholders to indicate that they have
         been seen in the transformation, but do not use their values.
 
         @param[in]  inputCatalog  SourceCatalog of measurements for transformation.
         @param[out] outputCatalog BaseCatalog of transformed measurements.
         @param[in]  wcs           Dummy WCS information; an instance of Placeholder.
-        @param[in]  calib         Dummy calibration information; an instance of Placeholder.
+        @param[in]  photoCalib         Dummy calibration information; an instance of Placeholder.
         """
         if hasattr(wcs, "increment"):
             wcs.increment()
-        if hasattr(calib, "increment"):
-            calib.increment()
+        if hasattr(photoCalib, "increment"):
+            photoCalib.increment()
         inColumns = inputCatalog.getColumnView()
         outColumns = outputCatalog.getColumnView()
         outColumns[self.key] = -1.0 * inColumns[self.name]
@@ -160,8 +160,8 @@ class TransformTestCase(lsst.utils.tests.TestCase):
         r.setCoord(afwGeom.SpherePoint(0.0, 11.19, afwGeom.degrees))
         r[PLUGIN_NAME] = 1.0
 
-        wcs, calib = Placeholder(), Placeholder()
-        outCat = transformTask.run(inCat, wcs, calib)
+        wcs, photoCalib = Placeholder(), Placeholder()
+        outCat = transformTask.run(inCat, wcs, photoCalib)
 
         # Check that all sources have been transformed appropriately.
         for inSrc, outSrc in zip(inCat, outCat):
@@ -170,9 +170,9 @@ class TransformTestCase(lsst.utils.tests.TestCase):
             for field in transformTask.config.toDict()['copyFields']:
                 self.assertEqual(outSrc.get(field), inSrc.get(field))
 
-        # Check that the wcs and calib objects were accessed once per transform.
+        # Check that the wcs and photoCalib objects were accessed once per transform.
         self.assertEqual(wcs.count, len(transformTask.transforms))
-        self.assertEqual(calib.count, len(transformTask.transforms))
+        self.assertEqual(photoCalib.count, len(transformTask.transforms))
 
     def testSingleFrameMeasurementTransform(self):
         """Test applying a transform task to the results of single frame measurement."""

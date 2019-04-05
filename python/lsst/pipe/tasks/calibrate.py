@@ -597,7 +597,7 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
             out:
             - MaskedImage has background subtracted
             - Wcs is replaced
-            - Calib zero-point is set
+            - PhotoCalib is replaced
         @param[in] exposureIdInfo  ID info for exposure (an
             lsst.obs.base.ExposureIdInfo) If not provided, returned
             SourceCatalog IDs will not be globally unique.
@@ -609,7 +609,7 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
             from which we can copy some fields.
 
         @return pipe_base Struct containing these fields:
-        - exposure  calibrate science exposure with refined WCS and Calib
+        - exposure  calibrate science exposure with refined WCS and PhotoCalib
         - background  model of background subtracted from exposure (an
           lsst.afw.math.BackgroundList)
         - sourceCat  catalog of measured sources
@@ -681,9 +681,10 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
         if self.config.doPhotoCal:
             try:
                 photoRes = self.photoCal.run(exposure, sourceCat=sourceCat, expId=exposureIdInfo.expId)
-                exposure.getCalib().setFluxMag0(photoRes.calib.getFluxMag0())
+                exposure.setPhotoCalib(photoRes.photoCalib)
+                # TODO: reword this to phrase it in terms of the calibration factor?
                 self.log.info("Photometric zero-point: %f" %
-                              photoRes.calib.getMagnitude(1.0))
+                              photoRes.photoCalib.instFluxToMagnitude(1.0))
                 self.setMetadata(exposure=exposure, photoRes=photoRes)
             except Exception as e:
                 if self.config.requirePhotoCal:

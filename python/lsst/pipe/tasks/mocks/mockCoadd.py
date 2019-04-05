@@ -43,7 +43,7 @@ class MockCoaddConfig(lsst.pex.config.Config):
         target=MockObjectTask
     )
     mockObservation = lsst.pex.config.ConfigurableField(
-        doc="Subtask that generates the Wcs, Psf, Calib, etc. of mock images",
+        doc="Subtask that generates the Wcs, Psf, PhotoCalib, etc. of mock images",
         target=MockObservationTask
     )
     coaddName = lsst.pex.config.Field(
@@ -93,7 +93,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
     simulations, MockCoadd generates and uses extremely simple "toy" data that can be used to more
     rigorously test the behavior of high-level task code because the expected results are
     more easily predicted.  In particular, calexps are generated directly from the truth catalog,
-    and contain only zero-noise stars that are created using the same Psf, Calib, and Wcs that will
+    and contain only zero-noise stars that are created using the same Psf, PhotoCalib, and Wcs that will
     be attached to the mock calexp.
 
     In addition to creating the mock calexps and truth catalogs, MockCoadd also contains driver
@@ -152,7 +152,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
 
     def buildObservationCatalog(self, butler=None, skyMap=None, tract=0, camera=None):
         """Create and save (if butler is not None) an ExposureCatalog of simulated observations,
-        containing the Psfs, Wcss, Calibs, etc. of the calexps to be simulated.
+        containing the Psfs, Wcss, PhotoCalibs, etc. of the calexps to be simulated.
 
         Must be run after buildSkyMap.
 
@@ -192,7 +192,7 @@ class MockCoaddTask(lsst.pipe.base.CmdLineTask):
             # Apply a tiny offset to the images, so that they have non-zero background.
             # If the image background is identically zero, the calculated variance will be NaN.
             exposure.maskedImage.image.array += 1e-8
-            exposure.setCalib(obsRecord.getCalib())
+            exposure.setPhotoCalib(obsRecord.getPhotoCalib())
             exposure.setWcs(obsRecord.getWcs())
             exposure.setPsf(obsRecord.getPsf())
             exposure.getInfo().setApCorrMap(obsRecord.getApCorrMap())

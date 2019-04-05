@@ -271,7 +271,7 @@ class SnapCombineTask(pipeBase.Task):
         combinedMi /= weightMap
         setCoaddEdgeBits(combinedMi.getMask(), weightMap)
 
-        # note: none of the inputs has a valid Calib object, so that is not touched
+        # note: none of the inputs has a valid PhotoCalib object, so that is not touched
         # Filter was already copied
 
         combinedMetadata = combinedExp.getMetadata()

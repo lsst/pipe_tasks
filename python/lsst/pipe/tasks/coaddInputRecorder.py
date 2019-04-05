@@ -143,7 +143,7 @@ class CoaddTempExpInputRecorder:
         info = exposure.getInfo()
         record.setPsf(info.getPsf())
         record.setWcs(info.getWcs())
-        record.setCalib(info.getCalib())
+        record.setPhotoCalib(info.getPhotoCalib())
         record.setApCorrMap(info.getApCorrMap())
         record.setValidPolygon(info.getValidPolygon())
         record.setVisitInfo(info.getVisitInfo())

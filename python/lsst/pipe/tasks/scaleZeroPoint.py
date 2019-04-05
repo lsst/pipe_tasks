@@ -144,8 +144,7 @@ class ScaleZeroPointTask(pipeBase.Task):
 
         # flux at mag=0 is 10^(zeroPoint/2.5)   because m = -2.5*log10(F/F0)
         fluxMag0 = 10**(0.4 * self.config.zeroPoint)
-        self._calib = afwImage.Calib()
-        self._calib.setFluxMag0(fluxMag0)
+        self._photoCalib = afwImage.makePhotoCalibFromCalibZeroPoint(fluxMag0, 0.0)
 
     def run(self, exposure, dataRef=None):
         """Scale the specified exposure to the desired photometric zeropoint
@@ -172,18 +171,18 @@ class ScaleZeroPointTask(pipeBase.Task):
                                Not used, but in API so that users can switch between spatially variant
                                and invariant tasks
         """
-        scale = self.scaleFromCalib(exposure.getCalib()).scale
+        scale = self.scaleFromPhotoCalib(exposure.getPhotoCalib()).scale
         return ImageScaler(scale)
 
-    def getCalib(self):
-        """Get desired Calib
+    def getPhotoCalib(self):
+        """Get desired PhotoCalib
 
-        @return calibration (lsst.afw.image.Calib) with fluxMag0 set appropriately for config.zeroPoint
+        @return calibration (lsst.afw.image.PhotoCalib) with fluxMag0 set appropriately for config.zeroPoint
         """
-        return self._calib
+        return self._photoCalib
 
-    def scaleFromCalib(self, calib):
-        """Compute the scale for the specified Calib
+    def scaleFromPhotoCalib(self, calib):
+        """Compute the scale for the specified PhotoCalib
 
         Compute scale, such that if pixelCalib describes the photometric zeropoint of a pixel
         then the following scales that pixel to the photometric zeropoint specified by config.zeroPoint:
@@ -195,7 +194,7 @@ class ScaleZeroPointTask(pipeBase.Task):
 
         @note: returns a struct to leave room for scaleErr in a future implementation.
         """
-        fluxAtZeroPoint = calib.getFlux(self.config.zeroPoint)
+        fluxAtZeroPoint = calib.magnitudeToInstFlux(self.config.zeroPoint)
         return pipeBase.Struct(
             scale=1.0 / fluxAtZeroPoint,
         )
@@ -203,15 +202,14 @@ class ScaleZeroPointTask(pipeBase.Task):
     def scaleFromFluxMag0(self, fluxMag0):
         """Compute the scale for the specified fluxMag0
 
-        This is a wrapper around scaleFromCalib, which see for more information
+        This is a wrapper around scaleFromPhotoCalib, which see for more information
 
         @param[in] fluxMag0
         @return a pipeBase.Struct containing:
-        - scale, as described in scaleFromCalib.
+        - scale, as described in scaleFromPhotoCalib.
         """
-        calib = afwImage.Calib()
-        calib.setFluxMag0(fluxMag0)
-        return self.scaleFromCalib(calib)
+        calib = afwImage.makePhotoCalibFromCalibZeroPoint(fluxMag0, 0.0)
+        return self.scaleFromPhotoCalib(calib)
 
 
 class SpatialScaleZeroPointTask(ScaleZeroPointTask):

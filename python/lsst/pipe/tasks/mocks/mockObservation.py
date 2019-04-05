@@ -44,15 +44,15 @@ class MockObservationConfig(lsst.pex.config.Config):
     )
     fluxMag0 = lsst.pex.config.Field(
         dtype=float, default=1E11, optional=False,
-        doc="Flux at zero magnitude used to define Calibs."
+        doc="Flux at zero magnitude used to define PhotoCalibs."
     )
     fluxMag0Err = lsst.pex.config.Field(
         dtype=float, default=100.0, optional=False,
-        doc="Error on flux at zero magnitude used to define Calibs; used to add scatter as well."
+        doc="Error on flux at zero magnitude used to define PhotoCalibs; used to add scatter as well."
     )
     expTime = lsst.pex.config.Field(
         dtype=float, default=60.0, optional=False,
-        doc="Exposure time set in generated Calibs (does not affect flux or noise level)"
+        doc="Exposure time set in visitInfo (does not affect flux or noise level)"
     )
     psfImageSize = lsst.pex.config.Field(
         dtype=int, default=21, optional=False,
@@ -74,7 +74,7 @@ class MockObservationConfig(lsst.pex.config.Config):
 
 
 class MockObservationTask(lsst.pipe.base.Task):
-    """Task to generate mock Exposure parameters (Wcs, Psf, Calib), intended for use as a subtask
+    """Task to generate mock Exposure parameters (Wcs, Psf, PhotoCalib), intended for use as a subtask
     of MockCoaddTask.
 
     @todo:
@@ -118,14 +118,14 @@ class MockObservationTask(lsst.pipe.base.Task):
                 boresightRaDec=position,
             )
             for detector in camera:
-                calib = self.buildCalib()
+                photoCalib = self.buildPhotoCalib()
                 record = catalog.addNew()
                 record.setI(self.ccdKey, detector.getId())
                 record.setI(self.visitKey, visit)
                 record.set(self.filterKey, 'r')
                 record.set(self.pointingKey, position)
                 record.setWcs(self.buildWcs(position, pa, detector))
-                record.setCalib(calib)
+                record.setPhotoCalib(photoCalib)
                 record.setVisitInfo(visitInfo)
                 record.setPsf(self.buildPsf(detector))
                 record.setApCorrMap(self.buildApCorrMap(detector))
@@ -178,16 +178,15 @@ class MockObservationTask(lsst.pipe.base.Task):
         wcs = lsst.afw.geom.makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd.getMatrix())
         return wcs
 
-    def buildCalib(self):
-        """Build a simple Calib object with exposure time fixed by config, fluxMag0 drawn from
-        a Gaussian defined by config, and mid-time set to DateTime.now().
+    def buildPhotoCalib(self):
+        """Build a simple PhotoCalib object with the calibration factor
+        drawn from a Gaussian defined by config.
         """
-        calib = lsst.afw.image.Calib()
-        calib.setFluxMag0(
+        photoCalib = lsst.afw.image.makePhotoCalibFromCalibZeroPoint(
             self.rng.randn() * self.config.fluxMag0Err + self.config.fluxMag0,
             self.config.fluxMag0Err
         )
-        return calib
+        return photoCalib
 
     def buildPsf(self, detector):
         """Build a simple Gaussian Psf with linearly-varying ellipticity and size.

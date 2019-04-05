@@ -128,12 +128,12 @@ class TransformTask(pipeBase.Task):
         transformedSrc = afwTable.BaseCatalog(self.mapper.getOutputSchema())
         return {self.outputDataset: transformedSrc}
 
-    def run(self, inputCat, wcs, calib):
+    def run(self, inputCat, wcs, photoCalib):
         """!Transform raw source measurements to calibrated quantities.
 
         @param[in] inputCat  SourceCatalog of sources to transform.
         @param[in] wcs       The world coordinate system under which transformations will take place.
-        @param[in] calib     The calibration under which transformations will take place.
+        @param[in] photoCalib     The calibration under which transformations will take place.
 
         @return A BaseCatalog containing the transformed measurements.
         """
@@ -146,7 +146,7 @@ class TransformTask(pipeBase.Task):
         outputCat = makeContiguous(outputCat)
 
         for transform in self.transforms:
-            transform(inputCat, outputCat, wcs, calib)
+            transform(inputCat, outputCat, wcs, photoCalib)
         return outputCat
 
 
@@ -256,8 +256,8 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
         """
         inputCat = dataRef.get(self.sourceType)
         wcs = dataRef.get(self.calexpType).getWcs()
-        calib = dataRef.get(self.calexpType).getCalib()
-        outputCat = self.transform.run(inputCat, wcs, calib)
+        photoCalib = dataRef.get(self.calexpType).getPhotoCalib()
+        outputCat = self.transform.run(inputCat, wcs, photoCalib)
         dataRef.put(outputCat, self.outputDataset)
         return outputCat
 

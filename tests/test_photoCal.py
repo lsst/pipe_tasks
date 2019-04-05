@@ -74,7 +74,7 @@ class PhotoCalTest(unittest.TestCase):
         self.exposure = afwImage.ExposureF(self.bbox)
         self.exposure.setWcs(smallExposure.getWcs())
         self.exposure.setFilter(smallExposure.getFilter())
-        self.exposure.setCalib(smallExposure.getCalib())
+        self.exposure.setPhotoCalib(smallExposure.getPhotoCalib())
 
         coordKey = self.srcCat.getCoordKey()
         centroidKey = self.srcCat.getCentroidKey()
@@ -126,11 +126,11 @@ class PhotoCalTest(unittest.TestCase):
             instFlux = m[1].getPsfInstFlux()  # Instrumental Flux
             if instFlux <= 0:
                 continue
-            instMag = pCal.calib.getMagnitude(instFlux)  # Instrumental mag
+            instMag = pCal.photoCalib.instFluxToMagnitude(instFlux)  # Instrumental mag
             diff.append(instMag - refMag)
         self.diff = np.array(diff)
         # Differences of matched objects that were used in the fit.
-        self.zp = pCal.calib.getMagnitude(1.)
+        self.zp = pCal.photoCalib.instFluxToMagnitude(1.)
         self.fitdiff = pCal.arrays.srcMag + self.zp - pCal.arrays.refMag
 
     def testFlags(self):
