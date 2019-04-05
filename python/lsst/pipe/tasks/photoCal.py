@@ -28,7 +28,7 @@ import astropy.units as u
 
 import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
-from lsst.afw.image import abMagFromFlux, abMagErrFromFluxErr, Calib
+from lsst.afw.image import abMagErrFromFluxErr, Calib
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display as afwDisplay
@@ -306,10 +306,10 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
             self.log.warn("Source catalog does not have flux uncertainties; using sqrt(flux).")
             srcInstFluxErrArr = np.sqrt(srcInstFluxArr)
 
-        # convert source instFlux from DN to an estimate of Jy
-        JanskysPerABFlux = 3631.0
-        srcInstFluxArr = srcInstFluxArr*JanskysPerABFlux
-        srcInstFluxErrArr = srcInstFluxErrArr*JanskysPerABFlux
+        # convert source instFlux from DN to an estimate of nJy
+        referenceFlux = (0*u.ABmag).to_value(u.nJy)
+        srcInstFluxArr = srcInstFluxArr * referenceFlux
+        srcInstFluxErrArr = srcInstFluxErrArr * referenceFlux
 
         if not matches:
             raise RuntimeError("No reference stars are available")
@@ -360,18 +360,20 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
                               fluxField)
                 refFluxErrArr = np.sqrt(refFluxArr)
 
-            refMagArr = u.Quantity(refFluxArr, u.Jy).to_value(u.ABmag)
-            refMagErrArr = abMagErrFromFluxErr(refFluxErrArr, refFluxArr)
+            refMagArr = u.Quantity(refFluxArr, u.nJy).to_value(u.ABmag)
+            # HACK convert to Jy until we have a replacement for this (DM-16903)
+            refMagErrArr = abMagErrFromFluxErr(refFluxErrArr*1e-9, refFluxArr*1e-9)
 
         # compute the source catalog magnitudes and errors
-        srcMagArr = np.array([abMagFromFlux(sf) for sf in srcInstFluxArr])
+        srcMagArr = u.Quantity(srcInstFluxArr, u.nJy).to_value(u.ABmag)
         # Fitting with error bars in both axes is hard
         # for now ignore reference flux error, but ticket DM-2308 is a request for a better solution
-        magErrArr = abMagErrFromFluxErr(srcInstFluxErrArr, srcInstFluxArr)
+        # HACK convert to Jy until we have a replacement for this (DM-16903)
+        magErrArr = abMagErrFromFluxErr(srcInstFluxErrArr*1e-9, srcInstFluxArr*1e-9)
         if self.config.magErrFloor != 0.0:
             magErrArr = (magErrArr**2 + self.config.magErrFloor**2)**0.5
 
-        srcMagErrArr = abMagErrFromFluxErr(srcInstFluxErrArr, srcInstFluxArr)
+        srcMagErrArr = abMagErrFromFluxErr(srcInstFluxErrArr*1e-9, srcInstFluxArr*1e-9)
 
         good = np.isfinite(srcMagArr) & np.isfinite(refMagArr)
 
@@ -446,6 +448,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         # Match sources
         matchResults = self.match.run(sourceCat, filterName)
         matches = matchResults.matches
+
         reserveResults = self.reserve.run([mm.second for mm in matches], expId=expId)
         if displaySources:
             self.displaySources(exposure, matches, reserveResults.reserved)

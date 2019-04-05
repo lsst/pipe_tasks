@@ -104,13 +104,14 @@ class Colorterm(Config):
         primaryFlux, primaryErr = getFluxes(self.primary + "_flux")
         secondaryFlux, secondaryErr = getFluxes(self.secondary + "_flux")
 
-        primaryMag = u.Quantity(primaryFlux, u.Jy).to_value(u.ABmag)
-        secondaryMag = u.Quantity(secondaryFlux, u.Jy).to_value(u.ABmag)
+        primaryMag = u.Quantity(primaryFlux, u.nJy).to_value(u.ABmag)
+        secondaryMag = u.Quantity(secondaryFlux, u.nJy).to_value(u.ABmag)
 
         refMag = self.transformMags(primaryMag, secondaryMag)
         refFluxErrArr = self.propagateFluxErrors(primaryErr, secondaryErr)
 
-        refMagErr = abMagErrFromFluxErr(refFluxErrArr, primaryFlux)
+        # HACK convert to Jy until we have a replacement for this (DM-16903)
+        refMagErr = abMagErrFromFluxErr(refFluxErrArr*1e-9, primaryFlux*1e-9)
 
         return refMag, refMagErr
 
