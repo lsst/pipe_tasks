@@ -39,6 +39,7 @@ bin/ingestReferenceCatalog.py
 bin/makeCoaddTempExp.py
 bin/makeDiscreteSkyMap.py
 bin/makeSkyMap.py
+bin/makeGen3SkyMap.py
 bin/matchBackgrounds.py
 bin/measureCoaddSources.py
 bin/measureDcrCoaddSources.py
