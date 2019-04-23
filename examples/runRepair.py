@@ -59,7 +59,7 @@ def makeTestImage(xsize=200, ysize=100, nCR=15):
 def addDefects(exp, nBadCols=10):
     img = exp.getMaskedImage().getImage()
     (xsize, ysize) = img.getDimensions()
-    defectList = measAlg.DefectListT()
+    defectList = measAlg.Defects()
 
     # set some bad cols and add them to a defect list
     for xi in numpy.random.randint(0, xsize, nBadCols):
@@ -68,12 +68,12 @@ def addDefects(exp, nBadCols=10):
         bbox = afwGeom.Box2I(afwGeom.PointI(xi, 0), afwGeom.ExtentI(1, yi+1))
         subIm = afwImage.ImageF(img, bbox)
         subIm.set(1e7)
-        defectList.push_back(measAlg.Defect(bbox))
+        defectList.append(bbox)
     # set a 15 pixel box of defects at the upper left corner to demonstrate fallbackValue
     bbox = afwGeom.Box2I(afwGeom.PointI(0, ysize-15), afwGeom.ExtentI(15, 15))
     subIm = afwImage.ImageF(img, bbox)
     subIm.set(1e7)
-    defectList.push_back(measAlg.Defect(bbox))
+    defectList.append(bbox)
     return defectList
 
 
