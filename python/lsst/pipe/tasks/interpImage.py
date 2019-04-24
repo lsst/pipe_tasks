@@ -26,7 +26,6 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
-import lsst.ip.isr as ipIsr
 
 __all__ = ["InterpImageConfig", "InterpImageTask"]
 
@@ -161,7 +160,7 @@ class InterpImageTask(pipeBase.Task):
                 raise ValueError("Provide EITHER a planeName OR a list of defects, not both")
             if planeName not in maskedImage.getMask().getMaskPlaneDict():
                 raise ValueError("maskedImage does not contain mask plane %s" % planeName)
-            defectList = ipIsr.getDefectListFromMask(maskedImage, planeName)
+            defectList = measAlg.Defects.fromMask(maskedImage, planeName)
 
         # set psf from exposure if provided OR using modelPsf with fwhmPixels provided
         try:
