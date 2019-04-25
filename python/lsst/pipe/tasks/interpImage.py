@@ -26,7 +26,6 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
-import lsst.ip.isr as ipIsr
 
 __all__ = ["InterpImageConfig", "InterpImageTask"]
 
@@ -120,8 +119,8 @@ class InterpImageTask(pipeBase.Task):
         """!Interpolate in place over pixels in a maskedImage marked as bad
 
         Pixels to be interpolated are set by either a mask planeName provided
-        by the caller OR a defects list of type measAlg.DefectListT.  If both
-        are provided an exception is raised.
+        by the caller OR a defects list of type `~lsst.meas.algorithms.Defects`
+        If both are provided an exception is raised.
 
         Note that the interpolation code in meas_algorithms currently doesn't
         use the input PSF (though it's a required argument), so it's not
@@ -138,7 +137,7 @@ class InterpImageTask(pipeBase.Task):
         @param[in]     fwhmPixels  FWHM of core star (pixels)
                                    If None the default is used, where the default
                                    is set to the exposure psf if available
-        @param[in]     defects     List of defects of type measAlg.DefectListT
+        @param[in]     defects     List of defects of type measAlg.Defects
                                    over which to interpolate.
         """
         try:
@@ -151,14 +150,17 @@ class InterpImageTask(pipeBase.Task):
             if defects is None:
                 raise ValueError("No defects or plane name provided")
             else:
-                defectList = defects
+                if not isinstance(defects, measAlg.Defects):
+                    defectList = measAlg.Defects(defects)
+                else:
+                    defectList = defects
                 planeName = "defects"
         else:
             if defects is not None:
                 raise ValueError("Provide EITHER a planeName OR a list of defects, not both")
             if planeName not in maskedImage.getMask().getMaskPlaneDict():
                 raise ValueError("maskedImage does not contain mask plane %s" % planeName)
-            defectList = ipIsr.getDefectListFromMask(maskedImage, planeName)
+            defectList = measAlg.Defects.fromMask(maskedImage, planeName)
 
         # set psf from exposure if provided OR using modelPsf with fwhmPixels provided
         try:
@@ -193,14 +195,14 @@ class InterpImageTask(pipeBase.Task):
         ----------
         maskedImage : `lsst.afw.image.MaskedImage`
             Image on which to perform interpolation.
-        defects : iterable of `lsst.afw.image.Defect`
+        defects : `lsst.meas.algorithms.Defects`
             List of defects to interpolate over.
 
         Yields
         ------
         useImage : `lsst.afw.image.MaskedImage`
             Image to use for interpolation; it may have been transposed.
-        useDefects : iterable of `lsst.afw.image.Defect`
+        useDefects : `lsst.meas.algorithms.Defects`
             List of defects to use for interpolation; they may have been
             transposed.
         """
@@ -215,7 +217,7 @@ class InterpImageTask(pipeBase.Task):
             useImage = afwImage.makeMaskedImage(transposeImage(maskedImage.image),
                                                 transposeImage(maskedImage.mask),
                                                 transposeImage(maskedImage.variance))
-            useDefects = ipIsr.transposeDefectList(defects)
+            useDefects = defects.transpose()
         yield useImage, useDefects
         if self.config.transpose:
             maskedImage.image.array = useImage.image.array.T
@@ -231,7 +233,7 @@ class InterpImageTask(pipeBase.Task):
             Image on which to perform interpolation.
         psf : `lsst.afw.detection.Psf`
             Point-spread function; currently unused.
-        defectList : iterable of `lsst.afw.image.Defect`
+        defectList : `lsst.meas.algorithms.Defects`
             List of defects to interpolate over.
         fallbackValue : `float`
             Value to set when interpolation fails.
