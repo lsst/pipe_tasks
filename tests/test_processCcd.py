@@ -136,16 +136,16 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
                     expectedPlaces = 7  # Tolerance for numerical comparisons
                     for name, var, val in [
-                        ("bgMean", bgMean, 191.4866883539376),
-                        ("bgStdDev", bgStdDev, 0.24004985195839124),
-                        ("numGoodPix", numGoodPix, 1965472),
-                        ("imMean", imMean, 0.99616767174645282),
-                        ("imStdDev", imStdDev, 95.64615285227903),
-                        ("varMean", varMean, 131.14644188960244),
-                        ("varStdDev", varStdDev, 64.806980097108436),
-                        ("psfIxx", psfIxx, 2.8540502512317234),
-                        ("psfIyy", psfIyy, 2.17386622227748),
-                        ("psfIxy", psfIxy, 0.14397638586604858)
+                        ("bgMean", bgMean, 191.4862217336029),
+                        ("bgStdDev", bgStdDev, 0.23986511599945562),
+                        ("numGoodPix", numGoodPix, 1965471),
+                        ("imMean", imMean, 1.1239582066430034),
+                        ("imStdDev", imStdDev, 85.81319381115661),
+                        ("varMean", varMean, 131.23984767404193),
+                        ("varStdDev", varStdDev, 55.9802472085537),
+                        ("psfIxx", psfIxx, 2.8540512421637554),
+                        ("psfIyy", psfIyy, 2.1738662399061064),
+                        ("psfIxy", psfIxy, 0.1439765855869371)
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces, msg=name)
 
