@@ -52,14 +52,14 @@ class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
         nameTemplate="{inputCoaddName}Coadd_meas",
         scalar=False,
         storageClass="SourceCatalog",
-        dimensions=["AbstractFilter", "SkyMap", "Tract", "Patch"],
+        dimensions=["abstract_filter", "skymap", "tract", "patch"],
     )
     mergedCatalog = pipeBase.OutputDatasetField(
         doc="Output merged catalog.",
         nameTemplate="{outputCoaddName}Coadd_ref",
         scalar=True,
         storageClass="SourceCatalog",
-        dimensions=["SkyMap", "Tract", "Patch"],
+        dimensions=["skymap", "tract", "patch"],
     )
     # Task configuration options
     pseudoFilterList = pexConfig.ListField(
@@ -113,7 +113,7 @@ class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
         super().setDefaults()
         self.formatTemplateNames({"inputCoaddName": "deep",
                                   "outputCoaddName": "deep"})
-        self.quantum.dimensions = ("SkyMap", "Tract", "Patch")
+        self.quantum.dimensions = ("skymap", "tract", "patch")
 
 ## @addtogroup LSST_task_documentation
 ## @{

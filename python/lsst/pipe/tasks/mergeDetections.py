@@ -80,14 +80,14 @@ class MergeDetectionsConfig(PipelineTaskConfig):
         doc="Detection Catalogs to be merged",
         nameTemplate="{inputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
-        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter")
+        dimensions=("tract", "patch", "skymap", "abstract_filter")
     )
 
     skyMap = InputDatasetField(
         doc="SkyMap to be used in merging",
         nameTemplate="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
-        dimensions=("SkyMap",),
+        dimensions=("skymap",),
         scalar=True
     )
 
@@ -95,7 +95,7 @@ class MergeDetectionsConfig(PipelineTaskConfig):
         doc="Merged Detection catalog",
         nameTemplate="{outputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
-        dimensions=("Tract", "Patch", "SkyMap"),
+        dimensions=("tract", "patch", "skymap"),
         scalar=True
     )
 
@@ -103,7 +103,7 @@ class MergeDetectionsConfig(PipelineTaskConfig):
         Config.setDefaults(self)
         self.formatTemplateNames({"inputCoaddName": 'deep', "outputCoaddName": "deep"})
         self.skyObjects.avoidMask = ["DETECTED"]  # Nothing else is available in our custom mask
-        self.quantum.dimensions = ("Tract", "Patch", "SkyMap")
+        self.quantum.dimensions = ("tract", "patch", "skymap")
 
     def validate(self):
         super().validate()
@@ -244,7 +244,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         self.write(patchRefList[0], mergeCatalogStruct.outputCatalog)
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        packedId, maxBits = butler.registry.packDataId("TractPatch", outputDataIds['outputCatalog'],
+        packedId, maxBits = butler.registry.packDataId("tract_patch", outputDataIds['outputCatalog'],
                                                        returnMaxBits=True)
         inputData["skySeed"] = packedId
         inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)

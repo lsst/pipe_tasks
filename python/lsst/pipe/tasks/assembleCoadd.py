@@ -156,14 +156,14 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
              "WarpType (e.g. direct, psfMatched) is controlled by we warpType config parameter"),
         nameTemplate="{inputCoaddName}Coadd_{warpType}Warp",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "Visit", "Instrument"),
+        dimensions=("tract", "patch", "skymap", "visit", "instrument"),
         manualLoad=True,
     )
     skyMap = pipeBase.InputDatasetField(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
         nameTemplate="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
-        dimensions=("SkyMap", ),
+        dimensions=("skymap", ),
         scalar=True
     )
     brightObjectMask = pipeBase.InputDatasetField(
@@ -171,21 +171,21 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
              " BRIGHT_OBJECT."),
         name="brightObjectMask",
         storageClass="ObjectMaskCatalog",
-        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter"),
+        dimensions=("tract", "patch", "skymap", "abstract_filter"),
         scalar=True
     )
     coaddExposure = pipeBase.OutputDatasetField(
         doc="Output coadded exposure, produced by stacking input warps",
         nameTemplate="{outputCoaddName}Coadd",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter"),
+        dimensions=("tract", "patch", "skymap", "abstract_filter"),
         scalar=True
     )
     nImage = pipeBase.OutputDatasetField(
         doc="Output image of number of input images per pixel",
         nameTemplate="{outputCoaddName}Coadd_nImage",
         storageClass="ImageU",
-        dimensions=("Tract", "Patch", "SkyMap", "AbstractFilter"),
+        dimensions=("tract", "patch", "skymap", "abstract_filter"),
         scalar=True
     )
 
@@ -194,7 +194,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         self.badMaskPlanes = ["NO_DATA", "BAD", "SAT", "EDGE"]
         self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep",
                                   "warpType": self.warpType})
-        self.quantum.dimensions = ("Tract", "Patch", "AbstractFilter", "SkyMap")
+        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
 
     def validate(self):
         super().validate()
@@ -1799,7 +1799,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
              "Therefore, they must be in the InputDatasetField and made available to the task."),
         nameTemplate="{inputCoaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "Visit"),
+        dimensions=("tract", "patch", "skymap", "visit"),
         manualLoad=True
     )
 

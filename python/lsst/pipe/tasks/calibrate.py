@@ -182,76 +182,76 @@ class CalibrateConfig(PipelineTaskConfig):
         doc="Input image to calibrate",
         name="icExp",
         storageClass="ExposureF",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
     background = InputDatasetField(
         doc="Backgrounds determined by characterize task",
         name="icExpBackground",
         storageClass="Background",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
     icSourceCat = InputDatasetField(
         doc="Source catalog created by characterize task",
         name="icSrc",
         storageClass="SourceCatalog",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
     astromRefCat = InputDatasetField(
         doc="Reference catalog to use for astrometry",
         name="ref_cat",
         storageClass="SimpleCatalog",
-        dimensions=("SkyPix",),
+        dimensions=("skypix",),
         manualLoad=True
     )
     photoRefCat = InputDatasetField(
         doc="Reference catalog to use for photometric calibration",
         name="ref_cat",
         storageClass="SimpleCatalog",
-        dimensions=("SkyPix",),
+        dimensions=("skypix",),
         manualLoad=True
     )
     outputExposure = OutputDatasetField(
         doc="Exposure after running calibration task",
         name="calexp",
         storageClass="ExposureF",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
     outputCat = OutputDatasetField(
         doc="Source catalog produced in calibrate task",
         name="src",
         storageClass="SourceCatalog",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
     outputBackground = OutputDatasetField(
         doc="Background models estimated in calibration task",
         name="calexpBackground",
         storageClass="Background",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
     matches = OutputDatasetField(
         doc="Source/refObj matches from the astrometry solver",
         name="srcMatch",
         storageClass="Catalog",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
     matchesDenormalized = OutputDatasetField(
         doc="Denormalized matches from astrometry solver",
         name="srcMatchFull",
         storageClass="Catalog",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         scalar=True
     )
 
     def setDefaults(self):
         super().setDefaults()
-        self.quantum.dimensions = ("Instrument", "Visit", "Detector")
+        self.quantum.dimensions = ("instrument", "visit", "detector")
         # aperture correction should already be measured
 
 
@@ -553,7 +553,7 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
         return calRes
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        expId, expBits = butler.registry.packDataId("VisitDetector",
+        expId, expBits = butler.registry.packDataId("visit_detector",
                                                     inputDataIds['exposure'],
                                                     returnMaxBits=True)
         inputData['exposureIdInfo'] = ExposureIdInfo(expId, expBits)

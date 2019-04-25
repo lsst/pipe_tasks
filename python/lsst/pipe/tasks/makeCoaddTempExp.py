@@ -560,25 +560,25 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="calexp",
         storageClass="ExposureF",
-        dimensions=("Instrument", "Visit", "Detector")
+        dimensions=("instrument", "visit", "detector")
     )
     backgroundList = pipeBase.InputDatasetField(
         doc="Input backgrounds to be added back into the calexp if bgSubtracted=False",
         name="calexpBackground",
         storageClass="Background",
-        dimensions=("Instrument", "Visit", "Detector")
+        dimensions=("instrument", "visit", "detector")
     )
     skyCorrList = pipeBase.InputDatasetField(
         doc="Input Sky Correction to be subtracted from the calexp if doApplySkyCorr=True",
         name="skyCorr",
         storageClass="Background",
-        dimensions=("Instrument", "Visit", "Detector")
+        dimensions=("instrument", "visit", "detector")
     )
     skyMap = pipeBase.InputDatasetField(
         doc="Input definition of geometry/bbox and projection/wcs for warped exposures",
         nameTemplate="{coaddName}Coadd_skyMap",
         storageClass="SkyMap",
-        dimensions=("SkyMap",),
+        dimensions=("skymap",),
         scalar=True
     )
     direct = pipeBase.OutputDatasetField(
@@ -586,7 +586,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
              "calexps onto the skyMap patch geometry."),
         nameTemplate="{coaddName}Coadd_directWarp",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "Visit", "Instrument"),
+        dimensions=("tract", "patch", "skymap", "visit", "instrument"),
         scalar=True
     )
     psfMatched = pipeBase.OutputDatasetField(
@@ -594,14 +594,14 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
              "calexps onto the skyMap patch geometry and PSF-matching to a model PSF."),
         nameTemplate="{coaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "SkyMap", "Visit", "Instrument"),
+        dimensions=("tract", "patch", "skymap", "visit", "instrument"),
         scalar=True
     )
 
     def setDefaults(self):
         super().setDefaults()
         self.formatTemplateNames({"coaddName": "deep"})
-        self.quantum.dimensions = ("Tract", "Patch", "SkyMap", "Visit")
+        self.quantum.dimensions = ("tract", "patch", "skymap", "visit")
 
     def validate(self):
         super().validate()
@@ -695,7 +695,7 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         inputData['dataIdList'] = dataIdList
 
         # Construct list of ccdExposureIds expected by `run`
-        inputData['ccdIdList'] = [butler.registry.packDataId("VisitDetector", dataId)
+        inputData['ccdIdList'] = [butler.registry.packDataId("visit_detector", dataId)
                                   for dataId in dataIdList]
 
         # Extract integer visitId requested by `run`

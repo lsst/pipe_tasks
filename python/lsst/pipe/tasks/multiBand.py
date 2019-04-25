@@ -90,33 +90,33 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig):
         nameTemplate="{inputCoaddName}Coadd",
         scalar=True,
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputBackgrounds = OutputDatasetField(
         doc="Output Backgrounds used in detection",
         nameTemplate="{outputCoaddName}Coadd_calexp_background",
         scalar=True,
         storageClass="Background",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputSources = OutputDatasetField(
         doc="Detected sources catalog",
         nameTemplate="{outputCoaddName}Coadd_det",
         scalar=True,
         storageClass="SourceCatalog",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputExposure = OutputDatasetField(
         doc="Exposure post detection",
         nameTemplate="{outputCoaddName}Coadd_calexp",
         scalar=True,
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
 
     def setDefaults(self):
         super().setDefaults()
-        self.quantum.dimensions = ("Tract", "Patch", "AbstractFilter", "SkyMap")
+        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
         self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep"})
         self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
@@ -279,7 +279,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         return results
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        packedId, maxBits = butler.registry.packDataId("TractPatchAbstractFilter",
+        packedId, maxBits = butler.registry.packDataId("tract_patch_abstract_filter",
                                                        inputDataIds["exposure"],
                                                        returnMaxBits=True)
         inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
@@ -629,7 +629,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         doc="Reference catalog used to match measured sources against known sources",
         name="ref_cat",
         storageClass="SimpleCatalog",
-        dimensions=("SkyPix",),
+        dimensions=("skypix",),
         manualLoad=True
     )
     exposure = InputDatasetField(
@@ -637,13 +637,13 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         nameTemplate="{inputCoaddName}Coadd_calexp",
         scalar=True,
         storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     skyMap = InputDatasetField(
         doc="SkyMap to use in processing",
         nameTemplate="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
-        dimensions=("SkyMap",),
+        dimensions=("skymap",),
         scalar=True
     )
     visitCatalogs = InputDatasetField(
@@ -651,7 +651,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
             "further filtered in the task for the purpose of propagating flags from image calibration "
             "and characterization to codd objects",
         name="src",
-        dimensions=("Instrument", "Visit", "Detector"),
+        dimensions=("instrument", "visit", "detector"),
         storageClass="SourceCatalog"
     )
     intakeCatalog = InputDatasetField(
@@ -663,20 +663,20 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
              "be 'mergeDet'"),
         nameTemplate="{inputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap"),
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
         scalar=True
     )
     outputSources = OutputDatasetField(
         doc="Source catalog containing all the measurement information generated in this task",
         nameTemplate="{outputCoaddName}Coadd_meas",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap"),
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="SourceCatalog",
         scalar=True
     )
     matchResult = OutputDatasetField(
         doc="Match catalog produced by configured matcher, optional on doMatchSources",
         nameTemplate="{outputCoaddName}Coadd_measMatch",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap"),
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="Catalog",
         scalar=True
     )
@@ -684,7 +684,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         doc="Denormalized Match catalog produced by configured matcher, optional on "
             "doWriteMatchesDenormalized",
         nameTemplate="{outputCoaddName}Coadd_measMatchFull",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap"),
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="Catalog",
         scalar=True
     )
@@ -696,7 +696,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
     def setDefaults(self):
         super().setDefaults()
         self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep"})
-        self.quantum.dimensions = ("Tract", "Patch", "AbstractFilter", "SkyMap")
+        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
         self.measurement.plugins.names |= ['base_InputCount', 'base_Variance']
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
                                                                        'INEXACT_PSF']
@@ -917,7 +917,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         inputData['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
 
         # Get unique integer ID for IdFactory and RNG seeds
-        packedId, maxBits = butler.registry.packDataId("TractPatch", outputDataIds["outputSources"],
+        packedId, maxBits = butler.registry.packDataId("tract_patch", outputDataIds["outputSources"],
                                                        returnMaxBits=True)
         inputData['exposureId'] = packedId
         idFactory = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
