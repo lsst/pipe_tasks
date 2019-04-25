@@ -484,7 +484,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             List of exposure count images for each subfilter
         dcrWeights : `list` of `lsst.afw.image.ImageF`
             Per-pixel weights for each subfilter.
-            Equal to the number of unmasked images contributing to each pixel.
+            Equal to 1/(number of unmasked images contributing to each pixel).
         """
         dcrNImages = [afwImage.ImageU(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
         dcrWeights = [afwImage.ImageF(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
@@ -560,7 +560,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             A reference image used to supply the default pixel values.
         dcrWeights : `list` of `lsst.afw.image.Image`
             Per-pixel weights for each subfilter.
-            Equal to the number of unmasked images contributing to each pixel.
+            Equal to 1/(number of unmasked images contributing to each pixel).
         """
         residualGeneratorList = []
 
@@ -636,7 +636,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             A reference image used to supply the default pixel values.
         dcrWeights : `list` of `lsst.afw.image.Image`
             Per-pixel weights for each subfilter.
-            Equal to the number of unmasked images contributing to each pixel.
+            Equal to 1/(number of unmasked images contributing to each pixel).
 
         Returns
         -------
