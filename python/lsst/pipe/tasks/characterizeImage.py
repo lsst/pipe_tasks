@@ -48,28 +48,28 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
         name="postISRCCD",
         scalar=True,
         storageClass="ExposureF",
-        dimensions=["Instrument", "Visit", "Detector"],
+        dimensions=["instrument", "visit", "detector"],
     )
     characterized = pipeBase.OutputDatasetField(
         doc="Output characterized data.",
         name="icExp",
         scalar=True,
         storageClass="ExposureF",
-        dimensions=["Instrument", "Visit", "Detector"],
+        dimensions=["instrument", "visit", "detector"],
     )
     sourceCat = pipeBase.OutputDatasetField(
         doc="Output source catalog.",
         name="icSrc",
         scalar=True,
         storageClass="SourceCatalog",
-        dimensions=["Instrument", "Visit", "Detector"],
+        dimensions=["instrument", "visit", "detector"],
     )
     backgroundModel = pipeBase.OutputDatasetField(
         doc="Output background model.",
         name="icExpBackground",
         scalar=True,
         storageClass="Background",
-        dimensions=["Instrument", "Visit", "Detector"],
+        dimensions=["instrument", "visit", "detector"],
     )
     outputSchema = pipeBase.InitOutputDatasetField(
         doc="Schema of the catalog produced by CharacterizeImage",
@@ -198,7 +198,7 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
             "base_PsfFlux",
             "base_CircularApertureFlux",
         ]
-        self.quantum.dimensions = ("Instrument", "Visit", "Detector")
+        self.quantum.dimensions = ("instrument", "visit", "detector")
 
     def validate(self):
         if self.doApCorr and not self.measurePsf:
@@ -304,7 +304,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         if 'exposureIdInfo' not in inputData.keys():
-            packer = butler.registry.makeDataIdPacker("VisitDetector",
+            packer = butler.registry.makeDataIdPacker("visit_detector",
                                                       inputDataIds['exposure'])
             exposureIdInfo = ExposureIdInfo()
             exposureIdInfo.expId = packer.pack(inputDataIds['exposure'])
