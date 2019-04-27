@@ -451,7 +451,7 @@ class IngestTask(Task):
                 os.symlink(os.path.abspath(infile), outfile)
             elif mode == "move":
                 assertCanCopy(infile, outfile)
-                os.rename(infile, outfile)
+                shutil.move(infile, outfile)
             else:
                 raise AssertionError("Unknown mode: %s" % mode)
             self.log.info("%s --<%s>--> %s" % (infile, mode, outfile))
