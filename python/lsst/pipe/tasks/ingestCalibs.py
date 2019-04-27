@@ -1,6 +1,7 @@
 import collections
 import datetime
 import sqlite3
+from dateutil import parser
 
 from lsst.afw.fits import readMetadata
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
@@ -10,7 +11,7 @@ from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, Inge
 
 def _convertToDate(dateString):
     """Convert a string into a date object"""
-    return datetime.datetime.strptime(dateString, "%Y-%m-%d").date()
+    return parser.parse(dateString).date()
 
 
 class CalibsParseTask(ParseTask):
@@ -40,6 +41,8 @@ class CalibsParseTask(ParseTask):
             obstype = "sky"
         elif "illumcor" in obstype:
             obstype = "illumcor"
+        elif "defects" in obstype:
+            obstype = "defects"
         return obstype
 
     def getDestination(self, butler, info, filename):
@@ -65,12 +68,17 @@ class CalibsParseTask(ParseTask):
 
 class CalibsRegisterConfig(RegisterConfig):
     """Configuration for the CalibsRegisterTask"""
-    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky"], doc="Names of tables")
+    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky", "defects"],
+                       doc="Names of tables")
     calibDate = Field(dtype=str, default="calibDate", doc="Name of column for calibration date")
     validStart = Field(dtype=str, default="validStart", doc="Name of column for validity start")
     validEnd = Field(dtype=str, default="validEnd", doc="Name of column for validity stop")
     detector = ListField(dtype=str, default=["filter", "ccd"],
                          doc="Columns that identify individual detectors")
+    validityUntilSuperseded = ListField(dtype=str, default=["defects"],
+                                        doc="Tables for which to set validity for a calib from when it is "
+                                        "taken until it is superseded by the next; validity in other tables "
+                                        "is calculated by applying the validity range.")
 
 
 class CalibsRegisterTask(RegisterTask):
@@ -111,7 +119,9 @@ class CalibsRegisterTask(RegisterTask):
     def fixSubsetValidity(self, conn, table, detectorData, validity):
         """Update the validity ranges among selected rows in the registry.
 
-        The validity ranges are checked and
+        For defects, the products are valid from their start date until
+        they are superseded by subsequent defect data.
+        For other calibration products, the validity ranges are checked and
         if there are overlaps, a midpoint is used to fix the overlaps,
         so that the calibration data with whose date is nearest the date
         of the observation is used.
@@ -139,18 +149,26 @@ class CalibsRegisterTask(RegisterTask):
                               (table, det)))
             return
         dates = list(valids.keys())
-        # A calib is valid within the validity range (in days) specified.
-        for dd in dates:
-            valids[dd] = [dd - datetime.timedelta(validity), dd + datetime.timedelta(validity)]
-        # Fix the dates so that they do not overlap, which can cause the butler to find a
-        # non-unique calib.
-        midpoints = [t1 + (t2 - t1)//2 for t1, t2 in zip(dates[:-1], dates[1:])]
-        for i, (date, midpoint) in enumerate(zip(dates[:-1], midpoints)):
-            if valids[date][1] > midpoint:
-                nextDate = dates[i + 1]
-                valids[nextDate][0] = midpoint + datetime.timedelta(1)
-                valids[date][1] = midpoint
-        del midpoints
+        if table in self.config.validityUntilSuperseded:
+            # A calib is valid until it is superseded
+            for thisDate, nextDate in zip(dates[:-1], dates[1:]):
+                valids[thisDate][0] = thisDate
+                valids[thisDate][1] = nextDate - datetime.timedelta(1)
+            valids[dates[-1]][0] = dates[-1]
+            valids[dates[-1]][1] = _convertToDate("2037-12-31")  # End of UNIX time
+        else:
+            # A calib is valid within the validity range (in days) specified.
+            for dd in dates:
+                valids[dd] = [dd - datetime.timedelta(validity), dd + datetime.timedelta(validity)]
+            # Fix the dates so that they do not overlap, which can cause the butler to find a
+            # non-unique calib.
+            midpoints = [t1 + (t2 - t1)//2 for t1, t2 in zip(dates[:-1], dates[1:])]
+            for i, (date, midpoint) in enumerate(zip(dates[:-1], midpoints)):
+                if valids[date][1] > midpoint:
+                    nextDate = dates[i + 1]
+                    valids[nextDate][0] = midpoint + datetime.timedelta(1)
+                    valids[date][1] = midpoint
+            del midpoints
         del dates
         # Update the validity data in the registry
         for row in rows:

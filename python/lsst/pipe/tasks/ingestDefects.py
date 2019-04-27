@@ -2,7 +2,9 @@ from .ingestCalibs import IngestCalibsTask
 from lsst.obs.base.read_defects import read_all_defects
 from lsst.pipe.base import InputOnlyArgumentParser
 
-from dateutil import parser
+import tempfile
+import shutil
+import os
 
 
 class IngestDefectsArgumentParser(InputOnlyArgumentParser):
@@ -25,43 +27,25 @@ class IngestDefectsTask(IngestCalibsTask):
 
     def run(self, args):
         """Ingest all defect files and add them to the registry"""
-        calibRoot = args.calib if args.calib is not None else args.output
-        camera = args.butler.get('camera')
-        with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun,
-                                        name="calibRegistry.sqlite3") as registry:
-            calibType = 'deflects'
-            defects = read_all_defects(args.root)
-            if calibType not in self.register.config.tables:
-                raise RuntimeError(str("Skipped adding %s of observation type '%s' to registry "
-                                       "(must be one of %s)" %
-                                       (args.root, calibType, ", ".join(self.register.config.tables))))
-            for ccd_name in defects:
-                time_keys = [k for k in defects[ccd_name]]
-                if len(time_keys) == 0:
-                    continue  # no defects for this chip
-                time_keys.sort()
-                for valid_start, valid_end in zip(time_keys[:-1], time_keys[1:]):
-                    defectList = defects[ccd_name][valid_start]
-                    dataId = {'ccd': camera[ccd_name].getId(), 'calibDate': valid_start}
-                    if not args.dryrun:
-                        try:
-                            args.butler.put(defectList, calibType, ccd=camera[ccd_name].getId(), calibDate=valid_start.isoformat())
-                        except Exception:
-                            self.log.warn(str("Failed to ingest %s at %s of observation type '%s'" %
-                                          (ccd_name, valid_start, calibType)))
-                            continue
-                    if self.register.check(registry, dataId, table=calibType):
-                        if args.ignoreIngested:
-                            continue
 
-                        self.log.warn("%s--%s: already ingested: %s" % (ccd_name, valid_start, dataId))
-                    dataId['validStart'] = valid_start
-                    dataId['validEnd'] = valid_end
-                    self.register.addRow(registry, dataId, dryrun=args.dryrun,
-                                         create=args.create, table=calibType)
-
-                dataId = {'ccd': camera[ccd_name].getId(), 'calibDate': time_keys[-1],
-                          'validStart': time_keys[-1],
-                          'validEnd': parser.parse('20371231235959')}  # set end to near end of UNIX time
-                self.register.addRow(registry, dataId, dryrun=args.dryrun,
-                                     create=args.create, table=calibType)
+        try:
+            camera = args.butler.get('camera')
+            temp_dir = tempfile.mkdtemp()
+            defects = read_all_defects(args.root, camera)
+            file_names = []
+            for d in defects:
+                for s in defects[d]:
+                    file_name = f'defects_{d}_{s.isoformat()}.fits'
+                    full_file_name = os.path.join(temp_dir, file_name)
+                    self.log.info('%i defects written for sensor: %s and calibDate: %s' %
+                                  (len(defects[d][s]), d, s.isoformat()))
+                    defects[d][s].writeFits(full_file_name)
+                    file_names.append(full_file_name)
+            args.files = file_names
+            args.mode = 'move'
+            args.validity = None  # Validity range is determined from the files
+            IngestCalibsTask.run(self, args)
+        except Exception:
+            raise(Exception)
+        finally:
+            shutil.rmtree(temp_dir)
