@@ -27,6 +27,7 @@ import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 from lsst.ip.diffim.dcrModel import applyDcr, calculateDcr, DcrModel
+import lsst.meas.algorithms as measAlg
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
@@ -133,6 +134,12 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         dtype=float,
         doc="Factor to amplify the differences between model planes by to speed convergence.",
         default=3,
+    )
+    doCalculatePsf = pexConfig.Field(
+        dtype=bool,
+        doc="Set to detect stars and recalculate the PSF from the final coadd."
+        "Otherwise the PSF is estimated from a selection of the best input exposures",
+        default=False,
     )
 
     def setDefaults(self):
@@ -300,10 +307,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.log.info("Selected airmasses:\n%s", airmassDict)
         self.log.info("Selected parallactic angles:\n%s", angleDict)
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
+        psf = self.selectCoaddPsf(templateCoadd, tempExpRefList)
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
                                        self.config.dcrNumSubfilters,
                                        filterInfo=filterInfo,
-                                       psf=templateCoadd.getPsf())
+                                       psf=psf)
         return dcrModels
 
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
@@ -817,6 +825,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 coaddExposure.getInfo().setCoaddInputs(coaddInputs)
             # Set the metadata for the coadd, including PSF and aperture corrections.
             self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
+            # Overwrite the PSF
+            coaddExposure.setPsf(dcrModels.psf)
             coaddUtils.setCoaddEdgeBits(dcrModels.mask[skyInfo.bbox], dcrModels.variance[skyInfo.bbox])
             maskedImage = afwImage.MaskedImageF(dcrModels.bbox)
             maskedImage.image = model
@@ -1005,3 +1015,33 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             exposure.image.array[(exposure.mask.array & statsCtrl.getAndMask()) > 0] = 0.
             subExposures[tempExpRef.dataId["visit"]] = exposure
         return subExposures
+
+    def selectCoaddPsf(self, templateCoadd, tempExpRefList):
+        """Compute the PSF of the coadd from the exposures with the best seeing.
+
+        Parameters
+        ----------
+        templateCoadd : `lsst.afw.image.ExposureF`
+            The initial coadd exposure before accounting for DCR.
+        tempExpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
+            The data references to the input warped exposures.
+
+        Returns
+        -------
+        psf : `lsst.meas.algorithms.CoaddPsf`
+            The average PSF of the input exposures with the best seeing.
+        """
+        sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
+        tempExpName = self.getTempExpDatasetName(self.warpType)
+        ccds = templateCoadd.getInfo().getCoaddInputs().ccds
+        psfRefSize = templateCoadd.getPsf().computeShape().getDeterminantRadius()*sigma2fwhm
+        psfSizeList = []
+        for visitNum, tempExpRef in enumerate(tempExpRefList):
+            psf = tempExpRef.get(tempExpName).getPsf()
+            psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
+            psfSizeList.append(psfSize)
+        sizeThreshold = min(np.median(psfSizeList), psfRefSize)
+        goodVisits = np.array(psfSizeList) <= sizeThreshold
+        psf = measAlg.CoaddPsf(ccds[goodVisits], templateCoadd.getWcs(),
+                               self.config.coaddPsf.makeControl())
+        return psf
