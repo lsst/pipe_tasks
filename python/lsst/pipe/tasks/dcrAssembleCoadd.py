@@ -284,20 +284,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                       " to the Mapper class in your obs package.")
         tempExpName = self.getTempExpDatasetName(self.warpType)
         dcrShifts = []
-        airmassList = {}
-        angleList = {}
+        airmassDict = {}
+        angleDict = {}
         for visitNum, tempExpRef in enumerate(tempExpRefList):
             visitInfo = tempExpRef.get(tempExpName + "_visitInfo")
+            visit = tempExpRef.dataId["visit"]
             airmass = visitInfo.getBoresightAirmass()
             parallacticAngle = visitInfo.getBoresightParAngle().asDegrees()
-            airmassList[tempExpRef.dataId["visit"]] = airmass
-            angleList[tempExpRef.dataId["visit"]] = parallacticAngle
+            airmassDict[visit] = airmass
+            angleDict[visit] = parallacticAngle
             if self.config.doAirmassWeight:
                 weightList[visitNum] *= airmass
             dcrShifts.append(np.max(np.abs(calculateDcr(visitInfo, templateCoadd.getWcs(),
                                                         filterInfo, self.config.dcrNumSubfilters))))
-        self.log.info("Selected airmasses:\n%s", airmassList)
-        self.log.info("Selected parallactic angles:\n%s", angleList)
+        self.log.info("Selected airmasses:\n%s", airmassDict)
+        self.log.info("Selected parallactic angles:\n%s", angleDict)
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
                                        self.config.dcrNumSubfilters,
