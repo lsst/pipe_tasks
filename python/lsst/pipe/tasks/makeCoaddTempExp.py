@@ -579,7 +579,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
         nameTemplate="{coaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("skymap",),
-        scalar=True
     )
     direct = pipeBase.OutputDatasetField(
         doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
@@ -587,7 +586,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
         nameTemplate="{coaddName}Coadd_directWarp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
-        scalar=True
     )
     psfMatched = pipeBase.OutputDatasetField(
         doc=("Output PSF-Matched warped exposure (previously called CoaddTempExp), produced by resampling ",
@@ -595,7 +593,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
         nameTemplate="{coaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
-        scalar=True
     )
 
     def setDefaults(self):
@@ -645,6 +642,16 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         if not config.makePsfMatched:
             outputTypeDict.pop("psfMatched", None)
         return outputTypeDict
+
+    @classmethod
+    def getDatasetTypeMultiplicities(cls, config):
+        # Docstring inherited from PipelineTask.getDatasetTypeMultiplicities
+        result = dict(calExpList=pipeBase.multiplicity.Multiple())
+        if not config.bgSubtracted:
+            result.update(backgroundList=pipeBase.multiplicity.Multiple())
+        if config.doApplySkyCorr:
+            result.update(skyCorrList=pipeBase.multiplicity.Multiple())
+        return result
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         """Construct warps for requested warp type for single epoch

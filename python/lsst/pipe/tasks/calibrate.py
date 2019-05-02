@@ -183,21 +183,18 @@ class CalibrateConfig(PipelineTaskConfig):
         name="icExp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
     background = InputDatasetField(
         doc="Backgrounds determined by characterize task",
         name="icExpBackground",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
     icSourceCat = InputDatasetField(
         doc="Source catalog created by characterize task",
         name="icSrc",
         storageClass="SourceCatalog",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
     astromRefCat = InputDatasetField(
         doc="Reference catalog to use for astrometry",
@@ -218,35 +215,30 @@ class CalibrateConfig(PipelineTaskConfig):
         name="calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
     outputCat = OutputDatasetField(
         doc="Source catalog produced in calibrate task",
         name="src",
         storageClass="SourceCatalog",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
     outputBackground = OutputDatasetField(
         doc="Background models estimated in calibration task",
         name="calexpBackground",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
     matches = OutputDatasetField(
         doc="Source/refObj matches from the astrometry solver",
         name="srcMatch",
         storageClass="Catalog",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
     matchesDenormalized = OutputDatasetField(
         doc="Denormalized matches from astrometry solver",
         name="srcMatchFull",
         storageClass="Catalog",
         dimensions=("instrument", "visit", "detector"),
-        scalar=True
     )
 
     def setDefaults(self):
@@ -487,6 +479,11 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
     @classmethod
     def getPrerequisiteDatasetTypes(cls, config):
         return frozenset(["astromRefCat", "photoRefCat"])
+
+    @classmethod
+    def getDatasetTypeMultiplicities(cls, config):
+        return dict(astromRefCat=pipeBase.multiplicity.Multiple(),
+                    photoRefCat=pipeBase.multiplicity.Multiple())
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,

@@ -32,7 +32,8 @@ import lsst.afw.table as afwTable
 from lsst.meas.algorithms import SkyObjectsTask
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, ConfigField
 from lsst.pipe.base import (CmdLineTask, PipelineTask, PipelineTaskConfig, InitOutputDatasetField,
-                            InputDatasetField, InitInputDatasetField, OutputDatasetField, Struct)
+                            InputDatasetField, InitInputDatasetField, OutputDatasetField, Struct,
+                            multiplicity)
 from lsst.pipe.tasks.coaddBase import getSkyInfo
 
 
@@ -88,7 +89,6 @@ class MergeDetectionsConfig(PipelineTaskConfig):
         nameTemplate="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("skymap",),
-        scalar=True
     )
 
     outputCatalog = OutputDatasetField(
@@ -96,7 +96,6 @@ class MergeDetectionsConfig(PipelineTaskConfig):
         nameTemplate="{outputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap"),
-        scalar=True
     )
 
     def setDefaults(self):
@@ -234,6 +233,11 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
     def getInitOutputDatasets(self):
         return {"outputSchema": afwTable.SourceCatalog(self.schema),
                 "outputPeakSchema": afwDetect.PeakCatalog(self.merged.getPeakSchema())}
+
+    @classmethod
+    def getDatasetTypeMultiplicities(cls, config):
+        # Docstring inherited from PipelineTask.getDatasetTypeMultiplicities
+        return dict(catalogs=multiplicity.Multiple())
 
     def runDataRef(self, patchRefList):
         catalogs = dict(readCatalog(self, patchRef) for patchRef in patchRefList)

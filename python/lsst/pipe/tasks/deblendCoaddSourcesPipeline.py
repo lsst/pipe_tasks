@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.pipe.base import (Struct, PipelineTask, InitInputDatasetField, InitOutputDatasetField,
-                            InputDatasetField, OutputDatasetField, PipelineTaskConfig)
+                            InputDatasetField, OutputDatasetField, PipelineTaskConfig, multiplicity)
 
 from lsst.pex.config import ConfigurableField
 from lsst.meas.deblender import SourceDeblendTask, MultibandDeblendTask
@@ -47,7 +47,6 @@ class DeblendCoaddSourcesBaseConfig(PipelineTaskConfig):
         doc="Detection catalog merged across bands",
         nameTemplate="{inputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
-        scalar=True,
         dimensions=("tract", "patch", "skymap")
     )
 
@@ -66,13 +65,11 @@ class DeblendCoaddSourcesSingleConfig(DeblendCoaddSourcesBaseConfig):
         doc="Exposure on which to run deblending",
         nameTemplate="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        scalar=True,
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     measureCatalog = OutputDatasetField(
         doc="The output measurement catalog of deblended sources",
         nameTemplate="{outputCoaddName}Coadd_deblendedFlux",
-        scalar=True,
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
@@ -172,6 +169,12 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         if not config.multibandDeblend.conserveFlux:
             outputTypeDict.pop("fluxCatalogs", None)
         return outputTypeDict
+
+    @classmethod
+    def getDatasetTypeMultiplicities(cls, config):
+        return dict(coadds=multiplicity.Multiple(),
+                    fluxCatalogs=multiplicity.Multiple(),
+                    templateCatalogs=multiplicity.Multiple())
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         inputData["filters"] = [dId["abstract_filter"] for dId in inputDataIds["coadds"]]

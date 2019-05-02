@@ -164,7 +164,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         nameTemplate="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("skymap", ),
-        scalar=True
     )
     brightObjectMask = pipeBase.InputDatasetField(
         doc=("Input Bright Object Mask mask produced with external catalogs to be applied to the mask plane"
@@ -172,21 +171,18 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         name="brightObjectMask",
         storageClass="ObjectMaskCatalog",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
-        scalar=True
     )
     coaddExposure = pipeBase.OutputDatasetField(
         doc="Output coadded exposure, produced by stacking input warps",
         nameTemplate="{outputCoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
-        scalar=True
     )
     nImage = pipeBase.OutputDatasetField(
         doc="Output image of number of input images per pixel",
         nameTemplate="{outputCoaddName}Coadd_nImage",
         storageClass="ImageU",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
-        scalar=True
     )
 
     def setDefaults(self):
@@ -383,6 +379,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
     @classmethod
     def getPrerequisiteDatasetTypes(cls, config):
         return frozenset(["brightObjectMask"])
+
+    @classmethod
+    def getDatasetTypeMultiplicity(cls, config):
+        return dict(inputWarps=pipeBase.multiplicity.Multiple())
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         """Assemble a coadd from a set of Warps.

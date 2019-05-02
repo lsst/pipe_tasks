@@ -23,7 +23,8 @@
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializedTaskRunner,
                             PipelineTask, PipelineTaskConfig, InitInputDatasetField,
-                            InitOutputDatasetField, InputDatasetField, OutputDatasetField)
+                            InitOutputDatasetField, InputDatasetField, OutputDatasetField,
+                            multiplicity)
 from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
@@ -88,28 +89,24 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig):
     exposure = InputDatasetField(
         doc="Exposure on which detections are to be performed",
         nameTemplate="{inputCoaddName}Coadd",
-        scalar=True,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputBackgrounds = OutputDatasetField(
         doc="Output Backgrounds used in detection",
         nameTemplate="{outputCoaddName}Coadd_calexp_background",
-        scalar=True,
         storageClass="Background",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputSources = OutputDatasetField(
         doc="Detected sources catalog",
         nameTemplate="{outputCoaddName}Coadd_det",
-        scalar=True,
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputExposure = OutputDatasetField(
         doc="Exposure post detection",
         nameTemplate="{outputCoaddName}Coadd_calexp",
-        scalar=True,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
@@ -635,7 +632,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
     exposure = InputDatasetField(
         doc="Input coadd image",
         nameTemplate="{inputCoaddName}Coadd_calexp",
-        scalar=True,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
@@ -644,7 +640,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         nameTemplate="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("skymap",),
-        scalar=True
     )
     visitCatalogs = InputDatasetField(
         doc="Source catalogs for visits which overlap input tract, patch, abstract_filter. Will be "
@@ -664,21 +659,18 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         nameTemplate="{inputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
-        scalar=True
     )
     outputSources = OutputDatasetField(
         doc="Source catalog containing all the measurement information generated in this task",
         nameTemplate="{outputCoaddName}Coadd_meas",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="SourceCatalog",
-        scalar=True
     )
     matchResult = OutputDatasetField(
         doc="Match catalog produced by configured matcher, optional on doMatchSources",
         nameTemplate="{outputCoaddName}Coadd_measMatch",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="Catalog",
-        scalar=True
     )
     denormMatches = OutputDatasetField(
         doc="Denormalized Match catalog produced by configured matcher, optional on "
@@ -686,7 +678,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         nameTemplate="{outputCoaddName}Coadd_measMatchFull",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="Catalog",
-        scalar=True
     )
 
     @property
@@ -903,6 +894,11 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
     @classmethod
     def getPrerequisiteDatasetTypes(cls, config):
         return frozenset(["refCat"])
+
+    @classmethod
+    def getDatasetTypeMultiplicities(cls, config):
+        # Docstring inherited from PipelineTask.getDatasetTypeMultiplicities
+        return dict(refCat=multiplicity.Multiple())
 
     def getInitOutputDatasets(self):
         return {"outputSchema": afwTable.SourceCatalog(self.schema)}

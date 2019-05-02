@@ -50,14 +50,12 @@ class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
     catalogs = pipeBase.InputDatasetField(
         doc="Input catalogs to merge.",
         nameTemplate="{inputCoaddName}Coadd_meas",
-        scalar=False,
         storageClass="SourceCatalog",
         dimensions=["abstract_filter", "skymap", "tract", "patch"],
     )
     mergedCatalog = pipeBase.OutputDatasetField(
         doc="Output merged catalog.",
         nameTemplate="{outputCoaddName}Coadd_ref",
-        scalar=True,
         storageClass="SourceCatalog",
         dimensions=["skymap", "tract", "patch"],
     )
@@ -214,6 +212,11 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     def getInitOutputDatasets(self):
         return {"outputSchema": afwTable.SourceCatalog(self.schema), }
+
+    @classmethod
+    def getDatasetTypeMultiplicities(cls, config):
+        # Docstring inherited from PipelineTask.getDatasetTypeMultiplicities
+        return dict(catalogs=pipeBase.multiplicity.Multiple())
 
     def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         catalogDict = {dataId['abstract_filter']: cat for dataId, cat in zip(inputDataIds['catalogs'],

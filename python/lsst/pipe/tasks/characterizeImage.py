@@ -46,28 +46,24 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
     exposure = pipeBase.InputDatasetField(
         doc="Input exposure data",
         name="postISRCCD",
-        scalar=True,
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
     )
     characterized = pipeBase.OutputDatasetField(
         doc="Output characterized data.",
         name="icExp",
-        scalar=True,
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
     )
     sourceCat = pipeBase.OutputDatasetField(
         doc="Output source catalog.",
         name="icSrc",
-        scalar=True,
         storageClass="SourceCatalog",
         dimensions=["instrument", "visit", "detector"],
     )
     backgroundModel = pipeBase.OutputDatasetField(
         doc="Output background model.",
         name="icExpBackground",
-        scalar=True,
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
