@@ -25,12 +25,17 @@ import numpy as np
 from scipy import ndimage
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
+import lsst.afw.table as afwTable
 import lsst.coadd.utils as coaddUtils
 from lsst.ip.diffim.dcrModel import applyDcr, calculateDcr, DcrModel
 import lsst.meas.algorithms as measAlg
+from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
+from .measurePsf import MeasurePsfTask
+from .multiBand import DetectCoaddSourcesTask
+from .multiBandUtils import _makeMakeIdFactory
 
 __all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
@@ -139,7 +144,19 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         dtype=bool,
         doc="Set to detect stars and recalculate the PSF from the final coadd."
         "Otherwise the PSF is estimated from a selection of the best input exposures",
-        default=False,
+        default=True,
+    )
+    detection = pexConfig.ConfigurableField(
+        target=DetectCoaddSourcesTask,
+        doc="Task to detect sources for PSF measurement, if ``doCalculatePsf`` is set.",
+    )
+    measurement = pexConfig.ConfigurableField(
+        target=SingleFrameMeasurementTask,
+        doc="Task to measure sources for PSF measurement, if ``doCalculatePsf`` is set."
+    )
+    measurePsf = pexConfig.ConfigurableField(
+        target=MeasurePsfTask,
+        doc="Task to measure the PSF of the coadd, if ``doCalculatePsf`` is set.",
     )
 
     def setDefaults(self):
@@ -151,6 +168,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         # The deepCoadd and nImage files will be overwritten by this Task, so don't write them the first time
         self.assembleStaticSkyModel.doNImage = False
         self.assembleStaticSkyModel.doWrite = False
+        self.detection.detection.thresholdValue = 10.0
 
 
 class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
@@ -202,6 +220,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     ConfigClass = DcrAssembleCoaddConfig
     _DefaultName = "dcrAssembleCoadd"
+    makeIdFactory = _makeMakeIdFactory("CoaddId")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.config.doCalculatePsf:
+            schema = afwTable.SourceTable.makeMinimalSchema()
+            self.makeSubtask("detection", schema=schema)
+            self.makeSubtask('measurement', schema=schema)
+            self.makeSubtask("measurePsf", schema=schema)
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
@@ -248,7 +275,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                           skyInfo.patchInfo.getIndex())
             return
         for subfilter in range(self.config.dcrNumSubfilters):
-            self.processResults(results.dcrCoadds[subfilter], dataRef)
+            # Use the PSF of the stacked dcrModel, and do not recalculate the PSF for each subfilter
+            results.dcrCoadds[subfilter].setPsf(results.coaddExposure.getPsf())
+            AssembleCoaddTask.processResults(self, results.dcrCoadds[subfilter], dataRef)
             if self.config.doWrite:
                 self.log.info("Persisting dcrCoadd")
                 dataRef.put(results.dcrCoadds[subfilter], "dcrCoadd", subfilter=subfilter,
@@ -258,6 +287,35 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                             numSubfilters=self.config.dcrNumSubfilters)
 
         return results
+
+    def processResults(self, coaddExposure, dataRef):
+        """Interpolate over missing data and mask bright stars.
+
+        Also detect sources on the coadd exposure and measure the final PSF,
+        if ``doCalculatePsf`` is set.
+
+        Parameters
+        ----------
+        coaddExposure : `lsst.afw.image.Exposure`
+            The final coadded exposure.
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Data reference defining the patch for coaddition and the
+            reference Warp
+        """
+        super().processResults(coaddExposure, dataRef)
+
+        if self.config.doCalculatePsf:
+            idFactory = self.makeIdFactory(dataRef)
+            expId = dataRef.get("dcrCoaddId")
+            detResults = self.detection.run(coaddExposure, idFactory, expId)
+            coaddSources = detResults.outputSources
+            self.measurement.run(
+                measCat=coaddSources,
+                exposure=coaddExposure,
+                exposureId=expId
+            )
+            psfResults = self.measurePsf.run(coaddExposure, coaddSources, expId=expId)
+            coaddExposure.setPsf(psfResults.psf)
 
     def prepareDcrInputs(self, templateCoadd, tempExpRefList, weightList):
         """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
@@ -1040,6 +1098,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             psf = tempExpRef.get(tempExpName).getPsf()
             psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
             psfSizeList.append(psfSize)
+        # Note that the input PSFs include DCR, which should be absent from the DcrCoadd
+        # The selected PSFs are those that have a FWHM less than or equal to the smaller
+        # of the mean or median FWHM of the input exposures.
         sizeThreshold = min(np.median(psfSizeList), psfRefSize)
         goodVisits = np.array(psfSizeList) <= sizeThreshold
         psf = measAlg.CoaddPsf(ccds[goodVisits], templateCoadd.getWcs(),
