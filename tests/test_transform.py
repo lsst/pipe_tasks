@@ -139,6 +139,7 @@ class ForcedTrivialMeasurement(TrivialMeasurementBase, measBase.forcedMeasuremen
         self.key = schemaMapper.editOutputSchema().addField(name, type="D", doc="dummy field")
 
 
+@unittest.skipIf(measBase.SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
 class TransformTestCase(lsst.utils.tests.TestCase):
 
     def _transformAndCheck(self, measConf, schema, transformTask):
@@ -212,6 +213,7 @@ def tempDirectory(*args, **kwargs):
         shutil.rmtree(dirname, ignore_errors=True)
 
 
+@unittest.skipIf(measBase.SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
 class RunTransformTestCase(lsst.utils.tests.TestCase):
 
     def testInterface(self):
@@ -271,6 +273,7 @@ class RunTransformTestCase(lsst.utils.tests.TestCase):
             self.assertAlmostEqual(measSrc.getCoord().getLatitude(), trCoord.getLatitude())
 
 
+@unittest.skipIf(measBase.SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
 class CoaddTransformTestCase(lsst.utils.tests.TestCase):
     """Check that CoaddSrcTransformTask is set up properly.
 

@@ -27,8 +27,10 @@ import lsst.utils.tests
 from lsst.utils import getPackageDir
 from lsst.log import Log
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
+from lsst.meas.base import SincCoeffsD
 
 
+@unittest.skipIf(SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
 class PsfFlagTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):

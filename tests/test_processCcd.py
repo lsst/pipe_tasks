@@ -37,6 +37,7 @@ from lsst.ip.isr import IsrTask  # we assume obs_test uses base IsrTask here; ma
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 from lsst.pipe.tasks.calibrate import CalibrateTask
 from lsst.pipe.tasks.processCcd import ProcessCcdTask
+from lsst.meas.base import SincCoeffsD
 
 obsTestDir = lsst.utils.getPackageDir('obs_test')
 InputDir = os.path.join(obsTestDir, "data", "input")
@@ -57,6 +58,7 @@ def getObsTestConfig(TaskClass):
     return config
 
 
+@unittest.skipIf(SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
 class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
     def testProcessCcd(self):

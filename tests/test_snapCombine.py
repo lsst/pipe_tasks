@@ -27,6 +27,7 @@ import lsst.utils.tests
 import lsst.afw.image as afwImage
 from lsst.coadd.utils import setCoaddEdgeBits
 from lsst.pipe.tasks.snapCombine import SnapCombineTask
+from lsst.meas.base import SincCoeffsD
 
 np.random.seed(1)
 
@@ -78,6 +79,7 @@ def simpleAdd(exp0, exp1, badPixelMask):
     return expRes
 
 
+@unittest.skipIf(SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
 class SnapCombineTestCase(lsst.utils.tests.TestCase):
 
     """A test case for SnapCombineTask."""

@@ -32,6 +32,7 @@ import lsst.afw.geom as afwGeom
 
 from lsst.pipe.tasks.processCcd import ProcessCcdTask
 from lsst.pipe.tasks.fakes import BaseFakeSourcesConfig, BaseFakeSourcesTask
+from lsst.meas.base import SincCoeffsD
 
 obsTestDir = lsst.utils.getPackageDir('obs_test')
 InputDir = os.path.join(obsTestDir, "data", "input")
@@ -113,6 +114,7 @@ def getObsTestConfig(TaskClass):
     return config
 
 
+@unittest.skipIf(SincCoeffsD.DISABLED_AT_COMPILE_TIME, "Sinc photometry is disabled.")
 class FakeProcessingTestCase(lsst.utils.tests.TestCase):
     def testFakeProcessing(self):
         # Set the random seed for predictability
