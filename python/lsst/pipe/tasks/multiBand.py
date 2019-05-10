@@ -27,7 +27,8 @@ from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializ
 from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
-from lsst.meas.deblender import SourceDeblendTask, MultibandDeblendTask
+from lsst.meas.deblender import SourceDeblendTask
+from lsst.meas.extensions.scarlet import ScarletDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
@@ -341,7 +342,7 @@ class DeblendCoaddSourcesConfig(Config):
     """
     singleBandDeblend = ConfigurableField(target=SourceDeblendTask,
                                           doc="Deblend sources separately in each band")
-    multiBandDeblend = ConfigurableField(target=MultibandDeblendTask,
+    multiBandDeblend = ConfigurableField(target=ScarletDeblendTask,
                                          doc="Deblend sources simultaneously across bands")
     simultaneous = Field(dtype=bool, default=False, doc="Simultaneously deblend all bands?")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
@@ -475,7 +476,8 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             exposure = afwImage.MultibandExposure.fromExposures(filters, exposures)
             fluxCatalogs, templateCatalogs = self.multiBandDeblend.run(exposure, sources)
             for n in range(len(patchRefList)):
-                self.write(patchRefList[n], fluxCatalogs[filters[n]], templateCatalogs[filters[n]])
+                fluxCat = fluxCatalogs if fluxCatalogs is None else fluxCatalogs[filters[n]]
+                self.write(patchRefList[n], fluxCat, templateCatalogs[filters[n]])
         else:
             # Use the singeband deblender to deblend each band separately
             for patchRef in patchRefList:
