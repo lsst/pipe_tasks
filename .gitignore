@@ -34,6 +34,7 @@ bin/dumpTaskMetadata.py
 bin/imageDifference.py
 bin/imageDifferenceWinter2013.py
 bin/ingestCalibs.py
+bin/ingestDefects.py
 bin/ingestImages.py
 bin/ingestReferenceCatalog.py
 bin/makeCoaddTempExp.py
