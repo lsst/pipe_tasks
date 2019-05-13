@@ -132,20 +132,20 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
 
                     self.assertEqual(len(icSrc), 28)
-                    self.assertEqual(len(src), 186)
+                    self.assertEqual(len(src), 185)
 
                     expectedPlaces = 7  # Tolerance for numerical comparisons
                     for name, var, val in [
-                        ("bgMean", bgMean, 191.4862217336029),
-                        ("bgStdDev", bgStdDev, 0.23986511599945562),
-                        ("numGoodPix", numGoodPix, 1965471),
-                        ("imMean", imMean, 1.1239582066430034),
-                        ("imStdDev", imStdDev, 85.81319381115661),
-                        ("varMean", varMean, 131.23984767404193),
-                        ("varStdDev", varStdDev, 55.9802472085537),
-                        ("psfIxx", psfIxx, 2.8540512421637554),
-                        ("psfIyy", psfIyy, 2.1738662399061064),
-                        ("psfIxy", psfIxy, 0.1439765855869371)
+                        ("bgMean", bgMean, 191.48635852060525),
+                        ("bgStdDev", bgStdDev, 0.2399466881603354),
+                        ("numGoodPix", numGoodPix, 1966820),
+                        ("imMean", imMean, 1.1237668985230562),
+                        ("imStdDev", imStdDev, 85.81296241298496),
+                        ("varMean", varMean, 131.24003624152013),
+                        ("varStdDev", varStdDev, 55.98012493452948),
+                        ("psfIxx", psfIxx, 2.769679536557131),
+                        ("psfIyy", psfIyy, 2.2013649766299324),
+                        ("psfIxy", psfIxy, 0.14797939531970852)
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces, msg=name)
 
