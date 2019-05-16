@@ -27,8 +27,7 @@ from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializ
 from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
-from lsst.meas.deblender import SourceDeblendTask
-from lsst.meas.extensions.scarlet import ScarletDeblendTask
+from lsst.meas.deblender import SourceDeblendTask, MultibandDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
@@ -342,7 +341,7 @@ class DeblendCoaddSourcesConfig(Config):
     """
     singleBandDeblend = ConfigurableField(target=SourceDeblendTask,
                                           doc="Deblend sources separately in each band")
-    multiBandDeblend = ConfigurableField(target=ScarletDeblendTask,
+    multiBandDeblend = ConfigurableField(target=MultibandDeblendTask,
                                          doc="Deblend sources simultaneously across bands")
     simultaneous = Field(dtype=bool, default=False, doc="Simultaneously deblend all bands?")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
@@ -476,8 +475,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             exposure = afwImage.MultibandExposure.fromExposures(filters, exposures)
             fluxCatalogs, templateCatalogs = self.multiBandDeblend.run(exposure, sources)
             for n in range(len(patchRefList)):
-                fluxCat = fluxCatalogs if fluxCatalogs is None else fluxCatalogs[filters[n]]
-                self.write(patchRefList[n], fluxCat, templateCatalogs[filters[n]])
+                self.write(patchRefList[n], fluxCatalogs[filters[n]], templateCatalogs[filters[n]])
         else:
             # Use the singeband deblender to deblend each band separately
             for patchRef in patchRefList:
@@ -536,14 +534,13 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         if flux_sources is not None:
             assert not self.config.simultaneous or self.config.multiBandDeblend.conserveFlux
             dataRef.put(flux_sources, self.config.coaddName + "Coadd_deblendedFlux")
-            self.log.info("Wrote %d sources: %s" % (len(flux_sources), dataRef.dataId))
         # Only the multiband deblender has the option to output the
         # template model catalog, which can optionally be used
         # in MeasureMergedCoaddSources
         if template_sources is not None:
             assert self.config.multiBandDeblend.saveTemplates
             dataRef.put(template_sources, self.config.coaddName + "Coadd_deblendedModel")
-            self.log.info("Wrote %d sources: %s" % (len(template_sources), dataRef.dataId))
+        self.log.info("Wrote %d sources: %s" % (len(flux_sources), dataRef.dataId))
 
     def writeMetadata(self, dataRefList):
         """Write the metadata produced from processing the data.
