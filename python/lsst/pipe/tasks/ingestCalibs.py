@@ -100,7 +100,7 @@ class CalibsRegisterTask(RegisterTask):
         info[self.config.validEnd] = None
         RegisterTask.addRow(self, conn, info, *args, **kwargs)
 
-    def updateValidityRanges(self, conn, validity):
+    def updateValidityRanges(self, conn, validity, tables=None):
         """Loop over all tables, filters, and ccdnums,
         and update the validity ranges in the registry.
 
@@ -109,7 +109,9 @@ class CalibsRegisterTask(RegisterTask):
         """
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        for table in self.config.tables:
+        if tables is None:
+            tables = self.config.tables
+        for table in tables:
             sql = "SELECT DISTINCT %s FROM %s" % (", ".join(self.config.detector), table)
             cursor.execute(sql)
             rows = cursor.fetchall()
@@ -216,6 +218,7 @@ class IngestCalibsTask(IngestTask):
         calibRoot = args.calib if args.calib is not None else args.output
         filenameList = self.expandFiles(args.files)
         with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun) as registry:
+            calibTypes = set()
             for infile in filenameList:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
                 calibType = self.parse.getCalibType(infile)
@@ -224,6 +227,7 @@ class IngestCalibsTask(IngestTask):
                                       "(must be one of %s)" %
                                       (infile, calibType, ", ".join(self.register.config.tables))))
                     continue
+                calibTypes.add(calibType)
                 if args.mode != 'skip':
                     outfile = self.parse.getDestination(args.butler, fileInfo, infile)
                     ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
@@ -240,6 +244,6 @@ class IngestCalibsTask(IngestTask):
                     self.register.addRow(registry, info, dryrun=args.dryrun,
                                          create=args.create, table=calibType)
             if not args.dryrun:
-                self.register.updateValidityRanges(registry, args.validity)
+                self.register.updateValidityRanges(registry, args.validity, tables=calibTypes)
             else:
                 self.log.info("Would update validity ranges here, but dryrun")
