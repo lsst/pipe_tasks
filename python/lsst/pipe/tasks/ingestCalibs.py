@@ -89,10 +89,10 @@ class CalibsRegisterTask(RegisterTask):
         """Open the registry and return the connection handle"""
         return RegisterTask.openRegistry(self, directory, create, dryrun, name)
 
-    def createTable(self, conn):
+    def createTable(self, conn, forceCreateTables=False):
         """Create the registry tables"""
         for table in self.config.tables:
-            RegisterTask.createTable(self, conn, table=table)
+            RegisterTask.createTable(self, conn, table=table, forceCreateTables=forceCreateTables)
 
     def addRow(self, conn, info, *args, **kwargs):
         """Add a row to the file table"""
