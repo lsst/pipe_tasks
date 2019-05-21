@@ -38,6 +38,8 @@ class CalibsParseTask(ParseTask):
             obstype = "fringe"
         elif "sky" in obstype:
             obstype = "sky"
+        elif "illumcor" in obstype:
+            obstype = "illumcor"
         return obstype
 
     def getDestination(self, butler, info, filename):
