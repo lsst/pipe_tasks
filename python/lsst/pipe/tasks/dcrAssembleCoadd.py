@@ -314,8 +314,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 exposure=coaddExposure,
                 exposureId=expId
             )
-            psfResults = self.measurePsf.run(coaddExposure, coaddSources, expId=expId)
-            coaddExposure.setPsf(psfResults.psf)
+            try:
+                psfResults = self.measurePsf.run(coaddExposure, coaddSources, expId=expId)
+            except RuntimeError as e:
+                self.log.warn("Unable to calculate PSF, using default coadd PSF: %s" % e)
+            else:
+                coaddExposure.setPsf(psfResults.psf)
 
     def prepareDcrInputs(self, templateCoadd, warpRefList, weightList):
         """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
