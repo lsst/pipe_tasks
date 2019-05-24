@@ -52,7 +52,6 @@ import unittest
 import shutil
 import os
 import numbers
-from collections import Iterable
 
 import numpy as np
 
@@ -478,25 +477,19 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         for patch in patchList:
             cat = self.butler.get("deepCoadd_meas", filter='r', tract=0, patch=patch)
             meta = cat.getTable().getMetadata()
-            for circApertureFluxRadius in meta.get('base_CircularApertureFlux_radii'):
+            for circApertureFluxRadius in meta.getArray('base_CircularApertureFlux_radii'):
                 self.assertIsInstance(circApertureFluxRadius, numbers.Number)
-            # Each time the run method of a measurement task is executed, algorithm metadata is appended
-            # to the algorithm metadata object. Depending on how many times a measurement task is run,
-            # a metadata entry may be a single value or multiple values, this test ensures that in either
-            # case the value can properly be extracted and compared.
-
-            def ensureIterable(x):
-                if isinstance(x, Iterable) and not isinstance(x, str):
-                    return x
-                return [x]
-            for nOffset in ensureIterable(meta.get('NOISE_OFFSET')):
+            # Each time the run method of a measurement task is executed,
+            # algorithm metadata is appended to the algorithm metadata object.
+            # Depending on how many times a measurement task is run,
+            # a metadata entry may be a single value or multiple values.
+            for nOffset in meta.getArray('NOISE_OFFSET'):
                 self.assertIsInstance(nOffset, numbers.Number)
-            for noiseSrc in ensureIterable(meta.get('NOISE_SOURCE')):
+            for noiseSrc in meta.getArray('NOISE_SOURCE'):
                 self.assertEqual(noiseSrc, 'measure')
-            for noiseExpID in ensureIterable(meta.get('NOISE_EXPOSURE_ID')):
+            for noiseExpID in meta.getArray('NOISE_EXPOSURE_ID'):
                 self.assertIsInstance(noiseExpID, numbers.Number)
-            noiseSeedMul = meta.get('NOISE_SEED_MULTIPLIER')
-            for noiseSeedMul in ensureIterable(meta.get('NOISE_SEED_MULTIPLIER')):
+            for noiseSeedMul in meta.getArray('NOISE_SEED_MULTIPLIER'):
                 self.assertIsInstance(noiseSeedMul, numbers.Number)
 
     def testForcedIdNames(self):
