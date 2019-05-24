@@ -127,11 +127,11 @@ class SkyMeasurementTask(Task):
             Background model
         """
         header = bgExp.getMetadata()
-        xMin = header.get("BOX.MINX")
-        yMin = header.get("BOX.MINY")
-        xMax = header.get("BOX.MAXX")
-        yMax = header.get("BOX.MAXY")
-        algorithm = header.get("ALGORITHM")
+        xMin = header.getScalar("BOX.MINX")
+        yMin = header.getScalar("BOX.MINY")
+        xMax = header.getScalar("BOX.MAXX")
+        yMax = header.getScalar("BOX.MAXY")
+        algorithm = header.getScalar("ALGORITHM")
         bbox = afwGeom.Box2I(afwGeom.Point2I(xMin, yMin), afwGeom.Point2I(xMax, yMax))
         return afwMath.BackgroundList(
             (afwMath.BackgroundMI(bbox, bgExp.getMaskedImage()),
