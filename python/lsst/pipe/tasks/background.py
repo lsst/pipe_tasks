@@ -867,6 +867,5 @@ def smoothArray(array, bad, sigma):
         Smoothed image.
     """
     convolved = gaussian_filter(numpy.where(bad, 0.0, array), sigma, mode="constant", cval=0.0)
-    numerator = gaussian_filter(numpy.ones_like(array), sigma, mode="constant", cval=0.0)
     denominator = gaussian_filter(numpy.where(bad, 0.0, 1.0), sigma, mode="constant", cval=0.0)
-    return convolved*numerator/denominator
+    return convolved/denominator
