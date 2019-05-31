@@ -24,6 +24,7 @@ import argparse
 import os.path
 import sys
 
+from lsst.daf.butler import Butler
 from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig, MakeGen3SkyMapTask
 
 # Build a parser for command line arguments
@@ -49,5 +50,6 @@ if args.configFile:
     config.load(args.configFile)
 
 # Construct the SkyMap Creation task and run it
-skyMapTask = MakeGen3SkyMapTask(config=config, butler=args.butler, collection=args.collection)
-skyMapTask.run()
+skyMapTask = MakeGen3SkyMapTask(config=config)
+butler = Butler(args.butler, run=args.collection)
+skyMapTask.run(butler)
