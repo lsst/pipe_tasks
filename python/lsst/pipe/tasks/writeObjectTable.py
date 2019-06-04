@@ -35,7 +35,7 @@ from lsst.pipe.tasks.multiBandUtils import makeMergeArgumentParser, MergeSources
 
 
 class WriteObjectTableConfig(Config):
-    priorityList = ListField(dtype=str, default=['HSC-G', 'HSC-R', 'HSC-I', 'HSC-Z', 'HSC-Y'],
+    priorityList = ListField(dtype=str, default=['i', 'r', 'z', 'y', 'g', 'u'],
                              doc="Priority-ordered list of bands for the merge.")
     engine = Field(dtype=str, default="pyarrow", doc="Parquet engine for writing (pyarrow or fastparquet)")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
