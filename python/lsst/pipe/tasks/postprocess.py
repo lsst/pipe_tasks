@@ -41,9 +41,9 @@ class PostprocessAnalysis(object):
 
     This object manages and organizes an arbitrary set of computations
     on a catalog.  The catalog is defined by a
-    `lsst.qa.explorer.parquetTable.ParquetTable` object (or list thereof), such as a
+    `lsst.pipe.tasks.parquetTable.ParquetTable` object (or list thereof), such as a
     `deepCoadd_obj` dataset, and the computations are defined by a collection
-    of `lsst.qa.explorer.functor.Functor` objects (or, equivalently,
+    of `lsst.pipe.tasks.functor.Functor` objects (or, equivalently,
     a `CompositeFunctor`).
 
     After the object is initialized, accessing the `.df` attribute (which
@@ -66,10 +66,10 @@ class PostprocessAnalysis(object):
 
     Parameters
     ----------
-    parq : `lsst.qa.explorer.ParquetTable` (or list of such)
+    parq : `lsst.pipe.tasks.ParquetTable` (or list of such)
         Source catalog(s) for computation
 
-    functors : `list`, `dict`, or `lsst.qa.explorer.functors.CompositeFunctor`
+    functors : `list`, `dict`, or `lsst.pipe.tasks.functors.CompositeFunctor`
         Computations to do (functors that act on `parq`).
         If a dict, the output
         DataFrame will have columns keyed accordingly.
@@ -204,7 +204,7 @@ class PostprocessTask(CmdLineTask):
             - detect_isPrimary
 
     The names for each entry under 'func' will become the names of columns in the
-    output dataset.  All the functors referenced are defined in `lsst.qa.explorer.functors`.
+    output dataset.  All the functors referenced are defined in `lsst.pipe.tasks.functors`.
     Positional arguments to be passed to each functor are in the `args` list,
     and any additional entries for each column other than 'functor' or 'args' (e.g., `'filt'`,
     `'dataset'`) are treated as keyword arguments to be passed to the functor initialization.
@@ -216,7 +216,7 @@ class PostprocessTask(CmdLineTask):
     `deepCoadd_obj` does not use `'filter'`), then this will override the `filt` kwargs
     provided in the YAML file, and the calculations will be done in that filter.
 
-    This task uses the `lsst.qa.explorer.postprocess.PostprocessAnalysis` object
+    This task uses the `lsst.pipe.tasks.postprocess.PostprocessAnalysis` object
     to organize and excecute the calculations.
 
 
@@ -271,7 +271,7 @@ class PostprocessTask(CmdLineTask):
 
         Parameters
         ----------
-        parq : `lsst.qa.explorer.parquetTable.ParquetTable`
+        parq : `lsst.pipe.tasks.parquetTable.ParquetTable`
             ParquetTable from which calculations are done.
 
         dataId : dict
@@ -370,7 +370,7 @@ class MultibandPostprocessTask(PostprocessTask):
 
 class WriteQATableConfig(MultibandPostprocessConfig):
     def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir('qa_explorer'),
+        self.functorFile = os.path.join(getPackageDir('pipe_tasks'),
                                         'data', 'QAfunctors.yaml')
 
 

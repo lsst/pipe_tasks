@@ -1,4 +1,4 @@
-# This file is part of qa_explorer.
+# This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -128,7 +128,7 @@ class WriteObjectTableTask(CmdLineTask):
 
         Returns
         -------
-        catalog : `lsst.qa.explorer.table.ParquetTable`
+        catalog : `lsst.pipe.tasks.table.ParquetTable`
             Merged dataframe, with each column prefixed by
             `filter_tag(filt)`, wrapped in the parquet writer shim class.
         """

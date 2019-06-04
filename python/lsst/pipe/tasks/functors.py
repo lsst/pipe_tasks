@@ -25,10 +25,10 @@ import pandas as pd
 import numpy as np
 import re
 
-from lsst.qa.explorer.parquetTable import MultilevelParquetTable
+from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
 
 
-def init_fromDict(initDict, basePath='lsst.qa.explorer.functors',
+def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
                   typeKey='functor'):
     """Initializes an object defined in a dictionary
 
@@ -107,7 +107,7 @@ class Functor(object):
     The `_columnLevels` and `_dfLevels` attributes should generally not need to
     be changed, unless `_func` needs columns from multiple filters or datasets
     to do the calculation.
-    An example of this is the ``lsst.qa.explorer.functors.Color` functor, for which
+    An example of this is the ``lsst.pipe.tasks.functors.Color` functor, for which
     `_dfLevels = ('filter', 'column')`, and `_func` expects the dataframe it gets to
     have those levels in the column index.
 
@@ -528,7 +528,7 @@ class Mag(Functor):
     ----------
     col : `str`
         Name of flux column from which to compute magnitude.  Can be parseable
-        by `lsst.qa.explorer.functors.fluxName` function---that is, you can pass
+        by `lsst.pipe.tasks.functors.fluxName` function---that is, you can pass
         `'modelfit_CModel'` instead of `'modelfit_CModel_instFlux'`) and it will understand.
     calib : `lsst.afw.image.calib.Calib` (optional)
         Object that knows zero point.
@@ -560,7 +560,7 @@ class Mag(Functor):
 class MagErr(Mag):
     """Compute calibrated magnitude uncertainty
 
-    Takes the same `calib` object as `lsst.qa.explorer.functors.Mag`.
+    Takes the same `calib` object as `lsst.pipe.tasks.functors.Mag`.
 
     Parameters
     col : `str`
@@ -650,7 +650,7 @@ class Color(Functor):
     ----------
     col : str
         Name of flux column from which to compute; same as would be passed to
-        ``lsst.qa.explorer.functors.Mag``.
+        ``lsst.pipe.tasks.functors.Mag``.
 
     filt1, filt2 : str
         Filters from which to compute magnitude difference.
