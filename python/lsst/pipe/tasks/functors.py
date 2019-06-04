@@ -652,23 +652,23 @@ class Color(Functor):
         Name of flux column from which to compute; same as would be passed to
         ``lsst.qa.explorer.functors.Mag``.
 
-    filt2, filt1 : str
+    filt1, filt2 : str
         Filters from which to compute magnitude difference.
-        Color computed is `Mag(filt2) - Mag(filt1)`.
+        Color computed is `Mag(filt1) - Mag(filt2)`.
     """
     _defaultDataset = 'forced_src'
     _dfLevels = ('filter', 'column')
     _defaultNoDup = True
 
-    def __init__(self, col, filt2, filt1, **kwargs):
+    def __init__(self, col, filt1, filt2, **kwargs):
         self.col = fluxName(col)
-        if filt2 == filt1:
-            raise RuntimeError("Cannot compute Color for %s: %s - %s " % (col, filt2, filt1))
-        self.filt2 = filt2
+        if filt1 == filt2:
+            raise RuntimeError("Cannot compute Color for %s: %s - %s " % (col, filt1, filt2))
         self.filt1 = filt1
+        self.filt2 = filt2
 
-        self.mag2 = Mag(col, filt=filt2, **kwargs)
         self.mag1 = Mag(col, filt=filt1, **kwargs)
+        self.mag2 = Mag(col, filt=filt2, **kwargs)
 
         super().__init__(**kwargs)
 
@@ -681,9 +681,9 @@ class Color(Functor):
         pass
 
     def _func(self, df):
-        mag2 = self.mag2._func(df[self.filt2])
-        mag1 = self.mag1._func(df[self.filt1])
-        return mag2 - mag1
+        mag1 = self.mag2._func(df[self.filt1])
+        mag2 = self.mag1._func(df[self.filt2])
+        return mag1 - mag2
 
 #    def __call__(self, *args, **kwargs):
 #        vals = (self.mag2(*args, **kwargs) -
@@ -703,22 +703,21 @@ class Color(Functor):
 
     def multilevelColumns(self, parq):
         return [(self.dataset, self.filt1, self.col),
-                (self.dataset, self.filt2, self.col)]
+                (self.dataset, self.filttemp2, self.col)]
 
     @property
     def name(self):
-        return '{filt2} - {filt1} ({column})'.format(filt2=self.filt2,
-                                                     filt1=self.filt1,
-                                                     col=self.col)
+        return '{filt1} - {filt2} ({col})'.format(col=self.col,
+                                                  filt1=self.filt1,
+                                                  filt2=self.filt2)
 
     @property
     def shortname(self):
         #  The 'replace' commands below sanitize the filter name to convert
         #  e.g., 'HSC-G' -> 'HSCG'
-        return '{col}_{filt2}m{filt1}'.format(col=self.col,
+        return '{col}_{filt1}m{filt2}'.format(col=self.col,
                                               filt1=self.filt1.replace('-', ''),
-                                              filt2=self.filt2.replace('-', ''),
-                                                                        )
+                                              filt2=self.filt2.replace('-', ''))
 
 
 class Labeller(Functor):
