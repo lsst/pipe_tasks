@@ -25,9 +25,47 @@ import pandas as pd
 import numpy as np
 import re
 
-
 from lsst.qa.explorer.parquetTable import MultilevelParquetTable
-from lsst.qa.explorer.utils import init_fromDict
+
+
+def init_fromDict(initDict, basePath='lsst.qa.explorer.functors',
+                  typeKey='functor'):
+    """Initializes an object defined in a dictionary
+
+    The object needs to be importable as
+
+        '{0}.{1}'.format(basePath, initDict[typeKey])
+
+    The positional and keyword arguments (if any) are contained in
+    "args" and "kwargs" entries in the dictionary, respectively.
+
+    This is used in `functors.CompositeFunctor.from_yaml` to initialize
+    a composite functor from a specification in a YAML file.
+
+    Parameters
+    ----------
+    initDict : dictionary
+        Dictionary describing object's initialization.  Must contain
+        an entry keyed by `typeKey` that is the name of the object,
+        relative to `basePath`.
+
+    basePath : str
+        Path relative to which `initDict[typeKey]` is defined.
+
+    typeKey : str
+        Key of `initDicit` that is the name of the object
+        (relative to `basePath`).
+
+    """
+    initDict = initDict.copy()
+    pythonType = doImport('{0}.{1}'.format(basePath, initDict.pop(typeKey)))
+    args = []
+    if 'args' in initDict:
+        args = initDict.pop('args')
+        if isinstance(args, str):
+            args = [args]
+
+    return pythonType(*args, **initDict)
 
 
 class Functor(object):
