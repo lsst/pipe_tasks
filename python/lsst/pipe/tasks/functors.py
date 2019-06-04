@@ -707,12 +707,18 @@ class Color(Functor):
 
     @property
     def name(self):
-        return '{0} - {1} ({2})'.format(self.filt2, self.filt1, self.col)
+        return '{filt2} - {filt1} ({column})'.format(filt2=self.filt2,
+                                                     filt1=self.filt1,
+                                                     col=self.col)
 
     @property
     def shortname(self):
-        return '{0}_{1}m{2}'.format(self.col, self.filt2.replace('-', ''),
-                                    self.filt1.replace('-', ''))
+        #  The 'replace' commands below sanitize the filter name to convert
+        #  e.g., 'HSC-G' -> 'HSCG'
+        return '{col}_{filt2}m{filt1}'.format(col=self.col,
+                                              filt1=self.filt1.replace('-', ''),
+                                              filt2=self.filt2.replace('-', ''),
+                                                                        )
 
 
 class Labeller(Functor):
