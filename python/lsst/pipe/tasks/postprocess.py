@@ -146,7 +146,7 @@ class PostprocessAnalysis(object):
 
 
 class PostprocessConfig(Config):
-    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    coaddName = Field(dtype=str, default='deep', doc='Name of coadd')
     functorFile = Field(dtype=str,
                         doc='Path to YAML file specifying functors to be computed',
                         default=None)
@@ -203,13 +203,13 @@ class PostprocessTask(CmdLineTask):
             - base_PixelFlags_flag_inexact_psfCenter
             - detect_isPrimary
 
-    The names for each entry under "func" will become the names of columns in the
+    The names for each entry under 'func' will become the names of columns in the
     output dataset.  All the functors referenced are defined in `lsst.qa.explorer.functors`.
     Positional arguments to be passed to each functor are in the `args` list,
-    and any additional entries for each column other than "functor" or "args" (e.g., `'filt'`,
+    and any additional entries for each column other than 'functor' or 'args' (e.g., `'filt'`,
     `'dataset'`) are treated as keyword arguments to be passed to the functor initialization.
 
-    The "flags" entry is shortcut for a bunch of `Column` functors with the original column and
+    The 'flags' entry is shortcut for a bunch of `Column` functors with the original column and
     taken from the `'ref'` dataset.
 
     Note, if `'filter'` is provided as part of the `dataId` when running this task (even though
@@ -221,7 +221,7 @@ class PostprocessTask(CmdLineTask):
 
 
     """
-    _DefaultName = "Postprocess"
+    _DefaultName = 'Postprocess'
     ConfigClass = PostprocessConfig
 
     inputDataset = 'deepCoadd_obj'
@@ -236,9 +236,9 @@ class PostprocessTask(CmdLineTask):
 
         """
         parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.inputDataset,
+        parser.add_id_argument('--id', cls.inputDataset,
                                ContainerClass=ExistingCoaddDataIdContainer,
-                               help="data ID, e.g. --id tract=12345 patch=1,2")
+                               help='data ID, e.g. --id tract=12345 patch=1,2')
         return parser
 
     def getFunctors(self):
@@ -323,15 +323,15 @@ class MultibandPostprocessConfig(PostprocessConfig):
                           default={'HSC-G': 'g', 'HSC-R': 'r',
                                    'HSC-I': 'i', 'HSC-Z': 'z',
                                    'HSC-Y': 'y'},
-                          doc="Dictionary mapping full filter name to short one " +
-                              "for column name munging.")
+                          doc='Dictionary mapping full filter name to short one ' +
+                              'for column name munging.')
     camelCase = Field(dtype=bool, default=False,
-                      doc="Write per-filter columns names with camelCase, else underscore "
-                          "For example: gPsfFlux instead of g_PsfFlux.")
+                      doc='Write per-filter columns names with camelCase, else underscore '
+                          'For example: gPsfFlux instead of g_PsfFlux.')
     multilevelOutput = Field(dtype=bool, default=True,
-                             doc="Whether results dataframe should have a " +
-                                 "multilevel column index (True) or be flat " +
-                                 "and name-munged (False).")
+                             doc='Whether results dataframe should have a ' +
+                                 'multilevel column index (True) or be flat ' +
+                                 'and name-munged (False).')
 
 
 class MultibandPostprocessTask(PostprocessTask):
@@ -339,10 +339,10 @@ class MultibandPostprocessTask(PostprocessTask):
 
     This is identical to `PostprocessTask`, except for that it does the
     specified functor calculations for all filters present in the
-    input `deepCoadd_obj` table.  Any specific `"filt"` keywords specified
+    input `deepCoadd_obj` table.  Any specific `'filt'` keywords specified
     by the YAML file will be superceded.
     """
-    _DefaultName = "multibandPostprocess"
+    _DefaultName = 'multibandPostprocess'
     ConfigClass = MultibandPostprocessConfig
 
     def run(self, parq, funcs=None, dataId=None):
@@ -370,7 +370,7 @@ class MultibandPostprocessTask(PostprocessTask):
 
 class WriteQATableConfig(MultibandPostprocessConfig):
     def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir("qa_explorer"),
+        self.functorFile = os.path.join(getPackageDir('qa_explorer'),
                                         'data', 'QAfunctors.yaml')
 
 
@@ -380,7 +380,7 @@ class WriteQATableTask(MultibandPostprocessTask):
     Only difference from MultibandPostprocessTask is the default
     YAML functor file.
     """
-    _DefaultName = "writeQATable"
+    _DefaultName = 'writeQATable'
     ConfigClass = WriteQATableConfig
 
     inputDataset = 'deepCoadd_obj'
@@ -389,7 +389,7 @@ class WriteQATableTask(MultibandPostprocessTask):
 
 class TransformObjectCatalogConfig(MultibandPostprocessConfig):
     def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir("obs_subaru"),
+        self.functorFile = os.path.join(getPackageDir('obs_subaru'),
                                         'policy', 'Object.yaml')
         self.multilevelOutput = False
         self.camelCase = True
@@ -398,7 +398,7 @@ class TransformObjectCatalogConfig(MultibandPostprocessConfig):
 class TransformObjectCatalogTask(MultibandPostprocessTask):
     """Compute Flatted Object Table as defined in the DPDD
     """
-    _DefaultName = "transformObjectCatalog"
+    _DefaultName = 'transformObjectCatalog'
     ConfigClass = TransformObjectCatalogConfig
 
     inputDataset = 'deepCoadd_obj'

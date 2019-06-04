@@ -36,20 +36,20 @@ from lsst.pipe.tasks.multiBandUtils import makeMergeArgumentParser, MergeSources
 
 class WriteObjectTableConfig(Config):
     priorityList = ListField(dtype=str, default=['i', 'r', 'z', 'y', 'g', 'u'],
-                             doc="Priority-ordered list of bands for the merge.")
-    engine = Field(dtype=str, default="pyarrow", doc="Parquet engine for writing (pyarrow or fastparquet)")
-    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+                             doc='Priority-ordered list of bands for the merge.')
+    engine = Field(dtype=str, default='pyarrow', doc='Parquet engine for writing (pyarrow or fastparquet)')
+    coaddName = Field(dtype=str, default='deep', doc='Name of coadd')
 
     def validate(self):
         Config.validate(self)
         if len(self.priorityList) == 0:
-            raise RuntimeError("No priority list provided")
+            raise RuntimeError('No priority list provided')
 
 
 class WriteObjectTableTask(CmdLineTask):
     """Write filter-merged source tables to parquet
     """
-    _DefaultName = "writeObjectTable"
+    _DefaultName = 'writeObjectTable'
     ConfigClass = WriteObjectTableConfig
     RunnerClass = MergeSourcesRunner
 
@@ -109,11 +109,11 @@ class WriteObjectTableTask(CmdLineTask):
         Tuple consisting of filter name and a dict of catalogs, keyed by dataset
         name
         """
-        filterName = patchRef.dataId["filter"]
+        filterName = patchRef.dataId['filter']
         catalogDict = {}
         for dataset in self.inputDatasets:
-            catalog = patchRef.get(self.config.coaddName + "Coadd_" + dataset, immediate=True)
-            self.log.info("Read %d sources from %s for filter %s: %s" %
+            catalog = patchRef.get(self.config.coaddName + 'Coadd_' + dataset, immediate=True)
+            self.log.info('Read %d sources from %s for filter %s: %s' %
                           (len(catalog), dataset, filterName, patchRef.dataId))
             catalogDict[dataset] = catalog
         return filterName, catalogDict
@@ -160,12 +160,12 @@ class WriteObjectTableTask(CmdLineTask):
         We write as the dataset provided by the 'outputDataset'
         class variable.
         """
-        patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
+        patchRef.put(catalog, self.config.coaddName + 'Coadd_' + self.outputDataset)
         # since the filter isn't actually part of the data ID for the dataset we're saving,
         # it's confusing to see it in the log message, even if the butler simply ignores it.
         mergeDataId = patchRef.dataId.copy()
-        del mergeDataId["filter"]
-        self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
+        del mergeDataId['filter']
+        self.log.info('Wrote merged catalog: %s' % (mergeDataId,))
 
     def writeMetadata(self, dataRefList):
         """!

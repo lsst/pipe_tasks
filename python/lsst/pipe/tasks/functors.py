@@ -37,7 +37,7 @@ def init_fromDict(initDict, basePath='lsst.qa.explorer.functors',
         '{0}.{1}'.format(basePath, initDict[typeKey])
 
     The positional and keyword arguments (if any) are contained in
-    "args" and "kwargs" entries in the dictionary, respectively.
+    'args' and 'kwargs' entries in the dictionary, respectively.
 
     This is used in `functors.CompositeFunctor.from_yaml` to initialize
     a composite functor from a specification in a YAML file.
@@ -162,11 +162,11 @@ class Functor(object):
                 if self.dataset == 'ref':
                     columnDict['filter'] = parq.columnLevelNames['filter'][0]
                 else:
-                    raise ValueError("'filt' not set for functor {}".format(self.name) +
-                                     "(dataset {}) ".format(self.dataset) +
-                                     "and ParquetTable " +
-                                     "contains multiple filters in column index. " +
-                                     "Set 'filt' or set 'dataset' to 'ref'.")
+                    raise ValueError('"filt" not set for functor {}'.format(self.name) +
+                                     '(dataset {}) '.format(self.dataset) +
+                                     'and ParquetTable ' +
+                                     'contains multiple filters in column index. ' +
+                                     'Set "filt" or set "dataset" to "ref".')
         else:
             columnDict['filter'] = self.filt
 
@@ -377,7 +377,7 @@ class CustomFunctor(Functor):
     """Arbitrary computation on a catalog
 
     Column names (and thus the columns to be loaded from catalog) are found
-    by finding all words and trying to ignore all "math-y" words.
+    by finding all words and trying to ignore all 'math-y' words.
 
     Parameters
     ----------
@@ -663,7 +663,7 @@ class Color(Functor):
     def __init__(self, col, filt1, filt2, **kwargs):
         self.col = fluxName(col)
         if filt1 == filt2:
-            raise RuntimeError("Cannot compute Color for %s: %s - %s " % (col, filt1, filt2))
+            raise RuntimeError('Cannot compute Color for %s: %s - %s ' % (col, filt1, filt2))
         self.filt1 = filt1
         self.filt2 = filt2
 
@@ -733,8 +733,8 @@ class Labeller(Functor):
 
 
 class StarGalaxyLabeller(Labeller):
-    _columns = ["base_ClassificationExtendedness_value"]
-    _column = "base_ClassificationExtendedness_value"
+    _columns = ['base_ClassificationExtendedness_value']
+    _column = 'base_ClassificationExtendedness_value'
 
     def _func(self, df):
         x = df[self._columns][self._column]
@@ -754,7 +754,7 @@ class StarGalaxyLabeller(Labeller):
 
 class NumStarLabeller(Labeller):
     _columns = ['numStarFlags']
-    labels = {"star": 0, "maybe": 1, "notStar": 2}
+    labels = {'star': 0, 'maybe': 1, 'notStar': 2}
 
     def _func(self, df):
         x = df[self._columns][self._columns[0]]
@@ -775,26 +775,26 @@ class NumStarLabeller(Labeller):
 class DeconvolvedMoments(Functor):
     name = 'Deconvolved Moments'
     shortname = 'deconvolvedMoments'
-    _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
-                "ext_shapeHSM_HsmSourceMoments_yy",
-                "base_SdssShape_xx", "base_SdssShape_yy",
-                # "ext_shapeHSM_HsmSourceMoments",
-                "ext_shapeHSM_HsmPsfMoments_xx",
-                "ext_shapeHSM_HsmPsfMoments_yy")
+    _columns = ('ext_shapeHSM_HsmSourceMoments_xx',
+                'ext_shapeHSM_HsmSourceMoments_yy',
+                'base_SdssShape_xx', 'base_SdssShape_yy',
+                # 'ext_shapeHSM_HsmSourceMoments',
+                'ext_shapeHSM_HsmPsfMoments_xx',
+                'ext_shapeHSM_HsmPsfMoments_yy')
 
     def _func(self, df):
         """Calculate deconvolved moments"""
-        if "ext_shapeHSM_HsmSourceMoments_xx" in df.columns:  # _xx added by tdm
-            hsm = df["ext_shapeHSM_HsmSourceMoments_xx"] + df["ext_shapeHSM_HsmSourceMoments_yy"]
+        if 'ext_shapeHSM_HsmSourceMoments_xx' in df.columns:  # _xx added by tdm
+            hsm = df['ext_shapeHSM_HsmSourceMoments_xx'] + df['ext_shapeHSM_HsmSourceMoments_yy']
         else:
             hsm = np.ones(len(df))*np.nan
-        sdss = df["base_SdssShape_xx"] + df["base_SdssShape_yy"]
-        if "ext_shapeHSM_HsmPsfMoments_xx" in df.columns:
-            psf = df["ext_shapeHSM_HsmPsfMoments_xx"] + df["ext_shapeHSM_HsmPsfMoments_yy"]
+        sdss = df['base_SdssShape_xx'] + df['base_SdssShape_yy']
+        if 'ext_shapeHSM_HsmPsfMoments_xx' in df.columns:
+            psf = df['ext_shapeHSM_HsmPsfMoments_xx'] + df['ext_shapeHSM_HsmPsfMoments_yy']
         else:
             # LSST does not have shape.sdss.psf.  Could instead add base_PsfShape to catalog using
             # exposure.getPsf().computeShape(s.getCentroid()).getIxx()
-            # raise TaskError("No psf shape parameter found in catalog")
+            # raise TaskError('No psf shape parameter found in catalog')
             raise RuntimeError('No psf shape parameter found in catalog')
 
         return hsm.where(np.isfinite(hsm), sdss) - psf
@@ -802,25 +802,25 @@ class DeconvolvedMoments(Functor):
 
 class SdssTraceSize(Functor):
     """Functor to calculate SDSS trace radius size for sources"""
-    name = "SDSS Trace Size"
+    name = 'SDSS Trace Size'
     shortname = 'sdssTrace'
-    _columns = ("base_SdssShape_xx", "base_SdssShape_yy")
+    _columns = ('base_SdssShape_xx', 'base_SdssShape_yy')
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["base_SdssShape_xx"] + df["base_SdssShape_yy"]))
+        srcSize = np.sqrt(0.5*(df['base_SdssShape_xx'] + df['base_SdssShape_yy']))
         return srcSize
 
 
 class PsfSdssTraceSizeDiff(Functor):
     """Functor to calculate SDSS trace radius size difference (%) between object and psf model"""
-    name = "PSF - SDSS Trace Size"
+    name = 'PSF - SDSS Trace Size'
     shortname = 'psf_sdssTrace'
-    _columns = ("base_SdssShape_xx", "base_SdssShape_yy",
-                "base_SdssShape_psf_xx", "base_SdssShape_psf_yy")
+    _columns = ('base_SdssShape_xx', 'base_SdssShape_yy',
+                'base_SdssShape_psf_xx', 'base_SdssShape_psf_yy')
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["base_SdssShape_xx"] + df["base_SdssShape_yy"]))
-        psfSize = np.sqrt(0.5*(df["base_SdssShape_psf_xx"] + df["base_SdssShape_psf_yy"]))
+        srcSize = np.sqrt(0.5*(df['base_SdssShape_xx'] + df['base_SdssShape_yy']))
+        psfSize = np.sqrt(0.5*(df['base_SdssShape_psf_xx'] + df['base_SdssShape_psf_yy']))
         sizeDiff = 100*(srcSize - psfSize)/(0.5*(srcSize + psfSize))
         return sizeDiff
 
@@ -829,12 +829,12 @@ class HsmTraceSize(Functor):
     """Functor to calculate HSM trace radius size for sources"""
     name = 'HSM Trace Size'
     shortname = 'hsmTrace'
-    _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
-                "ext_shapeHSM_HsmSourceMoments_yy")
+    _columns = ('ext_shapeHSM_HsmSourceMoments_xx',
+                'ext_shapeHSM_HsmSourceMoments_yy')
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"] +
-                               df["ext_shapeHSM_HsmSourceMoments_yy"]))
+        srcSize = np.sqrt(0.5*(df['ext_shapeHSM_HsmSourceMoments_xx'] +
+                               df['ext_shapeHSM_HsmSourceMoments_yy']))
         return srcSize
 
 
@@ -842,16 +842,16 @@ class PsfHsmTraceSizeDiff(Functor):
     """Functor to calculate HSM trace radius size difference (%) between object and psf model"""
     name = 'PSF - HSM Trace Size'
     shortname = 'psf_HsmTrace'
-    _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
-                "ext_shapeHSM_HsmSourceMoments_yy",
-                "ext_shapeHSM_HsmPsfMoments_xx",
-                "ext_shapeHSM_HsmPsfMoments_yy")
+    _columns = ('ext_shapeHSM_HsmSourceMoments_xx',
+                'ext_shapeHSM_HsmSourceMoments_yy',
+                'ext_shapeHSM_HsmPsfMoments_xx',
+                'ext_shapeHSM_HsmPsfMoments_yy')
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"] +
-                               df["ext_shapeHSM_HsmSourceMoments_yy"]))
-        psfSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmPsfMoments_xx"] +
-                               df["ext_shapeHSM_HsmPsfMoments_yy"]))
+        srcSize = np.sqrt(0.5*(df['ext_shapeHSM_HsmSourceMoments_xx'] +
+                               df['ext_shapeHSM_HsmSourceMoments_yy']))
+        psfSize = np.sqrt(0.5*(df['ext_shapeHSM_HsmPsfMoments_xx'] +
+                               df['ext_shapeHSM_HsmPsfMoments_yy']))
         sizeDiff = 100*(srcSize - psfSize)/(0.5*(srcSize + psfSize))
         return sizeDiff
 
@@ -866,8 +866,8 @@ class Seeing(Functor):
 
 
 class e1(Functor):
-    name = "Distortion Ellipticity (e1)"
-    shortname = "Distortion"
+    name = 'Distortion Ellipticity (e1)'
+    shortname = 'Distortion'
 
     def __init__(self, colXX, colXY, colYY, **kwargs):
         self.colXX = colXX
@@ -885,7 +885,7 @@ class e1(Functor):
 
 
 class e2(Functor):
-    name = "Ellipticity e2"
+    name = 'Ellipticity e2'
 
     def __init__(self, colXX, colXY, colYY, **kwargs):
         self.colXX = colXX
@@ -923,11 +923,11 @@ class ReferenceBand(Functor):
 
     @property
     def columns(self):
-        return ["merge_measurement_i",
-                "merge_measurement_r",
-                "merge_measurement_z",
-                "merge_measurement_y",
-                "merge_measurement_g"]
+        return ['merge_measurement_i',
+                'merge_measurement_r',
+                'merge_measurement_z',
+                'merge_measurement_y',
+                'merge_measurement_g']
 
     def _func(self, df):
         def getFilterAliasName(row):

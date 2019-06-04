@@ -83,7 +83,7 @@ class ParquetTable(object):
     @property
     def pandasMd(self):
         if self._pf is None:
-            raise AttributeError("This property is only accessible if ._pf is set.")
+            raise AttributeError('This property is only accessible if ._pf is set.')
         if self._pandasMd is None:
             self._pandasMd = json.loads(self._pf.metadata.metadata[b'pandas'])
         return self._pandasMd
@@ -161,11 +161,11 @@ class MultilevelParquetTable(ParquetTable):
     Additionally, pyarrow stores multilevel index information in a very strange way.
     Pandas stores it as a tuple, so that one can access a single column from a pandas
     dataframe as `df[('ref', 'HSC-G', 'coord_ra')]`.  However, for some reason
-    pyarrow saves these indices as "stringified" tuples, such that in order to read this
+    pyarrow saves these indices as 'stringified' tuples, such that in order to read this
     same column from a table written to Parquet, you would have to do the following:
 
         pf = pyarrow.ParquetFile(filename)
-        df = pf.read(columns=["('ref', 'HSC-G', 'coord_ra')"])
+        df = pf.read(columns=['('ref', 'HSC-G', 'coord_ra')'])
 
     See also https://github.com/apache/arrow/issues/1771, where I've raised this issue.
     I don't know if this is a bug or intentional, and it may be addressed in the future.
@@ -231,7 +231,7 @@ class MultilevelParquetTable(ParquetTable):
         else:
             columns = self._pf.metadata.schema.names
             n = len(self.pandasMd['column_indexes'])
-            pattern = re.compile(', '.join(["'(.*)'"] * n))
+            pattern = re.compile(', '.join([''(.*)''] * n))
             matches = [re.search(pattern, c) for c in columns]
             return [m.groups() for m in matches if m is not None]
 
