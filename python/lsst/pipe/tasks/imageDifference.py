@@ -252,8 +252,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.doSelectSources:
             self.makeSubtask("sourceSelector")
-            self.makeSubtask('refObjLoader', butler=butler)
-            self.makeSubtask("astrometer", refObjLoader=self.refObjLoader)
+            if self.config.kernelSourcesFromRef:
+                self.makeSubtask('refObjLoader', butler=butler)
+                self.makeSubtask("astrometer", refObjLoader=self.refObjLoader)
 
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
