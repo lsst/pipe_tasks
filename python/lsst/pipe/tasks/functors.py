@@ -516,8 +516,7 @@ class Mag(Functor):
     """Compute calibrated magnitude
 
     Takes a `calib` argument, which returns the flux at mag=0
-    as `calib.getFluxMag0()`.  If not provided, then the default
-    `fluxMag0` is 63095734448.0194, which is default for HSC.
+    as `calib.getFluxMag0()`.
 
     This calculation hides warnings about invalid values and dividing by zero.
 
@@ -539,10 +538,7 @@ class Mag(Functor):
     def __init__(self, col, calib=None, **kwargs):
         self.col = fluxName(col)
         self.calib = calib
-        if calib is not None:
-            self.fluxMag0 = calib.getFluxMag0()[0]
-        else:
-            self.fluxMag0 = 63095734448.0194  # Where does this come from??
+        self.fluxMag0 = calib.getFluxMag0()[0]
 
         super().__init__(**kwargs)
 
@@ -572,13 +568,10 @@ class MagErr(Mag):
     calib : `lsst.afw.image.calib.Calib` (optional)
         Object that knows zero point.
     """
+    FIVE_OVER_2LOG10 = 1.085736204758129569
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.calib is not None:
-            self.fluxMag0Err = self.calib.getFluxMag0()[1]
-        else:
-            self.fluxMag0Err = 0.
 
     @property
     def columns(self):
@@ -610,7 +603,10 @@ class NanoMaggie(Mag):
 class MagDiff(Functor):
     _defaultDataset = 'meas'
 
-    """Functor to calculate magnitude difference"""
+    """Functor to calculate magnitude difference based on flux columns
+
+    Assumes fluxes have been calibrated to the same magnitude system.
+    """
 
     def __init__(self, col1, col2, **kwargs):
         self.col1 = fluxName(col1)
@@ -939,11 +935,9 @@ class ReferenceBand(Functor):
 
 
 class Photometry(Functor):
-    AB_FLUX_SCALE = 3.630780547701013425e12  # AB to NanoJansky (3631 Jansky)
+    AB_FLUX_SCALE = 3.630780547701013425e12  # AB to NanoJansky (~3631 Jansky)
     LOG_AB_FLUX_SCALE = 12.56
     FIVE_OVER_2LOG10 = 1.085736204758129569
-    # TO DO: DM-15751 will likely change this, and it should read from config/data in DM-16234
-    COADD_ZP = 27
 
     def __init__(self, colFlux, colFluxErr=None, calib=None, **kwargs):
         self.vhypot = np.vectorize(self.hypot)
@@ -951,11 +945,7 @@ class Photometry(Functor):
         self.colFluxErr = colFluxErr
 
         self.calib = calib
-        if calib is not None:
-            self.fluxMag0, self.fluxMag0Err = calib.getFluxMag0()
-        else:
-            self.fluxMag0 = 1./np.power(10, -0.4*self.COADD_ZP)
-            self.fluxMag0Err = 0.
+        self.fluxMag0, self.fluxMag0Err = calib.getFluxMag0()
 
         super().__init__(**kwargs)
 
