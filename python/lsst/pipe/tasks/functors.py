@@ -985,7 +985,7 @@ class Photometry(Functor):
         retVal *= self.AB_FLUX_SCALE / fluxMag0 / fluxMag0
         return retVal
 
-    def dn2MagErr(self, dn, dnErr, fluxMag0, fluxMag0Err):
+    def dn2magErr(self, dn, dnErr, fluxMag0, fluxMag0Err):
         retVal = self.dn2fluxErr(dn, dnErr, fluxMag0, fluxMag0Err) / self.dn2flux(dn, fluxMag0)
         return self.FIVE_OVER_2LOG10 * retVal
 
@@ -1016,5 +1016,5 @@ class MagnitudeErr(Photometry):
         return [self.col, self.colFluxErr]
 
     def _func(self, df):
-        retArr = self.dn2MagErr(df[self.col], df[self.colFluxErr], self.fluxMag0, self.fluxMag0Err)
+        retArr = self.dn2magErr(df[self.col], df[self.colFluxErr], self.fluxMag0, self.fluxMag0Err)
         return pd.Series(retArr, index=df.index)
