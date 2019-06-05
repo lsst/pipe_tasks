@@ -25,6 +25,7 @@ import pandas as pd
 import numpy as np
 import re
 
+from lsst.daf.persistence import doImport
 from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
 
 
