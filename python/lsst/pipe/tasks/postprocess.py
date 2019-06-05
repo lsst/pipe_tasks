@@ -396,7 +396,7 @@ class TransformObjectCatalogConfig(MultibandPostprocessConfig):
 
 
 class TransformObjectCatalogTask(MultibandPostprocessTask):
-    """Compute Flatted Object Table as defined in the DPDD
+    """Compute Flattened Object Table as defined in the DPDD
     """
     _DefaultName = 'transformObjectCatalog'
     ConfigClass = TransformObjectCatalogConfig
