@@ -584,7 +584,7 @@ class MagErr(Mag):
             np.warnings.filterwarnings('ignore', r'divide by zero')
             fluxCol, fluxErrCol = self.columns
             x = df[fluxErrCol] / df[fluxCol]
-            magErr = FIVE_OVER_2LOG10 * x
+            magErr = self.FIVE_OVER_2LOG10 * x
             return magErr
 
     @property
