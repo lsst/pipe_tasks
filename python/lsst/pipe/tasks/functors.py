@@ -704,7 +704,7 @@ class Color(Functor):
 
     def multilevelColumns(self, parq):
         return [(self.dataset, self.filt1, self.col),
-                (self.dataset, self.filttemp2, self.col)]
+                (self.dataset, self.filt2, self.col)]
 
     @property
     def name(self):
