@@ -23,29 +23,30 @@ from collections import defaultdict
 
 from lsst.coadd.utils import CoaddDataIdContainer
 
+
 class TractQADataIdContainer(CoaddDataIdContainer):
 
     def makeDataRefList(self, namespace):
-        """Make self.refList from self.idList
+        '''Make self.refList from self.idList
 
         Generates a list of data references given tract and/or patch.
         This is a copy of `TractDataIdContainer`, except that it doesn't
-        require "filter", since the QA data products it is designed to serve
+        require 'filter', since the QA data products it is designed to serve
         are merged over filters.
-        """
+        '''
         def getPatchRefList(tract):
             return [namespace.butler.dataRef(datasetType=self.datasetType,
                                              tract=tract.getId(),
-                                             patch="%d,%d" % patch.getIndex()) for patch in tract]
+                                             patch='%d,%d' % patch.getIndex()) for patch in tract]
 
         tractRefs = defaultdict(list)  # Data references for each tract
         for dataId in self.idList:
 
             skymap = self.getSkymap(namespace)
 
-            if "tract" in dataId:
-                tractId = dataId["tract"]
-                if "patch" in dataId:
+            if 'tract' in dataId:
+                tractId = dataId['tract']
+                if 'patch' in dataId:
                     tractRefs[tractId].append(namespace.butler.dataRef(datasetType=self.datasetType,
                                                                        tract=tractId,
                                                                        patch=dataId['patch']))
