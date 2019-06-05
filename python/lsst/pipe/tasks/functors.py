@@ -965,7 +965,7 @@ class Photometry(Functor):
     @classmethod
     def hypot(cls, a, b):
         if np.abs(a) < np.abs(b):
-                a, b = b, a
+            a, b = b, a
         if a == 0.:
             return 0.
         q = b/a
