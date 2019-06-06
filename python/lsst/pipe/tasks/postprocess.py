@@ -329,9 +329,9 @@ class MultibandPostprocessConfig(PostprocessConfig):
                       doc='Write per-filter columns names with camelCase, else underscore '
                           'For example: gPsfFlux instead of g_PsfFlux.')
     multilevelOutput = Field(dtype=bool, default=True,
-                             doc='Whether results dataframe should have a ' +
-                                 'multilevel column index (True) or be flat ' +
-                                 'and name-munged (False).')
+                             doc='Make dataframe with a ' +
+                                 'multilevel column index (True) ' +
+                                 ' or flat and name-munged (False).')
 
 
 class MultibandPostprocessTask(PostprocessTask):
