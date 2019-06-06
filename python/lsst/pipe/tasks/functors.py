@@ -536,10 +536,15 @@ class Mag(Functor):
     """
     _defaultDataset = 'meas'
 
+    COADD_ZP = 27
+
     def __init__(self, col, calib=None, **kwargs):
         self.col = fluxName(col)
         self.calib = calib
-        self.fluxMag0 = calib.getFluxMag0()[0]
+        if calib is not None:
+            self.fluxMag0 = calib.getFluxMag0()[0]
+        else:
+            self.fluxMag0 = 1/10**(-0.4*COADD_ZP)
 
         super().__init__(**kwargs)
 
@@ -943,6 +948,7 @@ class Photometry(Functor):
     AB_FLUX_SCALE = 3.630780547701013425e12  # AB to NanoJansky (~3631 Jansky)
     LOG_AB_FLUX_SCALE = 12.56
     FIVE_OVER_2LOG10 = 1.085736204758129569
+    COADD_ZP = 27
 
     def __init__(self, colFlux, colFluxErr=None, calib=None, **kwargs):
         self.vhypot = np.vectorize(self.hypot)
@@ -950,7 +956,10 @@ class Photometry(Functor):
         self.colFluxErr = colFluxErr
 
         self.calib = calib
-        self.fluxMag0, self.fluxMag0Err = calib.getFluxMag0()
+        if calib is not None:
+            self.fluxMag0, self.fluxMag0Err = calib.getFluxMag0()
+        else:
+            self.fluxMag0, self.fluxMag0Err = 1/10**(-0.4*COADD_ZP), 0
 
         super().__init__(**kwargs)
 
