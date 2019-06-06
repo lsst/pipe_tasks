@@ -114,6 +114,12 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig):
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
 
+    hasFakes = Field(
+        dtype=bool,
+        default=False,
+        doc="Should be set to True if fake sources have been inserted into the input data."
+    )
+
     def setDefaults(self):
         super().setDefaults()
         self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
@@ -272,7 +278,10 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
 
         @param[in] patchRef: data reference for patch
         """
-        exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
+        if self.config.hasFakes:
+            exposure = patchRef.get("fakes_" + self.config.coaddName + "Coadd", immediate=True)
+        else:
+            exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
         expId = int(patchRef.get(self.config.coaddName + "CoaddId"))
         results = self.run(exposure, self.makeIdFactory(patchRef), expId=expId)
         self.write(results, patchRef)
@@ -329,7 +338,10 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         coaddName = self.config.coaddName + "Coadd"
         patchRef.put(results.outputBackgrounds, coaddName + "_calexp_background")
         patchRef.put(results.outputSources, coaddName + "_det")
-        patchRef.put(results.outputExposure, coaddName + "_calexp")
+        if self.config.hasFakes:
+            patchRef.put(results.outputExposure, "fakes_" + coaddName + "_calexp")
+        else:
+            patchRef.put(results.outputExposure, coaddName + "_calexp")
 
 ##############################################################################################################
 
@@ -345,6 +357,9 @@ class DeblendCoaddSourcesConfig(Config):
                                          doc="Deblend sources simultaneously across bands")
     simultaneous = Field(dtype=bool, default=False, doc="Simultaneously deblend all bands?")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    hasFakes = Field(dtype=bool,
+                     default=False,
+                     doc="Should be set to True if fake sources have been inserted into the input data.")
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -462,12 +477,18 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         patchRefList: list
             List of data references for each filter
         """
+
+        if self.config.hasFakes:
+            coaddType = "fakes_" + self.config.coaddName
+        else:
+            coaddType = self.config.coaddName
+
         if self.config.simultaneous:
             # Use SCARLET to simultaneously deblend across filters
             filters = []
             exposures = []
             for patchRef in patchRefList:
-                exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
+                exposure = patchRef.get(coaddType + "Coadd_calexp", immediate=True)
                 filters.append(patchRef.dataId["filter"])
                 exposures.append(exposure)
             # The input sources are the same for all bands, since it is a merged catalog
@@ -479,7 +500,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         else:
             # Use the singeband deblender to deblend each band separately
             for patchRef in patchRefList:
-                exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
+                exposure = patchRef.get(coaddType + "Coadd_calexp", immediate=True)
                 exposure.getPsf().setCacheCapacity(psfCache)
                 sources = self.readSources(patchRef)
                 self.singleBandDeblend.run(exposure, sources)
@@ -687,6 +708,12 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="Catalog",
         scalar=True
+    )
+
+    hasFakes = Field(
+        dtype=bool,
+        default=False,
+        doc="Should be set to True if fake sources have been inserted into the input data."
     )
 
     @property
@@ -978,7 +1005,11 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         from individual visits. Optionally match the sources to a reference catalog and write the matches.
         Finally, write the deblended sources and measurements out.
         """
-        exposure = patchRef.get(self.config.coaddName + "Coadd_calexp", immediate=True)
+        if self.config.hasFakes:
+            coaddType = "fakes_" + self.config.coaddName
+        else:
+            coaddType = self.config.coaddName
+        exposure = patchRef.get(coaddType + "Coadd_calexp", immediate=True)
         exposure.getPsf().setCacheCapacity(psfCache)
         sources = self.readSources(patchRef)
         table = sources.getTable()
