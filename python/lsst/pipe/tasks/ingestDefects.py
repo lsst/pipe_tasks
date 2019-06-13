@@ -1,5 +1,5 @@
 from .ingestCalibs import IngestCalibsTask
-from lsst.obs.base.read_defects import read_all_defects
+from .read_defects import read_all_defects
 from lsst.pipe.base import InputOnlyArgumentParser
 
 import tempfile
