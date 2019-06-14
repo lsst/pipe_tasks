@@ -90,7 +90,8 @@ class MakeGen3SkyMapTask(pipeBase.Task):
                 skyMap.register(self.config.name, butler.registry)
                 butler.registry.registerDatasetType(DatasetType(name=self.config.datasetTypeName,
                                                                 dimensions=["skymap"],
-                                                                storageClass="SkyMap"))
+                                                                storageClass="SkyMap",
+                                                                universe=butler.registry.dimensions))
                 butler.put(skyMap, self.config.datasetTypeName, {"skymap": self.config.name})
 
         return pipeBase.Struct(
