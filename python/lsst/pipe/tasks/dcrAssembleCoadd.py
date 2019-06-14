@@ -491,7 +491,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             while (convergenceCheck > self.config.convergenceThreshold or modelIter <= minNumIter):
                 gain = self.calculateGain(convergenceList, gainList)
                 self.dcrAssembleSubregion(dcrModels, subExposures, subBBox, dcrBBox, warpRefList,
-                                          stats.ctrl, convergenceMetric, baseMask, gain,
+                                          stats.ctrl, convergenceMetric, gain,
                                           modelWeights, refImage, dcrWeights)
                 if self.config.useConvergence:
                     convergenceMetric = self.calculateConvergence(dcrModels, subExposures, subBBox,
@@ -602,7 +602,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     def dcrAssembleSubregion(self, dcrModels, subExposures, bbox, dcrBBox, warpRefList,
                              statsCtrl, convergenceMetric,
-                             baseMask, gain, modelWeights, refImage, dcrWeights):
+                             gain, modelWeights, refImage, dcrWeights):
         """Assemble the DCR coadd for a sub-region.
 
         Build a DCR-matched template for each input exposure, then shift the
@@ -633,8 +633,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Statistics control object for coadd
         convergenceMetric : `float`
             Quality of fit metric for the matched templates of the input images.
-        baseMask : `lsst.afw.image.Mask`
-            Mask of the initial template coadd.
         gain : `float`, optional
             Relative weight to give the new solution when updating the model.
         modelWeights : `numpy.ndarray` or `float`
@@ -665,7 +663,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             residualGeneratorList.append(self.dcrResiduals(residual, visitInfo, wcs, dcrModels.filter))
 
         dcrSubModelOut = self.newModelFromResidual(dcrModels, residualGeneratorList, dcrBBox, statsCtrl,
-                                                   mask=baseMask, gain=gain,
+                                                   gain=gain,
                                                    modelWeights=modelWeights,
                                                    refImage=refImage,
                                                    dcrWeights=dcrWeights)
@@ -697,7 +695,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             yield applyDcr(residual, dcr, useInverse=True, order=self.config.imageInterpOrder)
 
     def newModelFromResidual(self, dcrModels, residualGeneratorList, dcrBBox, statsCtrl,
-                             mask, gain, modelWeights, refImage, dcrWeights):
+                             gain, modelWeights, refImage, dcrWeights):
         """Calculate a new DcrModel from a set of image residuals.
 
         Parameters
@@ -710,8 +708,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Sub-region of the coadd which includes a buffer to allow for DCR.
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
-        mask : `lsst.afw.image.Mask`
-            Mask to use for each new model image.
         gain : `float`
             Relative weight to give the new solution when updating the model.
         modelWeights : `numpy.ndarray` or `float`
@@ -747,8 +743,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if self.config.regularizeModelFrequency > 0:
             dcrModels.regularizeModelFreq(newModelImages, dcrBBox, statsCtrl,
                                           self.config.regularizeModelFrequency,
-                                          self.config.regularizationWidth,
-                                          mask=mask)
+                                          self.config.regularizationWidth)
         dcrModels.conditionDcrModel(newModelImages, dcrBBox, gain=gain)
         self.applyModelWeights(newModelImages, refImage[dcrBBox], modelWeights)
         return DcrModel(newModelImages, dcrModels.filter, dcrModels.psf,
