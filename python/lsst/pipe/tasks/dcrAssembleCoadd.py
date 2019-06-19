@@ -144,11 +144,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         "Otherwise the PSF is estimated from a selection of the best input exposures",
         default=True,
     )
-    detectSourcePsf = pexConfig.ConfigurableField(
+    detectPsfSources = pexConfig.ConfigurableField(
         target=measAlg.SourceDetectionTask,
         doc="Task to detect sources for PSF measurement, if ``doCalculatePsf`` is set.",
     )
-    measurement = pexConfig.ConfigurableField(
+    measurePsfSources = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
         doc="Task to measure sources for PSF measurement, if ``doCalculatePsf`` is set."
     )
@@ -161,23 +161,23 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
         self.assembleStaticSkyModel.retarget(CompareWarpAssembleCoaddTask)
         self.doNImage = True
-        self.warpType = 'direct'
+        self.warpType = "direct"
         self.assembleStaticSkyModel.warpType = self.warpType
         # The deepCoadd and nImage files will be overwritten by this Task, so don't write them the first time
         self.assembleStaticSkyModel.doNImage = False
         self.assembleStaticSkyModel.doWrite = False
-        self.detectSourcePsf.returnOriginalFootprints = False
-        self.detectSourcePsf.thresholdPolarity = 'positive'
+        self.detectPsfSources.returnOriginalFootprints = False
+        self.detectPsfSources.thresholdPolarity = "positive"
         # Only use bright sources for PSF measurement
-        self.detectSourcePsf.thresholdValue = 50
-        self.detectSourcePsf.nSigmaToGrow = 2
+        self.detectPsfSources.thresholdValue = 50
+        self.detectPsfSources.nSigmaToGrow = 2
         # A valid star for PSF measurement should at least fill 5x5 pixels
-        self.detectSourcePsf.minPixels = 25
+        self.detectPsfSources.minPixels = 25
         # Use the variance plane to calculate signal to noise
-        self.detectSourcePsf.thresholdType = "pixel_stdev"
+        self.detectPsfSources.thresholdType = "pixel_stdev"
         # The signal to noise limit is good enough, while the flux limit is set
         # in dimensionless units and may not be appropriate for all data sets.
-        self.measurePsf.starSelector['objectSize'].doFluxLimit = False
+        self.measurePsf.starSelector["objectSize"].doFluxLimit = False
 
 
 class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
@@ -234,8 +234,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         super().__init__(*args, **kwargs)
         if self.config.doCalculatePsf:
             self.schema = afwTable.SourceTable.makeMinimalSchema()
-            self.makeSubtask("detectSourcePsf", schema=self.schema)
-            self.makeSubtask('measurement', schema=self.schema)
+            self.makeSubtask("detectPsfSources", schema=self.schema)
+            self.makeSubtask("measurePsfSources", schema=self.schema)
             self.makeSubtask("measurePsf", schema=self.schema)
 
     @pipeBase.timeMethod
@@ -315,9 +315,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if self.config.doCalculatePsf:
             expId = dataRef.get("dcrCoaddId")
             table = afwTable.SourceTable.make(self.schema)
-            detResults = self.detectSourcePsf.run(table, coaddExposure, expId, clearMask=False)
+            detResults = self.detectPsfSources.run(table, coaddExposure, expId, clearMask=False)
             coaddSources = detResults.sources
-            self.measurement.run(
+            self.measurePsfSources.run(
                 measCat=coaddSources,
                 exposure=coaddExposure,
                 exposureId=expId
