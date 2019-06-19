@@ -34,8 +34,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from .assembleCoadd import AssembleCoaddTask, CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig
 from .measurePsf import MeasurePsfTask
-from .multiBand import DetectCoaddSourcesTask
-from .multiBandUtils import _makeMakeIdFactory
 
 __all__ = ["DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
@@ -146,11 +144,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         "Otherwise the PSF is estimated from a selection of the best input exposures",
         default=True,
     )
-    detection = pexConfig.ConfigurableField(
-        target=DetectCoaddSourcesTask,
+    detectPsfSources = pexConfig.ConfigurableField(
+        target=measAlg.SourceDetectionTask,
         doc="Task to detect sources for PSF measurement, if ``doCalculatePsf`` is set.",
     )
-    measurement = pexConfig.ConfigurableField(
+    measurePsfSources = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
         doc="Task to measure sources for PSF measurement, if ``doCalculatePsf`` is set."
     )
@@ -163,12 +161,23 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
         self.assembleStaticSkyModel.retarget(CompareWarpAssembleCoaddTask)
         self.doNImage = True
-        self.warpType = 'direct'
+        self.warpType = "direct"
         self.assembleStaticSkyModel.warpType = self.warpType
         # The deepCoadd and nImage files will be overwritten by this Task, so don't write them the first time
         self.assembleStaticSkyModel.doNImage = False
         self.assembleStaticSkyModel.doWrite = False
-        self.detection.detection.thresholdValue = 10.0
+        self.detectPsfSources.returnOriginalFootprints = False
+        self.detectPsfSources.thresholdPolarity = "positive"
+        # Only use bright sources for PSF measurement
+        self.detectPsfSources.thresholdValue = 50
+        self.detectPsfSources.nSigmaToGrow = 2
+        # A valid star for PSF measurement should at least fill 5x5 pixels
+        self.detectPsfSources.minPixels = 25
+        # Use the variance plane to calculate signal to noise
+        self.detectPsfSources.thresholdType = "pixel_stdev"
+        # The signal to noise limit is good enough, while the flux limit is set
+        # in dimensionless units and may not be appropriate for all data sets.
+        self.measurePsf.starSelector["objectSize"].doFluxLimit = False
 
 
 class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
@@ -220,15 +229,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     ConfigClass = DcrAssembleCoaddConfig
     _DefaultName = "dcrAssembleCoadd"
-    makeIdFactory = _makeMakeIdFactory("CoaddId")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.config.doCalculatePsf:
-            schema = afwTable.SourceTable.makeMinimalSchema()
-            self.makeSubtask("detection", schema=schema)
-            self.makeSubtask('measurement', schema=schema)
-            self.makeSubtask("measurePsf", schema=schema)
+            self.schema = afwTable.SourceTable.makeMinimalSchema()
+            self.makeSubtask("detectPsfSources", schema=self.schema)
+            self.makeSubtask("measurePsfSources", schema=self.schema)
+            self.makeSubtask("measurePsf", schema=self.schema)
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
@@ -305,17 +313,21 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         super().processResults(coaddExposure, dataRef)
 
         if self.config.doCalculatePsf:
-            idFactory = self.makeIdFactory(dataRef)
             expId = dataRef.get("dcrCoaddId")
-            detResults = self.detection.run(coaddExposure, idFactory, expId)
-            coaddSources = detResults.outputSources
-            self.measurement.run(
+            table = afwTable.SourceTable.make(self.schema)
+            detResults = self.detectPsfSources.run(table, coaddExposure, expId, clearMask=False)
+            coaddSources = detResults.sources
+            self.measurePsfSources.run(
                 measCat=coaddSources,
                 exposure=coaddExposure,
                 exposureId=expId
             )
-            psfResults = self.measurePsf.run(coaddExposure, coaddSources, expId=expId)
-            coaddExposure.setPsf(psfResults.psf)
+            try:
+                psfResults = self.measurePsf.run(coaddExposure, coaddSources, expId=expId)
+            except RuntimeError as e:
+                self.log.warn("Unable to calculate PSF, using default coadd PSF: %s" % e)
+            else:
+                coaddExposure.setPsf(psfResults.psf)
 
     def prepareDcrInputs(self, templateCoadd, warpRefList, weightList):
         """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
@@ -479,7 +491,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             while (convergenceCheck > self.config.convergenceThreshold or modelIter <= minNumIter):
                 gain = self.calculateGain(convergenceList, gainList)
                 self.dcrAssembleSubregion(dcrModels, subExposures, subBBox, dcrBBox, warpRefList,
-                                          stats.ctrl, convergenceMetric, baseMask, gain,
+                                          stats.ctrl, convergenceMetric, gain,
                                           modelWeights, refImage, dcrWeights)
                 if self.config.useConvergence:
                     convergenceMetric = self.calculateConvergence(dcrModels, subExposures, subBBox,
@@ -590,7 +602,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
     def dcrAssembleSubregion(self, dcrModels, subExposures, bbox, dcrBBox, warpRefList,
                              statsCtrl, convergenceMetric,
-                             baseMask, gain, modelWeights, refImage, dcrWeights):
+                             gain, modelWeights, refImage, dcrWeights):
         """Assemble the DCR coadd for a sub-region.
 
         Build a DCR-matched template for each input exposure, then shift the
@@ -621,8 +633,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Statistics control object for coadd
         convergenceMetric : `float`
             Quality of fit metric for the matched templates of the input images.
-        baseMask : `lsst.afw.image.Mask`
-            Mask of the initial template coadd.
         gain : `float`, optional
             Relative weight to give the new solution when updating the model.
         modelWeights : `numpy.ndarray` or `float`
@@ -653,7 +663,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             residualGeneratorList.append(self.dcrResiduals(residual, visitInfo, wcs, dcrModels.filter))
 
         dcrSubModelOut = self.newModelFromResidual(dcrModels, residualGeneratorList, dcrBBox, statsCtrl,
-                                                   mask=baseMask, gain=gain,
+                                                   gain=gain,
                                                    modelWeights=modelWeights,
                                                    refImage=refImage,
                                                    dcrWeights=dcrWeights)
@@ -685,7 +695,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             yield applyDcr(residual, dcr, useInverse=True, order=self.config.imageInterpOrder)
 
     def newModelFromResidual(self, dcrModels, residualGeneratorList, dcrBBox, statsCtrl,
-                             mask, gain, modelWeights, refImage, dcrWeights):
+                             gain, modelWeights, refImage, dcrWeights):
         """Calculate a new DcrModel from a set of image residuals.
 
         Parameters
@@ -698,8 +708,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Sub-region of the coadd which includes a buffer to allow for DCR.
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
-        mask : `lsst.afw.image.Mask`
-            Mask to use for each new model image.
         gain : `float`
             Relative weight to give the new solution when updating the model.
         modelWeights : `numpy.ndarray` or `float`
@@ -735,8 +743,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if self.config.regularizeModelFrequency > 0:
             dcrModels.regularizeModelFreq(newModelImages, dcrBBox, statsCtrl,
                                           self.config.regularizeModelFrequency,
-                                          self.config.regularizationWidth,
-                                          mask=mask)
+                                          self.config.regularizationWidth)
         dcrModels.conditionDcrModel(newModelImages, dcrBBox, gain=gain)
         self.applyModelWeights(newModelImages, refImage[dcrBBox], modelWeights)
         return DcrModel(newModelImages, dcrModels.filter, dcrModels.psf,
