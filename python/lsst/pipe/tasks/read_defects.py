@@ -92,6 +92,7 @@ def read_all_defects(root, camera):
         The first key is the sensor name, and the second is the validity
         start time as a `datetime` object.
     """
+    root = os.path.normpath(root)
     dirs = os.listdir(root)  # assumes all directories contain defects
     dirs = [d for d in dirs if os.path.isdir(os.path.join(root, d))]
     defects_by_chip = {}
