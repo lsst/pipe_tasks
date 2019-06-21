@@ -1,6 +1,7 @@
 import collections
 import datetime
 import sqlite3
+from dateutil import parser
 
 from lsst.afw.fits import readMetadata
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
@@ -10,7 +11,7 @@ from lsst.pipe.tasks.ingest import RegisterTask, ParseTask, RegisterConfig, Inge
 
 def _convertToDate(dateString):
     """Convert a string into a date object"""
-    return datetime.datetime.strptime(dateString, "%Y-%m-%d").date()
+    return parser.parse(dateString).date()
 
 
 class CalibsParseTask(ParseTask):
@@ -40,6 +41,8 @@ class CalibsParseTask(ParseTask):
             obstype = "sky"
         elif "illumcor" in obstype:
             obstype = "illumcor"
+        elif "defects" in obstype:
+            obstype = "defects"
         return obstype
 
     def getDestination(self, butler, info, filename):
@@ -65,13 +68,14 @@ class CalibsParseTask(ParseTask):
 
 class CalibsRegisterConfig(RegisterConfig):
     """Configuration for the CalibsRegisterTask"""
-    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky"], doc="Names of tables")
+    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky", "defects"],
+                       doc="Names of tables")
     calibDate = Field(dtype=str, default="calibDate", doc="Name of column for calibration date")
     validStart = Field(dtype=str, default="validStart", doc="Name of column for validity start")
     validEnd = Field(dtype=str, default="validEnd", doc="Name of column for validity stop")
     detector = ListField(dtype=str, default=["filter", "ccd"],
                          doc="Columns that identify individual detectors")
-    validityUntilSuperseded = ListField(dtype=str, default=["defect"],
+    validityUntilSuperseded = ListField(dtype=str, default=["defects"],
                                         doc="Tables for which to set validity for a calib from when it is "
                                         "taken until it is superseded by the next; validity in other tables "
                                         "is calculated by applying the validity range.")
@@ -85,10 +89,10 @@ class CalibsRegisterTask(RegisterTask):
         """Open the registry and return the connection handle"""
         return RegisterTask.openRegistry(self, directory, create, dryrun, name)
 
-    def createTable(self, conn):
+    def createTable(self, conn, forceCreateTables=False):
         """Create the registry tables"""
         for table in self.config.tables:
-            RegisterTask.createTable(self, conn, table=table)
+            RegisterTask.createTable(self, conn, table=table, forceCreateTables=forceCreateTables)
 
     def addRow(self, conn, info, *args, **kwargs):
         """Add a row to the file table"""
@@ -96,7 +100,7 @@ class CalibsRegisterTask(RegisterTask):
         info[self.config.validEnd] = None
         RegisterTask.addRow(self, conn, info, *args, **kwargs)
 
-    def updateValidityRanges(self, conn, validity):
+    def updateValidityRanges(self, conn, validity, tables=None):
         """Loop over all tables, filters, and ccdnums,
         and update the validity ranges in the registry.
 
@@ -105,7 +109,9 @@ class CalibsRegisterTask(RegisterTask):
         """
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        for table in self.config.tables:
+        if tables is None:
+            tables = self.config.tables
+        for table in tables:
             sql = "SELECT DISTINCT %s FROM %s" % (", ".join(self.config.detector), table)
             cursor.execute(sql)
             rows = cursor.fetchall()
@@ -188,11 +194,6 @@ class IngestCalibsArgumentParser(InputOnlyArgumentParser):
                           help="Mode of delivering the files to their destination")
         self.add_argument("--create", action="store_true", help="Create new registry?")
         self.add_argument("--validity", type=int, required=True, help="Calibration validity period (days)")
-        self.add_argument("--calibType", type=str, default=None,
-                          choices=[None, "bias", "dark", "flat", "fringe", "sky", "defect"],
-                          help="Type of the calibration data to be ingested;"
-                               " if omitted, the type is determined from"
-                               " the file header information")
         self.add_argument("--ignore-ingested", dest="ignoreIngested", action="store_true",
                           help="Don't register files that have already been registered")
         self.add_argument("files", nargs="+", help="Names of file")
@@ -217,17 +218,16 @@ class IngestCalibsTask(IngestTask):
         calibRoot = args.calib if args.calib is not None else args.output
         filenameList = self.expandFiles(args.files)
         with self.register.openRegistry(calibRoot, create=args.create, dryrun=args.dryrun) as registry:
+            calibTypes = set()
             for infile in filenameList:
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
-                if args.calibType is None:
-                    calibType = self.parse.getCalibType(infile)
-                else:
-                    calibType = args.calibType
+                calibType = self.parse.getCalibType(infile)
                 if calibType not in self.register.config.tables:
                     self.log.warn(str("Skipped adding %s of observation type '%s' to registry "
                                       "(must be one of %s)" %
                                       (infile, calibType, ", ".join(self.register.config.tables))))
                     continue
+                calibTypes.add(calibType)
                 if args.mode != 'skip':
                     outfile = self.parse.getDestination(args.butler, fileInfo, infile)
                     ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
@@ -244,6 +244,6 @@ class IngestCalibsTask(IngestTask):
                     self.register.addRow(registry, info, dryrun=args.dryrun,
                                          create=args.create, table=calibType)
             if not args.dryrun:
-                self.register.updateValidityRanges(registry, args.validity)
+                self.register.updateValidityRanges(registry, args.validity, tables=calibTypes)
             else:
                 self.log.info("Would update validity ranges here, but dryrun")

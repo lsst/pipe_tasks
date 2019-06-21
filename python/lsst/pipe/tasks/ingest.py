@@ -239,16 +239,13 @@ class RegistryContext:
                                                  delete=False)
         self.updateName = updateFile.name
 
-        haveTable = False
         if os.path.exists(registryName):
             assertCanCopy(registryName, self.updateName)
             os.chmod(self.updateName, os.stat(registryName).st_mode)
             shutil.copyfile(registryName, self.updateName)
-            haveTable = True
 
         self.conn = sqlite3.connect(self.updateName)
-        if not haveTable or forceCreateTables:
-            createTableFunc(self.conn)
+        createTableFunc(self.conn, forceCreateTables=forceCreateTables)
         os.chmod(self.updateName, self.permissions)
 
     def __enter__(self):
@@ -298,7 +295,7 @@ class RegisterTask(Task):
         context = RegistryContext(registryName, self.createTable, create, self.config.permissions)
         return context
 
-    def createTable(self, conn, table=None):
+    def createTable(self, conn, table=None, forceCreateTables=False):
         """Create the registry tables
 
         One table (typically 'raw') contains information on all files, and the
@@ -307,20 +304,32 @@ class RegisterTask(Task):
         @param conn    Database connection
         @param table   Name of table to create in database
         """
+        cursor = conn.cursor()
         if table is None:
             table = self.config.table
+        cmd = "SELECT name FROM sqlite_master WHERE type='table' AND name='%s'" % table
+        cursor.execute(cmd)
+        if cursor.fetchone() and not forceCreateTables:  # Assume if we get an answer the table exists
+            self.log.info('Table "%s" exists.  Skipping creation' % table)
+            return
+        else:
+            cmd = "drop table if exists %s" % table
+            cursor.execute(cmd)
+            cmd = "drop table if exists %s_visit" % table
+            cursor.execute(cmd)
+
         cmd = "create table %s (id integer primary key autoincrement, " % table
         cmd += ",".join([("%s %s" % (col, colType)) for col, colType in self.config.columns.items()])
         if len(self.config.unique) > 0:
             cmd += ", unique(" + ",".join(self.config.unique) + ")"
         cmd += ")"
-        conn.cursor().execute(cmd)
+        cursor.execute(cmd)
 
         cmd = "create table %s_visit (" % table
         cmd += ",".join([("%s %s" % (col, self.config.columns[col])) for col in self.config.visit])
         cmd += ", unique(" + ",".join(set(self.config.visit).intersection(set(self.config.unique))) + ")"
         cmd += ")"
-        conn.cursor().execute(cmd)
+        cursor.execute(cmd)
 
         conn.commit()
 
@@ -451,7 +460,7 @@ class IngestTask(Task):
                 os.symlink(os.path.abspath(infile), outfile)
             elif mode == "move":
                 assertCanCopy(infile, outfile)
-                os.rename(infile, outfile)
+                shutil.move(infile, outfile)
             else:
                 raise AssertionError("Unknown mode: %s" % mode)
             self.log.info("%s --<%s>--> %s" % (infile, mode, outfile))
