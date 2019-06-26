@@ -689,9 +689,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         residualImage : `numpy.ndarray`
             The residual image for the next subfilter, shifted for DCR.
         """
-        dcrShift = calculateDcr(visitInfo, wcs, filterInfo, self.config.dcrNumSubfilters)
+        # Pre-calculate the spline-filtered residual image, so that step can be
+        # skipped in the shift calculation in `applyDcr`.
+        filteredResidual = ndimage.spline_filter(residual, order=self.config.imageInterpOrder)
+        # Note that `splitSubfilters` is always turned off in the reverse direction.
+        # This option introduces additional blurring if applied to the residuals.
+        dcrShift = calculateDcr(visitInfo, wcs, filterInfo, self.config.dcrNumSubfilters,
+                                splitSubfilters=False)
         for dcr in dcrShift:
-            yield applyDcr(residual, dcr, useInverse=True, order=self.config.imageInterpOrder)
+            yield applyDcr(filteredResidual, dcr, useInverse=True, splitSubfilters=False,
+                           doPrefilter=False, order=self.config.imageInterpOrder)
 
     def newModelFromResidual(self, dcrModels, residualGeneratorList, dcrBBox, statsCtrl,
                              gain, modelWeights, refImage, dcrWeights):
