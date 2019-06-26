@@ -106,6 +106,12 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
             "Instead of at the midpoint",
         default=True,
     )
+    splitThreshold = pexConfig.Field(
+        dtype=float,
+        doc="Minimum DCR difference within a subfilter to use ``splitSubfilters``, in pixels."
+            "Set to 0 to always split the subfilters.",
+        default=0.1,
+    )
     regularizeModelIterations = pexConfig.Field(
         dtype=float,
         doc="Maximum relative change of the model allowed between iterations."
@@ -652,6 +658,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
                                                            order=self.config.imageInterpOrder,
                                                            splitSubfilters=self.config.splitSubfilters,
+                                                           splitThreshold=self.config.splitThreshold,
                                                            amplifyModel=self.config.accelerateModel)
             residual = exposure.image.array - templateImage.array
             # Note that the variance plane here is used to store weights, not the actual variance
@@ -820,6 +827,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
                                                        order=self.config.imageInterpOrder,
                                                        splitSubfilters=self.config.splitSubfilters,
+                                                       splitThreshold=self.config.splitThreshold,
                                                        amplifyModel=self.config.accelerateModel)
         diffVals = np.abs(exposure.image.array - templateImage.array)*significanceImage
         refVals = np.abs(exposure.image.array + templateImage.array)*significanceImage/2.
