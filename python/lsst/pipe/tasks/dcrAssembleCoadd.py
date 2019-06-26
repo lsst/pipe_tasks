@@ -582,11 +582,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.applyAltMaskPlanes(mask, altMaskSpans)
             weightImage = np.zeros_like(exposure.image.array)
             weightImage[(mask.array & statsCtrl.getAndMask()) == 0] = 1.
-            dcrShift = calculateDcr(visitInfo, wcs, dcrModels.filter, self.config.dcrNumSubfilters)
-            for dcr, dcrNImage, dcrWeight in zip(dcrShift, dcrNImages, dcrWeights):
-                # Note that we use the same interpolation for the weights and the images.
-                shiftedWeights = applyDcr(weightImage, dcr, useInverse=True,
-                                          order=self.config.imageInterpOrder)
+            # The weights must be shifted in exactly the same way as the residuals,
+            # because they will be used as the denominator in the weighted average of residuals.
+            weightsGenerator = self.dcrResiduals(weightImage, visitInfo, wcs, dcrModels.filter)
+            for shiftedWeights, dcrNImage, dcrWeight in zip(weightsGenerator, dcrNImages, dcrWeights):
                 dcrNImage.array += np.rint(shiftedWeights).astype(dcrNImage.array.dtype)
                 dcrWeight.array += shiftedWeights
         # Exclude any pixels that don't have at least one exposure contributing in all subfilters
