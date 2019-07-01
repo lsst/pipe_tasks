@@ -106,6 +106,12 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
             "Instead of at the midpoint",
         default=True,
     )
+    splitThreshold = pexConfig.Field(
+        dtype=float,
+        doc="Minimum DCR difference within a subfilter to use ``splitSubfilters``, in pixels."
+            "Set to 0 to always split the subfilters.",
+        default=0.1,
+    )
     regularizeModelIterations = pexConfig.Field(
         dtype=float,
         doc="Maximum relative change of the model allowed between iterations."
@@ -225,6 +231,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     level will not vary in flux by more than a factor of `frequencyClampFactor`
     between subfilters, and pixels that have flux deviations larger than that
     factor will have the excess flux distributed evenly among all subfilters.
+    If `splitSubfilters` is set, then each subfilter will be further sub-
+    divided during the forward modeling step (only). This approximates using
+    a higher number of subfilters that may be necessary for high airmass
+    observations, but does not increase the number of free parameters in the
+    fit. This is needed when there are high airmass observations which would
+    otherwise have significant DCR even within a subfilter. Because calculating
+    the shifted images takes most of the time, splitting the subfilters is
+    turned off by way of the `splitThreshold` option for low-airmass
+    observations that do not suffer from DCR within a subfilter.
     """
 
     ConfigClass = DcrAssembleCoaddConfig
@@ -582,11 +597,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 self.applyAltMaskPlanes(mask, altMaskSpans)
             weightImage = np.zeros_like(exposure.image.array)
             weightImage[(mask.array & statsCtrl.getAndMask()) == 0] = 1.
-            dcrShift = calculateDcr(visitInfo, wcs, dcrModels.filter, self.config.dcrNumSubfilters)
-            for dcr, dcrNImage, dcrWeight in zip(dcrShift, dcrNImages, dcrWeights):
-                # Note that we use the same interpolation for the weights and the images.
-                shiftedWeights = applyDcr(weightImage, dcr, useInverse=True,
-                                          order=self.config.imageInterpOrder)
+            # The weights must be shifted in exactly the same way as the residuals,
+            # because they will be used as the denominator in the weighted average of residuals.
+            weightsGenerator = self.dcrResiduals(weightImage, visitInfo, wcs, dcrModels.filter)
+            for shiftedWeights, dcrNImage, dcrWeight in zip(weightsGenerator, dcrNImages, dcrWeights):
                 dcrNImage.array += np.rint(shiftedWeights).astype(dcrNImage.array.dtype)
                 dcrWeight.array += shiftedWeights
         # Exclude any pixels that don't have at least one exposure contributing in all subfilters
@@ -653,6 +667,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
                                                            order=self.config.imageInterpOrder,
                                                            splitSubfilters=self.config.splitSubfilters,
+                                                           splitThreshold=self.config.splitThreshold,
                                                            amplifyModel=self.config.accelerateModel)
             residual = exposure.image.array - templateImage.array
             # Note that the variance plane here is used to store weights, not the actual variance
@@ -690,9 +705,16 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         residualImage : `numpy.ndarray`
             The residual image for the next subfilter, shifted for DCR.
         """
-        dcrShift = calculateDcr(visitInfo, wcs, filterInfo, self.config.dcrNumSubfilters)
+        # Pre-calculate the spline-filtered residual image, so that step can be
+        # skipped in the shift calculation in `applyDcr`.
+        filteredResidual = ndimage.spline_filter(residual, order=self.config.imageInterpOrder)
+        # Note that `splitSubfilters` is always turned off in the reverse direction.
+        # This option introduces additional blurring if applied to the residuals.
+        dcrShift = calculateDcr(visitInfo, wcs, filterInfo, self.config.dcrNumSubfilters,
+                                splitSubfilters=False)
         for dcr in dcrShift:
-            yield applyDcr(residual, dcr, useInverse=True, order=self.config.imageInterpOrder)
+            yield applyDcr(filteredResidual, dcr, useInverse=True, splitSubfilters=False,
+                           doPrefilter=False, order=self.config.imageInterpOrder)
 
     def newModelFromResidual(self, dcrModels, residualGeneratorList, dcrBBox, statsCtrl,
                              gain, modelWeights, refImage, dcrWeights):
@@ -814,6 +836,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
                                                        order=self.config.imageInterpOrder,
                                                        splitSubfilters=self.config.splitSubfilters,
+                                                       splitThreshold=self.config.splitThreshold,
                                                        amplifyModel=self.config.accelerateModel)
         diffVals = np.abs(exposure.image.array - templateImage.array)*significanceImage
         refVals = np.abs(exposure.image.array + templateImage.array)*significanceImage/2.
