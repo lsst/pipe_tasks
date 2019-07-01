@@ -231,6 +231,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     level will not vary in flux by more than a factor of `frequencyClampFactor`
     between subfilters, and pixels that have flux deviations larger than that
     factor will have the excess flux distributed evenly among all subfilters.
+    If `splitSubfilters` is set, then each subfilter will be further sub-
+    divided during the forward modeling step (only). This approximates using
+    a higher number of subfilters that may be necessary for high airmass
+    observations, but does not increase the number of free parameters in the
+    fit. This is needed when there are high airmass observations which would
+    otherwise have significant DCR even within a subfilter. Because calculating
+    the shifted images takes most of the time, splitting the subfilters is
+    turned off by way of the `splitThreshold` option for low-airmass
+    observations that do not suffer from DCR within a subfilter.
     """
 
     ConfigClass = DcrAssembleCoaddConfig
