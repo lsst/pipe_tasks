@@ -1100,8 +1100,16 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
             matches.table.setMetadata(matchResult.matchMeta)
             results.matchResult = matches
             if self.config.doWriteMatchesDenormalized:
-                results.denormMatches = denormalizeMatches(matchResult.matches,
-                                                           matchResult.matchMeta)
+                if matchResult.matches:
+                    denormMatches = denormalizeMatches(matchResult.matches, matchResult.matchMeta)
+                else:
+                    self.log.warn("No matches, so generating dummy denormalized matches file")
+                    denormMatches = afwTable.BaseCatalog(afwTable.Schema())
+                    denormMatches.setMetadata(PropertyList())
+                    denormMatches.getMetadata().add("COMMENT",
+                                                    "This catalog is empty because no matches were found.")
+                    results.denormMatches = denormMatches
+                results.denormMatches = denormMatches
 
         results.outputSources = sources
         return results
