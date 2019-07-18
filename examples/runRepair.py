@@ -25,7 +25,7 @@ import numpy
 import sys
 
 import lsst.afw.image as afwImage
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.meas.algorithms as measAlg
 from lsst.pipe.tasks.repair import RepairTask
 
@@ -65,12 +65,12 @@ def addDefects(exp, nBadCols=10):
     for xi in numpy.random.randint(0, xsize, nBadCols):
         yi = numpy.random.randint(0, ysize)
         xi, yi = int(xi), int(yi)
-        bbox = afwGeom.Box2I(afwGeom.PointI(xi, 0), afwGeom.ExtentI(1, yi+1))
+        bbox = geom.Box2I(geom.PointI(xi, 0), geom.ExtentI(1, yi+1))
         subIm = afwImage.ImageF(img, bbox)
         subIm.set(1e7)
         defectList.append(bbox)
     # set a 15 pixel box of defects at the upper left corner to demonstrate fallbackValue
-    bbox = afwGeom.Box2I(afwGeom.PointI(0, ysize-15), afwGeom.ExtentI(15, 15))
+    bbox = geom.Box2I(geom.PointI(0, ysize-15), geom.ExtentI(15, 15))
     subIm = afwImage.ImageF(img, bbox)
     subIm.set(1e7)
     defectList.append(bbox)

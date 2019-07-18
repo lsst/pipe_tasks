@@ -33,7 +33,7 @@ from lsst.pipe.base import Task, Struct
 from lsst.meas.astrom.sip import makeCreateWcsWithSip
 from lsst.afw.math import Warper
 
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.table as afwTable
 
 
@@ -86,7 +86,7 @@ class RegisterTask(Task):
         @return Match list
         """
         matches = afwTable.matchRaDec(templateSources, inputSources,
-                                      self.config.matchRadius*afwGeom.arcseconds)
+                                      self.config.matchRadius*geom.arcseconds)
         self.log.info("Matching within %.1f arcsec: %d matches" % (self.config.matchRadius, len(matches)))
         self.metadata.set("MATCH_NUM", len(matches))
         if len(matches) == 0:
@@ -166,9 +166,9 @@ class RegisterTask(Task):
         @return Warped sources
         """
         alignedSources = inputSources.copy(True)
-        if not isinstance(templateBBox, afwGeom.Box2D):
+        if not isinstance(templateBBox, geom.Box2D):
             # There is no method Box2I::contains(Point2D)
-            templateBBox = afwGeom.Box2D(templateBBox)
+            templateBBox = geom.Box2D(templateBBox)
         table = alignedSources.getTable()
         coordKey = table.getCoordKey()
         centroidKey = table.getCentroidKey()

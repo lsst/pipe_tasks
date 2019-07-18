@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
+import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
@@ -114,7 +115,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """!
         @brief Select exposures to coadd
 
-        Get the corners of the bbox supplied in skyInfo using @ref afwGeom.Box2D and convert the pixel
+        Get the corners of the bbox supplied in skyInfo using @ref geom.Box2D and convert the pixel
         positions of the bbox corners to sky coordinates using @ref skyInfo.wcs.pixelToSky. Use the
         @ref WcsSelectImagesTask_ "WcsSelectImagesTask" to select exposures that lie inside the patch
         indicated by the dataRef.
@@ -126,7 +127,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         """
         if skyInfo is None:
             skyInfo = self.getSkyInfo(patchRef)
-        cornerPosList = afwGeom.Box2D(skyInfo.bbox).getCorners()
+        cornerPosList = geom.Box2D(skyInfo.bbox).getCorners()
         coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
         return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
 
@@ -142,7 +143,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         - tractInfo: information for chosen tract of sky map
         - patchInfo: information about chosen patch of tract
         - wcs: WCS of tract
-        - bbox: outer bbox of patch, as an afwGeom Box2I
+        - bbox: outer bbox of patch, as an geom Box2I
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
@@ -240,7 +241,7 @@ def getSkyInfo(coaddName, patchRef):
     - tractInfo: information for chosen tract of sky map
     - patchInfo: information about chosen patch of tract
     - wcs: WCS of tract
-    - bbox: outer bbox of patch, as an afwGeom Box2I
+    - bbox: outer bbox of patch, as an geom Box2I
     """
     skyMap = patchRef.get(coaddName + "Coadd_skyMap")
     return makeSkyInfo(skyMap, patchRef.dataId["tract"], patchRef.dataId["patch"])

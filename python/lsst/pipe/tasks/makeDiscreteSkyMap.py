@@ -23,6 +23,7 @@ import sys
 import traceback
 import lsst.sphgeom
 
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
@@ -147,7 +148,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             wcs = afwGeom.makeSkyWcs(md)
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
             boxI = afwImage.bboxFromMetadata(md)
-            boxD = afwGeom.Box2D(boxI)
+            boxD = geom.Box2D(boxI)
             points.extend(wcs.pixelToSky(corner).getVector() for corner in boxD.getCorners())
         if len(points) == 0:
             raise RuntimeError("No data found from which to compute convex hull")
@@ -183,14 +184,14 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
 
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
-            posBox = afwGeom.Box2D(tractInfo.getBBox())
+            posBox = geom.Box2D(tractInfo.getBBox())
             pixelPosList = (
                 posBox.getMin(),
-                afwGeom.Point2D(posBox.getMaxX(), posBox.getMinY()),
+                geom.Point2D(posBox.getMaxX(), posBox.getMinY()),
                 posBox.getMax(),
-                afwGeom.Point2D(posBox.getMinX(), posBox.getMaxY()),
+                geom.Point2D(posBox.getMinX(), posBox.getMaxY()),
             )
-            skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
+            skyPosList = [wcs.pixelToSky(pos).getPosition(geom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
             self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" %
                           (tractInfo.getId(), ", ".join(posStrList),

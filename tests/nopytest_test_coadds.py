@@ -57,7 +57,7 @@ import numpy as np
 
 import lsst.utils.tests
 import lsst.afw.math
-import lsst.afw.geom
+import lsst.geom
 import lsst.afw.image
 import lsst.afw.table.io
 import lsst.afw.table.testUtils
@@ -380,7 +380,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 coaddExp = patchRef.get(self.mocksTask.config.coaddName + dataProduct, immediate=True)
                 coaddWcs = coaddExp.getWcs()
                 coaddPsf = coaddExp.getPsf()
-                coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox())
+                coaddBBox = lsst.geom.Box2D(coaddExp.getBBox())
                 for objectId in pureObjectIds:
                     truthRecord = truthCatalog.find(objectId)
                     position = coaddWcs.skyToPixel(truthRecord.getCoord())
@@ -420,7 +420,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 coaddExp = patchRef.get(self.mocksTask.config.coaddName + dataProduct, immediate=True)
                 coaddWcs = coaddExp.getWcs()
                 coaddTransmissionCurve = coaddExp.getInfo().getTransmissionCurve()
-                coaddBBox = lsst.afw.geom.Box2D(coaddExp.getBBox())
+                coaddBBox = lsst.geom.Box2D(coaddExp.getBBox())
                 inputs = coaddExp.getInfo().getCoaddInputs().ccds
                 for truthRecord in truthCatalog:
                     coaddPosition = coaddWcs.skyToPixel(truthRecord.getCoord())

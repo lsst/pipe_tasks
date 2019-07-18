@@ -48,7 +48,7 @@ import unittest
 
 import lsst.utils
 import lsst.afw.table as afwTable
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.daf.persistence as dafPersist
 import lsst.meas.base as measBase
 import lsst.utils.tests
@@ -157,7 +157,7 @@ class TransformTestCase(lsst.utils.tests.TestCase):
         # containing a source at an arbitrary position.
         inCat = afwTable.SourceCatalog(schema)
         r = inCat.addNew()
-        r.setCoord(afwGeom.SpherePoint(0.0, 11.19, afwGeom.degrees))
+        r.setCoord(geom.SpherePoint(0.0, 11.19, geom.degrees))
         r[PLUGIN_NAME] = 1.0
 
         wcs, photoCalib = Placeholder(), Placeholder()

@@ -23,7 +23,7 @@ import numpy
 
 import lsst.pex.config
 import lsst.afw.table
-import lsst.afw.geom
+import lsst.geom
 import lsst.afw.image
 import lsst.pipe.base
 
@@ -96,7 +96,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         bbox = tractInfo.getBBox()
         for y in numpy.arange(bbox.getMinY() + 0.5 * spacing, bbox.getMaxY(), spacing):
             for x in numpy.arange(bbox.getMinX() + 0.5 * spacing, bbox.getMaxX(), spacing):
-                yield wcs.pixelToSky(x, y), lsst.afw.geom.Point2D(x, y),
+                yield wcs.pixelToSky(x, y), lsst.geom.Point2D(x, y),
 
     def defineObject(self, record):
         """Fill in additional fields in a truth catalog record (id and coord will already have
@@ -136,7 +136,7 @@ class MockObjectTask(lsst.pipe.base.Task):
         else:
             result = 2
             if buffer != 0:
-                bufferedBBox = lsst.afw.geom.Box2I(psfBBox)
+                bufferedBBox = lsst.geom.Box2I(psfBBox)
                 bufferedBBox.grow(buffer)
                 bufferedOverlap = exposure.getBBox()
                 bufferedOverlap.clip(bufferedBBox)

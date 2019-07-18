@@ -25,7 +25,7 @@ import unittest
 
 from lsst.utils import getPackageDir
 import lsst.utils.tests
-from lsst.afw.geom import Extent2I, Box2D
+from lsst.geom import Extent2I, Box2D
 from lsst.daf.persistence import Butler
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, DiscreteSkyMap
 

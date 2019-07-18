@@ -24,6 +24,7 @@ import unittest
 import numpy as np
 
 import lsst.utils.tests
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.geom as afwGeom
@@ -50,7 +51,7 @@ class RegisterTestCase(unittest.TestCase):
         self.border = 10  # Must be larger than dx,dy
         self.width = 1000
         self.height = 1000
-        self.pixelScale = 0.1 * afwGeom.arcseconds  # So dx,dy is not larger than RegisterConfig.matchRadius
+        self.pixelScale = 0.1 * geom.arcseconds  # So dx,dy is not larger than RegisterConfig.matchRadius
 
     def tearDown(self):
         del self.pixelScale
@@ -83,8 +84,8 @@ class RegisterTestCase(unittest.TestCase):
         inputArray[(yInput).astype(int), (xInput).astype(int)] = 1
 
         # Create WCSes
-        centerCoord = afwGeom.SpherePoint(0, 0, afwGeom.degrees)
-        centerPixel = afwGeom.Point2D(self.width/2, self.height/2)
+        centerCoord = geom.SpherePoint(0, 0, geom.degrees)
+        centerPixel = geom.Point2D(self.width/2, self.height/2)
         cdMatrix = afwGeom.makeCdMatrix(scale=self.pixelScale)
         wcs = afwGeom.makeSkyWcs(crpix=centerPixel, crval=centerCoord, cdMatrix=cdMatrix)
 
@@ -110,8 +111,8 @@ class RegisterTestCase(unittest.TestCase):
             tRecord = templateSources.addNew()
             iRecord = inputSources.addNew()
 
-            tPoint = afwGeom.Point2D(float(xt), float(yt))
-            iPoint = afwGeom.Point2D(float(xi), float(yi))
+            tPoint = geom.Point2D(float(xt), float(yt))
+            iPoint = geom.Point2D(float(xi), float(yi))
 
             tRecord.set(centroidKey, tPoint)
             iRecord.set(centroidKey, iPoint)
@@ -184,7 +185,7 @@ class RegisterTestCase(unittest.TestCase):
         coordKey = inData.inputSources[badIndex].getTable().getCoordKey()
         centroidKey = inData.inputSources[badIndex].getTable().getCentroidKey()
         x, y = float(inData.xInput[badIndex] + 0.01), float(inData.yInput[badIndex] - 0.01)
-        point = afwGeom.Point2D(x, y)
+        point = geom.Point2D(x, y)
         inData.inputSources[badIndex].set(centroidKey, point)
         inData.inputSources[badIndex].set(coordKey, inData.wcs.pixelToSky(point))
 

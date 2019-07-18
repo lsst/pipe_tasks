@@ -49,6 +49,7 @@ import lsst.pex.exceptions
 from lsst.daf.base import DateTime
 import lsst.afw.cameraGeom.testUtils
 from lsst.afw.coord import Observatory, Weather
+import lsst.geom
 import lsst.afw.geom
 import lsst.afw.image
 from lsst.afw.detection import GaussianPsf
@@ -85,7 +86,7 @@ class MockExposure:
         In particular, exposure info is set as a record in a table, so it can be recorded in a coadd
         """
         inputRecorder = self.coaddInputRecorder.makeCoaddTempExpRecorder(universalId, self.numExp)
-        bbox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(100, 100), lsst.afw.geom.Extent2I(10, 10))
+        bbox = lsst.geom.Box2I(lsst.geom.Point2I(100, 100), lsst.geom.Extent2I(10, 10))
 
         detectorName = "detector {}".format(universalId)
         detector = lsst.afw.cameraGeom.testUtils.DetectorWrapper(name=detectorName, id=universalId).detector
@@ -94,18 +95,18 @@ class MockExposure:
         exp.setDetector(detector)
 
         expInfo = exp.getInfo()
-        scale = 5.1e-5*lsst.afw.geom.degrees
+        scale = 5.1e-5*lsst.geom.degrees
         cdMatrix = lsst.afw.geom.makeCdMatrix(scale=scale)
         wcs = lsst.afw.geom.makeSkyWcs(
-            crpix=lsst.afw.geom.Point2D(5, 5),
-            crval=lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
+            crpix=lsst.geom.Point2D(5, 5),
+            crval=lsst.geom.SpherePoint(10, 45, lsst.geom.degrees),
             cdMatrix=cdMatrix,
         )
         expInfo.setWcs(wcs)
         expInfo.setPsf(GaussianPsf(5, 5, 2.5))
         expInfo.setPhotoCalib(lsst.afw.image.makePhotoCalibFromCalibZeroPoint(1.1e12, 2.2e10))
         expInfo.setApCorrMap(self.makeApCorrMap())
-        expInfo.setValidPolygon(lsst.afw.geom.Polygon(lsst.afw.geom.Box2D(bbox).getCorners()))
+        expInfo.setValidPolygon(lsst.afw.geom.Polygon(lsst.geom.Box2D(bbox).getCorners()))
         if self.version > 1:
             expInfo.setVisitInfo(self.makeVisitInfo())
 
@@ -116,11 +117,11 @@ class MockExposure:
 
     @staticmethod
     def makeWcs():
-        scale = 5.1e-5*lsst.afw.geom.degrees
+        scale = 5.1e-5*lsst.geom.degrees
         cdMatrix = lsst.afw.geom.makeCdMatrix(scale=scale)
         return lsst.afw.geom.makeSkyWcs(
-            crpix=lsst.afw.geom.Point2D(5, 5),
-            crval=lsst.afw.geom.SpherePoint(10, 45, lsst.afw.geom.degrees),
+            crpix=lsst.geom.Point2D(5, 5),
+            crval=lsst.geom.SpherePoint(10, 45, lsst.geom.degrees),
             cdMatrix=cdMatrix,
         )
 
@@ -132,20 +133,20 @@ class MockExposure:
             11.02,
             DateTime(65321.1, DateTime.MJD, DateTime.TAI),
             12345.1,
-            45.1*lsst.afw.geom.degrees,
-            lsst.afw.geom.SpherePoint(23.1, 73.2, lsst.afw.geom.degrees),
-            lsst.afw.geom.SpherePoint(134.5, 33.3, lsst.afw.geom.degrees),
+            45.1*lsst.geom.degrees,
+            lsst.geom.SpherePoint(23.1, 73.2, lsst.geom.degrees),
+            lsst.geom.SpherePoint(134.5, 33.3, lsst.geom.degrees),
             1.73,
-            73.2*lsst.afw.geom.degrees,
+            73.2*lsst.geom.degrees,
             lsst.afw.image.RotType.SKY,
-            Observatory(11.1*lsst.afw.geom.degrees, 22.2*lsst.afw.geom.degrees, 0.333),
+            Observatory(11.1*lsst.geom.degrees, 22.2*lsst.geom.degrees, 0.333),
             Weather(1.1, 2.2, 34.5),
         )
 
     @staticmethod
     def makeApCorrMap():
         """Make a trivial ApCorrMap with three elements"""
-        bbox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(-5, -5), lsst.afw.geom.Point2I(5, 5))
+        bbox = lsst.geom.Box2I(lsst.geom.Point2I(-5, -5), lsst.geom.Point2I(5, 5))
         apCorrMap = lsst.afw.image.ApCorrMap()
         for name in ("a", "b", "c"):
             apCorrMap.set(name, ChebyshevBoundedField(bbox, np.zeros((3, 3), dtype=float)))

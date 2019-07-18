@@ -24,6 +24,7 @@ import numpy
 import warnings
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
+import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -789,7 +790,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
         coaddMaskedImage = coaddExposure.getMaskedImage()
         subregionSizeArr = self.config.subregionSize
-        subregionSize = afwGeom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
+        subregionSize = geom.Extent2I(subregionSizeArr[0], subregionSizeArr[1])
         # if nImage is requested, create a zero one which can be passed to assembleSubregion
         if self.config.doNImage:
             nImage = afwImage.ImageU(skyInfo.bbox)
@@ -829,8 +830,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
         tempExpList = [tempExpRef.get(tempExpName + "_sub",
-                                      bbox=afwGeom.Box2I(coaddExposure.getBBox().getMin(),
-                                                         afwGeom.Extent2I(1, 1)), immediate=True)
+                                      bbox=geom.Box2I(coaddExposure.getBBox().getMin(),
+                                                      geom.Extent2I(1, 1)), immediate=True)
                        for tempExpRef in tempExpRefList]
         numCcds = sum(len(tempExp.getInfo().getCoaddInputs().ccds) for tempExp in tempExpList)
 
@@ -882,7 +883,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         ----------
         coaddExposure : `lsst.afw.image.Exposure`
             The target exposure for the coadd.
-        bbox : `lsst.afw.geom.Box`
+        bbox : `lsst.geom.Box`
             Sub-region to coadd.
         tempExpRefList : `list`
             List of data reference to tempExp.
@@ -1031,7 +1032,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             if polyOrig:
                 validPolygon = polyOrig.intersectionSingle(validPolyBBox)
             else:
-                validPolygon = afwGeom.polygon.Polygon(afwGeom.Box2D(validPolyBBox))
+                validPolygon = afwGeom.polygon.Polygon(geom.Box2D(validPolyBBox))
             ccd.setValidPolygon(validPolygon)
 
     def readBrightObjectMasks(self, dataRef):
@@ -1078,17 +1079,17 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         plateScale = wcs.getPixelScale().asArcseconds()
 
         for rec in brightObjectMasks:
-            center = afwGeom.PointI(wcs.skyToPixel(rec.getCoord()))
+            center = geom.PointI(wcs.skyToPixel(rec.getCoord()))
             if rec["type"] == "box":
                 assert rec["angle"] == 0.0, ("Angle != 0 for mask object %s" % rec["id"])
                 width = rec["width"].asArcseconds()/plateScale    # convert to pixels
                 height = rec["height"].asArcseconds()/plateScale  # convert to pixels
 
-                halfSize = afwGeom.ExtentI(0.5*width, 0.5*height)
-                bbox = afwGeom.Box2I(center - halfSize, center + halfSize)
+                halfSize = geom.ExtentI(0.5*width, 0.5*height)
+                bbox = geom.Box2I(center - halfSize, center + halfSize)
 
-                bbox = afwGeom.BoxI(afwGeom.PointI(int(center[0] - 0.5*width), int(center[1] - 0.5*height)),
-                                    afwGeom.PointI(int(center[0] + 0.5*width), int(center[1] + 0.5*height)))
+                bbox = geom.BoxI(geom.PointI(int(center[0] - 0.5*width), int(center[1] - 0.5*height)),
+                                 geom.PointI(int(center[0] + 0.5*width), int(center[1] + 0.5*height)))
                 spans = afwGeom.SpanSet(bbox)
             elif rec["type"] == "circle":
                 radius = int(rec["radius"].asArcseconds()/plateScale)   # convert to pixels
@@ -1138,14 +1139,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         Parameters
         ----------
-        bbox : `lsst.afw.geom.Box2I`
+        bbox : `lsst.geom.Box2I`
             Bounding box over which to iterate.
-        subregionSize: `lsst.afw.geom.Extent2I`
+        subregionSize: `lsst.geom.Extent2I`
             Size of sub-bboxes.
 
         Yields
         ------
-        subBBox : `lsst.afw.geom.Box2I`
+        subBBox : `lsst.geom.Box2I`
             Next sub-bounding box of size ``subregionSize`` or smaller; each ``subBBox``
             is contained within ``bbox``, so it may be smaller than ``subregionSize`` at
             the edges of ``bbox``, but it will never be empty.
@@ -1157,7 +1158,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         for rowShift in range(0, bbox.getHeight(), subregionSize[1]):
             for colShift in range(0, bbox.getWidth(), subregionSize[0]):
-                subBBox = afwGeom.Box2I(bbox.getMin() + afwGeom.Extent2I(colShift, rowShift), subregionSize)
+                subBBox = geom.Box2I(bbox.getMin() + geom.Extent2I(colShift, rowShift), subregionSize)
                 subBBox.clip(bbox)
                 if subBBox.isEmpty():
                     raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, "
@@ -1683,7 +1684,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
             Mask value of clipped pixels.
         maskDetValue
             Mask value of detected pixels.
-        coaddBBox : `lsst.afw.geom.Box`
+        coaddBBox : `lsst.geom.Box`
             BBox of the coadd and warps.
 
         Returns

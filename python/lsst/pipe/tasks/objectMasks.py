@@ -22,7 +22,7 @@
 import re
 import os.path
 import lsst.daf.base as dafBase
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.table as afwTable
 from lsst.daf.butler.formatters.fileFormatter import FileFormatter
 from lsst.log import Log
@@ -122,7 +122,7 @@ class ObjectMaskCatalog:
 
         brightObjects = ObjectMaskCatalog()
         checkedWcsIsFk5 = False
-        NaN = float("NaN")*afwGeom.degrees
+        NaN = float("NaN")*geom.degrees
 
         nFormatError = 0                      # number of format errors seen
         with open(fileName) as fd:
@@ -192,7 +192,7 @@ class ObjectMaskCatalog:
                     radius = NaN
                     width = NaN
                     height = NaN
-                    angle = 0.0*afwGeom.degrees
+                    angle = 0.0*geom.degrees
 
                     if _type == "box":
                         width = convertToAngle(param1, param1Unit, "width", fileName, lineNo)
@@ -217,7 +217,7 @@ class ObjectMaskCatalog:
                     rec["type"] = _type
                     rec["id"] = _id
                     rec["mag"] = mag
-                    rec.setCoord(afwGeom.SpherePoint(ra, dec))
+                    rec.setCoord(geom.SpherePoint(ra, dec))
 
                     rec["angle"] = angle
                     rec["height"] = height
@@ -240,7 +240,7 @@ class ObjectMaskCatalog:
 
 
 def convertToAngle(var, varUnit, what, fileName, lineNo):
-    """Given a variable and its units, return an afwGeom.Angle
+    """Given a variable and its units, return an geom.Angle
 
     what, fileName, and lineNo are used to generate helpful error messages
     """
@@ -256,7 +256,7 @@ def convertToAngle(var, varUnit, what, fileName, lineNo):
         raise RuntimeError("unsupported unit \"%s\" for %s at %s:%d" %
                            (varUnit, what, fileName, lineNo))
 
-    return var*afwGeom.degrees
+    return var*geom.degrees
 
 
 class RegionFileFormatter(FileFormatter):

@@ -23,7 +23,7 @@
 import numpy
 from lsst.pex.config import Config, Field, ListField
 from lsst.pipe.base import Task
-from lsst.afw.geom import Box2D
+from lsst.geom import Box2D
 
 
 class SetPrimaryFlagsConfig(Config):

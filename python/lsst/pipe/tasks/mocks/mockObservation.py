@@ -22,6 +22,7 @@
 import numpy as np
 
 import lsst.pex.config
+import lsst.geom
 import lsst.afw.table
 import lsst.afw.geom
 from lsst.afw.cameraGeom import PIXELS, FOCAL_PLANE
@@ -146,35 +147,35 @@ class MockObservationTask(lsst.pipe.base.Task):
         @param[in] n: number of pointings
         @param[in] tractInfo: skymap tract (a lsst.skymap.TractInfo)
         @return a Python iterable over (coord, angle) pairs:
-        - coord is an ICRS object position (an lsst.afw.geom.SpherePoint)
-        - angle is a position angle (???) (an lsst.afw.geom.Angle)
+        - coord is an ICRS object position (an lsst.geom.SpherePoint)
+        - angle is a position angle (???) (an lsst.geom.Angle)
 
         The default implementation returns an iterator (i.e. the function is a "generator"),
         but derived-class overrides may return any iterable.
         """
         wcs = tractInfo.getWcs()
-        bbox = lsst.afw.geom.Box2D(tractInfo.getBBox())
-        bbox.grow(lsst.afw.geom.Extent2D(-0.1 * bbox.getWidth(), -0.1 * bbox.getHeight()))
+        bbox = lsst.geom.Box2D(tractInfo.getBBox())
+        bbox.grow(lsst.geom.Extent2D(-0.1 * bbox.getWidth(), -0.1 * bbox.getHeight()))
         for i in range(n):
             x = self.rng.rand() * bbox.getWidth() + bbox.getMinX()
             y = self.rng.rand() * bbox.getHeight() + bbox.getMinY()
-            pa = 0.0 * lsst.afw.geom.radians
+            pa = 0.0 * lsst.geom.radians
             if self.config.doRotate:
-                pa = self.rng.rand() * 2.0 * np.pi * lsst.afw.geom.radians
+                pa = self.rng.rand() * 2.0 * np.pi * lsst.geom.radians
             yield wcs.pixelToSky(x, y), pa
 
     def buildWcs(self, position, pa, detector):
         """Build a simple TAN Wcs with no distortion and exactly-aligned CCDs.
 
-        @param[in] position: ICRS object position on sky (on lsst.afw.geom.SpherePoint)
-        @param[in] pa: position angle (an lsst.afw.geom.Angle)
+        @param[in] position: ICRS object position on sky (on lsst.geom.SpherePoint)
+        @param[in] pa: position angle (an lsst.geom.Angle)
         @param[in] detector: detector information (an lsst.afw.cameraGeom.Detector)
         """
         crval = position
-        pixelScale = (self.config.pixelScale * lsst.afw.geom.arcseconds).asDegrees()
-        cd = (lsst.afw.geom.LinearTransform.makeScaling(pixelScale) *
-              lsst.afw.geom.LinearTransform.makeRotation(pa))
-        crpix = detector.transform(lsst.afw.geom.Point2D(0, 0), FOCAL_PLANE, PIXELS)
+        pixelScale = (self.config.pixelScale * lsst.geom.arcseconds).asDegrees()
+        cd = (lsst.geom.LinearTransform.makeScaling(pixelScale) *
+              lsst.geom.LinearTransform.makeRotation(pa))
+        crpix = detector.transform(lsst.geom.Point2D(0, 0), FOCAL_PLANE, PIXELS)
         wcs = lsst.afw.geom.makeSkyWcs(crpix=crpix, crval=crval, cdMatrix=cd.getMatrix())
         return wcs
 

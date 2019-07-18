@@ -260,7 +260,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                     The catalog of fake sources to add to the exposure
         exposure : `lsst.afw.image.exposure.exposure.ExposureF`
                     The exposure to add the fake sources to
-        wcs : `lsst.afw.geom.skyWcs.skyWcs.SkyWcs`
+        wcs : `lsst.afw.geom.SkyWcs`
                     WCS to use to add fake sources
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
                     Photometric calibration to be used to calibrate the fake sources

@@ -22,7 +22,7 @@
 import sys
 import traceback
 
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
@@ -117,14 +117,14 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
         self.log.info("sky map has %s tracts" % (len(skyMap),))
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
-            posBox = afwGeom.Box2D(tractInfo.getBBox())
+            posBox = geom.Box2D(tractInfo.getBBox())
             pixelPosList = (
                 posBox.getMin(),
-                afwGeom.Point2D(posBox.getMaxX(), posBox.getMinY()),
+                geom.Point2D(posBox.getMaxX(), posBox.getMinY()),
                 posBox.getMax(),
-                afwGeom.Point2D(posBox.getMinX(), posBox.getMaxY()),
+                geom.Point2D(posBox.getMinX(), posBox.getMaxY()),
             )
-            skyPosList = [wcs.pixelToSky(pos).getPosition(afwGeom.degrees) for pos in pixelPosList]
+            skyPosList = [wcs.pixelToSky(pos).getPosition(geom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
             self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" %
                           (tractInfo.getId(), ", ".join(posStrList),

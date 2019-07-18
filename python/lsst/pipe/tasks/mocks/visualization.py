@@ -21,7 +21,7 @@
 
 from matplotlib import pyplot
 
-import lsst.afw.geom
+import lsst.geom
 
 
 def plotObservations(catalog, wcs):
@@ -29,7 +29,7 @@ def plotObservations(catalog, wcs):
     using matplotlib, in the coordinates defined by the given Wcs (usually a skymap Wcs).
     """
     for record in catalog:
-        box = lsst.afw.geom.Box2D(record.getBBox())
+        box = lsst.geom.Box2D(record.getBBox())
         x = []
         y = []
         iWcs = record.getWcs()

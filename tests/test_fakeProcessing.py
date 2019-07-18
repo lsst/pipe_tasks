@@ -28,7 +28,7 @@ import unittest
 from collections import namedtuple
 
 import lsst.utils.tests
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 
 from lsst.pipe.tasks.processCcd import ProcessCcdTask
 from lsst.pipe.tasks.fakes import BaseFakeSourcesConfig, BaseFakeSourcesTask
@@ -93,7 +93,7 @@ class FakeSourcesTestTask(BaseFakeSourcesTask):
     # make stars at a given position with a given intensity
     @staticmethod
     def makeFakeStar(position, intensity, psf):
-        psfImage = psf.computeImage(afwGeom.Point2D(position.x, position.y)).getArray()
+        psfImage = psf.computeImage(geom.Point2D(position.x, position.y)).getArray()
         psfImage *= intensity
         noise = np.random.normal(0, np.sqrt(abs(psfImage)))
         return psfImage + noise, noise

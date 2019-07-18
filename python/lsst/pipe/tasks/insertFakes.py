@@ -25,7 +25,7 @@ Insert fakes into deepCoadds
 import galsim
 from astropy.table import Table
 
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
@@ -264,7 +264,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     The catalog of fake sources to be input
         image : `lsst.afw.image.exposure.exposure.ExposureF`
                     The image into which the fake sources should be added
-        wcs : `lsst.afw.geom.skyWcs.skyWcs.SkyWcs`
+        wcs : `lsst.afw.geom.SkyWcs`
                     WCS to use to add fake sources
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
                     Photometric calibration to be used to calibrate the fake sources
@@ -320,7 +320,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
                     The catalog of fake sources to be input
-        wcs : `lsst.afw.geom.skyWcs.skyWcs.SkyWcs`
+        wcs : `lsst.afw.geom.SkyWcs`
                     WCS to use to add fake sources
 
         Returns
@@ -353,7 +353,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     The catalog of fake sources to be input
         image : `lsst.afw.image.exposure.exposure.ExposureF`
                     The image into which the fake sources should be added
-        wcs : `lsst.afw.geom.skyWcs.skyWcs.SkyWcs`
+        wcs : `lsst.afw.geom.SkyWcs`
                     WCS to use to add fake sources
 
         Returns
@@ -392,7 +392,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         -------
         galImages : `list`
                     A list of tuples of `lsst.afw.image.exposure.exposure.ExposureF` and
-                    `lsst.afw.geom.Point2D` of their locations.
+                    `lsst.geom.Point2D` of their locations.
 
         Notes
         -----
@@ -411,7 +411,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         self.log.info("Making %d fake galaxy images" % len(fakeCat))
 
         for (index, row) in fakeCat.iterrows():
-            xy = afwGeom.Point2D(row["x"], row["y"])
+            xy = geom.Point2D(row["x"], row["y"])
 
             try:
                 # Due to the different radii used for calibration and measurement a correction factor is
@@ -470,8 +470,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         Returns
         -------
         starImages : `list`
-                    A list of tuples of `lsst.afw.image.image.image.ImageF` of fake stars and
-                    `lsst.afw.geom.Point2D` of their locations.
+                    A list of tuples of `lsst.afw.image.ImageF` of fake stars and
+                    `lsst.geom.Point2D` of their locations.
         """
 
         starImages = []
@@ -479,7 +479,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         self.log.info("Making %d fake star images" % len(fakeCat))
 
         for (index, row) in fakeCat.iterrows():
-            xy = afwGeom.Point2D(row["x"], row["y"])
+            xy = geom.Point2D(row["x"], row["y"])
 
             try:
                 # Due to the different radii used for calibration and measurement a correction factor is
@@ -531,7 +531,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         image : `lsst.afw.image.exposure.exposure.ExposureF`
                     The image into which the fake sources should be added
         fakeImages : `list`
-                    A list of tuples of `lsst.afw.image.image.image.ImageF` and `lsst.afw.geom.Point2D,
+                    A list of tuples of `lsst.afw.image.ImageF` and `lsst.geom.Point2D,
                     the images and the locations they are to be inserted at.
         sourceType : `str`
                     The type (star/galaxy) of fake sources input

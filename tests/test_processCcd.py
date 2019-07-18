@@ -31,7 +31,7 @@ import unittest
 import numpy as np
 
 import lsst.utils
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.utils.tests
 from lsst.ip.isr import IsrTask  # we assume obs_test uses base IsrTask here; may change in future.
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
@@ -103,7 +103,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
             for i, exposure in enumerate((butler.get("calexp", dataId), result.exposure)):
                 self.assertEqual(exposure.getBBox(),
-                                 afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(1018, 2000)))
+                                 geom.Box2I(geom.Point2I(0, 0), geom.Extent2I(1018, 2000)))
                 maskedImage = exposure.getMaskedImage()
                 maskArr = maskedImage.getMask().getArray()
                 numGoodPix = np.sum(maskArr == 0)
