@@ -19,8 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from lsst.pipe.base import (Struct, PipelineTask, InitInputDatasetField, InitOutputDatasetField,
-                            InputDatasetField, OutputDatasetField, PipelineTaskConfig)
+from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
+import lsst.pipe.base.connectionTypes as ct
 
 from lsst.pex.config import ConfigurableField
 from lsst.meas.deblender import SourceDeblendTask, MultibandDeblendTask
@@ -32,53 +32,37 @@ __all__ = ("DeblendCoaddSourcesSingleConfig", "DeblendCoaddSourcesSingleTask",
            "DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask")
 
 
-class DeblendCoaddSourcesBaseConfig(PipelineTaskConfig):
-    inputSchema = InitInputDatasetField(
-        doc="Input schema to use in the deblend catalog",
-        nameTemplate="{inputCoaddName}Coadd_mergeDet_schema",
+deblendBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep"}
+
+
+class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
+                                          dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                          defaultTemplates=deblendBaseTemplates):
+    inputSchema = ct.InitInput(
+        name="{inputCoaddName}Coadd_mergeDet_schema",
         storageClass="SourceCatalog"
     )
-    peakSchema = InitInputDatasetField(
-        doc="Schema of the footprint peak catalogs",
-        nameTemplate="{inputCoaddName}Coadd_peak_schema",
+    peakScheam = ct.InitInput(
+        name="{inputCoaddName}Coadd_peak_schema",
         storageClass="PeakCatalog"
     )
-    mergedDetections = InputDatasetField(
-        doc="Detection catalog merged across bands",
+    mergedDetections = ct.Input(
         nameTemplate="{inputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
-        scalar=True,
         dimensions=("tract", "patch", "skymap")
     )
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
-        self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep"})
-
-
-class DeblendCoaddSourcesSingleConfig(DeblendCoaddSourcesBaseConfig):
-    singleBandDeblend = ConfigurableField(
-        target=SourceDeblendTask,
-        doc="Task to deblend an image in one band"
-    )
-    coadd = InputDatasetField(
-        doc="Exposure on which to run deblending",
-        nameTemplate="{inputCoaddName}Coadd_calexp",
+    coadd = ct.Input(
+        name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        scalar=True,
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    measureCatalog = OutputDatasetField(
-        doc="The output measurement catalog of deblended sources",
-        nameTemplate="{outputCoaddName}Coadd_deblendedFlux",
-        scalar=True,
+    measureCatalog = ct.Output(
+        name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    outputSchema = InitOutputDatasetField(
-        doc="Output of the schema used in deblending task",
-        nameTemplate="{outputCoaddName}Coadd_deblendedFlux_schema",
+    outputSchema = ct.InitOutput(
+        name="{outputCoaddName}Coadd_deblendedFlux_schema",
         storageClass="SourceCatalog"
     )
 
@@ -87,39 +71,63 @@ class DeblendCoaddSourcesSingleConfig(DeblendCoaddSourcesBaseConfig):
         self.singleBandDeblend.propagateAllPeaks = True
 
 
-class DeblendCoaddSourcesMultiConfig(DeblendCoaddSourcesBaseConfig):
-    multibandDeblend = ConfigurableField(
-        target=MultibandDeblendTask,
-        doc="Task to deblend an images in multiple bands"
+class DeblendCoaddSourcesSingleConfig(PipelineTaskConfig,
+                                      pipelineConnections=DeblendCoaddSourceSingleConnections):
+    singleBandDeblend = ConfigurableField(
+        target=SourceDeblendTask,
+        doc="Task to deblend an image in one band"
     )
-    coadds = InputDatasetField(
-        doc="Exposure on which to run deblending",
+
+
+class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
+                                          dimensions=("tract", "patch", "skymap"),
+                                          defaultTemplates=deblendBaseTemplates):
+    inputSchema = ct.InitInput(
+        name="{inputCoaddName}Coadd_mergeDet_schema",
+        storageClass="SourceCatalog"
+    )
+    peakScheam = ct.InitInput(
+        name="{inputCoaddName}Coadd_peak_schema",
+        storageClass="PeakCatalog"
+    )
+    mergedDetections = ct.Input(
+        nameTemplate="{inputCoaddName}Coadd_mergeDet",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap")
+    )
+    coadds = ct.Input(
         nameTemplate="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
+        multiple=True,
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    outputSchema = InitOutputDatasetField(
-        doc="Output of the schema used in deblending task",
+    outputSchema = ct.InitOutput(
         nameTemplate="{outputCoaddName}Coadd_deblendedModel_schema",
         storageClass="SourceCatalog"
     )
-    fluxCatalogs = OutputDatasetField(
-        doc="Flux catalogs produced by multiband deblending, not written "
-            "if conserve flux is turned off",
+    fluxCatalogs = ct.Output(
         nameTemplate="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    templateCatalogs = OutputDatasetField(
-        doc="Template catalogs produced by multiband deblending",
+    templateCatalogs = ct.Output(
         nameTemplate="{outputCoaddName}Coadd_deblendedModel",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
 
-    def setDefaults(self):
-        super().setDefaults()
-        self.quantum.dimensions = ("tract", "patch", "skymap")
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if not config.multibandDeblend.conserveFlux:
+            self.outputs -= set(("fluxCatalogs",))
+
+
+class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
+                                     pipelineConnections=DeblendCoaddSourcesMultiConnections):
+    multibandDeblend = ConfigurableField(
+        target=MultibandDeblendTask,
+        doc="Task to deblend an images in multiple bands"
+    )
 
 
 class DeblendCoaddSourcesBaseTask(PipelineTask):
@@ -130,15 +138,15 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
         self.schemaMapper = afwTable.SchemaMapper(schema)
         self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
+        self.outputSchema = afwTable.SourceCatalog(self.schema)
 
-    def getInitOutputDatasets(self):
-        return {"outputSchema": afwTable.SourceCatalog(self.schema)}
-
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        packedId, maxBits = butler.registry.packDataId("tract_patch", inputDataIds["mergedDetections"],
-                                                       returnMaxBits=True)
-        inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
-        return self.run(**inputData)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        packedId, maxBits = butlerQC.registry.packDataId("tract_patch", inputRefs.mergedDetections.dataId,
+                                                         returnMaxBits=True)
+        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def _makeSourceCatalog(self, mergedDetections, idFactory):
         table = afwTable.SourceTable.make(self.schema, idFactory)
@@ -169,17 +177,14 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         super().__init__(initInputs=initInputs, **kwargs)
         self.makeSubtask("multibandDeblend", schema=self.schema, peakSchema=self.peakSchema)
 
-    @classmethod
-    def getOutputDatasetTypes(cls, config):
-        outputTypeDict = super().getOutputDatasetTypes(config)
-        # If Conserve flux is set to false, remove that catalog as a possible output
-        if not config.multibandDeblend.conserveFlux:
-            outputTypeDict.pop("fluxCatalogs", None)
-        return outputTypeDict
-
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        inputData["filters"] = [dId["abstract_filter"] for dId in inputDataIds["coadds"]]
-        return super().adaptArgsAndRun(inputData, inputDataIds, outputDataIds, butler)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        packedId, maxBits = butlerQC.registry.packDataId("tract_patch", inputRefs.mergedDetections.dataId,
+                                                         returnMaxBits=True)
+        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        inputs["filters"] = [dRef.dataId["abstract_filter"] for dRef in inputRefs.coadds]
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def run(self, coadds, filters, mergedDetections, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
