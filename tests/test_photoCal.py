@@ -27,7 +27,7 @@ import astropy.units as u
 
 from lsst.daf.persistence import Butler
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.utils.tests
@@ -69,7 +69,7 @@ class PhotoCalTest(unittest.TestCase):
 
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
-        self.bbox = afwGeom.Box2I(afwGeom.Point2I(0, 0), afwGeom.Extent2I(2048, 4612))
+        self.bbox = geom.Box2I(geom.Point2I(0, 0), geom.Extent2I(2048, 4612))
         smallExposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
         self.exposure = afwImage.ExposureF(self.bbox)
         self.exposure.setWcs(smallExposure.getWcs())

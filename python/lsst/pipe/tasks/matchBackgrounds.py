@@ -21,7 +21,7 @@
 import numpy
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsstDebug
@@ -460,7 +460,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
 
         if lsstDebug.Info(__name__).savefig:
-            bbox = afwGeom.Box2D(refExposure.getMaskedImage().getBBox())
+            bbox = geom.Box2D(refExposure.getMaskedImage().getBBox())
             try:
                 self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
             except Exception as e:
@@ -500,7 +500,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         import matplotlib.pyplot as plt
         import matplotlib.colors
         from mpl_toolkits.axes_grid1 import ImageGrid
-        zeroIm = afwImage.MaskedImageF(afwGeom.Box2I(bbox))
+        zeroIm = afwImage.MaskedImageF(geom.Box2I(bbox))
         zeroIm += modelImage
         x0, y0 = zeroIm.getXY0()
         dx, dy = zeroIm.getDimensions()
@@ -554,8 +554,8 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         for ymin, ymax in zip(yedges[0:-1], yedges[1:]):
             for xmin, xmax in zip(xedges[0:-1], xedges[1:]):
-                subBBox = afwGeom.Box2I(afwGeom.PointI(int(x0 + xmin), int(y0 + ymin)),
-                                        afwGeom.PointI(int(x0 + xmax-1), int(y0 + ymax-1)))
+                subBBox = geom.Box2I(geom.PointI(int(x0 + xmin), int(y0 + ymin)),
+                                     geom.PointI(int(x0 + xmax-1), int(y0 + ymax-1)))
                 subIm = afwImage.MaskedImageF(maskedImage, subBBox, afwImage.PARENT, False)
                 stats = afwMath.makeStatistics(subIm,
                                                afwMath.MEAN | afwMath.MEANCLIP | afwMath.MEDIAN |

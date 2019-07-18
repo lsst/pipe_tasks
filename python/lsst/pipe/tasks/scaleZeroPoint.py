@@ -20,7 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -90,7 +90,7 @@ class SpatialImageScaler(ImageScaler):
     def getInterpImage(self, bbox):
         """Return an image containing the scale correction with same bounding box as supplied.
 
-        @param[in] bbox: integer bounding box for image (afwGeom.Box2I)
+        @param[in] bbox: integer bounding box for image (geom.Box2I)
         """
         npoints = len(self._xList)
 
@@ -259,12 +259,12 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
             # find center of field in tract coordinates
             if not fluxMagInfo.coordList:
                 raise RuntimeError("no x,y data for fluxMagInfo")
-            ctr = afwGeom.Extent2D()
+            ctr = geom.Extent2D()
             for coord in fluxMagInfo.coordList:
                 # accumulate x, y
-                ctr += afwGeom.Extent2D(wcs.skyToPixel(coord))
+                ctr += geom.Extent2D(wcs.skyToPixel(coord))
             # and find average x, y as the center of the chip
-            ctr = afwGeom.Point2D(ctr / len(fluxMagInfo.coordList))
+            ctr = geom.Point2D(ctr / len(fluxMagInfo.coordList))
             xList.append(ctr.getX())
             yList.append(ctr.getY())
             scaleList.append(self.scaleFromFluxMag0(fluxMagInfo.fluxMag0).scale)

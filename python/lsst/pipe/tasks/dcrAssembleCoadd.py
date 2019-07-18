@@ -23,7 +23,7 @@
 from math import ceil
 import numpy as np
 from scipy import ndimage
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.coadd.utils as coaddUtils
@@ -481,7 +481,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         else:
             dcrNImages = None
 
-        subregionSize = afwGeom.Extent2I(*self.config.subregionSize)
+        subregionSize = geom.Extent2I(*self.config.subregionSize)
         nSubregions = (ceil(skyInfo.bbox.getHeight()/subregionSize[1]) *
                        ceil(skyInfo.bbox.getWidth()/subregionSize[0]))
         subIter = 0
@@ -490,7 +490,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             subIter += 1
             self.log.info("Computing coadd over patch %s subregion %s of %s: %s",
                           skyInfo.patchInfo.getIndex(), subIter, nSubregions, subBBox)
-            dcrBBox = afwGeom.Box2I(subBBox)
+            dcrBBox = geom.Box2I(subBBox)
             dcrBBox.grow(self.bufferSize)
             dcrBBox.clip(dcrModels.bbox)
             modelWeights = self.calculateModelWeights(dcrModels, dcrBBox)
@@ -566,7 +566,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
             Best fit model of the true sky after correcting chromatic effects.
-        bbox : `lsst.afw.geom.box.Box2I`
+        bbox : `lsst.geom.box.Box2I`
             Bounding box of the patch to coadd.
         warpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
             The data references to the input warped exposures.
@@ -637,9 +637,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Best fit model of the true sky after correcting chromatic effects.
         subExposures : `dict` of `lsst.afw.image.ExposureF`
             The pre-loaded exposures for the current subregion.
-        bbox : `lsst.afw.geom.box.Box2I`
+        bbox : `lsst.geom.box.Box2I`
             Bounding box of the subregion to coadd.
-        dcrBBox : `lsst.afw.geom.box.Box2I`
+        dcrBBox : `lsst.geom.box.Box2I`
             Sub-region of the coadd which includes a buffer to allow for DCR.
         warpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
             The data references to the input warped exposures.
@@ -726,7 +726,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Current model of the true sky after correcting chromatic effects.
         residualGeneratorList : `generator` of `numpy.ndarray`
             The residual image for the next subfilter, shifted for DCR.
-        dcrBBox : `lsst.afw.geom.box.Box2I`
+        dcrBBox : `lsst.geom.box.Box2I`
             Sub-region of the coadd which includes a buffer to allow for DCR.
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
@@ -780,7 +780,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Best fit model of the true sky after correcting chromatic effects.
         subExposures : `dict` of `lsst.afw.image.ExposureF`
             The pre-loaded exposures for the current subregion.
-        bbox : `lsst.afw.geom.box.Box2I`
+        bbox : `lsst.geom.box.Box2I`
             Sub-region to coadd
         warpRefList : `list` of `lsst.daf.persistence.ButlerDataRef`
             The data references to the input warped exposures.
@@ -1016,7 +1016,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         dcrModels : `lsst.pipe.tasks.DcrModel`
             Best fit model of the true sky after correcting chromatic effects.
-        dcrBBox : `lsst.afw.geom.box.Box2I`
+        dcrBBox : `lsst.geom.box.Box2I`
             Sub-region of the coadd which includes a buffer to allow for DCR.
 
         Returns
@@ -1067,7 +1067,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Parameters
         ----------
-        bbox : `lsst.afw.geom.box.Box2I`
+        bbox : `lsst.geom.box.Box2I`
             Sub-region to coadd
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd

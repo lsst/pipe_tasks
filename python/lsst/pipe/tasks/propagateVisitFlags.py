@@ -23,7 +23,7 @@
 import numpy
 from lsst.pex.config import Config, Field, DictField
 from lsst.pipe.base import Task
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.table as afwTable
 import lsst.pex.exceptions as pexExceptions
 
@@ -178,7 +178,7 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         flags = self._keys.keys()
         counts = dict((f, numpy.zeros(len(coaddSources), dtype=int)) for f in flags)
         indices = numpy.array([s.getId() for s in coaddSources])  # Allowing for non-contiguous data
-        radius = self.config.matchRadius*afwGeom.arcseconds
+        radius = self.config.matchRadius*geom.arcseconds
 
         def processCcd(ccdSources, wcsUpdate):
             for sourceRecord in ccdSources:

@@ -21,6 +21,7 @@
 #
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
+import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
@@ -101,7 +102,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             pixToGrow = 2 * max(self.psfMatch.kConfig.sizeCellX,
                                 self.psfMatch.kConfig.sizeCellY)
             # replace with copy
-            maxBBox = afwGeom.Box2I(maxBBox)
+            maxBBox = geom.Box2I(maxBBox)
             maxBBox.grow(pixToGrow)
 
         with self.timer("warp"):

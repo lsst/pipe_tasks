@@ -23,7 +23,7 @@ import numpy as np
 import lsst.sphgeom
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.pipe.base as pipeBase
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
@@ -60,7 +60,7 @@ class BaseExposureInfo(pipeBase.Struct):
 
         The object has the following fields:
         - dataId: data ID of exposure (a dict)
-        - coordList: ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
+        - coordList: ICRS coordinates of the corners of the exposure (list of lsst.geom.SpherePoint)
         plus any others items that are desired
         """
         super(BaseExposureInfo, self).__init__(dataId=dataId, coordList=coordList)
@@ -83,7 +83,7 @@ class BaseSelectImagesTask(pipeBase.Task):
         - exposureInfoList: a list of exposure information objects (subclasses of BaseExposureInfo),
             which have at least the following fields:
             - dataId: data ID dictionary
-            - coordList: ICRS coordinates of the corners of the exposure (list of lsst.afw.geom.SpherePoint)
+            - coordList: ICRS coordinates of the corners of the exposure (list of lsst.geom.SpherePoint)
         """
         raise NotImplementedError()
 
@@ -182,7 +182,7 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         are pretty high and we don't want to be responsible for reaching them.
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
+        @param coordList: List of ICRS coordinates (lsst.geom.SpherePoint) specifying boundary of patch
         @param makeDataRefList: Construct a list of data references?
         @param selectDataList: List of SelectStruct, to consider for selection
         """
@@ -198,7 +198,7 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
             imageBox = data.bbox
 
             try:
-                imageCorners = [imageWcs.pixelToSky(pix) for pix in afwGeom.Box2D(imageBox).getCorners()]
+                imageCorners = [imageWcs.pixelToSky(pix) for pix in geom.Box2D(imageBox).getCorners()]
             except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
                 # Protecting ourselves from awful Wcs solutions in input images
                 self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
@@ -278,7 +278,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             the median size
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of ICRS coordinates (lsst.afw.geom.SpherePoint) specifying boundary of patch
+        @param coordList: List of ICRS coordinates (lsst.geom.SpherePoint) specifying boundary of patch
         @param makeDataRefList: Construct a list of data references?
         @param selectDataList: List of SelectStruct, to consider for selection
         """
@@ -373,7 +373,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
         ----------
         dataRef : `lsst.daf.persistence.ButlerDataRef`
             Data reference for coadd/tempExp (with tract, patch)
-        coordList : `list` of `lsst.afw.geom.SpherePoint`
+        coordList : `list` of `lsst.geom.SpherePoint`
             List of ICRS sky coordinates specifying boundary of patch
         makeDataRefList : `boolean`, optional
             Construct a list of data references?

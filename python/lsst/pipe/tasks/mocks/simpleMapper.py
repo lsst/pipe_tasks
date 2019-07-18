@@ -33,8 +33,10 @@ import os
 import shutil
 import re
 
+import lsst.geom
 import lsst.daf.persistence
 import lsst.afw.cameraGeom
+import lsst.afw.geom
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.image.utils as afwImageUtils
 import lsst.afw.image as afwImage
@@ -449,7 +451,7 @@ def makeSimpleCamera(
 
     Each detector will have one amplifier (with no raw information).
     """
-    pScaleRad = lsst.afw.geom.arcsecToRad(plateScale)
+    pScaleRad = lsst.geom.arcsecToRad(plateScale)
     radialDistortCoeffs = [0.0, 1.0/pScaleRad, 0.0, radialDistortion/pScaleRad]
     focalPlaneToFieldAngle = lsst.afw.geom.makeRadialTransform(radialDistortCoeffs)
     nativeSys = lsst.afw.cameraGeom.FOCAL_PLANE
@@ -459,12 +461,12 @@ def makeSimpleCamera(
     transformMap = lsst.afw.cameraGeom.TransformMap(nativeSys, transforms)
 
     detectorList = []
-    ccdBBox = lsst.afw.geom.Box2I(lsst.afw.geom.Point2I(), lsst.afw.geom.Extent2I(sizeX, sizeY))
+    ccdBBox = lsst.geom.Box2I(lsst.geom.Point2I(), lsst.geom.Extent2I(sizeX, sizeY))
     for iY in range(nY):
         cY = (iY - 0.5 * (nY - 1)) * (pixelSize * sizeY + gapY)
         for iX in range(nX):
             cX = (iX - 0.5 * (nX - 1)) * (pixelSize * sizeY + gapX)
-            fpPos = lsst.afw.geom.Point2D(cX, cY)
+            fpPos = lsst.geom.Point2D(cX, cY)
             detectorName = "detector %d,%d" % (iX, iY)
             detectorId = len(detectorList) + 1
             detectorList.append(DetectorWrapper(
@@ -474,7 +476,7 @@ def makeSimpleCamera(
                 bbox=ccdBBox,
                 ampExtent=ccdBBox.getDimensions(),
                 numAmps=1,
-                pixelSize=lsst.afw.geom.Extent2D(pixelSize, pixelSize),
+                pixelSize=lsst.geom.Extent2D(pixelSize, pixelSize),
                 orientation=lsst.afw.cameraGeom.Orientation(fpPos),
                 plateScale=plateScale,
                 radialDistortion=radialDistortion,

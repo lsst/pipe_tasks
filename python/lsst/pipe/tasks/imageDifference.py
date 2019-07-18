@@ -26,7 +26,7 @@ import numpy
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
-import lsst.afw.geom as afwGeom
+import lsst.geom as geom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
@@ -426,7 +426,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         # match exposure sources to template sources
                         mc = afwTable.MatchControl()
                         mc.findOnlyClosest = False
-                        matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*afwGeom.arcseconds,
+                        matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*geom.arcseconds,
                                                       mc)
                     else:
                         raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False,"
@@ -882,8 +882,8 @@ class Winter2013ImageDifferenceTask(ImageDifferenceTask):
     def fitAstrometry(self, templateSources, templateExposure, selectSources):
         """Fit the relative astrometry between templateSources and selectSources"""
         if self.config.winter2013WcsShift > 0.0:
-            offset = afwGeom.Extent2D(self.config.winter2013WcsShift,
-                                      self.config.winter2013WcsShift)
+            offset = geom.Extent2D(self.config.winter2013WcsShift,
+                                   self.config.winter2013WcsShift)
             cKey = templateSources[0].getTable().getCentroidKey()
             for source in templateSources:
                 centroid = source.get(cKey)
@@ -891,8 +891,8 @@ class Winter2013ImageDifferenceTask(ImageDifferenceTask):
         elif self.config.winter2013WcsRms > 0.0:
             cKey = templateSources[0].getTable().getCentroidKey()
             for source in templateSources:
-                offset = afwGeom.Extent2D(self.config.winter2013WcsRms*numpy.random.normal(),
-                                          self.config.winter2013WcsRms*numpy.random.normal())
+                offset = geom.Extent2D(self.config.winter2013WcsRms*numpy.random.normal(),
+                                       self.config.winter2013WcsRms*numpy.random.normal())
                 centroid = source.get(cKey)
                 source.set(cKey, centroid + offset)
 

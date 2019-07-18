@@ -23,6 +23,7 @@
 import unittest
 
 import lsst.utils.tests
+import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask, SelectStruct
 from lsst.pipe.tasks.coaddBase import CoaddBaseTask
@@ -47,7 +48,7 @@ class DummyPatch:
     """Quacks like a lsst.skymap.PatchInfo"""
 
     def __init__(self, xy0, dims):
-        self._outerBBox = afwGeom.Box2I(xy0, dims)
+        self._outerBBox = geom.Box2I(xy0, dims)
 
     def getOuterBBox(self):
         return self._outerBBox
@@ -89,20 +90,20 @@ class DummyDataRef:
 
 
 # Common defaults for createPatch and createImage
-CENTER = afwGeom.SpherePoint(0, 90, afwGeom.degrees)
-ROTATEAXIS = afwGeom.SpherePoint(0, 0, afwGeom.degrees)
-DIMS = afwGeom.Extent2I(3600, 3600)
-SCALE = 0.5*afwGeom.arcseconds
+CENTER = geom.SpherePoint(0, 90, geom.degrees)
+ROTATEAXIS = geom.SpherePoint(0, 0, geom.degrees)
+DIMS = geom.Extent2I(3600, 3600)
+SCALE = 0.5*geom.arcseconds
 
 
 def createPatch(
     tractId=1, patchId=(2, 3),  # Tract and patch identifier, for dataId
     dims=DIMS,                # Patch dimensions (Extent2I)
-    xy0=afwGeom.Point2I(1234, 5678),  # Patch xy0 (Point2I)
+    xy0=geom.Point2I(1234, 5678),  # Patch xy0 (Point2I)
     center=CENTER,                  # ICRS sky position of center (lsst.afw.geom.SpherePoint)
     scale=SCALE                     # Pixel scale (Angle)
 ):
-    crpix = afwGeom.Point2D(xy0) + afwGeom.Extent2D(dims)*0.5
+    crpix = geom.Point2D(xy0) + geom.Extent2D(dims)*0.5
     cdMatrix = afwGeom.makeCdMatrix(scale=scale)
     wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
     patch = DummyPatch(xy0, dims)
@@ -116,16 +117,16 @@ def createImage(
     dataId={"name": "foobar"},          # Data identifier
     center=CENTER,                      # ICRS sky position of center (lsst.afw.geom.SpherePoint)
     rotateAxis=ROTATEAXIS,              # Rotation axis (lsst.afw.geom.SpherePoint)
-    rotateAngle=0*afwGeom.degrees,      # Rotation angle/distance to move (Angle)
+    rotateAngle=0*geom.degrees,      # Rotation angle/distance to move (Angle)
     dims=DIMS,                          # Image dimensions (Extent2I)
     scale=SCALE                         # Pixel scale (Angle)
 ):
-    crpix = afwGeom.Point2D(afwGeom.Extent2D(dims)*0.5)
+    crpix = geom.Point2D(geom.Extent2D(dims)*0.5)
     center = center.rotated(rotateAxis, rotateAngle)
     cdMatrix = afwGeom.makeCdMatrix(scale=scale)
     wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
-    return SelectStruct(DummyDataRef(dataId), wcs, afwGeom.Box2I(afwGeom.Point2I(0, 0),
-                                                                 afwGeom.Extent2I(dims[0], dims[1])))
+    return SelectStruct(DummyDataRef(dataId), wcs, geom.Box2I(geom.Point2I(0, 0),
+                                                              geom.Extent2I(dims[0], dims[1])))
 
 
 class WcsSelectImagesTestCase(unittest.TestCase):
@@ -149,11 +150,11 @@ class WcsSelectImagesTestCase(unittest.TestCase):
 
     def testDisjoint(self):
         self.check(createPatch(),
-                   createImage(center=afwGeom.SpherePoint(0, -90, afwGeom.degrees)),
+                   createImage(center=geom.SpherePoint(0, -90, geom.degrees)),
                    False)
 
     def testIntersect(self):
-        self.check(createPatch(), createImage(rotateAngle=0.5*afwGeom.Extent2D(DIMS).computeNorm()*SCALE),
+        self.check(createPatch(), createImage(rotateAngle=0.5*geom.Extent2D(DIMS).computeNorm()*SCALE),
                    True)
 
 

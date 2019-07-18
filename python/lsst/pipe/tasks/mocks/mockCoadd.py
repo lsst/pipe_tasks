@@ -20,7 +20,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.afw.image
-import lsst.afw.geom
+import lsst.geom
 import lsst.pex.config
 import lsst.afw.table
 import lsst.pipe.base
@@ -66,7 +66,7 @@ class MockCoaddConfig(lsst.pex.config.Config):
         default=5
     )
 
-    def setupSkyMapPatches(self, nPatches=2, patchSize=400, pixelScale=0.2*lsst.afw.geom.arcseconds):
+    def setupSkyMapPatches(self, nPatches=2, patchSize=400, pixelScale=0.2*lsst.geom.arcseconds):
         """
         Set the nested [discrete] skymap config parameters such that the full tract
         has nPatches x nPatches patches of the given size and pixel scale.
