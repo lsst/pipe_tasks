@@ -22,8 +22,8 @@
 #
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializedTaskRunner,
-                            PipelineTask, PipelineTaskConfig, InitInputDatasetField,
-                            InitOutputDatasetField, InputDatasetField, OutputDatasetField)
+                            PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
+import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
@@ -64,8 +64,41 @@ the mergeDet, meas, and ref dataset Footprints:
 
 
 ##############################################################################################################
+class DetectCoaddSourcesConnections(PipelineTaskConnections,
+                                    dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                    defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"}):
+    detectionSchema = cT.InitOutput(
+        doc="Schema of the detection catalog",
+        name="{outputCoaddName}Coadd_det_schema",
+        storageClass="SourceCatalog",
+    )
+    exposure = cT.Input(
+        doc="Exposure on which detections are to be performed",
+        name="{inputCoaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+    outputBackgrounds = cT.Output(
+        doc="Output Backgrounds used in detection",
+        name="{outputCoaddName}Coadd_calexp_background",
+        storageClass="Background",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+    outputSources = cT.Output(
+        doc="Detected sources catalog",
+        name="{outputCoaddName}Coadd_det",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+    outputExposure = cT.Output(
+        doc="Exposure post detection",
+        name="{outputCoaddName}Coadd_calexp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
 
-class DetectCoaddSourcesConfig(PipelineTaskConfig):
+
+class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
     """!
     @anchor DetectCoaddSourcesConfig_
 
@@ -80,40 +113,6 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig):
     insertFakes = ConfigurableField(target=BaseFakeSourcesTask,
                                     doc="Injection of fake sources for testing "
                                     "purposes (must be retargeted)")
-    detectionSchema = InitOutputDatasetField(
-        doc="Schema of the detection catalog",
-        nameTemplate="{outputCoaddName}Coadd_det_schema",
-        storageClass="SourceCatalog",
-    )
-    exposure = InputDatasetField(
-        doc="Exposure on which detections are to be performed",
-        nameTemplate="{inputCoaddName}Coadd",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-    outputBackgrounds = OutputDatasetField(
-        doc="Output Backgrounds used in detection",
-        nameTemplate="{outputCoaddName}Coadd_calexp_background",
-        scalar=True,
-        storageClass="Background",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-    outputSources = OutputDatasetField(
-        doc="Detected sources catalog",
-        nameTemplate="{outputCoaddName}Coadd_det",
-        scalar=True,
-        storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-    outputExposure = OutputDatasetField(
-        doc="Exposure post detection",
-        nameTemplate="{outputCoaddName}Coadd_calexp",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-
     hasFakes = Field(
         dtype=bool,
         default=False,
@@ -122,8 +121,6 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig):
 
     def setDefaults(self):
         super().setDefaults()
-        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
-        self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep"})
         self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
         # Coadds are made from background-subtracted CCDs, so any background subtraction should be very basic
@@ -266,8 +263,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         if self.config.doScaleVariance:
             self.makeSubtask("scaleVariance")
 
-    def getInitOutputDatasets(self):
-        return {"detectionSchema": afwTable.SourceCatalog(self.schema)}
+        self.detectionSchema = afwTable.SourceCatalog(self.schema)
 
     def runDataRef(self, patchRef):
         """!
@@ -287,13 +283,15 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         self.write(results, patchRef)
         return results
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        packedId, maxBits = butler.registry.packDataId("tract_patch_abstract_filter",
-                                                       inputDataIds["exposure"],
-                                                       returnMaxBits=True)
-        inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
-        inputData["expId"] = packedId
-        return self.run(**inputData)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        packedId, maxBits = butlerQC.registry.packDataId("tract_patch_abstract_filter",
+                                                         inputRefs.exposure.dataId,
+                                                         returnMaxBits=True)
+        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        inputs["expId"] = packedId
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, idFactory, expId):
         """!
@@ -585,7 +583,94 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         return int(dataRef.get(self.config.coaddName + "CoaddId"))
 
 
-class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
+class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
+                                           dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                           defaultTemplates={"inputCoaddName": "deep",
+                                                             "outputCoaddName": "deep"}):
+    inputSchema = cT.InitInput(
+        doc="Input schema for measure merged task produced by a deblender or detection task",
+        name="{inputCoaddName}Coadd_deblendedFlux_schema",
+        storageClass="SourceCatalog"
+    )
+    outputSchema = cT.InitOutput(
+        doc="Output schema after all new fields are added by task",
+        name="{inputCoaddName}Coadd_meas_schema",
+        storageClass="SourceCatalog"
+    )
+    refCat = cT.PrerequisiteInput(
+        doc="Reference catalog used to match measured sources against known sources",
+        name="ref_cat",
+        storageClass="SimpleCatalog",
+        dimensions=("skypix",),
+        deferLoad=True,
+        multiple=True
+    )
+    exposure = cT.Input(
+        doc="Input coadd image",
+        name="{inputCoaddName}Coadd_calexp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+    skyMap = cT.Input(
+        doc="SkyMap to use in processing",
+        name="{inputCoaddName}Coadd_skyMap",
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
+    visitCatalogs = cT.Input(
+        doc="Source catalogs for visits which overlap input tract, patch, abstract_filter. Will be "
+            "further filtered in the task for the purpose of propagating flags from image calibration "
+            "and characterization to codd objects",
+        name="src",
+        dimensions=("instrument", "visit", "detector"),
+        storageClass="SourceCatalog",
+        multiple=True
+    )
+    inputCatalog = cT.Input(
+        doc=("Name of the input catalog to use."
+             "If the single band deblender was used this should be 'deblendedFlux."
+             "If the multi-band deblender was used this should be 'deblendedModel, "
+             "or deblendedFlux if the multiband deblender was configured to output "
+             "deblended flux catalogs. If no deblending was performed this should "
+             "be 'mergeDet'"),
+        name="{inputCoaddName}Coadd_deblendedFlux",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+    )
+    outputSources = cT.Output(
+        doc="Source catalog containing all the measurement information generated in this task",
+        name="{outputCoaddName}Coadd_meas",
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+        storageClass="SourceCatalog",
+    )
+    matchResult = cT.Output(
+        doc="Match catalog produced by configured matcher, optional on doMatchSources",
+        name="{outputCoaddName}Coadd_measMatch",
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+        storageClass="Catalog",
+    )
+    denormMatches = cT.Output(
+        doc="Denormalized Match catalog produced by configured matcher, optional on "
+            "doWriteMatchesDenormalized",
+        name="{outputCoaddName}Coadd_measMatchFull",
+        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+        storageClass="Catalog",
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.doPropagateFlags is False:
+            self.inputs -= set(("visitCatalogs",))
+
+        if config.doMatchSources is False:
+            self.outputs -= set(("matchResult",))
+
+        if config.doWriteMatchesDenormalized is False:
+            self.outputs -= set(("denormMatches",))
+
+
+class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
+                                      pipelineConnections=MeasureMergedCoaddSourcesConnections):
     """!
     @anchor MeasureMergedCoaddSourcesConfig_
 
@@ -636,79 +721,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
         target=CatalogCalculationTask,
         doc="Subtask to run catalogCalculation plugins on catalog"
     )
-    inputSchema = InitInputDatasetField(
-        doc="Input schema for measure merged task produced by a deblender or detection task",
-        nameTemplate="{inputCoaddName}Coadd_deblendedFlux_schema",
-        storageClass="SourceCatalog"
-    )
-    outputSchema = InitOutputDatasetField(
-        doc="Output schema after all new fields are added by task",
-        nameTemplate="{inputCoaddName}Coadd_meas_schema",
-        storageClass="SourceCatalog"
-    )
-    refCat = InputDatasetField(
-        doc="Reference catalog used to match measured sources against known sources",
-        name="ref_cat",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        manualLoad=True
-    )
-    exposure = InputDatasetField(
-        doc="Input coadd image",
-        nameTemplate="{inputCoaddName}Coadd_calexp",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-    skyMap = InputDatasetField(
-        doc="SkyMap to use in processing",
-        nameTemplate="{inputCoaddName}Coadd_skyMap",
-        storageClass="SkyMap",
-        dimensions=("skymap",),
-        scalar=True
-    )
-    visitCatalogs = InputDatasetField(
-        doc="Source catalogs for visits which overlap input tract, patch, abstract_filter. Will be "
-            "further filtered in the task for the purpose of propagating flags from image calibration "
-            "and characterization to codd objects",
-        name="src",
-        dimensions=("instrument", "visit", "detector"),
-        storageClass="SourceCatalog"
-    )
-    intakeCatalog = InputDatasetField(
-        doc=("Name of the input catalog to use."
-             "If the single band deblender was used this should be 'deblendedFlux."
-             "If the multi-band deblender was used this should be 'deblendedModel, "
-             "or deblendedFlux if the multiband deblender was configured to output "
-             "deblended flux catalogs. If no deblending was performed this should "
-             "be 'mergeDet'"),
-        nameTemplate="{inputCoaddName}Coadd_deblendedFlux",
-        storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
-        scalar=True
-    )
-    outputSources = OutputDatasetField(
-        doc="Source catalog containing all the measurement information generated in this task",
-        nameTemplate="{outputCoaddName}Coadd_meas",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
-        storageClass="SourceCatalog",
-        scalar=True
-    )
-    matchResult = OutputDatasetField(
-        doc="Match catalog produced by configured matcher, optional on doMatchSources",
-        nameTemplate="{outputCoaddName}Coadd_measMatch",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
-        storageClass="Catalog",
-        scalar=True
-    )
-    denormMatches = OutputDatasetField(
-        doc="Denormalized Match catalog produced by configured matcher, optional on "
-            "doWriteMatchesDenormalized",
-        nameTemplate="{outputCoaddName}Coadd_measMatchFull",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
-        storageClass="Catalog",
-        scalar=True
-    )
 
     hasFakes = Field(
         dtype=bool,
@@ -722,8 +734,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig):
 
     def setDefaults(self):
         super().setDefaults()
-        self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep"})
-        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
         self.measurement.plugins.names |= ['base_InputCount', 'base_Variance']
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
                                                                        'INEXACT_PSF']
@@ -911,55 +921,37 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         if self.config.doRunCatalogCalculation:
             self.makeSubtask("catalogCalculation", schema=self.schema)
 
-    @classmethod
-    def getInputDatasetTypes(cls, config):
-        inputDatasetTypes = super().getInputDatasetTypes(config)
-        if not config.doPropagateFlags:
-            inputDatasetTypes.pop("visitCatalogs")
-        return inputDatasetTypes
+        self.outputSchema = afwTable.SourceCatalog(self.schema)
 
-    @classmethod
-    def getOutputDatasetTypes(cls, config):
-        outputDatasetTypes = super().getOutputDatasetTypes(config)
-        if config.doMatchSources is False:
-            outputDatasetTypes.pop("matchResult")
-        if config.doWriteMatchesDenormalized is False:
-            outputDatasetTypes.pop("denormMatches")
-        return outputDatasetTypes
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
 
-    @classmethod
-    def getPrerequisiteDatasetTypes(cls, config):
-        return frozenset(["refCat"])
-
-    def getInitOutputDatasets(self):
-        return {"outputSchema": afwTable.SourceCatalog(self.schema)}
-
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        refObjLoader = ReferenceObjectLoader(inputDataIds['refCat'], butler,
-                                             config=self.config.refObjLoader, log=self.log)
+        refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
+                                             inputs.pop('refCat'), config=self.config.refObjLoader,
+                                             log=self.log)
         self.match.setRefObjLoader(refObjLoader)
 
         # Set psfcache
         # move this to run after gen2 deprecation
-        inputData['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
+        inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
 
         # Get unique integer ID for IdFactory and RNG seeds
-        packedId, maxBits = butler.registry.packDataId("tract_patch", outputDataIds["outputSources"],
-                                                       returnMaxBits=True)
-        inputData['exposureId'] = packedId
+        packedId, maxBits = butlerQC.registry.packDataId("tract_patch", outputRefs.outputSources.dataId,
+                                                         returnMaxBits=True)
+        inputs['exposureId'] = packedId
         idFactory = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         # Transform inputCatalog
         table = afwTable.SourceTable.make(self.schema, idFactory)
         sources = afwTable.SourceCatalog(table)
-        sources.extend(inputData.pop('intakeCatalog'), self.schemaMapper)
+        sources.extend(inputs.pop('inputCatalog'), self.schemaMapper)
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
-        inputData['sources'] = sources
+        inputs['sources'] = sources
 
-        skyMap = inputData.pop('skyMap')
-        tractNumber = inputDataIds['intakeCatalog']['tract']
+        skyMap = inputs.pop('skyMap')
+        tractNumber = inputRefs.inputCatalog.dataId['tract']
         tractInfo = skyMap[tractNumber]
-        patchInfo = tractInfo.getPatchInfo(inputDataIds['intakeCatalog']['patch'])
+        patchInfo = tractInfo.getPatchInfo(inputRefs.inputCatalog.dataId['patch'])
         skyInfo = Struct(
             skyMap=skyMap,
             tractInfo=tractInfo,
@@ -967,11 +959,11 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
             wcs=tractInfo.getWcs(),
             bbox=patchInfo.getOuterBBox()
         )
-        inputData['skyInfo'] = skyInfo
+        inputs['skyInfo'] = skyInfo
 
         if self.config.doPropagateFlags:
             # Filter out any visit catalog that is not coadd inputs
-            ccdInputs = inputData['exposure'].getInfo().getCoaddInputs().ccds
+            ccdInputs = inputs['exposure'].getInfo().getCoaddInputs().ccds
             visitKey = ccdInputs.schema.find("visit").key
             ccdKey = ccdInputs.schema.find("ccd").key
             inputVisitIds = set()
@@ -984,16 +976,17 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
 
             inputCatalogsToKeep = []
             inputCatalogWcsUpdate = []
-            for i, dataId in enumerate(inputDataIds['visitCatalogs']):
-                key = (dataId['visit'], dataId['detector'])
+            for i, dataRef in enumerate(inputRefs.visitCatalogs):
+                key = (dataRef.dataId['visit'], dataRef.dataId['detector'])
                 if key in inputVisitIds:
-                    inputCatalogsToKeep.append(inputData['visitCatalogs'][i])
+                    inputCatalogsToKeep.append(inputs['visitCatalogs'][i])
                     inputCatalogWcsUpdate.append(ccdRecordsWcs[key])
-            inputData['visitCatalogs'] = inputCatalogsToKeep
-            inputData['wcsUpdates'] = inputCatalogWcsUpdate
-            inputData['ccdInputs'] = ccdInputs
+            inputs['visitCatalogs'] = inputCatalogsToKeep
+            inputs['wcsUpdates'] = inputCatalogWcsUpdate
+            inputs['ccdInputs'] = ccdInputs
 
-        return self.run(**inputData)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def runDataRef(self, patchRef, psfCache=100):
         """!

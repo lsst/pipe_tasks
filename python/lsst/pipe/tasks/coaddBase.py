@@ -32,7 +32,7 @@ from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
 from .scaleVariance import ScaleVarianceTask
 
-__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
+__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo", "makeCoaddSuffix"]
 
 
 class CoaddBaseConfig(pexConfig.Config):
@@ -159,8 +159,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         -------
         CoaddDatasetName : `string`
         """
-        suffix = "" if warpType == "direct" else warpType[0].upper() + warpType[1:]
-        return self.config.coaddName + "Coadd" + suffix
+        return self.config.coaddName + "Coadd" + makeCoaddSuffix(warpType)
 
     def getTempExpDatasetName(self, warpType="direct"):
         """Return warp name for given warpType and task config
@@ -302,3 +301,19 @@ def scaleVariance(maskedImage, maskPlanes, log=None):
     config.maskPlanes = maskPlanes
     task = ScaleVarianceTask(config=config, name="scaleVariance", log=log)
     return task.run(maskedImage)
+
+
+def makeCoaddSuffix(warpType="direct"):
+    """Return coadd suffix for warpType
+
+    Parameters
+    ----------
+    warpType : string
+        Either 'direct' or 'psfMatched'
+
+    Returns
+    -------
+    CoaddSuffix : `string`
+    """
+    suffix = "" if warpType == "direct" else warpType[0].upper() + warpType[1:]
+    return suffix

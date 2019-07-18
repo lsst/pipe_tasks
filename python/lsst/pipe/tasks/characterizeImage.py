@@ -26,6 +26,7 @@ import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
+import lsst.pipe.base.connectionTypes as cT
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable, SourceCatalog, IdFactory
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
@@ -41,41 +42,41 @@ from .repair import RepairTask
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
 
-class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
-    # Gen3 IO options
-    exposure = pipeBase.InputDatasetField(
+class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
+                                   dimensions=("instrument", "visit", "detector")):
+    exposure = cT.Input(
         doc="Input exposure data",
         name="postISRCCD",
-        scalar=True,
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
     )
-    characterized = pipeBase.OutputDatasetField(
+    characterized = cT.Output(
         doc="Output characterized data.",
         name="icExp",
-        scalar=True,
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
     )
-    sourceCat = pipeBase.OutputDatasetField(
+    sourceCat = cT.Output(
         doc="Output source catalog.",
         name="icSrc",
-        scalar=True,
         storageClass="SourceCatalog",
         dimensions=["instrument", "visit", "detector"],
     )
-    backgroundModel = pipeBase.OutputDatasetField(
+    backgroundModel = cT.Output(
         doc="Output background model.",
         name="icExpBackground",
-        scalar=True,
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
-    outputSchema = pipeBase.InitOutputDatasetField(
+    outputSchema = cT.InitOutput(
         doc="Schema of the catalog produced by CharacterizeImage",
         name="icSrc_schema",
         storageClass="SourceCatalog",
     )
+
+
+class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
+                              pipelineConnections=CharacterizeImageConnections):
 
     """!Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(
@@ -198,7 +199,6 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig):
             "base_PsfFlux",
             "base_CircularApertureFlux",
         ]
-        self.quantum.dimensions = ("instrument", "visit", "detector")
 
     def validate(self):
         if self.doApCorr and not self.measurePsf:
@@ -302,16 +302,16 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     _DefaultName = "characterizeImage"
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        if 'exposureIdInfo' not in inputData.keys():
-            packer = butler.registry.makeDataIdPacker("visit_detector",
-                                                      inputDataIds['exposure'])
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        if 'exposureIdInfo' not in inputs.keys():
+            packer = butlerQC.registry.makeDataIdPacker("visit_detector", inputRefs.exposure.dataId)
             exposureIdInfo = ExposureIdInfo()
-            exposureIdInfo.expId = packer.pack(inputDataIds['exposure'])
+            exposureIdInfo.expId = packer.pack(inputRefs.exposure.dataId)
             exposureIdInfo.expBits = packer.maxBits
-            inputData['exposureIdInfo'] = exposureIdInfo
-
-        return super().adaptArgsAndRun(inputData, inputDataIds, outputDataIds, butler)
+            inputs['exposureIdInfo'] = exposureIdInfo
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
         """!Construct a CharacterizeImageTask
@@ -353,6 +353,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
+        self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def getInitOutputDatasets(self):
         outputCatSchema = afwTable.SourceCatalog(self.schema)
