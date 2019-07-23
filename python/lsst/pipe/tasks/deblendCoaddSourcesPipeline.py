@@ -42,12 +42,12 @@ class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
         name="{inputCoaddName}Coadd_mergeDet_schema",
         storageClass="SourceCatalog"
     )
-    peakScheam = ct.InitInput(
+    peakSchema = ct.InitInput(
         name="{inputCoaddName}Coadd_peak_schema",
         storageClass="PeakCatalog"
     )
     mergedDetections = ct.Input(
-        nameTemplate="{inputCoaddName}Coadd_mergeDet",
+        name="{inputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap")
     )
@@ -91,27 +91,27 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         storageClass="PeakCatalog"
     )
     mergedDetections = ct.Input(
-        nameTemplate="{inputCoaddName}Coadd_mergeDet",
+        name="{inputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap")
     )
     coadds = ct.Input(
-        nameTemplate="{inputCoaddName}Coadd_calexp",
+        name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         multiple=True,
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputSchema = ct.InitOutput(
-        nameTemplate="{outputCoaddName}Coadd_deblendedModel_schema",
+        name="{outputCoaddName}Coadd_deblendedModel_schema",
         storageClass="SourceCatalog"
     )
     fluxCatalogs = ct.Output(
-        nameTemplate="{outputCoaddName}Coadd_deblendedFlux",
+        name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     templateCatalogs = ct.Output(
-        nameTemplate="{outputCoaddName}Coadd_deblendedModel",
+        name="{outputCoaddName}Coadd_deblendedModel",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
@@ -166,6 +166,8 @@ class DeblendCoaddSourcesSingleTask(DeblendCoaddSourcesBaseTask):
     def run(self, coadd, mergedDetections, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
         self.singleBandDeblend.run(coadd, sources)
+        if not sources.isContiguous():
+            sources = sources.copy(deep=True)
         return Struct(measureCatalog=sources)
 
 
