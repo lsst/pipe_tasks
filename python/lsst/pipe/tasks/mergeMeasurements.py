@@ -25,43 +25,46 @@ import numpy
 from .multiBandUtils import (MergeSourcesRunner, _makeGetSchemaCatalogs, makeMergeArgumentParser,
                              getInputSchema, getShortFilterName, readCatalog)
 
+
 import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
+from lsst.pipe.base import PipelineTaskConnections, PipelineTaskConfig
+import lsst.pipe.base.connectionTypes as cT
 
-class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
+
+class MergeMeasurementsConnections(PipelineTaskConnections,
+                                   dimensions=("skymap", "tract", "patch"),
+                                   defaultTemplates={"inputCoaddName": "deep",
+                                                     "outputCoaddName": "deep"}):
+    inputSchema = cT.InitInput(
+        name="{inputCoaddName}Coadd_meas_schema",
+        storageClass="SourceCatalog",
+    )
+    outputSchema = cT.InitOutput(
+        name="{outputCoaddName}Coadd_ref_schema",
+        storageClass="SourceCatalog",
+    )
+    catalogs = cT.Input(
+        name="{inputCoaddName}Coadd_meas",
+        multiple=True,
+        storageClass="SourceCatalog",
+        dimensions=["abstract_filter", "skymap", "tract", "patch"],
+    )
+    mergedCatalog = cT.Output(
+        name="{outputCoaddName}Coadd_ref",
+        storageClass="SourceCatalog",
+        dimensions=["skymap", "tract", "patch"],
+    )
+
+
+class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasurementsConnections):
     """!
     @anchor MergeMeasurementsConfig_
 
     @brief Configuration parameters for the MergeMeasurementsTask
     """
-    # Gen 3 options
-    inputSchema = pipeBase.InitInputDatasetField(
-        doc="Schema for the input measurement catalogs.",
-        nameTemplate="{inputCoaddName}Coadd_meas_schema",
-        storageClass="SourceCatalog",
-    )
-    outputSchema = pipeBase.InitOutputDatasetField(
-        doc="Schema for the output merged measurement catalog.",
-        nameTemplate="{outputCoaddName}Coadd_ref_schema",
-        storageClass="SourceCatalog",
-    )
-    catalogs = pipeBase.InputDatasetField(
-        doc="Input catalogs to merge.",
-        nameTemplate="{inputCoaddName}Coadd_meas",
-        scalar=False,
-        storageClass="SourceCatalog",
-        dimensions=["abstract_filter", "skymap", "tract", "patch"],
-    )
-    mergedCatalog = pipeBase.OutputDatasetField(
-        doc="Output merged catalog.",
-        nameTemplate="{outputCoaddName}Coadd_ref",
-        scalar=True,
-        storageClass="SourceCatalog",
-        dimensions=["skymap", "tract", "patch"],
-    )
-    # Task configuration options
     pseudoFilterList = pexConfig.ListField(
         dtype=str,
         default=["sky"],
@@ -109,11 +112,6 @@ class MergeMeasurementsConfig(pipeBase.PipelineTaskConfig):
         if len(self.priorityList) == 0:
             raise RuntimeError("No priority list provided")
 
-    def setDefaults(self):
-        super().setDefaults()
-        self.formatTemplateNames({"inputCoaddName": "deep",
-                                  "outputCoaddName": "deep"})
-        self.quantum.dimensions = ("skymap", "tract", "patch")
 
 ## @addtogroup LSST_task_documentation
 ## @{
@@ -212,15 +210,14 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def getInputSchema(self, butler=None, schema=None):
         return getInputSchema(self, butler, schema)
 
-    def getInitOutputDatasets(self):
-        return {"outputSchema": afwTable.SourceCatalog(self.schema), }
-
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        catalogDict = {dataId['abstract_filter']: cat for dataId, cat in zip(inputDataIds['catalogs'],
-                                                                             inputData['catalogs'])}
-        inputData['catalogs'] = catalogDict
-
-        return super().adaptArgsAndRun(inputData, inputDataIds, outputDataIds, butler)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        dataIds = (ref.dataId for ref in inputRefs.catalogs)
+        catalogDict = {dataId['abstract_filter']: cat for dataId, cat in zip(dataIds,
+                                                                             inputs['catalogs'])}
+        inputs['catalogs'] = catalogDict
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def __init__(self, butler=None, schema=None, initInputs=None, **kwargs):
         """!
@@ -269,6 +266,7 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 self.badFlags[flag] = self.schema.find(flag).getKey()
             except KeyError as exc:
                 self.log.warn("Can't find flag %s in schema: %s" % (flag, exc,))
+        self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def runDataRef(self, patchRefList):
         """!
