@@ -8,6 +8,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
 import lsst.afw.cameraGeom as afwCameraGeom
+import lsst.geom as geom
 import lsst.meas.algorithms as measAlg
 import lsst.afw.table as afwTable
 
@@ -132,7 +133,7 @@ class SkyMeasurementTask(Task):
         xMax = header.getScalar("BOX.MAXX")
         yMax = header.getScalar("BOX.MAXY")
         algorithm = header.getScalar("ALGORITHM")
-        bbox = afwGeom.Box2I(afwGeom.Point2I(xMin, yMin), afwGeom.Point2I(xMax, yMax))
+        bbox = geom.Box2I(geom.Point2I(xMin, yMin), geom.Point2I(xMax, yMax))
         return afwMath.BackgroundList(
             (afwMath.BackgroundMI(bbox, bgExp.getMaskedImage()),
              afwMath.stringToInterpStyle(algorithm),
@@ -150,7 +151,7 @@ class SkyMeasurementTask(Task):
         ----------
         statsImage : `lsst.afw.image.MaskedImageF`
             Background model's statistics image.
-        bbox : `lsst.afw.geom.Box2I`
+        bbox : `lsst.geom.Box2I`
             Bounding box for image.
 
         Returns
@@ -295,7 +296,7 @@ class SkyMeasurementTask(Task):
             # -1 on the stop because Box2I is inclusive of the end point and we don't want to overlap boxes
             xStart, xStop = xLimits[xIndex], xLimits[xIndex + 1] - 1
             yStart, yStop = yLimits[yIndex], yLimits[yIndex + 1] - 1
-            box = afwGeom.Box2I(afwGeom.Point2I(xStart, yStart), afwGeom.Point2I(xStop, yStop))
+            box = geom.Box2I(geom.Point2I(xStart, yStart), geom.Point2I(xStop, yStop))
             subImage = image.Factory(image, box)
             subSky = sky.Factory(sky, box)
             imageSamples.append(afwMath.makeStatistics(subImage, statistic, ctrl).getValue())
@@ -515,21 +516,21 @@ class FocalPlaneBackground(object):
         camera : `lsst.afw.cameraGeom.Camera`
             Camera for which to measure backgrounds.
         """
-        cameraBox = afwGeom.Box2D()
+        cameraBox = geom.Box2D()
         for ccd in camera:
             for point in ccd.getCorners(afwCameraGeom.FOCAL_PLANE):
                 cameraBox.include(point)
 
         width, height = cameraBox.getDimensions()
         # Offset so that we run from zero
-        offset = afwGeom.Extent2D(cameraBox.getMin())*-1
+        offset = geom.Extent2D(cameraBox.getMin())*-1
         # Add an extra pixel buffer on either side
-        dims = afwGeom.Extent2I(int(numpy.ceil(width/config.xSize)) + 2,
-                                int(numpy.ceil(height/config.ySize)) + 2)
+        dims = geom.Extent2I(int(numpy.ceil(width/config.xSize)) + 2,
+                             int(numpy.ceil(height/config.ySize)) + 2)
         # Transform takes us from focal plane coordinates --> sample coordinates
-        transform = (afwGeom.AffineTransform.makeTranslation(afwGeom.Extent2D(1, 1))*
-                     afwGeom.AffineTransform.makeScaling(1.0/config.xSize, 1.0/config.ySize)*
-                     afwGeom.AffineTransform.makeTranslation(offset))
+        transform = (geom.AffineTransform.makeTranslation(geom.Extent2D(1, 1))*
+                     geom.AffineTransform.makeScaling(1.0/config.xSize, 1.0/config.ySize)*
+                     geom.AffineTransform.makeTranslation(offset))
 
         return cls(config, dims, afwGeom.makeTransform(transform))
 
@@ -543,7 +544,7 @@ class FocalPlaneBackground(object):
         ----------
         config : `FocalPlaneBackgroundConfig`
             Configuration for measuring backgrounds.
-        dims : `lsst.afw.geom.Extent2I`
+        dims : `lsst.geom.Extent2I`
             Dimensions for background samples.
         transform : `lsst.afw.geom.TransformPoint2ToPoint2`
             Transformation from focal plane coordinates to sample coordinates.
@@ -611,9 +612,9 @@ class FocalPlaneBackground(object):
         # Iterating over individual pixels in python is usually bad because it's slow, but there aren't many.
         pixels = itertools.product(range(width), range(height))
         for xx, yy in pixels:
-            llc = toSample.applyInverse(afwGeom.Point2D(xx - 0.5, yy - 0.5))
-            urc = toSample.applyInverse(afwGeom.Point2D(xx + 0.5, yy + 0.5))
-            bbox = afwGeom.Box2I(afwGeom.Point2I(llc), afwGeom.Point2I(urc))
+            llc = toSample.applyInverse(geom.Point2D(xx - 0.5, yy - 0.5))
+            urc = toSample.applyInverse(geom.Point2D(xx + 0.5, yy + 0.5))
+            bbox = geom.Box2I(geom.Point2I(llc), geom.Point2I(urc))
             bbox.clip(image.getBBox())
             if bbox.isEmpty():
                 continue
@@ -639,7 +640,7 @@ class FocalPlaneBackground(object):
         ----------
         detector : `lsst.afw.cameraGeom.Detector`
             CCD for which to produce background model.
-        bbox : `lsst.afw.geom.Box2I`
+        bbox : `lsst.geom.Box2I`
             Bounding box of CCD exposure.
 
         Returns
@@ -649,8 +650,8 @@ class FocalPlaneBackground(object):
         """
         transform = detector.getTransformMap().getTransform(detector.makeCameraSys(afwCameraGeom.PIXELS),
                                                             detector.makeCameraSys(afwCameraGeom.FOCAL_PLANE))
-        binTransform = (afwGeom.AffineTransform.makeScaling(self.config.binning)*
-                        afwGeom.AffineTransform.makeTranslation(afwGeom.Extent2D(0.5, 0.5)))
+        binTransform = (geom.AffineTransform.makeScaling(self.config.binning)*
+                        geom.AffineTransform.makeTranslation(geom.Extent2D(0.5, 0.5)))
 
         # Binned image on CCD --> unbinned image on CCD --> focal plane --> binned focal plane
         toSample = afwGeom.makeTransform(binTransform).then(transform).then(self.transform)
