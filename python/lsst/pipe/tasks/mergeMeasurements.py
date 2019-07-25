@@ -39,20 +39,24 @@ class MergeMeasurementsConnections(PipelineTaskConnections,
                                    defaultTemplates={"inputCoaddName": "deep",
                                                      "outputCoaddName": "deep"}):
     inputSchema = cT.InitInput(
+        doc="Schema for the output merged measurement catalog.",
         name="{inputCoaddName}Coadd_meas_schema",
         storageClass="SourceCatalog",
     )
     outputSchema = cT.InitOutput(
+        doc="Schema for the output merged measurement catalog.",
         name="{outputCoaddName}Coadd_ref_schema",
         storageClass="SourceCatalog",
     )
     catalogs = cT.Input(
+        doc="Input catalogs to merge.",
         name="{inputCoaddName}Coadd_meas",
         multiple=True,
         storageClass="SourceCatalog",
         dimensions=["abstract_filter", "skymap", "tract", "patch"],
     )
     mergedCatalog = cT.Output(
+        doc="Output merged catalog.",
         name="{outputCoaddName}Coadd_ref",
         storageClass="SourceCatalog",
         dimensions=["skymap", "tract", "patch"],
