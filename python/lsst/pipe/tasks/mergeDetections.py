@@ -38,8 +38,8 @@ from lsst.pipe.tasks.coaddBase import getSkyInfo
 
 
 class MergeDetectionsConnections(PipelineTaskConnections,
-                                 dimensions={"inputCoaddName": 'deep', "outputCoaddName": "deep"},
-                                 defaultTemplates=("tract", "patch", "skymap")):
+                                 dimensions=("tract", "patch", "skymap"),
+                                 defaultTemplates={"inputCoaddName": 'deep', "outputCoaddName": "deep"}):
     schema = cT.InitInput(
         name="{inputCoaddName}Coadd_det_schema",
         storageClass="SourceCatalog"
