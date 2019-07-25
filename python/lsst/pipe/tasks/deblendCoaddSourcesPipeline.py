@@ -138,7 +138,6 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
         self.schemaMapper = afwTable.SchemaMapper(schema)
         self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
-        self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -162,6 +161,7 @@ class DeblendCoaddSourcesSingleTask(DeblendCoaddSourcesBaseTask):
     def __init__(self, initInputs, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
         self.makeSubtask("singleBandDeblend", schema=self.schema, peakSchema=self.peakSchema)
+        self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def run(self, coadd, mergedDetections, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
@@ -178,6 +178,7 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
     def __init__(self, initInputs, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
         self.makeSubtask("multibandDeblend", schema=self.schema, peakSchema=self.peakSchema)
+        self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
