@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
-import lsst.pipe.base.connectionTypes as ct
+import lsst.pipe.base.connectionTypes as cT
 
 from lsst.pex.config import ConfigurableField
 from lsst.meas.deblender import SourceDeblendTask, MultibandDeblendTask
@@ -38,30 +38,36 @@ deblendBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep"}
 class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
                                           dimensions=("tract", "patch", "abstract_filter", "skymap"),
                                           defaultTemplates=deblendBaseTemplates):
-    inputSchema = ct.InitInput(
+    inputSchema = cT.InitInput(
+        doc="Input schema to use in the deblend catalog",
         name="{inputCoaddName}Coadd_mergeDet_schema",
         storageClass="SourceCatalog"
     )
-    peakSchema = ct.InitInput(
+    peakSchema = cT.InitInput(
+        doc="Schema of the footprint peak catalogs",
         name="{inputCoaddName}Coadd_peak_schema",
         storageClass="PeakCatalog"
     )
-    mergedDetections = ct.Input(
+    mergedDetections = cT.Input(
+        doc="Detection catalog merged across bands",
         name="{inputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap")
     )
-    coadd = ct.Input(
+    coadd = cT.Input(
+        doc="Exposure on which to run deblending",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    measureCatalog = ct.Output(
+    measureCatalog = cT.Output(
+        doc="The output measurement catalog of deblended sources",
         name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    outputSchema = ct.InitOutput(
+    outputSchema = cT.InitOutput(
+        doc="Output of the schema used in deblending task",
         name="{outputCoaddName}Coadd_deblendedFlux_schema",
         storageClass="SourceCatalog"
     )
@@ -82,35 +88,43 @@ class DeblendCoaddSourcesSingleConfig(PipelineTaskConfig,
 class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
                                           dimensions=("tract", "patch", "skymap"),
                                           defaultTemplates=deblendBaseTemplates):
-    inputSchema = ct.InitInput(
+    inputSchema = cT.InitInput(
+        doc="Input schema to use in the deblend catalog",
         name="{inputCoaddName}Coadd_mergeDet_schema",
         storageClass="SourceCatalog"
     )
-    peakScheam = ct.InitInput(
+    peakSchema = cT.InitInput(
+        doc="Schema of the footprint peak catalogs",
         name="{inputCoaddName}Coadd_peak_schema",
         storageClass="PeakCatalog"
     )
-    mergedDetections = ct.Input(
+    mergedDetections = cT.Input(
+        doc="Detection catalog merged across bands",
         name="{inputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap")
     )
-    coadds = ct.Input(
+    coadds = cT.Input(
+        doc="Exposure on which to run deblending",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         multiple=True,
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    outputSchema = ct.InitOutput(
+    outputSchema = cT.InitOutput(
+        doc="Output of the schema used in deblending task",
         name="{outputCoaddName}Coadd_deblendedModel_schema",
         storageClass="SourceCatalog"
     )
-    fluxCatalogs = ct.Output(
+    fluxCatalogs = cT.Output(
+        doc="Flux catalogs produced by multiband deblending, not written "
+            "if conserve flux is turned off"
         name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
-    templateCatalogs = ct.Output(
+    templateCatalogs = cT.Output(
+        doc="Template catalogs produced by multiband deblending",
         name="{outputCoaddName}Coadd_deblendedModel",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
