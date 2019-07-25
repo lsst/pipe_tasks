@@ -70,25 +70,30 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
                                     dimensions=("tract", "patch", "abstract_filter", "skymap"),
                                     defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"}):
     detectionSchema = cT.InitOutput(
+        doc="Schema of the detection catalog",
         name="{outputCoaddName}Coadd_det_schema",
         storageClass="SourceCatalog",
     )
     exposure = cT.Input(
+        doc="Exposure on which detections are to be performed",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputBackgrounds = cT.Output(
+        doc="Output Backgrounds used in detection",
         name="{outputCoaddName}Coadd_calexp_background",
         storageClass="Background",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputSources = cT.Output(
+        doc="Detected sources catalog",
         name="{outputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     outputExposure = cT.Output(
+        doc="Exposure post detection",
         name="{outputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
