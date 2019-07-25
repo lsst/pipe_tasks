@@ -24,8 +24,7 @@ import math
 from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.pipe.base import (InitInputDatasetField, InitOutputDatasetField, InputDatasetField,
-                            OutputDatasetField, PipelineTaskConfig, PipelineTask)
+import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
@@ -43,7 +42,106 @@ from .photoCal import PhotoCalTask
 __all__ = ["CalibrateConfig", "CalibrateTask"]
 
 
-class CalibrateConfig(PipelineTaskConfig):
+class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
+                           defaultTemplates={}):
+
+    icSourceSchema = cT.InitInput(
+        doc="Schema produced by characterize image task, used to initialize this task",
+        name="icSrc_schema",
+        storageClass="SourceCatalog",
+        multiple=True
+    )
+
+    outputSchema = cT.InitOutput(
+        doc="Schema after CalibrateTask has been initialized",
+        name="src_schema",
+        storageClass="SourceCatalog",
+        multiple=True
+    )
+
+    exposure = cT.Input(
+        doc="Input image to calibrate",
+        name="icExp",
+        storageClass="ExposureF",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    background = cT.Input(
+        doc="Backgrounds determined by characterize task",
+        name="icExpBackground",
+        storageClass="Background",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    icSourceCat = cT.Input(
+        doc="Source catalog created by characterize task",
+        name="icSrc",
+        storageClass="SourceCatalog",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    astromRefCat = cT.PrerequisiteInput(
+        doc="Reference catalog to use for astrometry",
+        name="ref_cat",
+        storageClass="SimpleCatalog",
+        dimensions=("skypix",),
+        deferLoad=True,
+        multiple=True,
+    )
+
+    photoRefCat = cT.PrerequisiteInput(
+        doc="Reference catalog to use for photometric calibration",
+        name="ref_cat",
+        storageClass="SimpleCatalog",
+        dimensions=("skypix",),
+        deferLoad=True,
+        multiple=True
+    )
+
+    outputExposure = cT.Output(
+        doc="Exposure after running calibration task",
+        name="calexp",
+        storageClass="ExposureF",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    outputCat = cT.Output(
+        doc="Source catalog produced in calibrate task",
+        name="src",
+        storageClass="SourceCatalog",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    outputBackground = cT.Output(
+        doc="Background models estimated in calibration task",
+        name="calexpBackground",
+        storageClass="Background",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    matches = cT.Output(
+        doc="Source/refObj matches from the astrometry solver",
+        name="srcMatch",
+        storageClass="Catalog",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    matchesDenormalized = cT.Output(
+        doc="Denormalized matches from astrometry solver",
+        name="srcMatchFull",
+        storageClass="Catalog",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.doWriteMatches is False:
+            self.outputs.remove("matches")
+        if config.doWriteMatchesDenormalized is False:
+            self.outputs.remove("matchesDenormalized")
+
+
+class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateConnections):
     """Config for CalibrateTask"""
     doWrite = pexConfig.Field(
         dtype=bool,
@@ -168,98 +266,12 @@ class CalibrateConfig(PipelineTaskConfig):
         doc="Injection of fake sources for testing purposes (must be "
             "retargeted)"
     )
-    icSourceSchema = InitInputDatasetField(
-        doc="Schema produced by characterize image task, used to initialize this task",
-        name="icSrc_schema",
-        storageClass="SourceCatalog",
-    )
-    outputSchema = InitOutputDatasetField(
-        doc="Schema after CalibrateTask has been initialized",
-        name="src_schema",
-        storageClass="SourceCatalog",
-    )
-    exposure = InputDatasetField(
-        doc="Input image to calibrate",
-        name="icExp",
-        storageClass="ExposureF",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-    background = InputDatasetField(
-        doc="Backgrounds determined by characterize task",
-        name="icExpBackground",
-        storageClass="Background",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-    icSourceCat = InputDatasetField(
-        doc="Source catalog created by characterize task",
-        name="icSrc",
-        storageClass="SourceCatalog",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-    astromRefCat = InputDatasetField(
-        doc="Reference catalog to use for astrometry",
-        name="ref_cat",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        manualLoad=True
-    )
-    photoRefCat = InputDatasetField(
-        doc="Reference catalog to use for photometric calibration",
-        name="ref_cat",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        manualLoad=True
-    )
-    outputExposure = OutputDatasetField(
-        doc="Exposure after running calibration task",
-        name="calexp",
-        storageClass="ExposureF",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-    outputCat = OutputDatasetField(
-        doc="Source catalog produced in calibrate task",
-        name="src",
-        storageClass="SourceCatalog",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-    outputBackground = OutputDatasetField(
-        doc="Background models estimated in calibration task",
-        name="calexpBackground",
-        storageClass="Background",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-    matches = OutputDatasetField(
-        doc="Source/refObj matches from the astrometry solver",
-        name="srcMatch",
-        storageClass="Catalog",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-    matchesDenormalized = OutputDatasetField(
-        doc="Denormalized matches from astrometry solver",
-        name="srcMatchFull",
-        storageClass="Catalog",
-        dimensions=("instrument", "visit", "detector"),
-        scalar=True
-    )
-
     doWriteExposure = pexConfig.Field(
         dtype=bool,
         default=True,
         doc="Write the calexp? If fakes have been added then we do not want to write out the calexp as a "
             "normal calexp but as a fakes_calexp."
     )
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.quantum.dimensions = ("instrument", "visit", "detector")
-        # aperture correction should already be measured
 
 
 ## \addtogroup LSST_task_documentation
@@ -269,7 +281,7 @@ class CalibrateConfig(PipelineTaskConfig):
 ## \copybrief CalibrateTask
 ## \}
 
-class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
+class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     r"""!Calibrate an exposure: measure sources and perform astrometric and
         photometric calibration
 
@@ -477,23 +489,9 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
             self.schema = self.schemaMapper.getOutputSchema()
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
 
-    def getInitOutputDatasets(self):
         sourceCatSchema = afwTable.SourceCatalog(self.schema)
         sourceCatSchema.getTable().setMetadata(self.algMetadata)
-        return {'outputSchema': sourceCatSchema}
-
-    @classmethod
-    def getOutputDatasetTypes(cls, config):
-        outputTypesDict = super().getOutputDatasetTypes(config)
-        if config.doWriteMatches is False:
-            outputTypesDict.pop("matches")
-        if config.doWriteMatchesDenormalized is False:
-            outputTypesDict.pop("matchesDenormalized")
-        return outputTypesDict
-
-    @classmethod
-    def getPrerequisiteDatasetTypes(cls, config):
-        return frozenset(["astromRefCat", "photoRefCat"])
+        self.outputSchema = sourceCatSchema
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,
@@ -559,38 +557,38 @@ class CalibrateTask(PipelineTask, pipeBase.CmdLineTask):
 
         return calRes
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        expId, expBits = butler.registry.packDataId("visit_detector",
-                                                    inputDataIds['exposure'],
-                                                    returnMaxBits=True)
-        inputData['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        expId, expBits = butlerQC.registry.packDataId("visit_detector",
+                                                      butlerQC.quantum.dataId,
+                                                      returnMaxBits=True)
+        inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
         if self.config.doAstrometry:
-            refObjLoader = ReferenceObjectLoader(dataIds=inputDataIds['astromRefCat'],
-                                                 butler=butler,
-                                                 config=self.config.astromRefObjLoader,
-                                                 log=self.log)
+            refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.astromRefCat],
+                                                 inputs.pop('astromRefCat'),
+                                                 config=self.config.astromRefObjLoader, log=self.log)
             self.pixelMargin = refObjLoader.config.pixelMargin
             self.astrometry.setRefObjLoader(refObjLoader)
 
         if self.config.doPhotoCal:
-            photoRefObjLoader = ReferenceObjectLoader(inputDataIds['photoRefCat'],
-                                                      butler,
-                                                      self.config.photoRefObjLoader,
-                                                      self.log)
+            photoRefObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId
+                                                       for ref in inputRefs.photoRefCat],
+                                                      inputs.pop('photoRefCat'),
+                                                      self.config.photoRefObjLoader, self.log)
             self.pixelMargin = photoRefObjLoader.config.pixelMargin
             self.photoCal.match.setRefObjLoader(photoRefObjLoader)
 
-        results = self.run(**inputData)
+        outputs = self.run(**inputs)
 
         if self.config.doWriteMatches:
-            normalizedMatches = afwTable.packMatches(results.astromMatches)
-            normalizedMatches.table.setMetadata(results.matchMeta)
+            normalizedMatches = afwTable.packMatches(outputs.astromMatches)
+            normalizedMatches.table.setMetadata(outputs.matchMeta)
             if self.config.doWriteMatchesDenormalized:
-                denormMatches = denormalizeMatches(results.astromMatches, results.matchMeta)
-                results.matchesDenormalized = denormMatches
-            results.matches = normalizedMatches
-        return results
+                denormMatches = denormalizeMatches(outputs.astromMatches, outputs.matchMeta)
+                outputs.matchesDenormalized = denormMatches
+            outputs.matches = normalizedMatches
+        butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, exposureIdInfo=None, background=None,
             icSourceCat=None):
