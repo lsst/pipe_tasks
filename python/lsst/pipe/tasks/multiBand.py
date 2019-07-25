@@ -590,14 +590,17 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
                                            defaultTemplates={"inputCoaddName": "deep",
                                                              "outputCoaddName": "deep"}):
     inputSchema = cT.InitInput(
+        doc="Input schema for measure merged task produced by a deblender or detection task",
         name="{inputCoaddName}Coadd_deblendedFlux_schema",
         storageClass="SourceCatalog"
     )
     outputSchema = cT.InitOutput(
+        doc="Output schema after all new fields are added by task",
         name="{inputCoaddName}Coadd_meas_schema",
         storageClass="SourceCatalog"
     )
     refCat = cT.PrerequisiteInput(
+        doc="Reference catalog used to match measured sources against known sources",
         name="ref_cat",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
@@ -605,37 +608,52 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         multiple=True
     )
     exposure = cT.Input(
+        doc="Input coadd image",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
     skyMap = cT.Input(
+        doc="SkyMap to use in processing",
         name="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
     visitCatalogs = cT.Input(
+        doc="Source catalogs for visits which overlap input tract, patch, abstract_filter. Will be "
+            "further filtered in the task for the purpose of propagating flags from image calibration "
+            "and characterization to codd objects",
         name="src",
         dimensions=("instrument", "visit", "detector"),
         storageClass="SourceCatalog",
         multiple=True
     )
     intakeCatalog = cT.Input(
+        doc=("Name of the input catalog to use."
+             "If the single band deblender was used this should be 'deblendedFlux."
+             "If the multi-band deblender was used this should be 'deblendedModel, "
+             "or deblendedFlux if the multiband deblender was configured to output "
+             "deblended flux catalogs. If no deblending was performed this should "
+             "be 'mergeDet'"),
         name="{inputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
     )
     outputSources = cT.Output(
+        doc="Source catalog containing all the measurement information generated in this task",
         name="{outputCoaddName}Coadd_meas",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="SourceCatalog",
     )
     matchResult = cT.Output(
+        doc="Match catalog produced by configured matcher, optional on doMatchSources",
         name="{outputCoaddName}Coadd_measMatch",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="Catalog",
     )
     denormMatches = cT.Output(
+        doc="Denormalized Match catalog produced by configured matcher, optional on "
+            "doWriteMatchesDenormalized",
         name="{outputCoaddName}Coadd_measMatchFull",
         dimensions=("tract", "patch", "abstract_filter", "skymap"),
         storageClass="Catalog",
