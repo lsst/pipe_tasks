@@ -66,8 +66,36 @@ the mergeDet, meas, and ref dataset Footprints:
 
 
 ##############################################################################################################
+class DetectCoaddSourcesConnections(PipelineTaskConnections,
+                                    dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                    defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"}):
+    detectionSchema = cT.InitOutput(
+        name="{outputCoaddName}Coadd_det_schema",
+        storageClass="SourceCatalog",
+    )
+    exposure = cT.Input(
+        name="{inputCoaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+    outputBackgrounds = cT.Output(
+        name="{outputCoaddName}Coadd_calexp_background",
+        storageClass="Background",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+    outputSources = cT.Output(
+        name="{outputCoaddName}Coadd_det",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+    outputExposure = cT.Output(
+        name="{outputCoaddName}Coadd_calexp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
 
-class DetectCoaddSourcesConfig(PipelineTaskConfig):
+
+class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
     """!
     @anchor DetectCoaddSourcesConfig_
 
@@ -82,40 +110,6 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig):
     insertFakes = ConfigurableField(target=BaseFakeSourcesTask,
                                     doc="Injection of fake sources for testing "
                                     "purposes (must be retargeted)")
-    detectionSchema = InitOutputDatasetField(
-        doc="Schema of the detection catalog",
-        nameTemplate="{outputCoaddName}Coadd_det_schema",
-        storageClass="SourceCatalog",
-    )
-    exposure = InputDatasetField(
-        doc="Exposure on which detections are to be performed",
-        nameTemplate="{inputCoaddName}Coadd",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-    outputBackgrounds = OutputDatasetField(
-        doc="Output Backgrounds used in detection",
-        nameTemplate="{outputCoaddName}Coadd_calexp_background",
-        scalar=True,
-        storageClass="Background",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-    outputSources = OutputDatasetField(
-        doc="Detected sources catalog",
-        nameTemplate="{outputCoaddName}Coadd_det",
-        scalar=True,
-        storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-    outputExposure = OutputDatasetField(
-        doc="Exposure post detection",
-        nameTemplate="{outputCoaddName}Coadd_calexp",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
-    )
-
     hasFakes = Field(
         dtype=bool,
         default=False,
@@ -124,8 +118,6 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig):
 
     def setDefaults(self):
         super().setDefaults()
-        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
-        self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep"})
         self.detection.thresholdType = "pixel_stdev"
         self.detection.isotropicGrow = True
         # Coadds are made from background-subtracted CCDs, so any background subtraction should be very basic
@@ -268,8 +260,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         if self.config.doScaleVariance:
             self.makeSubtask("scaleVariance")
 
-    def getInitOutputDatasets(self):
-        return {"detectionSchema": afwTable.SourceCatalog(self.schema)}
+        self.detectionSchema = afwTable.SourceCatalog(self.schema)
 
     def runDataRef(self, patchRef):
         """!
@@ -289,13 +280,15 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         self.write(results, patchRef)
         return results
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        packedId, maxBits = butler.registry.packDataId("tract_patch_abstract_filter",
-                                                       inputDataIds["exposure"],
-                                                       returnMaxBits=True)
-        inputData["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
-        inputData["expId"] = packedId
-        return self.run(**inputData)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        packedId, maxBits = butlerQC.registry.packDataId("tract_patch_abstract_filter",
+                                                         inputRefs.exposure.dataId,
+                                                         returnMaxBits=True)
+        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        inputs["expId"] = packedId
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, idFactory, expId):
         """!
