@@ -565,17 +565,19 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
         if self.config.doAstrometry:
-            refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.astromRefCat],
-                                                 inputs.pop('astromRefCat'),
+            refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
+                                                 for ref in inputRefs.astromRefCat],
+                                                 refCats=inputs.pop('astromRefCat'),
                                                  config=self.config.astromRefObjLoader, log=self.log)
             self.pixelMargin = refObjLoader.config.pixelMargin
             self.astrometry.setRefObjLoader(refObjLoader)
 
         if self.config.doPhotoCal:
-            photoRefObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId
-                                                       for ref in inputRefs.photoRefCat],
-                                                      inputs.pop('photoRefCat'),
-                                                      self.config.photoRefObjLoader, self.log)
+            photoRefObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
+                                                      for ref in inputRefs.photoRefCat],
+                                                      refCats=inputs.pop('photoRefCat'),
+                                                      config=self.config.photoRefObjLoader,
+                                                      log=self.log)
             self.pixelMargin = photoRefObjLoader.config.pixelMargin
             self.photoCal.match.setRefObjLoader(photoRefObjLoader)
 
