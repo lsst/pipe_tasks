@@ -41,21 +41,25 @@ class MergeDetectionsConnections(PipelineTaskConnections,
                                  dimensions=("tract", "patch", "skymap"),
                                  defaultTemplates={"inputCoaddName": 'deep', "outputCoaddName": "deep"}):
     schema = cT.InitInput(
+        doc="Schema of the input detection catalog",
         name="{inputCoaddName}Coadd_det_schema",
         storageClass="SourceCatalog"
     )
 
     outputSchema = cT.InitOutput(
+        doc="Schema of the merged detection catalog",
         name="{outputCoaddName}Coadd_mergeDet_schema",
         storageClass="SourceCatalog"
     )
 
     outputPeakSchema = cT.InitOutput(
+        doc="Output schema of the Footprint peak catalog",
         name="{outputCoaddName}Coadd_peak_schema",
         storageClass="PeakCatalog"
     )
 
     catalogs = cT.Input(
+        doc="Detection Catalogs to be merged",
         name="{inputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
@@ -63,12 +67,14 @@ class MergeDetectionsConnections(PipelineTaskConnections,
     )
 
     skyMap = cT.Input(
+        doc="SkyMap to be used in merging",
         name="{inputCoaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
 
     outputCatalog = cT.Output(
+        doc="Merged Detection catalog",
         name="{outputCoaddName}Coadd_mergeDet",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap"),
