@@ -581,7 +581,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 
 
 class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
-                                           dimensons=("tract", "patch", "abstract_filter", "skymap"),
+                                           dimensions=("tract", "patch", "abstract_filter", "skymap"),
                                            defaultTemplates={"inputCoaddName": "deep",
                                                              "outputCoaddName": "deep"}):
     inputSchema = cT.InitInput(
@@ -589,7 +589,6 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="SourceCatalog"
     )
     outputSchema = cT.InitOutput(
-        doc="Output schema after all new fields are added by task",
         name="{inputCoaddName}Coadd_meas_schema",
         storageClass="SourceCatalog"
     )
@@ -906,8 +905,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        refObjLoader = ReferenceObjectLoader([ref.dataId for ref in inputRefs.refCat], inputs['refCat'],
-                                             config=self.config.refObjLoader, log=self.log)
+        refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
+                                             inputs.pop('refCat'), config=self.config.refObjLoader,
+                                             log=self.log)
         self.match.setRefObjLoader(refObjLoader)
 
         # Set psfcache
@@ -955,8 +955,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
 
             inputCatalogsToKeep = []
             inputCatalogWcsUpdate = []
-            for i, dataId in enumerate(inputs['visitCatalogs']):
-                key = (dataId['visit'], dataId['detector'])
+            for i, dataRef in enumerate(inputRefs.visitCatalogs):
+                key = (dataRef.dataId['visit'], dataRef.dataId['detector'])
                 if key in inputVisitIds:
                     inputCatalogsToKeep.append(inputs['visitCatalogs'][i])
                     inputCatalogWcsUpdate.append(ccdRecordsWcs[key])
