@@ -41,13 +41,66 @@ from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .scaleVariance import ScaleVarianceTask
 from lsst.meas.algorithms import SourceDetectionTask
-from lsst.pipe.base.shims import ShimButler
+from lsst.daf.butler import DeferredDatasetHandle
 
-__all__ = ["AssembleCoaddTask", "AssembleCoaddConfig", "SafeClipAssembleCoaddTask",
-           "SafeClipAssembleCoaddConfig", "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
+__all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
+           "SafeClipAssembleCoaddTask", "SafeClipAssembleCoaddConfig",
+           "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
+
+CoaddBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep", "warpType": "direct"}
 
 
-class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig):
+class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
+                               dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                               defaultTemplates=CoaddBaseTemplates):
+
+    inputWarps = pipeBase.connectionTypes.Input(
+        doc=("Input list of warps to be assemebled i.e. stacked."
+             "WarpType (e.g. direct, psfMatched) is controlled by we warpType config parameter"),
+        name="{inputCoaddName}Coadd_{warpType}Warp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "visit", "instrument"),
+        deferLoad=True,
+        multiple=True
+    )
+    skyMap = pipeBase.connectionTypes.Input(
+        doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
+        name="{inputCoaddName}Coadd_skyMap",
+        storageClass="SkyMap",
+        dimensions=("skymap", ),
+    )
+    brightObjectMask = pipeBase.connectionTypes.PrerequisiteInput(
+        doc=("Input Bright Object Mask mask produced with external catalogs to be applied to the mask plane"
+             " BRIGHT_OBJECT."),
+        name="brightObjectMask",
+        storageClass="ObjectMaskCatalog",
+        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+    )
+    coaddExposure = pipeBase.connectionTypes.Input(
+        doc="Output coadded exposure, produced by stacking input warps",
+        name="{outputCoaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+    )
+    nImage = pipeBase.connectionTypes.Input(
+        doc="Output image of number of input images per pixel",
+        name="{outputCoaddName}Coadd_nImage",
+        storageClass="ImageU",
+        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+
+        if not config.doMaskBrightObjects:
+            self.prerequisiteInputs.remove("brightObjectMask", None)
+
+        if not config.doNImage:
+            self.outputs.remove("nImage", None)
+
+
+class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig,
+                          pipelineConnections=AssembleCoaddConnections):
     """Configuration parameters for the `AssembleCoaddTask`.
 
     Notes
@@ -152,44 +205,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         doc=("Attach a piecewise TransmissionCurve for the coadd? "
              "(requires all input Exposures to have TransmissionCurves).")
     )
-    inputWarps = pipeBase.InputDatasetField(
-        doc=("Input list of warps to be assemebled i.e. stacked."
-             "WarpType (e.g. direct, psfMatched) is controlled by we warpType config parameter"),
-        nameTemplate="{inputCoaddName}Coadd_{warpType}Warp",
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "visit", "instrument"),
-        manualLoad=True,
-    )
-    skyMap = pipeBase.InputDatasetField(
-        doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
-        nameTemplate="{inputCoaddName}Coadd_skyMap",
-        storageClass="SkyMap",
-        dimensions=("skymap", ),
-        scalar=True
-    )
-    brightObjectMask = pipeBase.InputDatasetField(
-        doc=("Input Bright Object Mask mask produced with external catalogs to be applied to the mask plane"
-             " BRIGHT_OBJECT."),
-        name="brightObjectMask",
-        storageClass="ObjectMaskCatalog",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
-        scalar=True
-    )
-    coaddExposure = pipeBase.OutputDatasetField(
-        doc="Output coadded exposure, produced by stacking input warps",
-        nameTemplate="{outputCoaddName}Coadd",
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
-        scalar=True
-    )
-    nImage = pipeBase.OutputDatasetField(
-        doc="Output image of number of input images per pixel",
-        nameTemplate="{outputCoaddName}Coadd_nImage",
-        storageClass="ImageU",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
-        scalar=True
-    )
-
     hasFakes = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -199,9 +214,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
     def setDefaults(self):
         super().setDefaults()
         self.badMaskPlanes = ["NO_DATA", "BAD", "SAT", "EDGE"]
-        self.formatTemplateNames({"inputCoaddName": "deep", "outputCoaddName": "deep",
-                                  "warpType": self.warpType})
-        self.quantum.dimensions = ("tract", "patch", "abstract_filter", "skymap")
+        self.connections.warpType = self.warpType
 
     def validate(self):
         super().validate()
@@ -365,33 +378,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         self.warpType = self.config.warpType
 
-    @classmethod
-    def getOutputDatasetTypes(cls, config):
-        """Return output dataset type descriptors
-
-        Remove output dataset types not produced by the Task
-        """
-        outputTypeDict = super().getOutputDatasetTypes(config)
-        if not config.doNImage:
-            outputTypeDict.pop("nImage", None)
-        return outputTypeDict
-
-    @classmethod
-    def getInputDatasetTypes(cls, config):
-        """Return input dataset type descriptors
-
-        Remove input dataset types not used by the Task
-        """
-        inputTypeDict = super().getInputDatasetTypes(config)
-        if not config.doMaskBrightObjects:
-            inputTypeDict.pop("brightObjectMask", None)
-        return inputTypeDict
-
-    @classmethod
-    def getPrerequisiteDatasetTypes(cls, config):
-        return frozenset(["brightObjectMask"])
-
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        # UPDATE DOCS!! def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
         """Assemble a coadd from a set of Warps.
 
         PipelineTask (Gen3) entry point to Coadd a set of Warps.
@@ -430,22 +418,20 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
            - ``coaddExposure`` : coadded exposure (``lsst.afw.image.Exposure``)
            - ``nImage``: N Image (``lsst.afw.image.Image``)
         """
+        inputData = butlerQC.get(inputRefs)
+
         # Construct skyInfo expected by run
         # Do not remove skyMap from inputData in case makeSupplementaryDataGen3 needs it
         skyMap = inputData["skyMap"]
-        outputDataId = next(iter(outputDataIds.values()))
+        outputDataId = butlerQC.quantum.dataId
+
         inputData['skyInfo'] = makeSkyInfo(skyMap,
                                            tractId=outputDataId['tract'],
                                            patchId=outputDataId['patch'])
 
-        # Construct list of input Shim DataRefs that quack like Gen2 DataRefs
-        butlerShim = ShimButler(butler)
-        warpRefList = [butlerShim.dataRef(self.config.inputWarps.name, dataId=dataId)
-                       for dataId in inputDataIds['inputWarps']]
-
-        # Construct output Shim DataRef
-        patchRef = butlerShim.dataRef(self.config.coaddExposure.name, dataId=outputDataIds['coaddExposure'])
-
+        # Construct list of input Deferred Datasets
+        # These quack a bit like like Gen2 DataRefs
+        warpRefList = inputData['inputWarps']
         # Perform same middle steps as `runDataRef` does
         inputs = self.prepareInputs(warpRefList)
         self.log.info("Found %d %s", len(inputs.tempExpRefList),
@@ -454,12 +440,13 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             self.log.warn("No coadd temporary exposures found")
             return
 
-        supplementaryData = self.makeSupplementaryDataGen3(inputData, inputDataIds, outputDataIds, butler)
-
+        # supplementaryData = self.makeSupplementaryDataGen3(inputData, inputDataIds, outputDataIds, butler)
+        # Get this ^^^ working for CompareWarp
+        supplementaryData = None
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
 
-        self.processResults(retStruct.coaddExposure, patchRef)
+        self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
         return retStruct
 
     @pipeBase.timeMethod
@@ -524,7 +511,9 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         retStruct = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                              inputData.weightList, supplementaryData=supplementaryData)
 
-        self.processResults(retStruct.coaddExposure, dataRef)
+        brightObjects = self.readBrightObjectMasks(dataRef) if self.config.doMaskBrightObjects else None
+        self.processResults(retStruct.coaddExposure, dataRef, brightObjectMasks=brightObjects)
+
         if self.config.doWrite:
             if self.getCoaddDatasetName(self.warpType) == "deepCoadd" and self.config.hasFakes:
                 coaddDatasetName = "fakes_" + self.getCoaddDatasetName(self.warpType)
@@ -537,7 +526,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         return retStruct
 
-    def processResults(self, coaddExposure, dataRef):
+    def processResults(self, coaddExposure, brightObjectMasks=None, dataId=None):
         """Interpolate over missing data and mask bright stars.
 
         Parameters
@@ -555,8 +544,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 varArray[:] = numpy.where(varArray > 0, varArray, numpy.inf)
 
         if self.config.doMaskBrightObjects:
-            brightObjectMasks = self.readBrightObjectMasks(dataRef)
-            self.setBrightObjectMasks(coaddExposure, dataRef.dataId, brightObjectMasks)
+            self.setBrightObjectMasks(coaddExposure, brightObjectMasks, dataId)
 
     def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
         """Make additional inputs to run() specific to subclasses (Gen2)
@@ -668,11 +656,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         imageScalerList = []
         tempExpName = self.getTempExpDatasetName(self.warpType)
         for tempExpRef in refList:
-            if not tempExpRef.datasetExists(tempExpName):
-                self.log.warn("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
-                continue
+            # Gen3's DeferredDatasetHandles are guaranteed to exist and
+            # therefore have no datasetExists() method
+            if not isinstance(tempExpRef, DeferredDatasetHandle):
+                if not tempExpRef.datasetExists(tempExpName):
+                    self.log.warn("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
+                    continue
 
-            tempExp = tempExpRef.get(tempExpName, immediate=True)
+            tempExp = tempExpRef.get(datasetType=tempExpName, immediate=True)
             # Ignore any input warp that is empty of data
             if numpy.isnan(tempExp.image.array).all():
                 continue
@@ -829,10 +820,15 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         # We load a single pixel of each coaddTempExp, because we just want to get at the metadata
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
-        tempExpList = [tempExpRef.get(tempExpName + "_sub",
-                                      bbox=geom.Box2I(coaddExposure.getBBox().getMin(),
-                                                      geom.Extent2I(1, 1)), immediate=True)
-                       for tempExpRef in tempExpRefList]
+        bbox = geom.Box2I(coaddExposure.getBBox().getMin(), afwGeom.Extent2I(1, 1))
+
+        if isinstance(tempExpRefList[0], DeferredDatasetHandle):
+            # Gen 3 API
+            tempExpList = [tempExpRef.get(parameters={'bbox': bbox}) for tempExpRef in tempExpRefList]
+        else:
+            # Gen 2 API. Delete this when Gen 2 retired
+            tempExpList = [tempExpRef.get(tempExpName + "_sub", bbox=bbox, immediate=True)
+                           for tempExpRef in tempExpRefList]
         numCcds = sum(len(tempExp.getInfo().getCoaddInputs().ccds) for tempExp in tempExpList)
 
         coaddExposure.setFilter(tempExpList[0].getFilter())
@@ -913,7 +909,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         if nImage is not None:
             subNImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
-            exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
+
+            if isinstance(tempExpRef, DeferredDatasetHandle):
+                # Gen 3 API
+                exposure = tempExpRef.get(parameters={'bbox': bbox})
+            else:
+                # Gen 2 API. Delete this when Gen 2 retired
+                exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
+
             maskedImage = exposure.getMaskedImage()
             mask = maskedImage.getMask()
             if altMask is not None:
@@ -1052,12 +1055,12 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             be retrieved.
         """
         try:
-            return dataRef.get("brightObjectMask", immediate=True)
+            return dataRef.get(datasetType="brightObjectMask", immediate=True)
         except Exception as e:
             self.log.warn("Unable to read brightObjectMask for %s: %s", dataRef.dataId, e)
             return None
 
-    def setBrightObjectMasks(self, exposure, dataId, brightObjectMasks):
+    def setBrightObjectMasks(self, exposure, brightObjectMasks, dataId=None):
         """Set the bright object masks.
 
         Parameters
@@ -1228,7 +1231,7 @@ def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
                              (subMask.getArray() & ignoreMask) == 0).sum()
 
 
-class SafeClipAssembleCoaddConfig(AssembleCoaddConfig):
+class SafeClipAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=AssembleCoaddConnections):
     """Configuration parameters for the SafeClipAssembleCoaddTask.
     """
     clipDetection = pexConfig.ConfigurableField(
@@ -1594,7 +1597,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
         # Loop over masks once and extract/store only relevant overlap metrics and detection footprints
         for i, warpRef in enumerate(tempExpRefList):
-            tmpExpMask = warpRef.get(self.getTempExpDatasetName(self.warpType),
+            tmpExpMask = warpRef.get(datasetType=self.getTempExpDatasetName(self.warpType),
                                      immediate=True).getMaskedImage().getMask()
             maskVisitDet = tmpExpMask.Factory(tmpExpMask, tmpExpMask.getBBox(afwImage.PARENT),
                                               afwImage.PARENT, True)
@@ -1723,7 +1726,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         return bigFootprintsCoadd
 
 
-class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig):
+class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=AssembleCoaddConnections):
     assembleStaticSkyModel = pexConfig.ConfigurableField(
         target=AssembleCoaddTask,
         doc="Task to assemble an artifact-free, PSF-matched Coadd to serve as a"
@@ -2348,7 +2351,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if not warpRef.datasetExists(warpName):
             self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
             return None
-        warp = warpRef.get(warpName, immediate=True)
+        warp = warpRef.get(datasetType=warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
