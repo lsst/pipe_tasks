@@ -87,7 +87,7 @@ class SkyCorrectionConfig(pipeBase.PipelineTaskConfig, Config):
         doc="Input camera to use.",
         name="camera",
         scalar=True,
-        storageClass="TablePersistableCamera",
+        storageClass="Camera",
         dimensions=["instrument", "calibration_label"],
     )
     skyCalibs = pipeBase.InputDatasetField(
