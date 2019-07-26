@@ -75,7 +75,7 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig):
         doc="WCS information for the input exposure.",
         name="jointcal_wcs",
         scalar=True,
-        storageClass="TablePersistableWcs",
+        storageClass="Wcs",
         dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
     )
 
@@ -83,7 +83,7 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig):
         doc="Calib information for the input exposure.",
         name="jointcal_photoCalib",
         scalar=True,
-        storageClass="TablePersistablePhotoCalib",
+        storageClass="PhotoCalib",
         dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
     )
 
