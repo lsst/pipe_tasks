@@ -47,13 +47,12 @@ __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig
            "SafeClipAssembleCoaddTask", "SafeClipAssembleCoaddConfig",
            "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
 
-CoaddBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep", "warpType": "direct"}
-
 
 class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
                                dimensions=("tract", "patch", "abstract_filter", "skymap"),
-                               defaultTemplates=CoaddBaseTemplates):
-
+                               defaultTemplates={"inputCoaddName": "deep",
+                                                 "outputCoaddName": "deep",
+                                                 "warpType": "direct"}):
     inputWarps = pipeBase.connectionTypes.Input(
         doc=("Input list of warps to be assemebled i.e. stacked."
              "WarpType (e.g. direct, psfMatched) is controlled by we warpType config parameter"),
@@ -214,7 +213,6 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
     def setDefaults(self):
         super().setDefaults()
         self.badMaskPlanes = ["NO_DATA", "BAD", "SAT", "EDGE"]
-        self.connections.warpType = self.warpType
 
     def validate(self):
         super().validate()
@@ -440,9 +438,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             self.log.warn("No coadd temporary exposures found")
             return
 
-        # supplementaryData = self.makeSupplementaryDataGen3(inputData, inputDataIds, outputDataIds, butler)
-        # Get this ^^^ working for CompareWarp
-        supplementaryData = None
+        supplementaryData = self.makeSupplementaryDataGen3(butlerQC, inputRefs, outputRefs)
+
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
 
@@ -563,32 +560,28 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         """
         pass
 
-    def makeSupplementaryDataGen3(self, inputData, inputDataIds, outputDataIds, butler):
+    def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
         """Make additional inputs to run() specific to subclasses (Gen3)
 
-        Duplicates interface of`adaptArgsAndRun` method.
+        Duplicates interface of `runQuantum` method.
         Available to be implemented by subclasses only if they need the
         coadd dataRef for performing preliminary processing before
         assembling the coadd.
 
         Parameters
         ----------
-        inputData : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are input Python-domain data objects (or lists of objects)
-            retrieved from data butler.
-        inputDataIds : `dict`
+        butlerQC : `lsst.daf.butler.ButlerQuantumContext`
+            Gen3 Butler object for fetching additional data products before
+            running the Task
+        inputRefs : `dict`
             Keys are the names of the configs describing input dataset types.
             Values are DataIds (or lists of DataIds) that task consumes for
             corresponding dataset type.
             DataIds are guaranteed to match data objects in ``inputData``.
-        outputDataIds : `dict`
+        outputRefs : `dict`
             Keys are the names of the configs describing input dataset types.
             Values are DataIds (or lists of DataIds) that task is to produce
             for corresponding dataset type.
-        butler : `lsst.daf.butler.Butler`
-            Gen3 Butler object for fetching additional data products before
-            running the Task
 
         Returns
         -------
@@ -1726,7 +1719,24 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         return bigFootprintsCoadd
 
 
-class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=AssembleCoaddConnections):
+class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
+                                          dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                          defaultTemplates={"inputCoaddName": "deep",
+                                                            "outputCoaddName": "deep",
+                                                            "warpType": "direct"}):
+    psfMatchedWarps = pipeBase.connectionTypes.Input(
+        doc=("PSF-Matched Warps are required by CompareWarp regardless of the coadd type requested. "
+             "Only PSF-Matched Warps make sense for image subtraction. "
+             "Therefore, they must be in the InputDatasetField and made available to the task."),
+        name="{inputCoaddName}Coadd_psfMatchedWarp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "visit"),
+        deferLoad=True,
+        multiple=True
+    )
+
+class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
+                                     pipelineConnections=CompareWarpAssembleCoaddConnections):
     assembleStaticSkyModel = pexConfig.ConfigurableField(
         target=AssembleCoaddTask,
         doc="Task to assemble an artifact-free, PSF-matched Coadd to serve as a"
@@ -1808,15 +1818,6 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=As
         dtype=float,
         default=0.05
     )
-    psfMatchedWarps = pipeBase.InputDatasetField(
-        doc=("PSF-Matched Warps are required by CompareWarp regardless of the coadd type requested. "
-             "Only PSF-Matched Warps make sense for image subtraction. "
-             "Therefore, they must be in the InputDatasetField and made available to the task."),
-        nameTemplate="{inputCoaddName}Coadd_psfMatchedWarp",
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "visit"),
-        manualLoad=True
-    )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
@@ -1830,6 +1831,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=As
         self.removeMaskPlanes.append('EDGE')
         self.assembleStaticSkyModel.badMaskPlanes = ["NO_DATA", ]
         self.assembleStaticSkyModel.warpType = 'psfMatched'
+        self.assembleStaticSkyModel.connections.warpType = 'psfMatched'
         self.assembleStaticSkyModel.statistic = 'MEANCLIP'
         self.assembleStaticSkyModel.sigmaClip = 2.5
         self.assembleStaticSkyModel.clipIter = 3
@@ -1984,34 +1986,30 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if self.config.doScaleWarpVariance:
             self.makeSubtask("scaleWarpVariance")
 
-    def makeSupplementaryDataGen3(self, inputData, inputDataIds, outputDataIds, butler):
+    def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
         """Make inputs specific to Subclass with Gen 3 API
 
-        Calls Gen3 `adaptArgsAndRun` instead of the Gen2 specific `runDataRef`
+        Calls Gen3 `runQuantum` instead of the Gen2 specific `runDataRef`
 
-        Duplicates interface of`adaptArgsAndRun` method.
+        Duplicates interface of`runQuantum` method.
         Available to be implemented by subclasses only if they need the
         coadd dataRef for performing preliminary processing before
         assembling the coadd.
 
         Parameters
         ----------
-        inputData : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are input Python-domain data objects (or lists of objects)
-            retrieved from data butler.
-        inputDataIds : `dict`
+        butlerQC : `lsst.daf.butler.ButlerQuantumContext`
+            Gen3 Butler object for fetching additional data products before
+            running the Task
+        inputRefs : `dict`
             Keys are the names of the configs describing input dataset types.
             Values are DataIds (or lists of DataIds) that task consumes for
             corresponding dataset type.
             DataIds are guaranteed to match data objects in ``inputData``.
-        outputDataIds : `dict`
+        outputRefs : `dict`
             Keys are the names of the configs describing input dataset types.
             Values are DataIds (or lists of DataIds) that task is to produce
             for corresponding dataset type.
-        butler : `lsst.daf.butler.Butler`
-            Gen3 Butler object for fetching additional data products before
-            running the Task
 
         Returns
         -------
@@ -2021,10 +2019,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
            - ``templateCoadd`` : coadded exposure (``lsst.afw.image.Exposure``)
            - ``nImage``: N Image (``lsst.afw.image.Image``)
 
-
         """
-        templateCoadd = self.assembleStaticSkyModel.adaptArgsAndRun(inputData, inputDataIds,
-                                                                    outputDataIds, butler)
+        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, inputRefs, outputRefs)
         if templateCoadd is None:
             raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
 
@@ -2348,9 +2344,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
         warpName = self.getTempExpDatasetName('psfMatched')
-        if not warpRef.datasetExists(warpName):
-            self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
-            return None
+        if not isinstance(warpRef, DeferredDatasetHandle):
+            if not warpRef.datasetExists(warpName):
+                self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
+                return None
         warp = warpRef.get(datasetType=warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
