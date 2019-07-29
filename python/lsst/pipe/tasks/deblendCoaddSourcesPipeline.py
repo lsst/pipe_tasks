@@ -82,6 +82,10 @@ class DeblendCoaddSourcesSingleConfig(DeblendCoaddSourcesBaseConfig):
         storageClass="SourceCatalog"
     )
 
+    def setDefaults(self):
+        super().setDefaults()
+        self.singleBandDeblend.propagateAllPeaks = True
+
 
 class DeblendCoaddSourcesMultiConfig(DeblendCoaddSourcesBaseConfig):
     multibandDeblend = ConfigurableField(
