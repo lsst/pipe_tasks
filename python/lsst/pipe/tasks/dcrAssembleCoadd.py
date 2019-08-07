@@ -369,6 +369,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         NotImplementedError
             If ``lambdaMin`` is missing from the Mapper class of the obs package being used.
         """
+        sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
         filterInfo = templateCoadd.getFilter()
         if np.isnan(filterInfo.getFilterProperty().getLambdaMin()):
             raise NotImplementedError("No minimum/maximum wavelength information found"
@@ -378,19 +379,24 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         dcrShifts = []
         airmassDict = {}
         angleDict = {}
+        psfSizeDict = {}
         for visitNum, warpExpRef in enumerate(warpRefList):
             visitInfo = warpExpRef.get(tempExpName + "_visitInfo")
             visit = warpExpRef.dataId["visit"]
+            psf = warpExpRef.get(tempExpName).getPsf()
+            psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
             airmass = visitInfo.getBoresightAirmass()
             parallacticAngle = visitInfo.getBoresightParAngle().asDegrees()
             airmassDict[visit] = airmass
             angleDict[visit] = parallacticAngle
+            psfSizeDict[visit] = psfSize
             if self.config.doAirmassWeight:
                 weightList[visitNum] *= airmass
             dcrShifts.append(np.max(np.abs(calculateDcr(visitInfo, templateCoadd.getWcs(),
                                                         filterInfo, self.config.dcrNumSubfilters))))
         self.log.info("Selected airmasses:\n%s", airmassDict)
         self.log.info("Selected parallactic angles:\n%s", angleDict)
+        self.log.info("Selected PSF sizes:\n%s", psfSizeDict)
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
         psf = self.selectCoaddPsf(templateCoadd, warpRefList)
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
