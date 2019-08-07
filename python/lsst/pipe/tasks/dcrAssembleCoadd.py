@@ -1127,18 +1127,22 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
         tempExpName = self.getTempExpDatasetName(self.warpType)
+        # Note: ``ccds`` is a `lsst.afw.table.ExposureCatalog` with one entry per ccd and per visit
+        # If there are multiple ccds, it will have that many times more elements than ``warpExpRef``
         ccds = templateCoadd.getInfo().getCoaddInputs().ccds
         psfRefSize = templateCoadd.getPsf().computeShape().getDeterminantRadius()*sigma2fwhm
-        psfSizeList = []
-        for visitNum, warpExpRef in enumerate(warpRefList):
+        psfSizes = np.zeros(len(ccds))
+        ccdVisits = np.array(ccds["visit"])
+        for warpExpRef in warpRefList:
             psf = warpExpRef.get(tempExpName).getPsf()
             psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
-            psfSizeList.append(psfSize)
+            visit = warpExpRef.dataId["visit"]
+            psfSizes[ccdVisits == visit] = psfSize
         # Note that the input PSFs include DCR, which should be absent from the DcrCoadd
         # The selected PSFs are those that have a FWHM less than or equal to the smaller
         # of the mean or median FWHM of the input exposures.
-        sizeThreshold = min(np.median(psfSizeList), psfRefSize)
-        goodVisits = np.array(psfSizeList) <= sizeThreshold
-        psf = measAlg.CoaddPsf(ccds[goodVisits], templateCoadd.getWcs(),
+        sizeThreshold = min(np.median(psfSizes), psfRefSize)
+        goodPsfs = psfSizes <= sizeThreshold
+        psf = measAlg.CoaddPsf(ccds[goodPsfs], templateCoadd.getWcs(),
                                self.config.coaddPsf.makeControl())
         return psf
