@@ -31,6 +31,7 @@ from lsst.ctrl.pool.parallel import BatchPoolTask
 from lsst.pipe.drivers.background import (SkyMeasurementTask, FocalPlaneBackground,
                                           FocalPlaneBackgroundConfig, MaskObjectsTask)
 import lsst.pipe.drivers.visualizeVisit as visualizeVisit
+import lsst.pipe.base.connectionTypes as cT
 
 __all__ = ["SkyCorrectionConfig", "SkyCorrectionTask"]
 
@@ -57,62 +58,59 @@ def makeCameraImage(camera, exposures, filename=None, binning=8):
     return image
 
 
-class SkyCorrectionConfig(pipeBase.PipelineTaskConfig, Config):
-    """Configuration for SkyCorrectionTask"""
-
-    rawLinker = pipeBase.InputDatasetField(
+class SkyCorrectionConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit")):
+    rawLinker = cT.Input(
         doc="Raw data to provide exp-visit linkage to connect calExp inputs to camera/sky calibs.",
         name="raw",
-        scalar=False,
+        multiple=True,
+        deferLoad=True,
         storageClass="ExposureU",
         dimensions=["instrument", "exposure", "detector"],
     )
-
-    calExpArray = pipeBase.InputDatasetField(
+    calExpArray = cT.Input(
         doc="Input exposures to process",
         name="calexp",
-        scalar=False,
+        multiple=True,
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
     )
-    calBkgArray = pipeBase.InputDatasetField(
+    calBkgArray = cT.Input(
         doc="Input background files to use",
+        multiple=True,
         name="calexpBackground",
-        scalar=False,
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
-
-    camera = pipeBase.InputDatasetField(
+    camera = cT.PrerequisiteInput(
         doc="Input camera to use.",
         name="camera",
-        scalar=True,
         storageClass="Camera",
         dimensions=["instrument", "calibration_label"],
     )
-    skyCalibs = pipeBase.InputDatasetField(
+    skyCalibs = cT.PrerequisiteInput(
         doc="Input sky calibrations to use.",
         name="sky",
-        scalar=False,
+        multiple=True,
         storageClass="ExposureF",
         dimensions=["instrument", "physical_filter", "detector", "calibration_label"],
     )
-
-    calExpCamera = pipeBase.OutputDatasetField(
+    calExpCamera = cT.Output(
         doc="Output camera image.",
         name='calexp_camera',
-        scalar=True,
         storageClass="ImageF",
         dimensions=["instrument", "visit"],
     )
-    skyCorr = pipeBase.OutputDatasetField(
+    skyCorr = cT.Output(
         doc="Output sky corrected images.",
         name='skyCorr',
-        scalar=False,
+        multiple=True,
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
 
+
+class SkyCorrectionConfig(pipeBase.PipelineTaskConfig, pipelineConnections=SkyCorrectionConnections):
+    """Configuration for SkyCorrectionTask"""
     bgModel = ConfigField(dtype=FocalPlaneBackgroundConfig, doc="Background model")
     bgModel2 = ConfigField(dtype=FocalPlaneBackgroundConfig, doc="2nd Background model")
     sky = ConfigurableField(target=SkyMeasurementTask, doc="Sky measurement")
@@ -133,28 +131,17 @@ class SkyCorrectionConfig(pipeBase.PipelineTaskConfig, Config):
         self.bgModel2.ySize = 256
         self.bgModel2.smoothScale = 1.0
 
-        self.quantum.dimensions = ("instrument", "visit")
-
 
 class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
     """Correct sky over entire focal plane"""
     ConfigClass = SkyCorrectionConfig
     _DefaultName = "skyCorr"
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        inputData.pop("rawLinker", None)
-        return super().adaptArgsAndRun(inputData, inputDataIds, outputDataIds, butler)
-
-    @classmethod
-    def getPrerequisiteDatasetTypes(cls, config):
-        names = set()
-        names.add('skyCalibs')
-        names.add('camera')
-        return names
-
-    @classmethod
-    def getPerDatasetTypeDimensions(cls, config):
-        return frozenset(["calibration_label"])
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        inputs.pop("rawLinker", None)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def __init__(self, *args, **kwargs):
         super().__init__(**kwargs)
