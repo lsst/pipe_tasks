@@ -22,9 +22,7 @@
 #
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializedTaskRunner,
-                            PipelineTask, PipelineTaskConfig, InitInputDatasetField,
-                            InitOutputDatasetField, InputDatasetField, OutputDatasetField,
-                            PipelineTaskConnections)
+                            PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
