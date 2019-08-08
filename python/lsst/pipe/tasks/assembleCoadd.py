@@ -81,7 +81,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
     )
-    nImage = pipeBase.connectionTypes.Input(
+    nImage = pipeBase.connectionTypes.Output(
         doc="Output image of number of input images per pixel",
         name="{outputCoaddName}Coadd_nImage",
         storageClass="ImageU",
