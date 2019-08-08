@@ -118,7 +118,7 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
     )
     fluxCatalogs = cT.Output(
         doc="Flux catalogs produced by multiband deblending, not written "
-            "if conserve flux is turned off"
+            "if conserve flux is turned off",
         name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
