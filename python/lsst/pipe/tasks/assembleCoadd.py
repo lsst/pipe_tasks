@@ -92,10 +92,10 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         super().__init__(config=config)
 
         if not config.doMaskBrightObjects:
-            self.prerequisiteInputs.remove("brightObjectMask", None)
+            self.prerequisiteInputs.remove("brightObjectMask")
 
         if not config.doNImage:
-            self.outputs.remove("nImage", None)
+            self.outputs.remove("nImage")
 
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig,
