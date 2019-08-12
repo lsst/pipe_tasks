@@ -117,6 +117,7 @@ class RepairTask(pipeBase.Task):
       <DT> @c displayCR
       <DD> If True, display the exposure on display's frame 1 and overlay bounding boxes around detects CRs.
     </DL>
+    If Frame == None is is not displayed
     @section pipe_tasks_repair_Example A complete example of using RepairTask
 
     This code is in runRepair.py in the examples directory, and can be run as @em e.g.
@@ -203,7 +204,9 @@ class RepairTask(pipeBase.Task):
 
         frame = getDebugFrame(self._display, "repair.before")
         if frame:
-            afwDisplay.Display(frame).mtv(exposure)
+            disp = afwDisplay.Display(frame)
+            disp.scale('asinh', 'zscale')
+            disp.mtv(exposure, title="repair.before")
 
         if defects is not None and self.config.doInterpolate:
             self.interp.run(exposure, defects=defects)
@@ -213,7 +216,9 @@ class RepairTask(pipeBase.Task):
 
         frame = getDebugFrame(self._display, "repair.after")
         if frame:
-            afwDisplay.Display(frame).mtv(exposure)
+            afwDisplay.Display(frame)
+            disp.scale('asinh', 'zscale')
+            disp.mtv(exposure, "repair.after")
 
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
@@ -282,6 +287,7 @@ class RepairTask(pipeBase.Task):
             if display and displayCR:
                 disp = afwDisplay.Display()
                 disp.incrDefaultFrame()
+                disp.scale('asinh', 'zscale')
                 disp.mtv(exposure0, title="Post-CR")
 
                 with disp.Buffering():

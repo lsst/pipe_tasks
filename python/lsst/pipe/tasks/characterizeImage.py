@@ -446,6 +446,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             self.log.warn("Source catalog detected and measured with placeholder or default PSF")
             self.installSimplePsf.run(exposure=exposure)
+            self.log.info(f"Using PSF sigma = {exposure.getPsf().computeShape().getTraceRadius():.2f}")
 
         if exposureIdInfo is None:
             exposureIdInfo = ExposureIdInfo()
@@ -528,8 +529,13 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         """
         # install a simple PSF model, if needed or wanted
         if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
-            self.log.warn("Source catalog detected and measured with placeholder or default PSF")
+            if not exposure.hasPsf():
+                self.log.warn("Source catalog detected and measured with placeholder or default PSF")
+            else:
+                self.log.info("Source catalog detected and measured with simplified PSF")
+
             self.installSimplePsf.run(exposure=exposure)
+            self.log.info(f"Using PSF sigma = {exposure.getPsf().computeShape().getTraceRadius():.2f}")
 
         # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
         self.repair.run(exposure=exposure, keepCRs=True)
