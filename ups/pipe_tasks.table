@@ -9,7 +9,6 @@ setupRequired(obs_base)
 setupRequired(meas_algorithms)
 setupOptional(meas_astrom)
 setupOptional(meas_deblender)
-setupOptional(astrometry_net_data)
 setupOptional(ip_isr)
 setupOptional(ip_diffim)
 setupOptional(coadd_utils)
@@ -17,7 +16,6 @@ setupOptional(skymap)
 setupOptional(sphgeom)
 
 setupOptional(obs_test) # for unit tests
-setupOptional(matplotlib)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
