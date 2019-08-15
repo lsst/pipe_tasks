@@ -35,6 +35,7 @@ import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 import lsst.log as log
 import lsstDebug
+import lsst.utils as utils
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
@@ -376,9 +377,13 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         self.warpType = self.config.warpType
 
+    @utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        # UPDATE DOCS!! def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        """Assemble a coadd from a set of Warps.
+        # Docstring to be formatted with info from PipelineTask.runQuantum
+        """
+        Notes
+        -----
+        Assemble a coadd from a set of Warps.
 
         PipelineTask (Gen3) entry point to Coadd a set of Warps.
         Analogous to `runDataRef`, it prepares all the data products to be
@@ -389,32 +394,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         `lsst.daf.persistence.Butler`. Updates to this method should
         correspond to an update in `runDataRef` while both entry points
         are used.
-
-        Parameters
-        ----------
-        inputData : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are input Python-domain data objects (or lists of objects)
-            retrieved from data butler.
-        inputDataIds : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task consumes for
-            corresponding dataset type.
-        outputDataIds : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task is to produce
-            for corresponding dataset type.
-        butler : `lsst.daf.butler.Butler`
-            Gen3 Butler object for fetching additional data products before
-            running the Task
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-           Result struct with components:
-
-           - ``coaddExposure`` : coadded exposure (``lsst.afw.image.Exposure``)
-           - ``nImage``: N Image (``lsst.afw.image.Image``)
         """
         inputData = butlerQC.get(inputRefs)
 
@@ -570,17 +549,16 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         Parameters
         ----------
-        butlerQC : `lsst.daf.butler.ButlerQuantumContext`
+        butlerQC : `lsst.pipe.base.ButlerQuantumContext`
             Gen3 Butler object for fetching additional data products before
-            running the Task
-        inputRefs : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task consumes for
-            corresponding dataset type.
+            running the Task specialized for quantum being processed
+        inputRefs : `lsst.pipe.base.InputQuantizedConnection`
+            Attributes are the names of the connections describing input dataset types.
+            Values are DatasetRefs that task consumes for corresponding dataset type.
             DataIds are guaranteed to match data objects in ``inputData``.
-        outputRefs : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task is to produce
+        outputRefs : `lsst.pipe.base.OutputQuantizedConnection`
+            Attributes are the names of the connections describing output dataset types.
+            Values are DatasetRefs that task is to produce
             for corresponding dataset type.
 
         Returns
@@ -1998,17 +1976,16 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         Parameters
         ----------
-        butlerQC : `lsst.daf.butler.ButlerQuantumContext`
+        butlerQC : `lsst.pipe.base.ButlerQuantumContext`
             Gen3 Butler object for fetching additional data products before
-            running the Task
-        inputRefs : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task consumes for
-            corresponding dataset type.
+            running the Task specialized for quantum being processed
+        inputRefs : `lsst.pipe.base.InputQuantizedConnection`
+            Attributes are the names of the connections describing input dataset types.
+            Values are DatasetRefs that task consumes for corresponding dataset type.
             DataIds are guaranteed to match data objects in ``inputData``.
-        outputRefs : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task is to produce
+        outputRefs : `lsst.pipe.base.OutputQuantizedConnection`
+            Attributes are the names of the connections describing output dataset types.
+            Values are DatasetRefs that task is to produce
             for corresponding dataset type.
 
         Returns

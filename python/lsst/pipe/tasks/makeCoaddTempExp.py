@@ -28,6 +28,7 @@ import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 import lsst.log as log
+import lsst.utils as utils
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from .coaddBase import CoaddBaseTask, makeSkyInfo
 from .warpAndPsfMatch import WarpAndPsfMatchTask
@@ -646,8 +647,12 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
     ConfigClass = MakeWarpConfig
     _DefaultName = "makeWarp"
 
+    @utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        """Construct warps for requested warp type for single epoch
+        """
+        Notes
+        ----
+        Construct warps for requested warp type for single epoch
 
         PipelineTask (Gen3) entry point to warp and optionally PSF-match
         calexps. This method is analogous to `runDataRef`.
