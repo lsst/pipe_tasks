@@ -35,10 +35,57 @@ from lsst.meas.base import (SingleFrameMeasurementTask, ApplyApCorrTask, Catalog
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.afw.table import SourceTable, IdFactory
 from lsst.obs.base import ExposureIdInfo
-from lsst.pipe.base import PipelineTask, PipelineTaskConfig, CmdLineTask
+from lsst.pipe.base import PipelineTask, PipelineTaskConfig, CmdLineTask, PipelineTaskConnections
+import lsst.pipe.base.connectionTypes as cT
 
 
 __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
+
+
+class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
+                                     defaultTemplates={}):
+
+    exposure = cT.Input(
+        doc="Exposure into which fakes are to be added.",
+        name="calexp",
+        storageClass="ExposureF",
+        dimensions=("instrument", "visit", "detector")
+    )
+
+    fakeCat = cT.Input(
+        doc="Catalog of fake sources to draw inputs from.",
+        nameTemplate="{CoaddName}Coadd_fakeSourceCat",
+        storageClass="Parquet",
+        dimensions=("tract", "skymap")
+    )
+
+    wcs = cT.Input(
+        doc="WCS information for the input exposure.",
+        name="jointcal_wcs",
+        storageClass="Wcs",
+        dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
+    )
+
+    photoCalib = cT.Input(
+        doc="Calib information for the input exposure.",
+        name="jointcal_photoCalib",
+        storageClass="PhotoCalib",
+        dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
+    )
+
+    outputExposure = cT.Output(
+        doc="Exposure with fake sources added.",
+        name="fakes_calexp",
+        storageClass="ExposureF",
+        dimensions=("instrument", "visit", "detector")
+    )
+
+    outputCat = cT.Output(
+        doc="Source catalog produced in calibrate task with fakes also measured.",
+        name="src",
+        storageClass="SourceCatalog",
+        dimensions=("instrument", "visit", "detector"),
+    )
 
 
 class ProcessCcdWithFakesConfig(PipelineTaskConfig):
@@ -53,54 +100,6 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig):
         doc="Use updated calibs and wcs from jointcal?",
         dtype=bool,
         default=False,
-    )
-
-    exposure = pipeBase.InputDatasetField(
-        doc="Exposure into which fakes are to be added.",
-        name="calexp",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("Instrument", "Visit", "Detector")
-    )
-
-    fakeCat = pipeBase.InputDatasetField(
-        doc="Catalog of fake sources to draw inputs from.",
-        nameTemplate="{CoaddName}Coadd_fakeSourceCat",
-        scalar=True,
-        storageClass="Parquet",
-        dimensions=("Tract", "SkyMap")
-    )
-
-    wcs = pipeBase.InputDatasetField(
-        doc="WCS information for the input exposure.",
-        name="jointcal_wcs",
-        scalar=True,
-        storageClass="Wcs",
-        dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
-    )
-
-    photoCalib = pipeBase.InputDatasetField(
-        doc="Calib information for the input exposure.",
-        name="jointcal_photoCalib",
-        scalar=True,
-        storageClass="PhotoCalib",
-        dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
-    )
-
-    outputExposure = pipeBase.OutputDatasetField(
-        doc="Exposure with fake sources added.",
-        name="fakes_calexp",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("Instrument", "Visit", "Detector")
-    )
-
-    outputCat = pipeBase.OutputDatasetField(
-        doc="Source catalog produced in calibrate task with fakes also measured.",
-        name="src",
-        storageClass="SourceCatalog",
-        dimensions=("Instrument", "Visit", "Detector"),
-        scalar=True
     )
 
     coaddName = pexConfig.Field(
@@ -129,7 +128,6 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig):
     def setDefaults(self):
         self.detection.reEstimateBackground = False
         super().setDefaults()
-        self.quantum.dimensions = ("Instrument", "Visit", "Detector")
         self.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("FAKE")
         self.measurement.plugins["base_PixelFlags"].masksFpCenter.append("FAKE")
 
@@ -228,20 +226,19 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         dataRef.put(resultStruct.outputExposure, "fakes_calexp")
         dataRef.put(resultStruct.outputCat, "fakes_src")
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        if 'exposureIdInfo' not in inputData.keys():
-            packer = butler.registry.makeDataIdPacker("VisitDetector", inputDataIds['exposure'])
-            exposureIdInfo = ExposureIdInfo()
-            exposureIdInfo.expId = packer.pack(inputDataIds['exposure'])
-            exposureIdInfo.expBits = packer.maxBits
-            inputData['exposureIdInfo'] = exposureIdInfo
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        if 'exposureIdInfo' not in inputs.keys():
+            expId, expBits = butlerQC.registry.packDataId("visit_detector", butlerQC.quantum.dataId,
+                                                          returnMaxBits=True)
+            inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
-        if inputData["wcs"] is None:
-            inputData["wcs"] = inputData["image"].getWcs()
-        if inputData["photoCalib"] is None:
-            inputData["photoCalib"] = inputData["image"].getCalib()
+        if inputs["wcs"] is None:
+            inputs["wcs"] = inputs["image"].getWcs()
+        if inputs["photoCalib"] is None:
+            inputs["photoCalib"] = inputs["image"].getCalib()
 
-        return self.run(**inputData)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     @classmethod
     def _makeArgumentParser(cls):
