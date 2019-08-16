@@ -53,7 +53,8 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
                                dimensions=("tract", "patch", "abstract_filter", "skymap"),
                                defaultTemplates={"inputCoaddName": "deep",
                                                  "outputCoaddName": "deep",
-                                                 "warpType": "direct"}):
+                                                 "warpType": "direct",
+                                                 "fakesType": ""}):
     inputWarps = pipeBase.connectionTypes.Input(
         doc=("Input list of warps to be assemebled i.e. stacked."
              "WarpType (e.g. direct, psfMatched) is controlled by we warpType config parameter"),
@@ -78,7 +79,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
     )
     coaddExposure = pipeBase.connectionTypes.Input(
         doc="Output coadded exposure, produced by stacking input warps",
-        name="{outputCoaddName}Coadd",
+        name="{fakesType}{outputCoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
     )

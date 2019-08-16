@@ -84,7 +84,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     )
 
     hasFakes = pexConfig.Field(
-        doc="Should be set to True if fakes ources have been inserted into the input data.",
+        doc="Should be set to True if fake sources have been inserted into the input data.",
         dtype=bool,
         default=False,
     )
