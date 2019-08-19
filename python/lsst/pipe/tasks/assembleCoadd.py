@@ -20,6 +20,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import os
+import copy
 import numpy
 import warnings
 import lsst.pex.config as pexConfig
@@ -77,7 +78,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         storageClass="ObjectMaskCatalog",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
     )
-    coaddExposure = pipeBase.connectionTypes.Input(
+    coaddExposure = pipeBase.connectionTypes.Output(
         doc="Output coadded exposure, produced by stacking input warps",
         name="{fakesType}{outputCoaddName}Coadd",
         storageClass="ExposureF",
@@ -91,6 +92,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
     )
 
     def __init__(self, *, config=None):
+        config.connections.warpType = config.warpType
         super().__init__(config=config)
 
         if not config.doMaskBrightObjects:
@@ -771,7 +773,9 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         # Despite the name, the following doesn't really deal with "EDGE" pixels: it identifies
         # pixels that didn't receive any unmasked inputs (as occurs around the edge of the field).
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
-        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage)
+        return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
+                               warpRefList=tempExpRefList, imageScalerList=imageScalerList,
+                               weightList=weightList)
 
     def assembleMetadata(self, coaddExposure, tempExpRefList, weightList):
         """Set the metadata for the coadd.
@@ -1702,7 +1706,8 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
                                           dimensions=("tract", "patch", "abstract_filter", "skymap"),
                                           defaultTemplates={"inputCoaddName": "deep",
                                                             "outputCoaddName": "deep",
-                                                            "warpType": "direct"}):
+                                                            "warpType": "direct",
+                                                            "fakesType": ""}):
     psfMatchedWarps = pipeBase.connectionTypes.Input(
         doc=("PSF-Matched Warps are required by CompareWarp regardless of the coadd type requested. "
              "Only PSF-Matched Warps make sense for image subtraction. "
@@ -1713,6 +1718,7 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
         deferLoad=True,
         multiple=True
     )
+
 
 class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
                                      pipelineConnections=CompareWarpAssembleCoaddConnections):
@@ -1998,12 +2004,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
            - ``nImage``: N Image (``lsst.afw.image.Image``)
 
         """
-        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, inputRefs, outputRefs)
+        # Ensure that psfMatchedWarps are used as input warps for template generation
+        staticSkyModelInputRefs = copy.deepcopy(inputRefs)
+        staticSkyModelInputRefs.inputWarps = inputRefs.psfMatchedWarps
+
+        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs, outputRefs)
         if templateCoadd is None:
             raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
 
-        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
-                               nImage=templateCoadd.nImage)
+        return templateCoadd
 
     def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
         """Make inputs specific to Subclass.
@@ -2032,8 +2041,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if templateCoadd is None:
             raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
 
-        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
-                               nImage=templateCoadd.nImage)
+        return templateCoadd
 
     def _noTemplateMessage(self, warpType):
         warpName = (warpType[0].upper() + warpType[1:])
@@ -2081,8 +2089,19 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
            - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
            - ``nImage``: exposure count image (``lsst.afw.image.Image``), if requested.
         """
-        templateCoadd = supplementaryData.templateCoadd
-        spanSetMaskList = self.findArtifacts(templateCoadd, tempExpRefList, imageScalerList)
+        templateCoadd = supplementaryData.coaddExposure
+        psfMatchedWarpList = supplementaryData.warpRefList
+        psfMatchedImageScalerList = supplementaryData.imageScalerList
+        spanSetMaskList = self.findArtifacts(templateCoadd, psfMatchedWarpList,
+                                             psfMatchedImageScalerList)
+
+        # In Gen3, we have to check to see if the spanSetMaskList
+        # derived from the PSFMatchedWarps matches the direct tempExpRefList
+        if not isinstance(tempExpRefList[0], DeferredDatasetHandle):
+            direct = [ref.datasetRefOrType.dataId for ref in tempExpRefList]
+            psfMatched = [ref.datasetRefOrType.dataId for ref in psfMatchedWarpList]
+            assert(direct == psfMatched)
+
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
         badPixelMask = afwImage.Mask.getPlaneBitMask(badMaskPlanes)
