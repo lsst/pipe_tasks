@@ -55,7 +55,7 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
         name="icExp",
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
-    ) 
+    )
     sourceCat = cT.Output(
         doc="Output source catalog.",
         name="icSrc",
