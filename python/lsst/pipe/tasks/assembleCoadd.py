@@ -381,12 +381,19 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         self.warpType = self.config.warpType
 
     @utils.inheritDoc(pipeBase.PipelineTask)
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+    def runQuantum(self, butlerQC, inputRefs, outputRefs, doWrite=True):
         # Docstring to be formatted with info from PipelineTask.runQuantum
         """
         Notes
         -----
         Assemble a coadd from a set of Warps.
+
+        Extra Parameters:
+        doWrite : `bool`
+            RunQuantum may be called for its side effects and is not expected
+            to write anything out. If doWrite is false, the output will be
+            returned from this function instead of being persisted by the
+            butler.
 
         PipelineTask (Gen3) entry point to Coadd a set of Warps.
         Analogous to `runDataRef`, it prepares all the data products to be
@@ -426,7 +433,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                              inputs.weightList, supplementaryData=supplementaryData)
 
         self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
-        return retStruct
+        if doWrite:
+            butlerQC.put(retStruct, outputRefs)
+        else:
+            return retStruct
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
@@ -2012,7 +2022,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         staticSkyModelInputRefs = copy.deepcopy(inputRefs)
         staticSkyModelInputRefs.inputWarps = inputRefs.psfMatchedWarps
 
-        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs, outputRefs)
+        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs, outputRefs,
+                                                               doWrite=False)
         if templateCoadd is None:
             raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
 
