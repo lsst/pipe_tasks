@@ -491,7 +491,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                              inputData.weightList, supplementaryData=supplementaryData)
 
         brightObjects = self.readBrightObjectMasks(dataRef) if self.config.doMaskBrightObjects else None
-        self.processResults(retStruct.coaddExposure, dataRef, brightObjectMasks=brightObjects)
+        self.processResults(retStruct.coaddExposure, dataId=dataRef.dataId, brightObjectMasks=brightObjects)
 
         if self.config.doWrite:
             if self.getCoaddDatasetName(self.warpType) == "deepCoadd" and self.config.hasFakes:
@@ -1496,8 +1496,12 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # Clone and upcast self.config because current self.config is frozen
         config = AssembleCoaddConfig()
         # getattr necessary because subtasks do not survive Config.toDict()
+        # exclude connections because the class of self.config.connections is not
+        # the same as AssembleCoaddConfig.connections, and the connections are not
+        # needed to run this task anyway.
         configIntersection = {k: getattr(self.config, k)
-                              for k, v in self.config.toDict().items() if (k in config.keys())}
+                              for k, v in self.config.toDict().items() if (k in config.keys() and
+                                                                           k != "connections")}
         config.update(**configIntersection)
 
         # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
@@ -2097,7 +2101,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         # In Gen3, we have to check to see if the spanSetMaskList
         # derived from the PSFMatchedWarps matches the direct tempExpRefList
-        if not isinstance(tempExpRefList[0], DeferredDatasetHandle):
+        if isinstance(tempExpRefList[0], DeferredDatasetHandle):
             direct = [ref.datasetRefOrType.dataId for ref in tempExpRefList]
             psfMatched = [ref.datasetRefOrType.dataId for ref in psfMatchedWarpList]
             assert(direct == psfMatched)
