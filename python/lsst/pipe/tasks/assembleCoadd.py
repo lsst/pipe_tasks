@@ -1724,7 +1724,15 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
         deferLoad=True,
         multiple=True
     )
-
+    """
+    templateCoadd = pipeBase.connectionTypes.Output(
+        doc=("Model of the static sky, used to find temporal artifacts. Typically a PSF-Matched, "
+             "sigma-clipped coadd. Written if and only if assembleStaticSkyModel.doWrite=True"),
+        name="{fakesType}{outputCoaddName}CoaddPsfMatched",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+    )
+    """
 
 class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
                                      pipelineConnections=CompareWarpAssembleCoaddConnections):
@@ -1827,7 +1835,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
         self.assembleStaticSkyModel.sigmaClip = 2.5
         self.assembleStaticSkyModel.clipIter = 3
         self.assembleStaticSkyModel.calcErrorFromInputVariance = False
-        self.assembleStaticSkyModel.doWrite = False
+        self.assembleStaticSkyModel.doWrite = True
         self.detect.doTempLocalBackground = False
         self.detect.reEstimateBackground = False
         self.detect.returnOriginalFootprints = False
@@ -2013,6 +2021,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         # Ensure that psfMatchedWarps are used as input warps for template generation
         staticSkyModelInputRefs = copy.deepcopy(inputRefs)
         staticSkyModelInputRefs.inputWarps = inputRefs.psfMatchedWarps
+
+        # Ensure subtasks outputRef once deepCoaddPsfMatched is an acceptable entry for datasetType
+        # staticSkyModelOutputRefs = copy.deepcopy(outputRefs)
+        # staticSkyModelOutputRefs.coaddExposure = outputRefs.templateCoadd
 
         templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs, outputRefs)
         if templateCoadd is None:
