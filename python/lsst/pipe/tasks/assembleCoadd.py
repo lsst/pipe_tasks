@@ -93,6 +93,10 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         config.connections.warpType = config.warpType
+
+        if config.hasFakes:
+            config.connections.fakesType = "_fakes"
+
         super().__init__(config=config)
 
         if not config.doMaskBrightObjects:
@@ -381,19 +385,12 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         self.warpType = self.config.warpType
 
     @utils.inheritDoc(pipeBase.PipelineTask)
-    def runQuantum(self, butlerQC, inputRefs, outputRefs, doWrite=True):
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring to be formatted with info from PipelineTask.runQuantum
         """
         Notes
         -----
         Assemble a coadd from a set of Warps.
-
-        Extra Parameters:
-        doWrite : `bool`
-            RunQuantum may be called for its side effects and is not expected
-            to write anything out. If doWrite is false, the output will be
-            returned from this function instead of being persisted by the
-            butler.
 
         PipelineTask (Gen3) entry point to Coadd a set of Warps.
         Analogous to `runDataRef`, it prepares all the data products to be
@@ -428,15 +425,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             return
 
         supplementaryData = self.makeSupplementaryDataGen3(butlerQC, inputRefs, outputRefs)
-
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
 
         self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
-        if doWrite:
+        import pdb; pdb.set_trace()
+        if self.config.doWrite:
             butlerQC.put(retStruct, outputRefs)
-        else:
-            return retStruct
+        return retStruct
 
     @pipeBase.timeMethod
     def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
@@ -501,7 +497,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                              inputData.weightList, supplementaryData=supplementaryData)
 
         brightObjects = self.readBrightObjectMasks(dataRef) if self.config.doMaskBrightObjects else None
-        self.processResults(retStruct.coaddExposure, dataId=dataRef.dataId, brightObjectMasks=brightObjects)
+        self.processResults(retStruct.coaddExposure, brightObjectMasks=brightObjects, dataId=dataRef.dataId)
 
         if self.config.doWrite:
             if self.getCoaddDatasetName(self.warpType) == "deepCoadd" and self.config.hasFakes:
@@ -1717,11 +1713,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
 
 
 class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
-                                          dimensions=("tract", "patch", "abstract_filter", "skymap"),
-                                          defaultTemplates={"inputCoaddName": "deep",
-                                                            "outputCoaddName": "deep",
-                                                            "warpType": "direct",
-                                                            "fakesType": ""}):
+                                          dimensions=AssembleCoaddConnections.dimensions):
     psfMatchedWarps = pipeBase.connectionTypes.Input(
         doc=("PSF-Matched Warps are required by CompareWarp regardless of the coadd type requested. "
              "Only PSF-Matched Warps make sense for image subtraction. "
@@ -2022,12 +2014,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         staticSkyModelInputRefs = copy.deepcopy(inputRefs)
         staticSkyModelInputRefs.inputWarps = inputRefs.psfMatchedWarps
 
-        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs, outputRefs,
-                                                               doWrite=False)
+        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs, outputRefs)
         if templateCoadd is None:
             raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
 
-        return templateCoadd
+        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
+                               nImage=templateCoadd.nImage,
+                               warpRefList=templateCoadd.warpRefList,
+                               imageScalerList=templateCoadd.imageScalerList,
+                               weightList=templateCoadd.weightList)
 
     def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
         """Make inputs specific to Subclass.
@@ -2056,7 +2051,11 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if templateCoadd is None:
             raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
 
-        return templateCoadd
+        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
+                               nImage=templateCoadd.nImage,
+                               warpRefList=templateCoadd.warpRefList,
+                               imageScalerList=templateCoadd.imageScalerList,
+                               weightList=templateCoadd.weightList)
 
     def _noTemplateMessage(self, warpType):
         warpName = (warpType[0].upper() + warpType[1:])
@@ -2104,17 +2103,17 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
            - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
            - ``nImage``: exposure count image (``lsst.afw.image.Image``), if requested.
         """
-        templateCoadd = supplementaryData.coaddExposure
-        psfMatchedWarpList = supplementaryData.warpRefList
-        psfMatchedImageScalerList = supplementaryData.imageScalerList
-        spanSetMaskList = self.findArtifacts(templateCoadd, psfMatchedWarpList,
-                                             psfMatchedImageScalerList)
+
+        # Use PSF-Matched Warps (and corresponding scalers) and coadd to find artifacts
+        spanSetMaskList = self.findArtifacts(supplementaryData.templateCoadd,
+                                             supplementaryData.warpRefList,
+                                             supplementaryData.imageScalerList)
 
         # In Gen3, we have to check to see if the spanSetMaskList
         # derived from the PSFMatchedWarps matches the direct tempExpRefList
         if isinstance(tempExpRefList[0], DeferredDatasetHandle):
             direct = [ref.datasetRefOrType.dataId for ref in tempExpRefList]
-            psfMatched = [ref.datasetRefOrType.dataId for ref in psfMatchedWarpList]
+            psfMatched = [ref.datasetRefOrType.dataId for ref in supplementaryData.warpRefList]
             assert(direct == psfMatched)
 
         badMaskPlanes = self.config.badMaskPlanes[:]
