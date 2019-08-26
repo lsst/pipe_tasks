@@ -90,6 +90,11 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         doc="Weight exposures by airmass? Useful if there are relatively few high-airmass observations.",
         default=False,
     )
+    maxSeeingRatio = pexConfig.Field(
+        dtype=float,
+        doc="Cut both high and low seeing observations to restrict the variation to less than this ratio.",
+        default=2.,
+    )
     modelWeightsWidth = pexConfig.Field(
         dtype=float,
         doc="Width of the region around detected sources to include in the DcrModel.",
@@ -377,9 +382,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         airmassDict = {}
         angleDict = {}
         psfSizeDict = {}
+        psfSizeList = []
+        visitList = []
         for visitNum, warpExpRef in enumerate(warpRefList):
             visitInfo = warpExpRef.get(tempExpName + "_visitInfo")
             visit = warpExpRef.dataId["visit"]
+            visitList.append(visit)
             psf = warpExpRef.get(tempExpName).getPsf()
             psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
             airmass = visitInfo.getBoresightAirmass()
@@ -387,6 +395,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             airmassDict[visit] = airmass
             angleDict[visit] = parallacticAngle
             psfSizeDict[visit] = psfSize
+            psfSizeList.append(psfSize)
             if self.config.doAirmassWeight:
                 weightList[visitNum] *= airmass
             dcrShifts.append(np.max(np.abs(calculateDcr(visitInfo, templateCoadd.getWcs(),
@@ -394,6 +403,22 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.log.info("Selected airmasses:\n%s", airmassDict)
         self.log.info("Selected parallactic angles:\n%s", angleDict)
         self.log.info("Selected PSF sizes:\n%s", psfSizeDict)
+        psfCutDict = {}
+        if np.max(psfSizeList) > self.config.maxSeeingRatio*np.min(psfSizeList):
+            lowThreshold = np.median(psfSizeList)/np.sqrt(self.config.maxSeeingRatio)
+            highThreshold = np.median(psfSizeList)*np.sqrt(self.config.maxSeeingRatio)
+            for weightInd, psfSize in enumerate(psfSizeList):
+                visit = visitList[weightInd]
+                if psfSize < lowThreshold:
+                    weightList[weightInd] = 0.
+                    psfCutDict[visit] = "Low"
+                elif psfSize > highThreshold:
+                    weightList[weightInd] = 0.
+                    psfCutDict[visit] = "High"
+                else:
+                    psfCutDict[visit] = "Used"
+        self.log.info("PSF size cut:\n%s", psfCutDict)
+
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
         psf = self.selectCoaddPsf(templateCoadd, warpRefList)
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
