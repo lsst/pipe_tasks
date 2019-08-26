@@ -337,9 +337,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 exposure=coaddExposure,
                 exposureId=expId
             )
+            # Measure the PSF on the stacked subfilter coadds if possible.
+            # We should already have a decent estimate of the coadd PSF, however,
+            # so in case of any errors simply log them as a warning and use the
+            # default PSF.
             try:
                 psfResults = self.measurePsf.run(coaddExposure, coaddSources, expId=expId)
-            except RuntimeError as e:
+            except Exception as e:
                 self.log.warn("Unable to calculate PSF, using default coadd PSF: %s" % e)
             else:
                 coaddExposure.setPsf(psfResults.psf)
