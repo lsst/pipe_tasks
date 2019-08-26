@@ -37,7 +37,7 @@ import lsst.meas.algorithms as measAlg
 import lsst.log as log
 import lsstDebug
 import lsst.utils as utils
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo, makeCoaddSuffix
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -55,6 +55,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
                                defaultTemplates={"inputCoaddName": "deep",
                                                  "outputCoaddName": "deep",
                                                  "warpType": "direct",
+                                                 "warpTypeSuffix": "",
                                                  "fakesType": ""}):
     inputWarps = pipeBase.connectionTypes.Input(
         doc=("Input list of warps to be assemebled i.e. stacked."
@@ -80,7 +81,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
     )
     coaddExposure = pipeBase.connectionTypes.Output(
         doc="Output coadded exposure, produced by stacking input warps",
-        name="{fakesType}{outputCoaddName}Coadd",
+        name="{fakesType}{outputCoaddName}Coadd{warpTypeSuffix}",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
     )
@@ -93,6 +94,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         config.connections.warpType = config.warpType
+        config.connections.warpTypeSuffix = makeCoaddSuffix(config.warpType)
 
         if config.hasFakes:
             config.connections.fakesType = "_fakes"
@@ -429,11 +431,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                              inputs.weightList, supplementaryData=supplementaryData)
 
         self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
-        # ###### Yusra look here
-        if self.config.assembleStaticSkyModel.doWrite:
-            retStruct.templateCoadd = supplementaryData.templateCoadd
 
-        import pdb; pdb.set_trace()
         if self.config.doWrite:
             butlerQC.put(retStruct, outputRefs)
         return retStruct
@@ -1716,8 +1714,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         return bigFootprintsCoadd
 
 
-class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
-                                          dimensions=AssembleCoaddConnections.dimensions):
+class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections):
     psfMatchedWarps = pipeBase.connectionTypes.Input(
         doc=("PSF-Matched Warps are required by CompareWarp regardless of the coadd type requested. "
              "Only PSF-Matched Warps make sense for image subtraction. "
@@ -1740,6 +1737,7 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
         super().__init__(config=config)
         if not config.assembleStaticSkyModel.doWrite:
             self.outputs.remove("templateCoadd")
+        config.validate()
 
 
 class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
@@ -1843,7 +1841,7 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
         self.assembleStaticSkyModel.sigmaClip = 2.5
         self.assembleStaticSkyModel.clipIter = 3
         self.assembleStaticSkyModel.calcErrorFromInputVariance = False
-        self.assembleStaticSkyModel.doWrite = True
+        self.assembleStaticSkyModel.doWrite = False
         self.detect.doTempLocalBackground = False
         self.detect.reEstimateBackground = False
         self.detect.returnOriginalFootprints = False
@@ -1857,6 +1855,14 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
         self.detectTemplate.doTempLocalBackground = False
         self.detectTemplate.reEstimateBackground = False
         self.detectTemplate.returnOriginalFootprints = False
+
+    def validate(self):
+        super().validate()
+        if self.assembleStaticSkyModel.doWrite and (self.warpType == self.assembleStaticSkyModel.warpType):
+            raise ValueError("warpType (%s) == assembleStaticSkyModel.warpType (%s) and will compete for "
+                             "the same dataset name. Please set assembleStaticSkyModel.doWrite to False "
+                             "or warpType to 'direct'. assembleStaticSkyModel.warpType should ways be "
+                             "'PsfMatched'" % (self.warpType, self.assembleStaticSkyModel.warpType))
 
 
 class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
@@ -2030,11 +2036,20 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         staticSkyModelInputRefs = copy.deepcopy(inputRefs)
         staticSkyModelInputRefs.inputWarps = inputRefs.psfMatchedWarps
 
-        # Ensure subtasks outputRef once deepCoaddPsfMatched is an acceptable entry for datasetType
-        # staticSkyModelOutputRefs = copy.deepcopy(outputRefs)
-        # staticSkyModelOutputRefs.coaddExposure = outputRefs.templateCoadd
+        # Because subtasks don't have connections we have to make one.
+        # The main task's `templateCoadd` is the subtask's `coaddExposure`
+        staticSkyModelOutputRefs = copy.deepcopy(outputRefs)
+        staticSkyModelOutputRefs.coaddExposure = staticSkyModelOutputRefs.templateCoadd
 
-        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs, outputRefs)
+        # Remove template coadd from both subtask's and main tasks outputs,
+        # because it is handled by the subtask as `coaddExposure`
+        del outputRefs.templateCoadd
+        del staticSkyModelOutputRefs.templateCoadd
+        # A PSF-Matched nImage does not exist as a dataset type
+        del staticSkyModelOutputRefs.nImage
+
+        templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs,
+                                                               staticSkyModelOutputRefs)
         if templateCoadd is None:
             raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
 
