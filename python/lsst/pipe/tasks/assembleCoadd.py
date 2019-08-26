@@ -429,6 +429,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                              inputs.weightList, supplementaryData=supplementaryData)
 
         self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
+        # ###### Yusra look here
+        if self.config.assembleStaticSkyModel.doWrite:
+            retStruct.templateCoadd = supplementaryData.templateCoadd
+
         import pdb; pdb.set_trace()
         if self.config.doWrite:
             butlerQC.put(retStruct, outputRefs)
@@ -1724,7 +1728,6 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
         deferLoad=True,
         multiple=True
     )
-    """
     templateCoadd = pipeBase.connectionTypes.Output(
         doc=("Model of the static sky, used to find temporal artifacts. Typically a PSF-Matched, "
              "sigma-clipped coadd. Written if and only if assembleStaticSkyModel.doWrite=True"),
@@ -1732,7 +1735,12 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
     )
-    """
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if not config.assembleStaticSkyModel.doWrite:
+            self.outputs.remove("templateCoadd")
+
 
 class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
                                      pipelineConnections=CompareWarpAssembleCoaddConnections):
