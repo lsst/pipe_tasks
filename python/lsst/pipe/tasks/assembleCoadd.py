@@ -399,8 +399,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         passed to `run`, and processes the results before returning to struct
         of results to be written out. AssembleCoadd cannot fit all Warps in memory.
         Therefore, its inputs are accessed subregion by subregion
-        by the `lsst.daf.butler.ShimButler` that quacks like a Gen2
-        `lsst.daf.persistence.Butler`. Updates to this method should
+        by the Gen3 `DeferredDatasetHandle` that is analagous to the Gen2
+        `lsst.daf.persistence.ButlerDataRef`. Any updates to this method should
         correspond to an update in `runDataRef` while both entry points
         are used.
         """
@@ -545,10 +545,12 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         ----------
         dataRef : `lsst.daf.persistence.ButlerDataRef`
             Butler data reference for supplementary data.
-        selectDataList : `list`
-            List of data references to Warps.
+        selectDataList : `list` (optional)
+            Optional List of data references to Calexps.
+        warpRefList : `list` (optional)
+            Optional List of data references to Warps.
         """
-        pass
+        return pipeBase.Struct()
 
     def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
         """Make additional inputs to run() specific to subclasses (Gen3)
@@ -571,13 +573,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             Attributes are the names of the connections describing output dataset types.
             Values are DatasetRefs that task is to produce
             for corresponding dataset type.
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-            Contains whatever additional data the subclass's `run` method needs
         """
-        pass
+        return pipeBase.Struct()
 
     def getTempExpRefList(self, patchRef, calExpRefList):
         """Generate list data references corresponding to warped exposures
@@ -748,7 +745,13 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
            Result struct with components:
 
            - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
-           - ``nImage``: exposure count image (``lsst.afw.image.Image``).
+           - ``nImage``: exposure count image (``lsst.afw.image.Image``), if requested.
+           - ``warpRefList``: input list of refs to the warps (
+                              ``lsst.daf.butler.DeferredDatasetHandle`` or
+                              ``lsst.daf.persistence.ButlerDataRef``)
+                              (unmodified)
+           - ``imageScalerList``: input list of image scalers (unmodified)
+           - ``weightList``: input list of weights (unmodified)
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
@@ -1402,6 +1405,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
 
+    @utils.inheritDoc(AssembleCoaddTask)
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
         """Assemble the coadd for a region.
 
@@ -1423,25 +1427,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         Generate the coadd using `AssembleCoaddTask.run` without outlier
         removal. Clipped footprints will no longer make it into the coadd
         because they are marked in the new bad mask plane.
-
-        Parameters
-        ----------
-        skyInfo : `lsst.pipe.base.Struct`
-            Patch geometry information, from getSkyInfo
-        tempExpRefList : `list`
-            List of data reference to tempExp
-        imageScalerList : `list`
-            List of image scalers
-        weightList : `list`
-            List of weights
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-           Result struct with components:
-
-           - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
-           - ``nImage``: exposure count image (``lsst.afw.image.Image``).
 
         Notes
         -----
@@ -2003,29 +1988,11 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         if self.config.doScaleWarpVariance:
             self.makeSubtask("scaleWarpVariance")
 
+    @utils.inheritDoc(AssembleCoaddTask)
     def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
-        """Make inputs specific to Subclass with Gen 3 API
-
-        Calls Gen3 `runQuantum` instead of the Gen2 specific `runDataRef`
-
-        Duplicates interface of`runQuantum` method.
-        Available to be implemented by subclasses only if they need the
-        coadd dataRef for performing preliminary processing before
-        assembling the coadd.
-
-        Parameters
-        ----------
-        butlerQC : `lsst.pipe.base.ButlerQuantumContext`
-            Gen3 Butler object for fetching additional data products before
-            running the Task specialized for quantum being processed
-        inputRefs : `lsst.pipe.base.InputQuantizedConnection`
-            Attributes are the names of the connections describing input dataset types.
-            Values are DatasetRefs that task consumes for corresponding dataset type.
-            DataIds are guaranteed to match data objects in ``inputData``.
-        outputRefs : `lsst.pipe.base.OutputQuantizedConnection`
-            Attributes are the names of the connections describing output dataset types.
-            Values are DatasetRefs that task is to produce
-            for corresponding dataset type.
+        """
+        Generate a templateCoadd to use as a naive model of static sky to
+        subtract from PSF-Matched warps.
 
         Returns
         -------
@@ -2033,8 +2000,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
            Result struct with components:
 
            - ``templateCoadd`` : coadded exposure (``lsst.afw.image.Exposure``)
-           - ``nImage``: N Image (``lsst.afw.image.Image``)
-
+           - ``nImage`` : N Image (``lsst.afw.image.Image``)
         """
         # Ensure that psfMatchedWarps are used as input warps for template generation
         staticSkyModelInputRefs = copy.deepcopy(inputRefs)
@@ -2063,20 +2029,11 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                                imageScalerList=templateCoadd.imageScalerList,
                                weightList=templateCoadd.weightList)
 
+    @utils.inheritDoc(AssembleCoaddTask)
     def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
-        """Make inputs specific to Subclass.
-
-        Generate a templateCoadd to use as a native model of static sky to
-        subtract from warps.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Butler dataRef for supplementary data.
-        selectDataList : `list` (optional)
-            Optional List of data references to Calexps.
-        warpRefList : `list` (optional)
-            Optional List of data references to Warps.
+        """
+        Generate a templateCoadd to use as a naive model of static sky to
+        subtract from PSF-Matched warps.
 
         Returns
         -------
@@ -2111,6 +2068,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         """ % {"warpName": warpName}
         return message
 
+    @utils.inheritDoc(AssembleCoaddTask)
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
             supplementaryData, *args, **kwargs):
         """Assemble the coadd.
@@ -2120,27 +2078,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         plane. Then pass these alternative masks to the base class's `run`
         method.
 
-        Parameters
-        ----------
-        skyInfo : `lsst.pipe.base.Struct`
-            Patch geometry information.
-        tempExpRefList : `list`
-            List of data references to warps.
-        imageScalerList : `list`
-            List of image scalers.
-        weightList : `list`
-            List of weights.
-        supplementaryData : `lsst.pipe.base.Struct`
-            This Struct must contain a ``templateCoadd`` that serves as the
-            model of the static sky.
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-           Result struct with components:
-
-           - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
-           - ``nImage``: exposure count image (``lsst.afw.image.Image``), if requested.
+        The input parameters ``supplementaryData`` is a `lsst.pipe.base.Struct`
+        that must contain a ``templateCoadd`` that serves as the
+        model of the static sky.
         """
 
         # Use PSF-Matched Warps (and corresponding scalers) and coadd to find artifacts
