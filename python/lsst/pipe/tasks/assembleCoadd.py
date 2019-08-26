@@ -2009,12 +2009,13 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         # Because subtasks don't have connections we have to make one.
         # The main task's `templateCoadd` is the subtask's `coaddExposure`
         staticSkyModelOutputRefs = copy.deepcopy(outputRefs)
-        staticSkyModelOutputRefs.coaddExposure = staticSkyModelOutputRefs.templateCoadd
+        if self.config.assembleStaticSkyModel.doWrite:
+            staticSkyModelOutputRefs.coaddExposure = staticSkyModelOutputRefs.templateCoadd
+            # Remove template coadd from both subtask's and main tasks outputs,
+            # because it is handled by the subtask as `coaddExposure`
+            del outputRefs.templateCoadd
+            del staticSkyModelOutputRefs.templateCoadd
 
-        # Remove template coadd from both subtask's and main tasks outputs,
-        # because it is handled by the subtask as `coaddExposure`
-        del outputRefs.templateCoadd
-        del staticSkyModelOutputRefs.templateCoadd
         # A PSF-Matched nImage does not exist as a dataset type
         del staticSkyModelOutputRefs.nImage
 
