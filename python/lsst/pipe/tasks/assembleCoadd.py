@@ -1858,6 +1858,10 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
 
     def validate(self):
         super().validate()
+        if self.assembleStaticSkyModel.doNImage:
+            raise ValueError("No dataset type exists for a PSF-Matched Template N Image."
+                             "Please set assembleStaticSkyModel.doNImage=False")
+
         if self.assembleStaticSkyModel.doWrite and (self.warpType == self.assembleStaticSkyModel.warpType):
             raise ValueError("warpType (%s) == assembleStaticSkyModel.warpType (%s) and will compete for "
                              "the same dataset name. Please set assembleStaticSkyModel.doWrite to False "
