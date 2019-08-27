@@ -185,6 +185,20 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         self.makeSubtask("applyApCorr", schema=self.schema)
         self.makeSubtask("catalogCalculation", schema=self.schema)
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        """!Create and return an argument parser
+        @param[in] cls      the class object
+        @return the argument parser for this task.
+        This override is used to delay making the data ref list until the dataset type is known;
+        this is done in @ref parseAndRun.
+        """
+        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument(name="--id",
+                               datasetType=pipeBase.ConfigDatasetType(name="isr.datasetType"),
+                               help="data IDs, e.g. --id visit=12345 ccd=1,2^0,3")
+        return parser
+
     def runDataRef(self, dataRef):
         """Read in/write out the required data products and add fake sources to the calexp.
 
