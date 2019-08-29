@@ -2085,17 +2085,23 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         model of the static sky.
         """
 
+        # In Gen3 only, check and match the order of the supplementaryData
+        # (PSF-matched) inputs to the order of the direct inputs,
+        # so that the artifact mask is applied to the right warp
+        if isinstance(tempExpRefList[0], DeferredDatasetHandle):
+            dataIds = [ref.datasetRefOrType.dataId for ref in tempExpRefList]
+            psfMatchedDataIds = [ref.datasetRefOrType.dataId for ref in supplementaryData.warpRefList]
+            if dataIds != psfMatchedDataIds:
+                self.log.info("Reordering and or/padding PSF-matched visit input list")
+                supplementaryData.warpRefList = reorderAndPadList(supplementaryData.warpRefList,
+                                                                  psfMatchedDataIds, dataIds)
+                supplementaryData.imageScalerList = reorderAndPadList(supplementaryData.imageScalerList,
+                                                                      psfMatchedDataIds, dataIds)
+
         # Use PSF-Matched Warps (and corresponding scalers) and coadd to find artifacts
         spanSetMaskList = self.findArtifacts(supplementaryData.templateCoadd,
                                              supplementaryData.warpRefList,
                                              supplementaryData.imageScalerList)
-
-        # In Gen3, we have to check to see if the spanSetMaskList
-        # derived from the PSFMatchedWarps matches the direct tempExpRefList
-        if isinstance(tempExpRefList[0], DeferredDatasetHandle):
-            direct = [ref.datasetRefOrType.dataId for ref in tempExpRefList]
-            psfMatched = [ref.datasetRefOrType.dataId for ref in supplementaryData.warpRefList]
-            assert(direct == psfMatched)
 
         badMaskPlanes = self.config.badMaskPlanes[:]
         badMaskPlanes.append("CLIPPED")
@@ -2334,6 +2340,10 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             Exposure of the image difference between the warp and template.
         """
 
+        # If the PSF-Matched warp did not exist for this direct warp
+        # None is holding its place to maintain order in Gen 3
+        if warpRef is None:
+            return None
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
         warpName = self.getTempExpDatasetName('psfMatched')
         if not isinstance(warpRef, DeferredDatasetHandle):
@@ -2380,3 +2390,28 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         directory = lsstDebug.Info(__name__).figPath if lsstDebug.Info(__name__).figPath else "."
         filename = "%s-%s.fits" % (prefix, '-'.join([str(warpRef.dataId[k]) for k in keyList]))
         return os.path.join(directory, filename)
+
+
+def reorderAndPadList(inputList, inputKey, outputKey, padWith=None):
+    """Match the order of one list to another, padding if necessary
+
+    Parameters
+    ----------
+    inputList : `list`
+        List to be reordered and padded
+    inputKey : Any value that can be compared with outputKey
+    outputKey : Any value that can be compared with inputKey
+    padWith : Any value to be inserted where inputKey not in outputKeys
+
+    Returns
+    -------
+    outputList : `list`
+        Copy of inputList reordered and padded with `padWith` to match outputList
+    """
+    outputList = []
+    for d in outputKey:
+        if d in inputKey:
+            outputList.append(inputList[inputKey.index(d)])
+        else:
+            outputList.append(padWith)
+    return outputList
