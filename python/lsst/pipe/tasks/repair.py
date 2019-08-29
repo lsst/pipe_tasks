@@ -258,7 +258,7 @@ class RepairTask(pipeBase.Task):
             keepCRs = self.config.cosmicray.keepCRs
         try:
             crs = measAlg.findCosmicRays(exposure.getMaskedImage(), psf, medianBg,
-                                         pexConfig.makePolicy(self.config.cosmicray), keepCRs)
+                                         pexConfig.makePropertySet(self.config.cosmicray), keepCRs)
             if modelBg:
                 # Add back background image
                 img = exposure.getMaskedImage()
