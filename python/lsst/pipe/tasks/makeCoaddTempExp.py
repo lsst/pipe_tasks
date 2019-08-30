@@ -26,7 +26,9 @@ import lsst.daf.persistence as dafPersist
 import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
+import lsst.pipe.base.connectionTypes as cT
 import lsst.log as log
+import lsst.utils as utils
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from .coaddBase import CoaddBaseTask, makeSkyInfo
 from .warpAndPsfMatch import WarpAndPsfMatchTask
@@ -82,7 +84,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     )
 
     hasFakes = pexConfig.Field(
-        doc="Should be set to True if fakes ources have been inserted into the input data.",
+        doc="Should be set to True if fake sources have been inserted into the input data.",
         dtype=bool,
         default=False,
     )
@@ -376,7 +378,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         return dataRefList
 
-    def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None, **kwargs):
+    def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None):
         """Create a Warp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
@@ -568,53 +570,65 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         calexp -= bg.getImage()
 
 
-class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig):
-    calExpList = pipeBase.InputDatasetField(
+class MakeWarpConnections(pipeBase.PipelineTaskConnections,
+                          dimensions=("tract", "patch", "skymap", "instrument", "visit"),
+                          defaultTemplates={"coaddName": "deep"}):
+    calExpList = cT.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="calexp",
         storageClass="ExposureF",
-        dimensions=("instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
     )
-    backgroundList = pipeBase.InputDatasetField(
+    backgroundList = cT.Input(
         doc="Input backgrounds to be added back into the calexp if bgSubtracted=False",
         name="calexpBackground",
         storageClass="Background",
-        dimensions=("instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
     )
-    skyCorrList = pipeBase.InputDatasetField(
+    skyCorrList = cT.Input(
         doc="Input Sky Correction to be subtracted from the calexp if doApplySkyCorr=True",
         name="skyCorr",
         storageClass="Background",
-        dimensions=("instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
     )
-    skyMap = pipeBase.InputDatasetField(
+    skyMap = cT.Input(
         doc="Input definition of geometry/bbox and projection/wcs for warped exposures",
-        nameTemplate="{coaddName}Coadd_skyMap",
+        name="{coaddName}Coadd_skyMap",
         storageClass="SkyMap",
         dimensions=("skymap",),
-        scalar=True
     )
-    direct = pipeBase.OutputDatasetField(
+    direct = cT.Output(
         doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
              "calexps onto the skyMap patch geometry."),
-        nameTemplate="{coaddName}Coadd_directWarp",
+        name="{coaddName}Coadd_directWarp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
-        scalar=True
     )
-    psfMatched = pipeBase.OutputDatasetField(
+    psfMatched = cT.Output(
         doc=("Output PSF-Matched warped exposure (previously called CoaddTempExp), produced by resampling ",
              "calexps onto the skyMap patch geometry and PSF-matching to a model PSF."),
-        nameTemplate="{coaddName}Coadd_psfMatchedWarp",
+        name="{coaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
-        scalar=True
     )
 
-    def setDefaults(self):
-        super().setDefaults()
-        self.formatTemplateNames({"coaddName": "deep"})
-        self.quantum.dimensions = ("tract", "patch", "skymap", "visit")
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.bgSubtracted:
+            self.inputs.remove("backgroundList")
+        if not config.doApplySkyCorr:
+            self.inputs.remove("skyCorrList")
+        if not config.makeDirect:
+            self.outputs.remove("direct")
+        if not config.makePsfMatched:
+            self.outputs.remove("psfMatched")
+
+
+class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
+                     pipelineConnections=MakeWarpConnections):
 
     def validate(self):
         super().validate()
@@ -633,94 +647,45 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
     ConfigClass = MakeWarpConfig
     _DefaultName = "makeWarp"
 
-    @classmethod
-    def getInputDatasetTypes(cls, config):
-        """Return input dataset type descriptors
-
-        Remove input dataset types not used by the Task
+    @utils.inheritDoc(pipeBase.PipelineTask)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
         """
-        inputTypeDict = super().getInputDatasetTypes(config)
-        if config.bgSubtracted:
-            inputTypeDict.pop("backgroundList", None)
-        if not config.doApplySkyCorr:
-            inputTypeDict.pop("skyCorrList", None)
-        return inputTypeDict
-
-    @classmethod
-    def getOutputDatasetTypes(cls, config):
-        """Return output dataset type descriptors
-
-        Remove output dataset types not produced by the Task
-        """
-        outputTypeDict = super().getOutputDatasetTypes(config)
-        if not config.makeDirect:
-            outputTypeDict.pop("direct", None)
-        if not config.makePsfMatched:
-            outputTypeDict.pop("psfMatched", None)
-        return outputTypeDict
-
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        """Construct warps for requested warp type for single epoch
+        Notes
+        ----
+        Construct warps for requested warp type for single epoch
 
         PipelineTask (Gen3) entry point to warp and optionally PSF-match
-        calexps. This method is analogous to `runDataRef`, it prepares all
-        the data products to be passed to `run`.
-        Return a Struct with only requested warpTypes controlled by the configs
-        makePsfMatched and makeDirect.
-
-        Parameters
-        ----------
-        inputData : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are input Python-domain data objects (or lists of objects)
-            retrieved from data butler.
-        inputDataIds : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task consumes for
-            corresponding dataset type.
-        outputDataIds : `dict`
-            Keys are the names of the configs describing input dataset types.
-            Values are DataIds (or lists of DataIds) that task is to produce
-            for corresponding dataset type.
-        butler : `lsst.daf.butler.Butler`
-            Gen3 Butler object for fetching additional data products before
-            running the Task
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-           Result struct with components:
-
-           - ``direct`` : (optional) direct Warp Exposure
-                          (``lsst.afw.image.Exposure``)
-           - ``psfMatched``: (optional) PSF-Matched Warp Exposure
-                            (``lsst.afw.image.Exposure``)
+        calexps. This method is analogous to `runDataRef`.
         """
-        # Construct skyInfo expected by `run`
-        skyMap = inputData["skyMap"]
-        outputDataId = next(iter(outputDataIds.values()))
-        inputData['skyInfo'] = makeSkyInfo(skyMap,
-                                           tractId=outputDataId['tract'],
-                                           patchId=outputDataId['patch'])
+        # Read in all inputs.
+        inputs = butlerQC.get(inputRefs)
 
-        # Construct list of DataIds expected by `run`
-        dataIdList = inputDataIds['calExpList']
-        inputData['dataIdList'] = dataIdList
+        # Construct skyInfo expected by `run`.  We remove the SkyMap itself
+        # from the dictionary so we can pass it as kwargs later.
+        skyMap = inputs.pop("skyMap")
+        quantumDataId = butlerQC.quantum.dataId
+        skyInfo = makeSkyInfo(skyMap, tractId=quantumDataId['tract'], patchId=quantumDataId['patch'])
 
-        # Construct list of ccdExposureIds expected by `run`
-        inputData['ccdIdList'] = [butler.registry.packDataId("visit_detector", dataId)
-                                  for dataId in dataIdList]
+        # Construct list of input DataIds expected by `run`
+        dataIdList = [ref.dataId for ref in inputRefs.calExpList]
+
+        # Construct list of packed integer IDs expected by `run`
+        ccdIdList = [butlerQC.registry.packDataId("visit_detector", dataId) for dataId in dataIdList]
 
         # Extract integer visitId requested by `run`
         visits = [dataId['visit'] for dataId in dataIdList]
         assert(all(visits[0] == visit for visit in visits))
-        inputData["visitId"] = visits[0]
+        visitId = visits[0]
 
-        self.prepareCalibratedExposures(**inputData)
-        results = self.run(**inputData)
-        return pipeBase.Struct(**results.exposures)
+        self.prepareCalibratedExposures(**inputs)
+        results = self.run(**inputs, visitId=visitId, ccdIdList=ccdIdList, dataIdList=dataIdList,
+                           skyInfo=skyInfo)
+        if self.config.makeDirect:
+            butlerQC.put(results.exposures["direct"], outputRefs.direct)
+        if self.config.makePsfMatched:
+            butlerQC.put(results.exposures["psfMatched"], outputRefs.psfMatched)
 
-    def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None, **kwargs):
+    def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None):
         """Calibrate and add backgrounds to input calExpList in place
 
         TODO DM-17062: apply jointcal/meas_mosaic here

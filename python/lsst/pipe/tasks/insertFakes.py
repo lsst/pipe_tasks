@@ -31,13 +31,39 @@ import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig
+from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, PipelineTaskConnections
+import lsst.pipe.base.connectionTyes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.geom import SpherePoint, radians, Box2D
 from lsst.sphgeom import ConvexPolygon
 
 __all__ = ["InsertFakesConfig", "InsertFakesTask"]
+
+
+class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddName": "deep"},
+                             dimensions=("tract", "patch", "abstract_filter", "skymap")):
+
+    image = cT.Input(
+        doc="Image into which fakes are to be added.",
+        nameTemplate="{CoaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
+
+    fakeCat = cT.Input(
+        doc="Catalog of fake sources to draw inputs from.",
+        nameTemplate="{CoaddName}Coadd_fakeSourceCat",
+        storageClass="Parquet",
+        dimensions=("tract", "skymap")
+    )
+
+    imageWithFakes = cT.Output(
+        doc="Image with fake sources added.",
+        nameTemplate="fakes_{CoaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "abstract_filter", "skymap")
+    )
 
 
 class InsertFakesConfig(PipelineTaskConfig):
@@ -149,40 +175,11 @@ class InsertFakesConfig(PipelineTaskConfig):
         default=12.0,
     )
 
-    image = pipeBase.InputDatasetField(
-        doc="Image into which fakes are to be added.",
-        nameTemplate="{CoaddName}Coadd",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
-    )
-
-    fakeCat = pipeBase.InputDatasetField(
-        doc="Catalog of fake sources to draw inputs from.",
-        nameTemplate="{CoaddName}Coadd_fakeSourceCat",
-        scalar=True,
-        storageClass="Parquet",
-        dimensions=("Tract", "SkyMap")
-    )
-
-    imageWithFakes = pipeBase.OutputDatasetField(
-        doc="Image with fake sources added.",
-        nameTemplate="fakes_{CoaddName}Coadd",
-        scalar=True,
-        storageClass="ExposureF",
-        dimensions=("Tract", "Patch", "AbstractFilter", "SkyMap")
-    )
-
     coaddName = pexConfig.Field(
         doc="The name of the type of coadd used",
         dtype=str,
         default="deep",
     )
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.quantum.dimensions = ("Tract", "Patch", "AbstractFilter", "SkyMap")
-        self.formatTemplateNames({"CoaddName": "deep"})
 
 
 class InsertFakesTask(PipelineTask, CmdLineTask):
@@ -241,11 +238,13 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         dataRef.put(imageWithFakes.imageWithFakes, "fakes_deepCoadd")
 
-    def adaptArgsAndRun(self, inputData, inputDataIds, outputDataIds, butler):
-        inputData["wcs"] = inputData["image"].getWcs()
-        inputData["photoCalib"] = inputData["image"].getPhotoCalib()
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        inputs["wcs"] = inputs["image"].getWcs()
+        inputs["photoCalib"] = inputs["image"].getPhotoCalib()
 
-        return self.run(**inputData)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     @classmethod
     def _makeArgumentParser(cls):
