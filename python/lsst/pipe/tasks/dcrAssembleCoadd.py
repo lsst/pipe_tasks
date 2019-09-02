@@ -496,10 +496,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
 
         stats = self.prepareStats(mask=badPixelMask)
+        weightList = [0. if wt==0 else 1. for wt in weightList]
         dcrModels = self.prepareDcrInputs(templateCoadd, warpRefList, weightList)
         if self.config.doNImage:
             dcrNImages, dcrWeights = self.calculateNImage(dcrModels, skyInfo.bbox, warpRefList,
-                                                          spanSetMaskList, stats.ctrl)
+                                                          spanSetMaskList, weightList, stats.ctrl)
             nImage = afwImage.ImageU(skyInfo.bbox)
             # Note that this nImage will be a factor of dcrNumSubfilters higher than
             # the nImage returned by assembleCoadd for most pixels. This is because each
@@ -523,7 +524,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrBBox.clip(dcrModels.bbox)
             modelWeights = self.calculateModelWeights(dcrModels, dcrBBox)
             subExposures = self.loadSubExposures(dcrBBox, stats.ctrl, warpRefList,
-                                                 imageScalerList, spanSetMaskList)
+                                                 imageScalerList, spanSetMaskList, weightList)
             convergenceMetric = self.calculateConvergence(dcrModels, subExposures, subBBox,
                                                           warpRefList, weightList, stats.ctrl)
             self.log.info("Initial convergence : %s", convergenceMetric)
@@ -587,7 +588,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                dcrCoadds=dcrCoadds, dcrNImages=dcrNImages)
 
-    def calculateNImage(self, dcrModels, bbox, warpRefList, spanSetMaskList, statsCtrl):
+    def calculateNImage(self, dcrModels, bbox, warpRefList, spanSetMaskList, weightList, statsCtrl):
         """Calculate the number of exposures contributing to each subfilter.
 
         Parameters
@@ -602,6 +603,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Each element of the `dict` contains the new mask plane name
             (e.g. "CLIPPED and/or "NO_DATA") as the key,
             and the list of SpanSets to apply to the mask.
+        weightList : `list` of `float`
+            The weight to give each input exposure in the coadd
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
 
@@ -616,7 +619,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         dcrNImages = [afwImage.ImageU(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
         dcrWeights = [afwImage.ImageF(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
         tempExpName = self.getTempExpDatasetName(self.warpType)
-        for warpExpRef, altMaskSpans in zip(warpRefList, spanSetMaskList):
+        for warpExpRef, altMaskSpans, expWeight in zip(warpRefList, spanSetMaskList, weightList):
+            if expWeight == 0:
+                continue
             exposure = warpExpRef.get(tempExpName + "_sub", bbox=bbox)
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
@@ -1090,7 +1095,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 model.array *= modelWeights
                 model.array += refImage.array*(1. - modelWeights)/self.config.dcrNumSubfilters
 
-    def loadSubExposures(self, bbox, statsCtrl, warpRefList, imageScalerList, spanSetMaskList):
+    def loadSubExposures(self, bbox, statsCtrl, warpRefList, imageScalerList, spanSetMaskList, weightList):
         """Pre-load sub-regions of a list of exposures.
 
         Parameters
@@ -1115,9 +1120,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The variance plane contains weights, and not the variance
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
-        zipIterables = zip(warpRefList, imageScalerList, spanSetMaskList)
+        zipIterables = zip(warpRefList, imageScalerList, spanSetMaskList, weightList)
         subExposures = {}
-        for warpExpRef, imageScaler, altMaskSpans in zipIterables:
+        for warpExpRef, imageScaler, altMaskSpans, expWeight in zipIterables:
             exposure = warpExpRef.get(tempExpName + "_sub", bbox=bbox)
             if altMaskSpans is not None:
                 self.applyAltMaskPlanes(exposure.mask, altMaskSpans)
@@ -1129,6 +1134,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             # Set the image value of masked pixels to zero.
             # This eliminates needing the mask plane when stacking images in ``newModelFromResidual``
             exposure.image.array[(exposure.mask.array & statsCtrl.getAndMask()) > 0] = 0.
+            if expWeight == 0:
+                exposure.variance.array *= 0.
             subExposures[warpExpRef.dataId["visit"]] = exposure
         return subExposures
 
