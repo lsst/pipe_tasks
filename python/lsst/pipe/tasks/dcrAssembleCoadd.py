@@ -148,7 +148,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
         dtype=bool,
         doc="Set to detect stars and recalculate the PSF from the final coadd."
         "Otherwise the PSF is estimated from a selection of the best input exposures",
-        default=True,
+        default=False,
     )
     detectPsfSources = pexConfig.ConfigurableField(
         target=measAlg.SourceDetectionTask,
@@ -297,10 +297,14 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.log.warn("Could not construct DcrModel for patch %s: no data to coadd.",
                           skyInfo.patchInfo.getIndex())
             return
+        if self.config.doCalculatePsf:
+            self.measureCoaddPsf(results.coaddExposure)
+        brightObjects = self.readBrightObjectMasks(dataRef) if self.config.doMaskBrightObjects else None
         for subfilter in range(self.config.dcrNumSubfilters):
             # Use the PSF of the stacked dcrModel, and do not recalculate the PSF for each subfilter
             results.dcrCoadds[subfilter].setPsf(results.coaddExposure.getPsf())
-            AssembleCoaddTask.processResults(self, results.dcrCoadds[subfilter], dataRef)
+            self.processResults(results.dcrCoadds[subfilter],
+                                brightObjectMasks=brightObjects, dataId=dataRef.dataId)
             if self.config.doWrite:
                 self.log.info("Persisting dcrCoadd")
                 dataRef.put(results.dcrCoadds[subfilter], "dcrCoadd", subfilter=subfilter,
@@ -311,42 +315,31 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         return results
 
-    def processResults(self, coaddExposure, dataRef):
-        """Interpolate over missing data and mask bright stars.
-
-        Also detect sources on the coadd exposure and measure the final PSF,
-        if ``doCalculatePsf`` is set.
+    def measureCoaddPsf(self, coaddExposure):
+        """Detect sources on the coadd exposure and measure the final PSF.
 
         Parameters
         ----------
         coaddExposure : `lsst.afw.image.Exposure`
             The final coadded exposure.
-        dataRef : `lsst.daf.persistence.ButlerDataRef`
-            Data reference defining the patch for coaddition and the
-            reference Warp
         """
-        super().processResults(coaddExposure, dataRef)
-
-        if self.config.doCalculatePsf:
-            expId = dataRef.get("dcrCoaddId")
-            table = afwTable.SourceTable.make(self.schema)
-            detResults = self.detectPsfSources.run(table, coaddExposure, expId, clearMask=False)
-            coaddSources = detResults.sources
-            self.measurePsfSources.run(
-                measCat=coaddSources,
-                exposure=coaddExposure,
-                exposureId=expId
-            )
-            # Measure the PSF on the stacked subfilter coadds if possible.
-            # We should already have a decent estimate of the coadd PSF, however,
-            # so in case of any errors simply log them as a warning and use the
-            # default PSF.
-            try:
-                psfResults = self.measurePsf.run(coaddExposure, coaddSources, expId=expId)
-            except Exception as e:
-                self.log.warn("Unable to calculate PSF, using default coadd PSF: %s" % e)
-            else:
-                coaddExposure.setPsf(psfResults.psf)
+        table = afwTable.SourceTable.make(self.schema)
+        detResults = self.detectPsfSources.run(table, coaddExposure, clearMask=False)
+        coaddSources = detResults.sources
+        self.measurePsfSources.run(
+            measCat=coaddSources,
+            exposure=coaddExposure
+        )
+        # Measure the PSF on the stacked subfilter coadds if possible.
+        # We should already have a decent estimate of the coadd PSF, however,
+        # so in case of any errors simply log them as a warning and use the
+        # default PSF.
+        try:
+            psfResults = self.measurePsf.run(coaddExposure, coaddSources)
+        except Exception as e:
+            self.log.warn("Unable to calculate PSF, using default coadd PSF: %s" % e)
+        else:
+            coaddExposure.setPsf(psfResults.psf)
 
     def prepareDcrInputs(self, templateCoadd, warpRefList, weightList):
         """Prepare the DCR coadd by iterating through the visitInfo of the input warps.
