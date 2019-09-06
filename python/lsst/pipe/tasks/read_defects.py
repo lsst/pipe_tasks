@@ -66,7 +66,8 @@ def check_metadata(defects, valid_start, instrument, chip_id, f):
     finst = md.get('INSTRUME')
     fchip_id = md.get('DETECTOR')
     fcalib_date = md.get('CALIBDATE')
-    if not (finst, int(fchip_id), fcalib_date) == (instrument, chip_id, valid_start.isoformat()):
+    if not (finst.lower(), int(fchip_id), fcalib_date) == (instrument.lower(),
+                                                           chip_id, valid_start.isoformat()):
         raise ValueError("Path and file metadata do not agree:\n" +
                          "Path metadata: %s, %s, %s\n"%(instrument, chip_id, valid_start.isoformat()) +
                          "File metadata: %s, %s, %s\n"%(finst, fchip_id, fcalib_date) +
