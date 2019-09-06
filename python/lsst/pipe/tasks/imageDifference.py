@@ -570,11 +570,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                 # Return warped template...  Construct sourceKernelCand list after subtract
                 self.log.info("Subtracting images")
+                scienceSigmaHack = exposure.getPsf().computeShape().getDeterminantRadius()
+                templateSigmaHack = templateExposure.getPsf().computeShape().getDeterminantRadius()
+                convolveTemplate = templateSigmaHack < scienceSigmaHack
+                if convolveTemplate:
+                    self.log.info("Test HACK: convolving template image")
+                else:
+                    self.log.info("Test HACK: convolving science image")
                 subtractRes = self.subtract.subtractExposures(
                     templateExposure=templateExposure,
                     scienceExposure=exposure,
                     candidateList=kernelSources,
-                    convolveTemplate=self.config.convolveTemplate,
+                    convolveTemplate=convolveTemplate,
                     doWarping=not self.config.doUseRegister
                 )
                 subtractedExposure = subtractRes.subtractedExposure
@@ -589,7 +596,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                     # Get Psf from the appropriate input image if it doesn't exist
                     if not subtractedExposure.hasPsf():
-                        if self.config.convolveTemplate:
+                        if convolveTemplate:
                             subtractedExposure.setPsf(exposure.getPsf())
                         else:
                             if templateExposure is None:
