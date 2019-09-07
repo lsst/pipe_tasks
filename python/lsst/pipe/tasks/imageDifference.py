@@ -574,9 +574,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 templateSigmaHack = templateExposure.getPsf().computeShape().getDeterminantRadius()
                 convolveTemplate = templateSigmaHack < scienceSigmaHack
                 if convolveTemplate:
-                    self.log.info("Test HACK: convolving template image")
+                    self.log.info(f"Test HACK: convolving template image {templateSigmaHack} vs {scienceSigmaHack}")
                 else:
-                    self.log.info("Test HACK: convolving science image")
+                    self.log.info(f"Test HACK: convolving science image {templateSigmaHack} vs {scienceSigmaHack}")
                 subtractRes = self.subtract.subtractExposures(
                     templateExposure=templateExposure,
                     scienceExposure=exposure,
