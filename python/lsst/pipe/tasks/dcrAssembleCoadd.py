@@ -839,9 +839,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         for warpExpRef, expWeight in zip(warpRefList, weightList):
             exposure = subExposures[warpExpRef.dataId["visit"]][bbox]
             singleMetric = self.calculateSingleConvergence(dcrModels, exposure, significanceImage, statsCtrl)
-            metric += singleMetric
+            if expWeight == 0:
+                # Negative convergence in the log indicates the exposure was flagged
+                singleMetric *= -1
             metricList[warpExpRef.dataId["visit"]] = singleMetric
-            weight += 1.
+            metric += singleMetric*expWeight
+            weight += expWeight
         self.log.info("Individual metrics:\n%s", metricList)
         return 1.0 if weight == 0.0 else metric/weight
 
