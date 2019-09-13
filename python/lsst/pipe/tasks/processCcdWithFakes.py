@@ -229,8 +229,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         if 'exposureIdInfo' not in inputs.keys():
-            expId, expBits = butlerQC.registry.packDataId("visit_detector", butlerQC.quantum.dataId,
-                                                          returnMaxBits=True)
+            expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
         if inputs["wcs"] is None:

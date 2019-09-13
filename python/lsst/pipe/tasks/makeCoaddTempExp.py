@@ -670,7 +670,7 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         dataIdList = [ref.dataId for ref in inputRefs.calExpList]
 
         # Construct list of packed integer IDs expected by `run`
-        ccdIdList = [butlerQC.registry.packDataId("visit_detector", dataId) for dataId in dataIdList]
+        ccdIdList = [dataId.pack("visit_detector") for dataId in dataIdList]
 
         # Extract integer visitId requested by `run`
         visits = [dataId['visit'] for dataId in dataIdList]

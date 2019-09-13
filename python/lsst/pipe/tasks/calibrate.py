@@ -575,8 +575,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        expId, expBits = butlerQC.registry.packDataId("visit_detector",
-                                                      butlerQC.quantum.dataId,
+        expId, expBits = butlerQC.quantum.dataId.pack("visit_detector",
                                                       returnMaxBits=True)
         inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
