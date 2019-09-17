@@ -68,14 +68,44 @@ class CoaddBaseConfig(pexConfig.Config):
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype=bool,
-        doc="Apply jointcal WCS and PhotoCalib results to input calexps?",
+        doc=("Apply ubercalibrated WCS and PhotoCalib results to input calexps? "
+             "This field is no longer used, and has been deprecated by DM-21308. "
+             "It will be removed after v20. Use doApplyExternalPhotoCalib and "
+             "doApplyExternalSkyWcs instead."),
         default=False
     )
-    useMeasMosaic = pexConfig.Field(
+    doApplyExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
-        doc="Use meas_mosaic's applyMosaicResultsExposure() to do the photometric "
-        "calibration/wcs update (deprecated).",
-        default=False
+        default=False,
+        doc=("Whether to apply external photometric calibration via an "
+             "`lsst.afw.image.PhotoCalib` object.  Uses the "
+             "`externalPhotoCalibName` field to determine which calibration "
+             "to load.")
+    )
+    externalPhotoCalibName = pexConfig.ChoiceField(
+        dtype=str,
+        doc="Type of external PhotoCalib if `doApplyExternalPhotoCalib` is True.",
+        default="jointcal",
+        allowed={
+            "jointcal": "Use jointcal_photoCalib",
+            "fgcm": "Use fgcm_photoCalib",
+            "fgcm_tract": "Use fgcm_tract_photoCalib"
+        }
+    )
+    doApplyExternalSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Whether to apply external astrometric calibration via an "
+             "`lsst.afw.geom.SkyWcs` object.  Uses `externalSkyWcsName` "
+             "field to determine which calibration to load.")
+    )
+    externalSkyWcsName = pexConfig.ChoiceField(
+        dtype=str,
+        doc="Type of external SkyWcs if `doApplyExternalSkyWcs` is True.",
+        default="jointcal",
+        allowed={
+            "jointcal": "Use jointcal_wcs"
+        }
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
