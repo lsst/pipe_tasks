@@ -23,6 +23,8 @@ import lsst.pipe.base as pipeBase
 from lsst.daf.butler import DatasetType
 from lsst.skymap import skyMapRegistry
 
+from sqlalchemy.exc import IntegrityError
+
 
 class MakeGen3SkyMapConfig(pexConfig.Config):
     """Config for MakeGen3SkyMapTask
@@ -76,24 +78,17 @@ class MakeGen3SkyMapTask(pipeBase.Task):
         skyMap = self.config.skyMap.apply()
         skyMap.logSkyMapInfo(self.log)
         skyMapHash = skyMap.getSha1()
-        try:
-            existing, = butler.registry.query("SELECT skymap FROM skymap WHERE hash=:hash",
-                                              hash=skyMapHash)
-            raise RuntimeError(
-                (f"SkyMap with name {existing.name} and hash {skyMapHash} already exist in "
-                 f"the butler collection {self.collection}, SkyMaps must be unique within "
-                 "a collection")
-            )
-        except ValueError:
-            self.log.info(f"Inserting SkyMap {self.config.name} with hash={skyMapHash}")
-            with butler.registry.transaction():
+        self.log.info(f"Inserting SkyMap {self.config.name} with hash={skyMapHash}")
+        with butler.registry.transaction():
+            try:
                 skyMap.register(self.config.name, butler.registry)
-                butler.registry.registerDatasetType(DatasetType(name=self.config.datasetTypeName,
-                                                                dimensions=["skymap"],
-                                                                storageClass="SkyMap",
-                                                                universe=butler.registry.dimensions))
-                butler.put(skyMap, self.config.datasetTypeName, {"skymap": self.config.name})
-
+            except IntegrityError as err:
+                raise RuntimeError("A skymap with the same name or hash already exists.") from err
+            butler.registry.registerDatasetType(DatasetType(name=self.config.datasetTypeName,
+                                                            dimensions=["skymap"],
+                                                            storageClass="SkyMap",
+                                                            universe=butler.registry.dimensions))
+            butler.put(skyMap, self.config.datasetTypeName, {"skymap": self.config.name})
         return pipeBase.Struct(
             skyMap=skyMap
         )
