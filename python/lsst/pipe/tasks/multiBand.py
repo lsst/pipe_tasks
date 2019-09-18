@@ -738,6 +738,16 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
                                                                      'INEXACT_PSF']
 
+    def validate(self):
+        super().validate()
+        refCatGen2 = getattr(self.refObjLoader, "ref_dataset_name", None)
+        if refCatGen2 is not None and refCatGen2 != self.connections.refCat:
+            raise ValueError(
+                f"Gen2 ({refCatGen2}) and Gen3 ({self.connections.refCat}) reference catalogs "
+                f"are different.  These options must be kept in sync until Gen2 is retired."
+            )
+
+
 ## @addtogroup LSST_task_documentation
 ## @{
 ## @page MeasureMergedCoaddSourcesTask
