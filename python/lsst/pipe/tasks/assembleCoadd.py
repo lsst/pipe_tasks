@@ -431,6 +431,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
 
+        inputData.setdefault('brightObjectMask', None)
         self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
 
         if self.config.doWrite:
@@ -2018,7 +2019,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             del staticSkyModelOutputRefs.templateCoadd
 
         # A PSF-Matched nImage does not exist as a dataset type
-        del staticSkyModelOutputRefs.nImage
+        if 'nImage' in staticSkyModelOutputRefs.keys():
+            del staticSkyModelOutputRefs.nImage
 
         templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs,
                                                                staticSkyModelOutputRefs)
