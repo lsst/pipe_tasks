@@ -350,12 +350,12 @@ class BestSeeingWcsSelectImageConfig(WcsSelectImagesTask.ConfigClass):
         default=5)
     maxPsfFwhm = pexConfig.Field(
         dtype=float,
-        doc="Maximum PSF FWHM (in pixels) to select",
-        default=5.,
+        doc="Maximum PSF FWHM (in arcseconds) to select",
+        default=1.5,
         optional=True)
     minPsfFwhm = pexConfig.Field(
         dtype=float,
-        doc="Minimum PSF FWHM (in pixels) to select",
+        doc="Minimum PSF FWHM (in arcseconds) to select",
         default=0.,
         optional=True)
 
@@ -406,7 +406,8 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
             cal = dataRef.get("calexp", immediate=True)
 
             # if min/max PSF values are defined, remove images out of bounds
-            psfSize = cal.getPsf().computeShape().getDeterminantRadius()
+            pixToArcseconds = cal.getWcs().getPixelScale().asArcseconds()
+            psfSize = cal.getPsf().computeShape().getDeterminantRadius()*pixToArcseconds
             sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
             if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
                 continue
@@ -421,14 +422,14 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
             filteredDataRefList = [dataRefList[i] for i in sortedIndices]
             filteredExposureInfoList = [exposureInfoList[i] for i in sortedIndices]
             self.log.info(f"{len(sortedIndices)} images selected with FWHM "
-                          f"range of {psfSizes[sortedIndices[0]]}--{psfSizes[sortedIndices[-1]]} pixels")
+                          f"range of {psfSizes[sortedIndices[0]]}--{psfSizes[sortedIndices[-1]]} arcseconds")
 
         else:
             if len(psfSizes) == 0:
                 self.log.warn(f"0 images selected.")
             else:
                 self.log.debug(f"{len(psfSizes)} images selected with FWHM range "
-                               f"of {psfSizes[0]}--{psfSizes[-1]} pixels")
+                               f"of {psfSizes[0]}--{psfSizes[-1]} arcseconds")
             filteredDataRefList = dataRefList
             filteredExposureInfoList = exposureInfoList
 
