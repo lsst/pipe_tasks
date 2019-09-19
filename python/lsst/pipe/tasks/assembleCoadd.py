@@ -2399,26 +2399,31 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return os.path.join(directory, filename)
 
 
-def reorderAndPadList(inputList, inputKey, outputKey, padWith=None):
+def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
     """Match the order of one list to another, padding if necessary
 
     Parameters
     ----------
-    inputList : `list`
-        List to be reordered and padded
-    inputKey : Any value that can be compared with outputKey
-    outputKey : Any value that can be compared with inputKey
-    padWith : Any value to be inserted where inputKey not in outputKeys
+    inputList : list
+        List to be reordered and padded. Elements can be any type.
+    inputKeys :  iterable
+        Iterable of values to be compared with outputKeys.
+        Length must match `inputList`
+    outputKeys : iterable
+        Iterable of values to be compared with inputKeys.
+    padWith :
+        Any value to be inserted where inputKey not in outputKeys
 
     Returns
     -------
-    outputList : `list`
-        Copy of inputList reordered and padded with `padWith` to match outputList
+    list
+        Copy of inputList reordered per outputKeys and padded with `padWith`
+        so that the length matches length of outputKeys.
     """
     outputList = []
-    for d in outputKey:
-        if d in inputKey:
-            outputList.append(inputList[inputKey.index(d)])
+    for d in outputKeys:
+        if d in inputKeys:
+            outputList.append(inputList[inputKeys.index(d)])
         else:
             outputList.append(padWith)
     return outputList
