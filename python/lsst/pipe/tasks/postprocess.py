@@ -18,18 +18,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Command-line task and associated config for writing QA tables.
 
-The deepCoadd_qa table is a table with QA columns of interest computed
-for all filters for which the deepCoadd_obj tables are written.
-"""
 import functools
 import os
 import pandas as pd
+from collections import defaultdict
 
 from lsst.pex.config import Config, Field, DictField, ListField
 from lsst.pipe.base import CmdLineTask, ArgumentParser
-from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
+from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer, CoaddDataIdContainer
 from lsst.utils import getPackageDir
 
 from .parquetTable import ParquetTable
@@ -37,10 +34,29 @@ from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
 from .functors import CompositeFunctor, RAColumn, DecColumn, Column
 
 
+def flattenFilters(df, filterDict, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
+    """Flattens a dataframe with multilevel column index
+    """
+    newDf = pd.DataFrame()
+    for filt, filtShort in filterDict.items():
+        try:
+            subdf = df[filt]
+        except KeyError:
+            continue
+        columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
+        newColumns = {c: columnFormat.format(filtShort, c)
+                      for c in subdf.columns if c not in noDupCols}
+        cols = list(newColumns.keys())
+        newDf = pd.concat([newDf, subdf[cols].rename(columns=newColumns)], axis=1)
+
+    newDf = pd.concat([subdf[noDupCols], newDf], axis=1)
+    return newDf
+
+
 class WriteObjectTableConfig(Config):
     priorityList = ListField(
         dtype=str,
-        default=['HSC-G', 'HSC-R', 'HSC-I', 'HSC-Z', 'HSC-Y'],
+        default=[],
         doc="Priority-ordered list of bands for the merge."
     )
     engine = Field(
@@ -86,13 +102,9 @@ class WriteObjectTableTask(CmdLineTask):
         @param[in] patchRefList list of data references for each filter
         """
         catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
-        mergedCatalog = self.run(catalogs, patchRefList[0])
+        dataId = patchRefList[0].dataId
+        mergedCatalog = self.run(catalogs, tract=dataId['tract'], patch=dataId['patch'])
         self.write(patchRefList[0], mergedCatalog)
-
-    def getSchemaCatalogs(self, *args, **kwargs):
-        """Not using this function, but it must return a dictionary.
-        """
-        return {}
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -132,7 +144,7 @@ class WriteObjectTableTask(CmdLineTask):
             catalogDict[dataset] = catalog
         return filterName, catalogDict
 
-    def run(self, catalogs, patchRef):
+    def run(self, catalogs, tract, patch):
         """Merge multiple catalogs.
 
         Parameters
@@ -155,8 +167,8 @@ class WriteObjectTableTask(CmdLineTask):
 
                 # Sort columns by name, to ensure matching schema among patches
                 df = df.reindex(sorted(df.columns), axis=1)
-                df['tractId'] = patchRef.dataId['tract']
-                df['patchId'] = patchRef.dataId['patch']
+                df['tractId'] = tract
+                df['patchId'] = patch
 
                 # Make columns a 3-level MultiIndex
                 df.columns = pd.MultiIndex.from_tuples([(dataset, filt, c) for c in df.columns],
@@ -237,7 +249,6 @@ class PostprocessAnalysis(object):
         List of flags to include in output table.
     """
     _defaultFlags = ('calib_psf_used', 'detect_isPrimary')
-
     _defaultFuncs = (('ra', RAColumn()),
                      ('dec', DecColumn()))
 
@@ -298,10 +309,16 @@ class PostprocessAnalysis(object):
 
 
 class PostprocessConfig(Config):
-    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
-    functorFile = Field(dtype=str,
-                        doc='Path to YAML file specifying functors to be computed',
-                        default=None)
+    coaddName = Field(
+        dtype=str,
+        default="deep",
+        doc="Name of coadd"
+    )
+    functorFile = Field(
+        dtype=str,
+        doc='Path to YAML file specifying functors to be computed',
+        default=None
+    )
 
 
 class PostprocessTask(CmdLineTask):
@@ -451,33 +468,12 @@ class PostprocessTask(CmdLineTask):
         pass
 
 
-def flattenFilters(df, filterDict, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
-    """Flattens a dataframe with multilevel column index
-    """
-    newDf = pd.DataFrame()
-    for filt, filtShort in filterDict.items():
-        try:
-            subdf = df[filt]
-        except KeyError:
-            continue
-        columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
-        newColumns = {c: columnFormat.format(filtShort, c)
-                      for c in subdf.columns if c not in noDupCols}
-        cols = list(newColumns.keys())
-        newDf = pd.concat([newDf, subdf[cols].rename(columns=newColumns)], axis=1)
-
-    newDf = pd.concat([subdf[noDupCols], newDf], axis=1)
-    return newDf
-
-
-class MultibandPostprocessConfig(PostprocessConfig):
+class TransformObjectCatalogConfig(PostprocessConfig):
     filterMap = DictField(keytype=str, itemtype=str,
-                          default={'HSC-G': 'g', 'HSC-R': 'r',
-                                   'HSC-I': 'i', 'HSC-Z': 'z',
-                                   'HSC-Y': 'y'},
+                          default={},
                           doc="Dictionary mapping full filter name to short one " +
                               "for column name munging.")
-    camelCase = Field(dtype=bool, default=False,
+    camelCase = Field(dtype=bool, default=True,
                       doc="Write per-filter columns names with camelCase, else underscore "
                           "For example: gPsfFlux instead of g_PsfFlux.")
     multilevelOutput = Field(dtype=bool, default=True,
@@ -485,17 +481,26 @@ class MultibandPostprocessConfig(PostprocessConfig):
                                  "multilevel column index (True) or be flat " +
                                  "and name-munged (False).")
 
+    def setDefaults(self):
+        self.functorFile = os.path.join(getPackageDir("obs_subaru"),
+                                        'policy', 'Object.yaml')
 
-class MultibandPostprocessTask(PostprocessTask):
-    """Do the same set of postprocessing calculations on all bands
+
+class TransformObjectCatalogTask(PostprocessTask):
+    """Compute Flatted Object Table as defined in the DPDD
+
+    Do the same set of postprocessing calculations on all bands
 
     This is identical to `PostprocessTask`, except for that it does the
     specified functor calculations for all filters present in the
     input `deepCoadd_obj` table.  Any specific `"filt"` keywords specified
     by the YAML file will be superceded.
     """
-    _DefaultName = "multibandPostprocess"
-    ConfigClass = MultibandPostprocessConfig
+    _DefaultName = "transformObjectCatalog"
+    ConfigClass = TransformObjectCatalogConfig
+
+    inputDataset = 'deepCoadd_obj'
+    outputDataset = 'objectTable'
 
     def run(self, parq, funcs=None, dataId=None):
         dfDict = {}
@@ -520,38 +525,75 @@ class MultibandPostprocessTask(PostprocessTask):
         return df
 
 
-class WriteQATableConfig(MultibandPostprocessConfig):
-    def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir("qa_explorer"),
-                                        'data', 'QAfunctors.yaml')
+class TractObjectDataIdContainer(CoaddDataIdContainer):
+
+    def makeDataRefList(self, namespace):
+        """Make self.refList from self.idList
+
+        Generate a list of data references given tract and/or patch.
+        This was adapted from `TractQADataIdContainer`, which was
+        `TractDataIdContainer` modifie to not require "filter".
+        Only existing dataRefs are returned.
+        """
+        def getPatchRefList(tract):
+            return [namespace.butler.dataRef(datasetType=self.datasetType,
+                                             tract=tract.getId(),
+                                             patch="%d,%d" % patch.getIndex()) for patch in tract]
+
+        tractRefs = defaultdict(list)  # Data references for each tract
+        for dataId in self.idList:
+            skymap = self.getSkymap(namespace)
+
+            if "tract" in dataId:
+                tractId = dataId["tract"]
+                if "patch" in dataId:
+                    tractRefs[tractId].append(namespace.butler.dataRef(datasetType=self.datasetType,
+                                                                       tract=tractId,
+                                                                       patch=dataId['patch']))
+                else:
+                    tractRefs[tractId] += getPatchRefList(skymap[tractId])
+            else:
+                tractRefs = dict((tract.getId(), tractRefs.get(tract.getId(), []) + getPatchRefList(tract))
+                                 for tract in skymap)
+        outputRefList = []
+        for tractRefList in tractRefs.values():
+            existingRefs = [ref for ref in tractRefList if ref.datasetExists()]
+            outputRefList.append(existingRefs)
+
+        self.refList = outputRefList
 
 
-class WriteQATableTask(MultibandPostprocessTask):
-    """Compute columns of QA interest from coadd object tables
+class ConsolidateObjectTableConfig(Config):
+    coaddName = Field(
+        dtype=str,
+        default="deep",
+        doc="Name of coadd"
+    )
 
-    Only difference from MultibandPostprocessTask is the default
-    YAML functor file.
+
+class ConsolidateObjectTableTask(CmdLineTask):
+    """Write patch-merged source tables to a tract-level parquet file
     """
-    _DefaultName = "writeQATable"
-    ConfigClass = WriteQATableConfig
+    _DefaultName = "consolidateObjectTable"
+    ConfigClass = ConsolidateObjectTableConfig
 
-    inputDataset = 'deepCoadd_obj'
-    outputDataset = 'deepCoadd_qa'
+    inputDataset = 'objectTable'
+    outputDataset = 'objectTable_tract'
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
 
-class TransformObjectCatalogConfig(MultibandPostprocessConfig):
-    def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir("obs_subaru"),
-                                        'policy', 'Object.yaml')
-        self.multilevelOutput = False
-        self.camelCase = True
+        parser.add_id_argument("--id", cls.inputDataset,
+                               help="data ID, e.g. --id tract=12345",
+                               ContainerClass=TractObjectDataIdContainer)
+        return parser
 
+    def runDataRef(self, patchRefList):
+        df = pd.concat([patchRef.get().toDataFrame() for patchRef in patchRefList])
+        patchRefList[0].put(ParquetTable(dataFrame=df), self.outputDataset)
 
-class TransformObjectCatalogTask(MultibandPostprocessTask):
-    """Compute Flatted Object Table as defined in the DPDD
-    """
-    _DefaultName = "transformObjectCatalog"
-    ConfigClass = TransformObjectCatalogConfig
-
-    inputDataset = 'deepCoadd_obj'
-    outputDataset = 'objectTable'
+    def writeMetadata(self, dataRef):
+        """No metadata to write.
+        """
+        pass
