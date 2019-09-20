@@ -9,7 +9,7 @@ from lsst.daf.persistence import doImport
 from .parquetTable import MultilevelParquetTable
 
 
-def init_fromDict(initDict, basePath='lsst.qa.explorer.functors',
+def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
                   typeKey='functor'):
     """Initializes an object defined in a dictionary
     The object needs to be importable as
@@ -267,7 +267,6 @@ class CompositeFunctor(Functor):
                                      for f in self.funcDict.values()] for x in y]))
 
     def __call__(self, parq, **kwargs):
-
         if isinstance(parq, MultilevelParquetTable):
             columns = self.multilevelColumns(parq)
             df = parq.toDataFrame(columns=columns, droplevels=False)
@@ -339,10 +338,10 @@ def mag_aware_eval(df, expr):
         Expression.
     """
     try:
-        expr_new = re.sub('mag\((\w+)\)', '-2.5*log(\g<1>)/log(10)', expr)
+        expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>)/log(10)', expr)
         val = df.eval(expr_new, truediv=True)
     except Exception:  # Should check what actually gets raised
-        expr_new = re.sub('mag\((\w+)\)', '-2.5*log(\g<1>_instFlux)/log(10)', expr)
+        expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>_instFlux)/log(10)', expr)
         val = df.eval(expr_new, truediv=True)
     return val
 
@@ -370,9 +369,9 @@ class CustomFunctor(Functor):
 
     @property
     def columns(self):
-        flux_cols = re.findall('mag\(\s*(\w+)\s*\)', self.expr)
+        flux_cols = re.findall(r'mag\(\s*(\w+)\s*\)', self.expr)
 
-        cols = [c for c in re.findall('[a-zA-Z_]+', self.expr) if c not in self._ignore_words]
+        cols = [c for c in re.findall(r'[a-zA-Z_]+', self.expr) if c not in self._ignore_words]
         not_a_col = []
         for c in flux_cols:
             if not re.search('_instFlux$', c):
@@ -664,18 +663,6 @@ class Color(Functor):
         mag1 = self.mag1._func(df[self.filt1])
         return mag2 - mag1
 
-#    def __call__(self, *args, **kwargs):
-#        vals = (self.mag2(*args, **kwargs) -
-#                self.mag1(*args, **kwargs))
-#
-#        # Gotta do this again because pandas will
-#        #  impute missing data during the above operation
-#        #  if different nans in the two mags.
-#        if kwargs.get('dropna', False):
-#            vals = self._dropna(vals)
-#
-#        return vals
-
     @property
     def columns(self):
         return [self.mag1.col, self.mag2.col]
@@ -829,16 +816,19 @@ class PsfHsmTraceSizeDiff(Functor):
         return sizeDiff
 
 
-class Seeing(Functor):
-    name = 'seeing'
+class HsmFwhm(Functor):
+    name = 'HSM Psf FWHM'
     _columns = ('ext_shapeHSM_HsmPsfMoments_xx', 'ext_shapeHSM_HsmPsfMoments_yy')
+    # TODO: DM-21403 pixel scale should be computed from the CD matrix or transform matrix
+    pixelScale = 0.168
+    SIGMA2FWHM = 2*np.sqrt(2*np.log(2))
 
     def _func(self, df):
-        return 0.168*2.35*np.sqrt(0.5*(df['ext_shapeHSM_HsmPsfMoments_xx']**2 +
-                                       df['ext_shapeHSM_HsmPsfMoments_yy']**2))
+        return self.pixelScale*self.SIGMA2FWHM*np.sqrt(
+            0.5*(df['ext_shapeHSM_HsmPsfMoments_xx'] + df['ext_shapeHSM_HsmPsfMoments_yy']))
 
 
-class e1(Functor):
+class E1(Functor):
     name = "Distortion Ellipticity (e1)"
     shortname = "Distortion"
 
@@ -857,7 +847,7 @@ class e1(Functor):
         return df[self.colXX] - df[self.colYY] / (df[self.colXX] + df[self.colYY])
 
 
-class e2(Functor):
+class E2(Functor):
     name = "Ellipticity e2"
 
     def __init__(self, colXX, colXY, colYY, **kwargs):
@@ -943,7 +933,7 @@ class Photometry(Functor):
     @classmethod
     def hypot(cls, a, b):
         if np.abs(a) < np.abs(b):
-                a, b = b, a
+            a, b = b, a
         if a == 0.:
             return 0.
         q = b/a
@@ -956,7 +946,6 @@ class Photometry(Functor):
         with np.warnings.catch_warnings():
             np.warnings.filterwarnings('ignore', r'invalid value encountered')
             np.warnings.filterwarnings('ignore', r'divide by zero')
-
             return -2.5 * np.log10(dn/fluxMag0)
 
     def dn2fluxErr(self, dn, dnErr, fluxMag0, fluxMag0Err):

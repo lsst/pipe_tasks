@@ -18,44 +18,58 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Command-line task and associated config for writing QA tables.
 
-The deepCoadd_qa table is a table with QA columns of interest computed
-for all filters for which the deepCoadd_obj tables are written.
-"""
 import functools
-import os
 import pandas as pd
+from collections import defaultdict
 
-from lsst.pex.config import Config, Field, DictField, ListField
+import lsst.pex.config as pexConfig
 from lsst.pipe.base import CmdLineTask, ArgumentParser
-from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
-from lsst.utils import getPackageDir
+from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer, CoaddDataIdContainer
 
 from .parquetTable import ParquetTable
 from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
 from .functors import CompositeFunctor, RAColumn, DecColumn, Column
 
 
-class WriteObjectTableConfig(Config):
-    priorityList = ListField(
+def flattenFilters(df, filterDict, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
+    """Flattens a dataframe with multilevel column index
+    """
+    newDf = pd.DataFrame()
+    for filt, filtShort in filterDict.items():
+        try:
+            subdf = df[filt]
+        except KeyError:
+            continue
+        columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
+        newColumns = {c: columnFormat.format(filtShort, c)
+                      for c in subdf.columns if c not in noDupCols}
+        cols = list(newColumns.keys())
+        newDf = pd.concat([newDf, subdf[cols].rename(columns=newColumns)], axis=1)
+
+    newDf = pd.concat([subdf[noDupCols], newDf], axis=1)
+    return newDf
+
+
+class WriteObjectTableConfig(pexConfig.Config):
+    priorityList = pexConfig.ListField(
         dtype=str,
-        default=['HSC-G', 'HSC-R', 'HSC-I', 'HSC-Z', 'HSC-Y'],
+        default=[],
         doc="Priority-ordered list of bands for the merge."
     )
-    engine = Field(
+    engine = pexConfig.Field(
         dtype=str,
         default="pyarrow",
         doc="Parquet engine for writing (pyarrow or fastparquet)"
     )
-    coaddName = Field(
+    coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
         doc="Name of coadd"
     )
 
     def validate(self):
-        Config.validate(self)
+        pexConfig.Config.validate(self)
         if len(self.priorityList) == 0:
             raise RuntimeError("No priority list provided")
 
@@ -86,13 +100,9 @@ class WriteObjectTableTask(CmdLineTask):
         @param[in] patchRefList list of data references for each filter
         """
         catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
-        mergedCatalog = self.run(catalogs, patchRefList[0])
+        dataId = patchRefList[0].dataId
+        mergedCatalog = self.run(catalogs, tract=dataId['tract'], patch=dataId['patch'])
         self.write(patchRefList[0], mergedCatalog)
-
-    def getSchemaCatalogs(self, *args, **kwargs):
-        """Not using this function, but it must return a dictionary.
-        """
-        return {}
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -115,13 +125,13 @@ class WriteObjectTableTask(CmdLineTask):
 
         Parameters
         ----------
-        patchRef :
+        patchRef : `lsst.daf.persistence.ButlerDataRef`
             Data reference for patch
 
         Returns
         -------
-        Tuple consisting of filter name and a dict of catalogs, keyed by dataset
-        name
+        Tuple consisting of filter name and a dict of catalogs, keyed by
+        dataset name
         """
         filterName = patchRef.dataId["filter"]
         catalogDict = {}
@@ -132,17 +142,21 @@ class WriteObjectTableTask(CmdLineTask):
             catalogDict[dataset] = catalog
         return filterName, catalogDict
 
-    def run(self, catalogs, patchRef):
+    def run(self, catalogs, tract, patch):
         """Merge multiple catalogs.
 
         Parameters
         ----------
         catalogs : `dict`
             Mapping from filter names to dict of catalogs.
+        tract : int
+            tractId to use for the tractId column
+        patch : str
+            patchId to use for the patchId column
 
         Returns
         -------
-        catalog : `lsst.qa.explorer.table.ParquetTable`
+        catalog : `lsst.pipe.tasks.parquetTable.ParquetTable`
             Merged dataframe, with each column prefixed by
             `filter_tag(filt)`, wrapped in the parquet writer shim class.
         """
@@ -155,8 +169,8 @@ class WriteObjectTableTask(CmdLineTask):
 
                 # Sort columns by name, to ensure matching schema among patches
                 df = df.reindex(sorted(df.columns), axis=1)
-                df['tractId'] = patchRef.dataId['tract']
-                df['patchId'] = patchRef.dataId['patch']
+                df['tractId'] = tract
+                df['patchId'] = patch
 
                 # Make columns a 3-level MultiIndex
                 df.columns = pd.MultiIndex.from_tuples([(dataset, filt, c) for c in df.columns],
@@ -167,12 +181,14 @@ class WriteObjectTableTask(CmdLineTask):
         return ParquetTable(dataFrame=catalog)
 
     def write(self, patchRef, catalog):
-        """!
-        @brief Write the output.
-        @param[in]  patchRef   data reference for patch
-        @param[in]  catalog    catalog
-        We write as the dataset provided by the 'outputDataset'
-        class variable.
+        """Write the output.
+
+        Parameters
+        ----------
+        catalog : `ParquetTable`
+            Catalog to write
+        patchRef : `lsst.daf.persistence.ButlerDataRef`
+            Data reference for patch
         """
         patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
         # since the filter isn't actually part of the data ID for the dataset we're saving,
@@ -182,8 +198,7 @@ class WriteObjectTableTask(CmdLineTask):
         self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
 
     def writeMetadata(self, dataRefList):
-        """!
-        @brief No metadata to write, and not sure how to write it for a list of dataRefs.
+        """No metadata to write, and not sure how to write it for a list of dataRefs.
         """
         pass
 
@@ -193,9 +208,9 @@ class PostprocessAnalysis(object):
 
     This object manages and organizes an arbitrary set of computations
     on a catalog.  The catalog is defined by a
-    `lsst.qa.explorer.parquetTable.ParquetTable` object (or list thereof), such as a
+    `lsst.pipe.tasks.parquetTable.ParquetTable` object (or list thereof), such as a
     `deepCoadd_obj` dataset, and the computations are defined by a collection
-    of `lsst.qa.explorer.functor.Functor` objects (or, equivalently,
+    of `lsst.pipe.tasks.functor.Functor` objects (or, equivalently,
     a `CompositeFunctor`).
 
     After the object is initialized, accessing the `.df` attribute (which
@@ -218,10 +233,10 @@ class PostprocessAnalysis(object):
 
     Parameters
     ----------
-    parq : `lsst.qa.explorer.ParquetTable` (or list of such)
+    parq : `lsst.pipe.tasks.ParquetTable` (or list of such)
         Source catalog(s) for computation
 
-    functors : `list`, `dict`, or `lsst.qa.explorer.functors.CompositeFunctor`
+    functors : `list`, `dict`, or `lsst.pipe.tasks.functors.CompositeFunctor`
         Computations to do (functors that act on `parq`).
         If a dict, the output
         DataFrame will have columns keyed accordingly.
@@ -237,7 +252,6 @@ class PostprocessAnalysis(object):
         List of flags to include in output table.
     """
     _defaultFlags = ('calib_psf_used', 'detect_isPrimary')
-
     _defaultFuncs = (('ra', RAColumn()),
                      ('dec', DecColumn()))
 
@@ -297,11 +311,17 @@ class PostprocessAnalysis(object):
         return self._df
 
 
-class PostprocessConfig(Config):
-    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
-    functorFile = Field(dtype=str,
-                        doc='Path to YAML file specifying functors to be computed',
-                        default=None)
+class PostprocessConfig(pexConfig.Config):
+    coaddName = pexConfig.Field(
+        dtype=str,
+        default="deep",
+        doc="Name of coadd"
+    )
+    functorFile = pexConfig.Field(
+        dtype=str,
+        doc='Path to YAML file specifying functors to be computed',
+        default=None
+    )
 
 
 class PostprocessTask(CmdLineTask):
@@ -356,7 +376,7 @@ class PostprocessTask(CmdLineTask):
             - detect_isPrimary
 
     The names for each entry under "func" will become the names of columns in the
-    output dataset.  All the functors referenced are defined in `lsst.qa.explorer.functors`.
+    output dataset.  All the functors referenced are defined in `lsst.pipe.tasks.functors`.
     Positional arguments to be passed to each functor are in the `args` list,
     and any additional entries for each column other than "functor" or "args" (e.g., `'filt'`,
     `'dataset'`) are treated as keyword arguments to be passed to the functor initialization.
@@ -368,7 +388,7 @@ class PostprocessTask(CmdLineTask):
     `deepCoadd_obj` does not use `'filter'`), then this will override the `filt` kwargs
     provided in the YAML file, and the calculations will be done in that filter.
 
-    This task uses the `lsst.qa.explorer.postprocess.PostprocessAnalysis` object
+    This task uses the `lsst.pipe.tasks.postprocess.PostprocessAnalysis` object
     to organize and excecute the calculations.
 
 
@@ -423,15 +443,16 @@ class PostprocessTask(CmdLineTask):
 
         Parameters
         ----------
-        parq : `lsst.qa.explorer.parquetTable.ParquetTable`
+        parq : `lsst.pipe.tasks.parquetTable.ParquetTable`
             ParquetTable from which calculations are done.
-
-        dataId : dict
+        funcs : `lsst.pipe.tasks.functors.Functors`
+            Functors to apply to the table's columns
+        dataId : dict, optional
             Used to add a `patchId` column to the output dataframe.
 
-        Return
+        Returns
         ------
-        df : `pandas.DataFrame`
+            `pandas.DataFrame`
 
         """
         filt = dataId.get('filter', None)
@@ -451,51 +472,42 @@ class PostprocessTask(CmdLineTask):
         pass
 
 
-def flattenFilters(df, filterDict, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
-    """Flattens a dataframe with multilevel column index
-    """
-    newDf = pd.DataFrame()
-    for filt, filtShort in filterDict.items():
-        try:
-            subdf = df[filt]
-        except KeyError:
-            continue
-        columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
-        newColumns = {c: columnFormat.format(filtShort, c)
-                      for c in subdf.columns if c not in noDupCols}
-        cols = list(newColumns.keys())
-        newDf = pd.concat([newDf, subdf[cols].rename(columns=newColumns)], axis=1)
-
-    newDf = pd.concat([subdf[noDupCols], newDf], axis=1)
-    return newDf
-
-
-class MultibandPostprocessConfig(PostprocessConfig):
-    filterMap = DictField(keytype=str, itemtype=str,
-                          default={'HSC-G': 'g', 'HSC-R': 'r',
-                                   'HSC-I': 'i', 'HSC-Z': 'z',
-                                   'HSC-Y': 'y'},
-                          doc="Dictionary mapping full filter name to short one " +
-                              "for column name munging.")
-    camelCase = Field(dtype=bool, default=False,
-                      doc="Write per-filter columns names with camelCase, else underscore "
-                          "For example: gPsfFlux instead of g_PsfFlux.")
-    multilevelOutput = Field(dtype=bool, default=True,
-                             doc="Whether results dataframe should have a " +
-                                 "multilevel column index (True) or be flat " +
-                                 "and name-munged (False).")
+class TransformObjectCatalogConfig(PostprocessConfig):
+    filterMap = pexConfig.DictField(
+        keytype=str,
+        itemtype=str,
+        default={},
+        doc="Dictionary mapping full filter name to short one for column name munging."
+    )
+    camelCase = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc=("Write per-filter columns names with camelCase, else underscore "
+             "For example: gPsfFlux instead of g_PsfFlux.")
+    )
+    multilevelOutput = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc=("Whether results dataframe should have a multilevel column index (True) or be flat "
+             "and name-munged (False).")
+    )
 
 
-class MultibandPostprocessTask(PostprocessTask):
-    """Do the same set of postprocessing calculations on all bands
+class TransformObjectCatalogTask(PostprocessTask):
+    """Compute Flatted Object Table as defined in the DPDD
+
+    Do the same set of postprocessing calculations on all bands
 
     This is identical to `PostprocessTask`, except for that it does the
     specified functor calculations for all filters present in the
     input `deepCoadd_obj` table.  Any specific `"filt"` keywords specified
     by the YAML file will be superceded.
     """
-    _DefaultName = "multibandPostprocess"
-    ConfigClass = MultibandPostprocessConfig
+    _DefaultName = "transformObjectCatalog"
+    ConfigClass = TransformObjectCatalogConfig
+
+    inputDataset = 'deepCoadd_obj'
+    outputDataset = 'objectTable'
 
     def run(self, parq, funcs=None, dataId=None):
         dfDict = {}
@@ -520,38 +532,75 @@ class MultibandPostprocessTask(PostprocessTask):
         return df
 
 
-class WriteQATableConfig(MultibandPostprocessConfig):
-    def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir("qa_explorer"),
-                                        'data', 'QAfunctors.yaml')
+class TractObjectDataIdContainer(CoaddDataIdContainer):
+
+    def makeDataRefList(self, namespace):
+        """Make self.refList from self.idList
+
+        Generate a list of data references given tract and/or patch.
+        This was adapted from `TractQADataIdContainer`, which was
+        `TractDataIdContainer` modifie to not require "filter".
+        Only existing dataRefs are returned.
+        """
+        def getPatchRefList(tract):
+            return [namespace.butler.dataRef(datasetType=self.datasetType,
+                                             tract=tract.getId(),
+                                             patch="%d,%d" % patch.getIndex()) for patch in tract]
+
+        tractRefs = defaultdict(list)  # Data references for each tract
+        for dataId in self.idList:
+            skymap = self.getSkymap(namespace)
+
+            if "tract" in dataId:
+                tractId = dataId["tract"]
+                if "patch" in dataId:
+                    tractRefs[tractId].append(namespace.butler.dataRef(datasetType=self.datasetType,
+                                                                       tract=tractId,
+                                                                       patch=dataId['patch']))
+                else:
+                    tractRefs[tractId] += getPatchRefList(skymap[tractId])
+            else:
+                tractRefs = dict((tract.getId(), tractRefs.get(tract.getId(), []) + getPatchRefList(tract))
+                                 for tract in skymap)
+        outputRefList = []
+        for tractRefList in tractRefs.values():
+            existingRefs = [ref for ref in tractRefList if ref.datasetExists()]
+            outputRefList.append(existingRefs)
+
+        self.refList = outputRefList
 
 
-class WriteQATableTask(MultibandPostprocessTask):
-    """Compute columns of QA interest from coadd object tables
+class ConsolidateObjectTableConfig(pexConfig.Config):
+    coaddName = pexConfig.Field(
+        dtype=str,
+        default="deep",
+        doc="Name of coadd"
+    )
 
-    Only difference from MultibandPostprocessTask is the default
-    YAML functor file.
+
+class ConsolidateObjectTableTask(CmdLineTask):
+    """Write patch-merged source tables to a tract-level parquet file
     """
-    _DefaultName = "writeQATable"
-    ConfigClass = WriteQATableConfig
+    _DefaultName = "consolidateObjectTable"
+    ConfigClass = ConsolidateObjectTableConfig
 
-    inputDataset = 'deepCoadd_obj'
-    outputDataset = 'deepCoadd_qa'
+    inputDataset = 'objectTable'
+    outputDataset = 'objectTable_tract'
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
 
-class TransformObjectCatalogConfig(MultibandPostprocessConfig):
-    def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir("obs_subaru"),
-                                        'policy', 'Object.yaml')
-        self.multilevelOutput = False
-        self.camelCase = True
+        parser.add_id_argument("--id", cls.inputDataset,
+                               help="data ID, e.g. --id tract=12345",
+                               ContainerClass=TractObjectDataIdContainer)
+        return parser
 
+    def runDataRef(self, patchRefList):
+        df = pd.concat([patchRef.get().toDataFrame() for patchRef in patchRefList])
+        patchRefList[0].put(ParquetTable(dataFrame=df), self.outputDataset)
 
-class TransformObjectCatalogTask(MultibandPostprocessTask):
-    """Compute Flatted Object Table as defined in the DPDD
-    """
-    _DefaultName = "transformObjectCatalog"
-    ConfigClass = TransformObjectCatalogConfig
-
-    inputDataset = 'deepCoadd_obj'
-    outputDataset = 'objectTable'
+    def writeMetadata(self, dataRef):
+        """No metadata to write.
+        """
+        pass
