@@ -338,10 +338,10 @@ def mag_aware_eval(df, expr):
         Expression.
     """
     try:
-        expr_new = re.sub('mag\((\w+)\)', '-2.5*log(\g<1>)/log(10)', expr)
+        expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>)/log(10)', expr)
         val = df.eval(expr_new, truediv=True)
     except Exception:  # Should check what actually gets raised
-        expr_new = re.sub('mag\((\w+)\)', '-2.5*log(\g<1>_instFlux)/log(10)', expr)
+        expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>_instFlux)/log(10)', expr)
         val = df.eval(expr_new, truediv=True)
     return val
 
@@ -369,9 +369,9 @@ class CustomFunctor(Functor):
 
     @property
     def columns(self):
-        flux_cols = re.findall('mag\(\s*(\w+)\s*\)', self.expr)
+        flux_cols = re.findall(r'mag\(\s*(\w+)\s*\)', self.expr)
 
-        cols = [c for c in re.findall('[a-zA-Z_]+', self.expr) if c not in self._ignore_words]
+        cols = [c for c in re.findall(r'[a-zA-Z_]+', self.expr) if c not in self._ignore_words]
         not_a_col = []
         for c in flux_cols:
             if not re.search('_instFlux$', c):
@@ -825,7 +825,7 @@ class Seeing(Functor):
                                        df['ext_shapeHSM_HsmPsfMoments_yy']**2))
 
 
-class e1(Functor):
+class E1(Functor):
     name = "Distortion Ellipticity (e1)"
     shortname = "Distortion"
 
@@ -844,7 +844,7 @@ class e1(Functor):
         return df[self.colXX] - df[self.colYY] / (df[self.colXX] + df[self.colYY])
 
 
-class e2(Functor):
+class E2(Functor):
     name = "Ellipticity e2"
 
     def __init__(self, colXX, colXY, colYY, **kwargs):
@@ -930,7 +930,7 @@ class Photometry(Functor):
     @classmethod
     def hypot(cls, a, b):
         if np.abs(a) < np.abs(b):
-                a, b = b, a
+            a, b = b, a
         if a == 0.:
             return 0.
         q = b/a
@@ -943,7 +943,6 @@ class Photometry(Functor):
         with np.warnings.catch_warnings():
             np.warnings.filterwarnings('ignore', r'invalid value encountered')
             np.warnings.filterwarnings('ignore', r'divide by zero')
-
             return -2.5 * np.log10(dn/fluxMag0)
 
     def dn2fluxErr(self, dn, dnErr, fluxMag0, fluxMag0Err):

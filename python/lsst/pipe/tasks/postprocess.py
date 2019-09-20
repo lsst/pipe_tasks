@@ -125,13 +125,13 @@ class WriteObjectTableTask(CmdLineTask):
 
         Parameters
         ----------
-        patchRef :
+        patchRef : `lsst.daf.persistence.ButlerDataRef`
             Data reference for patch
 
         Returns
         -------
-        Tuple consisting of filter name and a dict of catalogs, keyed by dataset
-        name
+        Tuple consisting of filter name and a dict of catalogs, keyed by
+        dataset name
         """
         filterName = patchRef.dataId["filter"]
         catalogDict = {}
@@ -149,10 +149,14 @@ class WriteObjectTableTask(CmdLineTask):
         ----------
         catalogs : `dict`
             Mapping from filter names to dict of catalogs.
+        tract : int
+            tractId to use for the tractId column
+        patch : str
+            patchId to use for the patchId column
 
         Returns
         -------
-        catalog : `lsst.qa.explorer.table.ParquetTable`
+        catalog : `lsst.pipe.tasks.parquetTable.ParquetTable`
             Merged dataframe, with each column prefixed by
             `filter_tag(filt)`, wrapped in the parquet writer shim class.
         """
@@ -177,12 +181,14 @@ class WriteObjectTableTask(CmdLineTask):
         return ParquetTable(dataFrame=catalog)
 
     def write(self, patchRef, catalog):
-        """!
-        @brief Write the output.
-        @param[in]  patchRef   data reference for patch
-        @param[in]  catalog    catalog
-        We write as the dataset provided by the 'outputDataset'
-        class variable.
+        """Write the output.
+
+        Parameters
+        ----------
+        catalog : `ParquetTable`
+            Catalog to write
+        patchRef : `lsst.daf.persistence.ButlerDataRef`
+            Data reference for patch
         """
         patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
         # since the filter isn't actually part of the data ID for the dataset we're saving,
@@ -192,8 +198,7 @@ class WriteObjectTableTask(CmdLineTask):
         self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
 
     def writeMetadata(self, dataRefList):
-        """!
-        @brief No metadata to write, and not sure how to write it for a list of dataRefs.
+        """No metadata to write, and not sure how to write it for a list of dataRefs.
         """
         pass
 
@@ -438,15 +443,16 @@ class PostprocessTask(CmdLineTask):
 
         Parameters
         ----------
-        parq : `lsst.qa.explorer.parquetTable.ParquetTable`
+        parq : `lsst.pipe.tasks.parquetTable.ParquetTable`
             ParquetTable from which calculations are done.
-
-        dataId : dict
+        funcs : `lsst.pipe.tasks.functors.Functors`
+            Functors to apply to the table's columns
+        dataId : dict, optional
             Used to add a `patchId` column to the output dataframe.
 
-        Return
+        Returns
         ------
-        df : `pandas.DataFrame`
+            `pandas.DataFrame`
 
         """
         filt = dataId.get('filter', None)

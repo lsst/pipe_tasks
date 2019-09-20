@@ -1,4 +1,4 @@
-# This file is part of qa_explorer.
+# This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -25,11 +25,9 @@ Implementation of thin wrappers to pyarrow.ParquetFile.
 import re
 import json
 from itertools import product
-
+import pyarrow
 import numpy as np
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 
 class ParquetTable(object):
@@ -43,16 +41,18 @@ class ParquetTable(object):
     selected subsets of columns, especially from dataframes with multi-level
     column indices.
 
+    Instantiated with either a path to a parquet file or a dataFrame
+
     Parameters
     ----------
-    filename : str
+    filename : str, optional
         Path to Parquet file.
-
+    dataFrame : dataFrame, optional
     """
 
     def __init__(self, filename=None, dataFrame=None):
         if filename is not None:
-            self._pf = pq.ParquetFile(filename)
+            self._pf = pyarrow.parquet.ParquetFile(filename)
             self._df = None
             self._pandasMd = None
         elif dataFrame is not None:
@@ -77,8 +77,8 @@ class ParquetTable(object):
         """
         if self._df is None:
             raise ValueError('df property must be defined to write.')
-        table = pa.Table.from_pandas(self._df)
-        pq.write_table(table, filename, compression='none')
+        table = pyarrow.Table.from_pandas(self._df)
+        pyarrow.parquet.write_table(table, filename, compression='none')
 
     @property
     def pandasMd(self):
@@ -264,6 +264,9 @@ class MultilevelParquetTable(ParquetTable):
             (that is, the `columnLevels` attribute).  Not every level
             must be passed; if any level is left out, then all entries
             in that level will be implicitly included.
+        droplevels : bool
+            If True drop levels of column index that have just one entry
+
         """
         if self._pf is None:
             if columns is None:
