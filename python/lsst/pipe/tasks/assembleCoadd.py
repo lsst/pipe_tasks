@@ -431,6 +431,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
 
+        inputData.setdefault('brightObjectMask', None)
         self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
 
         if self.config.doWrite:
@@ -2018,7 +2019,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             del staticSkyModelOutputRefs.templateCoadd
 
         # A PSF-Matched nImage does not exist as a dataset type
-        del staticSkyModelOutputRefs.nImage
+        if 'nImage' in staticSkyModelOutputRefs.keys():
+            del staticSkyModelOutputRefs.nImage
 
         templateCoadd = self.assembleStaticSkyModel.runQuantum(butlerQC, staticSkyModelInputRefs,
                                                                staticSkyModelOutputRefs)
@@ -2085,18 +2087,23 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         model of the static sky.
         """
 
-        # In Gen3 only, check and match the order of the supplementaryData
+        # Check and match the order of the supplementaryData
         # (PSF-matched) inputs to the order of the direct inputs,
         # so that the artifact mask is applied to the right warp
+        # TODO: remove special case after DM-21370
         if isinstance(tempExpRefList[0], DeferredDatasetHandle):
             dataIds = [ref.datasetRefOrType.dataId for ref in tempExpRefList]
             psfMatchedDataIds = [ref.datasetRefOrType.dataId for ref in supplementaryData.warpRefList]
-            if dataIds != psfMatchedDataIds:
-                self.log.info("Reordering and or/padding PSF-matched visit input list")
-                supplementaryData.warpRefList = reorderAndPadList(supplementaryData.warpRefList,
+        else:
+            dataIds = [ref.dataId for ref in tempExpRefList]
+            psfMatchedDataIds = [ref.dataId for ref in supplementaryData.warpRefList]
+
+        if dataIds != psfMatchedDataIds:
+            self.log.info("Reordering and or/padding PSF-matched visit input list")
+            supplementaryData.warpRefList = reorderAndPadList(supplementaryData.warpRefList,
+                                                              psfMatchedDataIds, dataIds)
+            supplementaryData.imageScalerList = reorderAndPadList(supplementaryData.imageScalerList,
                                                                   psfMatchedDataIds, dataIds)
-                supplementaryData.imageScalerList = reorderAndPadList(supplementaryData.imageScalerList,
-                                                                      psfMatchedDataIds, dataIds)
 
         # Use PSF-Matched Warps (and corresponding scalers) and coadd to find artifacts
         spanSetMaskList = self.findArtifacts(supplementaryData.templateCoadd,
@@ -2392,26 +2399,31 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return os.path.join(directory, filename)
 
 
-def reorderAndPadList(inputList, inputKey, outputKey, padWith=None):
+def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
     """Match the order of one list to another, padding if necessary
 
     Parameters
     ----------
-    inputList : `list`
-        List to be reordered and padded
-    inputKey : Any value that can be compared with outputKey
-    outputKey : Any value that can be compared with inputKey
-    padWith : Any value to be inserted where inputKey not in outputKeys
+    inputList : list
+        List to be reordered and padded. Elements can be any type.
+    inputKeys :  iterable
+        Iterable of values to be compared with outputKeys.
+        Length must match `inputList`
+    outputKeys : iterable
+        Iterable of values to be compared with inputKeys.
+    padWith :
+        Any value to be inserted where inputKey not in outputKeys
 
     Returns
     -------
-    outputList : `list`
-        Copy of inputList reordered and padded with `padWith` to match outputList
+    list
+        Copy of inputList reordered per outputKeys and padded with `padWith`
+        so that the length matches length of outputKeys.
     """
     outputList = []
-    for d in outputKey:
-        if d in inputKey:
-            outputList.append(inputList[inputKey.index(d)])
+    for d in outputKeys:
+        if d in inputKeys:
+            outputList.append(inputList[inputKeys.index(d)])
         else:
             outputList.append(padWith)
     return outputList
