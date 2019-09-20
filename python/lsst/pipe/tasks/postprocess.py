@@ -20,14 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import functools
-import os
 import pandas as pd
 from collections import defaultdict
 
-from lsst.pex.config import Config, Field, DictField, ListField
+import lsst.pex.config as pexConfig
 from lsst.pipe.base import CmdLineTask, ArgumentParser
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer, CoaddDataIdContainer
-from lsst.utils import getPackageDir
 
 from .parquetTable import ParquetTable
 from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
@@ -53,25 +51,25 @@ def flattenFilters(df, filterDict, noDupCols=['coord_ra', 'coord_dec'], camelCas
     return newDf
 
 
-class WriteObjectTableConfig(Config):
-    priorityList = ListField(
+class WriteObjectTableConfig(pexConfig.Config):
+    priorityList = pexConfig.ListField(
         dtype=str,
         default=[],
         doc="Priority-ordered list of bands for the merge."
     )
-    engine = Field(
+    engine = pexConfig.Field(
         dtype=str,
         default="pyarrow",
         doc="Parquet engine for writing (pyarrow or fastparquet)"
     )
-    coaddName = Field(
+    coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
         doc="Name of coadd"
     )
 
     def validate(self):
-        Config.validate(self)
+        pexConfig.Config.validate(self)
         if len(self.priorityList) == 0:
             raise RuntimeError("No priority list provided")
 
@@ -308,13 +306,13 @@ class PostprocessAnalysis(object):
         return self._df
 
 
-class PostprocessConfig(Config):
-    coaddName = Field(
+class PostprocessConfig(pexConfig.Config):
+    coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
         doc="Name of coadd"
     )
-    functorFile = Field(
+    functorFile = pexConfig.Field(
         dtype=str,
         doc='Path to YAML file specifying functors to be computed',
         default=None
@@ -469,21 +467,24 @@ class PostprocessTask(CmdLineTask):
 
 
 class TransformObjectCatalogConfig(PostprocessConfig):
-    filterMap = DictField(keytype=str, itemtype=str,
-                          default={},
-                          doc="Dictionary mapping full filter name to short one " +
-                              "for column name munging.")
-    camelCase = Field(dtype=bool, default=True,
-                      doc="Write per-filter columns names with camelCase, else underscore "
-                          "For example: gPsfFlux instead of g_PsfFlux.")
-    multilevelOutput = Field(dtype=bool, default=True,
-                             doc="Whether results dataframe should have a " +
-                                 "multilevel column index (True) or be flat " +
-                                 "and name-munged (False).")
-
-    def setDefaults(self):
-        self.functorFile = os.path.join(getPackageDir("obs_subaru"),
-                                        'policy', 'Object.yaml')
+    filterMap = pexConfig.DictField(
+        keytype=str,
+        itemtype=str,
+        default={},
+        doc="Dictionary mapping full filter name to short one for column name munging."
+    )
+    camelCase = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc=("Write per-filter columns names with camelCase, else underscore "
+             "For example: gPsfFlux instead of g_PsfFlux.")
+    )
+    multilevelOutput = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc=("Whether results dataframe should have a multilevel column index (True) or be flat "
+             "and name-munged (False).")
+    )
 
 
 class TransformObjectCatalogTask(PostprocessTask):
@@ -563,8 +564,8 @@ class TractObjectDataIdContainer(CoaddDataIdContainer):
         self.refList = outputRefList
 
 
-class ConsolidateObjectTableConfig(Config):
-    coaddName = Field(
+class ConsolidateObjectTableConfig(pexConfig.Config):
+    coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
         doc="Name of coadd"

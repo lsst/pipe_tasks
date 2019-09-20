@@ -9,7 +9,7 @@ from lsst.daf.persistence import doImport
 from .parquetTable import MultilevelParquetTable
 
 
-def init_fromDict(initDict, basePath='lsst.qa.explorer.functors',
+def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
                   typeKey='functor'):
     """Initializes an object defined in a dictionary
     The object needs to be importable as
@@ -267,7 +267,6 @@ class CompositeFunctor(Functor):
                                      for f in self.funcDict.values()] for x in y]))
 
     def __call__(self, parq, **kwargs):
-
         if isinstance(parq, MultilevelParquetTable):
             columns = self.multilevelColumns(parq)
             df = parq.toDataFrame(columns=columns, droplevels=False)
@@ -663,18 +662,6 @@ class Color(Functor):
         mag2 = self.mag2._func(df[self.filt2])
         mag1 = self.mag1._func(df[self.filt1])
         return mag2 - mag1
-
-#    def __call__(self, *args, **kwargs):
-#        vals = (self.mag2(*args, **kwargs) -
-#                self.mag1(*args, **kwargs))
-#
-#        # Gotta do this again because pandas will
-#        #  impute missing data during the above operation
-#        #  if different nans in the two mags.
-#        if kwargs.get('dropna', False):
-#            vals = self._dropna(vals)
-#
-#        return vals
 
     @property
     def columns(self):
