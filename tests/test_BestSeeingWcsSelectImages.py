@@ -36,6 +36,7 @@ class BestSeeingWcsSelectImagesTest(lsst.utils.tests.TestCase):
 
     def setUp(self):
         self.config = selectImages.BestSeeingWcsSelectImageConfig()
+        self.plateScale = 0.2  # arcseconds/pixel
         # define an avgFwhm that is in the config's FWHM range
         self.avgFwhm = np.mean([self.config.minPsfFwhm, self.config.maxPsfFwhm])
         self.dataId = "visit=mock"
@@ -68,6 +69,8 @@ class BestSeeingWcsSelectImagesTest(lsst.utils.tests.TestCase):
         self.calexp = unittest.mock.Mock(spec=lsst.afw.image.ExposureD)
         self.calexp.getPsf.return_value.computeShape.return_value.getDeterminantRadius.side_effect \
             = mockDeterminantRadii()
+        self.calexp.getWcs.return_value.getPixelScale.return_value.asArcseconds.side_effect \
+            = [self.plateScale for f in self.mockFWHMs]
         self.dataRef = unittest.mock.Mock(spec=lsst.daf.persistence.ButlerDataRef, dataId=self.dataId)
         self.dataRef.get.return_value = self.calexp
 
@@ -166,8 +169,8 @@ class BestSeeingWcsSelectImagesTest(lsst.utils.tests.TestCase):
     def testFwhmSelection(self):
         """Test that minimum and maximum FWHM selections work.
         """
-        self.config.minPsfFwhm = 1.0
-        self.config.maxPsfFwhm = 1.5
+        self.config.minPsfFwhm = 1.0*self.plateScale
+        self.config.maxPsfFwhm = 1.5*self.plateScale
         self.config.nImagesMax = 10
         mockFWHMs = [0.5, 1.0, 1.25, 1.5, 2.0]
         self.localSetUp(mockFWHMs=mockFWHMs)
@@ -181,8 +184,8 @@ class BestSeeingWcsSelectImagesTest(lsst.utils.tests.TestCase):
     def testBestSeeingFwhmSelection(self):
         """Test that the selection picks the best seeing images.
         """
-        self.config.minPsfFwhm = 1.0
-        self.config.maxPsfFwhm = 1.5
+        self.config.minPsfFwhm = 1.0*self.plateScale
+        self.config.maxPsfFwhm = 1.5*self.plateScale
         self.config.nImagesMax = 3
         mockFWHMs = [0.5, 1.0, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 2.0]
         self.localSetUp(mockFWHMs=mockFWHMs)
