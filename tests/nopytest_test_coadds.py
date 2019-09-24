@@ -21,6 +21,8 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
+# EDIT FILE FOR pytest cache clearing
+
 """
 Test the basic mechanics of coaddition, coadd processing, and forced photometry.
 
