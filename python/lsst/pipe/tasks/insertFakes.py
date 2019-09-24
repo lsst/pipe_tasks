@@ -66,7 +66,8 @@ class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddNa
     )
 
 
-class InsertFakesConfig(PipelineTaskConfig):
+class InsertFakesConfig(PipelineTaskConfig,
+                        pipelineConnections=InsertFakesConnections):
     """Config for inserting fake sources
 
     Notes
