@@ -54,7 +54,7 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instr
 
     fakeCat = cT.Input(
         doc="Catalog of fake sources to draw inputs from.",
-        nameTemplate="{CoaddName}Coadd_fakeSourceCat",
+        name="{CoaddName}Coadd_fakeSourceCat",
         storageClass="Parquet",
         dimensions=("tract", "skymap")
     )
