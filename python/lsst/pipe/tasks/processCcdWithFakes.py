@@ -88,7 +88,8 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instr
     )
 
 
-class ProcessCcdWithFakesConfig(PipelineTaskConfig):
+class ProcessCcdWithFakesConfig(PipelineTaskConfig,
+                                pipelineConnections=ProcessCcdWithFakesConnections):
     """Config for inserting fake sources
 
     Notes
