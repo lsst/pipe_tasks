@@ -33,8 +33,10 @@ import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import IdFactory, SourceTable
 from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader
-from lsst.meas.base import (SingleFrameMeasurementTask, ApplyApCorrTask,
-                            CatalogCalculationTask)
+from lsst.meas.base import (SingleFrameMeasurementTask,
+                            ApplyApCorrTask,
+                            CatalogCalculationTask,
+                            EvaluateLocalCalibrationTask)
 from lsst.meas.deblender import SourceDeblendTask
 from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
@@ -203,6 +205,17 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     photoCal = pexConfig.ConfigurableField(
         target=PhotoCalTask,
         doc="Perform photometric calibration",
+    )
+    doEvalLocCalibration = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Store calibration products (local wcs and PhotoCalib) in output "
+            "source catalog."
+    )
+    evalLocCalib = pexConfig.ConfigurableField(
+        target=EvaluateLocalCalibrationTask,
+        doc="Task to strip calibrations from an exposure and store their "
+            "local values in the output source catalog."
     )
     icSourceFieldsToCopy = pexConfig.ListField(
         dtype=str,
@@ -480,6 +493,9 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader,
                              schema=self.schema)
 
+        if self.config.doEvalLocCalibration and self.config.doAstrometry and self.config.doPhotoCal:
+            self.makeSubtask("evalLocCalib", schema=self.schema)
+
         if initInputs is not None and (astromRefObjLoader is not None or photoRefObjLoader is not None):
             raise RuntimeError("PipelineTask form of this task should not be initialized with "
                                "reference object loaders.")
@@ -700,6 +716,9 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                               "(%s): attempting to proceed" % e)
                 self.setMetadata(exposure=exposure, photoRes=None)
 
+        if self.config.doEvalLocCalibration and self.config.doAstrometry and self.config.doPhotoCal:
+            self.evalLocCalib.run(sourceCat, exposure)
+
         if self.config.doInsertFakes:
             self.insertFakes.run(exposure, background=background)
 
@@ -726,8 +745,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 )
             self.catalogCalculation.run(sourceCat)
 
-            if icSourceCat is not None and \
-                    len(self.config.icSourceFieldsToCopy) > 0:
+            if icSourceCat is not None and len(self.config.icSourceFieldsToCopy) > 0:
                 self.copyIcSourceFields(icSourceCat=icSourceCat,
                                         sourceCat=sourceCat)
 
