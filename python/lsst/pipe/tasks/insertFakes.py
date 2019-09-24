@@ -32,7 +32,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, PipelineTaskConnections
-import lsst.pipe.base.connectionTyes as cT
+import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.geom import SpherePoint, radians, Box2D
