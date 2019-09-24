@@ -245,8 +245,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.registry.packDataId("tract_patch", outputRefs.outputCatalog.dataId,
-                                                         returnMaxBits=True)
+        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
         inputs["skySeed"] = packedId
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         catalogDict = {ref.dataId['abstract_filter']: cat for ref, cat in zip(inputRefs.catalogs,

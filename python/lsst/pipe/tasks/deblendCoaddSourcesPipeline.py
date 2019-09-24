@@ -155,8 +155,7 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.registry.packDataId("tract_patch", inputRefs.mergedDetections.dataId,
-                                                         returnMaxBits=True)
+        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
@@ -196,8 +195,7 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.registry.packDataId("tract_patch", inputRefs.mergedDetections.dataId,
-                                                         returnMaxBits=True)
+        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         inputs["filters"] = [dRef.dataId["abstract_filter"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)

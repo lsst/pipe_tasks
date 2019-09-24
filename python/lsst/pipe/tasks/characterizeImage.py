@@ -305,10 +305,9 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         if 'exposureIdInfo' not in inputs.keys():
-            packer = butlerQC.registry.makeDataIdPacker("visit_detector", inputRefs.exposure.dataId)
             exposureIdInfo = ExposureIdInfo()
-            exposureIdInfo.expId = packer.pack(inputRefs.exposure.dataId)
-            exposureIdInfo.expBits = packer.maxBits
+            exposureIdInfo.expId, exposureIdInfo.expBits = butlerQC.quantum.dataId.pack("visit_detector",
+                                                                                        returnMaxBits=True)
             inputs['exposureIdInfo'] = exposureIdInfo
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)

@@ -84,7 +84,7 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
     astromRefCat = cT.PrerequisiteInput(
         doc="Reference catalog to use for astrometry",
-        name="ref_cat",
+        name="cal_ref_cat",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         deferLoad=True,
@@ -93,7 +93,7 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
     photoRefCat = cT.PrerequisiteInput(
         doc="Reference catalog to use for photometric calibration",
-        name="ref_cat",
+        name="cal_ref_cat",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         deferLoad=True,
@@ -285,6 +285,21 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         doc="Write the calexp? If fakes have been added then we do not want to write out the calexp as a "
             "normal calexp but as a fakes_calexp."
     )
+
+    def validate(self):
+        super().validate()
+        astromRefCatGen2 = getattr(self.astromRefObjLoader, "ref_dataset_name", None)
+        if astromRefCatGen2 is not None and astromRefCatGen2 != self.connections.astromRefCat:
+            raise ValueError(
+                f"Gen2 ({astromRefCatGen2}) and Gen3 ({self.connections.astromRefCat}) astrometry reference "
+                f"catalogs are different.  These options must be kept in sync until Gen2 is retired."
+            )
+        photoRefCatGen2 = getattr(self.photoRefObjLoader, "ref_dataset_name", None)
+        if photoRefCatGen2 is not None and photoRefCatGen2 != self.connections.photoRefCat:
+            raise ValueError(
+                f"Gen2 ({photoRefCatGen2}) and Gen3 ({self.connections.photoRefCat}) photometry reference "
+                f"catalogs are different.  These options must be kept in sync until Gen2 is retired."
+            )
 
 
 ## \addtogroup LSST_task_documentation
@@ -575,8 +590,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        expId, expBits = butlerQC.registry.packDataId("visit_detector",
-                                                      butlerQC.quantum.dataId,
+        expId, expBits = butlerQC.quantum.dataId.pack("visit_detector",
                                                       returnMaxBits=True)
         inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 

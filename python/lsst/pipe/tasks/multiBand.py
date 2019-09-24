@@ -285,9 +285,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.registry.packDataId("tract_patch_abstract_filter",
-                                                         inputRefs.exposure.dataId,
-                                                         returnMaxBits=True)
+        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch_abstract_filter", returnMaxBits=True)
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         inputs["expId"] = packedId
         outputs = self.run(**inputs)
@@ -740,6 +738,16 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
                                                                      'INEXACT_PSF']
 
+    def validate(self):
+        super().validate()
+        refCatGen2 = getattr(self.refObjLoader, "ref_dataset_name", None)
+        if refCatGen2 is not None and refCatGen2 != self.connections.refCat:
+            raise ValueError(
+                f"Gen2 ({refCatGen2}) and Gen3 ({self.connections.refCat}) reference catalogs "
+                f"are different.  These options must be kept in sync until Gen2 is retired."
+            )
+
+
 ## @addtogroup LSST_task_documentation
 ## @{
 ## @page MeasureMergedCoaddSourcesTask
@@ -936,8 +944,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
 
         # Get unique integer ID for IdFactory and RNG seeds
-        packedId, maxBits = butlerQC.registry.packDataId("tract_patch", outputRefs.outputSources.dataId,
-                                                         returnMaxBits=True)
+        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
         inputs['exposureId'] = packedId
         idFactory = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         # Transform inputCatalog
