@@ -43,7 +43,7 @@ __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
 
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
-                                     defaultTemplates={}):
+                                     defaultTemplates={"CoaddName": "deep"}):
 
     exposure = cT.Input(
         doc="Exposure into which fakes are to be added.",
