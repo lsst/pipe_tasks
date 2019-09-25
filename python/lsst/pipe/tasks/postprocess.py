@@ -24,6 +24,7 @@ import pandas as pd
 from collections import defaultdict
 
 import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
 from lsst.pipe.base import CmdLineTask, ArgumentParser
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer, CoaddDataIdContainer
 
@@ -413,11 +414,6 @@ class PostprocessTask(CmdLineTask):
                                help="data ID, e.g. --id tract=12345 patch=1,2")
         return parser
 
-    def getFunctors(self):
-        funcs = CompositeFunctor.from_file(self.config.functorFile)
-        funcs.update(dict(PostprocessAnalysis._defaultFuncs))
-        return funcs
-
     def runDataRef(self, patchRef):
         """Do calculations; write result
         """
@@ -427,13 +423,6 @@ class PostprocessTask(CmdLineTask):
         df = self.run(parq, funcs=funcs, dataId=dataId)
         self.write(df, patchRef)
         return df
-
-    def getAnalysis(self, parq, funcs=None, filt=None):
-        # Avoids disk access if funcs is passed
-        if funcs is None:
-            funcs = self.getFunctors()
-        analysis = PostprocessAnalysis(parq, funcs, filt=filt)
-        return analysis
 
     def run(self, parq, funcs=None, dataId=None):
         """Do postprocessing calculations
@@ -456,12 +445,31 @@ class PostprocessTask(CmdLineTask):
 
         """
         filt = dataId.get('filter', None)
+        return self.transform(filt, parq, funcs, dataId).df
+
+    def getFunctors(self):
+        funcs = CompositeFunctor.from_file(self.config.functorFile)
+        funcs.update(dict(PostprocessAnalysis._defaultFuncs))
+        return funcs
+
+    def getAnalysis(self, parq, funcs=None, filt=None):
+        # Avoids disk access if funcs is passed
+        if funcs is None:
+            funcs = self.getFunctors()
+        analysis = PostprocessAnalysis(parq, funcs, filt=filt)
+        return analysis
+
+    def transform(self, filt, parq, funcs, dataId):
         analysis = self.getAnalysis(parq, funcs=funcs, filt=filt)
         df = analysis.df
         if dataId is not None:
             for key, value in dataId.items():
                 df[key] = value
-        return df
+
+        return pipeBase.Struct(
+            df=df,
+            analysis=analysis
+        )
 
     def write(self, df, parqRef):
         parqRef.put(ParquetTable(dataFrame=df), self.outputDataset)
@@ -511,19 +519,17 @@ class TransformObjectCatalogTask(PostprocessTask):
 
     def run(self, parq, funcs=None, dataId=None):
         dfDict = {}
+        analysisDict = {}
         for filt in parq.columnLevelNames['filter']:
-            analysis = self.getAnalysis(parq, funcs=funcs, filt=filt)
-            df = analysis.df
-            if dataId is not None:
-                for key, value in dataId.items():
-                    df[key] = value
-            dfDict[filt] = df
+            result = self.transform(filt, parq, funcs, dataId)
+            dfDict[filt] = result.df
+            analysisDict[filt] = result.analysis
 
         # This makes a multilevel column index, with filter as first level
         df = pd.concat(dfDict, axis=1, names=['filter', 'column'])
 
         if not self.config.multilevelOutput:
-            noDupCols = analysis.noDupCols
+            noDupCols = analysisDict[filt].noDupCols
             if dataId is not None:
                 noDupCols += list(dataId.keys())
             df = flattenFilters(df, self.config.filterMap, noDupCols=noDupCols,

@@ -1,40 +1,66 @@
+# This file is part of pipe_tasks.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (http://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import os
 import unittest
 
 import pandas as pd
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 
-from pandas.util.testing import assert_frame_equal, assert_series_equal
-
-from lsst.utils import getPackageDir
 import lsst.utils.tests
-from lsst.qa.explorer.parquetTable import MultilevelParquetTable
-from lsst.qa.explorer.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
-                     DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
-                     DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
-                     HsmTraceSize, PsfHsmTraceSizeDiff, Seeing)
+from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
+from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
+                                      DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
+                                      DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
+                                      HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm)
 
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
+
 def setup_module(module):
     lsst.utils.tests.init()
 
+
 class FunctorTestCase(unittest.TestCase):
     def setUp(self):
-        filename = os.path.join(ROOT, 'multilevel_test.parq')
-        self.parq = MultilevelParquetTable(filename)
+        df = pd.read_csv(os.path.join(ROOT, 'data', 'test_multilevel_parq.csv.gz'),
+                         header=[0, 1, 2], index_col=0)
+        with lsst.utils.tests.getTempFilePath('*.parq') as filename:
+            table = pa.Table.from_pandas(df)
+            pq.write_table(table, filename, compression='none')
+            self.parq = MultilevelParquetTable(filename)
         self.filters = ['HSC-G', 'HSC-R']
 
     def _funcVal(self, functor):
-        assert type(functor.name) == type('')
-        assert type(functor.shortname) == type('')
+        self.assertIsInstance(functor.name, str)
+        self.assertIsInstance(functor.shortname, str)
 
         val = functor(self.parq)
-        assert type(val)==pd.Series
+        self.assertIsInstance(val, pd.Series)
 
         val = functor(self.parq, dropna=True)
-        assert val.isnull().sum()==0
+        self.assertEqual(val.isnull().sum(), 0)
 
         return val
 
@@ -48,21 +74,18 @@ class FunctorTestCase(unittest.TestCase):
 
         func2 = Column('base_FootprintArea_value', filt='HSC-G')
 
-        ## The following fails with different dtypes:
-        # assert_series_equal(val, 2*func2(self.parq))
-
-        assert np.all(val.values == 2*func2(self.parq).values)
+        np.allclose(val.values, 2*func2(self.parq).values, atol=1e-13, rtol=0)
 
     def testCoords(self):
         ra = self._funcVal(RAColumn())
         dec = self._funcVal(DecColumn())
 
-        columnDict = {'dataset':'ref', 'filter':'HSC-G',
-                      'column':['coord_ra', 'coord_dec']}
+        columnDict = {'dataset': 'ref', 'filter': 'HSC-G',
+                      'column': ['coord_ra', 'coord_dec']}
         coords = self.parq.toDataFrame(columns=columnDict) / np.pi * 180.
 
-        assert_series_equal(ra, coords['coord_ra'])
-        assert_series_equal(dec, coords['coord_dec'])
+        self.assertTrue(np.allclose(ra, coords['coord_ra'], atol=1e-13, rtol=0))
+        self.assertTrue(np.allclose(dec, coords['coord_dec'], atol=1e-13, rtol=0))
 
     def testMag(self):
         fluxName = 'base_PsfFlux'
@@ -77,7 +100,7 @@ class FunctorTestCase(unittest.TestCase):
             psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R',
                                               dataset=dataset))
 
-            assert_series_equal((psfMag_G - psfMag_R).dropna(), psfColor_GR)
+            self.assertTrue(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR, rtol=0, atol=1e-13))
 
         # Check that behavior as expected when dataset not provided;
         #  that is, that the color comes from forced and default Mag is meas
@@ -87,11 +110,7 @@ class FunctorTestCase(unittest.TestCase):
         psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R'))
 
         # These should *not* be equal.
-        try:
-            assert_series_equal((psfMag_G - psfMag_R).dropna(), psfColor_GR)
-            raise AssertionError('Series are equal!')
-        except AssertionError:
-            pass
+        self.assertFalse(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
 
     def testMagDiff(self):
         for filt in self.filters:
@@ -100,31 +119,33 @@ class FunctorTestCase(unittest.TestCase):
 
             mag1 = self._funcVal(Mag('modelfit_CModel', filt=filt))
             mag2 = self._funcVal(Mag('base_PsfFlux', filt=filt))
-
-            assert_series_equal((mag2 - mag1).dropna(), val)
+            self.assertTrue(np.allclose((mag2 - mag1).dropna(), val, rtol=0, atol=1e-13))
 
     def testLabeller(self):
-        labels = self._funcVal(StarGalaxyLabeller())
+        # Covering the code is better than nothing
+        labels = self._funcVal(StarGalaxyLabeller())  # noqa
 
     def testOther(self):
-
+        # Covering the code is better than nothing
         for filt in self.filters:
             for Func in [DeconvolvedMoments,
                          SdssTraceSize,
                          PsfSdssTraceSizeDiff,
-                         HsmTraceSize, PsfHsmTraceSizeDiff, Seeing]:
-                val = self._funcVal(Func(filt=filt))
+                         HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm]:
+                val = self._funcVal(Func(filt=filt))  # noqa
 
     def _compositeFuncVal(self, functor):
-        assert type(functor) == CompositeFunctor
+        self.assertIsInstance(functor, CompositeFunctor)
 
         df = functor(self.parq)
 
-        assert type(df) == pd.DataFrame
-        assert np.all([k in df.columns for k in functor.funcDict.keys()])
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertTrue(np.all([k in df.columns for k in functor.funcDict.keys()]))
 
         df = functor(self.parq, dropna=True)
-        assert (df.isnull().sum() == 0).all()
+
+        # Check that there are no nulls
+        self.assertFalse(df.isnull().any(axis=None))
 
         return df
 
@@ -149,15 +170,11 @@ class FunctorTestCase(unittest.TestCase):
 
         func2 = CompositeFunctor(funcDict2, filt=filt)
         df2 = self._compositeFuncVal(func2)
-        assert_frame_equal(df, df2)
+        self.assertTrue(df.equals(df2))
 
         func2.filt = 'HSC-R'
         df3 = self._compositeFuncVal(func2)
-        try:
-            assert_frame_equal(df2, df3)
-            raise AssertionError('Dataframes are equal!')
-        except:
-            pass
+        self.assertFalse(df2.equals(df3))
 
         # Make sure things work with passing list instead of dict
         funcs = [Mag('base_PsfFlux', dataset='ref'),
@@ -172,12 +189,5 @@ class FunctorTestCase(unittest.TestCase):
         funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='HSC-G'),
                     'b': Mag('base_PsfFlux', dataset='forced_src', filt='HSC-G'),
                     'c': Color('base_PsfFlux', 'HSC-G', 'HSC-R')}
-
-        df = self._compositeFuncVal(CompositeFunctor(funcDict))
-
-    def testYaml(self):
-        functorFile = os.path.join(getPackageDir("qa_explorer"),
-                                   'data', 'QAfunctors.yaml')
-
-        func = CompositeFunctor.from_file(functorFile, filt='HSC-G')
-        df = self._compositeFuncVal(func)
+        # Covering the code is better than nothing
+        df = self._compositeFuncVal(CompositeFunctor(funcDict))  # noqa
