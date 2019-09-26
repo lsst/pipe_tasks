@@ -49,7 +49,7 @@ IqrToSigma = 0.741
 class ImageDifferenceConfig(pexConfig.Config):
     """Config for ImageDifferenceTask
     """
-    doAddCalexpBackground = pexConfig.Field(dtype=bool, default=True,
+    doAddCalexpBackground = pexConfig.Field(dtype=bool, default=False,
                                             doc="Add background to calexp before processing it.  "
                                                 "Useful as ipDiffim does background matching.")
     doUseRegister = pexConfig.Field(dtype=bool, default=True,
@@ -189,7 +189,7 @@ class ImageDifferenceConfig(pexConfig.Config):
         self.subtract['al'].kernel.name = "AL"
         self.subtract['al'].kernel.active.fitForBackground = True
         self.subtract['al'].kernel.active.spatialKernelOrder = 1
-        self.subtract['al'].kernel.active.spatialBgOrder = 0
+        self.subtract['al'].kernel.active.spatialBgOrder = 2
         self.doPreConvolve = False
         self.doMatchSources = False
         self.doAddMetrics = False
