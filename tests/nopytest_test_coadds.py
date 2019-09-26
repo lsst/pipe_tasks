@@ -477,7 +477,8 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         for patch in patchList:
             cat = self.butler.get("deepCoadd_meas", filter='r', tract=0, patch=patch)
             meta = cat.getTable().getMetadata()
-            for circApertureFluxRadius in meta.getArray('base_CircularApertureFlux_radii'):
+            # FIXME: Possible CFITSIO/HIERARCH shenanigans
+            for circApertureFluxRadius in meta.getArray('base_CircularApertureFlux_radii'.upper()):
                 self.assertIsInstance(circApertureFluxRadius, numbers.Number)
             # Each time the run method of a measurement task is executed,
             # algorithm metadata is appended to the algorithm metadata object.
