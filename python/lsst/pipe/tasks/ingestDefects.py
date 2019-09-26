@@ -45,7 +45,5 @@ class IngestDefectsTask(IngestCalibsTask):
             args.mode = 'move'
             args.validity = None  # Validity range is determined from the files
             IngestCalibsTask.run(self, args)
-        except Exception:
-            raise(Exception)
         finally:
             shutil.rmtree(temp_dir)
