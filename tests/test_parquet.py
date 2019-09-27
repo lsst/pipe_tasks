@@ -19,7 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
 import unittest
 import copy
 import functools
@@ -33,8 +32,6 @@ from pandas.util.testing import assert_frame_equal
 import lsst.utils.tests
 
 from lsst.pipe.tasks.parquetTable import ParquetTable, MultilevelParquetTable
-
-ROOT = os.path.abspath(os.path.dirname(__file__))
 
 
 def setup_module(module):
@@ -86,8 +83,9 @@ class ParquetTableTestCase(unittest.TestCase):
         columns = ['coord_ra', 'coord_dec']
         self.assertTrue(self.parq.toDataFrame(columns=columns).equals(self.df[columns]))
 
+        # TO DO: DM-21976 Confirm this is the behavior we want
         # Quietly ignore nonsense columns
-        self.assertTrue(self.parq.toDataFrame(columns=columns+['hello']).equals(self.df[columns]))
+        self.assertTrue(self.parq.toDataFrame(columns=columns + ['hello']).equals(self.df[columns]))
 
 
 class MultilevelParquetTableTestCase(ParquetTableTestCase):
@@ -205,6 +203,17 @@ class MultilevelParquetTableTestCase(ParquetTableTestCase):
         # get second level of multi-index column using .xs()
         df_E = df.xs(filters_E, level=1, axis=1).sort_index(axis=1)
         self.assertTrue(parq.toDataFrame(columns=columnDict_E).equals(df_E))
+
+        # Case when all requested columns don't exist
+        columnDictNonsense = {'dataset': 'meas', 'filter': 'G', 'column': ('hello')}
+        self.assertRaises(ValueError, parq.toDataFrame, columns=columnDictNonsense)
+
+        # Case when some requested columns don't exist.
+        # TO DO: DM-21976 Confirm this is the behavior we want
+        # Quietly ignore nonsense columns
+        columnDictSomeNonsense = {'dataset': 'meas', 'filter': 'G', 'column': ('coord_ra', 'hello')}
+        dfGood = pd.DataFrame(df['meas']['G']['coord_ra'])
+        self.assertTrue(parq.toDataFrame(columns=columnDictSomeNonsense).equals(dfGood))
 
 
 if __name__ == "__main__":

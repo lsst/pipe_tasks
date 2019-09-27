@@ -9,28 +9,30 @@ from lsst.daf.persistence import doImport
 from .parquetTable import MultilevelParquetTable
 
 
-def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
-                  typeKey='functor'):
-    """Initializes an object defined in a dictionary
+def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors', typeKey='functor'):
+    """Initialize an object defined in a dictionary
+
     The object needs to be importable as
         '{0}.{1}'.format(basePath, initDict[typeKey])
     The positional and keyword arguments (if any) are contained in
     "args" and "kwargs" entries in the dictionary, respectively.
     This is used in `functors.CompositeFunctor.from_yaml` to initialize
     a composite functor from a specification in a YAML file.
+
     Parameters
     ----------
     initDict : dictionary
         Dictionary describing object's initialization.  Must contain
-        an entry keyed by `typeKey` that is the name of the object,
-        relative to `basePath`.
+        an entry keyed by ``typeKey`` that is the name of the object,
+        relative to ``basePath``.
     basePath : str
-        Path relative to which `initDict[typeKey]` is defined.
+        Path relative to module in which ``initDict[typeKey]`` is defined.
     typeKey : str
-        Key of `initDicit` that is the name of the object
+        Key of ``initDict`` that is the name of the object
         (relative to `basePath`).
     """
     initDict = initDict.copy()
+    # TO DO: DM-21956 We should be able to define functors outside this module
     pythonType = doImport('{0}.{1}'.format(basePath, initDict.pop(typeKey)))
     args = []
     if 'args' in initDict:
@@ -42,51 +44,51 @@ def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
 
 
 class Functor(object):
-    """Define and execute a calculation on a deepCoadd_obj ParquetTable
+    """Define and execute a calculation on a ParquetTable
 
-    The `__call__` method accepts a ``ParquetTable`` object, and returns the result
-    of the calculation as a single column.  Each functor defines what columns are needed
-    for the calculation, and only these columns are read from the ``ParquetTable``.
+    The `__call__` method accepts a `ParquetTable` object, and returns the
+    result of the calculation as a single column.  Each functor defines what
+    columns are needed for the calculation, and only these columns are read
+    from the `ParquetTable`.
 
-    The action of  `__call__` consists of two steps: first, loading the necessary
-    columns from disk into memory as a ``pandas.DataFrame` object; and second, performing
-    the computation on this dataframe and returning the result.
+    The action of  `__call__` consists of two steps: first, loading the
+    necessary columns from disk into memory as a `pandas.DataFrame` object;
+    and second, performing the computation on this dataframe and returning the
+    result.
 
 
     To define a new `Functor`, a subclass must define a `_func` method,
-    that takes a ``pandas.DataFrame`` and returns result in a ``pandas.Series``.
+    that takes a `pandas.DataFrame` and returns result in a `pandas.Series`.
     In addition, it must define the following attributes
 
     * `_columns`: The columns necessary to perform the calculation
     * `name`: A name appropriate for a figure axis label
     * `shortname`: A name appropriate for use as a dictionary key
 
-    On initialization, a `Functor` should declare what filter (`filt` kwarg) and dataset
-    (e.g. `'ref'`, `'meas'`, `'forced_src'`) it is intended to be applied to.
-    This enables the `_get_cols` method to extract the proper columns from the parquet file.
-    If not specified, the dataset will fall back on the `_defaultDataset` attribute.
-    If filter is not specified and `dataset` is anything other than `'ref'`, then an error
-    will be raised when trying to perform the calculation.
+    On initialization, a `Functor` should declare what filter (`filt` kwarg)
+    and dataset (e.g. `'ref'`, `'meas'`, `'forced_src'`) it is intended to be
+    applied to. This enables the `_get_cols` method to extract the proper
+    columns from the parquet file. If not specified, the dataset will fall back
+    on the `_defaultDataset`attribute. If filter is not specified and `dataset`
+    is anything other than `'ref'`, then an error will be raised when trying to
+    perform the calculation.
 
-    As currently implemented, `Functor` is only set up to expect a `ParquetTable`
-    of the format of the `deepCoadd_obj` dataset; that is, a `MultilevelParquetTable`
-    with the levels of the column index being `filter`, `dataset`, and `column`.
-    This is defined in the `_columnLevels` attribute, as well as being implicit in
-    the role of the `filt` and `dataset` attributes defined at initialization.
-    In addition, the `_get_cols` method that
-    reads the dataframe from the `ParquetTable` will return a dataframe with column
-    index levels defined by the `_dfLevels` attribute; by default, this is `column`.
+    As currently implemented, `Functor` is only set up to expect a
+    `ParquetTable` of the format of the `deepCoadd_obj` dataset; that is, a
+    `MultilevelParquetTable` with the levels of the column index being `filter`,
+    `dataset`, and `column`. This is defined in the `_columnLevels` attribute,
+    as well as being implicit in the role of the `filt` and `dataset` attributes
+    defined at initialization.  In addition, the `_get_cols` method that reads
+    the dataframe from the `ParquetTable` will return a dataframe with column
+    index levels defined by the `_dfLevels` attribute; by default, this is
+    `column`.
 
     The `_columnLevels` and `_dfLevels` attributes should generally not need to
     be changed, unless `_func` needs columns from multiple filters or datasets
     to do the calculation.
-    An example of this is the ``lsst.qa.explorer.functors.Color` functor, for which
-    `_dfLevels = ('filter', 'column')`, and `_func` expects the dataframe it gets to
-    have those levels in the column index.
-
-    While not currently implemented, it would be
-    relatively straightforward to generalize the base `Functor` class to be able to
-    accept arbitrary `ParquetTable` formats (other than that of `deepCoadd_obj`).
+    An example of this is the `lsst.pipe.tasks.functors.Color` functor, for
+    which `_dfLevels = ('filter', 'column')`, and `_func` expects the dataframe
+    it gets to have those levels in the column index.
 
     Parameters
     ----------
@@ -94,7 +96,8 @@ class Functor(object):
         Filter upon which to do the calculation
 
     dataset : str
-        Dataset upon which to do the calculation (e.g., 'ref', 'meas', 'forced_src').
+        Dataset upon which to do the calculation
+        (e.g., 'ref', 'meas', 'forced_src').
 
     """
 
@@ -172,14 +175,18 @@ class Functor(object):
         return vals.dropna()
 
     def __call__(self, parq, dropna=False):
-        df = self._get_cols(parq)
-
-        vals = self._func(df)
-
+        try:
+            df = self._get_cols(parq)
+            vals = self._func(df)
+        except Exception:
+            vals = self.fail(df)
         if dropna:
             vals = self._dropna(vals)
 
         return vals
+
+    def fail(self, df):
+        return pd.Series(np.full(len(df), np.nan), index=df.index)
 
     @property
     def name(self):
@@ -197,12 +204,13 @@ class Functor(object):
 class CompositeFunctor(Functor):
     """Perform multiple calculations at once on a catalog
 
-    The role of a `CompositeFunctor` is to group together computations from multiple
-    functors.  Instead of returning ``pandas.Series`` a `CompositeFunctor` returns
-    a ``pandas.Dataframe``, with the column names being the keys of `funcDict`.
+    The role of a `CompositeFunctor` is to group together computations from
+    multiple functors.  Instead of returning `pandas.Series` a
+    `CompositeFunctor` returns a `pandas.Dataframe`, with the column names
+    being the keys of `funcDict`.
 
-    The `columns` attribute of a `CompositeFunctor` is the union of all columns in all
-    the component functors.
+    The `columns` attribute of a `CompositeFunctor` is the union of all columns
+    in all the component functors.
 
     A `CompositeFunctor` does not use a `_func` method itself; rather,
     when a `CompositeFunctor` is called, all its columns are loaded
@@ -272,8 +280,11 @@ class CompositeFunctor(Functor):
             df = parq.toDataFrame(columns=columns, droplevels=False)
             valDict = {}
             for k, f in self.funcDict.items():
-                subdf = f._setLevels(df[f.multilevelColumns(parq)])
-                valDict[k] = f._func(subdf)
+                try:
+                    subdf = f._setLevels(df[f.multilevelColumns(parq)])
+                    valDict[k] = f._func(subdf)
+                except Exception:
+                    valDict[k] = f.fail(subdf)
         else:
             columns = self.columns
             df = parq.toDataFrame(columns=columns)
@@ -491,6 +502,7 @@ class Mag(Functor):
     Takes a `calib` argument, which returns the flux at mag=0
     as `calib.getFluxMag0()`.  If not provided, then the default
     `fluxMag0` is 63095734448.0194, which is default for HSC.
+    This default should be removed in DM-21955
 
     This calculation hides warnings about invalid values and dividing by zero.
 
@@ -502,8 +514,9 @@ class Mag(Functor):
     ----------
     col : `str`
         Name of flux column from which to compute magnitude.  Can be parseable
-        by `lsst.qa.explorer.functors.fluxName` function---that is, you can pass
-        `'modelfit_CModel'` instead of `'modelfit_CModel_instFlux'`) and it will understand.
+        by `lsst.pipe.tasks.functors.fluxName` function---that is, you can pass
+        `'modelfit_CModel'` instead of `'modelfit_CModel_instFlux'`) and it will
+        understand.
     calib : `lsst.afw.image.calib.Calib` (optional)
         Object that knows zero point.
     """
@@ -515,7 +528,8 @@ class Mag(Functor):
         if calib is not None:
             self.fluxMag0 = calib.getFluxMag0()[0]
         else:
-            self.fluxMag0 = 63095734448.0194  # Where does this come from??
+            # TO DO: DM-21955 Replace hard coded photometic calibration values
+            self.fluxMag0 = 63095734448.0194
 
         super().__init__(**kwargs)
 
@@ -537,7 +551,7 @@ class Mag(Functor):
 class MagErr(Mag):
     """Compute calibrated magnitude uncertainty
 
-    Takes the same `calib` object as `lsst.qa.explorer.functors.Mag`.
+    Takes the same `calib` object as `lsst.pipe.tasks.functors.Mag`.
 
     Parameters
     col : `str`
@@ -628,7 +642,7 @@ class Color(Functor):
     ----------
     col : str
         Name of flux column from which to compute; same as would be passed to
-        ``lsst.qa.explorer.functors.Mag``.
+        `lsst.pipe.tasks.functors.Mag`.
 
     filt2, filt1 : str
         Filters from which to compute magnitude difference.
@@ -703,6 +717,7 @@ class StarGalaxyLabeller(Labeller):
         test = (x < 0.5).astype(int)
         test = test.mask(mask, 2)
 
+        # TODO: DM-21954 Look into veracity of inline comment below
         # are these backwards?
         categories = ['galaxy', 'star', self._null_label]
         label = pd.Series(pd.Categorical.from_codes(test, categories=categories),
@@ -710,7 +725,6 @@ class StarGalaxyLabeller(Labeller):
         if self._force_str:
             label = label.astype(str)
         return label
-        # return np.where(df[self._column] < 0.5, 'star', 'galaxy')
 
 
 class NumStarLabeller(Labeller):
@@ -902,10 +916,11 @@ class ReferenceBand(Functor):
 
 
 class Photometry(Functor):
-    AB_FLUX_SCALE = (0 * u.ABmag).to_value(u.nJy)  # AB to NanoJansky (3631 Jansky)
+    # AB to NanoJansky (3631 Jansky)
+    AB_FLUX_SCALE = (0 * u.ABmag).to_value(u.nJy)
     LOG_AB_FLUX_SCALE = 12.56
     FIVE_OVER_2LOG10 = 1.085736204758129569
-    # TO DO: DM-15751 will likely change this, and it should read from config/data in DM-16234
+    # TO DO: DM-21955 Replace hard coded photometic calibration values
     COADD_ZP = 27
 
     def __init__(self, colFlux, colFluxErr=None, calib=None, **kwargs):

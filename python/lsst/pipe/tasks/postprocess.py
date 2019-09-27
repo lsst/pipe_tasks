@@ -26,7 +26,7 @@ from collections import defaultdict
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.base import CmdLineTask, ArgumentParser
-from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer, CoaddDataIdContainer
+from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
 
 from .parquetTable import ParquetTable
 from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
@@ -253,8 +253,8 @@ class PostprocessAnalysis(object):
         List of flags to include in output table.
     """
     _defaultFlags = ('calib_psf_used', 'detect_isPrimary')
-    _defaultFuncs = (('ra', RAColumn()),
-                     ('dec', DecColumn()))
+    _defaultFuncs = (('coord_ra', RAColumn()),
+                     ('coord_dec', DecColumn()))
 
     def __init__(self, parq, functors, filt=None, flags=None):
         self.parq = parq
@@ -312,7 +312,7 @@ class PostprocessAnalysis(object):
         return self._df
 
 
-class PostprocessConfig(pexConfig.Config):
+class TransformCatalogBaseConfig(pexConfig.Config):
     coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
@@ -325,9 +325,10 @@ class PostprocessConfig(pexConfig.Config):
     )
 
 
-class PostprocessTask(CmdLineTask):
-    """Base class for postprocessing calculations on coadd catalogs
+class TransformCatalogBaseTask(CmdLineTask):
+    """Base class for transforming/standardizing a catalog
 
+    by applying functors that convert units and apply calibrations.
     The purpose of this task is to perform a set of computations on
     an input `ParquetTable` dataset (such as `deepCoadd_obj`) and write the
     results to a new dataset (which needs to be declared in an `outputDataset`
@@ -392,31 +393,24 @@ class PostprocessTask(CmdLineTask):
     This task uses the `lsst.pipe.tasks.postprocess.PostprocessAnalysis` object
     to organize and excecute the calculations.
 
-
     """
-    _DefaultName = "Postprocess"
-    ConfigClass = PostprocessConfig
-
-    inputDataset = 'deepCoadd_obj'
+    @property
+    def _DefaultName(self):
+        raise NotImplementedError('Subclass must define "_DefaultName" attribute')
 
     @property
     def outputDataset(self):
         raise NotImplementedError('Subclass must define "outputDataset" attribute')
 
-    @classmethod
-    def _makeArgumentParser(cls):
-        """Create a suitable ArgumentParser.
+    @property
+    def inputDataset(self):
+        raise NotImplementedError('Subclass must define "inputDataset" attribute')
 
-        """
-        parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.inputDataset,
-                               ContainerClass=ExistingCoaddDataIdContainer,
-                               help="data ID, e.g. --id tract=12345 patch=1,2")
-        return parser
+    @property
+    def ConfigClass(self):
+        raise NotImplementedError('Subclass must define "ConfigClass" attribute')
 
     def runDataRef(self, patchRef):
-        """Do calculations; write result
-        """
         parq = patchRef.get()
         dataId = patchRef.dataId
         funcs = self.getFunctors()
@@ -480,7 +474,7 @@ class PostprocessTask(CmdLineTask):
         pass
 
 
-class TransformObjectCatalogConfig(PostprocessConfig):
+class TransformObjectCatalogConfig(TransformCatalogBaseConfig):
     filterMap = pexConfig.DictField(
         keytype=str,
         itemtype=str,
@@ -495,13 +489,13 @@ class TransformObjectCatalogConfig(PostprocessConfig):
     )
     multilevelOutput = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc=("Whether results dataframe should have a multilevel column index (True) or be flat "
              "and name-munged (False).")
     )
 
 
-class TransformObjectCatalogTask(PostprocessTask):
+class TransformObjectCatalogTask(TransformCatalogBaseTask):
     """Compute Flatted Object Table as defined in the DPDD
 
     Do the same set of postprocessing calculations on all bands
@@ -517,6 +511,14 @@ class TransformObjectCatalogTask(PostprocessTask):
     inputDataset = 'deepCoadd_obj'
     outputDataset = 'objectTable'
 
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", cls.inputDataset,
+                               ContainerClass=CoaddDataIdContainer,
+                               help="data ID, e.g. --id tract=12345 patch=1,2")
+        return parser
+
     def run(self, parq, funcs=None, dataId=None):
         dfDict = {}
         analysisDict = {}
@@ -529,7 +531,7 @@ class TransformObjectCatalogTask(PostprocessTask):
         df = pd.concat(dfDict, axis=1, names=['filter', 'column'])
 
         if not self.config.multilevelOutput:
-            noDupCols = analysisDict[filt].noDupCols
+            noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
             if dataId is not None:
                 noDupCols += list(dataId.keys())
             df = flattenFilters(df, self.config.filterMap, noDupCols=noDupCols,

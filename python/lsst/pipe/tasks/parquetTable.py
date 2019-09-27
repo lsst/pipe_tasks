@@ -70,9 +70,6 @@ class ParquetTable(object):
 
         Parameters
         ----------
-        df : `pandas.DataFrame`
-            Dataframe to write to Parquet file.
-
         filename : str
             Path to which to write.
         """
@@ -143,12 +140,7 @@ class ParquetTable(object):
         if columns is None:
             return self._pf.read().to_pandas()
 
-        try:
-            df = self._pf.read(columns=columns, use_pandas_metadata=True).to_pandas()
-        except AttributeError:
-            columns = self._sanitizeColumns(columns)
-            df = self._pf.read(columns=columns, use_pandas_metadata=True).to_pandas()
-
+        df = self._pf.read(columns=columns, use_pandas_metadata=True).to_pandas()
         return df
 
 
@@ -159,20 +151,22 @@ class MultilevelParquetTable(ParquetTable):
     because there is not a convenient way to request specific table subsets
     by level via Parquet through pyarrow, as there is with a `pandas.DataFrame`.
 
-    Additionally, pyarrow stores multilevel index information in a very strange way.
-    Pandas stores it as a tuple, so that one can access a single column from a pandas
-    dataframe as `df[('ref', 'HSC-G', 'coord_ra')]`.  However, for some reason
-    pyarrow saves these indices as "stringified" tuples, such that in order to read this
-    same column from a table written to Parquet, you would have to do the following:
+    Additionally, pyarrow stores multilevel index information in a very strange
+    way. Pandas stores it as a tuple, so that one can access a single column
+    from a pandas dataframe as `df[('ref', 'HSC-G', 'coord_ra')]`.  However, for
+    some reason pyarrow saves these indices as "stringified" tuples, such that
+    in order to read thissame column from a table written to Parquet, you would
+    have to do the following:
 
         pf = pyarrow.ParquetFile(filename)
         df = pf.read(columns=["('ref', 'HSC-G', 'coord_ra')"])
 
-    See also https://github.com/apache/arrow/issues/1771, where I've raised this issue.
-    I don't know if this is a bug or intentional, and it may be addressed in the future.
+    See also https://github.com/apache/arrow/issues/1771, where we've raised
+    this issue.
 
-    As multilevel-indexed dataframes can be very useful to store data like multiple filters'
-    worth of data in the same table, this case deserves a wrapper to enable easier access;
+    As multilevel-indexed dataframes can be very useful to store data like
+    multiple filters' worth of data in the same table, this case deserves a
+    wrapper to enable easier access;
     that's what this object is for.  For example,
 
         parq = MultilevelParquetTable(filename)
@@ -183,8 +177,8 @@ class MultilevelParquetTable(ParquetTable):
 
     will return just the coordinate columns; the equivalent of calling
     `df['meas']['HSC-G'][['coord_ra', 'coord_dec']]` on the total dataframe,
-    but without having to load the whole frame into memory---this reads just those
-    columns from disk.  You can also request a sub-table; e.g.,
+    but without having to load the whole frame into memory---this reads just
+    those columns from disk.  You can also request a sub-table; e.g.,
 
         parq = MultilevelParquetTable(filename)
         columnDict = {'dataset':'meas',
@@ -193,14 +187,12 @@ class MultilevelParquetTable(ParquetTable):
 
     and this will be the equivalent of `df['meas']['HSC-G']` on the total dataframe.
 
-
     Parameters
     ----------
-    filename : str
+    filename : str, optional
         Path to Parquet file.
-
+    dataFrame : dataFrame, optional
     """
-
     def __init__(self, *args, **kwargs):
         super(MultilevelParquetTable, self).__init__(*args, **kwargs)
 
