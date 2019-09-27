@@ -43,6 +43,8 @@ class CalibsParseTask(ParseTask):
             obstype = "illumcor"
         elif "defects" in obstype:
             obstype = "defects"
+        elif "qe_curve" in obstype:
+            obstype = "qe_curve"
         return obstype
 
     def getDestination(self, butler, info, filename):
@@ -68,14 +70,14 @@ class CalibsParseTask(ParseTask):
 
 class CalibsRegisterConfig(RegisterConfig):
     """Configuration for the CalibsRegisterTask"""
-    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky", "defects"],
+    tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky", "defects", "qe_curve"],
                        doc="Names of tables")
     calibDate = Field(dtype=str, default="calibDate", doc="Name of column for calibration date")
     validStart = Field(dtype=str, default="validStart", doc="Name of column for validity start")
     validEnd = Field(dtype=str, default="validEnd", doc="Name of column for validity stop")
     detector = ListField(dtype=str, default=["filter", "ccd"],
                          doc="Columns that identify individual detectors")
-    validityUntilSuperseded = ListField(dtype=str, default=["defects"],
+    validityUntilSuperseded = ListField(dtype=str, default=["defects", "qe_curve"],
                                         doc="Tables for which to set validity for a calib from when it is "
                                         "taken until it is superseded by the next; validity in other tables "
                                         "is calculated by applying the validity range.")
@@ -121,7 +123,7 @@ class CalibsRegisterTask(RegisterTask):
     def fixSubsetValidity(self, conn, table, detectorData, validity):
         """Update the validity ranges among selected rows in the registry.
 
-        For defects, the products are valid from their start date until
+        For defects and qe_curve, the products are valid from their start date until
         they are superseded by subsequent defect data.
         For other calibration products, the validity ranges are checked and
         if there are overlaps, a midpoint is used to fix the overlaps,
