@@ -133,8 +133,8 @@ class ParseTask(Task):
         if info is None:
             info = {}
         for p, h in self.config.translation.items():
-            if md.exists(h):
-                value = md.getScalar(h)
+            value = md.get(h, None)
+            if value is not None:
                 if isinstance(value, str):
                     value = value.strip()
                 info[p] = value
