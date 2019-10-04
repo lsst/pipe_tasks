@@ -600,6 +600,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                     # Get Psf from the appropriate input image if it doesn't exist
                     if not subtractedExposure.hasPsf():
+                        self.log.warn("No PSF found for the subtracted image")
                         if convolveTemplate:
                             subtractedExposure.setPsf(exposure.getPsf())
                         else:
@@ -615,7 +616,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     preConvKernel = None
                     if preConvPsf is not None:
                         preConvKernel = preConvPsf.getLocalKernel()
-                    decorrResult = self.decorrelate.run(exposure, templateExposure,
+                    decorrResult = self.decorrelate.run(exposure, subtractRes.warpedExposure,
                                                         subtractedExposure,
                                                         subtractRes.psfMatchingKernel,
                                                         spatiallyVarying=self.config.doSpatiallyVarying,
