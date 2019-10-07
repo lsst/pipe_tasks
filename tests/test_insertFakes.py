@@ -23,6 +23,7 @@ import os
 import unittest
 import tempfile
 import shutil
+import astropy.table as astropy_table
 
 import lsst.utils.tests
 import lsst.utils as lsst_utils
@@ -60,10 +61,30 @@ class TestFakeInserstion(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls._workspace)
 
+    def setUp(self):
+        current_dir = os.path.join(lsst_utils.getPackageDir('pipe_tasks'),
+                                   'tests')
+        data_dir = os.path.join(current_dir, 'data', 'insertFakes')
+        self.star_truth = os.path.join(data_dir, 'starTruth.txt')
+        self.star_catalog = os.path.join(data_dir, 'starCatalog.fits')
+
     def test_insertFakeStars(self):
         butler = daf_persistence.Butler(self._workspace)
         calexp = butler.get('calexp', dataId=self._data_id)
+        psf = calexp.getPsf()
+        wcs = calexp.getWcs()
+        photo_calib = butler.get('calexp_photoCalib', dataId=self._data_id)
+        insert_fakes_task = InsertFakesTask()
+        fake_star_table = astropy_table.Table.read(self.star_catalog)
+        fake_star_table = fake_star_table.to_pandas()
+        fake_star_table = insert_fakes_task.addPixCoords(fake_star_table,
+                                                         wcs)
 
+        fake_star_image_list = insert_fakes_task.mkFakeStars(fake_star_table,
+                                                             'g',
+                                                             photo_calib,
+                                                             psf,
+                                                             calexp)
 
 def setup_module(module):
     lsst.utils.tests.init()
