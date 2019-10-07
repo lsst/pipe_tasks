@@ -28,6 +28,7 @@ import astropy.table as astropy_table
 import lsst.utils.tests
 import lsst.utils as lsst_utils
 
+import lsst.geom as lsst_geom
 import lsst.daf.persistence as daf_persistence
 from lsst.pipe.tasks.processCcd import ProcessCcdTask
 from lsst.pipe.tasks.insertFakes import InsertFakesTask
@@ -85,6 +86,29 @@ class TestFakeInserstion(unittest.TestCase):
                                                              photo_calib,
                                                              psf,
                                                              calexp)
+        # there should be 4 fake stars
+        self.assertEqual(len(fake_star_image_list), 4)
+
+        fake_star_ra = []
+        fake_star_dec = []
+        fake_star_mag = []
+        with open(self.star_truth, 'r') as in_file:
+            for line in in_file:
+                if line.startswith('#'):
+                    continue
+                params = line.strip().split()
+                fake_star_ra.append(float(params[0]))
+                fake_star_dec.append(float(params[1]))
+                fake_star_mag.append(float(params[2]))
+
+        # test that stars are added at the correct place
+        for ii, (rr, dd) in enumerate(zip(fake_star_table['raJ2000'],
+                                      fake_star_table['decJ2000'])):
+            sky_pt = lsst_geom.SpherePoint(rr*lsst_geom.radians,
+                                           dd*lsst_geom.radians)
+            pixel_pt = wcs.skyToPixel(sky_pt)
+            self.assertEqual(pixel_pt, fake_star_image_list[ii][1])
+
 
 def setup_module(module):
     lsst.utils.tests.init()
