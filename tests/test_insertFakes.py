@@ -27,7 +27,9 @@ import shutil
 import lsst.utils.tests
 import lsst.utils as lsst_utils
 
+import lsst.daf.persistence as daf_persistence
 from lsst.pipe.tasks.processCcd import ProcessCcdTask
+from lsst.pipe.tasks.insertFakes import InsertFakesTask
 
 
 class TestFakeInserstion(unittest.TestCase):
@@ -58,8 +60,9 @@ class TestFakeInserstion(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls._workspace)
 
-    def test_dummy(self):
-        pass
+    def test_insertFakeStars(self):
+        butler = daf_persistence.Butler(self._workspace)
+        calexp = butler.get('calexp', dataId=self._data_id)
 
 
 def setup_module(module):
