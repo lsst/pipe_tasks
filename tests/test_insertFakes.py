@@ -20,6 +20,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import os
+import numpy as np
 import unittest
 import tempfile
 import shutil
@@ -102,12 +103,21 @@ class TestFakeInserstion(unittest.TestCase):
                 fake_star_mag.append(float(params[2]))
 
         # test that stars are added at the correct place
-        for ii, (rr, dd) in enumerate(zip(fake_star_table['raJ2000'],
-                                      fake_star_table['decJ2000'])):
+        for ii, (rr, dd, mm) in enumerate(zip(fake_star_table['raJ2000'],
+                                              fake_star_table['decJ2000'],
+                                              fake_star_table['gmagVar'])):
             sky_pt = lsst_geom.SpherePoint(rr*lsst_geom.radians,
                                            dd*lsst_geom.radians)
             pixel_pt = wcs.skyToPixel(sky_pt)
             self.assertEqual(pixel_pt, fake_star_image_list[ii][1])
+            flux = fake_star_image_list[ii][0].getArray().sum()
+            ctrl_flux = photo_calib.magnitudeToInstFlux(mm,
+                                                        fake_star_image_list[ii][1])
+            d_flux_over_flux = np.abs(flux-ctrl_flux)/ctrl_flux
+            print(d_flux_over_flux)
+            # see line 489 of insertFakes.py
+            # it is possible I am not understanding something about how this flux
+            # to magnitude relationship is calibrated
 
 
 def setup_module(module):
