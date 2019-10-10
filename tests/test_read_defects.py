@@ -23,6 +23,7 @@
 #
 
 import os
+import glob
 import unittest
 
 
@@ -72,6 +73,55 @@ class ReadDefectsTestCase(unittest.TestCase):
             self.assertEqual(len(defects[s].keys()), 2)  # Two validity ranges
             for d in defects[s]:
                 self.assertEqual(len(defects[s][d]), 4)  # Four defects
+
+
+class ReadQeTestCase(unittest.TestCase):
+    """A test case for the mapper used by the data butler."""
+
+    def setUp(self):
+        self.mapper = BaseMapper()
+
+    def tearDown(self):
+        del self.mapper
+
+    def cleanupLinks(self, files):
+        for f in files:
+            try:
+                os.unlink(f)
+            except OSError:
+                pass  # Carry on since the file didn't exist
+
+    def test_read_qe_amp(self):
+        butler = dafPersist.ButlerFactory(mapper=self.mapper).create()
+        cam = butler.get('camera')
+        qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curves')
+        files = glob.glob(os.path.join(qe_path, 'ccd00', 'per_amp', '*'))
+        dest_files = [os.path.join(qe_path, 'ccd00', os.path.split(f)[1]) for f in files]
+        self.cleanupLinks(dest_files)
+        for f, df in zip(files, dest_files):
+            os.symlink(f, df)
+        curves, data_type = read_all(qe_path, cam)
+        self.assertEqual(len(curves.keys()), 1)  # One sensor
+        self.assertEqual(data_type, 'qe_curves')
+        for s in curves:
+            self.assertEqual(len(curves[s].keys()), 2)  # Two validity ranges
+            for d in curves[s]:
+                self.assertEqual(len(curves[s][d].data), 2)  # Two amps
+
+    def test_read_qe_det(self):
+        butler = dafPersist.ButlerFactory(mapper=self.mapper).create()
+        cam = butler.get('camera')
+        qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curves')
+        files = glob.glob(os.path.join(qe_path, 'ccd00', 'per_detector', '*'))
+        dest_files = [os.path.join(qe_path, 'ccd00', os.path.split(f)[1]) for f in files]
+        self.cleanupLinks(dest_files)
+        for f, df in zip(files, dest_files):
+            os.symlink(f, df)
+        curves, data_type = read_all(qe_path, cam)
+        self.assertEqual(len(curves.keys()), 1)  # One sensor
+        self.assertEqual(data_type, 'qe_curves')
+        for s in curves:
+            self.assertEqual(len(curves[s].keys()), 2)  # Two validity ranges
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
