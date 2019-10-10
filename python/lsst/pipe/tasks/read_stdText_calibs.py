@@ -29,7 +29,7 @@ def read_one_chip(root, chip_name, chip_id):
     files = glob.glob(os.path.join(root, chip_name, '*.ecsv'))
     parts = os.path.split(root)
     instrument = os.path.split(parts[0])[1]  # convention is that these reside at <instrument>/<data_name>
-    data_name = os.path.split(parts[0])[0]
+    data_name = parts[1]
     factory = factory_map[data_name]
     data_dict = {}
     for f in files:
@@ -37,7 +37,7 @@ def read_one_chip(root, chip_name, chip_id):
         valid_start = dateutil.parser.parse(date_str)
         data_dict[valid_start] = factory.readText(f)
         check_metadata(data_dict[valid_start], valid_start, instrument, chip_id, f, data_name)
-    return data_dict
+    return data_dict, data_name
 
 
 def check_metadata(obj, valid_start, instrument, chip_id, f, data_name):
@@ -74,8 +74,8 @@ def check_metadata(obj, valid_start, instrument, chip_id, f, data_name):
     fchip_id = md.get('DETECTOR')
     fcalib_date = md.get('CALIBDATE')
     fdata_name = md.get('OBSTYPE')
-    if not (finst.lower(), int(fchip_id), fcalib_date, fdata_name) ==
-           (instrument.lower(), chip_id, valid_start.isoformat(), data_name):
+    if not ((finst.lower(), int(fchip_id), fcalib_date, fdata_name) ==
+            (instrument.lower(), chip_id, valid_start.isoformat(), data_name)):
         st_time = valid_start.isoformat()
         raise ValueError("Path and file metadata do not agree:\n" +
                          "Path metadata: %s, %s, %s, %s\n"%(instrument, chip_id, st_time, fdata_name) +
@@ -112,7 +112,7 @@ def read_all(root, camera):
     for d in dirs:
         chip_name = os.path.basename(d)
         chip_id = camera[name_map[chip_name]].getId()
-        data_by_chip[chip_name], calib_type = read_one_chip(root, chip_name, chip_id, factory)
+        data_by_chip[chip_name], calib_type = read_one_chip(root, chip_name, chip_id)
         if calib_type_old is not None:
             if calib_type_old != calib_type:
                 raise ValueError(f'Calibration types do not agree: {calib_type_old} != {calib_type}')

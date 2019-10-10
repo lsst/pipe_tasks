@@ -29,7 +29,7 @@ import unittest
 import lsst.utils.tests
 from lsst.utils import getPackageDir
 import lsst.obs.base
-from lsst.pipe.tasks.read_defects import read_all_defects
+from lsst.pipe.tasks.read_stdText_calibs import read_all
 import lsst.daf.persistence as dafPersist
 
 ROOT = os.path.join(getPackageDir('obs_base'), 'tests')
@@ -65,8 +65,9 @@ class ReadDefectsTestCase(unittest.TestCase):
         butler = dafPersist.ButlerFactory(mapper=self.mapper).create()
         cam = butler.get('camera')
         defects_path = os.path.join(ROOT, 'trivial_camera', 'defects')
-        defects = read_all_defects(defects_path, cam)
+        defects, data_type = read_all(defects_path, cam)
         self.assertEqual(len(defects.keys()), 1)  # One sensor
+        self.assertEqual(data_type, 'defects')
         for s in defects:
             self.assertEqual(len(defects[s].keys()), 2)  # Two validity ranges
             for d in defects[s]:
