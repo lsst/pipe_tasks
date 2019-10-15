@@ -443,10 +443,10 @@ class IngestTask(Task):
             if not os.path.isdir(outdir):
                 try:
                     os.makedirs(outdir)
-                except OSError:
+                except OSError as exc:
                     # Silently ignore mkdir failures due to race conditions
                     if not os.path.isdir(outdir):
-                        raise
+                        raise RuntimeError(f"Failed to create directory {outdir}") from exc
             if os.path.lexists(outfile):
                 if self.config.clobber:
                     os.unlink(outfile)
@@ -467,7 +467,7 @@ class IngestTask(Task):
         except Exception as e:
             self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
             if not self.config.allowError:
-                raise
+                raise RuntimeError(f"Failed to {mode} {infile} to {outfile}") from e
             return False
         return True
 
@@ -529,7 +529,7 @@ class IngestTask(Task):
             fileInfo, hduInfoList = self.parse.getInfo(infile)
         except Exception as e:
             if not self.config.allowError:
-                raise
+                raise RuntimeError(f"Error parsing {infile}") from e
             self.log.warn("Error parsing %s (%s); skipping" % (infile, e))
             return None
         if self.isBadId(fileInfo, args.badId.idList):
@@ -555,6 +555,8 @@ class IngestTask(Task):
                     hduInfoList = self.runFile(infile, registry, args)
                 except Exception as exc:
                     self.log.warn("Failed to ingest file %s: %s", infile, exc)
+                    if not self.config.allowError:
+                        raise RuntimeError(f"Failed to ingest file {infile}") from exc
                     continue
                 if hduInfoList is None:
                     continue
