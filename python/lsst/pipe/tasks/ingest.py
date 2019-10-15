@@ -361,40 +361,26 @@ class RegisterTask(Task):
         """
         if table is None:
             table = self.config.table
-        sql = "INSERT INTO %s (%s) SELECT " % (table, ",".join(self.config.columns))
-        sql += ",".join([self.placeHolder] * len(self.config.columns))
-        values = [self.typemap[tt](info[col]) for col, tt in self.config.columns.items()]
-
+        ignoreClause = ""
         if self.config.ignore:
-            sql += " WHERE NOT EXISTS (SELECT 1 FROM %s WHERE " % table
-            sql += " AND ".join(["%s=%s" % (col, self.placeHolder) for col in self.config.unique])
-            sql += ")"
-            values += [info[col] for col in self.config.unique]
+            ignoreClause = " OR IGNORE"
+        sql = "INSERT%s INTO %s (%s) VALUES (" % (ignoreClause, table, ",".join(self.config.columns))
+        sql += ",".join([self.placeHolder] * len(self.config.columns)) + ")"
+        values = [self.typemap[tt](info[col]) for col, tt in self.config.columns.items()]
 
         if dryrun:
             print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
         else:
             conn.cursor().execute(sql, values)
 
-    def addVisits(self, conn, dryrun=False, table=None):
-        """Generate the visits table (typically 'raw_visits') from the
-        file table (typically 'raw').
+        sql = "INSERT OR IGNORE INTO %s_visit VALUES (" % table
+        sql += ",".join([self.placeHolder] * len(self.config.visit)) + ")"
+        values = [self.typemap[self.config.columns[col]](info[col]) for col in self.config.visit]
 
-        @param conn    Database connection
-        @param table   Name of table in database
-        """
-        if table is None:
-            table = self.config.table
-        sql = "INSERT INTO %s_visit SELECT DISTINCT " % table
-        sql += ",".join(self.config.visit)
-        sql += " FROM %s AS vv1" % table
-        sql += " WHERE NOT EXISTS "
-        sql += "(SELECT vv2.visit FROM %s_visit AS vv2 WHERE vv1.visit = vv2.visit)" % (table,)
         if dryrun:
-            print("Would execute: %s" % sql)
+            print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
         else:
-            conn.cursor().execute(sql)
-
+            conn.cursor().execute(sql, values)
 
 class IngestConfig(Config):
     """Configuration for IngestTask"""
@@ -562,7 +548,6 @@ class IngestTask(Task):
                     continue
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
-            self.register.addVisits(registry, dryrun=args.dryrun)
 
 
 def assertCanCopy(fromPath, toPath):
