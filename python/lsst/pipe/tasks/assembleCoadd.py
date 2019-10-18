@@ -164,9 +164,19 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
             "Passed to StatisticsControl.setCalcErrorFromInputVariance()",
         default=True,
     )
+    doScaleZeroPoint = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Run ScaleZeroPointTask to adjust the photometric zero point of the coadd warps.",
+        deprecated=("This task exists to manage the removal of the scaleZeroPoint config below."
+                    "This will be removed after v19.")
+    )
     scaleZeroPoint = pexConfig.ConfigurableField(
         target=ScaleZeroPointTask,
-        doc="Task to adjust the photometric zero point of the coadd temp exposures",
+        doc="Task to adjust the photometric zero point of the coadd warps.",
+        deprecated=("PhotoCalib calibrates images to nJy, keeping them in the same units."
+                    " See RFC-545 for the deprecation discussion."
+                    " This will be removed after v19.")
     )
     doInterp = pexConfig.Field(
         doc="Interpolate over NaN pixels? Also extrapolate, if necessary, but the results are ugly.",
@@ -374,7 +384,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         super().__init__(**kwargs)
         self.makeSubtask("interpImage")
-        self.makeSubtask("scaleZeroPoint")
+        if self.config.doScaleZeroPoint:
+            self.makeSubtask("scaleZeroPoint")
+        else:
+            self.scaleZeroPoint = None
 
         if self.config.doMaskBrightObjects:
             mask = afwImage.Mask()
@@ -649,15 +662,18 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             if numpy.isnan(tempExp.image.array).all():
                 continue
             maskedImage = tempExp.getMaskedImage()
-            imageScaler = self.scaleZeroPoint.computeImageScaler(
-                exposure=tempExp,
-                dataRef=tempExpRef,
-            )
-            try:
-                imageScaler.scaleMaskedImage(maskedImage)
-            except Exception as e:
-                self.log.warn("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
-                continue
+
+            if self.scaleZeroPoint is not None:
+                imageScaler = self.scaleZeroPoint.computeImageScaler(
+                    exposure=tempExp,
+                    dataRef=tempExpRef,
+                )
+                try:
+                    imageScaler.scaleMaskedImage(maskedImage)
+                except Exception as e:
+                    self.log.warn("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
+                    continue
+
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                                              afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP)
@@ -672,7 +688,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
             tempExpRefList.append(tempExpRef)
             weightList.append(weight)
-            imageScalerList.append(imageScaler)
+            if self.scaleZeroPoint is not None:
+                imageScalerList.append(imageScaler)
+            else:
+                imageScalerList.append(None)
 
         return pipeBase.Struct(tempExpRefList=tempExpRefList, weightList=weightList,
                                imageScalerList=imageScalerList)
@@ -763,7 +782,11 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             altMaskList = [None]*len(tempExpRefList)
 
         coaddExposure = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
-        coaddExposure.setPhotoCalib(self.scaleZeroPoint.getPhotoCalib())
+        if self.scaleZeroPoint is None:
+            # The coadd is in nJy, and we do not propogate errors from the warps.
+            coaddExposure.setPhotoCalib(afwImage.PhotoCalib(1.0, 0.0))
+        else:
+            coaddExposure.setPhotoCalib(self.scaleZeroPoint.getPhotoCalib())
         coaddExposure.getInfo().setCoaddInputs(self.inputRecorder.makeCoaddInputs())
         self.assembleMetadata(coaddExposure, tempExpRefList, weightList)
         coaddMaskedImage = coaddExposure.getMaskedImage()
@@ -910,7 +933,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             mask = maskedImage.getMask()
             if altMask is not None:
                 self.applyAltMaskPlanes(mask, altMask)
-            imageScaler.scaleMaskedImage(maskedImage)
+            if imageScaler is not None:
+                imageScaler.scaleMaskedImage(maskedImage)
 
             # Add 1 for each pixel which is not excluded by the exclude mask.
             # In legacyCoadd, pixels may also be excluded by afwMath.statisticsStack.
@@ -2359,7 +2383,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 return None
         warp = warpRef.get(datasetType=warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
-        imageScaler.scaleMaskedImage(warp.getMaskedImage())
+        if imageScaler is not None:
+            imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
         if self.config.doScaleWarpVariance:
             try:
