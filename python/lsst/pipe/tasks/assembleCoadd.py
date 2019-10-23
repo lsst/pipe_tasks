@@ -1834,11 +1834,13 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
         self.detect.returnOriginalFootprints = False
         self.detect.thresholdPolarity = "both"
         self.detect.thresholdValue = 5
-        self.detect.nSigmaToGrow = 2
         self.detect.minPixels = 4
         self.detect.isotropicGrow = True
         self.detect.thresholdType = "pixel_stdev"
-        self.detectTemplate.nSigmaToGrow = 2.0
+        self.detect.nSigmaToGrow = 0.4
+        # The default nSigmaToGrow for SourceDetectionTask is already 2.4,
+        # Explicitly restating because ratio with detect.nSigmaToGrow matters
+        self.detectTemplate.nSigmaToGrow = 2.4
         self.detectTemplate.doTempLocalBackground = False
         self.detectTemplate.reEstimateBackground = False
         self.detectTemplate.returnOriginalFootprints = False
