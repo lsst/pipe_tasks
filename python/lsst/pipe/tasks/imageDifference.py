@@ -33,6 +33,7 @@ from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask, EvaluateLocalCalibrationTask
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
+from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, ObjectSizeStarSelectorTask
 from lsst.ip.diffim import (DipoleAnalysis, SourceFlagChecker, KernelCandidateF, makeKernelBasisList,
                             KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig,
@@ -67,6 +68,8 @@ class ImageDifferenceConfig(pexConfig.Config):
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc="Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=True,
                                     doc="Convolve science image by its PSF before PSF-matching?")
+    doScaleTemplateVariance = pexConfig.Field(dtype=bool, default=False,
+                                              doc="Scale variance of the template before PSF matching")
     useGaussianForPreConvolution = pexConfig.Field(dtype=bool, default=True,
                                                    doc="Use a simple gaussian PSF model for pre-convolution "
                                                        "(else use fit PSF)? Ignored if doPreConvolve false.")
@@ -153,6 +156,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=GetCoaddAsTemplateTask,
         doc="Subtask to retrieve template exposure and sources",
     )
+    scaleVariance = pexConfig.ConfigurableField(
+        target=ScaleVarianceTask,
+        doc="Subtask to rescale the variance of the template "
+            "to the statistically expected level"
+    )
     controlStepSize = pexConfig.Field(
         doc="What step size (every Nth one) to select a control sample from the kernelSources",
         dtype=int,
@@ -172,16 +180,18 @@ class ImageDifferenceConfig(pexConfig.Config):
         dtype=bool,
         default=False
     )
-    templateSipOrder = pexConfig.Field(dtype=int, default=2,
-                                       doc="Sip Order for fitting the Template Wcs "
-                                           "(default is too high, overfitting)")
-
-    growFootprint = pexConfig.Field(dtype=int, default=2,
-                                    doc="Grow positive and negative footprints by this amount before merging")
-
-    diaSourceMatchRadius = pexConfig.Field(dtype=float, default=0.5,
-                                           doc="Match radius (in arcseconds) "
-                                               "for DiaSource to Source association")
+    templateSipOrder = pexConfig.Field(
+        dtype=int, default=2,
+        doc="Sip Order for fitting the Template Wcs (default is too high, overfitting)"
+    )
+    growFootprint = pexConfig.Field(
+        dtype=int, default=2,
+        doc="Grow positive and negative footprints by this amount before merging"
+    )
+    diaSourceMatchRadius = pexConfig.Field(
+        dtype=float, default=0.5,
+        doc="Match radius (in arcseconds) for DiaSource to Source association"
+    )
 
     def setDefaults(self):
         # defaults are OK for catalog and diacatalog
@@ -260,6 +270,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         if self.config.subtract.name == 'al' and self.config.doDecorrelation:
             self.makeSubtask("decorrelate")
+
+        if self.config.doScaleTemplateVariance:
+            self.makeSubtask("scaleVariance")
 
         if self.config.doUseRegister:
             self.makeSubtask("register")
@@ -370,6 +383,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             template = self.getTemplate.run(exposure, sensorRef, templateIdList=templateIdList)
             templateExposure = template.exposure
             templateSources = template.sources
+
+            if self.config.doScaleTemplateVariance:
+                templateVarFactor = self.scaleVariance.run(
+                    templateExposure.getMaskedImage())
+                self.metadata.add("scaleTemplateVarianceFactor", templateVarFactor)
 
             if self.config.subtract.name == 'zogy':
                 subtractRes = self.subtract.subtractExposures(templateExposure, exposure,
