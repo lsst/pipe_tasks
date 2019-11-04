@@ -37,7 +37,6 @@ import lsst.geom
 import lsst.daf.persistence
 import lsst.afw.cameraGeom
 import lsst.afw.geom
-from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.image.utils as afwImageUtils
 import lsst.afw.image as afwImage
 
@@ -454,39 +453,38 @@ def makeSimpleCamera(
     pScaleRad = lsst.geom.arcsecToRad(plateScale)
     radialDistortCoeffs = [0.0, 1.0/pScaleRad, 0.0, radialDistortion/pScaleRad]
     focalPlaneToFieldAngle = lsst.afw.geom.makeRadialTransform(radialDistortCoeffs)
-    nativeSys = lsst.afw.cameraGeom.FOCAL_PLANE
-    transforms = {
-        lsst.afw.cameraGeom.FIELD_ANGLE: focalPlaneToFieldAngle,
-    }
-    transformMap = lsst.afw.cameraGeom.TransformMap(nativeSys, transforms)
 
-    detectorList = []
     ccdBBox = lsst.geom.Box2I(lsst.geom.Point2I(), lsst.geom.Extent2I(sizeX, sizeY))
+
+    cameraBuilder = lsst.afw.cameraGeom.Camera.Builder("Simple Camera")
+
+    detectorId = 0
     for iY in range(nY):
         cY = (iY - 0.5 * (nY - 1)) * (pixelSize * sizeY + gapY)
         for iX in range(nX):
             cX = (iX - 0.5 * (nX - 1)) * (pixelSize * sizeY + gapX)
             fpPos = lsst.geom.Point2D(cX, cY)
             detectorName = "detector %d,%d" % (iX, iY)
-            detectorId = len(detectorList) + 1
-            detectorList.append(DetectorWrapper(
-                name=detectorName,
-                id=detectorId,
-                serial=detectorName + " serial",
-                bbox=ccdBBox,
-                ampExtent=ccdBBox.getDimensions(),
-                numAmps=1,
-                pixelSize=lsst.geom.Extent2D(pixelSize, pixelSize),
-                orientation=lsst.afw.cameraGeom.Orientation(fpPos),
-                plateScale=plateScale,
-                radialDistortion=radialDistortion,
-            ).detector)
 
-    return lsst.afw.cameraGeom.Camera(
-        name="Simple Camera",
-        detectorList=detectorList,
-        transformMap=transformMap,
-    )
+            detectorBuilder = cameraBuilder.add(detectorName, detectorId)
+            detectorBuilder.setSerial(detectorName + " serial")
+            detectorBuilder.setBBox(ccdBBox)
+            detectorBuilder.setOrientation(lsst.afw.cameraGeom.Orientation(fpPos))
+            detectorBuilder.setPixelSize(lsst.geom.Extent2D(pixelSize, pixelSize))
+
+            ampBuilder = lsst.afw.cameraGeom.Amplifier.Builder()
+            ampName = "amp"
+            ampBuilder.setName(ampName)
+            ampBuilder.setBBox(ccdBBox)
+            ampBuilder.setGain(1.0)
+            ampBuilder.setReadNoise(5.0)
+
+            detectorBuilder.append(ampBuilder)
+
+            detectorId += 1
+
+    cameraBuilder.setTransformFromFocalPlaneTo(lsst.afw.cameraGeom.FIELD_ANGLE, focalPlaneToFieldAngle)
+    return cameraBuilder.finish()
 
 
 def makeDataRepo(root):
