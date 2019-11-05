@@ -1,0 +1,6 @@
+description: DRP
+inherits:
+  - location: $PIPE_TASKS_DIR/pipelines/ProcessCcd.yaml
+  - location: $PIPE_TASKS_DIR/pipelines/Coaddition.yaml
+  - location: $PIPE_TASKS_DIR/pipelines/Multiband.yaml
+  - location: $PIPE_TASKS_DIR/pipelines/Forced.yaml

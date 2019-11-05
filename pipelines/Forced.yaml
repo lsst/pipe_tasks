@@ -1,0 +1,4 @@
+description: Forced
+tasks:
+  forcedPhotCcd: lsst.meas.base.forcedPhotCcd.ForcedPhotCcdTask
+  forcedPhotCoadd: lsst.meas.base.forcedPhotCoadd.ForcedPhotCoaddTask
