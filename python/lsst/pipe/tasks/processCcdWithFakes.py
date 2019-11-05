@@ -218,7 +218,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             photoCalib = dataRef.get("jointcal_photoCalib")
         else:
             wcs = calexp.getWcs()
-            photoCalib = calexp.getCalib()
+            photoCalib = calexp.getPhotoCalib()
 
         resultStruct = self.run(fakeCat, calexp, wcs=wcs, photoCalib=photoCalib,
                                 exposureIdInfo=exposureIdInfo)
@@ -235,7 +235,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         if inputs["wcs"] is None:
             inputs["wcs"] = inputs["image"].getWcs()
         if inputs["photoCalib"] is None:
-            inputs["photoCalib"] = inputs["image"].getCalib()
+            inputs["photoCalib"] = inputs["image"].getPhotoCalib()
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
@@ -290,7 +290,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             wcs = exposure.getWcs()
 
         if photoCalib is None:
-            photoCalib = exposure.getCalib()
+            photoCalib = exposure.getPhotoCalib()
 
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
