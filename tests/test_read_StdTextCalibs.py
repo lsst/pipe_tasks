@@ -25,6 +25,7 @@
 import os
 import glob
 import unittest
+import tempfile
 
 
 import lsst.utils.tests
@@ -54,19 +55,19 @@ class BaseMapper(lsst.obs.base.CameraMapper):
 
 
 class ReadDefectsTestCase(unittest.TestCase):
-    """A test case for the mapper used by the data butler."""
+    """A test case for the defect reader."""
 
     def setUp(self):
-        self.mapper = BaseMapper()
+        butler = dafPersist.ButlerFactory(mapper=BaseMapper()).create()
+        self.cam = butler.get('camera')
+        self.defects_path = os.path.join(ROOT, 'trivial_camera', 'defects')
 
     def tearDown(self):
-        del self.mapper
+        del self.cam
+        del self.defects_path
 
     def test_read_defects(self):
-        butler = dafPersist.ButlerFactory(mapper=self.mapper).create()
-        cam = butler.get('camera')
-        defects_path = os.path.join(ROOT, 'trivial_camera', 'defects')
-        defects, data_type = read_all(defects_path, cam)
+        defects, data_type = read_all(self.defects_path, self.cam)
         self.assertEqual(len(defects.keys()), 1)  # One sensor
         self.assertEqual(data_type, 'defects')
         for s in defects:
@@ -76,52 +77,46 @@ class ReadDefectsTestCase(unittest.TestCase):
 
 
 class ReadQeTestCase(unittest.TestCase):
-    """A test case for the mapper used by the data butler."""
+    """A test case for the qe_curve reader"""
 
     def setUp(self):
-        self.mapper = BaseMapper()
+        butler = dafPersist.ButlerFactory(mapper=BaseMapper()).create()
+        self.cam = butler.get('camera')
+        self.qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curves')
+        self.tmp_dir_obj = tempfile.TemporaryDirectory()
 
     def tearDown(self):
-        del self.mapper
+        del self.cam
+        del self.qe_path
+        self.tmp_dir_obj.cleanup()
 
-    def cleanupLinks(self, files):
-        for f in files:
-            try:
-                os.unlink(f)
-            except OSError:
-                pass  # Carry on since the file didn't exist
+    def read_qe_tester(self, per_amp):
+        if per_amp:
+            path_str = 'per_amp'
+        else:
+            path_str = 'per_detector'
+        files = glob.glob(os.path.join(self.qe_path, 'ccd00', path_str, '*'))
+        dest_path = os.path.join(self.tmp_dir_obj.name, 'trivial_camera',
+                                 'qe_curves', 'ccd00')
+        os.makedirs(dest_path)
+        dest_files = [os.path.join(dest_path, os.path.split(f)[1]) for f in files]
+        for f, df in zip(files, dest_files):
+            os.symlink(f, df)
+        curves, data_type = read_all(os.path.join(self.tmp_dir_obj.name, 'trivial_camera', 'qe_curves'),
+                                     self.cam)
+        self.assertEqual(len(curves.keys()), 1)  # One sensor
+        self.assertEqual(data_type, 'qe_curves')
+        for s in curves:
+            self.assertEqual(len(curves[s].keys()), 2)  # Two validity ranges
+            if per_amp:
+                for d in curves[s]:
+                    self.assertEqual(len(curves[s][d].data), 2)  # Two amps
 
     def test_read_qe_amp(self):
-        butler = dafPersist.ButlerFactory(mapper=self.mapper).create()
-        cam = butler.get('camera')
-        qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curves')
-        files = glob.glob(os.path.join(qe_path, 'ccd00', 'per_amp', '*'))
-        dest_files = [os.path.join(qe_path, 'ccd00', os.path.split(f)[1]) for f in files]
-        self.cleanupLinks(dest_files)
-        for f, df in zip(files, dest_files):
-            os.symlink(f, df)
-        curves, data_type = read_all(qe_path, cam)
-        self.assertEqual(len(curves.keys()), 1)  # One sensor
-        self.assertEqual(data_type, 'qe_curves')
-        for s in curves:
-            self.assertEqual(len(curves[s].keys()), 2)  # Two validity ranges
-            for d in curves[s]:
-                self.assertEqual(len(curves[s][d].data), 2)  # Two amps
+        self.read_qe_tester(True)
 
     def test_read_qe_det(self):
-        butler = dafPersist.ButlerFactory(mapper=self.mapper).create()
-        cam = butler.get('camera')
-        qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curves')
-        files = glob.glob(os.path.join(qe_path, 'ccd00', 'per_detector', '*'))
-        dest_files = [os.path.join(qe_path, 'ccd00', os.path.split(f)[1]) for f in files]
-        self.cleanupLinks(dest_files)
-        for f, df in zip(files, dest_files):
-            os.symlink(f, df)
-        curves, data_type = read_all(qe_path, cam)
-        self.assertEqual(len(curves.keys()), 1)  # One sensor
-        self.assertEqual(data_type, 'qe_curves')
-        for s in curves:
-            self.assertEqual(len(curves[s].keys()), 2)  # Two validity ranges
+        self.read_qe_tester(False)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
