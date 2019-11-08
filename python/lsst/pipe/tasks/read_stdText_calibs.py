@@ -30,6 +30,9 @@ def read_one_chip(root, chip_name, chip_id):
     parts = os.path.split(root)
     instrument = os.path.split(parts[0])[1]  # convention is that these reside at <instrument>/<data_name>
     data_name = parts[1]
+    if data_name not in factory_map:
+        raise ValueError(f"Unknown calibration data type, '{data_name}' found. "
+                         f"Only understand {','.join(k for k in factory_map)}")
     factory = factory_map[data_name]
     data_dict = {}
     for f in files:
@@ -40,7 +43,7 @@ def read_one_chip(root, chip_name, chip_id):
     return data_dict, data_name
 
 
-def check_metadata(obj, valid_start, instrument, chip_id, f, data_name):
+def check_metadata(obj, valid_start, instrument, chip_id, filepath, data_name):
     """Check that the metadata is complete and self consistent
 
     Parameters
@@ -70,17 +73,17 @@ def check_metadata(obj, valid_start, instrument, chip_id, f, data_name):
         in the path do not match for any reason.
     """
     md = obj.getMetadata()
-    finst = md.get('INSTRUME')
-    fchip_id = md.get('DETECTOR')
-    fcalib_date = md.get('CALIBDATE')
-    fdata_name = md.get('OBSTYPE')
+    finst = md['INSTRUME']
+    fchip_id = md['DETECTOR']
+    fcalib_date = md['CALIBDATE']
+    fdata_name = md['OBSTYPE']
     if not ((finst.lower(), int(fchip_id), fcalib_date, fdata_name) ==
             (instrument.lower(), chip_id, valid_start.isoformat(), data_name)):
         st_time = valid_start.isoformat()
-        raise ValueError("Path and file metadata do not agree:\n" +
-                         "Path metadata: %s, %s, %s, %s\n"%(instrument, chip_id, st_time, fdata_name) +
-                         "File metadata: %s, %s, %s, %s\n"%(finst, fchip_id, fcalib_date, data_name) +
-                         "File read from : %s\n"%(f)
+        raise ValueError(f"Path and file metadata do not agree:\n"
+                         f"Path metadata: {instrument} {chip_id} {st_time} {data_name}\n"
+                         f"File metadata: {finst} {fchip_id} {fcalib_date} {fdata_name}\n"
+                         f"File read from : %s\n"%(filepath)
                          )
 
 
