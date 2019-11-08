@@ -11,18 +11,18 @@ def read_one_chip(root, chip_name, chip_id):
 
     Parameters
     ----------
-    root : str
+    root : `str`
         Path to the top level of the data tree.  This is expected to hold directories
         named after the sensor names.  They are expected to be lower case.
-    chip_name : str
+    chip_name : `str`
         The name of the sensor for which to read data.
-    chip_id : int
+    chip_id : `int`
         The identifier for the sensor in question.
 
     Returns
     -------
-    dict
-        A dictionary of objects constructed with ``factory``.
+    `dict`
+        A dictionary of objects constructed from the appropriate factory class.
         The key is the validity start time as a `datetime` object.
     """
     factory_map = {'qe_curves': Curve, 'defects': Defects}
@@ -48,15 +48,15 @@ def check_metadata(obj, valid_start, instrument, chip_id, f, data_name):
     obj : object of same type as the factory
         Object to retrieve metadata from in order to compare with
         metadata inferred from the path.
-    valid_start : datetime
+    valid_start : `datetime`
         Start of the validity range for data
-    instrument : str
+    instrument : `str`
         Name of the instrument in question
-    chip_id : int
+    chip_id : `int`
         Identifier of the sensor in question
-    f : str
+    filepath : `str`
         Path of the file read to construct the data
-    data_name : str
+    data_name : `str`
         Name of the type of data being read
 
     Returns
@@ -89,7 +89,7 @@ def read_all(root, camera):
 
     Parameters
     ----------
-    root : str
+    root : `str`
         Path to the top level of the data tree.  This is expected to hold directories
         named after the sensor names.  They are expected to be lower case.
     camera : `lsst.afw.cameraGeom.Camera`
@@ -98,7 +98,7 @@ def read_all(root, camera):
     Returns
     -------
     dict
-        A dictionary of dictionaries of objects constructed with ``factory``.
+        A dictionary of dictionaries of objects constructed with the appropriate factory class.
         The first key is the sensor name, and the second is the validity
         start time as a `datetime` object.
     """
