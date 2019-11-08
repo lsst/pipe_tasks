@@ -1,4 +1,4 @@
-from .ingestCalibs import IngestCalibsTask
+from .ingestCalibs import IngestCalibsTask, IngestCalibsConfig
 from .read_stdText_calibs import read_all
 from lsst.pipe.base import InputOnlyArgumentParser
 
@@ -20,10 +20,17 @@ class IngestStdTextCalibsArgumentParser(InputOnlyArgumentParser):
         self.add_argument("root", help="Root directory to scan for calibs.")
 
 
+class IngestStdTextCalibsConfig(IngestCalibsConfig):
+    def setDefaults(self):
+        if "filter" in self.register.columns:
+            self.parse.defaults["filter"] = "NONE"
+
+
 class IngestStdTextCalibsTask(IngestCalibsTask):
     """Task that generates registry for calibration images"""
     ArgumentParser = IngestStdTextCalibsArgumentParser
     _DefaultName = "ingestStdTextCalibs"
+    ConfigClass = IngestStdTextCalibsConfig
 
     def run(self, args):
         """Ingest all defect files and add them to the registry"""
@@ -45,7 +52,5 @@ class IngestStdTextCalibsTask(IngestCalibsTask):
             args.mode = 'move'
             args.validity = None  # Validity range is determined from the files
             IngestCalibsTask.run(self, args)
-        except Exception:
-            raise(Exception)
         finally:
             shutil.rmtree(temp_dir)
