@@ -1,0 +1,7 @@
+description: Multiband
+tasks:
+  detection: lsst.pipe.tasks.multiBand.DetectCoaddSourcesTask
+  mergeDetections: lsst.pipe.tasks.mergeDetections.MergeDetectionsTask
+  deblend: lsst.pipe.tasks.deblendCoaddSourcesPipeline.DeblendCoaddSourcesSingleTask
+  measure: lsst.pipe.tasks.multiBand.MeasureMergedCoaddSourcesTask
+  mergeMeasurements: lsst.pipe.tasks.mergeMeasurements.MergeMeasurementsTask
