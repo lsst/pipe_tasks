@@ -119,6 +119,11 @@ class ImageDifferenceConfig(pexConfig.Config):
         target=ObjectSizeStarSelectorTask,
         doc="Source selection algorithm",
     )
+    scaleByCalibration = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Compute the flux normalization scaling based on the image calibration.",
+    )
     subtract = subtractAlgorithmRegistry.makeField("Subtraction Algorithm", default="al")
     decorrelate = pexConfig.ConfigurableField(
         target=DecorrelateALKernelSpatialTask,
@@ -369,6 +374,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             templateSources = template.sources
 
             if self.config.subtract.name == 'zogy':
+                if self.config.scaleByCalibration:
+                    calib_exposure = sensorRef.get("calexp_photoCalib")
+                    calib_template = template.calib
+                    self.subtract.config.templateFluxScaling = calib_template.getCalibratedMean()
+                    self.subtract.config.scienceFluxScaling = calib_exposure.getCalibratedMean()
+
                 subtractRes = self.subtract.subtractExposures(templateExposure, exposure,
                                                               doWarping=True,
                                                               spatiallyVarying=self.config.doSpatiallyVarying,
