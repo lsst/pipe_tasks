@@ -375,8 +375,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             if self.config.subtract.name == 'zogy':
                 if self.config.scaleByCalibration:
-                    calib_exposure = sensorRef.get("calexp_photoCalib")
-                    calib_template = template.calib
+                    calib_template = templateExposure.getPhotoCalib()
+                    calib_exposure = exposure.getPhotoCalib()
                     self.subtract.config.templateFluxScaling = calib_template.getCalibratedMean()
                     self.subtract.config.scienceFluxScaling = calib_exposure.getCalibratedMean()
 
