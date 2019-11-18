@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 import numpy
 import itertools
 from scipy.ndimage import gaussian_filter
@@ -481,7 +479,7 @@ class FocalPlaneBackgroundConfig(Config):
     binning = Field(dtype=int, default=64, doc="Binning to use for CCD background model (pixels)")
 
 
-class FocalPlaneBackground(object):
+class FocalPlaneBackground:
     """Background model for a focal plane camera
 
     We model the background empirically with the "superpixel" method: we
