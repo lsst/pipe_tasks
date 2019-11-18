@@ -21,19 +21,23 @@
 
 import os
 import unittest
-
 import pandas as pd
 import numpy as np
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 import lsst.utils.tests
-from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
-from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
-                                      DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
-                                      DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
-                                      HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm)
 
+# TODO: Remove skipUnless and this try block DM-22256
+try:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
+    from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
+                                          DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
+                                          DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
+                                          HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm)
+    havePyArrow = True
+except ImportError:
+    havePyArrow = False
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -42,6 +46,7 @@ def setup_module(module):
     lsst.utils.tests.init()
 
 
+@unittest.skipUnless(havePyArrow, "Requires pyarrow")
 class FunctorTestCase(unittest.TestCase):
     def setUp(self):
         df = pd.read_csv(os.path.join(ROOT, 'data', 'test_multilevel_parq.csv.gz'),

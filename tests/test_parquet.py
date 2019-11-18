@@ -22,22 +22,26 @@
 import unittest
 import copy
 import functools
-
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pandas as pd
-
 from pandas.util.testing import assert_frame_equal
 
 import lsst.utils.tests
 
-from lsst.pipe.tasks.parquetTable import ParquetTable, MultilevelParquetTable
+# TODO: Remove skipUnless and this try block DM-22256
+try:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from lsst.pipe.tasks.parquetTable import ParquetTable, MultilevelParquetTable
+    havePyArrow = True
+except ImportError:
+    havePyArrow = False
 
 
 def setup_module(module):
     lsst.utils.tests.init()
 
 
+@unittest.skipUnless(havePyArrow, "Requires pyarrow")
 class ParquetTableTestCase(unittest.TestCase):
     """Test case for ParquetTable
     """
@@ -88,6 +92,7 @@ class ParquetTableTestCase(unittest.TestCase):
         self.assertTrue(self.parq.toDataFrame(columns=columns + ['hello']).equals(self.df[columns]))
 
 
+@unittest.skipUnless(havePyArrow, "Requires pyarrow")
 class MultilevelParquetTableTestCase(ParquetTableTestCase):
     """Test case for MultilevelParquetTable
     """
