@@ -21,8 +21,9 @@
 
 import os
 import shutil
-import tempfile
 import sqlite3
+import sys
+import tempfile
 from fnmatch import fnmatch
 from glob import glob
 from contextlib import contextmanager
@@ -382,6 +383,7 @@ class RegisterTask(Task):
         else:
             conn.cursor().execute(sql, values)
 
+
 class IngestConfig(Config):
     """Configuration for IngestTask"""
     parse = ConfigurableField(target=ParseTask, doc="File parsing")
@@ -402,13 +404,60 @@ class IngestTask(Task):
         self.makeSubtask("register")
 
     @classmethod
-    def parseAndRun(cls):
-        """Parse the command-line arguments and run the Task"""
+    def parseAndRun(cls, root=None, dryrun=False, mode="move", create=False,
+                    ignoreIngested=False):
+        """Parse the command-line arguments and run the Task.
+
+        If the ``root`` argument is set, prepare for running the task
+        repeatedly with `lsst.pipe.tasks.ingest.IngestTask.runList` rather
+        than directly calling `lsst.pipe.tasks.ingest.IngestTask.run`.
+
+        Parameters
+        ----------
+        root : `str`, optional
+            Repository root pathname.  If None, run the Task using the
+            command line arguments, ignoring all other arguments below.
+        dryrun : `bool`, optional
+            If True, don't perform any action; log what would have happened.
+        mode : `str`, optional
+            How files are delivered to their destination.  Default is "move",
+            unlike the command-line default of "link".
+        create : `bool`, optional
+            If True, create a new registry, clobbering any old one present.
+        ignoreIngested : `bool`, optional
+            If True, do not complain if the file is already present in the
+            registry (and do nothing else).
+
+        Returns
+        -------
+        task : `IngestTask`
+            If `root` was provided, the IngestTask instance
+        """
         config = cls.ConfigClass()
         parser = cls.ArgumentParser(name=cls._DefaultName)
+
+        if root is not None:
+            # Setup for being called from Python
+            sys.argv = ["IngestTask"]
+            sys.argv.append(root)
+            if dryrun:
+                sys.argv.append("--dry-run")
+            sys.argv.append("--mode")
+            sys.argv.append(mode)
+            if create:
+                sys.argv.append("--create")
+            if ignoreIngested:
+                sys.argv.append("--ignore-ingested")
+            sys.argv.append("__fakefile__")
+
         args = parser.parse_args(config)
         task = cls(config=args.config)
-        task.run(args)
+
+        if root is None:
+            task.run(args)
+        else:
+            task._args = args
+            return task
 
     def ingest(self, infile, outfile, mode="move", dryrun=False):
         """Ingest a file into the image repository.
@@ -548,6 +597,22 @@ class IngestTask(Task):
                     continue
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+
+    def runList(self, fileList):
+        """Ingest specified list of files and add them to the registry.
+
+        This method can only be called if `parseAndRun` was invoked with a
+        repository root.
+
+        Parameters
+        ----------
+        fileList : `list` [`str`]
+            List of pathnames for files to ingest.
+        """
+        if not hasattr(self, "_args"):
+            raise RuntimeError("No previous parseAndRun with root")
+        self._args.files = fileList
+        self.run(self._args)
 
 
 def assertCanCopy(fromPath, toPath):
