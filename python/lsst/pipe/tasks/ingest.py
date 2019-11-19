@@ -617,11 +617,13 @@ class IngestTask(Task):
 
         Parameters
         ----------
-        fileList : `list` [`str`]
-            List of pathnames for files to ingest.
+        fileList : `str` or `list` [`str`]
+            Pathname or list of pathnames of files to ingest.
         """
         if not hasattr(self, "_args"):
             raise RuntimeError("No previous parseAndRun with root")
+        if isinstance(fileList, str):
+            fileList = [fileList]
         self._args.files = fileList
         self.run(self._args)
 
