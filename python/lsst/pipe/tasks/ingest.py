@@ -392,6 +392,13 @@ class IngestConfig(Config):
     clobber = Field(dtype=bool, default=False, doc="Clobber existing file?")
 
 
+class IngestError(RuntimeError):
+    def __init__(self, message, pathname, position):
+        super().__init__(message)
+        self.pathname = pathname
+        self.position = position
+
+
 class IngestTask(Task):
     """Task that will ingest images into the data repository"""
     ConfigClass = IngestConfig
@@ -585,18 +592,22 @@ class IngestTask(Task):
         root = args.input
         context = self.register.openRegistry(root, create=args.create, dryrun=args.dryrun)
         with context as registry:
-            for infile in filenameList:
+            for pos in range(len(filenameList)):
+                infile = filenameList[pos]
                 try:
                     hduInfoList = self.runFile(infile, registry, args)
                 except Exception as exc:
                     self.log.warn("Failed to ingest file %s: %s", infile, exc)
                     if not self.config.allowError:
-                        raise RuntimeError(f"Failed to ingest file {infile}") from exc
+                        raise IngestError(f"Failed to ingest file {infile}", infile, pos) from exc
                     continue
                 if hduInfoList is None:
                     continue
                 for info in hduInfoList:
-                    self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+                    try:
+                        self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+                    except Exception as exc:
+                        raise IngestError(f"Failed to register file {infile}", infile, pos) from exc
 
     def runList(self, fileList):
         """Ingest specified list of files and add them to the registry.
