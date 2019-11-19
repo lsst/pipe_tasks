@@ -411,13 +411,28 @@ class IngestTask(Task):
         self.makeSubtask("register")
 
     @classmethod
-    def parseAndRun(cls, root=None, dryrun=False, mode="move", create=False,
-                    ignoreIngested=False):
-        """Parse the command-line arguments and run the Task.
+    def _parse(cls):
+        """Parse the command-line arguments and return them along with a Task
+        instance."""
+        config = cls.ConfigClass()
+        parser = cls.ArgumentParser(name=cls._DefaultName)
+        args = parser.parse_args(config)
+        task = cls(config=args.config)
+        return task, args
 
-        If the ``root`` argument is set, prepare for running the task
-        repeatedly with `lsst.pipe.tasks.ingest.IngestTask.runList` rather
-        than directly calling `lsst.pipe.tasks.ingest.IngestTask.run`.
+    @classmethod
+    def parseAndRun(cls):
+        """Parse the command-line arguments and run the Task."""
+        task, args = cls._parse()
+        task.run(args)
+
+    @classmethod
+    def prepareTask(cls, root=None, dryrun=False, mode="move", create=False,
+                    ignoreIngested=False):
+        """Prepare for running the task repeatedly with `ingestFiles`.
+
+        Saves the parsed arguments, including the Butler and log, as a
+        private instance variable.
 
         Parameters
         ----------
@@ -440,31 +455,21 @@ class IngestTask(Task):
         task : `IngestTask`
             If `root` was provided, the IngestTask instance
         """
-        config = cls.ConfigClass()
-        parser = cls.ArgumentParser(name=cls._DefaultName)
+        sys.argv = ["IngestTask"]
+        sys.argv.append(root)
+        if dryrun:
+            sys.argv.append("--dry-run")
+        sys.argv.append("--mode")
+        sys.argv.append(mode)
+        if create:
+            sys.argv.append("--create")
+        if ignoreIngested:
+            sys.argv.append("--ignore-ingested")
+        sys.argv.append("__fakefile__")    # needed for parsing, not used
 
-        if root is not None:
-            # Setup for being called from Python
-            sys.argv = ["IngestTask"]
-            sys.argv.append(root)
-            if dryrun:
-                sys.argv.append("--dry-run")
-            sys.argv.append("--mode")
-            sys.argv.append(mode)
-            if create:
-                sys.argv.append("--create")
-            if ignoreIngested:
-                sys.argv.append("--ignore-ingested")
-            sys.argv.append("__fakefile__")
-
-        args = parser.parse_args(config)
-        task = cls(config=args.config)
-
-        if root is None:
-            task.run(args)
-        else:
-            task._args = args
-            return task
+        task, args = cls._parse()
+        task._args = args
+        return task
 
     def ingest(self, infile, outfile, mode="move", dryrun=False):
         """Ingest a file into the image repository.
@@ -609,11 +614,10 @@ class IngestTask(Task):
                     except Exception as exc:
                         raise IngestError(f"Failed to register file {infile}", infile, pos) from exc
 
-    def runList(self, fileList):
-        """Ingest specified list of files and add them to the registry.
+    def ingestFiles(self, fileList):
+        """Ingest specified file or list of files and add them to the registry.
 
-        This method can only be called if `parseAndRun` was invoked with a
-        repository root.
+        This method can only be called if `prepareTask` was used.
 
         Parameters
         ----------
@@ -621,7 +625,7 @@ class IngestTask(Task):
             Pathname or list of pathnames of files to ingest.
         """
         if not hasattr(self, "_args"):
-            raise RuntimeError("No previous parseAndRun with root")
+            raise RuntimeError("Task not created with prepareTask")
         if isinstance(fileList, str):
             fileList = [fileList]
         self._args.files = fileList
