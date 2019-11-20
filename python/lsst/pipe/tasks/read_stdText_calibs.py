@@ -102,7 +102,7 @@ def read_all(root, camera):
     -------
     dict
         A dictionary of dictionaries of objects constructed with the appropriate factory class.
-        The first key is the sensor name, and the second is the validity
+        The first key is the sensor name lowered, and the second is the validity
         start time as a `datetime` object.
     """
     root = os.path.normpath(root)
