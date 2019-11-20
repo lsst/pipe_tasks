@@ -225,6 +225,9 @@ class ImageDifferenceConfig(pexConfig.Config):
         if self.doUseRegister and not self.doSelectSources:
             raise ValueError("doUseRegister=True and doSelectSources=False. "
                              "Cannot run RegisterTask without selecting sources.")
+        if self.doPreConvolve and self.doDecorrelation and not self.convolveTemplate:
+            raise ValueError("doPreConvolve=True and doDecorrelation=True and "
+                             "convolveTemplate=False is not supported.")
         if hasattr(self.getTemplate, "coaddName"):
             if self.getTemplate.coaddName != self.coaddName:
                 raise ValueError("Mis-matched coaddName and getTemplate.coaddName in the config.")
@@ -604,11 +607,20 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     preConvKernel = None
                     if preConvPsf is not None:
                         preConvKernel = preConvPsf.getLocalKernel()
-                    decorrResult = self.decorrelate.run(exposure, templateExposure,
-                                                        subtractedExposure,
-                                                        subtractRes.psfMatchingKernel,
-                                                        spatiallyVarying=self.config.doSpatiallyVarying,
-                                                        preConvKernel=preConvKernel)
+                    if self.config.convolveTemplate:
+                        self.log.info("Decorrelation after template image convolution")
+                        decorrResult = self.decorrelate.run(exposure, templateExposure,
+                                                            subtractedExposure,
+                                                            subtractRes.psfMatchingKernel,
+                                                            spatiallyVarying=self.config.doSpatiallyVarying,
+                                                            preConvKernel=preConvKernel)
+                    else:
+                        self.log.info("Decorrelation after science image convolution")
+                        decorrResult = self.decorrelate.run(templateExposure, exposure,
+                                                            subtractedExposure,
+                                                            subtractRes.psfMatchingKernel,
+                                                            spatiallyVarying=self.config.doSpatiallyVarying,
+                                                            preConvKernel=preConvKernel)
                     subtractedExposure = decorrResult.correctedExposure
 
             # END (if subtractAlgorithm == 'AL')
