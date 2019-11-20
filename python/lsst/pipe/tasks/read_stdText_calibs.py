@@ -104,6 +104,11 @@ def read_all(root, camera):
         A dictionary of dictionaries of objects constructed with the appropriate factory class.
         The first key is the sensor name lowered, and the second is the validity
         start time as a `datetime` object.
+
+    Notes
+    -----
+    Each leaf object in the constructed dictionary has metadata associated with it.
+    The detector ID may be retrieved from the DETECTOR entry of that metadata.
     """
     root = os.path.normpath(root)
     dirs = os.listdir(root)  # assumes all directories contain data
