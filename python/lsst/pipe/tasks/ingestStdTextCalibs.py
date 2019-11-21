@@ -8,7 +8,8 @@ import os
 
 
 class IngestStdTextCalibsArgumentParser(InputOnlyArgumentParser):
-    """Argument parser to support ingesting calibration images into the repository"""
+    """Argument parser to support ingesting human curated calibration
+       products in a standardized text file format into the repository"""
 
     def __init__(self, *args, **kwargs):
         InputOnlyArgumentParser.__init__(self, *args, **kwargs)
@@ -27,7 +28,8 @@ class IngestStdTextCalibsConfig(IngestCalibsConfig):
 
 
 class IngestStdTextCalibsTask(IngestCalibsTask):
-    """Task that generates registry for calibration images"""
+    """Task that generates registry for human curated calibration products
+       in a standardized text file format"""
     ArgumentParser = IngestStdTextCalibsArgumentParser
     _DefaultName = "ingestStdTextCalibs"
     ConfigClass = IngestStdTextCalibsConfig
