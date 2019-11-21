@@ -24,3 +24,8 @@ Configuration fields
 ====================
 
 .. lsst-task-config-fields:: lsst.pipe.tasks.scaleVariance.ScaleVarianceTask
+
+Python API reference
+====================
+
+.. automodapi:: lsst.pipe.tasks.scaleVariance
