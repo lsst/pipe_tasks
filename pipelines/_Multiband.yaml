@@ -6,6 +6,9 @@ tasks:
   deblend: lsst.pipe.tasks.deblendCoaddSourcesPipeline.DeblendCoaddSourcesMultiTask
   measure: lsst.pipe.tasks.multiBand.MeasureMergedCoaddSourcesTask
   mergeMeasurements: lsst.pipe.tasks.mergeMeasurements.MergeMeasurementsTask
+  writeObjectTable: lsst.pipe.tasks.postprocess.WriteObjectTableTask
+  transformObjectTable: lsst.pipe.tasks.postprocess.TransformObjectCatalogTask
+  consolidateObjectTable: lsst.pipe.tasks.postprocess.ConsolidateObjectTableTask
 subsets:
   multiband:
     subset:
@@ -16,3 +19,10 @@ subsets:
       - mergeMeasurements
     description: A set of tasks to run when making measurements on one or more
       bands of coadd outputs
+  objectTable:
+    subset:
+      - writeObjectTable
+      - transformObjectTable
+      - consolidateObjectTable
+    description: A set of tasks to transform multiband outputs into a parquet
+      object table

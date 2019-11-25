@@ -33,6 +33,7 @@ import lsst.afw.table as afwTable
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
 from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
+from lsst.daf.butler import DeferredDatasetHandle
 
 from .parquetTable import ParquetTable
 from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
@@ -61,7 +62,41 @@ def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False, inp
     return newDf
 
 
-class WriteObjectTableConfig(pexConfig.Config):
+class WriteObjectTableConnections(pipeBase.PipelineTaskConnections,
+                                  defaultTemplates={"coaddName": "deep"},
+                                  dimensions=("tract", "patch", "skymap")):
+    inputCatalogMeas = connectionTypes.Input(
+        doc="Catalog of source measurements on the deepCoadd.",
+        dimensions=("tract", "patch", "band", "skymap"),
+        storageClass="SourceCatalog",
+        name="{coaddName}Coadd_meas",
+        multiple=True
+    )
+    inputCatalogForcedSrc = connectionTypes.Input(
+        doc="Catalog of forced measurements (shape and position parameters held fixed) on the deepCoadd.",
+        dimensions=("tract", "patch", "band", "skymap"),
+        storageClass="SourceCatalog",
+        name="{coaddName}Coadd_forced_src",
+        multiple=True
+    )
+    inputCatalogRef = connectionTypes.Input(
+        doc="Catalog marking the primary detection (which band provides a good shape and position)"
+            "for each detection in deepCoadd_mergeDet.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="SourceCatalog",
+        name="{coaddName}Coadd_ref"
+    )
+    outputCatalog = connectionTypes.Output(
+        doc="A vertical concatenation of the deepCoadd_{ref|meas|forced_src} catalogs, "
+            "stored as a DataFrame with a multi-level column index per-patch.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="DataFrame",
+        name="{coaddName}Coadd_obj"
+    )
+
+
+class WriteObjectTableConfig(pipeBase.PipelineTaskConfig,
+                             pipelineConnections=WriteObjectTableConnections):
     engine = pexConfig.Field(
         dtype=str,
         default="pyarrow",
@@ -74,7 +109,7 @@ class WriteObjectTableConfig(pexConfig.Config):
     )
 
 
-class WriteObjectTableTask(CmdLineTask):
+class WriteObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
     """Write filter-merged source tables to parquet
     """
     _DefaultName = "writeObjectTable"
@@ -91,7 +126,7 @@ class WriteObjectTableTask(CmdLineTask):
         # It is a shame that this class can't use the default init for CmdLineTask
         # But to do so would require its own special task runner, which is many
         # more lines of specialization, so this is how it is for now
-        CmdLineTask.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     def runDataRef(self, patchRefList):
         """!
@@ -102,7 +137,25 @@ class WriteObjectTableTask(CmdLineTask):
         catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
         dataId = patchRefList[0].dataId
         mergedCatalog = self.run(catalogs, tract=dataId['tract'], patch=dataId['patch'])
-        self.write(patchRefList[0], mergedCatalog)
+        self.write(patchRefList[0], ParquetTable(dataFrame=mergedCatalog))
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+
+        measDict = {ref.dataId['band']: {'meas': cat} for ref, cat in
+                    zip(inputRefs.inputCatalogMeas, inputs['inputCatalogMeas'])}
+        forcedSourceDict = {ref.dataId['band']: {'forced_src': cat} for ref, cat in
+                            zip(inputRefs.inputCatalogForcedSrc, inputs['inputCatalogForcedSrc'])}
+
+        catalogs = {}
+        for band in measDict.keys():
+            catalogs[band] = {'meas': measDict[band]['meas'],
+                              'forced_src': forcedSourceDict[band]['forced_src'],
+                              'ref': inputs['inputCatalogRef']}
+        dataId = butlerQC.quantum.dataId
+        df = self.run(catalogs=catalogs, tract=dataId['tract'], patch=dataId['patch'])
+        outputs = pipeBase.Struct(outputCatalog=df)
+        butlerQC.put(outputs, outputRefs)
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -156,9 +209,8 @@ class WriteObjectTableTask(CmdLineTask):
 
         Returns
         -------
-        catalog : `lsst.pipe.tasks.parquetTable.ParquetTable`
-            Merged dataframe, with each column prefixed by
-            `filter_tag(filt)`, wrapped in the parquet writer shim class.
+        catalog : `pandas.DataFrame`
+            Merged dataframe
         """
 
         dfs = []
@@ -178,7 +230,7 @@ class WriteObjectTableTask(CmdLineTask):
                 dfs.append(df)
 
         catalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
-        return ParquetTable(dataFrame=catalog)
+        return catalog
 
     def write(self, patchRef, catalog):
         """Write the output.
@@ -656,7 +708,28 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
         pass
 
 
-class TransformObjectCatalogConfig(TransformCatalogBaseConfig):
+class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
+                                        defaultTemplates={"coaddName": "deep"},
+                                        dimensions=("tract", "patch", "skymap")):
+    inputCatalog = connectionTypes.Input(
+        doc="The vertical concatenation of the deepCoadd_{ref|meas|forced_src} catalogs, "
+            "stored as a DataFrame with a multi-level column index per-patch.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="DataFrame",
+        name="{coaddName}Coadd_obj",
+        deferLoad=True,
+    )
+    outputCatalog = connectionTypes.Output(
+        doc="Per-Patch Object Table of columns transformed from the deepCoadd_obj table per the standard "
+            "data model.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="DataFrame",
+        name="objectTable"
+    )
+
+
+class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
+                                   pipelineConnections=TransformObjectCatalogConnections):
     coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
@@ -709,6 +782,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
 
+    # Used by Gen 2 runDataRef only:
     inputDataset = 'deepCoadd_obj'
     outputDataset = 'objectTable'
 
@@ -725,11 +799,17 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
         dfDict = {}
         analysisDict = {}
         templateDf = pd.DataFrame()
-        outputBands = parq.columnLevelNames['band'] if self.config.outputBands is None else \
-            self.config.outputBands
+
+        if isinstance(parq, DeferredDatasetHandle):
+            columns = parq.get(component='columns')
+            inputBands = columns.unique(level=1).values
+        else:
+            inputBands = parq.columnLevelNames['band']
+
+        outputBands = self.config.outputBands if self.config.outputBands else inputBands
 
         # Perform transform for data of filters that exist in parq.
-        for inputBand in parq.columnLevelNames['band']:
+        for inputBand in inputBands:
             if inputBand not in outputBands:
                 self.log.info("Ignoring %s band data in the input", inputBand)
                 continue
@@ -798,7 +878,25 @@ class TractObjectDataIdContainer(CoaddDataIdContainer):
         self.refList = outputRefList
 
 
-class ConsolidateObjectTableConfig(pexConfig.Config):
+class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
+                                        dimensions=("tract", "skymap")):
+    inputCatalogs = connectionTypes.Input(
+        doc="Per-Patch objectTables conforming to the standard data model.",
+        name="objectTable",
+        storageClass="DataFrame",
+        dimensions=("tract", "patch", "skymap"),
+        multiple=True,
+    )
+    outputCatalog = connectionTypes.Output(
+        doc="Pre-tract horizontal concatenation of the input objectTables",
+        name="objectTable_tract",
+        storageClass="DataFrame",
+        dimensions=("tract", "skymap"),
+    )
+
+
+class ConsolidateObjectTableConfig(pipeBase.PipelineTaskConfig,
+                                   pipelineConnections=ConsolidateObjectTableConnections):
     coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
@@ -806,14 +904,23 @@ class ConsolidateObjectTableConfig(pexConfig.Config):
     )
 
 
-class ConsolidateObjectTableTask(CmdLineTask):
+class ConsolidateObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
     """Write patch-merged source tables to a tract-level parquet file
+
+    Concatenates `objectTable` list into a per-visit `objectTable_tract`
     """
     _DefaultName = "consolidateObjectTable"
     ConfigClass = ConsolidateObjectTableConfig
 
     inputDataset = 'objectTable'
     outputDataset = 'objectTable_tract'
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        self.log.info("Concatenating %s per-patch Object Tables",
+                      len(inputs['inputCatalogs']))
+        df = pd.concat(inputs['inputCatalogs'])
+        butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
 
     @classmethod
     def _makeArgumentParser(cls):
