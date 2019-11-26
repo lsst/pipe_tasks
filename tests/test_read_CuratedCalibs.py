@@ -31,7 +31,7 @@ import tempfile
 import lsst.utils.tests
 from lsst.utils import getPackageDir
 import lsst.obs.base
-from lsst.pipe.tasks.read_stdText_calibs import read_all
+from lsst.pipe.tasks.read_curated_calibs import read_all
 import lsst.daf.persistence as dafPersist
 
 ROOT = os.path.join(getPackageDir('obs_base'), 'tests')

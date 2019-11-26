@@ -1,5 +1,5 @@
 from .ingestCalibs import IngestCalibsTask, IngestCalibsConfig
-from .read_stdText_calibs import read_all
+from .read_curated_calibs import read_all
 from lsst.pipe.base import InputOnlyArgumentParser
 
 import tempfile
@@ -7,7 +7,7 @@ import shutil
 import os
 
 
-class IngestStdTextCalibsArgumentParser(InputOnlyArgumentParser):
+class IngestCuratedCalibsArgumentParser(InputOnlyArgumentParser):
     """Argument parser to support ingesting human curated calibration
        products in a standardized text file format into the repository"""
 
@@ -21,18 +21,18 @@ class IngestStdTextCalibsArgumentParser(InputOnlyArgumentParser):
         self.add_argument("root", help="Root directory to scan for calibs.")
 
 
-class IngestStdTextCalibsConfig(IngestCalibsConfig):
+class IngestCuratedCalibsConfig(IngestCalibsConfig):
     def setDefaults(self):
         if "filter" in self.register.columns:
             self.parse.defaults["filter"] = "NONE"
 
 
-class IngestStdTextCalibsTask(IngestCalibsTask):
+class IngestCuratedCalibsTask(IngestCalibsTask):
     """Task that generates registry for human curated calibration products
        in a standardized text file format"""
-    ArgumentParser = IngestStdTextCalibsArgumentParser
-    _DefaultName = "ingestStdTextCalibs"
-    ConfigClass = IngestStdTextCalibsConfig
+    ArgumentParser = IngestCuratedCalibsArgumentParser
+    _DefaultName = "ingestCuratedCalibs"
+    ConfigClass = IngestCuratedCalibsConfig
 
     def run(self, args):
         """Ingest all defect files and add them to the registry"""
