@@ -377,8 +377,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if self.config.scaleByCalibration:
                     calib_template = templateExposure.getPhotoCalib()
                     calib_exposure = exposure.getPhotoCalib()
-                    self.subtract.config.templateFluxScaling = calib_template.getCalibratedMean()
-                    self.subtract.config.scienceFluxScaling = calib_exposure.getCalibratedMean()
+                    self.subtract.config.zogyConfig.templateFluxScaling = calib_template.getCalibrationMean()
+                    self.subtract.config.zogyConfig.scienceFluxScaling = calib_exposure.getCalibrationMean()
 
                 subtractRes = self.subtract.subtractExposures(templateExposure, exposure,
                                                               doWarping=True,
