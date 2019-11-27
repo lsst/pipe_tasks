@@ -65,9 +65,6 @@ class ProcessCcdConfig(pexConfig.Config):
     def setDefaults(self):
         self.isr.doWrite = False
         self.charImage.doWriteExposure = False
-        self.charImage.detection.doTempLocalBackground = False
-        self.calibrate.detection.doTempLocalBackground = False
-        self.calibrate.deblend.maxFootprintSize = 2000
 
 ## \addtogroup LSST_task_documentation
 ## \{

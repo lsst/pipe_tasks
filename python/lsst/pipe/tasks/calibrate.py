@@ -286,6 +286,11 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
             "normal calexp but as a fakes_calexp."
     )
 
+    def setDefaults(self):
+        super().setDefaults()
+        self.detection.doTempLocalBackground = False
+        self.deblend.maxFootprintSize = 2000
+
     def validate(self):
         super().validate()
         astromRefCatGen2 = getattr(self.astromRefObjLoader, "ref_dataset_name", None)
