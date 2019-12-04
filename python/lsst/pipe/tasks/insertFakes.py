@@ -32,7 +32,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, PipelineTaskConnections
-import lsst.pipe.base.connectionTyes as cT
+import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.geom import SpherePoint, radians, Box2D
@@ -46,27 +46,28 @@ class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddNa
 
     image = cT.Input(
         doc="Image into which fakes are to be added.",
-        nameTemplate="{CoaddName}Coadd",
+        name="{CoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
 
     fakeCat = cT.Input(
         doc="Catalog of fake sources to draw inputs from.",
-        nameTemplate="{CoaddName}Coadd_fakeSourceCat",
+        name="{CoaddName}Coadd_fakeSourceCat",
         storageClass="Parquet",
         dimensions=("tract", "skymap")
     )
 
     imageWithFakes = cT.Output(
         doc="Image with fake sources added.",
-        nameTemplate="fakes_{CoaddName}Coadd",
+        name="fakes_{CoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "abstract_filter", "skymap")
     )
 
 
-class InsertFakesConfig(PipelineTaskConfig):
+class InsertFakesConfig(PipelineTaskConfig,
+                        pipelineConnections=InsertFakesConnections):
     """Config for inserting fake sources
 
     Notes
@@ -387,10 +388,10 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
                     Photometric calibration to be used to calibrate the fake sources
 
-        Returns
+        Yields
         -------
-        galImages : `list`
-                    A list of tuples of `lsst.afw.image.exposure.exposure.ExposureF` and
+        galImages : `generator`
+                    A generator of tuples of `lsst.afw.image.exposure.exposure.ExposureF` and
                     `lsst.geom.Point2D` of their locations.
 
         Notes
@@ -404,8 +405,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         University of Washington simulations database as default. For more information see the doc strings
         attached to the config options.
         """
-
-        galImages = []
 
         self.log.info("Making %d fake galaxy images" % len(fakeCat))
 
@@ -446,9 +445,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             except (galsim.errors.GalSimFFTSizeError, MemoryError):
                 continue
 
-            galImages.append((afwImage.ImageF(galIm), xy))
-
-        return galImages
+            yield (afwImage.ImageF(galIm), xy)
 
     def mkFakeStars(self, fakeCat, band, photoCalib, psf, image):
 
@@ -466,14 +463,12 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
                     Photometric calibration to be used to calibrate the fake sources
 
-        Returns
+        Yields
         -------
-        starImages : `list`
-                    A list of tuples of `lsst.afw.image.ImageF` of fake stars and
+        starImages : `generator`
+                    A generator of tuples of `lsst.afw.image.ImageF` of fake stars and
                     `lsst.geom.Point2D` of their locations.
         """
-
-        starImages = []
 
         self.log.info("Making %d fake star images" % len(fakeCat))
 
@@ -497,9 +492,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 flux = 0
 
             starIm *= flux
-            starImages.append((starIm.convertF(), xy))
-
-        return starImages
+            yield ((starIm.convertF(), xy))
 
     def cleanCat(self, fakeCat):
         """Remove rows from the fakes catalog which have HLR = 0 for either the buldge or disk component
@@ -529,9 +522,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         ----------
         image : `lsst.afw.image.exposure.exposure.ExposureF`
                     The image into which the fake sources should be added
-        fakeImages : `list`
-                    A list of tuples of `lsst.afw.image.ImageF` and `lsst.geom.Point2D,
-                    the images and the locations they are to be inserted at.
+        fakeImages : `typing.Iterator` [`tuple` ['lsst.afw.image.ImageF`, `lsst.geom.Point2d`]]
+                    An iterator of tuples that contains (or generates) images of fake sources,
+                    and the locations they are to be inserted at.
         sourceType : `str`
                     The type (star/galaxy) of fake sources input
 
