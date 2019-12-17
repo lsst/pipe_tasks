@@ -24,3 +24,9 @@ Configuration fields
 ====================
 
 .. lsst-task-config-fields:: lsst.pipe.tasks.imageDifference.ImageDifferenceTask
+
+Python API reference
+====================
+
+.. automodapi:: lsst.pipe.tasks.imageDifference
+

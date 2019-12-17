@@ -43,6 +43,7 @@ import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 import lsst.afw.display as afwDisplay
 
+__all__ = ["ImageDifferenceConfig", "ImageDifferenceTask"]
 FwhmPerSigma = 2*math.sqrt(2*math.log(2))
 IqrToSigma = 0.741
 
@@ -323,34 +324,31 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def runDataRef(self, sensorRef, templateIdList=None):
         """Subtract an image from a template coadd and measure the result.
 
-        Steps include:
-        - warp template coadd to match WCS of image
-        - PSF match image to warped template
-        - subtract image from PSF-matched, warped template
-        - persist difference image
-        - detect sources
-        - measure sources
+        Data I/O wrapper around `run` using the butler in Gen2.
 
-        @param sensorRef: sensor-level butler data reference, used for the following data products:
-        Input only:
-        - calexp
-        - psf
-        - ccdExposureId
-        - ccdExposureId_bits
-        - self.config.coaddName + "Coadd_skyMap"
-        - self.config.coaddName + "Coadd"
-        Input or output, depending on config:
-        - self.config.coaddName + "Diff_subtractedExp"
-        Output, depending on config:
-        - self.config.coaddName + "Diff_matchedExp"
-        - self.config.coaddName + "Diff_src"
+        Parameters
+        ----------
+        sensorRef : `lsst.daf.persistence.ButlerDataRef`
+            Sensor-level butler data reference, used for the following data products:
 
-        @return pipe_base Struct containing these fields:
-        - subtractedExposure: exposure after subtracting template;
-            the unpersisted version if subtraction not run but detection run
-            None if neither subtraction nor detection run (i.e. nothing useful done)
-        - subtractRes: results of subtraction task; None if subtraction not run
-        - sources: detected and possibly measured sources; None if detection not run
+            Input only:
+            - calexp
+            - psf
+            - ccdExposureId
+            - ccdExposureId_bits
+            - self.config.coaddName + "Coadd_skyMap"
+            - self.config.coaddName + "Coadd"
+            Input or output, depending on config:
+            - self.config.coaddName + "Diff_subtractedExp"
+            Output, depending on config:
+            - self.config.coaddName + "Diff_matchedExp"
+            - self.config.coaddName + "Diff_src"
+
+        Returns
+        -------
+        results : `lsst.pipe.base.Struct`
+            Returns the Struct by `run`.
+
         """
         self.log.info("Processing %s" % (sensorRef.dataId))
 
@@ -459,34 +457,61 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             sensorRef.put(results.selectSources, self.config.coaddName + "Diff_kernelSrc")
         if self.config.doWriteSubtractedExp:
             sensorRef.put(results.subtractedExposure, subtractedExposureName)
+        return results
 
     def run(self, exposure=None, selectSources=None, templateExposure=None, templateSources=None,
             matchingSources=None, idFactory=None, calexpBackgroundExposure=None, subtractedExposure=None):
-        """Subtract an image from a template and measure the result
+        """PSF matches, subtract two images and perform detection on the difference image.
 
         Parameters
         ----------
-
-        ``kernelSources``: `lsst.afw.table.SourceCatalog`, optional
-            Catalog of sources atound which the AL algorithm performs PSF matching.
-            If None, performs source detection on science exposure and matches
-            with the tempolate sources if the latter exists.
-
-        ``subtractedExposure``:
-            If not None and doDetection==True, performs the post subtraction steps
-            on this exposure.
-
+        exposure : `lsst.afw.image.ExposureF`, optional
+            The science exposure, the minuend in the image subtraction.
+            Can be None only if ``config.doSubtract==False``.
+        selectSources : `lsst.afw.table.SourceCatalog`, optional
+            Identified sources on the science exposure. This catalog is used to
+            select sources in order to perform the AL PSF matching on stamp images
+            around them. The selection steps depend on config options and whether
+            ``templateSources`` and ``matchingSources`` specified.
+        templateExposure : `lsst.afw.image.ExposureF`, optional
+            This exposure is the subtrahend in the image subtraction. The template
+            exposure shall practically cover the same sky area as the science exposure.
+            It is either a stich of patches of a coadd skymap image or a calexp
+            of the same pointing as the science exposure. Can be None only
+            if ``config.doDetection==False`` and ``subtractedExposure`` is not None.
+        templateSources : `lsst.afw.table.SourceCatalog`, optional
+            Identified sources on the template exposure.
+        matchingSources : `lsst.afw.table.SourceCatalog`, optional
+            A subset of ``selectSources`` matching with an external catalog or with
+            templateSources.
+        idFactory : `lsst.afw.table.IdFactory`
+            Generator object to assign ids to detected sources in the difference image.
+        calexpBackgroundExposure : `lsst.afw.image.ExposureF`, optional
+            Background exposure to be added back to the science exposure
+            if ``config.doAddCalexpBackground==True``
+        subtractedExposure : `lsst.afw.image.ExposureF`, optional
+            If ``config.doSubtract==False`` and ``config.doDetection==True``,
+            performs the post subtraction source detection only on this exposure.
+            Otherwise should be None.
 
         Returns
         -------
-        `lsst.pipe.base.Struct`:
-            TBD
+        results : `lsst.pipe.base.Struct`
+            ``subtractedExposure`` : `lsst.afw.image.ExposureF`
+                Difference image.
+            ``matchedExposure`` : `lsst.afw.image.ExposureF`
+                The matched PSF exposure.
+            ``subtractRes`` : `lsst.pipe.base.Struct`
+                The returned result structure of the ImagePsfMatchTask subtask.
+            ``diaSources``  : `lsst.afw.table.SourceCatalog`
+                The catalog of detected sources.
+            ``selectSources`` : `lsst.afw.table.SourceCatalog`
+                The input source catalog with optionally added Qa information.
 
         Notes
         -----
-        TBD
-
         Steps include:
+
         - warp template coadd to match WCS of image
         - PSF match image to warped template
         - subtract image from PSF-matched, warped template
@@ -494,12 +519,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         - detect sources
         - measure sources
 
-        @return pipe_base Struct containing these fields:
-        - subtractedExposure: exposure after subtracting template;
-            the unpersisted version if subtraction not run but detection run
-            None if neither subtraction nor detection run (i.e. nothing useful done)
-        - subtractRes: results of subtraction task; None if subtraction not run
-        - sources: detected and possibly measured sources; None if detection not run
+        For details about the image subtraction configuration modes
+        see `lsst.ip.diffim`.
         """
 
         # initialize outputs and some intermediate products
@@ -873,7 +894,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
     def fitAstrometry(self, templateSources, templateExposure, selectSources):
         """Fit the relative astrometry between templateSources and selectSources
 
-        @todo remove this method. It originally fit a new WCS to the template before calling register.run
+        Todo
+        ----
+
+        Remove this method. It originally fit a new WCS to the template before calling register.run
         because our TAN-SIP fitter behaved badly for points far from CRPIX, but that's been fixed.
         It remains because a subtask overrides it.
         """
@@ -882,7 +906,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         return results
 
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
-        """@todo Test and update for current debug display and slot names
+        """Make debug plots and displays.
+
+        Todo
+        ----
+        Test and update for current debug display and slot names
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display
