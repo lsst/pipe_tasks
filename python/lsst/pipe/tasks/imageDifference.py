@@ -229,8 +229,12 @@ class ImageDifferenceConfig(pexConfig.Config):
 
     def validate(self):
         pexConfig.Config.validate(self)
+        if self.doAddMetrics and not self.doSubtract:
+            raise ValueError("Subtraction must be enabled for kernel metrics calculation.")
         if not self.doSubtract and not self.doDetection:
             raise ValueError("Either doSubtract or doDetection must be enabled.")
+        if self.subtract.name == 'zogy' and self.doAddMetrics:
+            raise ValueError("Kernel metrics does not exist in zogy subtraction.")
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
         if self.doMerge and not self.doDetection:
@@ -320,6 +324,30 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
 
+    @staticmethod
+    def makeIdFactory(expId, expBits):
+        """Create IdFactory instance for unique 64 bit diaSource id-s.
+
+        Parameters
+        ----------
+        expId : `int`
+            Exposure id.
+
+        expBits: `int`
+            Number of used bits in ``expId``.
+
+        Note
+        ----
+        The diasource id-s consists of the ``expId`` stored fixed in the highest value
+        ``expBits`` of the 64-bit integer plus (bitwise or) a generated sequence number in the
+        low value end of the integer.
+
+        Returns
+        -------
+        idFactory: `lsst.afw.table.IdFactory`
+        """
+        return afwTable.IdFactory.makeSource(expId, 64 - expBits)
+
     @pipeBase.timeMethod
     def runDataRef(self, sensorRef, templateIdList=None):
         """Subtract an image from a template coadd and measure the result.
@@ -348,26 +376,18 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         -------
         results : `lsst.pipe.base.Struct`
             Returns the Struct by `run`.
-
         """
-        self.log.info("Processing %s" % (sensorRef.dataId))
-
-        exposure = None
         subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
         subtractedExposure = None
-        templateExposure = None  # Stitched coadd exposure (or calexp)
-        templateSources = None   # Sources on the template image
-        matches = None
         selectSources = None
         calexpBackgroundExposure = None
+        self.log.info("Processing %s" % (sensorRef.dataId))
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
         # I don't know if this is the way we ultimately want to do things, but at least
         # this ensures the source IDs are fully unique.
-        expBits = sensorRef.get("ccdExposureId_bits")
-        expId = int(sensorRef.get("ccdExposureId"))
-        idFactory = afwTable.IdFactory.makeSource(expId, 64 - expBits)
-
+        idFactory = self.makeIdFactory(expId=int(sensorRef.get("ccdExposureId")),
+                                       expBits=sensorRef.get("ccdExposureId_bits"))
         if self.config.doAddCalexpBackground:
             calexpBackgroundExposure = sensorRef.get("calexpBackground")
 
@@ -376,75 +396,21 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         # Retrieve the template image
         template = self.getTemplate.run(exposure, sensorRef, templateIdList=templateIdList)
-        templateExposure = template.exposure
-        templateSources = template.sources
 
-        # Load the calexp source catalog or perform detection anyway
-        # it can be used in the doDetection branch in run()
-        if not sensorRef.datasetExists("src"):
-            sciencePsf = exposure.getPsf()
-            scienceSigmaOrig = sciencePsf.computeShape().getDeterminantRadius()
-            if self.config.doPreConvolve:
-                scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
-            else:
-                scienceSigmaPost = scienceSigmaOrig
-            self.log.warn("Src product does not exist; running detection, measurement, selection")
-            # Run own detection and measurement; necessary in nightly processing
-            selectSources = self.subtract.getSelectSources(
-                exposure,
-                sigma=scienceSigmaPost,
-                doSmooth=not self.doPreConvolve,
-                idFactory=idFactory,
-            )
-        else:
+        if sensorRef.datasetExists("src"):
             self.log.info("Source selection via src product")
             # Sources already exist; for data release processing
             selectSources = sensorRef.get("src")
 
-        # Prepare kernelSources for AL either based on the template or on
-        # external reference catalog
-        if self.config.doSubtract:
-            if self.config.subtract.name == 'al':
-                if self.config.doSelectSources:
-                    if self.config.doAddMetrics:
-                        # Number of basis functions
-                        templateSigma = templateExposure.getPsf().computeShape().getDeterminantRadius()
-                        nparam = len(makeKernelBasisList(self.subtract.config.kernel.active,
-                                                         referenceFwhmPix=scienceSigmaPost*FwhmPerSigma,
-                                                         targetFwhmPix=templateSigma*FwhmPerSigma))
-                        # Modify the schema of all Sources
-                        # DEPRECATED: This is a data dependent (nparam) output product schema
-                        # outside the task constructor.
-                        # NOTE: The pre-determination of nparam at this point
-                        # may be incorrect as the template psf is warped later in
-                        # ImagePsfMatchTask.matchExposures()
-                        kcQa = KernelCandidateQa(nparam)
-                        selectSources = kcQa.addToSchema(selectSources)
-                    if self.config.kernelSourcesFromRef:
-                        # match exposure sources to reference catalog
-                        astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
-                        matches = astromRet.matches
-                    elif templateSources:
-                        # match exposure sources to template sources
-                        mc = afwTable.MatchControl()
-                        mc.findOnlyClosest = False
-                        matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*geom.arcseconds,
-                                                      mc)
-                    else:
-                        raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False,"
-                                           "but template sources not available. Cannot match science "
-                                           "sources with template sources. Run process* on data from "
-                                           "which templates are built.")
-        elif self.config.doDetection:
+        if self.config.doDetection:
             # If we don't do subtraction, we need the subtracted exposure from the repo
             subtractedExposure = sensorRef.get(subtractedExposureName)
         # Both doSubtract and doDetection cannot be False
 
         results = self.run(exposure=exposure,
                            selectSources=selectSources,
-                           templateExposure=templateExposure,
-                           templateSources=templateSources,
-                           matchingSources=matches,
+                           templateExposure=template.exposure,
+                           templateSources=template.sources,
                            idFactory=idFactory,
                            calexpBackgroundExposure=calexpBackgroundExposure,
                            subtractedExposure=subtractedExposure)
@@ -460,7 +426,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         return results
 
     def run(self, exposure=None, selectSources=None, templateExposure=None, templateSources=None,
-            matchingSources=None, idFactory=None, calexpBackgroundExposure=None, subtractedExposure=None):
+            idFactory=None, calexpBackgroundExposure=None, subtractedExposure=None):
         """PSF matches, subtract two images and perform detection on the difference image.
 
         Parameters
@@ -474,16 +440,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             around them. The selection steps depend on config options and whether
             ``templateSources`` and ``matchingSources`` specified.
         templateExposure : `lsst.afw.image.ExposureF`, optional
-            This exposure is the subtrahend in the image subtraction. The template
-            exposure shall practically cover the same sky area as the science exposure.
+            The template to be subtracted from ``exposure`` in the image subtraction.
+            The template exposure should cover the same sky area as the science exposure.
             It is either a stich of patches of a coadd skymap image or a calexp
             of the same pointing as the science exposure. Can be None only
-            if ``config.doDetection==False`` and ``subtractedExposure`` is not None.
+            if ``config.doSubtract==False`` and ``subtractedExposure`` is not None.
         templateSources : `lsst.afw.table.SourceCatalog`, optional
             Identified sources on the template exposure.
-        matchingSources : `lsst.afw.table.SourceCatalog`, optional
-            A subset of ``selectSources`` matching with an external catalog or with
-            templateSources.
         idFactory : `lsst.afw.table.IdFactory`
             Generator object to assign ids to detected sources in the difference image.
         calexpBackgroundExposure : `lsst.afw.image.ExposureF`, optional
@@ -510,23 +473,21 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
         Notes
         -----
-        Steps include:
+        The following major steps are included:
 
         - warp template coadd to match WCS of image
         - PSF match image to warped template
         - subtract image from PSF-matched, warped template
-        - persist difference image
         - detect sources
         - measure sources
 
         For details about the image subtraction configuration modes
         see `lsst.ip.diffim`.
         """
-
-        # initialize outputs and some intermediate products
         subtractRes = None
         controlSources = None
         diaSources = None
+        kernelSources = None
 
         if self.config.doAddCalexpBackground:
             mi = exposure.getMaskedImage()
@@ -552,11 +513,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             elif self.config.subtract.name == 'al':
                 # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
                 scienceSigmaOrig = sciencePsf.computeShape().getDeterminantRadius()
+                templateSigma = templateExposure.getPsf().computeShape().getDeterminantRadius()
 
                 # if requested, convolve the science exposure with its PSF
                 # (properly, this should be a cross-correlation, but our code does not yet support that)
                 # compute scienceSigmaPost: sigma of science exposure with pre-convolution, if done,
                 # else sigma of original science exposure
+                # TODO: DM-22762 This functional block should be moved into its own method
                 preConvPsf = None
                 if self.config.doPreConvolve:
                     convControl = afwMath.ConvolutionControl()
@@ -573,10 +536,54 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         preConvPsf = srcPsf
                     afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
                     exposure.setMaskedImage(destMI)
+                    scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
+                else:
+                    scienceSigmaPost = scienceSigmaOrig
 
-                # If requested, find sources in the image
+                # If requested, find and select sources from the image
+                # else, AL subtraction will do its own source detection
+                # TODO: DM-22762 This functional block should be moved into its own method
                 if self.config.doSelectSources:
-                    matches = matchingSources
+                    if selectSources is None:
+                        self.log.warn("Src product does not exist; running detection, measurement, selection")
+                        # Run own detection and measurement; necessary in nightly processing
+                        selectSources = self.subtract.getSelectSources(
+                            exposure,
+                            sigma=scienceSigmaPost,
+                            doSmooth=not self.doPreConvolve,
+                            idFactory=idFactory,
+                        )
+
+                    if self.config.doAddMetrics:
+                        # Number of basis functions
+
+                        nparam = len(makeKernelBasisList(self.subtract.config.kernel.active,
+                                                         referenceFwhmPix=scienceSigmaPost*FwhmPerSigma,
+                                                         targetFwhmPix=templateSigma*FwhmPerSigma))
+                        # Modify the schema of all Sources
+                        # DEPRECATED: This is a data dependent (nparam) output product schema
+                        # outside the task constructor.
+                        # NOTE: The pre-determination of nparam at this point
+                        # may be incorrect as the template psf is warped later in
+                        # ImagePsfMatchTask.matchExposures()
+                        kcQa = KernelCandidateQa(nparam)
+                        selectSources = kcQa.addToSchema(selectSources)
+                    if self.config.kernelSourcesFromRef:
+                        # match exposure sources to reference catalog
+                        astromRet = self.astrometer.loadAndMatch(exposure=exposure, sourceCat=selectSources)
+                        matches = astromRet.matches
+                    elif templateSources:
+                        # match exposure sources to template sources
+                        mc = afwTable.MatchControl()
+                        mc.findOnlyClosest = False
+                        matches = afwTable.matchRaDec(templateSources, selectSources, 1.0*geom.arcseconds,
+                                                      mc)
+                    else:
+                        raise RuntimeError("doSelectSources=True and kernelSourcesFromRef=False,"
+                                           "but template sources not available. Cannot match science "
+                                           "sources with template sources. Run process* on data from "
+                                           "which templates are built.")
+
                     kernelSources = self.sourceSelector.run(selectSources, exposure=exposure,
                                                             matches=matches).sourceCat
                     random.shuffle(kernelSources, random.random)
@@ -606,11 +613,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
                     self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)"
                                   % (len(kernelSources), len(selectSources), len(controlSources)))
-                else:
-                    # AL subtraction will do its own source detection
-                    kernelSources = None
 
                 allresids = {}
+                # TODO: DM-22762 This functional block should be moved into its own method
                 if self.config.doUseRegister:
                     self.log.info("Registering images")
 
@@ -749,7 +754,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     subtractedExposure = decorrResult.correctedExposure
 
             # END (if subtractAlgorithm == 'AL')
-
+        # END (if self.config.doSubtract)
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
             # Erase existing detection mask planes
@@ -852,7 +857,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     if sid in refMatchDict:
                         diaSource.set("refMatchId", refMatchDict[sid])
 
-            # NOTE: This would fail if the zogy branch was run or if the subtracted exposure is from the repo.
             if self.config.doAddMetrics and self.config.doSelectSources:
                 self.log.info("Evaluating metrics and control sample")
 
