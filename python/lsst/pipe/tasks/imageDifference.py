@@ -402,7 +402,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # Sources already exist; for data release processing
             selectSources = sensorRef.get("src")
 
-        if self.config.doDetection:
+        if not self.config.doSubtract and self.config.doDetection:
             # If we don't do subtraction, we need the subtracted exposure from the repo
             subtractedExposure = sensorRef.get(subtractedExposureName)
         # Both doSubtract and doDetection cannot be False
@@ -823,7 +823,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 if selectSources is not None:
                     # Create key,val pair where key=diaSourceId and val=sourceId
                     matchRadAsec = self.config.diaSourceMatchRadius
-                    matchRadPixel = matchRadAsec/exposure.getWcs().pixelScale().asArcseconds()
+                    matchRadPixel = matchRadAsec/exposure.getWcs().getPixelScale().asArcseconds()
 
                     srcMatches = afwTable.matchXy(selectSources, diaSources, matchRadPixel)
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for
