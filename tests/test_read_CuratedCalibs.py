@@ -28,6 +28,7 @@ import tempfile
 import lsst.utils.tests
 from lsst.utils import getPackageDir
 import lsst.obs.base
+from lsst.obs.base.test import BaseMapper
 from lsst.pipe.tasks.read_curated_calibs import read_all
 import lsst.daf.persistence as dafPersist
 
@@ -38,24 +39,11 @@ def setup_module(module):
     lsst.utils.tests.init()
 
 
-class BaseMapper(lsst.obs.base.CameraMapper):
-    packageName = 'base'
-
-    def __init__(self):
-        policy = dafPersist.Policy(os.path.join(ROOT, "BaseMapper.yaml"))
-        lsst.obs.base.CameraMapper.__init__(self, policy=policy, repositoryDir=ROOT, root=ROOT)
-        return
-
-    @classmethod
-    def getPackageDir(cls):
-        return "/path/to/nowhere"
-
-
 class ReadDefectsTestCase(unittest.TestCase):
     """A test case for the defect reader."""
 
     def setUp(self):
-        butler = dafPersist.ButlerFactory(mapper=BaseMapper()).create()
+        butler = dafPersist.ButlerFactory(mapper=BaseMapper(ROOT)).create()
         self.cam = butler.get('camera')
         self.defects_path = os.path.join(ROOT, 'trivial_camera', 'defects')
 
@@ -77,7 +65,7 @@ class ReadQeTestCase(unittest.TestCase):
     """A test case for the qe_curve reader"""
 
     def setUp(self):
-        butler = dafPersist.ButlerFactory(mapper=BaseMapper()).create()
+        butler = dafPersist.ButlerFactory(mapper=BaseMapper(ROOT)).create()
         self.cam = butler.get('camera')
         self.qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curves')
         self.tmp_dir_obj = tempfile.TemporaryDirectory()
