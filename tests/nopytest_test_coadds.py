@@ -80,71 +80,28 @@ from lsst.pipe.tasks.multiBand import (DetectCoaddSourcesTask, MergeDetectionsTa
 DATAREPO_ROOT = os.path.join(os.path.dirname(__file__), ".tests", "testCoadds-data")
 
 
+def assertWrapper(func):
+    """Decorator to intercept any test failures and reraise whilst recording
+    a failure.
+
+    This allows tearDownClass to behave differently depending on
+    whether any of the tests failed.  In this case we clean up the test
+    data if all the tests passed but leave it behind if any of the tests
+    failed for any reason."""
+    def wrapped(self):
+        try:
+            func(self)
+        except Exception:
+            # Set the CLASS property since the data are per-test class
+            # so any failure is important in any of the tests.
+            type(self).failed = True
+            raise
+
+    return wrapped
+
+
 def setup_module(module):
     lsst.utils.tests.init()
-
-    if os.path.exists(DATAREPO_ROOT):
-        print("Deleting existing repo: %r" % (DATAREPO_ROOT,))
-        shutil.rmtree(DATAREPO_ROOT)
-
-    if not haveMeasBase:
-        raise unittest.SkipTest("meas_base could not be imported")
-
-    # Create a task that creates simulated images and builds a coadd from them
-    mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
-
-    # Create an instance of DetectCoaddSourcesTask to measure on the coadd.
-    # There's no noise in these images, so we set a direct-value threshold,
-    # and the background weighting (when using Approximate) to False
-
-    detectConfig = DetectCoaddSourcesTask.ConfigClass()
-    # Images have no noise, so we can't use the default DynamicDetectionTask
-    detectConfig.detection.retarget(lsst.meas.algorithms.SourceDetectionTask)
-    detectConfig.detection.thresholdType = "value"
-    detectConfig.detection.thresholdValue = 0.01
-    detectConfig.detection.background.weighting = False
-    detectTask = DetectCoaddSourcesTask(config=detectConfig)
-
-    butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
-
-    mocksTask.buildAllInputs(butler)
-
-    addMaskPlanes(butler)
-    mocksTask.buildCoadd(butler)
-    mocksTask.buildMockCoadd(butler)
-    detectTask.writeSchemas(butler)
-    # Now run the seperate multiband tasks on the Coadd to make the reference
-    # catalog for the forced photometry tests.
-    runTaskOnPatches(butler, detectTask, mocksTask)
-
-    mergeDetConfig = MergeDetectionsTask.ConfigClass()
-    mergeDetConfig.priorityList = ['r', ]
-    mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=butler)
-    mergeDetTask.writeSchemas(butler)
-    runTaskOnPatchList(butler, mergeDetTask, mocksTask)
-
-    deblendSourcesConfig = DeblendCoaddSourcesTask.ConfigClass()
-    deblendSourcesTask = DeblendCoaddSourcesTask(config=deblendSourcesConfig, butler=butler)
-    deblendSourcesTask.writeSchemas(butler)
-    runTaskOnPatchList(butler, deblendSourcesTask, mocksTask)
-
-    measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
-    measMergedConfig.measurement.slots.shape = "base_SdssShape"
-    measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
-    measMergedConfig.propagateFlags.flags = {}  # Disable flag propagation: no flags to propagate
-    measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
-    measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=butler)
-    measMergedTask.writeSchemas(butler)
-    runTaskOnPatches(butler, measMergedTask, mocksTask)
-
-    mergeMeasConfig = MergeMeasurementsTask.ConfigClass()
-    mergeMeasConfig.priorityList = ['r', ]
-    mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=butler)
-    mergeMeasTask.writeSchemas(butler)
-    runTaskOnPatchList(butler, mergeMeasTask, mocksTask)
-
-    runForcedPhotCoaddTask(butler, mocksTask)
-    runForcedPhotCcdTask(butler)
 
 
 def getCalexpIds(butler, tract=0):
@@ -218,6 +175,84 @@ def runForcedPhotCcdTask(butler):
 
 class CoaddsTestCase(lsst.utils.tests.TestCase):
 
+    @unittest.skipUnless(haveMeasBase, "meas_base could not be imported")
+    @classmethod
+    def setUpClass(cls):
+        """Create 200MB of test data."""
+        # Start by assuming nothing failed
+        cls.failed = False
+
+        if os.path.exists(DATAREPO_ROOT):
+            print(f"Deleting existing repo: {DATAREPO_ROOT}")
+            # Do not ignore errors since failure to clean up is indicative
+            shutil.rmtree(DATAREPO_ROOT)
+
+        # Create a task that creates simulated images and builds a coadd from them
+        mocksTask = lsst.pipe.tasks.mocks.MockCoaddTask()
+
+        # Create an instance of DetectCoaddSourcesTask to measure on the coadd.
+        # There's no noise in these images, so we set a direct-value threshold,
+        # and the background weighting (when using Approximate) to False
+
+        detectConfig = DetectCoaddSourcesTask.ConfigClass()
+        # Images have no noise, so we can't use the default DynamicDetectionTask
+        detectConfig.detection.retarget(lsst.meas.algorithms.SourceDetectionTask)
+        detectConfig.detection.thresholdType = "value"
+        detectConfig.detection.thresholdValue = 0.01
+        detectConfig.detection.background.weighting = False
+        detectTask = DetectCoaddSourcesTask(config=detectConfig)
+
+        butler = lsst.pipe.tasks.mocks.makeDataRepo(DATAREPO_ROOT)
+
+        mocksTask.buildAllInputs(butler)
+
+        addMaskPlanes(butler)
+        mocksTask.buildCoadd(butler)
+        mocksTask.buildMockCoadd(butler)
+        detectTask.writeSchemas(butler)
+        # Now run the seperate multiband tasks on the Coadd to make the reference
+        # catalog for the forced photometry tests.
+        runTaskOnPatches(butler, detectTask, mocksTask)
+
+        mergeDetConfig = MergeDetectionsTask.ConfigClass()
+        mergeDetConfig.priorityList = ['r', ]
+        mergeDetTask = MergeDetectionsTask(config=mergeDetConfig, butler=butler)
+        mergeDetTask.writeSchemas(butler)
+        runTaskOnPatchList(butler, mergeDetTask, mocksTask)
+
+        deblendSourcesConfig = DeblendCoaddSourcesTask.ConfigClass()
+        deblendSourcesTask = DeblendCoaddSourcesTask(config=deblendSourcesConfig, butler=butler)
+        deblendSourcesTask.writeSchemas(butler)
+        runTaskOnPatchList(butler, deblendSourcesTask, mocksTask)
+
+        measMergedConfig = MeasureMergedCoaddSourcesTask.ConfigClass()
+        measMergedConfig.measurement.slots.shape = "base_SdssShape"
+        measMergedConfig.measurement.plugins['base_PixelFlags'].masksFpAnywhere = []
+        measMergedConfig.propagateFlags.flags = {}  # Disable flag propagation: no flags to propagate
+        measMergedConfig.doMatchSources = False  # We don't have a reference catalog available
+        measMergedTask = MeasureMergedCoaddSourcesTask(config=measMergedConfig, butler=butler)
+        measMergedTask.writeSchemas(butler)
+        runTaskOnPatches(butler, measMergedTask, mocksTask)
+
+        mergeMeasConfig = MergeMeasurementsTask.ConfigClass()
+        mergeMeasConfig.priorityList = ['r', ]
+        mergeMeasTask = MergeMeasurementsTask(config=mergeMeasConfig, butler=butler)
+        mergeMeasTask.writeSchemas(butler)
+        runTaskOnPatchList(butler, mergeMeasTask, mocksTask)
+
+        runForcedPhotCoaddTask(butler, mocksTask)
+        runForcedPhotCcdTask(butler)
+
+    @classmethod
+    def tearDownClass(cls):
+        """Removes test data if all tests passed."""
+        if os.path.exists(DATAREPO_ROOT):
+            if not cls.failed:
+                print(f"Deleting temporary data repository {DATAREPO_ROOT}")
+                shutil.rmtree(DATAREPO_ROOT, ignore_errors=True)
+            else:
+                print(f"Temporary data repository retained at {DATAREPO_ROOT}")
+
     def setUp(self):
         if not haveMeasBase:
             raise unittest.SkipTest("meas_base could not be imported; skipping this test")
@@ -230,6 +265,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
         del self.mocksTask
         del self.butler
 
+    @assertWrapper
     def testMaskPlanesExist(self):
         # Get the dataId for each calexp in the repository
         calexpDataIds = getCalexpIds(self.butler)
@@ -253,7 +289,9 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             for aParam, bParam in zip(aFuncParams, bFuncParams):
                 self.assertEqual(aParam, bParam)
 
-    @unittest.skip("Remove test until DM-5174 is complete")
+    # Expected to fail until DM-5174 is fixed. Then replace next line
+    # with assertWrapper
+    @unittest.expectedFailure
     def testMasksRemoved(self):
         for dataProduct in self.coaddNameList:
             image = self.butler.get(self.mocksTask.config.coaddName + dataProduct + "_mock",
@@ -262,6 +300,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             self.assertNotIn('CROSSTALK', keys)
             self.assertNotIn('NOT_DEBLENDED', keys)
 
+    @assertWrapper
     def testTempExpInputs(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
@@ -295,6 +334,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                         self.comparePsfs(obsRecord.getPsf(), ccdRecord.getPsf())
                 self.assertTrue(foundOneTempExp)
 
+    @assertWrapper
     def testCoaddInputs(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
@@ -325,6 +365,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                     self.assertGreaterEqual(nCcds, 1)
                     self.assertLessEqual(nCcds, 2)
 
+    @assertWrapper
     def testPsfInstallation(self, tract=0):
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
         tractInfo = skyMap[tract]
@@ -343,6 +384,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 self.assertEqual(savedPsf.getBBox(n), record.getBBox())
                 self.assertEqual(newPsf.getBBox(n), record.getBBox())
 
+    @assertWrapper
     def testCoaddPsf(self, tract=0):
         """Test that stars on the coadd are well represented by the attached PSF
 
@@ -408,6 +450,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             print("WARNING: CoaddPsf test inconclusive (this can occur randomly, but very rarely; "
                   "first try running the test again)")
 
+    @assertWrapper
     def testCoaddTransmissionCurves(self, tract=0):
         """Test that coadded TransmissionCurves agree with those of the inputs."""
         skyMap = self.butler.get(self.mocksTask.config.coaddName + "Coadd_skyMap", immediate=True)
@@ -443,6 +486,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                     nTested += 1
             self.assertGreater(nTested, 5)
 
+    @assertWrapper
     def testSchemaConsistency(self):
         """Test that _schema catalogs are consistent with the data catalogs.
         """
@@ -469,6 +513,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
                 ccd_forced_src = self.butler.get("forced_src", tract=0, visit=visit, ccd=ccd)
                 self.assertSchemasEqual(ccd_forced_src.schema, ccd_forced_schema)
 
+    @assertWrapper
     def testAlgMetadataOutput(self):
         """Test to see if algMetadata is persisted correctly from MeasureMergedCoaddSourcesTask.
 
@@ -492,6 +537,7 @@ class CoaddsTestCase(lsst.utils.tests.TestCase):
             for noiseSeedMul in meta.getArray('NOISE_SEED_MULTIPLIER'):
                 self.assertIsInstance(noiseSeedMul, numbers.Number)
 
+    @assertWrapper
     def testForcedIdNames(self):
         """Test that forced photometry ID fields are named as we expect
         (DM-8210).
