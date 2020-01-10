@@ -51,14 +51,12 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
         doc="Schema produced by characterize image task, used to initialize this task",
         name="icSrc_schema",
         storageClass="SourceCatalog",
-        multiple=True
     )
 
     outputSchema = cT.InitOutput(
         doc="Schema after CalibrateTask has been initialized",
         name="src_schema",
         storageClass="SourceCatalog",
-        multiple=True
     )
 
     exposure = cT.Input(
