@@ -835,17 +835,19 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         if photoRes is None:
             return
 
+        metadata = exposure.getMetadata()
+
         # convert zero-point to (mag/sec/adu) for task MAGZERO metadata
         try:
             exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
             magZero = photoRes.zp - 2.5*math.log10(exposureTime)
-            self.metadata.set('MAGZERO', magZero)
         except Exception:
             self.log.warn("Could not set normalized MAGZERO in header: no "
                           "exposure time")
+            magZero = math.nan
 
         try:
-            metadata = exposure.getMetadata()
+            metadata.set('MAGZERO', magZero)
             metadata.set('MAGZERO_RMS', photoRes.sigma)
             metadata.set('MAGZERO_NOBJ', photoRes.ngood)
             metadata.set('COLORTERM1', 0.0)
