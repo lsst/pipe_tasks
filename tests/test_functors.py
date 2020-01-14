@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import astropy.units as u
 import copy
 import functools
 import numpy as np
@@ -34,7 +35,9 @@ try:
     from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                           DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
                                           DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
-                                          HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm)
+                                          HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
+                                          LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
+                                          LocalMagnitude, LocalMagnitudeErr)
     havePyArrow = True
 except ImportError:
     havePyArrow = False
@@ -268,6 +271,90 @@ class FunctorTestCase(unittest.TestCase):
                     'c': Color('base_PsfFlux', 'HSC-G', 'HSC-R')}
         # Covering the code is better than nothing
         df = self._compositeFuncVal(CompositeFunctor(funcDict), parq)  # noqa
+
+    def testLocalPhotometry(self):
+        """Test the local photometry functors.
+        """
+        flux = 1000
+        fluxErr = 10
+        calib = 10
+        calibErr = 1
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, flux)
+        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords,
+                                                            fluxErr)
+        self.dataDict["base_LocalPhotoCalib"] = np.full(self.nRecords, calib)
+        self.dataDict["base_LocalPhotoCalibErr"] = np.full(self.nRecords,
+                                                           calibErr)
+        parq = self.simulateMultiParquet(self.dataDict)
+        func = LocalPhotometry("base_PsfFlux_instFlux",
+                               "base_PsfFlux_instFluxErr",
+                               "base_LocalPhotoCalib",
+                               "base_LocalPhotoCalibErr")
+        df = parq.toDataFrame(columns={"dataset": "meas",
+                                       "filter": "HSC-G",
+                                       "columns": ["base_PsfFlux_instFlux",
+                                                   "base_PsfFlux_instFluxErr",
+                                                   "base_LocalPhotoCalib",
+                                                   "base_LocalPhotoCalibErr"]})
+        nanoJansky = func.instFluxToNanojansky(
+            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
+            df[("meas", "HSC-G", "base_LocalPhotoCalib")])
+        mag = func.instFluxToMagnitude(
+            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
+            df[("meas", "HSC-G", "base_LocalPhotoCalib")])
+        nanoJanskyErr = func.instFluxErrToNanojanskyErr(
+            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
+            df[("meas", "HSC-G", "base_PsfFlux_instFluxErr")],
+            df[("meas", "HSC-G", "base_LocalPhotoCalib")],
+            df[("meas", "HSC-G", "base_LocalPhotoCalibErr")])
+        magErr = func.instFluxErrToMagnitudeErr(
+            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
+            df[("meas", "HSC-G", "base_PsfFlux_instFluxErr")],
+            df[("meas", "HSC-G", "base_LocalPhotoCalib")],
+            df[("meas", "HSC-G", "base_LocalPhotoCalibErr")])
+
+        self.assertTrue(np.allclose(nanoJansky.values,
+                                    flux * calib,
+                                    atol=1e-13,
+                                    rtol=0))
+        self.assertTrue(np.allclose(mag.values,
+                                    (flux * calib * u.nJy).to_value(u.ABmag),
+                                    atol=1e-13,
+                                    rtol=0))
+        self.assertTrue(np.allclose(nanoJanskyErr.values,
+                                    np.hypot(fluxErr * calib, flux * calibErr),
+                                    atol=1e-13,
+                                    rtol=0))
+        self.assertTrue(np.allclose(
+            magErr.values,
+            2.5 / np.log(10) * nanoJanskyErr.values / nanoJansky.values,
+            atol=1e-13,
+            rtol=0))
+
+        # Test functors against the values computed above.
+        self._testLocalPhotometryFunctors(LocalNanojansky,
+                                          parq,
+                                          nanoJansky)
+        self._testLocalPhotometryFunctors(LocalNanojanskyErr,
+                                          parq,
+                                          nanoJanskyErr)
+        self._testLocalPhotometryFunctors(LocalMagnitude,
+                                          parq,
+                                          mag)
+        self._testLocalPhotometryFunctors(LocalMagnitudeErr,
+                                          parq,
+                                          magErr)
+
+    def _testLocalPhotometryFunctors(self, functor, parq, testValues):
+        func = functor("base_PsfFlux_instFlux",
+                       "base_PsfFlux_instFluxErr",
+                       "base_LocalPhotoCalib",
+                       "base_LocalPhotoCalibErr")
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(testValues.values,
+                                    val.values,
+                                    atol=1e-13,
+                                    rtol=0))
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
