@@ -97,7 +97,6 @@ class MatchBackgroundsTestCase(unittest.TestCase):
         refStats = afwMath.makeStatistics(
             refExp.getMaskedImage(), afwMath.MEAN | afwMath.VARIANCE, self.sctrl)
         refMean, _ = refStats.getResult(afwMath.MEAN)
-        # print "refMean %.03f, resultMean %.03f, resultVar %.03f"%(refMean, resultMean, resultVar)
         self.assertAlmostEqual(refMean, resultMean, delta=resultVar)  # very loose test.
         # If MSE is within 1% of the variance of the difference image:  SUCCESS
         self.assertLess(MSE, diffImVar * 1.01)
