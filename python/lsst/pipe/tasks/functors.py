@@ -897,6 +897,83 @@ class RadiusFromQuadrupole(Functor):
         return (df[self.colXX]*df[self.colYY] - df[self.colXY]**2)**0.25
 
 
+class ComputePixelScale(Functor):
+    """Compute the local pixel scale from the stored CDMatrix.
+    """
+    name = "Pixel Scale"
+
+    def __init__(self,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.colCD_1_1 = colCD_1_1
+        self.colCD_1_2 = colCD_1_2
+        self.colCD_2_1 = colCD_2_1
+        self.colCD_2_2 = colCD_2_2
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [self.colCD_1_1, self.colCD_1_2,
+                self.colCD_2_1, self.colCD_2_2]
+
+    def pixelScale(self, cd11, cd12, cd21, cd22):
+        """Compute the local pixel scale conversion.
+
+        Parameters
+        ----------
+        cd11 : `pandas.Series`
+            [1, 1] element of the local CDMatricies.
+        cd12 : `pandas.Series`
+            [1, 2] element of the local CDMatricies.
+        cd21 : `pandas.Series`
+            [2, 1] element of the local CDMatricies.
+        cd2 : `pandas.Series`
+            [2, 2] element of the local CDMatricies.
+
+        Returns
+        -------
+        pixScale : `pandas.Series`
+            Arcseconds per pixel at the location of the local WC
+        """
+        return 3600 * np.sqrt(np.fabs(cd11 * cd22 - cd12 * cd21))
+
+    def _func(self, df):
+        return self.pixelScale(df[self.colCD_1_1], df[self.colCD_1_2],
+                               df[self.colCD_2_1], df[self.colCD_2_2])
+
+
+class ConvertPixelToArcseconds(ComputePixelScale):
+    """Convert a value in units pixels to units arcseconds.
+    """
+    name = "Pixel scale converter"
+
+    def __init__(self,
+                 col,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2, **kwargs):
+        self.col = col
+        super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
+
+    @property
+    def name(self):
+        return f"{self.col}_asArcseconds"
+
+    @property
+    def columns(self):
+        return [self.col,
+                self.colCD_1_1, self.colCD_1_2,
+                self.colCD_2_1, self.colCD_2_2]
+
+    def _func(self, df):
+        return df[self.col] * self.pixelScale(df[self.colCD_1_1], df[self.colCD_1_2],
+                                              df[self.colCD_2_1], df[self.colCD_2_2])
+
+
 class ReferenceBand(Functor):
     name = 'Reference Band'
     shortname = 'refBand'
