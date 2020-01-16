@@ -224,7 +224,7 @@ class SnapCombineTask(pipeBase.Task):
             diffExp.setPsf(psf)
             table = afwTable.SourceTable.make(self.schema)
             table.setMetadata(self.algMetadata)
-            detRet = self.detection.makeSourceCatalog(table, diffExp)
+            detRet = self.detection.run(table, diffExp)
             sources = detRet.sources
             fpSets = detRet.fpSets
             if self.config.doMeasurement:
