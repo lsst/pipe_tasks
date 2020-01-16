@@ -38,10 +38,7 @@ def flattenFilters(df, filterDict, noDupCols=['coord_ra', 'coord_dec'], camelCas
     """
     newDf = pd.DataFrame()
     for filt, filtShort in filterDict.items():
-        try:
-            subdf = df[filt]
-        except KeyError:
-            continue
+        subdf = df[filt]
         columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
         newColumns = {c: columnFormat.format(filtShort, c)
                       for c in subdf.columns if c not in noDupCols}
@@ -414,6 +411,7 @@ class TransformCatalogBaseTask(CmdLineTask):
         parq = patchRef.get()
         dataId = patchRef.dataId
         funcs = self.getFunctors()
+        self.log.info("Transforming/standardizing the catalog of %s", dataId)
         df = self.run(parq, funcs=funcs, dataId=dataId)
         self.write(df, patchRef)
         return df
@@ -479,7 +477,9 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig):
         keytype=str,
         itemtype=str,
         default={},
-        doc="Dictionary mapping full filter name to short one for column name munging."
+        doc=("Dictionary mapping full filter name to short one for column name munging."
+             "These filters determine the output columns no matter what filters the "
+             "input data actually contain.")
     )
     camelCase = pexConfig.Field(
         dtype=bool,
@@ -500,7 +500,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
     Do the same set of postprocessing calculations on all bands
 
-    This is identical to `PostprocessTask`, except for that it does the
+    This is identical to `TransformCatalogBaseTask`, except for that it does the
     specified functor calculations for all filters present in the
     input `deepCoadd_obj` table.  Any specific `"filt"` keywords specified
     by the YAML file will be superceded.
@@ -522,10 +522,25 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     def run(self, parq, funcs=None, dataId=None):
         dfDict = {}
         analysisDict = {}
+        templateDf = pd.DataFrame()
+        # Perform transform for data of filters that exist in parq and are
+        # specified in config.filterMap
         for filt in parq.columnLevelNames['filter']:
+            if filt not in self.config.filterMap:
+                self.log.info("Ignoring %s data in the input", filt)
+                continue
+            self.log.info("Transforming the catalog of filter %s", filt)
             result = self.transform(filt, parq, funcs, dataId)
             dfDict[filt] = result.df
             analysisDict[filt] = result.analysis
+            if templateDf.empty:
+                templateDf = result.df
+
+        # Fill NaNs in columns of other wanted filters
+        for filt in self.config.filterMap:
+            if filt not in dfDict:
+                self.log.info("Adding empty columns for filter %s", filt)
+                dfDict[filt] = pd.DataFrame().reindex_like(templateDf)
 
         # This makes a multilevel column index, with filter as first level
         df = pd.concat(dfDict, axis=1, names=['filter', 'column'])
@@ -537,6 +552,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
             df = flattenFilters(df, self.config.filterMap, noDupCols=noDupCols,
                                 camelCase=self.config.camelCase)
 
+        self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
         return df
 
 
