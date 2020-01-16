@@ -139,7 +139,7 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
                                               doc="The apply aperture correction task to use.")
 
     catalogCalculation = pexConfig.ConfigurableField(target=CatalogCalculationTask,
-                                                     doc="The catalog calculation ask to use.")
+                                                     doc="The catalog calculation task to use.")
 
     def setDefaults(self):
         self.detection.reEstimateBackground = False
@@ -182,8 +182,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
     _DefaultName = "processCcdWithFakes"
     ConfigClass = ProcessCcdWithFakesConfig
 
-    def __init__(self, schema=None, **kwargs):
-        """Initalize tings! This should go above in the class docstring
+    def __init__(self, schema=None, butler=None, **kwargs):
+        """Initalize things! This should go above in the class docstring
         """
 
         super().__init__(**kwargs)
