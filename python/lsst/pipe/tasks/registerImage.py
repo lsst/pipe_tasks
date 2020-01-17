@@ -105,7 +105,7 @@ class RegisterTask(Task):
         """
         copyMatches = type(matches)(matches)
         refCoordKey = copyMatches[0].first.getTable().getCoordKey()
-        inCentroidKey = copyMatches[0].second.getTable().getCentroidKey()
+        inCentroidKey = copyMatches[0].second.getTable().getCentroidSlot().getMeasKey()
         for i in range(self.config.sipIter):
             sipFit = makeCreateWcsWithSip(copyMatches, inputWcs, self.config.sipOrder, inputBBox)
             self.log.debug("Registration WCS RMS iteration %d: %f pixels",
@@ -171,7 +171,7 @@ class RegisterTask(Task):
             templateBBox = geom.Box2D(templateBBox)
         table = alignedSources.getTable()
         coordKey = table.getCoordKey()
-        centroidKey = table.getCentroidKey()
+        centroidKey = table.getCentroidSlot().getMeasKey()
         deleteList = []
         for i, s in enumerate(alignedSources):
             oldCentroid = s.get(centroidKey)

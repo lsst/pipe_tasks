@@ -183,7 +183,7 @@ class RegisterTestCase(unittest.TestCase):
         badIndex = 111
 
         coordKey = inData.inputSources[badIndex].getTable().getCoordKey()
-        centroidKey = inData.inputSources[badIndex].getTable().getCentroidKey()
+        centroidKey = inData.inputSources[badIndex].getTable().getCentroidSlot().getMeasKey()
         x, y = float(inData.xInput[badIndex] + 0.01), float(inData.yInput[badIndex] - 0.01)
         point = geom.Point2D(x, y)
         inData.inputSources[badIndex].set(centroidKey, point)
