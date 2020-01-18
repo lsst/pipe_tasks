@@ -496,7 +496,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         badPixelMask = templateCoadd.mask.getPlaneBitMask(badMaskPlanes)
 
         stats = self.prepareStats(mask=badPixelMask)
-        weightList = [0. if wt==0 else 1. for wt in weightList]
+        weightList = [0. if wt == 0 else 1. for wt in weightList]
         dcrModels = self.prepareDcrInputs(templateCoadd, warpRefList, weightList)
         if self.config.doNImage:
             dcrNImages, dcrWeights = self.calculateNImage(dcrModels, skyInfo.bbox, warpRefList,
