@@ -316,7 +316,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         if self.config.doInsertFakes:
             self.insertFakes.run(exposure, background=backgrounds)
         table = afwTable.SourceTable.make(self.schema, idFactory)
-        detections = self.detection.makeSourceCatalog(table, exposure, expId=expId)
+        detections = self.detection.run(table, exposure, expId=expId)
         sources = detections.sources
         fpSets = detections.fpSets
         if hasattr(fpSets, "background") and fpSets.background:
