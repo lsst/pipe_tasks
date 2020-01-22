@@ -397,7 +397,6 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         bctrl = afwMath.BackgroundControl(nx, ny, self.sctrl, statsFlag)
         bctrl.setUndersampleStyle(self.config.undersampleStyle)
-        bctrl.setInterpStyle(self.config.interpStyle)
 
         bkgd = afwMath.makeBackground(diffMI, bctrl)
 
@@ -437,7 +436,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                 approx = bkgd.getApproximate(actrl, undersampleStyle)
                 bkgdImage = approx.getImage()
             else:
-                bkgdImage = bkgd.getImageF()
+                bkgdImage = bkgd.getImageF(self.config.interpStyle, self.config.undersampleStyle)
         except Exception as e:
             raise RuntimeError("Background/Approximation failed to interp image %s: %s" % (
                 self.debugDataIdString, e))

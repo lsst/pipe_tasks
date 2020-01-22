@@ -84,7 +84,7 @@ class ScaleVarianceTask(Task):
             Context manager that ensure the background is restored.
         """
         bg = self.background.fitBackground(maskedImage)
-        bgImage = bg.getImageF()
+        bgImage = bg.getImageF(self.background.config.algorithm, self.background.config.undersampleStyle)
         maskedImage -= bgImage
         try:
             yield

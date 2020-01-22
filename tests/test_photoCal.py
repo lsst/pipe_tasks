@@ -77,7 +77,7 @@ class PhotoCalTest(unittest.TestCase):
         self.exposure.setPhotoCalib(smallExposure.getPhotoCalib())
 
         coordKey = self.srcCat.getCoordKey()
-        centroidKey = self.srcCat.getCentroidKey()
+        centroidKey = self.srcCat.getCentroidSlot().getMeasKey()
         wcs = self.exposure.getWcs()
         for src in self.srcCat:
             src.set(coordKey, wcs.pixelToSky(src.get(centroidKey)))
