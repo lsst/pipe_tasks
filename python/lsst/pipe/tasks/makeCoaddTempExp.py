@@ -248,7 +248,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
          --id patch=5,4 tract=0 filter=HSC-I \
          --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 \
          --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24 \
-         --config doApplyUberCal=False makePsfMatched=True modelPsf.defaultFwhm=11
+         --config doApplyExternalPhotoCalib=False doApplyExternalSkyWcs=False \
+         makePsfMatched=True modelPsf.defaultFwhm=11
 
     writes a direct and PSF-Matched Warp to
     - `$CI_HSC_DIR/DATA/rerun/ci_hsc/deepCoadd/HSC-I/0/5,4/warp-HSC-I-0-5,4-903988.fits` and
@@ -485,10 +486,14 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         @raises MissingExposureError If data for the exposure is not available.
 
-        If config.doApplyUberCal, the exposure will be photometrically
-        calibrated via the `jointcal_photoCalib` dataset and have its SkyWcs
-        updated to the `jointcal_wcs`, otherwise it will be calibrated via the
-        Exposure's own PhotoCalib and have the original SkyWcs.
+        If config.doApplyExternalPhotoCalib is `True`, the photometric calibration
+        (`photoCalib`) is taken from `config.externalPhotoCalibName` via the
+        `name_photoCalib` dataset.  Otherwise, the photometric calibration is
+        retrieved from the processed exposure.  When
+        `config.doApplyExternalSkyWcs` is `True`, the astrometric calibration
+        is taken from `config.externalSkyWcsName` with the `name_wcs` dataset.
+        Otherwise, the astrometric calibration is taken from the processed
+        exposure.
         """
         try:
             exposure = dataRef.get(self.calexpType, immediate=True)
@@ -501,30 +506,19 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             mi += background.getImage()
             del mi
 
-        if self.config.doApplyUberCal:
-            if self.config.useMeasMosaic:
-                from lsst.meas.mosaic import applyMosaicResultsExposure
-                # NOTE: this changes exposure in-place, updating its Calib and Wcs.
-                # Save the calibration error, as it gets overwritten with zero.
-                calibrationErr = exposure.getPhotoCalib().getCalibrationErr()
-                try:
-                    applyMosaicResultsExposure(dataRef, calexp=exposure)
-                except dafPersist.NoResults as e:
-                    raise MissingExposureError('Mosaic calibration not found: %s ' % str(e)) from e
-                photoCalib = afwImage.PhotoCalib(exposure.getPhotoCalib().getCalibrationMean(),
-                                                 calibrationErr,
-                                                 exposure.getBBox())
-            else:
-                photoCalib = dataRef.get("jointcal_photoCalib")
-                skyWcs = dataRef.get("jointcal_wcs")
-                exposure.setWcs(skyWcs)
+        if self.config.doApplyExternalPhotoCalib:
+            photoCalib = dataRef.get(f"{self.config.externalPhotoCalibName}_photoCalib")
+            exposure.setPhotoCalib(photoCalib)
         else:
             photoCalib = exposure.getPhotoCalib()
+
+        if self.config.doApplyExternalSkyWcs:
+            skyWcs = dataRef.get(f"{self.config.externalSkyWcsName}_wcs")
+            exposure.setWcs(skyWcs)
 
         exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage,
                                                          includeScaleUncertainty=self.config.includeCalibVar)
         exposure.maskedImage /= photoCalib.getCalibrationMean()
-        exposure.setPhotoCalib(photoCalib)
         # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
         # exposure.setCalib(afwImage.Calib(1.0))
         return exposure
@@ -633,16 +627,20 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
     def validate(self):
         super().validate()
         # TODO: Remove this constraint after DM-17062
-        if self.doApplyUberCal:
-            raise RuntimeError("Gen3 MakeWarpTask cannot apply meas_mosaic or jointcal results."
-                               "Please set doApplyUbercal=False.")
+        if self.doApplyExternalPhotoCalib:
+            raise RuntimeError("Gen3 MakeWarpTask cannot apply external PhotoCalib results. "
+                               "Please set doApplyExternalPhotoCalib=False.")
+        if self.doApplyExternalSkyWcs:
+            raise RuntimeError("Gen3 MakeWarpTask cannot apply external SkyWcs results. "
+                               "Please set doApplyExternalSkyWcs=False.")
 
 
 class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
     """Warp and optionally PSF-Match calexps onto an a common projection
 
     First Draft of a Gen3 compatible MakeWarpTask which
-    currently does not handle doApplyUberCal=True.
+    currently does not handle doApplyExternalPhotoCalib=True or
+    doApplyExternalSkyWcs=True.
     """
     ConfigClass = MakeWarpConfig
     _DefaultName = "makeWarp"

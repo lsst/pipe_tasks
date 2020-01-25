@@ -42,16 +42,16 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
         meanCalibration = 1e-4
         calibrationErr = 1e-5
         self.exposurePhotoCalib = lsst.afw.image.PhotoCalib(meanCalibration, calibrationErr)
-        # a "jointcal_photoCalib" calibration to return
-        self.jointcalPhotoCalib = lsst.afw.image.PhotoCalib(1e-6, 1e-8)
+        # An external photoCalib calibration to return
+        self.externalPhotoCalib = lsst.afw.image.PhotoCalib(1e-6, 1e-8)
 
         crpix = lsst.geom.Point2D(0, 0)
         crval = lsst.geom.SpherePoint(0, 45, lsst.geom.degrees)
         cdMatrix = lsst.afw.geom.makeCdMatrix(scale=1.0*lsst.geom.arcseconds)
         self.skyWcs = lsst.afw.geom.makeSkyWcs(crpix, crval, cdMatrix)
-        jointcalCdMatrix = lsst.afw.geom.makeCdMatrix(scale=0.9*lsst.geom.arcseconds)
-        # a "jointcal_wcs" skyWcs to return
-        self.jointcalSkyWcs = lsst.afw.geom.makeSkyWcs(crpix, crval, jointcalCdMatrix)
+        externalCdMatrix = lsst.afw.geom.makeCdMatrix(scale=0.9*lsst.geom.arcseconds)
+        # An external skyWcs to return
+        self.externalSkyWcs = lsst.afw.geom.makeSkyWcs(crpix, crval, externalCdMatrix)
 
         self.exposure = lsst.afw.image.ExposureF(10, 10)
         self.exposure.maskedImage.image.array = np.random.random((10, 10)).astype(np.float32) * 1000
@@ -73,9 +73,13 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
                 else:
                     return self.exposure.clone()
             if "jointcal_photoCalib" in datasetType:
-                return self.jointcalPhotoCalib
+                return self.externalPhotoCalib
+            if "fgcm_photoCalib" in datasetType:
+                return self.externalPhotoCalib
+            if "fgcm_tract_photoCalib" in datasetType:
+                return self.externalPhotoCalib
             if "jointcal_wcs" in datasetType:
-                return self.jointcalSkyWcs
+                return self.externalSkyWcs
 
         self.dataRef = unittest.mock.Mock(spec=ButlerDataRef)
         self.dataRef.get.side_effect = mockGet
@@ -97,17 +101,42 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
     def test_getCalibratedExposure(self):
         """Test that getCalibratedExposure returns expected Calib and WCS
         """
-        self._checkCalibratedExposure(doApplyUberCal=False, includeCalibVar=True)
-        self._checkCalibratedExposure(doApplyUberCal=False, includeCalibVar=False)
-        self._checkCalibratedExposure(doApplyUberCal=True, includeCalibVar=True)
-        self._checkCalibratedExposure(doApplyUberCal=True, includeCalibVar=False)
+        self._checkCalibratedExposure(doApplyExternalPhotoCalib=False, doApplyExternalSkyWcs=False,
+                                      includeCalibVar=True,
+                                      externalPhotoCalibName='jointcal',
+                                      externalSkyWcsName='jointcal')
+        self._checkCalibratedExposure(doApplyExternalPhotoCalib=False, doApplyExternalSkyWcs=False,
+                                      includeCalibVar=False,
+                                      externalPhotoCalibName='jointcal',
+                                      externalSkyWcsName='jointcal')
+        self._checkCalibratedExposure(doApplyExternalPhotoCalib=True, doApplyExternalSkyWcs=True,
+                                      includeCalibVar=True,
+                                      externalPhotoCalibName='jointcal',
+                                      externalSkyWcsName='jointcal')
+        self._checkCalibratedExposure(doApplyExternalPhotoCalib=True, doApplyExternalSkyWcs=True,
+                                      includeCalibVar=False,
+                                      externalPhotoCalibName='jointcal',
+                                      externalSkyWcsName='jointcal')
+        self._checkCalibratedExposure(doApplyExternalPhotoCalib=True, doApplyExternalSkyWcs=True,
+                                      includeCalibVar=True,
+                                      externalPhotoCalibName='fgcm',
+                                      externalSkyWcsName='jointcal')
+        self._checkCalibratedExposure(doApplyExternalPhotoCalib=True, doApplyExternalSkyWcs=True,
+                                      includeCalibVar=True,
+                                      externalPhotoCalibName='fgcm_tract',
+                                      externalSkyWcsName='jointcal')
 
-    def _checkCalibratedExposure(self, doApplyUberCal, includeCalibVar):
-        self.config.doApplyUberCal = doApplyUberCal
+    def _checkCalibratedExposure(self, doApplyExternalPhotoCalib, doApplyExternalSkyWcs,
+                                 includeCalibVar,
+                                 externalPhotoCalibName, externalSkyWcsName):
+        self.config.doApplyExternalPhotoCalib = doApplyExternalPhotoCalib
+        self.config.doApplyExternalSkyWcs = doApplyExternalSkyWcs
+        self.config.externalPhotoCalibName = externalPhotoCalibName
+        self.config.externalSkyWcsName = externalSkyWcsName
         self.config.includeCalibVar = includeCalibVar
         task = MakeCoaddTempExpTask(config=self.config)
 
-        photoCalib = self.jointcalPhotoCalib if doApplyUberCal else self.exposurePhotoCalib
+        photoCalib = self.externalPhotoCalib if doApplyExternalPhotoCalib else self.exposurePhotoCalib
         expect = photoCalib.calibrateImage(self.exposure.maskedImage, includeCalibVar)
         expect /= photoCalib.getCalibrationMean()
         result = task.getCalibratedExposure(self.dataRef, True)
@@ -115,7 +144,7 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
         # TODO: once RFC-545 is implemented, this should be 1.0
         self.assertEqual(result.getPhotoCalib(), photoCalib)
 
-        targetWcs = self.jointcalSkyWcs if doApplyUberCal else self.skyWcs
+        targetWcs = self.externalSkyWcs if doApplyExternalSkyWcs else self.skyWcs
         self.assertEqual(result.getWcs(), targetWcs)
 
 
