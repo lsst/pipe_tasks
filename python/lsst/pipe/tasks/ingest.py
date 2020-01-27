@@ -23,7 +23,6 @@ import os
 import shutil
 import sqlite3
 import sys
-import tempfile
 from fnmatch import fnmatch
 from glob import glob
 from contextlib import contextmanager
@@ -219,10 +218,6 @@ class RegisterConfig(Config):
 
 class RegistryContext:
     """Context manager to provide a registry
-
-    An existing registry is copied, so that it may continue
-    to be used while we add to this new registry.  Finally,
-    the new registry is moved into the right place.
     """
 
     def __init__(self, registryName, createTableFunc, forceCreateTables, permissions):
@@ -233,21 +228,9 @@ class RegistryContext:
         @param forceCreateTables: Force the (re-)creation of tables?
         @param permissions: Permissions to set on database file
         """
-        self.registryName = registryName
-        self.permissions = permissions
-
-        updateFile = tempfile.NamedTemporaryFile(prefix=registryName, dir=os.path.dirname(self.registryName),
-                                                 delete=False)
-        self.updateName = updateFile.name
-
-        if os.path.exists(registryName):
-            assertCanCopy(registryName, self.updateName)
-            os.chmod(self.updateName, os.stat(registryName).st_mode)
-            shutil.copyfile(registryName, self.updateName)
-
-        self.conn = sqlite3.connect(self.updateName)
+        self.conn = sqlite3.connect(registryName)
+        os.chmod(registryName, permissions)
         createTableFunc(self.conn, forceCreateTables=forceCreateTables)
-        os.chmod(self.updateName, self.permissions)
 
     def __enter__(self):
         """Provide the 'as' value"""
@@ -256,12 +239,6 @@ class RegistryContext:
     def __exit__(self, excType, excValue, traceback):
         self.conn.commit()
         self.conn.close()
-        if excType is None:
-            assertCanCopy(self.updateName, self.registryName)
-            if os.path.exists(self.registryName):
-                os.unlink(self.registryName)
-            os.rename(self.updateName, self.registryName)
-            os.chmod(self.registryName, self.permissions)
         return False  # Don't suppress any exceptions
 
 
@@ -360,28 +337,29 @@ class RegisterTask(Task):
         @param info    File properties to add to database
         @param table   Name of table in database
         """
-        if table is None:
-            table = self.config.table
-        ignoreClause = ""
-        if self.config.ignore:
-            ignoreClause = " OR IGNORE"
-        sql = "INSERT%s INTO %s (%s) VALUES (" % (ignoreClause, table, ",".join(self.config.columns))
-        sql += ",".join([self.placeHolder] * len(self.config.columns)) + ")"
-        values = [self.typemap[tt](info[col]) for col, tt in self.config.columns.items()]
+        with conn:
+            if table is None:
+                table = self.config.table
+            ignoreClause = ""
+            if self.config.ignore:
+                ignoreClause = " OR IGNORE"
+            sql = "INSERT%s INTO %s (%s) VALUES (" % (ignoreClause, table, ",".join(self.config.columns))
+            sql += ",".join([self.placeHolder] * len(self.config.columns)) + ")"
+            values = [self.typemap[tt](info[col]) for col, tt in self.config.columns.items()]
 
-        if dryrun:
-            print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
-        else:
-            conn.cursor().execute(sql, values)
+            if dryrun:
+                print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
+            else:
+                conn.cursor().execute(sql, values)
 
-        sql = "INSERT OR IGNORE INTO %s_visit VALUES (" % table
-        sql += ",".join([self.placeHolder] * len(self.config.visit)) + ")"
-        values = [self.typemap[self.config.columns[col]](info[col]) for col in self.config.visit]
+            sql = "INSERT OR IGNORE INTO %s_visit VALUES (" % table
+            sql += ",".join([self.placeHolder] * len(self.config.visit)) + ")"
+            values = [self.typemap[self.config.columns[col]](info[col]) for col in self.config.visit]
 
-        if dryrun:
-            print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
-        else:
-            conn.cursor().execute(sql, values)
+            if dryrun:
+                print("Would execute: '%s' with %s" % (sql, ",".join([str(value) for value in values])))
+            else:
+                conn.cursor().execute(sql, values)
 
 
 class IngestConfig(Config):
@@ -562,34 +540,41 @@ class IngestTask(Task):
 
         return filenameList
 
-    def runFile(self, infile, registry, args):
+    def runFile(self, infile, registry, args, pos):
         """!Examine and ingest a single file
 
         @param infile: File to process
+        @param registry: Registry into which to insert Butler metadata
         @param args: Parsed command-line arguments
-        @return parsed information from FITS HDUs or None
+        @param pos: Position number of this file in the input list
         """
         if self.isBadFile(infile, args.badFile):
             self.log.info("Skipping declared bad file %s" % infile)
-            return None
+            return
         try:
             fileInfo, hduInfoList = self.parse.getInfo(infile)
         except Exception as e:
             if not self.config.allowError:
                 raise RuntimeError(f"Error parsing {infile}") from e
             self.log.warn("Error parsing %s (%s); skipping" % (infile, e))
-            return None
+            return
         if self.isBadId(fileInfo, args.badId.idList):
             self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
             return
         if registry is not None and self.register.check(registry, fileInfo):
             if args.ignoreIngested:
-                return None
+                return
             self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
         outfile = self.parse.getDestination(args.butler, fileInfo, infile)
         if not self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun):
-            return None
-        return hduInfoList
+            return
+        if hduInfoList is None:
+            return
+        for info in hduInfoList:
+            try:
+                self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
+            except Exception as exc:
+                raise IngestError(f"Failed to register file {infile}", infile, pos) from exc
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
@@ -600,19 +585,12 @@ class IngestTask(Task):
             for pos in range(len(filenameList)):
                 infile = filenameList[pos]
                 try:
-                    hduInfoList = self.runFile(infile, registry, args)
+                    self.runFile(infile, registry, args, pos)
                 except Exception as exc:
                     self.log.warn("Failed to ingest file %s: %s", infile, exc)
                     if not self.config.allowError:
                         raise IngestError(f"Failed to ingest file {infile}", infile, pos) from exc
                     continue
-                if hduInfoList is None:
-                    continue
-                for info in hduInfoList:
-                    try:
-                        self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
-                    except Exception as exc:
-                        raise IngestError(f"Failed to register file {infile}", infile, pos) from exc
 
     def ingestFiles(self, fileList):
         """Ingest specified file or list of files and add them to the registry.
