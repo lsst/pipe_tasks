@@ -30,6 +30,7 @@ import lsst.pipe.base.connectionTypes as cT
 import lsst.log as log
 import lsst.utils as utils
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
+from lsst.meas.base import RecalibrateExposureConnections
 from .coaddBase import CoaddBaseTask, makeSkyInfo
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -88,7 +89,12 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
         dtype=bool,
         default=False,
     )
-    doApplySkyCorr = pexConfig.Field(dtype=bool, default=False, doc="Apply sky correction?")
+    doApplySkyCorr = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Apply sky correction?",
+        deprecated="Deprecated by DM-23352, to be removed after v20. Use recalibrate instead.",
+    )
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
@@ -99,6 +105,9 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
             log.warn("Config doPsfMatch deprecated. Setting makePsfMatched=True and makeDirect=False")
             self.makePsfMatched = True
             self.makeDirect = False
+        if not self.bgSubtracted and self.recalibrate.doApplySkyCorr:
+            raise RuntimeError("Can't apply sky correction (recalibrate.doApplySkyCorr) if the background "
+                               " is to be restored (!bgSubtracted).")
 
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
@@ -248,7 +257,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
          --id patch=5,4 tract=0 filter=HSC-I \
          --selectId visit=903988 ccd=16 --selectId visit=903988 ccd=17 \
          --selectId visit=903988 ccd=23 --selectId visit=903988 ccd=24 \
-         --config doApplyExternalPhotoCalib=False doApplyExternalSkyWcs=False \
+         --config recalibrate.doApplyExternalPhotoCalib=False recalibrate.doApplyExternalSkyWcs=False \
          makePsfMatched=True modelPsf.defaultFwhm=11
 
     writes a direct and PSF-Matched Warp to
@@ -356,9 +365,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 except Exception as e:
                     self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
                     continue
-
-                if self.config.doApplySkyCorr:
-                    self.applySkyCorr(calExpRef, calExp)
 
                 calExpList.append(calExp)
                 ccdIdList.append(ccdId)
@@ -477,7 +483,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         return result
 
     def getCalibratedExposure(self, dataRef, bgSubtracted):
-        """Return one calibrated Exposure, possibly with an updated SkyWcs.
+        """Return one calibrated Exposure
 
         @param[in] dataRef        a sensor-level data reference
         @param[in] bgSubtracted   return calexp with background subtracted? If False get the
@@ -485,15 +491,6 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         @return calibrated exposure
 
         @raises MissingExposureError If data for the exposure is not available.
-
-        If config.doApplyExternalPhotoCalib is `True`, the photometric calibration
-        (`photoCalib`) is taken from `config.externalPhotoCalibName` via the
-        `name_photoCalib` dataset.  Otherwise, the photometric calibration is
-        retrieved from the processed exposure.  When
-        `config.doApplyExternalSkyWcs` is `True`, the astrometric calibration
-        is taken from `config.externalSkyWcsName` with the `name_wcs` dataset.
-        Otherwise, the astrometric calibration is taken from the processed
-        exposure.
         """
         try:
             exposure = dataRef.get(self.calexpType, immediate=True)
@@ -506,21 +503,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             mi += background.getImage()
             del mi
 
-        if self.config.doApplyExternalPhotoCalib:
-            photoCalib = dataRef.get(f"{self.config.externalPhotoCalibName}_photoCalib")
-            exposure.setPhotoCalib(photoCalib)
-        else:
-            photoCalib = exposure.getPhotoCalib()
-
-        if self.config.doApplyExternalSkyWcs:
-            skyWcs = dataRef.get(f"{self.config.externalSkyWcsName}_wcs")
-            exposure.setWcs(skyWcs)
-
-        exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage,
-                                                         includeScaleUncertainty=self.config.includeCalibVar)
-        exposure.maskedImage /= photoCalib.getCalibrationMean()
+        exposure = self.recalibrate.runDataRef(dataRef, exposure)
         # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
-        # exposure.setCalib(afwImage.Calib(1.0))
+        # This should just be a matter of supplying "rescale=False" to self.recalibrate.runDataRef
         return exposure
 
     @staticmethod
@@ -541,30 +526,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             warpTypeList.append("psfMatched")
         return warpTypeList
 
-    def applySkyCorr(self, dataRef, calexp):
-        """Apply correction to the sky background level
 
-        Sky corrections can be generated with the 'skyCorrection.py'
-        executable in pipe_drivers. Because the sky model used by that
-        code extends over the entire focal plane, this can produce
-        better sky subtraction.
-
-        The calexp is updated in-place.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.ButlerDataRef`
-            Data reference for calexp.
-        calexp : `lsst.afw.image.Exposure` or `lsst.afw.image.MaskedImage`
-            Calibrated exposure.
-        """
-        bg = dataRef.get("skyCorr")
-        if isinstance(calexp, afwImage.Exposure):
-            calexp = calexp.getMaskedImage()
-        calexp -= bg.getImage()
-
-
-class MakeWarpConnections(pipeBase.PipelineTaskConnections,
+class MakeWarpConnections(RecalibrateExposureConnections,
                           dimensions=("tract", "patch", "skymap", "instrument", "visit"),
                           defaultTemplates={"coaddName": "deep"}):
     calExpList = cT.Input(
@@ -577,13 +540,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
     backgroundList = cT.Input(
         doc="Input backgrounds to be added back into the calexp if bgSubtracted=False",
         name="calexpBackground",
-        storageClass="Background",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
-    )
-    skyCorrList = cT.Input(
-        doc="Input Sky Correction to be subtracted from the calexp if doApplySkyCorr=True",
-        name="skyCorr",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
@@ -613,8 +569,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         super().__init__(config=config)
         if config.bgSubtracted:
             self.inputs.remove("backgroundList")
-        if not config.doApplySkyCorr:
-            self.inputs.remove("skyCorrList")
         if not config.makeDirect:
             self.outputs.remove("direct")
         if not config.makePsfMatched:
@@ -623,24 +577,11 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
                      pipelineConnections=MakeWarpConnections):
-
-    def validate(self):
-        super().validate()
-        # TODO: Remove this constraint after DM-17062
-        if self.doApplyExternalPhotoCalib:
-            raise RuntimeError("Gen3 MakeWarpTask cannot apply external PhotoCalib results. "
-                               "Please set doApplyExternalPhotoCalib=False.")
-        if self.doApplyExternalSkyWcs:
-            raise RuntimeError("Gen3 MakeWarpTask cannot apply external SkyWcs results. "
-                               "Please set doApplyExternalSkyWcs=False.")
+    pass
 
 
 class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
     """Warp and optionally PSF-Match calexps onto an a common projection
-
-    First Draft of a Gen3 compatible MakeWarpTask which
-    currently does not handle doApplyExternalPhotoCalib=True or
-    doApplyExternalSkyWcs=True.
     """
     ConfigClass = MakeWarpConfig
     _DefaultName = "makeWarp"
@@ -683,7 +624,7 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         if self.config.makePsfMatched:
             butlerQC.put(results.exposures["psfMatched"], outputRefs.psfMatched)
 
-    def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None):
+    def prepareCalibratedExposures(self, calExpList, backgroundList=None, **calibLists):
         """Calibrate and add backgrounds to input calExpList in place
 
         TODO DM-17062: apply jointcal/meas_mosaic here
@@ -694,14 +635,15 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
             Sequence of calexps to be modified in place
         backgroundList : `list` of `lsst.afw.math.backgroundList`
             Sequence of backgrounds to be added back in if bgSubtracted=False
-        skyCorrList : `list` of `lsst.afw.math.backgroundList`
-            Sequence of background corrections to be subtracted if doApplySkyCorr=True
+        **calibLists : `dict` (`str`: `list` of data)
+            Lists of calibrations.
         """
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
-        skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
-        for calexp, background, skyCorr in zip(calExpList, backgroundList, skyCorrList):
-            mi = calexp.maskedImage
-            if not self.config.bgSubtracted:
-                mi += background.getImage()
-            if self.config.doApplySkyCorr:
-                mi -= skyCorr.getImage()
+        calibs = self.recalibrate.extractCalibs(calibLists, len(calExpList))
+        # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
+        # This should just be a matter of supplying "rescale=False" to self.recalibrate.runMultiple
+        calExpList = self.recalibrate.runMultiple(calExpList, **calibs)
+
+        if not self.config.bgSubtracted:
+            for calexp, bg in zip(calExpList, backgroundList):
+                calexp.maskedImage += bg.getImage()

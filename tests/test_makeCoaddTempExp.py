@@ -129,11 +129,11 @@ class GetCalibratedExposureTestCase(lsst.utils.tests.TestCase):
     def _checkCalibratedExposure(self, doApplyExternalPhotoCalib, doApplyExternalSkyWcs,
                                  includeCalibVar,
                                  externalPhotoCalibName, externalSkyWcsName):
-        self.config.doApplyExternalPhotoCalib = doApplyExternalPhotoCalib
-        self.config.doApplyExternalSkyWcs = doApplyExternalSkyWcs
-        self.config.externalPhotoCalibName = externalPhotoCalibName
-        self.config.externalSkyWcsName = externalSkyWcsName
-        self.config.includeCalibVar = includeCalibVar
+        self.config.recalibrate.doApplyExternalPhotoCalib = doApplyExternalPhotoCalib
+        self.config.recalibrate.doApplyExternalSkyWcs = doApplyExternalSkyWcs
+        self.config.recalibrate.externalPhotoCalibName = externalPhotoCalibName
+        self.config.recalibrate.externalSkyWcsName = externalSkyWcsName
+        self.config.recalibrate.includePhotoCalibVar = includeCalibVar
         task = MakeCoaddTempExpTask(config=self.config)
 
         photoCalib = self.externalPhotoCalib if doApplyExternalPhotoCalib else self.exposurePhotoCalib

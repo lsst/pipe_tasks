@@ -31,6 +31,7 @@ from lsst.coadd.utils import CoaddDataIdContainer
 from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
 from .scaleVariance import ScaleVarianceTask
+from lsst.meas.base.recalibrateExposure import RecalibrateExposureTask
 
 __all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo", "makeCoaddSuffix"]
 
@@ -68,10 +69,9 @@ class CoaddBaseConfig(pexConfig.Config):
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     doApplyUberCal = pexConfig.Field(
         dtype=bool,
-        doc=("Apply ubercalibrated WCS and PhotoCalib results to input calexps? "
-             "This field is no longer used, and has been deprecated by DM-21308. "
-             "It will be removed after v20. Use doApplyExternalPhotoCalib and "
-             "doApplyExternalSkyWcs instead."),
+        doc="Apply ubercalibrated WCS and PhotoCalib results to input calexps?",
+        deprecated=("No longer used: deprecated by DM-21308, to be removed after v20. "
+                    "Use ``recalibrate`` instead."),
         default=False
     )
     doApplyExternalPhotoCalib = pexConfig.Field(
@@ -80,7 +80,8 @@ class CoaddBaseConfig(pexConfig.Config):
         doc=("Whether to apply external photometric calibration via an "
              "`lsst.afw.image.PhotoCalib` object.  Uses the "
              "`externalPhotoCalibName` field to determine which calibration "
-             "to load.")
+             "to load."),
+        deprecated="Deprecated by DM-23352, to be removed after v20. Use ``recalibrate`` instead.",
     )
     externalPhotoCalibName = pexConfig.ChoiceField(
         dtype=str,
@@ -90,14 +91,16 @@ class CoaddBaseConfig(pexConfig.Config):
             "jointcal": "Use jointcal_photoCalib",
             "fgcm": "Use fgcm_photoCalib",
             "fgcm_tract": "Use fgcm_tract_photoCalib"
-        }
+        },
+        deprecated="Deprecated by DM-23352, to be removed after v20. Use ``recalibrate`` instead.",
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
         default=False,
         doc=("Whether to apply external astrometric calibration via an "
              "`lsst.afw.geom.SkyWcs` object.  Uses `externalSkyWcsName` "
-             "field to determine which calibration to load.")
+             "field to determine which calibration to load."),
+        deprecated="Deprecated by DM-23352, to be removed after v20. Use ``recalibrate`` instead.",
     )
     externalSkyWcsName = pexConfig.ChoiceField(
         dtype=str,
@@ -105,18 +108,24 @@ class CoaddBaseConfig(pexConfig.Config):
         default="jointcal",
         allowed={
             "jointcal": "Use jointcal_wcs"
-        }
+        },
+        deprecated="Deprecated by DM-23352, to be removed after v20. Use ``recalibrate`` instead.",
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
         doc="Add photometric calibration variance to warp variance plane.",
-        default=False
+        default=False,
+        deprecated="Deprecated by DM-23352, to be removed after v20. Use ``recalibrate`` instead."
     )
     matchingKernelSize = pexConfig.Field(
         dtype=int,
         doc="Size in pixels of matching kernel. Must be odd.",
         default=21,
         check=lambda x: x % 2 == 1
+    )
+    recalibrate = pexConfig.ConfigurableField(
+        target=RecalibrateExposureTask,
+        doc="Recalibrate exposure",
     )
 
 
@@ -140,6 +149,7 @@ class CoaddBaseTask(pipeBase.CmdLineTask):
         super().__init__(**kwargs)
         self.makeSubtask("select")
         self.makeSubtask("inputRecorder")
+        self.makeSubtask("recalibrate")
 
     def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
         """!
