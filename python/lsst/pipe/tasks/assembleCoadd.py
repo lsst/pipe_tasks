@@ -2092,13 +2092,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         # Check and match the order of the supplementaryData
         # (PSF-matched) inputs to the order of the direct inputs,
         # so that the artifact mask is applied to the right warp
-        # TODO: remove special case after DM-21370
-        if isinstance(tempExpRefList[0], DeferredDatasetHandle):
-            dataIds = [ref.datasetRefOrType.dataId for ref in tempExpRefList]
-            psfMatchedDataIds = [ref.datasetRefOrType.dataId for ref in supplementaryData.warpRefList]
-        else:
-            dataIds = [ref.dataId for ref in tempExpRefList]
-            psfMatchedDataIds = [ref.dataId for ref in supplementaryData.warpRefList]
+        dataIds = [ref.dataId for ref in tempExpRefList]
+        psfMatchedDataIds = [ref.dataId for ref in supplementaryData.warpRefList]
 
         if dataIds != psfMatchedDataIds:
             self.log.info("Reordering and or/padding PSF-matched visit input list")
