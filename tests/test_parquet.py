@@ -116,7 +116,9 @@ class MultilevelParquetTableTestCase(ParquetTableTestCase):
         return functools.reduce(lambda d1, d2: d1.join(d2), dfFilterDSCombos)
 
     def getParq(self, filename, df):
-        return MultilevelParquetTable(filename), MultilevelParquetTable(dataFrame=df)
+        fromFile = MultilevelParquetTable(filename)
+        fromDf = MultilevelParquetTable(dataFrame=df)
+        return fromFile, fromDf
 
     def testProperties(self):
         self.assertTrue(all([x == y for x, y in zip(self.parq.columnLevels, self.df.columns.names)]))

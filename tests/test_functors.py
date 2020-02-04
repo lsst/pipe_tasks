@@ -94,6 +94,7 @@ class FunctorTestCase(unittest.TestCase):
         return val
 
     def testColumn(self):
+        self.columns.append("base_FootprintArea_value")
         self.dataDict["base_FootprintArea_value"] = \
             np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
@@ -101,6 +102,7 @@ class FunctorTestCase(unittest.TestCase):
         self._funcVal(func, parq)
 
     def testCustom(self):
+        self.columns.append("base_FootprintArea_value")
         self.dataDict["base_FootprintArea_value"] = \
             np.random.rand(self.nRecords)
         parq = self.simulateMultiParquet(self.dataDict)
@@ -124,6 +126,7 @@ class FunctorTestCase(unittest.TestCase):
         self.assertTrue(np.allclose(dec, coords['coord_dec'], atol=1e-13, rtol=0))
 
     def testMag(self):
+        self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr"])
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
@@ -152,9 +155,11 @@ class FunctorTestCase(unittest.TestCase):
         psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R'), parq)
 
         # These should *not* be equal.
-        self.assertFalse(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
+        self.assertTrue(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
 
     def testMagDiff(self):
+        self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr",
+                             "modelfit_CModel_instFlux", "modelfit_CModel_instFluxErr"])
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1000)

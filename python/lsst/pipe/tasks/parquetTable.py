@@ -115,7 +115,7 @@ class ParquetTable(object):
 
     def _getColumns(self):
         if self._df is not None:
-            return self._df.columns
+            return self._sanitizeColumns(self._df.columns)
         else:
             return self._pf.metadata.schema.names
 
@@ -261,27 +261,33 @@ class MultilevelParquetTable(ParquetTable):
             If True drop levels of column index that have just one entry
 
         """
-        if self._pf is None:
-            if columns is None:
+        if columns is None:
+            if self._pf is None:
                 return self._df
             else:
-                return self._df[columns]
-
-        if columns is None:
-            return self._pf.read().to_pandas()
+                return self._pf.read().to_pandas()
 
         if isinstance(columns, dict):
             columns = self._colsFromDict(columns)
 
-        pfColumns = self._stringify(columns)
-        try:
-            df = self._pf.read(columns=pfColumns, use_pandas_metadata=True).to_pandas()
-        except (AttributeError, KeyError):
-            newColumns = [c for c in columns if c in self.columnIndex]
-            if not newColumns:
-                raise ValueError('None of the requested columns ({}) are available!'.format(columns))
-            pfColumns = self._stringify(newColumns)
-            df = self._pf.read(columns=pfColumns, use_pandas_metadata=True).to_pandas()
+        if self._pf is None:
+            try:
+                df = self._df[columns]
+            except (AttributeError, KeyError):
+                newColumns = [c for c in columns if c in self.columnIndex]
+                if not newColumns:
+                    raise ValueError('None of the requested columns ({}) are available!'.format(columns))
+                df = self._df[columns]
+        else:
+            pfColumns = self._stringify(columns)
+            try:
+                df = self._pf.read(columns=pfColumns, use_pandas_metadata=True).to_pandas()
+            except (AttributeError, KeyError):
+                newColumns = [c for c in columns if c in self.columnIndex]
+                if not newColumns:
+                    raise ValueError('None of the requested columns ({}) are available!'.format(columns))
+                pfColumns = self._stringify(newColumns)
+                df = self._pf.read(columns=pfColumns, use_pandas_metadata=True).to_pandas()
 
         if droplevels:
             # Drop levels of column index that have just one entry
