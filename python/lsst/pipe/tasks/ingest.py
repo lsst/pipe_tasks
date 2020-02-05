@@ -544,37 +544,41 @@ class IngestTask(Task):
         """!Examine and ingest a single file
 
         @param infile: File to process
-        @param registry: Registry into which to insert Butler metadata
+        @param registry: Registry into which to insert Butler metadata, or None
         @param args: Parsed command-line arguments
         @param pos: Position number of this file in the input list
+        @return parsed information from FITS HDUs if registry is None; or None
         """
         if self.isBadFile(infile, args.badFile):
             self.log.info("Skipping declared bad file %s" % infile)
-            return
+            return None
         try:
             fileInfo, hduInfoList = self.parse.getInfo(infile)
         except Exception as e:
             if not self.config.allowError:
                 raise RuntimeError(f"Error parsing {infile}") from e
             self.log.warn("Error parsing %s (%s); skipping" % (infile, e))
-            return
+            return None
         if self.isBadId(fileInfo, args.badId.idList):
             self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
-            return
+            return None
         if registry is not None and self.register.check(registry, fileInfo):
             if args.ignoreIngested:
-                return
+                return None
             self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
         outfile = self.parse.getDestination(args.butler, fileInfo, infile)
         if not self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun):
-            return
+            return None
         if hduInfoList is None:
-            return
+            return None
+        if registry is None:
+            return hduInfoList
         for info in hduInfoList:
             try:
                 self.register.addRow(registry, info, dryrun=args.dryrun, create=args.create)
             except Exception as exc:
                 raise IngestError(f"Failed to register file {infile}", infile, pos) from exc
+        return None  # No further registration should be performed
 
     def run(self, args):
         """Ingest all specified files and add them to the registry"""
