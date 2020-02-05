@@ -30,8 +30,6 @@ import lsst.utils.tests
 
 # TODO: Remove skipUnless and this try block DM-22256
 try:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
     from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
     from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                           DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
@@ -42,10 +40,6 @@ except ImportError:
     havePyArrow = False
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
-
-
-def setup_module(module):
-    lsst.utils.tests.init()
 
 
 @unittest.skipUnless(havePyArrow, "Requires pyarrow")
@@ -120,16 +114,19 @@ class FunctorTestCase(unittest.TestCase):
 
         columnDict = {'dataset': 'ref', 'filter': 'HSC-G',
                       'column': ['coord_ra', 'coord_dec']}
-        coords = parq.toDataFrame(columns=columnDict) / np.pi * 180.
+        coords = parq.toDataFrame(columns=columnDict, droplevels=True) / np.pi * 180.
 
-        self.assertTrue(np.allclose(ra, coords['coord_ra'], atol=1e-13, rtol=0))
-        self.assertTrue(np.allclose(dec, coords['coord_dec'], atol=1e-13, rtol=0))
+        self.assertTrue(np.allclose(ra, coords[('ref', 'HSC-G', 'coord_ra')], atol=1e-13, rtol=0))
+        self.assertTrue(np.allclose(dec, coords[('ref', 'HSC-G', 'coord_dec')], atol=1e-13, rtol=0))
 
     def testMag(self):
         self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr"])
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
+        # Change one dataset filter combinations value.
+        parq._df[("meas", "HSC-G", "base_PsfFlux_instFlux")] -= 1
+
         fluxName = 'base_PsfFlux'
 
         # Check that things work when you provide dataset explicitly
@@ -155,7 +152,7 @@ class FunctorTestCase(unittest.TestCase):
         psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R'), parq)
 
         # These should *not* be equal.
-        self.assertTrue(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
+        self.assertFalse(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
 
     def testMagDiff(self):
         self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr",
@@ -176,10 +173,24 @@ class FunctorTestCase(unittest.TestCase):
 
     def testLabeller(self):
         # Covering the code is better than nothing
+        self.columns.append("base_ClassificationExtendedness_value")
+        self.dataDict["base_ClassificationExtendedness_value"] = np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
         labels = self._funcVal(StarGalaxyLabeller(), parq)  # noqa
 
     def testOther(self):
+        self.columns.extend(["ext_shapeHSM_HsmSourceMoments_xx", "ext_shapeHSM_HsmSourceMoments_yy",
+                             "base_SdssShape_xx", "base_SdssShape_yy",
+                             "ext_shapeHSM_HsmPsfMoments_xx", "ext_shapeHSM_HsmPsfMoments_yy",
+                             "base_SdssShape_psf_xx", "base_SdssShape_psf_yy"])
+        self.dataDict["ext_shapeHSM_HsmSourceMoments_xx"] = np.full(self.nRecords, 1 / np.sqrt(2))
+        self.dataDict["ext_shapeHSM_HsmSourceMoments_yy"] = np.full(self.nRecords, 1 / np.sqrt(2))
+        self.dataDict["base_SdssShape_xx"] = np.full(self.nRecords, 1 / np.sqrt(2))
+        self.dataDict["base_SdssShape_yy"] = np.full(self.nRecords, 1 / np.sqrt(2))
+        self.dataDict["ext_shapeHSM_HsmPsfMoments_xx"] = np.full(self.nRecords, 1 / np.sqrt(2))
+        self.dataDict["ext_shapeHSM_HsmPsfMoments_yy"] = np.full(self.nRecords, 1 / np.sqrt(2))
+        self.dataDict["base_SdssShape_psf_xx"] = np.full(self.nRecords, 1)
+        self.dataDict["base_SdssShape_psf_yy"] = np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
         # Covering the code is better than nothing
         for filt in self.filters:
@@ -205,11 +216,13 @@ class FunctorTestCase(unittest.TestCase):
         return df
 
     def testComposite(self):
-        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
-        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
-        self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1000)
-        self.dataDict["modelfit_CModel_instFluxErr"] = np.full(self.nRecords, 10)
+        self.columns.extend(["modelfit_CModel_instFlux", "base_PsfFlux_instFlux"])
+        self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1)
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
+        # Modify r band value slightly.
+        parq._df[("meas", "HSC-R", "base_PsfFlux_instFlux")] -= 0.1
+
         filt = 'HSC-G'
         funcDict = {'psfMag_ref': Mag('base_PsfFlux', dataset='ref'),
                     'ra': RAColumn(),
@@ -234,6 +247,7 @@ class FunctorTestCase(unittest.TestCase):
 
         func2.filt = 'HSC-R'
         df3 = self._compositeFuncVal(func2, parq)
+        # Because we modified the R filter this should fail.
         self.assertFalse(df2.equals(df3))
 
         # Make sure things work with passing list instead of dict
@@ -267,4 +281,3 @@ def setup_module(module):
 if __name__ == "__main__":
     lsst.utils.tests.init()
     unittest.main()
-
