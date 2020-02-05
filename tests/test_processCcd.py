@@ -132,7 +132,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
 
                     self.assertEqual(len(icSrc), 28)
-                    self.assertEqual(len(src), 185)
+                    self.assertEqual(len(src), 185 + 100)  # 185 real sources plus 100 sky sources
 
                     expectedPlaces = 7  # Tolerance for numerical comparisons
                     for name, var, val in [
@@ -254,6 +254,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             rawExposure = dataRef.get("raw", immediate=True)
             camera = dataRef.get("camera")
             isrData = isrTask.readIsrData(dataRef, rawExposure)
+            exposureIdInfo = inputButler.get("expIdInfo", dataId=dataId)
             isrResult2 = isrTask.run(
                 rawExposure,
                 bias=isrData.bias,
@@ -277,7 +278,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 args=[InputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] + dataIdStrList,
                 doReturnResults=True,
             )
-            icResult2 = charImageTask.run(isrResult2.exposure)
+            icResult2 = charImageTask.run(isrResult2.exposure, exposureIdInfo=exposureIdInfo)
             self.assertMaskedImagesEqual(
                 icResult1.parsedCmd.butler.get("icExp", dataId, immediate=True).getMaskedImage(),
                 icResult1.resultList[0].result.exposure.getMaskedImage()
@@ -293,7 +294,6 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             self.assertCatalogsEqual(
                 icResult2.sourceCat,
                 icResult1.resultList[0].result.sourceCat,
-                skipCols=("id", "parent")  # since we didn't want to pass in an ExposureIdInfo, IDs disagree
             )
             self.assertBackgroundListsEqual(
                 icResult1.parsedCmd.butler.get("icExpBackground", dataId, immediate=True),
@@ -311,7 +311,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
             calResult2 = calibrateTask.run(
                 icResult2.exposure,
                 background=icResult2.background,
-                icSourceCat=icResult2.sourceCat
+                icSourceCat=icResult2.sourceCat,
+                exposureIdInfo=exposureIdInfo,
             )
             self.assertMaskedImagesEqual(
                 calResult1.parsedCmd.butler.get("calexp", dataId, immediate=True).getMaskedImage(),
