@@ -22,6 +22,7 @@
 import math
 import random
 import numpy
+import os
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -170,7 +171,11 @@ class ImageDifferenceConfig(pexConfig.Config):
     diaSourceMatchRadius = pexConfig.Field(dtype=float, default=0.5,
                                            doc="Match radius (in arcseconds) "
                                                "for DiaSource to Source association")
-
+    writeTemplate = pexConfig.Field(
+        doc="write template image",
+        dtype=bool,
+        default=False
+    )
     def setDefaults(self):
         # defaults are OK for catalog and diacatalog
 
@@ -597,6 +602,19 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                     subtractedExposure = decorrResult.correctedExposure
 
             # END (if subtractAlgorithm == 'AL')
+
+        if self.config.writeTemplate:
+            exp_filename = sensorRef.getUri('deepDiff_diaSrc')
+            path = os.path.dirname(exp_filename)
+
+            visit = sensorRef.dataId['visit']
+            det = sensorRef.dataId['detector']
+            filt = sensorRef.dataId['filter']
+            raft = sensorRef.dataId['raftName']
+            detName = sensorRef.dataId['detectorName']
+            filename = f"{path}/diff_template_{visit:08}-{filt}-{raft}-{detName}-det{det:03}.fits"
+            templateExposure.writeFits(filename)
+
 
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
