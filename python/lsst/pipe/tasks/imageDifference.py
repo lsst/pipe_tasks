@@ -604,15 +604,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             # END (if subtractAlgorithm == 'AL')
 
         if self.config.writeTemplate:
-            exp_filename = sensorRef.getUri('deepDiff_diaSrc')
-            path = os.path.dirname(exp_filename)
+            path = sensorRef.butlerSubset.butler._repos._outputs[0].cfgRoot
 
             visit = sensorRef.dataId['visit']
             det = sensorRef.dataId['detector']
             filt = sensorRef.dataId['filter']
             raft = sensorRef.dataId['raftName']
             detName = sensorRef.dataId['detectorName']
-            filename = f"{path}/diff_template_{visit:08}-{filt}-{raft}-{detName}-det{det:03}.fits"
+            filename = f"{path}/deepDiff/v{visit:08}-f{filt}/{raft}/diff_template_{visit:08}-{filt}-{raft}-{detName}-det{det:03}.fits"
             templateExposure.writeFits(filename)
 
 
