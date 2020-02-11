@@ -612,7 +612,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
             raft = sensorRef.dataId['raftName']
             detName = sensorRef.dataId['detectorName']
             filename = f"{path}/deepDiff/v{visit:08}-f{filt}/{raft}/diff_template_{visit:08}-{filt}-{raft}-{detName}-det{det:03}.fits"
-            templateExposure.writeFits(filename)
+            subtractRes.warpedExposure.writeFits(filename)
 
 
         if self.config.doDetection:
