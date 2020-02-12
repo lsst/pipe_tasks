@@ -753,7 +753,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
-            results = self.detection.makeSourceCatalog(
+            results = self.detection.run(
                 table=table,
                 exposure=subtractedExposure,
                 doSmooth=not self.config.doPreConvolve
