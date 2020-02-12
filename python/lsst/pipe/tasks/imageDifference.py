@@ -30,7 +30,7 @@ import lsst.geom as geom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
-from lsst.meas.base import ForcedMeasurementTask, EvaluateLocalCalibrationTask
+from lsst.meas.base import ForcedMeasurementTask
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
@@ -84,11 +84,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     doMatchSources = pexConfig.Field(dtype=bool, default=True,
                                      doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
-    doEvalLocCalibration = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc="Store calibration products (local wcs and photoCalib) in the "
-            "output DiaSource catalog.")
     doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
     doForcedMeasurement = pexConfig.Field(
         dtype=bool,
@@ -143,11 +138,6 @@ class ImageDifferenceConfig(pexConfig.Config):
     measurement = pexConfig.ConfigurableField(
         target=DipoleFitTask,
         doc="Enable updated dipole fitting method",
-    )
-    evalLocCalib = pexConfig.ConfigurableField(
-        target=EvaluateLocalCalibrationTask,
-        doc="Task to strip calibrations from an exposure and store their "
-            "local values in the output DiaSource catalog."
     )
     forcedMeasurement = pexConfig.ConfigurableField(
         target=ForcedMeasurementTask,
@@ -217,6 +207,8 @@ class ImageDifferenceConfig(pexConfig.Config):
         # To change that you must modify algorithms.names in the task's applyOverrides method,
         # after the user has set doPreConvolve.
         self.measurement.algorithms.names.add('base_PeakLikelihoodFlux')
+        self.measurement.plugins.names |= ['base_LocalPhotoCalib',
+                                           'base_LocalWcs']
 
         self.forcedMeasurement.plugins = ["base_TransformedCentroid", "base_PsfFlux"]
         self.forcedMeasurement.copyColumns = {
@@ -297,8 +289,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
-        if self.config.doEvalLocCalibration and self.config.doMeasurement:
-            self.makeSubtask("evalLocCalib", schema=self.schema)
         if self.config.doForcedMeasurement:
             self.schema.addField(
                 "ip_diffim_forced_PsfFlux_instFlux", "D",
@@ -792,9 +782,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                                              subtractRes.matchedExposure)
                     else:
                         self.measurement.run(diaSources, subtractedExposure, exposure)
-
-            if self.config.doEvalLocCalibration and self.config.doMeasurement:
-                self.evalLocCalib.run(diaSources, subtractedExposure)
 
             if self.config.doForcedMeasurement:
                 # Run forced psf photometry on the PVI at the diaSource locations.

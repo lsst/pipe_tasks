@@ -735,7 +735,10 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        self.measurement.plugins.names |= ['base_InputCount', 'base_Variance']
+        self.measurement.plugins.names |= ['base_InputCount',
+                                           'base_Variance',
+                                           'base_LocalPhotoCalib',
+                                           'base_LocalWcs']
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
                                                                        'INEXACT_PSF']
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
