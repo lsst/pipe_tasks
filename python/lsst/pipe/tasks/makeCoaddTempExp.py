@@ -507,13 +507,17 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             del mi
 
         if self.config.doApplyExternalPhotoCalib:
-            photoCalib = dataRef.get(f"{self.config.externalPhotoCalibName}_photoCalib")
+            source = f"{self.config.externalPhotoCalibName}_photoCalib"
+            self.log.debug("Applying external photoCalib to %s from %s", dataRef.dataId, source)
+            photoCalib = dataRef.get(source)
             exposure.setPhotoCalib(photoCalib)
         else:
             photoCalib = exposure.getPhotoCalib()
 
         if self.config.doApplyExternalSkyWcs:
-            skyWcs = dataRef.get(f"{self.config.externalSkyWcsName}_wcs")
+            source = f"{self.config.externalSkyWcsName}_wcs"
+            self.log.debug("Applying external skyWcs to %s from %s", dataRef.dataId, source)
+            skyWcs = dataRef.get(source)
             exposure.setWcs(skyWcs)
 
         exposure.maskedImage = photoCalib.calibrateImage(exposure.maskedImage,
@@ -559,6 +563,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             Calibrated exposure.
         """
         bg = dataRef.get("skyCorr")
+        self.log.debug("Applying sky correction to %s", dataRef.dataId)
         if isinstance(calexp, afwImage.Exposure):
             calexp = calexp.getMaskedImage()
         calexp -= bg.getImage()
