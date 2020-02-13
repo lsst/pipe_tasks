@@ -221,8 +221,8 @@ class PostprocessAnalysis(object):
     functor collection, since the `filt` keyword argument of this object triggers an
     overwrite of the `filt` property for all functors in the collection.
 
-    This object also allows a list of flags to be passed, and defines a set of default
-    flags that are always included even if not requested.
+    This object also allows a list of refFlags to be passed, and defines a set of default
+    refFlags that are always included even if not requested.
 
     If a list of `ParquetTable` object is passed, rather than a single one, then the
     calculations will be mapped over all the input catalogs.  In principle, it should
@@ -247,20 +247,26 @@ class PostprocessAnalysis(object):
         of the provided functors.
 
     flags : `list` (optional)
-        List of flags to include in output table.
+        List of flags (per-band) to include in output table.
+
+    refFlags : `list` (optional)
+        List of refFlags (only reference band) to include in output table.
+
+
     """
-    _defaultFlags = ('calib_psf_used', 'detect_isPrimary')
+    _defaultRefFlags = ('calib_psf_used', 'detect_isPrimary')
     _defaultFuncs = (('coord_ra', RAColumn()),
                      ('coord_dec', DecColumn()))
 
-    def __init__(self, parq, functors, filt=None, flags=None):
+    def __init__(self, parq, functors, filt=None, flags=None, refFlags=None):
         self.parq = parq
         self.functors = functors
 
         self.filt = filt
-        self.flags = list(self._defaultFlags)
-        if flags is not None:
-            self.flags += list(flags)
+        self.flags = list(flags) if flags is not None else []
+        self.refFlags = list(self._defaultRefFlags)
+        if refFlags is not None:
+            self.refFlags += list(refFlags)
 
         self._df = None
 
@@ -272,7 +278,8 @@ class PostprocessAnalysis(object):
     @property
     def func(self):
         additionalFuncs = self.defaultFuncs
-        additionalFuncs.update({flag: Column(flag) for flag in self.flags})
+        additionalFuncs.update({flag: Column(flag, dataset='ref') for flag in self.refFlags})
+        additionalFuncs.update({flag: Column(flag, dataset='meas') for flag in self.flags})
 
         if isinstance(self.functors, CompositeFunctor):
             func = self.functors
@@ -364,7 +371,7 @@ class TransformCatalogBaseTask(CmdLineTask):
                 functor: DeconvolvedMoments
                 filt: HSC-G
                 dataset: forced_src
-        flags:
+        refFlags:
             - calib_psfUsed
             - merge_measurement_i
             - merge_measurement_r
@@ -380,8 +387,10 @@ class TransformCatalogBaseTask(CmdLineTask):
     and any additional entries for each column other than "functor" or "args" (e.g., `'filt'`,
     `'dataset'`) are treated as keyword arguments to be passed to the functor initialization.
 
-    The "flags" entry is shortcut for a bunch of `Column` functors with the original column and
+    The "refFlags" entry is shortcut for a bunch of `Column` functors with the original column and
     taken from the `'ref'` dataset.
+
+    The "flags" entry will be expanded out per band.
 
     Note, if `'filter'` is provided as part of the `dataId` when running this task (even though
     `deepCoadd_obj` does not use `'filter'`), then this will override the `filt` kwargs

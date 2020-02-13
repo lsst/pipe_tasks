@@ -328,9 +328,13 @@ class CompositeFunctor(Functor):
         else:
             renameRules = None
 
+        if 'refFlags' in translationDefinition:
+            for flag in translationDefinition['refFlags']:
+                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='ref')
+
         if 'flags' in translationDefinition:
             for flag in translationDefinition['flags']:
-                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='ref')
+                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='meas')
 
         return cls(funcs, **kwargs)
 
