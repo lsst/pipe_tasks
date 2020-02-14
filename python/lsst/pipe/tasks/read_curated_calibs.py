@@ -116,12 +116,21 @@ def read_all(root, camera):
     data_by_chip = {}
     name_map = {det.getName().lower(): det.getName() for
                 det in camera}  # we assume the directories have been lowered
-    calib_type_old = None
+
+    if not dirs:
+        raise RuntimeError(f"No data found on path {root}")
+
+    calib_types = set()
     for d in dirs:
         chip_name = os.path.basename(d)
         chip_id = camera[name_map[chip_name]].getId()
         data_by_chip[chip_name], calib_type = read_one_chip(root, chip_name, chip_id)
-        if calib_type_old is not None:
-            if calib_type_old != calib_type:
-                raise ValueError(f'Calibration types do not agree: {calib_type_old} != {calib_type}')
+        calib_types.add(calib_type)
+        if len(calib_types) != 1:  # set.add(None) has length 1 so None is OK here.
+            raise ValueError(f'Error mixing calib types: {calib_types}')
+
+    no_data = all([v == {} for v in data_by_chip.values()])
+    if no_data:
+        raise RuntimeError(f'No data to ingest')
+
     return data_by_chip, calib_type
