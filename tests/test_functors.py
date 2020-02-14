@@ -31,8 +31,8 @@ import lsst.utils.tests
 # TODO: Remove skipUnless and this try block DM-22256
 try:
     from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
-    from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
-                                          DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
+    from lsst.pipe.tasks.functors import (Index, IDColumn, CompositeFunctor, CustomFunctor, Column, RAColumn,
+                                          DecColumn, Mag, MagErr, MagDiff, Color, StarGalaxyLabeller,
                                           DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
                                           HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm)
     havePyArrow = True
@@ -107,6 +107,23 @@ class FunctorTestCase(unittest.TestCase):
 
         np.allclose(val.values, 2*func2(parq).values, atol=1e-13, rtol=0)
 
+    def testIndex(self):
+        parq = self.simulateMultiParquet(self.dataDict)
+        func = Index()
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.array_equal(val.to_numpy(),
+                                       np.arange(self.nRecords, dtype=int)))
+
+    def testIDColumn(self):
+        self.columns.append("id")
+        self.dataDict["id"] = \
+            np.arange(self.nRecords, dtype=np.uint64)
+        parq = self.simulateMultiParquet(self.dataDict)
+        func = IDColumn()
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.array_equal(val.to_numpy(),
+                                       np.arange(self.nRecords, dtype=int)))
+
     def testCoords(self):
         parq = self.simulateMultiParquet(self.dataDict)
         ra = self._funcVal(RAColumn(), parq)
@@ -125,34 +142,60 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
         # Change one dataset filter combinations value.
-        parq._df[("meas", "HSC-G", "base_PsfFlux_instFlux")] -= 1
+        parq._df[("meas", "HSC-G", "base_PsfFlux_instFlux")] -= 900
+        parq._df[("forced_src", "HSC-G", "base_PsfFlux_instFlux")] -= 900
 
         fluxName = 'base_PsfFlux'
 
         # Check that things work when you provide dataset explicitly
-        for dataset in ['forced_src', 'meas']:
+        for dataset in ['meas', 'forced_src']:
             psfMag_G = self._funcVal(Mag(fluxName, dataset=dataset,
                                          filt='HSC-G'),
                                      parq)
+            self.assertTrue(np.allclose(psfMag_G.dropna(), 22, rtol=0, atol=1e-13))
             psfMag_R = self._funcVal(Mag(fluxName, dataset=dataset,
                                          filt='HSC-R'),
                                      parq)
-
-            psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R',
-                                              dataset=dataset),
-                                        parq)
-
-            self.assertTrue(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR, rtol=0, atol=1e-13))
+            self.assertTrue(np.allclose(psfMag_R.dropna(), 19.5, rtol=0, atol=1e-13))
 
         # Check that behavior as expected when dataset not provided;
-        #  that is, that the color comes from forced and default Mag is meas
-        psfMag_G = self._funcVal(Mag(fluxName, filt='HSC-G'), parq)
-        psfMag_R = self._funcVal(Mag(fluxName, filt='HSC-R'), parq)
-
-        psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R'), parq)
+        #  that is, that the default Mag is meas.
+        parq._df[("meas", "HSC-G", "base_PsfFlux_instFlux")] += 900
+        psfMag_G_meas = self._funcVal(Mag(fluxName, filt='HSC-G'), parq)
 
         # These should *not* be equal.
-        self.assertFalse(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
+        self.assertFalse(np.allclose((psfMag_G).dropna(), psfMag_G_meas))
+        self.assertTrue(np.allclose(psfMag_G_meas.dropna(), 22, rtol=0, atol=1e-13))
+
+    def testMagErr(self):
+        self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr"])
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
+        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
+        parq = self.simulateMultiParquet(self.dataDict)
+        # Change one dataset filter combinations value.
+        parq._df[("meas", "HSC-G", "base_PsfFlux_instFlux")] -= 900
+        parq._df[("forced_src", "HSC-G", "base_PsfFlux_instFlux")] -= 900
+
+        fluxName = 'base_PsfFlux'
+
+        # Check that things work when you provide dataset explicitly
+        for dataset in ['meas', 'forced_src']:
+            psfMag_G = self._funcVal(MagErr(fluxName, dataset=dataset,
+                                            filt='HSC-G'),
+                                     parq)
+            self.assertTrue(np.allclose(psfMag_G.dropna(), 22, rtol=0, atol=1e-13))
+            psfMag_R = self._funcVal(MagErr(fluxName, dataset=dataset,
+                                            filt='HSC-R'),
+                                     parq)
+            self.assertTrue(np.allclose(psfMag_R.dropna(), 19.5, rtol=0, atol=1e-13))
+
+        # Check that behavior as expected when dataset not provided;
+        #  that is, that the default Mag is meas.
+        parq._df[("meas", "HSC-G", "base_PsfFlux_instFlux")] += 900
+        psfMag_G_meas = self._funcVal(Mag(fluxName, filt='HSC-G'), parq)
+
+        # These should *not* be equal.
+        self.assertFalse(np.allclose((psfMag_G).dropna(), psfMag_G_meas))
 
     def testMagDiff(self):
         self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr",
