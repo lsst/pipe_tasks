@@ -328,9 +328,13 @@ class CompositeFunctor(Functor):
         else:
             renameRules = None
 
+        if 'refFlags' in translationDefinition:
+            for flag in translationDefinition['refFlags']:
+                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='ref')
+
         if 'flags' in translationDefinition:
             for flag in translationDefinition['flags']:
-                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='ref')
+                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='meas')
 
         return cls(funcs, **kwargs)
 
@@ -445,12 +449,9 @@ class FootprintNPix(Column):
 class CoordColumn(Column):
     """Base class for coordinate column, in degrees
     """
-    _allow_difference = False
     _radians = True
-    _defaultNoDup = True
 
-    def __init__(self, col, calculate=False, **kwargs):
-        self.calculate = calculate
+    def __init__(self, col, **kwargs):
         super().__init__(col, **kwargs)
 
     def _func(self, df):
@@ -464,6 +465,7 @@ class RAColumn(CoordColumn):
     """Right Ascension, in degrees
     """
     name = 'RA'
+    _defaultNoDup = True
 
     def __init__(self, **kwargs):
         super().__init__('coord_ra', **kwargs)
@@ -476,6 +478,7 @@ class DecColumn(CoordColumn):
     """Declination, in degrees
     """
     name = 'Dec'
+    _defaultNoDup = True
 
     def __init__(self, **kwargs):
         super().__init__('coord_dec', **kwargs)
