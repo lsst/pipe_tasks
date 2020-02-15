@@ -229,7 +229,6 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig,
         CompareWarpAssembleCoaddConfig.setDefaults(self)
         self.assembleStaticSkyModel.retarget(CompareWarpAssembleCoaddTask)
         self.doNImage = True
-        self.warpType = "direct"
         self.assembleStaticSkyModel.warpType = self.warpType
         # The deepCoadd and nImage files will be overwritten by this Task, so don't write them the first time
         self.assembleStaticSkyModel.doNImage = False
@@ -406,13 +405,32 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if (selectDataList is None and warpRefList is None) or (selectDataList and warpRefList):
             raise RuntimeError("runDataRef must be supplied either a selectDataList or warpRefList")
 
-        results = AssembleCoaddTask.runDataRef(self, dataRef, selectDataList=selectDataList,
-                                               warpRefList=warpRefList)
+        skyInfo = self.getSkyInfo(dataRef)
+        if warpRefList is None:
+            calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
+            if len(calExpRefList) == 0:
+                self.log.warn("No exposures to coadd")
+                return
+            self.log.info("Coadding %d exposures", len(calExpRefList))
+
+            warpRefList = self.getTempExpRefList(dataRef, calExpRefList)
+
+        inputData = self.prepareInputs(warpRefList)
+        self.log.info("Found %d %s", len(inputData.tempExpRefList),
+                      self.getTempExpDatasetName(self.warpType))
+        if len(inputData.tempExpRefList) == 0:
+            self.log.warn("No coadd temporary exposures found")
+            return
+
+        supplementaryData = self.makeSupplementaryData(dataRef, warpRefList=inputData.tempExpRefList)
+
+        results = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
+                           inputData.weightList, supplementaryData=supplementaryData)
         if results is None:
-            skyInfo = self.getSkyInfo(dataRef)
             self.log.warn("Could not construct DcrModel for patch %s: no data to coadd.",
                           skyInfo.patchInfo.getIndex())
             return
+
         if self.config.doCalculatePsf:
             self.measureCoaddPsf(results.coaddExposure)
         brightObjects = self.readBrightObjectMasks(dataRef) if self.config.doMaskBrightObjects else None
