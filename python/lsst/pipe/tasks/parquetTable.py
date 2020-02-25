@@ -52,6 +52,7 @@ class ParquetTable(object):
     """
 
     def __init__(self, filename=None, dataFrame=None):
+        self.filename = filename
         if filename is not None:
             self._pf = pyarrow.parquet.ParquetFile(filename)
             self._df = None
@@ -60,7 +61,7 @@ class ParquetTable(object):
             self._df = dataFrame
             self._pf = None
         else:
-            raise ValueError('Either filename or dataFrame must be passed.')
+            raise ValueError("Either filename or dataFrame must be passed.")
 
         self._columns = None
         self._columnIndex = None
@@ -74,16 +75,16 @@ class ParquetTable(object):
             Path to which to write.
         """
         if self._df is None:
-            raise ValueError('df property must be defined to write.')
+            raise ValueError("df property must be defined to write.")
         table = pyarrow.Table.from_pandas(self._df)
-        pyarrow.parquet.write_table(table, filename, compression='none')
+        pyarrow.parquet.write_table(table, filename, compression="none")
 
     @property
     def pandasMd(self):
         if self._pf is None:
             raise AttributeError("This property is only accessible if ._pf is set.")
         if self._pandasMd is None:
-            self._pandasMd = json.loads(self._pf.metadata.metadata[b'pandas'])
+            self._pandasMd = json.loads(self._pf.metadata.metadata[b"pandas"])
         return self._pandasMd
 
     @property
@@ -193,6 +194,7 @@ class MultilevelParquetTable(ParquetTable):
         Path to Parquet file.
     dataFrame : dataFrame, optional
     """
+
     def __init__(self, *args, **kwargs):
         super(MultilevelParquetTable, self).__init__(*args, **kwargs)
 
@@ -201,8 +203,10 @@ class MultilevelParquetTable(ParquetTable):
     @property
     def columnLevelNames(self):
         if self._columnLevelNames is None:
-            self._columnLevelNames = {level: list(np.unique(np.array(self.columns)[:, i]))
-                                      for i, level in enumerate(self.columnLevels)}
+            self._columnLevelNames = {
+                level: list(np.unique(np.array(self.columns)[:, i]))
+                for i, level in enumerate(self.columnLevels)
+            }
         return self._columnLevelNames
 
     @property
@@ -215,7 +219,7 @@ class MultilevelParquetTable(ParquetTable):
         if self._df is not None:
             return super()._getColumnIndex()
         else:
-            levelNames = [f['name'] for f in self.pandasMd['column_indexes']]
+            levelNames = [f["name"] for f in self.pandasMd["column_indexes"]]
             return pd.MultiIndex.from_tuples(self.columns, names=levelNames)
 
     def _getColumns(self):
@@ -223,8 +227,8 @@ class MultilevelParquetTable(ParquetTable):
             return super()._getColumns()
         else:
             columns = self._pf.metadata.schema.names
-            n = len(self.pandasMd['column_indexes'])
-            pattern = re.compile(', '.join(["'(.*)'"] * n))
+            n = len(self.pandasMd["column_indexes"])
+            pattern = re.compile(", ".join(["'(.*)'"] * n))
             matches = [re.search(pattern, c) for c in columns]
             return [m.groups() for m in matches if m is not None]
 
@@ -276,7 +280,7 @@ class MultilevelParquetTable(ParquetTable):
             except (AttributeError, KeyError):
                 newColumns = [c for c in columns if c in self.columnIndex]
                 if not newColumns:
-                    raise ValueError('None of the requested columns ({}) are available!'.format(columns))
+                    raise ValueError("None of the requested columns ({}) are available!".format(columns))
                 df = self._df[columns]
         else:
             pfColumns = self._stringify(columns)
@@ -285,14 +289,13 @@ class MultilevelParquetTable(ParquetTable):
             except (AttributeError, KeyError):
                 newColumns = [c for c in columns if c in self.columnIndex]
                 if not newColumns:
-                    raise ValueError('None of the requested columns ({}) are available!'.format(columns))
+                    raise ValueError("None of the requested columns ({}) are available!".format(columns))
                 pfColumns = self._stringify(newColumns)
                 df = self._pf.read(columns=pfColumns, use_pandas_metadata=True).to_pandas()
 
         if droplevels:
             # Drop levels of column index that have just one entry
-            levelsToDrop = [n for l, n in zip(df.columns.levels, df.columns.names)
-                            if len(l) == 1]
+            levelsToDrop = [n for l, n in zip(df.columns.levels, df.columns.names) if len(l) == 1]
 
             # Prevent error when trying to drop *all* columns
             if len(levelsToDrop) == len(df.columns.names):
