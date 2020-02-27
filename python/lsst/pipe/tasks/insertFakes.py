@@ -162,6 +162,12 @@ class InsertFakesConfig(PipelineTaskConfig,
         default="pa_bulge",
     )
 
+    sourceType = pexConfig.Field(
+        doc="The column name for the source type used in the fake source catalog.",
+        dtype=str,
+        default="sourceType",
+    )
+
     fakeType = pexConfig.Field(
         doc="What type of fake catalog to use, snapshot (includes variability in the magnitudes calculated "
             "from the MJD of the image), static (no variability) or filename for a user defined fits"
@@ -301,11 +307,11 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         pixelScale = wcs.getPixelScale().asArcseconds()
         psf = image.getPsf()
 
-        galaxies = (fakeCat["sourceType"] == "galaxy")
+        galaxies = (fakeCat[self.config.sourceType] == "galaxy")
         galImages = self.mkFakeGalsimGalaxies(fakeCat[galaxies], band, photoCalib, pixelScale, psf, image)
         image = self.addFakeSources(image, galImages, "galaxy")
 
-        stars = (fakeCat["sourceType"] == "star")
+        stars = (fakeCat[self.config.sourceType] == "star")
         starImages = self.mkFakeStars(fakeCat[stars], band, photoCalib, psf, image)
         image = self.addFakeSources(image, starImages, "star")
         resultStruct = pipeBase.Struct(imageWithFakes=image)
