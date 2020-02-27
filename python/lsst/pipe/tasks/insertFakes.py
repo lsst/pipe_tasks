@@ -493,7 +493,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 continue
 
             try:
-                flux = photoCalib.magnitudeToInstFlux(row[band + "magVar"], xy)
+                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
             except LogicError:
                 flux = 0
 
