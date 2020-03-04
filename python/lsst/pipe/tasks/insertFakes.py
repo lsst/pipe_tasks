@@ -568,3 +568,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 imageMIView += clippedFakeImageMI
 
         return image
+
+    def _getMetadataName(self):
+        """Disable metadata writing"""
+        return None
