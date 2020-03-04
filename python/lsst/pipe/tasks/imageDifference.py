@@ -731,14 +731,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                         preConvKernel = preConvPsf.getLocalKernel()
                     if self.config.convolveTemplate:
                         self.log.info("Decorrelation after template image convolution")
-                        decorrResult = self.decorrelate.run(exposureOrig, templateExposure,
+                        decorrResult = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
                                                             subtractedExposure,
                                                             subtractRes.psfMatchingKernel,
                                                             spatiallyVarying=self.config.doSpatiallyVarying,
                                                             preConvKernel=preConvKernel)
                     else:
                         self.log.info("Decorrelation after science image convolution")
-                        decorrResult = self.decorrelate.run(templateExposure, exposureOrig,
+                        decorrResult = self.decorrelate.run(subtractRes.warpedExposure, exposureOrig,
                                                             subtractedExposure,
                                                             subtractRes.psfMatchingKernel,
                                                             spatiallyVarying=self.config.doSpatiallyVarying,
