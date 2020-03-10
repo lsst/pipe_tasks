@@ -1083,6 +1083,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             maskedImage.mask = dcrModels.mask
             maskedImage.variance = dcrModels.variance
             coaddExposure.setMaskedImage(maskedImage[skyInfo.bbox])
+            coaddExposure.setPhotoCalib(self.scaleZeroPoint.getPhotoCalib())
             if mask is not None:
                 coaddExposure.setMask(mask)
             if variance is not None:
