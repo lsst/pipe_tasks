@@ -521,14 +521,17 @@ class Mag(Functor):
         `'modelfit_CModel'` instead of `'modelfit_CModel_instFlux'`) and it will
         understand.
     calib : `lsst.afw.image.calib.Calib` (optional)
-        Object that knows zero point.
+        Object that knows zero point.  If `False`, then flux column is assumed
+        to be already calibrated (e.g., ZP=1.).
     """
     _defaultDataset = 'meas'
 
     def __init__(self, col, calib=None, **kwargs):
         self.col = fluxName(col)
         self.calib = calib
-        if calib is not None:
+        if calib is False:
+            self.fluxMag0 = 1.
+        elif calib is not None:
             self.fluxMag0 = calib.getFluxMag0()[0]
         else:
             # TO DO: DM-21955 Replace hard coded photometic calibration values
@@ -560,15 +563,16 @@ class MagErr(Mag):
     col : `str`
         Name of flux column
     calib : `lsst.afw.image.calib.Calib` (optional)
-        Object that knows zero point.
+        Object that knows zero point.  If `False` or `None` (default),
+        then flux ZP error is assumed to be zero.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.calib is not None:
-            self.fluxMag0Err = self.calib.getFluxMag0()[1]
-        else:
+        if not self.calib:
             self.fluxMag0Err = 0.
+        else:
+            self.fluxMag0Err = self.calib.getFluxMag0()[1]
 
     @property
     def columns(self):
