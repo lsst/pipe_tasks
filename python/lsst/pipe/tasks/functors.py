@@ -1004,3 +1004,217 @@ class MagnitudeErr(Photometry):
     def _func(self, df):
         retArr = self.dn2MagErr(df[self.col], df[self.colFluxErr], self.fluxMag0, self.fluxMag0Err)
         return pd.Series(retArr, index=df.index)
+
+
+class LocalPhotometry(Functor):
+    """Base class for calibrating the specified instrument flux column using
+    the local photometric calibration.
+
+    Parameters
+    ----------
+    instFluxCol : `str`
+        Name of the instrument flux column.
+    instFluxErrCol : `str`
+        Name of the assocated error columns for ``instFluxCol``.
+    photoCalibCol : `str`
+        Name of local calibration column.
+    photoCalibErrCol : `str`
+        Error associated with ``photoCalibCol``
+
+    See also
+    --------
+    LocalPhotometry
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    """
+    logNJanskyToAB = (1 * u.nJy).to_value(u.ABmag)
+
+    def __init__(self,
+                 instFluxCol,
+                 instFluxErrCol,
+                 photoCalibCol,
+                 photoCalibErrCol,
+                 **kwargs):
+        self.instFluxCol = instFluxCol
+        self.instFluxErrCol = instFluxErrCol
+        self.photoCalibCol = photoCalibCol
+        self.photoCalibErrCol = photoCalibErrCol
+        super().__init__(**kwargs)
+
+    def instFluxToNanojansky(self, instFlux, localCalib):
+        """Convert instrument flux to nanojanskys.
+
+        Parameters
+        ----------
+        instFlux : `numpy.ndarray` or `pandas.Series`
+            Array of instrument flux measurements
+        localCalib : `numpy.ndarray` or `pandas.Series`
+            Array of local photometric calibration estimates.
+
+        Returns
+        -------
+        calibFlux : `numpy.ndarray` or `pandas.Series`
+            Array of calibrated flux measurements.
+        """
+        return instFlux * localCalib
+
+    def instFluxErrToNanojanskyErr(self, instFlux, instFluxErr, localCalib, localCalibErr):
+        """Convert instrument flux to nanojanskys.
+
+        Parameters
+        ----------
+        instFlux : `numpy.ndarray` or `pandas.Series`
+            Array of instrument flux measurements
+        instFluxErr : `numpy.ndarray` or `pandas.Series`
+            Errors on associated ``instFlux`` values
+        localCalib : `numpy.ndarray` or `pandas.Series`
+            Array of local photometric calibration estimates.
+        localCalibErr : `numpy.ndarray` or `pandas.Series`
+           Errors on associated ``localCalib`` values
+
+        Returns
+        -------
+        calibFluxErr : `numpy.ndarray` or `pandas.Series`
+            Errors on calibrated flux measurements.
+        """
+        return np.hypot(instFluxErr * localCalib, instFlux * localCalibErr)
+
+    def instFluxToMagnitude(self, instFlux, localCalib):
+        """Convert instrument flux to nanojanskys.
+
+        Parameters
+        ----------
+        instFlux : `numpy.ndarray` or `pandas.Series`
+            Array of instrument flux measurements
+        localCalib : `numpy.ndarray` or `pandas.Series`
+            Array of local photometric calibration estimates.
+
+        Returns
+        -------
+        calibMag : `numpy.ndarray` or `pandas.Series`
+            Array of calibrated AB magnitudes.
+        """
+        return -2.5 * np.log10(self.instFluxToNanojansky(instFlux, localCalib)) + self.logNJanskyToAB
+
+    def instFluxErrToMagnitudeErr(self, instFlux, instFluxErr, localCalib, localCalibErr):
+        """Convert instrument flux err to nanojanskys.
+
+        Parameters
+        ----------
+        instFlux : `numpy.ndarray` or `pandas.Series`
+            Array of instrument flux measurements
+        instFluxErr : `numpy.ndarray` or `pandas.Series`
+            Errors on associated ``instFlux`` values
+        localCalib : `numpy.ndarray` or `pandas.Series`
+            Array of local photometric calibration estimates.
+        localCalibErr : `numpy.ndarray` or `pandas.Series`
+           Errors on associated ``localCalib`` values
+
+        Returns
+        -------
+        calibMagErr: `numpy.ndarray` or `pandas.Series`
+            Error on calibrated AB magnitudes.
+        """
+        err = self.instFluxErrToNanojanskyErr(instFlux, instFluxErr, localCalib, localCalibErr)
+        return 2.5 / np.log(10) * err / self.instFluxToNanojansky(instFlux, instFluxErr)
+
+
+class LocalNanojansky(LocalPhotometry):
+    """Compute calibrated fluxes using the local calibration value.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    """
+
+    @property
+    def columns(self):
+        return [self.instFluxCol, self.photoCalibCol]
+
+    @property
+    def name(self):
+        return f'flux_{self.instFluxCol}'
+
+    def _func(self, df):
+        return self.instFluxToNanojansky(df[self.instFluxCol], df[self.photoCalibCol])
+
+
+class LocalNanojanskyErr(LocalPhotometry):
+    """Compute calibrated flux errors using the local calibration value.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    """
+
+    @property
+    def columns(self):
+        return [self.instFluxCol, self.instFluxErrCol,
+                self.photoCalibCol, self.photoCalibErrCol]
+
+    @property
+    def name(self):
+        return f'fluxErr_{self.instFluxCol}'
+
+    def _func(self, df):
+        return self.instFluxErrToNanojanskyErr(df[self.instFluxCol], df[self.instFluxErrCol],
+                                               df[self.photoCalibCol], df[self.photoCalibErrCol])
+
+
+class LocalMagnitude(LocalPhotometry):
+    """Compute calibrated AB magnitudes using the local calibration value.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    """
+
+    @property
+    def columns(self):
+        return [self.instFluxCol, self.photoCalibCol]
+
+    @property
+    def name(self):
+        return f'mag_{self.instFluxCol}'
+
+    def _func(self, df):
+        return self.instFluxToMagnitude(df[self.instFluxCol],
+                                        df[self.photoCalibCol])
+
+
+class LocalMagnitudeErr(LocalPhotometry):
+    """Compute calibrated AB magnitude errors using the local calibration value.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    """
+
+    @property
+    def columns(self):
+        return [self.instFluxCol, self.instFluxErrCol,
+                self.photoCalibCol, self.photoCalibErrCol]
+
+    @property
+    def name(self):
+        return f'magErr_{self.instFluxCol}'
+
+    def _func(self, df):
+        return self.instFluxErrToMagnitudeErr(df[self.instFluxCol],
+                                              df[self.instFluxErrCol],
+                                              df[self.photoCalibCol],
+                                              df[self.photoCalibErrCol])
