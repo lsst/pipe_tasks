@@ -1,5 +1,6 @@
 from lsst.meas.algorithms import Defects
 from lsst.meas.algorithms.simple_curve import Curve
+from lsst.ip.isr import Linearizer
 
 import os
 import glob
@@ -25,8 +26,12 @@ def read_one_chip(root, chip_name, chip_id):
         A dictionary of objects constructed from the appropriate factory class.
         The key is the validity start time as a `datetime` object.
     """
-    factory_map = {'qe_curve': Curve, 'defects': Defects}
-    files = glob.glob(os.path.join(root, chip_name, '*.ecsv'))
+    factory_map = {'qe_curve': Curve, 'defects': Defects, 'linearizer': Linearizer}
+    files = []
+    extensions = (".ecsv", ".yaml")
+    for ext in extensions:
+        files.extend(glob.glob(os.path.join(root, chip_name, f"*.{ext}")))
+
     parts = os.path.split(root)
     instrument = os.path.split(parts[0])[1]  # convention is that these reside at <instrument>/<data_name>
     data_name = parts[1]
