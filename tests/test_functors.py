@@ -27,6 +27,8 @@ import os
 import pandas as pd
 import unittest
 
+import lsst.daf.base as dafBase
+import lsst.afw.geom as afwGeom
 import lsst.utils.tests
 
 # TODO: Remove skipUnless and this try block DM-22256
@@ -37,7 +39,8 @@ try:
                                           DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
                                           HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                           LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
-                                          LocalMagnitude, LocalMagnitudeErr)
+                                          LocalMagnitude, LocalMagnitudeErr,
+                                          ComputePixelScale, ConvertPixelToArcseconds)
     havePyArrow = True
 except ImportError:
     havePyArrow = False
@@ -180,6 +183,11 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_ClassificationExtendedness_value"] = np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
         labels = self._funcVal(StarGalaxyLabeller(), parq)  # noqa
+
+    def testPixelScale(self):
+        # Test that the pixel scale and pix->arcsec calculations perform as
+        # expected.
+        pass
 
     def testOther(self):
         self.columns.extend(["ext_shapeHSM_HsmSourceMoments_xx", "ext_shapeHSM_HsmSourceMoments_yy",
@@ -355,6 +363,92 @@ class FunctorTestCase(unittest.TestCase):
                                     val.values,
                                     atol=1e-13,
                                     rtol=0))
+
+    def testConvertPixelToArcseconds(self):
+        """Test calculations of the pixel scale and conversions of pixel to
+        arcseconds.
+        """
+        wcs = self._makeWcs()
+        cdMatrix = wcs.getCdMatrix(wcs.getPixelOrigin())
+        self.dataDict["dipoleSep"] = np.full(self.nRecords, 10)
+        self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(self.nRecords,
+                                                              cdMatrix[0, 0])
+        self.dataDict["base_LocalWcs_CDMatrix_1_2"] = np.full(self.nRecords,
+                                                              cdMatrix[0, 1])
+        self.dataDict["base_LocalWcs_CDMatrix_2_1"] = np.full(self.nRecords,
+                                                              cdMatrix[1, 0])
+        self.dataDict["base_LocalWcs_CDMatrix_2_2"] = np.full(self.nRecords,
+                                                              cdMatrix[1, 1])
+        parq = self.simulateMultiParquet(self.dataDict)
+        func = ComputePixelScale("base_LocalWcs_CDMatrix_1_1",
+                                 "base_LocalWcs_CDMatrix_1_2",
+                                 "base_LocalWcs_CDMatrix_2_1",
+                                 "base_LocalWcs_CDMatrix_2_2")
+        df = parq.toDataFrame(columns={"dataset": "meas",
+                                       "filter": "HSC-G",
+                                       "columns": ["dipoleSep",
+                                                   "base_LocalWcs_CDMatrix_1_1",
+                                                   "base_LocalWcs_CDMatrix_1_2",
+                                                   "base_LocalWcs_CDMatrix_2_1",
+                                                   "base_LocalWcs_CDMatrix_2_2"]})
+        pixelScale = func.pixelScale(df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_1")],
+                                     df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_2")],
+                                     df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_1")],
+                                     df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_2")])
+        self.assertTrue(np.allclose(pixelScale.values,
+                                    wcs.getPixelScale().asArcseconds(),
+                                    rtol=0,
+                                    atol=1e-10))
+
+        # Test functors
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(pixelScale.values,
+                                    val.values,
+                                    atol=1e-13,
+                                    rtol=0))
+
+        func = ConvertPixelToArcseconds("dipoleSep",
+                                        "base_LocalWcs_CDMatrix_1_1",
+                                        "base_LocalWcs_CDMatrix_1_2",
+                                        "base_LocalWcs_CDMatrix_2_1",
+                                        "base_LocalWcs_CDMatrix_2_2")
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(pixelScale.values * 10,
+                                    val.values,
+                                    atol=1e-13,
+                                    rtol=0))
+
+    def _makeWcs(self):
+        """Create a wcs from real CFHT values.
+
+        Returns
+        -------
+        wcs : `lsst.afw.geom`
+            Created wcs.
+        """
+        metadata = dafBase.PropertySet()
+
+        metadata.set("SIMPLE", "T")
+        metadata.set("BITPIX", -32)
+        metadata.set("NAXIS", 2)
+        metadata.set("NAXIS1", 1024)
+        metadata.set("NAXIS2", 1153)
+        metadata.set("RADECSYS", 'FK5')
+        metadata.set("EQUINOX", 2000.)
+
+        metadata.setDouble("CRVAL1", 215.604025685476)
+        metadata.setDouble("CRVAL2", 53.1595451514076)
+        metadata.setDouble("CRPIX1", 1109.99981456774)
+        metadata.setDouble("CRPIX2", 560.018167811613)
+        metadata.set("CTYPE1", 'RA---SIN')
+        metadata.set("CTYPE2", 'DEC--SIN')
+
+        metadata.setDouble("CD1_1", 5.10808596133527E-05)
+        metadata.setDouble("CD1_2", 1.85579539217196E-07)
+        metadata.setDouble("CD2_2", -5.10281493481982E-05)
+        metadata.setDouble("CD2_1", -8.27440751733828E-07)
+
+        return afwGeom.makeSkyWcs(metadata)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
