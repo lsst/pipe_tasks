@@ -23,7 +23,8 @@ from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTa
 import lsst.pipe.base.connectionTypes as cT
 
 from lsst.pex.config import ConfigurableField
-from lsst.meas.deblender import SourceDeblendTask, MultibandDeblendTask
+from lsst.meas.deblender import SourceDeblendTask
+from lsst.meas.extensions.scarlet.deblend import ScarletDeblendTask
 
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
@@ -139,7 +140,7 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
 class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
                                      pipelineConnections=DeblendCoaddSourcesMultiConnections):
     multibandDeblend = ConfigurableField(
-        target=MultibandDeblendTask,
+        target=ScarletDeblendTask,
         doc="Task to deblend an images in multiple bands"
     )
 
