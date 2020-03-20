@@ -67,7 +67,7 @@ class ReadQeTestCase(unittest.TestCase):
     def setUp(self):
         butler = dafPersist.ButlerFactory(mapper=BaseMapper(ROOT)).create()
         self.cam = butler.get('camera')
-        self.qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curves')
+        self.qe_path = os.path.join(ROOT, 'trivial_camera', 'qe_curve')
         self.tmp_dir_obj = tempfile.TemporaryDirectory()
 
     def tearDown(self):
@@ -82,15 +82,15 @@ class ReadQeTestCase(unittest.TestCase):
             path_str = 'per_detector'
         files = glob.glob(os.path.join(self.qe_path, 'ccd00', path_str, '*'))
         dest_path = os.path.join(self.tmp_dir_obj.name, 'trivial_camera',
-                                 'qe_curves', 'ccd00')
+                                 'qe_curve', 'ccd00')
         os.makedirs(dest_path)
         dest_files = [os.path.join(dest_path, os.path.split(f)[1]) for f in files]
         for f, df in zip(files, dest_files):
             os.symlink(f, df)
-        curves, data_type = read_all(os.path.join(self.tmp_dir_obj.name, 'trivial_camera', 'qe_curves'),
+        curves, data_type = read_all(os.path.join(self.tmp_dir_obj.name, 'trivial_camera', 'qe_curve'),
                                      self.cam)
         self.assertEqual(len(curves.keys()), 1)  # One sensor
-        self.assertEqual(data_type, 'qe_curves')
+        self.assertEqual(data_type, 'qe_curve')
         for s in curves:
             self.assertEqual(len(curves[s].keys()), 2)  # Two validity ranges
             if per_amp:

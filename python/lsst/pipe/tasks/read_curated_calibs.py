@@ -25,7 +25,7 @@ def read_one_chip(root, chip_name, chip_id):
         A dictionary of objects constructed from the appropriate factory class.
         The key is the validity start time as a `datetime` object.
     """
-    factory_map = {'qe_curves': Curve, 'defects': Defects}
+    factory_map = {'qe_curve': Curve, 'defects': Defects}
     files = glob.glob(os.path.join(root, chip_name, '*.ecsv'))
     parts = os.path.split(root)
     instrument = os.path.split(parts[0])[1]  # convention is that these reside at <instrument>/<data_name>
