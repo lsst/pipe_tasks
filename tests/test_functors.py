@@ -29,6 +29,8 @@ import unittest
 
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
+import lsst.geom as geom
+import lsst.meas.base as measBase
 import lsst.utils.tests
 
 # TODO: Remove skipUnless and this try block DM-22256
@@ -40,7 +42,7 @@ try:
                                           HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                           LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
                                           LocalMagnitude, LocalMagnitudeErr,
-                                          ComputePixelScale, ConvertPixelToArcseconds)
+                                          LocalWcs, ComputePixelScale, ConvertPixelToArcseconds)
     havePyArrow = True
 except ImportError:
     havePyArrow = False
@@ -368,57 +370,98 @@ class FunctorTestCase(unittest.TestCase):
         """Test calculations of the pixel scale and conversions of pixel to
         arcseconds.
         """
-        wcs = self._makeWcs()
-        cdMatrix = wcs.getCdMatrix(wcs.getPixelOrigin())
-        self.dataDict["dipoleSep"] = np.full(self.nRecords, 10)
-        self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(self.nRecords,
-                                                              cdMatrix[0, 0])
-        self.dataDict["base_LocalWcs_CDMatrix_1_2"] = np.full(self.nRecords,
-                                                              cdMatrix[0, 1])
-        self.dataDict["base_LocalWcs_CDMatrix_2_1"] = np.full(self.nRecords,
-                                                              cdMatrix[1, 0])
-        self.dataDict["base_LocalWcs_CDMatrix_2_2"] = np.full(self.nRecords,
-                                                              cdMatrix[1, 1])
-        parq = self.simulateMultiParquet(self.dataDict)
-        func = ComputePixelScale("base_LocalWcs_CDMatrix_1_1",
-                                 "base_LocalWcs_CDMatrix_1_2",
-                                 "base_LocalWcs_CDMatrix_2_1",
-                                 "base_LocalWcs_CDMatrix_2_2")
-        df = parq.toDataFrame(columns={"dataset": "meas",
-                                       "filter": "HSC-G",
-                                       "columns": ["dipoleSep",
-                                                   "base_LocalWcs_CDMatrix_1_1",
-                                                   "base_LocalWcs_CDMatrix_1_2",
-                                                   "base_LocalWcs_CDMatrix_2_1",
-                                                   "base_LocalWcs_CDMatrix_2_2"]})
-        pixelScale = func.pixelScale(df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_1")],
-                                     df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_2")],
-                                     df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_1")],
-                                     df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_2")])
-        self.assertTrue(np.allclose(pixelScale.values,
-                                    wcs.getPixelScale().asArcseconds(),
-                                    rtol=0,
-                                    atol=1e-10))
+        dipoleSep = 10
+        np.random.seed(1234)
+        testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
+        import lsst.afw.table as afwTable
+        localWcsPlugin = measBase.EvaluateLocalWcsPlugin(
+            None,
+            "base_LocalWcs",
+            afwTable.SourceTable.makeMinimalSchema(),
+            None)
+        for dec in np.linspace(-90, 90, 10):
+            for x, y in zip(np.random.uniform(2 * 1109.99981456774, size=10),
+                            np.random.uniform(2 * 560.018167811613, size=10)):
 
-        # Test functors
-        val = self._funcVal(func, parq)
-        self.assertTrue(np.allclose(pixelScale.values,
-                                    val.values,
-                                    atol=1e-13,
-                                    rtol=0))
+                center = geom.Point2D(x, y)
+                wcs = self._makeWcs(dec)
+                skyOrigin = wcs.pixelToSky(center)
 
-        func = ConvertPixelToArcseconds("dipoleSep",
-                                        "base_LocalWcs_CDMatrix_1_1",
-                                        "base_LocalWcs_CDMatrix_1_2",
-                                        "base_LocalWcs_CDMatrix_2_1",
-                                        "base_LocalWcs_CDMatrix_2_2")
-        val = self._funcVal(func, parq)
-        self.assertTrue(np.allclose(pixelScale.values * 10,
-                                    val.values,
-                                    atol=1e-13,
-                                    rtol=0))
+                linAffMatrix = localWcsPlugin.makeLocalTransformMatrix(wcs,
+                                                                       center)
+                self.dataDict["dipoleSep"] = np.full(self.nRecords, dipoleSep)
+                self.dataDict["slot_Centroid_x"] = np.full(self.nRecords, x)
+                self.dataDict["slot_Centroid_y"] = np.full(self.nRecords, y)
+                self.dataDict["someCentroid_x"] = x + testPixelDeltas[:, 0]
+                self.dataDict["someCentroid_y"] = y + testPixelDeltas[:, 1]
+                self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(self.nRecords,
+                                                                      linAffMatrix[0, 0])
+                self.dataDict["base_LocalWcs_CDMatrix_1_2"] = np.full(self.nRecords,
+                                                                      linAffMatrix[0, 1])
+                self.dataDict["base_LocalWcs_CDMatrix_2_1"] = np.full(self.nRecords,
+                                                                      linAffMatrix[1, 0])
+                self.dataDict["base_LocalWcs_CDMatrix_2_2"] = np.full(self.nRecords,
+                                                                      linAffMatrix[1, 1])
+                parq = self.simulateMultiParquet(self.dataDict)
+                func = LocalWcs("base_LocalWcs_CDMatrix_1_1",
+                                "base_LocalWcs_CDMatrix_1_2",
+                                "base_LocalWcs_CDMatrix_2_1",
+                                "base_LocalWcs_CDMatrix_2_2")
+                df = parq.toDataFrame(columns={"dataset": "meas",
+                                               "filter": "HSC-G",
+                                               "columns": ["dipoleSep",
+                                                           "slot_Centroid_x",
+                                                           "slot_Centroid_y",
+                                                           "someCentroid_x",
+                                                           "someCentroid_y",
+                                                           "base_LocalWcs_CDMatrix_1_1",
+                                                           "base_LocalWcs_CDMatrix_1_2",
+                                                           "base_LocalWcs_CDMatrix_2_1",
+                                                           "base_LocalWcs_CDMatrix_2_2"]})
 
-    def _makeWcs(self):
+                # Exercise the full set of functions in LocalWcs.
+                sepRadians = func.getSkySeperationFromPixel(
+                    df[("meas", "HSC-G", "someCentroid_x")] - df[("meas", "HSC-G", "slot_Centroid_x")],
+                    df[("meas", "HSC-G", "someCentroid_y")] - df[("meas", "HSC-G", "slot_Centroid_y")],
+                    0.0,
+                    0.0,
+                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_1")],
+                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_2")],
+                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_1")],
+                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_2")])
+
+                # Test functor values against afw SkyWcs computations.
+                for centX, centY, sep in zip(testPixelDeltas[:, 0],
+                                             testPixelDeltas[:, 1],
+                                             sepRadians.values):
+                    afwSepRadians = skyOrigin.separation(
+                        wcs.pixelToSky(x + centX, y + centY)).asRadians()
+                    self.assertAlmostEqual(1 - sep / afwSepRadians, 0, places=6)
+
+                # Test the pixel scale computation.
+                func = ComputePixelScale("base_LocalWcs_CDMatrix_1_1",
+                                         "base_LocalWcs_CDMatrix_1_2",
+                                         "base_LocalWcs_CDMatrix_2_1",
+                                         "base_LocalWcs_CDMatrix_2_2")
+                pixelScale = self._funcVal(func, parq)
+                self.assertTrue(np.allclose(
+                    wcs.getPixelScale(center).asArcseconds(),
+                    pixelScale.values,
+                    rtol=1e-8,
+                    atol=0))
+
+                func = ConvertPixelToArcseconds("dipoleSep",
+                                                "base_LocalWcs_CDMatrix_1_1",
+                                                "base_LocalWcs_CDMatrix_1_2",
+                                                "base_LocalWcs_CDMatrix_2_1",
+                                                "base_LocalWcs_CDMatrix_2_2")
+                val = self._funcVal(func, parq)
+                self.assertTrue(np.allclose(pixelScale.values * dipoleSep,
+                                            val.values,
+                                            atol=1e-16,
+                                            rtol=1e-16))
+
+    def _makeWcs(self, dec=53.1595451514076):
         """Create a wcs from real CFHT values.
 
         Returns
@@ -437,7 +480,7 @@ class FunctorTestCase(unittest.TestCase):
         metadata.set("EQUINOX", 2000.)
 
         metadata.setDouble("CRVAL1", 215.604025685476)
-        metadata.setDouble("CRVAL2", 53.1595451514076)
+        metadata.setDouble("CRVAL2", dec)
         metadata.setDouble("CRPIX1", 1109.99981456774)
         metadata.setDouble("CRPIX2", 560.018167811613)
         metadata.set("CTYPE1", 'RA---SIN')

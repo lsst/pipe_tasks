@@ -901,10 +901,10 @@ class RadiusFromQuadrupole(Functor):
         return (df[self.colXX]*df[self.colYY] - df[self.colXY]**2)**0.25
 
 
-class ComputePixelScale(Functor):
-    """Compute the local pixel scale from the stored CDMatrix.
+class LocalWcs(Functor):
+    """Computations using the stored localWcs.
     """
-    name = "Pixel Scale"
+    name = "LocalWcsOperations"
 
     def __init__(self,
                  colCD_1_1,
@@ -918,50 +918,155 @@ class ComputePixelScale(Functor):
         self.colCD_2_2 = colCD_2_2
         super().__init__(**kwargs)
 
-    @property
-    def columns(self):
-        return [self.colCD_1_1, self.colCD_1_2,
-                self.colCD_2_1, self.colCD_2_2]
+    def computeDeltaRaDec(self, x, y, cd11, cd12, cd21, cd22):
+        """Compute the distance on the sphere from x2, y1 to x1, y1.
 
-    def pixelScale(self, cd11, cd12, cd21, cd22):
+        Parameters
+        ----------
+        x : `pandas.Series`
+            X pixel coordinate.
+        y : `pandas.Series`
+            Y pixel coordinate.
+        cd11 : `pandas.Series`
+            [1, 1] element of the local Wcs affine transform.
+        cd11 : `pandas.Series`
+            [1, 1] element of the local Wcs affine transform.
+        cd12 : `pandas.Series`
+            [1, 2] element of the local Wcs affine transform.
+        cd21 : `pandas.Series`
+            [2, 1] element of the local Wcs affine transform.
+        cd22 : `pandas.Series`
+            [2, 2] element of the local Wcs affine transform.
+
+        Returns
+        -------
+        raDecTuple : tuple
+            RA and dec conversion of x and y given the local Wcs. Returned
+            units are in radians.
+
+        """
+        return (x * cd11 + y * cd12, x * cd21 + y * cd22)
+
+    def computeSkySeperation(self, ra1, dec1, ra2, dec2):
         """Compute the local pixel scale conversion.
 
         Parameters
         ----------
+        ra1 : `pandas.Series`
+            Ra of the first coordinate in radians.
+        dec1 : `pandas.Series`
+            Dec of the first coordinate in radians.
+        ra2 : `pandas.Series`
+            Ra of the second coordinate in radians.
+        dec2 : `pandas.Series`
+            Dec of the second coordinate in radians.
+
+        Returns
+        -------
+        dist : `pandas.Series`
+            Distance on the sphere in radians.
+        """
+        deltaDec = dec2 - dec1
+        deltaRa = ra2 - ra1
+        return 2 * np.arcsin(
+            np.sqrt(
+                np.sin(deltaDec / 2) ** 2 +
+                np.cos(dec2) * np.cos(dec1) * np.sin(deltaRa / 2) ** 2))
+
+    def getSkySeperationFromPixel(self, x1, y1, x2, y2, cd11, cd12, cd21, cd22):
+        """Compute the distance on the sphere from x2, y1 to x1, y1.
+
+        Parameters
+        ----------
+        x1 : `pandas.Series`
+            X pixel coordinate.
+        y1 : `pandas.Series`
+            Y pixel coordinate.
+        x2 : `pandas.Series`
+            X pixel coordinate.
+        y2 : `pandas.Series`
+            Y pixel coordinate.
         cd11 : `pandas.Series`
-            [1, 1] element of the local CDMatricies.
+            [1, 1] element of the local Wcs affine transform.
+        cd11 : `pandas.Series`
+            [1, 1] element of the local Wcs affine transform.
         cd12 : `pandas.Series`
-            [1, 2] element of the local CDMatricies.
+            [1, 2] element of the local Wcs affine transform.
         cd21 : `pandas.Series`
-            [2, 1] element of the local CDMatricies.
-        cd2 : `pandas.Series`
-            [2, 2] element of the local CDMatricies.
+            [2, 1] element of the local Wcs affine transform.
+        cd22 : `pandas.Series`
+            [2, 2] element of the local Wcs affine transform.
+
+        Returns
+        -------
+        Distance : `pandas.Series`
+            Arcseconds per pixel at the location of the local WC
+        """
+        ra1, dec1 = self.computeDeltaRaDec(x1, y1, cd11, cd12, cd21, cd22)
+        ra2, dec2 = self.computeDeltaRaDec(x2, y2, cd11, cd12, cd21, cd22)
+        # Great circle distance for small separations.
+        return self.computeSkySeperation(ra1, dec1, ra2, dec2)
+
+
+class ComputePixelScale(LocalWcs):
+    """Compute the local pixel scale from the stored CDMatrix.
+    """
+    name = "PixelScale"
+
+    @property
+    def columns(self):
+        return [self.colCD_1_1,
+                self.colCD_1_2,
+                self.colCD_2_1,
+                self.colCD_2_2]
+
+    def pixelScaleArcseconds(self, cd11, cd12, cd21, cd22):
+        """Compute the local pixel to scale conversion in arcseconds.
+
+        Parameters
+        ----------
+        cd11 : `pandas.Series`
+            [1, 1] element of the local Wcs affine transform in radians.
+        cd11 : `pandas.Series`
+            [1, 1] element of the local Wcs affine transform in radians.
+        cd12 : `pandas.Series`
+            [1, 2] element of the local Wcs affine transform in radians.
+        cd21 : `pandas.Series`
+            [2, 1] element of the local Wcs affine transform in radians.
+        cd22 : `pandas.Series`
+            [2, 2] element of the local Wcs affine transform in radians.
 
         Returns
         -------
         pixScale : `pandas.Series`
             Arcseconds per pixel at the location of the local WC
         """
-        return 3600 * np.sqrt(np.fabs(cd11 * cd22 - cd12 * cd21))
+        return 3600 * np.degrees(np.sqrt(np.fabs(cd11 * cd22 - cd12 * cd21)))
 
     def _func(self, df):
-        return self.pixelScale(df[self.colCD_1_1], df[self.colCD_1_2],
-                               df[self.colCD_2_1], df[self.colCD_2_2])
+        return self.pixelScaleArcseconds(df[self.colCD_1_1],
+                                         df[self.colCD_1_2],
+                                         df[self.colCD_2_1],
+                                         df[self.colCD_2_2])
 
 
 class ConvertPixelToArcseconds(ComputePixelScale):
     """Convert a value in units pixels to units arcseconds.
     """
-    name = "Pixel scale converter"
 
     def __init__(self,
                  col,
                  colCD_1_1,
                  colCD_1_2,
                  colCD_2_1,
-                 colCD_2_2, **kwargs):
+                 colCD_2_2,
+                 **kwargs):
         self.col = col
-        super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
+        super().__init__(colCD_1_1,
+                         colCD_1_2,
+                         colCD_2_1,
+                         colCD_2_2,
+                         **kwargs)
 
     @property
     def name(self):
@@ -970,12 +1075,16 @@ class ConvertPixelToArcseconds(ComputePixelScale):
     @property
     def columns(self):
         return [self.col,
-                self.colCD_1_1, self.colCD_1_2,
-                self.colCD_2_1, self.colCD_2_2]
+                self.colCD_1_1,
+                self.colCD_1_2,
+                self.colCD_2_1,
+                self.colCD_2_2]
 
     def _func(self, df):
-        return df[self.col] * self.pixelScale(df[self.colCD_1_1], df[self.colCD_1_2],
-                                              df[self.colCD_2_1], df[self.colCD_2_2])
+        return df[self.col] * self.pixelScaleArcseconds(df[self.colCD_1_1],
+                                                        df[self.colCD_1_2],
+                                                        df[self.colCD_2_1],
+                                                        df[self.colCD_2_2])
 
 
 class ReferenceBand(Functor):
