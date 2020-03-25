@@ -134,6 +134,12 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
+
+        if config.doAstrometry is False:
+            self.prerequisiteInputs.remove("astromRefCat")
+        if config.doPhotoCal is False:
+            self.prerequisiteInputs.remove("photoRefCat")
+
         if config.doWriteMatches is False:
             self.outputs.remove("matches")
         if config.doWriteMatchesDenormalized is False:
