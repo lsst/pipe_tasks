@@ -30,8 +30,6 @@ from lsst.pipe.tasks.makeGen3DcrSubfilters import MakeGen3DcrSubfiltersConfig, M
 # Build a parser for command line arguments
 parser = argparse.ArgumentParser(description="Define the set of subfilters for chromatic modeling.")
 parser.add_argument("butler", metavar="Butler", type=str, help="Path to a gen3 butler")
-parser.add_argument("collection", type=str, metavar="Collection",
-                    help="Name of the Butler collection the subfilters should be inserted into")
 parser.add_argument("-C", "--config-file", dest="configFile",
                     help="Path to a config file overrides file")
 
@@ -51,5 +49,5 @@ if args.configFile:
 
 # Construct the SkyMap Creation task and run it
 subfilterTask = MakeGen3DcrSubfiltersTask(config=config)
-butler = Butler(args.butler, run=args.collection)
+butler = Butler(args.butler, writeable=True)
 subfilterTask.run(butler)
