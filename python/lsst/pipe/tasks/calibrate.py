@@ -134,9 +134,15 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        if config.doWriteMatches is False:
+
+        if config.doAstrometry is False:
+            self.prerequisiteInputs.remove("astromRefCat")
+        if config.doPhotoCal is False:
+            self.prerequisiteInputs.remove("photoRefCat")
+
+        if config.doWriteMatches is False or config.doAstrometry is False:
             self.outputs.remove("matches")
-        if config.doWriteMatchesDenormalized is False:
+        if config.doWriteMatchesDenormalized is False or config.doAstrometry is False:
             self.outputs.remove("matchesDenormalized")
 
 
@@ -156,7 +162,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     doWriteMatches = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc="Write reference matches (ignored if doWrite false)?",
+        doc="Write reference matches (ignored if doWrite or doAstrometry false)?",
     )
     doWriteMatchesDenormalized = pexConfig.Field(
         dtype=bool,
@@ -601,7 +607,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         outputs = self.run(**inputs)
 
-        if self.config.doWriteMatches:
+        if self.config.doWriteMatches and self.config.doAstrometry:
             normalizedMatches = afwTable.packMatches(outputs.astromMatches)
             normalizedMatches.table.setMetadata(outputs.matchMeta)
             if self.config.doWriteMatchesDenormalized:
