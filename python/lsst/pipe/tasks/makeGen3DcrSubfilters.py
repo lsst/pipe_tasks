@@ -85,9 +85,8 @@ class MakeGen3DcrSubfiltersTask(pipeBase.Task):
             self.log.info(f"Initializing filter {filterName} with "
                           f"{self.config.numSubfilters} subfilters")
             for sub in range(self.config.numSubfilters):
-                subfilterName = f"{filterName}-{sub + 1}"
                 record.append({
                               "abstract_filter": filterName,
-                              "subfilter": subfilterName
+                              "subfilter": sub
                               })
         registry.insertDimensionData("subfilter", *record)
