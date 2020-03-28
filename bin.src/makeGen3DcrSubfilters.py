@@ -49,5 +49,5 @@ if args.configFile:
 
 # Construct the SkyMap Creation task and run it
 subfilterTask = MakeGen3DcrSubfiltersTask(config=config)
-butler = Butler(args.butler, run=args.collection)
+butler = Butler(args.butler, writeable=True)
 subfilterTask.run(butler)

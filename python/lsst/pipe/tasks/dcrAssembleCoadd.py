@@ -516,12 +516,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 # Gen 3 API
                 visitInfo = warpExpRef.get(component="visitInfo")
                 psf = warpExpRef.get(component="psf")
-                visit = warpExpRef.datasetRefOrType.dataId["visit"]
             else:
                 # Gen 2 API. Delete this when Gen 2 retired
                 visitInfo = warpExpRef.get(tempExpName + "_visitInfo")
                 psf = warpExpRef.get(tempExpName).getPsf()
-                visit = warpExpRef.dataId["visit"]
+            visit = warpExpRef.dataId["visit"]
             psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
             airmass = visitInfo.getBoresightAirmass()
             parallacticAngle = visitInfo.getBoresightParAngle().asDegrees()
@@ -813,10 +812,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         residualGeneratorList = []
 
         for warpExpRef in warpRefList:
-            if isinstance(warpExpRef, DeferredDatasetHandle):
-                visit = warpExpRef.datasetRefOrType.dataId["visit"]
-            else:
-                visit = warpExpRef.dataId["visit"]
+            visit = warpExpRef.dataId["visit"]
             exposure = subExposures[visit]
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
@@ -961,10 +957,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         metric = 0.
         metricList = {}
         for warpExpRef, expWeight in zip(warpRefList, weightList):
-            if isinstance(warpExpRef, DeferredDatasetHandle):
-                visit = warpExpRef.datasetRefOrType.dataId["visit"]
-            else:
-                visit = warpExpRef.dataId["visit"]
+            visit = warpExpRef.dataId["visit"]
             exposure = subExposures[visit][bbox]
             singleMetric = self.calculateSingleConvergence(dcrModels, exposure, significanceImage, statsCtrl)
             metric += singleMetric
@@ -1255,11 +1248,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         subExposures = {}
         for warpExpRef, imageScaler, altMaskSpans in zipIterables:
             if isinstance(warpExpRef, DeferredDatasetHandle):
-                visit = warpExpRef.datasetRefOrType.dataId["visit"]
                 exposure = warpExpRef.get(parameters={'bbox': bbox})
             else:
-                visit = warpExpRef.dataId["visit"]
                 exposure = warpExpRef.get(tempExpName + "_sub", bbox=bbox)
+            visit = warpExpRef.dataId["visit"]
             if altMaskSpans is not None:
                 self.applyAltMaskPlanes(exposure.mask, altMaskSpans)
             imageScaler.scaleMaskedImage(exposure.maskedImage)
@@ -1301,11 +1293,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if isinstance(warpExpRef, DeferredDatasetHandle):
                 # Gen 3 API
                 psf = warpExpRef.get(component="psf")
-                visit = warpExpRef.datasetRefOrType.dataId["visit"]
             else:
                 # Gen 2 API. Delete this when Gen 2 retired
                 psf = warpExpRef.get(tempExpName).getPsf()
-                visit = warpExpRef.dataId["visit"]
+            visit = warpExpRef.dataId["visit"]
             psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
             psfSizes[ccdVisits == visit] = psfSize
         # Note that the input PSFs include DCR, which should be absent from the DcrCoadd
