@@ -75,14 +75,12 @@ def check_metadata(obj, valid_start, instrument, chip_id, filepath, data_name):
     md = obj.getMetadata()
     finst = md['INSTRUME']
     fchip_id = md['DETECTOR']
-    fcalib_date = md['CALIBDATE']
     fdata_name = md['OBSTYPE']
-    if not ((finst.lower(), int(fchip_id), fcalib_date, fdata_name) ==
-            (instrument.lower(), chip_id, valid_start.isoformat(), data_name)):
-        st_time = valid_start.isoformat()
+    if not ((finst.lower(), int(fchip_id), fdata_name) ==
+            (instrument.lower(), chip_id, data_name)):
         raise ValueError(f"Path and file metadata do not agree:\n"
-                         f"Path metadata: {instrument} {chip_id} {st_time} {data_name}\n"
-                         f"File metadata: {finst} {fchip_id} {fcalib_date} {fdata_name}\n"
+                         f"Path metadata: {instrument} {chip_id} {data_name}\n"
+                         f"File metadata: {finst} {fchip_id} {fdata_name}\n"
                          f"File read from : %s\n"%(filepath)
                          )
 
