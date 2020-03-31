@@ -460,10 +460,9 @@ class CoordColumn(Column):
         super().__init__(col, **kwargs)
 
     def _func(self, df):
-        res = df[self.col]
-        if self._radians:
-            res *= 180 / np.pi
-        return res
+        # Must not modify original column in case that column is used by another functor
+        output = df[self.col] * 180 / np.pi if self._radians else df[self.col]
+        return output
 
 
 class RAColumn(CoordColumn):
