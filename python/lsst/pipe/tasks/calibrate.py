@@ -282,6 +282,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         super().setDefaults()
         self.detection.doTempLocalBackground = False
         self.deblend.maxFootprintSize = 2000
+        self.measurement.plugins.names |= ["base_LocalPhotoCalib", "base_LocalWcs"]
 
     def validate(self):
         super().validate()

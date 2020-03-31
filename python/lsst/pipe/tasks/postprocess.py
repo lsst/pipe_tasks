@@ -25,7 +25,7 @@ from collections import defaultdict
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.pipe.base import CmdLineTask, ArgumentParser
+from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
 from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
 
 from .parquetTable import ParquetTable
@@ -201,6 +201,61 @@ class WriteObjectTableTask(CmdLineTask):
         pass
 
 
+class WriteSourceTableConfig(pexConfig.Config):
+    pass
+
+
+class WriteSourceTableTask(CmdLineTask):
+    """Write source table to parquet
+    """
+    _DefaultName = "writeSourceTable"
+    ConfigClass = WriteSourceTableConfig
+
+    def runDataRef(self, dataRef):
+        src = dataRef.get('src')
+        ccdVisitId = dataRef.get('ccdExposureId')
+        result = self.run(src, ccdVisitId=ccdVisitId)
+        dataRef.put(result.table, 'source')
+
+    def run(self, catalog, ccdVisitId=None):
+        """Convert `src` catalog to parquet
+
+        Parameters
+        ----------
+        catalog: `lsst.afw.table.SourceCatalog`
+            catalog to be converted
+        ccdVisitId: `int`
+            ccdVisitId to be added as a column
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            ``table``
+                `ParquetTable` version of the input catalog
+        """
+        self.log.info("Generating parquet table from src catalog")
+        df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
+        df['ccdVisitId'] = ccdVisitId
+        return pipeBase.Struct(table=ParquetTable(dataFrame=df))
+
+    def writeMetadata(self, dataRef):
+        """No metadata to write.
+        """
+        pass
+
+    def writeConfig(self, butler, clobber=False, doBackup=True):
+        """No config to write.
+        """
+        pass
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", 'src',
+                               help="data ID, e.g. --id visit=12345 ccd=0")
+        return parser
+
+
 class PostprocessAnalysis(object):
     """Calculate columns from ParquetTable
 
@@ -254,7 +309,7 @@ class PostprocessAnalysis(object):
 
 
     """
-    _defaultRefFlags = ('calib_psf_used', 'detect_isPrimary')
+    _defaultRefFlags = []
     _defaultFuncs = (('coord_ra', RAColumn()),
                      ('coord_dec', DecColumn()))
 
@@ -317,15 +372,11 @@ class PostprocessAnalysis(object):
 
 
 class TransformCatalogBaseConfig(pexConfig.Config):
-    coaddName = pexConfig.Field(
-        dtype=str,
-        default="deep",
-        doc="Name of coadd"
-    )
     functorFile = pexConfig.Field(
         dtype=str,
         doc='Path to YAML file specifying functors to be computed',
-        default=None
+        default=None,
+        optional=True
     )
 
 
@@ -416,13 +467,11 @@ class TransformCatalogBaseTask(CmdLineTask):
     def ConfigClass(self):
         raise NotImplementedError('Subclass must define "ConfigClass" attribute')
 
-    def runDataRef(self, patchRef):
-        parq = patchRef.get()
-        dataId = patchRef.dataId
+    def runDataRef(self, dataRef):
+        parq = dataRef.get()
         funcs = self.getFunctors()
-        self.log.info("Transforming/standardizing the catalog of %s", dataId)
-        df = self.run(parq, funcs=funcs, dataId=dataId)
-        self.write(df, patchRef)
+        df = self.run(parq, funcs=funcs, dataId=dataRef.dataId)
+        self.write(df, dataRef)
         return df
 
     def run(self, parq, funcs=None, dataId=None):
@@ -445,8 +494,12 @@ class TransformCatalogBaseTask(CmdLineTask):
             `pandas.DataFrame`
 
         """
+        self.log.info("Transforming/standardizing the source table dataId: %s", dataId)
+
         filt = dataId.get('filter', None)
-        return self.transform(filt, parq, funcs, dataId).df
+        df = self.transform(filt, parq, funcs, dataId).df
+        self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
+        return df
 
     def getFunctors(self):
         funcs = CompositeFunctor.from_file(self.config.functorFile)
@@ -482,6 +535,11 @@ class TransformCatalogBaseTask(CmdLineTask):
 
 
 class TransformObjectCatalogConfig(TransformCatalogBaseConfig):
+    coaddName = pexConfig.Field(
+        dtype=str,
+        default="deep",
+        doc="Name of coadd"
+    )
     filterMap = pexConfig.DictField(
         keytype=str,
         itemtype=str,
@@ -635,5 +693,108 @@ class ConsolidateObjectTableTask(CmdLineTask):
 
     def writeMetadata(self, dataRef):
         """No metadata to write.
+        """
+        pass
+
+
+class TransformSourceTableConfig(TransformCatalogBaseConfig):
+    pass
+
+
+class TransformSourceTableTask(TransformCatalogBaseTask):
+    """Transform/standardize a source catalog
+    """
+    _DefaultName = "transformSourceTable"
+    ConfigClass = TransformSourceTableConfig
+
+    inputDataset = 'source'
+    outputDataset = 'sourceTable'
+
+    def writeMetadata(self, dataRef):
+        """No metadata to write.
+        """
+        pass
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+        parser.add_id_argument("--id", datasetType=cls.inputDataset,
+                               level="sensor",
+                               help="data ID, e.g. --id visit=12345 ccd=0")
+        return parser
+
+
+class VisitDataIdContainer(DataIdContainer):
+    """DataIdContainer that groups sensor-level id's by visit
+    """
+
+    def makeDataRefList(self, namespace):
+        """Make self.refList from self.idList
+
+        Generate a list of data references grouped by visit.
+
+        Parameters
+        ----------
+        namespace : `argparse.Namespace`
+            Namespace used by `lsst.pipe.base.CmdLineTask` to parse command line arguments
+        """
+        def ccdDataRefList(visitId):
+            """Get all possible ccds for a given visit"""
+            ccds = namespace.butler.queryMetadata('src', ['ccd'], dataId={'visit': visitId})
+            return [namespace.butler.dataRef(datasetType=self.datasetType,
+                                             visit=visitId,
+                                             ccd=ccd) for ccd in ccds]
+        # Group by visits
+        visitRefs = defaultdict(list)
+        for dataId in self.idList:
+            if "visit" in dataId:
+                visitId = dataId["visit"]
+                if "ccd" in dataId:
+                    visitRefs[visitId].append(namespace.butler.dataRef(datasetType=self.datasetType,
+                                                                       visit=visitId, ccd=dataId['ccd']))
+                else:
+                    visitRefs[visitId] += ccdDataRefList(visitId)
+        outputRefList = []
+        for refList in visitRefs.values():
+            existingRefs = [ref for ref in refList if ref.datasetExists()]
+            outputRefList.append(existingRefs)
+
+        self.refList = outputRefList
+
+
+class ConsolidateSourceTableConfig(pexConfig.Config):
+    pass
+
+
+class ConsolidateSourceTableTask(CmdLineTask):
+    """Concatenate `sourceTable` list into a per-visit `sourceTable_visit`
+    """
+    _DefaultName = 'consolidateSourceTable'
+    ConfigClass = ConsolidateSourceTableConfig
+
+    inputDataset = 'sourceTable'
+    outputDataset = 'sourceTable_visit'
+
+    def runDataRef(self, dataRefList):
+        self.log.info("Concatenating %s per-detector Source Tables", len(dataRefList))
+        df = pd.concat([dataRef.get().toDataFrame() for dataRef in dataRefList])
+        dataRefList[0].put(ParquetTable(dataFrame=df), self.outputDataset)
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+
+        parser.add_id_argument("--id", cls.inputDataset,
+                               help="data ID, e.g. --id visit=12345",
+                               ContainerClass=VisitDataIdContainer)
+        return parser
+
+    def writeMetadata(self, dataRef):
+        """No metadata to write.
+        """
+        pass
+
+    def writeConfig(self, butler, clobber=False, doBackup=True):
+        """No config to write.
         """
         pass
