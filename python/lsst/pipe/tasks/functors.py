@@ -9,7 +9,8 @@ from lsst.daf.persistence import doImport
 from .parquetTable import MultilevelParquetTable
 
 
-def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors', typeKey='functor'):
+def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
+                  typeKey='functor', name=None):
     """Initialize an object defined in a dictionary
 
     The object needs to be importable as
@@ -39,8 +40,12 @@ def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors', typeKey='functo
         args = initDict.pop('args')
         if isinstance(args, str):
             args = [args]
-
-    return pythonType(*args, **initDict)
+    try:
+        element = pythonType(*args, **initDict)
+    except Exception as e:
+        message = f'Error in constructing functor "{name}" of type {pythonType.__name__} with args: {args}'
+        raise type(e)(message, e.args)
+    return element
 
 
 class Functor(object):
@@ -321,7 +326,7 @@ class CompositeFunctor(Functor):
     def from_yaml(cls, translationDefinition, **kwargs):
         funcs = {}
         for func, val in translationDefinition['funcs'].items():
-            funcs[func] = init_fromDict(val)
+            funcs[func] = init_fromDict(val, name=func)
 
         if 'flag_rename_rules' in translationDefinition:
             renameRules = translationDefinition['flag_rename_rules']
