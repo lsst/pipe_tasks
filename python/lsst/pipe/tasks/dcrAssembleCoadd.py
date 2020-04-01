@@ -553,7 +553,12 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.log.info("Selected parallactic angles:\n%s", angleDict)
         self.log.info("Selected PSF sizes:\n%s", psfSizeDict)
         self.bufferSize = int(np.ceil(np.max(dcrShifts)) + 1)
-        psf = self.selectCoaddPsf(templateCoadd, warpRefList)
+        try:
+            psf = self.selectCoaddPsf(templateCoadd, warpRefList)
+        except Exception as e:
+            self.log.warn("Unable to calculate restricted PSF, using default coadd PSF: %s" % e)
+        else:
+            psf = templateCoadd.psf
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
                                        self.config.dcrNumSubfilters,
                                        filterInfo=filterInfo,
