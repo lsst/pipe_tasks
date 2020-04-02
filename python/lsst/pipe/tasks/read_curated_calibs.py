@@ -30,8 +30,7 @@ def read_one_chip(root, chip_name, chip_id):
     files = []
     extensions = (".ecsv", ".yaml")
     for ext in extensions:
-        files.extend(glob.glob(os.path.join(root, chip_name, f"*.{ext}")))
-
+        files.extend(glob.glob(os.path.join(root, chip_name, f"*{ext}")))
     parts = os.path.split(root)
     instrument = os.path.split(parts[0])[1]  # convention is that these reside at <instrument>/<data_name>
     data_name = parts[1]
