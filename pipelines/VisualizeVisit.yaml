@@ -1,14 +1,8 @@
 description: Visualize full visit/focal plane with binned and mosaic images.
 tasks:
-  bin:
-    class: lsst.pipe.tasks.visualizeVisit.VisBinTask
-    config:
-      binning: 8
-      connections.inputExp: 'calexp'
-      connections.outputExp: 'calexpBin'
-  moz:
-    class: lsst.pipe.tasks.visualizeVisit.VisMosaicTask
-    config:
-      binning: 8
-      connections.inputExps: 'calexpBin'
-      connections.outputData: 'calexpFP'
+  binning:
+    class: lsst.pipe.tasks.visualizeVisit.VisualizeBinExpTask
+  mosaic:
+    class: lsst.pipe.tasks.visualizeVisit.VisualizeMosaicExpTask
+contracts:
+  - binning.binning == mosaic.binning

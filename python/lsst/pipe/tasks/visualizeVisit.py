@@ -28,11 +28,12 @@ import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom.utils as afwUtils
 
 
-__all__ = ['VisBinConfig', 'VisBinTask', 'VisMosaicConfig', 'VisMosaicTask']
+__all__ = ['VisualizeBinExpConfig', 'VisualizeBinExpTask',
+           'VisualizeMosaicExpConfig', 'VisualizeMosaicExpTask']
 
 
-class VisBinConnections(pipeBase.PipelineTaskConnections,
-                        dimensions=("instrument", "detector")):
+class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
+                                 dimensions=("instrument", "detector")):
     inputExp = cT.Input(
         name="calexp",
         doc="Input exposure data to mosaic.",
@@ -54,14 +55,14 @@ class VisBinConnections(pipeBase.PipelineTaskConnections,
     )
 
 
-class VisBinConfig(pipeBase.PipelineTaskConfig,
-                   pipelineConnections=VisBinConnections):
+class VisualizeBinExpConfig(pipeBase.PipelineTaskConfig,
+                            pipelineConnections=VisualizeBinExpConnections):
     """Configuration for focal plane visualization.
     """
     binning = pexConfig.Field(
         dtype=int,
         default=8,
-        doc="Binning factor to apply.",
+        doc="Binning factor to apply to each input exposure's image data.",
     )
     detectorKeyword = pexConfig.Field(
         dtype=str,
@@ -70,12 +71,16 @@ class VisBinConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class VisBinTask(pipeBase.PipelineTask,
-                 pipeBase.CmdLineTask):
-    """Task for focal plane visualization.
+class VisualizeBinExpTask(pipeBase.PipelineTask,
+                          pipeBase.CmdLineTask):
+    """Bin the detectors of an exposure.
+
+    The outputs of this task should be passed to
+    VisualizeMosaicExpTask to be mosaicked into a full focal plane
+    visualization image.
     """
-    ConfigClass = VisBinConfig
-    _DefaultName = 'VisBin'
+    ConfigClass = VisualizeBinExpConfig
+    _DefaultName = 'VisualizeBinExp'
 
     def run(self, inputExp, camera):
         """Bin input image, attach associated detector.
@@ -93,7 +98,7 @@ class VisBinTask(pipeBase.PipelineTask,
             Results struct with attribute:
 
             ``outputExp``
-                Binned version of input image. (`lsst.afw.image.Exposure`)
+                Binned version of input image (`lsst.afw.image.Exposure`).
         """
         if inputExp.getDetector() is None:
             detectorId = inputExp.getMetadata().get(self.config.detectorKeyword)
@@ -104,15 +109,18 @@ class VisBinTask(pipeBase.PipelineTask,
         binned = afwMath.binImage(binned, self.config.binning)
         outputExp = afwImage.makeExposure(binned)
 
-        if outputExp.getDetector() is None:
-            outputExp.setDetector(inputExp.getDetector())
+        outputExp.setInfo(inputExp.getInfo())
+        outputExp.setFilter(inputExp.getFilter())
+        outputExp.setMetadata(inputExp.getMetadata())
+        outputExp.setDetector(inputExp.getDetector())
+
         return pipeBase.Struct(
             outputExp=outputExp,
         )
 
 
-class VisMosaicConnections(pipeBase.PipelineTaskConnections,
-                           dimensions=("instrument", )):
+class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
+                                    dimensions=("instrument", )):
     inputExps = cT.Input(
         name="calexpBin",
         doc="Input binned images mosaic.",
@@ -128,30 +136,35 @@ class VisMosaicConnections(pipeBase.PipelineTaskConnections,
     )
 
     outputData = cT.Output(
-        name="calexpFP",
+        name="calexpFocalPlane",
         doc="Output binned mosaicked frame.",
         storageClass="ImageF",
         dimensions=("instrument", ),
     )
 
 
-class VisMosaicConfig(pipeBase.PipelineTaskConfig,
-                      pipelineConnections=VisMosaicConnections):
+class VisualizeMosaicExpConfig(pipeBase.PipelineTaskConfig,
+                               pipelineConnections=VisualizeMosaicExpConnections):
     """Configuration for focal plane visualization.
     """
     binning = pexConfig.Field(
         dtype=int,
         default=8,
-        doc="Binning factor to apply.",
+        doc="Binning factor previously applied to input exposures.",
     )
 
 
-class VisMosaicTask(pipeBase.PipelineTask,
-                    pipeBase.CmdLineTask):
+class VisualizeMosaicExpTask(pipeBase.PipelineTask,
+                             pipeBase.CmdLineTask):
     """Task to mosaic binned products.
+
+    The config.binning parameter must match that used in the
+    VisualizeBinExpTask.  Otherwise there will be a mismatch between
+    the input image size and the expected size of that image in the
+    full focal plane frame.
     """
-    ConfigClass = VisMosaicConfig
-    _DefaultName = 'VisMosaic'
+    ConfigClass = VisualizeMosaicExpConfig
+    _DefaultName = 'VisualizeMosaicExp'
 
     def makeCameraImage(self, inputExps, camera, binning):
         """Make an image of an entire focal plane.
@@ -168,54 +181,6 @@ class VisMosaicTask(pipeBase.PipelineTask,
             Image mosaicked from the individual binned images for each
             detector.
         """
-        class ImageSource:
-            """Source of images for makeImageFromCamera"""
-            def __init__(self, exposures):
-                self.isTrimmed = True
-                self.exposures = exposures
-                self.background = np.nan
-
-            def getCcdImage(self, detector, imageFactory, binSize):
-                """Provide image of CCD to makeImageFromCamera
-
-                Parameters
-                ----------
-                detector : `int`
-                    Detector ID to get image data for.
-                imageFactory : `lsst.afw.image.Image`
-                    Type of image to construct.
-                binSize : `int`
-                    Binsize to use to recompute dimensions.
-
-                Returns
-                -------
-                image : `lsst.afw.image.Image`
-                    Appropriately rotated, binned, and transformed
-                    image to be mosaicked.
-                detector : `lsst.afw.cameraGeom.Detector`
-                    Camera detector that the returned image data
-                    belongs to.
-                """
-                detId = detector.getId()
-                if detId not in self.exposures:
-                    dims = detector.getBBox().getDimensions()/binSize
-                    image = imageFactory(*[int(xx) for xx in dims])
-                    image.set(self.background)
-                else:
-                    image = self.exposures[detector.getId()]
-                if hasattr(image, "getMaskedImage"):
-                    image = image.getMaskedImage()
-                if hasattr(image, "getMask"):
-                    mask = image.getMask()
-                    isBad = mask.getArray() & mask.getPlaneBitMask("NO_DATA") > 0
-                    image = image.clone()
-                    image.getImage().getArray()[isBad] = self.background
-                if hasattr(image, "getImage"):
-                    image = image.getImage()
-
-                image = afwMath.rotateImageBy90(image, detector.getOrientation().getNQuarter())
-                return image, detector
-
         image = afwUtils.makeImageFromCamera(
             camera,
             imageSource=ImageSource(inputExps),
@@ -225,7 +190,7 @@ class VisMosaicTask(pipeBase.PipelineTask,
         return image
 
     def run(self, inputExps, camera):
-        """Mosaic inputs.
+        """Mosaic inputs together to create focal plane image.
 
         Parameters
         ----------
@@ -240,11 +205,52 @@ class VisMosaicTask(pipeBase.PipelineTask,
             Results struct with attribute:
 
             ``outputExp``
-                Binned version of input image. (`lsst.afw.image.Exposure`)
+                Binned version of input image (`lsst.afw.image.Exposure`).
         """
-        expDict = dict((exp.getDetector().getId(), exp) for exp in inputExps)
+        expDict = {exp.getDetector().getId(): exp for exp in inputExps}
         image = self.makeCameraImage(expDict, camera, self.config.binning)
 
         return pipeBase.Struct(
             outputData=image,
         )
+
+
+class ImageSource:
+    """Source of images for makeImageFromCamera"""
+    def __init__(self, exposures):
+        self.exposures = exposures
+
+    def getCcdImage(self, detector, imageFactory, binSize):
+        """Provide image of CCD to makeImageFromCamera
+
+        Parameters
+        ----------
+        detector : `int`
+            Detector ID to get image data for.
+        imageFactory : `lsst.afw.image.Image`
+            Type of image to construct.
+        binSize : `int`
+            Binsize to use to recompute dimensions.
+
+        Returns
+        -------
+        image : `lsst.afw.image.Image`
+            Appropriately rotated, binned, and transformed
+            image to be mosaicked.
+        detector : `lsst.afw.cameraGeom.Detector`
+            Camera detector that the returned image data
+            belongs to.
+        """
+        detId = detector.getId()
+        if detId not in self.exposures:
+            dims = detector.getBBox().getDimensions()/binSize
+            image = imageFactory(*[int(xx) for xx in dims])
+            image.set(np.nan)
+        else:
+            image = self.exposures[detector.getId()]
+        image = image.getImage()
+
+        # afwMath.rotateImageBy90 checks NQuarter values,
+        # so we don't need to here.
+        image = afwMath.rotateImageBy90(image, detector.getOrientation().getNQuarter())
+        return image, detector
