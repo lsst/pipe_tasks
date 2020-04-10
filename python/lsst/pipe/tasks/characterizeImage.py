@@ -48,7 +48,7 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
         doc="Input exposure data",
         name="postISRCCD",
         storageClass="ExposureF",
-        dimensions=["instrument", "visit", "detector"],
+        dimensions=["instrument", "exposure", "detector"],
     )
     characterized = cT.Output(
         doc="Output characterized data.",
