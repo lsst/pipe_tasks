@@ -219,6 +219,8 @@ class ImageSource:
     """Source of images for makeImageFromCamera"""
     def __init__(self, exposures):
         self.exposures = exposures
+        self.isTrimmed = True
+        self.background = np.nan
 
     def getCcdImage(self, detector, imageFactory, binSize):
         """Provide image of CCD to makeImageFromCamera
@@ -242,13 +244,22 @@ class ImageSource:
             belongs to.
         """
         detId = detector.getId()
+
         if detId not in self.exposures:
             dims = detector.getBBox().getDimensions()/binSize
             image = imageFactory(*[int(xx) for xx in dims])
-            image.set(np.nan)
+            image.set(self.background)
         else:
             image = self.exposures[detector.getId()]
-        image = image.getImage()
+        if hasattr(image, "getMaskedImage"):
+            image = image.getMaskedImage()
+        if hasattr(image, "getMask"):
+            mask = image.getMask()
+            isBad = mask.getArray() & mask.getPlaneBitMask("NO_DATA") > 0
+            image = image.clone()
+            image.getImage().getArray()[isBad] = self.background
+        if hasattr(image, "getImage"):
+            image = image.getImage()
 
         # afwMath.rotateImageBy90 checks NQuarter values,
         # so we don't need to here.
