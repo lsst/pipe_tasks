@@ -25,16 +25,11 @@ import pandas as pd
 
 import lsst.utils.tests
 
-# TODO: Remove skipUnless and this try block DM-22256
-try:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-    from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
-    from lsst.pipe.tasks.functors import HsmFwhm
-    from lsst.pipe.tasks.postprocess import TransformObjectCatalogTask, TransformObjectCatalogConfig
-    havePyArrow = True
-except ImportError:
-    havePyArrow = False
+import pyarrow as pa
+import pyarrow.parquet as pq
+from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
+from lsst.pipe.tasks.functors import HsmFwhm
+from lsst.pipe.tasks.postprocess import TransformObjectCatalogTask, TransformObjectCatalogConfig
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -43,7 +38,6 @@ def setup_module(module):
     lsst.utils.tests.init()
 
 
-@unittest.skipUnless(havePyArrow, "Requires pyarrow")
 class TransformObjectCatalogTestCase(unittest.TestCase):
     def setUp(self):
         # Note that this test input includes HSC-G, HSC-R, and HSC-I data
