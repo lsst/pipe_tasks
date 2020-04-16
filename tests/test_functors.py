@@ -32,25 +32,18 @@ import lsst.afw.geom as afwGeom
 import lsst.geom as geom
 import lsst.meas.base as measBase
 import lsst.utils.tests
-
-# TODO: Remove skipUnless and this try block DM-22256
-try:
-    from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
-    from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
-                                          DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
-                                          DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
-                                          HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
-                                          LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
-                                          LocalMagnitude, LocalMagnitudeErr,
-                                          LocalWcs, ComputePixelScale, ConvertPixelToArcseconds)
-    havePyArrow = True
-except ImportError:
-    havePyArrow = False
+from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
+from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
+                                      DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
+                                      DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
+                                      HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
+                                      LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
+                                      LocalMagnitude, LocalMagnitudeErr,
+                                      LocalWcs, ComputePixelScale, ConvertPixelToArcseconds)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
 
-@unittest.skipUnless(havePyArrow, "Requires pyarrow")
 class FunctorTestCase(unittest.TestCase):
 
     def simulateMultiParquet(self, dataDict):
