@@ -48,7 +48,7 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
         doc="Input exposure data",
         name="postISRCCD",
         storageClass="ExposureF",
-        dimensions=["instrument", "visit", "detector"],
+        dimensions=["instrument", "exposure", "detector"],
     )
     characterized = cT.Output(
         doc="Output characterized data.",
@@ -73,6 +73,18 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
         name="icSrc_schema",
         storageClass="SourceCatalog",
     )
+
+    def adjustQuantum(self, datasetRefMap: pipeBase.InputQuantizedConnection):
+        # Docstring inherited from PipelineTaskConnections
+        try:
+            return super().adjustQuantum(datasetRefMap)
+        except pipeBase.ScalarError as err:
+            raise pipeBase.ScalarError(
+                f"CharacterizeImageTask can at present only be run on visits that are associated with "
+                f"exactly one exposure.  Either this is not a valid exposure for this pipeline, or the "
+                f"snap-combination step you probably want hasn't been configured to run between ISR and "
+                f"this task (as of this writing, that would be because it hasn't been implemented yet)."
+            ) from err
 
 
 class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
