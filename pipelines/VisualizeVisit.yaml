@@ -1,0 +1,8 @@
+description: Visualize full visit/focal plane with binned and mosaic images.
+tasks:
+  binning:
+    class: lsst.pipe.tasks.visualizeVisit.VisualizeBinExpTask
+  mosaic:
+    class: lsst.pipe.tasks.visualizeVisit.VisualizeMosaicExpTask
+contracts:
+  - binning.binning == mosaic.binning
