@@ -74,6 +74,20 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instr
         dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
     )
 
+    icSourceCat = cT.Input(
+        doc="Catalog of calibration sources",
+        name="icSrc",
+        storageClass="sourceCatalog",
+        dimensions=("tract", "skymap", "instrument", "visit", "detector")
+    )
+
+    sfdSourceCat = cT.Input(
+        doc="Catalog of calibration sources",
+        name="src",
+        storageClass="sourceCatalog",
+        dimensions=("tract", "skymap", "instrument", "visit", "detector")
+    )
+
     outputExposure = cT.Output(
         doc="Exposure with fake sources added.",
         name="fakes_calexp",
@@ -118,6 +132,14 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
              "RuntimeError exception.")
     )
 
+    srcFieldsToCopy = pexConfig.ListField(
+        dtype=str,
+        default=("calib_photometry_reserved", "calib_photometry_used", "calib_astrometry_used"),
+        doc=("Fields to copy from the `src` catalog to the output catalog "
+             "for matching sources Any missing fields will trigger a "
+             "RuntimeError exception.")
+    )
+
     matchRadiusPix = pexConfig.Field(
         dtype=float,
         default=3,
@@ -146,6 +168,8 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
         super().setDefaults()
         self.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("FAKE")
         self.measurement.plugins["base_PixelFlags"].masksFpCenter.append("FAKE")
+        self.deblend.maxFootprintSize = 2000
+        self.measurement.plugins.names |= ["base_LocalPhotoCalib", "base_LocalWcs"]
 
 
 class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
@@ -237,12 +261,15 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             photoCalib = calexp.getPhotoCalib()
 
         icSourceCat = dataRef.get("icSrc", immediate=True)
+        sfdSourceCat = dataRef.get("src", immediate=True)
 
         resultStruct = self.run(fakeCat, calexp, wcs=wcs, photoCalib=photoCalib,
-                                exposureIdInfo=exposureIdInfo, icSourceCat=icSourceCat)
+                                exposureIdInfo=exposureIdInfo, icSourceCat=icSourceCat,
+                                sfdSourceCat=sfdSourceCat)
 
         dataRef.put(resultStruct.outputExposure, "fakes_calexp")
         dataRef.put(resultStruct.outputCat, "fakes_src")
+        return resultStruct
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -266,7 +293,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                                ContainerClass=PerTractCcdDataIdContainer)
         return parser
 
-    def run(self, fakeCat, exposure, wcs=None, photoCalib=None, exposureIdInfo=None, icSourceCat=None):
+    def run(self, fakeCat, exposure, wcs=None, photoCalib=None, exposureIdInfo=None, icSourceCat=None,
+            sfdSourceCat=None):
         """Add fake sources to a calexp and then run detection, deblending and measurement.
 
         Parameters
@@ -280,6 +308,12 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
                     Photometric calibration to be used to calibrate the fake sources
         exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+        icSourceCat : `lsst.afw.table.SourceCatalog`
+                    Default : None
+                    Catalog to take the information about which sources were used for calibration from.
+        sfdSourceCat : `lsst.afw.table.SourceCatalog`
+                    Default : None
+                    Catalog produced by singleFrameDriver, needed to copy some calibration flags from.
 
         Returns
         -------
@@ -326,12 +360,13 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         self.measurement.run(measCat=sourceCat, exposure=exposure, exposureId=exposureIdInfo.expId)
         self.applyApCorr.run(catalog=sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
         self.catalogCalculation.run(sourceCat)
-        sourceCat = self.copyCalibrationFields(icSourceCat, sourceCat)
+        sourceCat = self.copyCalibrationFields(icSourceCat, sourceCat, self.config.calibrationFieldsToCopy)
+        sourceCat = self.copyCalibrationFields(sfdSourceCat, sourceCat, self.config.srcFieldsToCopy)
 
         resultStruct = pipeBase.Struct(outputExposure=exposure, outputCat=sourceCat)
         return resultStruct
 
-    def copyCalibrationFields(self, calibCat, sourceCat):
+    def copyCalibrationFields(self, calibCat, sourceCat, fieldsToCopy):
         """Match sources in calibCat and sourceCat and copy the specified fields
 
         Parameters
@@ -340,13 +375,15 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             Catalog from which to copy fields.
         sourceCat : `lsst.afw.table.SourceCatalog`
             Catalog to which to copy fields.
+        fieldsToCopy : `lsst.pex.config.listField.List`
+            Fields to copy from calibCat to SoourceCat.
 
         Returns
         -------
         newCat : `lsst.afw.table.SourceCatalog`
             Catalog which includes the copied fields.
 
-        The fields copied are those specified by `config.calibrationFieldsToCopy` that actually exist
+        The fields copied are those specified by `fieldsToCopy` that actually exist
         in the schema of `calibCat`.
 
         This version was based on and adapted from the one in calibrateTask.
@@ -358,9 +395,9 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         calibSchemaMapper = afwTable.SchemaMapper(calibCat.schema, sourceCat.schema)
 
-        # Add the desired columns from the config option calibrationFieldsToCopy
+        # Add the desired columns from the option fieldsToCopy
         missingFieldNames = []
-        for fieldName in self.config.calibrationFieldsToCopy:
+        for fieldName in fieldsToCopy:
             if fieldName in calibCat.schema:
                 schemaItem = calibCat.schema.find(fieldName)
                 calibSchemaMapper.editOutputSchema().addField(schemaItem.getField())
@@ -370,10 +407,13 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                 missingFieldNames.append(fieldName)
         if missingFieldNames:
             raise RuntimeError(f"calibCat is missing fields {missingFieldNames} specified in "
-                               "calibrationFieldsToCopy")
+                               "fieldsToCopy")
 
-        self.calibSourceKey = calibSchemaMapper.addOutputField(afwTable.Field["Flag"]("calib_detected",
-                                                               "Source was detected as an icSource"))
+        if "calib_detected" not in calibSchemaMapper.getOutputSchema():
+            self.calibSourceKey = calibSchemaMapper.addOutputField(afwTable.Field["Flag"]("calib_detected",
+                                                                   "Source was detected as an icSource"))
+        else:
+            self.calibSourceKey = None
 
         schema = calibSchemaMapper.getOutputSchema()
         newCat = afwTable.SourceCatalog(schema)
@@ -400,7 +440,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         # For each match: set the calibSourceKey flag and copy the desired
         # fields
         for src, calibSrc, d in matches:
-            src.setFlag(self.calibSourceKey, True)
+            if self.calibSourceKey:
+                src.setFlag(self.calibSourceKey, True)
             # src.assign copies the footprint from calibSrc, which we don't want
             # (DM-407)
             # so set calibSrc's footprint to src's footprint before src.assign,
