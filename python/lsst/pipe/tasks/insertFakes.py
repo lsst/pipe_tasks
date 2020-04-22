@@ -428,7 +428,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             # And then scale up PSF model so that the PSF is normalized to 1 within the calibration radius
 
             # We put these two PSF calculations within this same try block so that we catch cases
-            # where the object is outside position is outside of the image.
+            # where the object's position is outside of the image.
             try:
                 correctedFlux = psf.computeApertureFlux(self.config.calibFluxRadius, xy)
                 psfKernel = psf.computeKernelImage(xy).getArray()
@@ -500,7 +500,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             # And then scale up PSF model so that the PSF is normalized to 1 within the calibration radius
 
             # We put these two PSF calculations within this same try block so that we catch cases
-            # where the object is outside position is outside of the image.
+            # where the object's position is outside of the image.
             try:
                 correctedFlux = psf.computeApertureFlux(self.config.calibFluxRadius, xy)
                 starIm = psf.computeImage(xy)
