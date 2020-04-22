@@ -177,7 +177,9 @@ class InsertFakesConfig(PipelineTaskConfig,
     )
 
     calibFluxRadius = pexConfig.Field(
-        doc="Radius for the calib flux (in pixels).",
+        doc="Aperture radius (in pixels) that was used to define the calibration for this image+catalog. "
+        "This will be used to produce the correct instrumental fluxes within the radius. "
+        "This value should match that of the field defined in slot_CalibFlux_instFlux.",
         dtype=float,
         default=12.0,
     )
@@ -417,9 +419,17 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
 
+            # photoCalib.magnitudeToInstFlux returns the instrumental flux within the
+            #   aperture radius used in defining the calibration of that image.
+            # config.calibFluxRadius should be set to this same aperture radius value
+            # When we generate a simulated object, we will sample the PSF at some different radius.
+            # The PSF is normalized to 1 out to inifnity.
+            # So we calculate the fractional enclosed energy in the PSF model within the calibration radius
+            # And then scale up PSF model so that the PSF is normalized to 1 within the calibration radius
+
+            # We put these two PSF calculations within this same try block so that we catch cases
+            # where the object is outside position is outside of the image.
             try:
-                # Due to the different radii used for calibration and measurement a correction factor is
-                # needed to prevent there being an offset in the final processed output.
                 correctedFlux = psf.computeApertureFlux(self.config.calibFluxRadius, xy)
                 psfKernel = psf.computeKernelImage(xy).getArray()
                 psfKernel /= correctedFlux
@@ -481,9 +491,17 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
 
+            # photoCalib.magnitudeToInstFlux returns the instrumental flux within the
+            #   aperture radius used in defining the calibration of that image.
+            # config.calibFluxRadius should be set to this same aperture radius value
+            # When we generate a simulated object, we will sample the PSF at some different radius.
+            # The PSF is normalized to 1 out to inifnity.
+            # So we calculate the fractional enclosed energy in the PSF model within the calibration radius
+            # And then scale up PSF model so that the PSF is normalized to 1 within the calibration radius
+
+            # We put these two PSF calculations within this same try block so that we catch cases
+            # where the object is outside position is outside of the image.
             try:
-                # Due to the different radii used for calibration and measurement a correction factor is
-                # needed to prevent there being an offset in the final processed output.
                 correctedFlux = psf.computeApertureFlux(self.config.calibFluxRadius, xy)
                 starIm = psf.computeImage(xy)
                 starIm /= correctedFlux
