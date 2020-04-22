@@ -52,6 +52,7 @@ IqrToSigma = 0.741
 class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
                                      dimensions=("instrument", "visit", "detector", "skymap"),
                                      defaultTemplates={"coaddName": "deep",
+                                                       "skyMapName": "deep",
                                                        "warpTypeSuffix": "",
                                                        "fakesType": ""}):
 
@@ -72,7 +73,7 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
 
     skyMap = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for template exposures",
-        name="{coaddName}Coadd_skyMap",
+        name="{skyMapName}Coadd_skyMap",
         dimensions=("skymap", ),
         storageClass="SkyMap",
     )
@@ -81,6 +82,14 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         dimensions=("tract", "patch", "skymap", "abstract_filter"),
         storageClass="ExposureF",
         name="{fakesType}{coaddName}Coadd{warpTypeSuffix}",
+        multiple=True,
+        deferLoad=True
+    )
+    dcrCoadds = pipeBase.connectionTypes.Input(
+        doc="Input DCR template to match and subtract from the exposure",
+        name="{fakesType}dcrCoadd{warpTypeSuffix}",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "abstract_filter", "subfilter"),
         multiple=True,
         deferLoad=True
     )
@@ -96,6 +105,13 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         storageClass="SourceCatalog",
         name="{fakesType}{coaddName}Diff_diaSrc",
     )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.coaddName == 'dcr':
+            self.inputs.remove("coaddExposures")
+        else:
+            self.inputs.remove("dcrCoadds")
 
     # TODO DM-22953: Add support for refObjLoader (kernelSourcesFromRef)
     # Make kernelSources optional
@@ -396,17 +412,17 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
     def runQuantum(self, butlerQC: pipeBase.ButlerQuantumContext,
                    inputRefs: pipeBase.InputQuantizedConnection,
                    outputRefs: pipeBase.OutputQuantizedConnection):
-        if self.getTemplate.config.coaddName == 'dcr':
-            # TODO DM-22952
-            raise NotImplementedError("TODO DM-22952: Dcr coadd templates are not yet supported in gen3.")
-
         inputs = butlerQC.get(inputRefs)
         self.log.info(f"Processing {butlerQC.quantum.dataId}")
         expId, expBits = butlerQC.quantum.dataId.pack("visit_detector",
                                                       returnMaxBits=True)
         idFactory = self.makeIdFactory(expId=expId, expBits=expBits)
+        if self.config.coaddName == 'dcr':
+            templateExposures = inputRefs.dcrCoadds
+        else:
+            templateExposures = inputRefs.coaddExposures
         templateStruct = self.getTemplate.runQuantum(
-            inputs['exposure'], butlerQC, inputRefs.skyMap, inputRefs.coaddExposures
+            inputs['exposure'], butlerQC, inputRefs.skyMap, templateExposures
         )
 
         outputs = self.run(exposure=inputs['exposure'],
