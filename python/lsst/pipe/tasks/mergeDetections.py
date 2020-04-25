@@ -334,10 +334,10 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
             familySize = len(oldPeaks)
             totalPeaks += familySize
             for rank, peak in enumerate(oldPeaks):
-                if ((rank < self.config.cullPeaks.rankSufficient) or
-                    (sum([peak.get(k) for k in keys]) >= self.config.cullPeaks.nBandsSufficient) or
-                    (rank < self.config.cullPeaks.rankConsidered and
-                     rank < self.config.cullPeaks.rankNormalizedConsidered * familySize)):
+                if ((rank < self.config.cullPeaks.rankSufficient)
+                    or (sum([peak.get(k) for k in keys]) >= self.config.cullPeaks.nBandsSufficient)
+                    or (rank < self.config.cullPeaks.rankConsidered
+                        and rank < self.config.cullPeaks.rankNormalizedConsidered * familySize)):
                     keptPeaks.append(peak)
                 else:
                     culledPeaks += 1

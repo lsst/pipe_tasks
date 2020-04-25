@@ -738,29 +738,29 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                         cresiduals = [m.first.get(refCoordKey).getTangentPlaneOffset(
                             wcsResults.wcs.pixelToSky(
                                 m.second.get(inCentroidKey))) for m in wcsResults.matches]
-                        colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g")) +
-                                              2.5*numpy.log10(srcToMatch[x].get("r"))
+                        colors = numpy.array([-2.5*numpy.log10(srcToMatch[x].get("g"))
+                                              + 2.5*numpy.log10(srcToMatch[x].get("r"))
                                               for x in sids if x in srcToMatch.keys()])
                         dlong = numpy.array([r[0].asArcseconds() for s, r in zip(sids, cresiduals)
                                              if s in srcToMatch.keys()])
                         dlat = numpy.array([r[1].asArcseconds() for s, r in zip(sids, cresiduals)
                                             if s in srcToMatch.keys()])
                         idx1 = numpy.where(colors < self.sourceSelector.config.grMin)
-                        idx2 = numpy.where((colors >= self.sourceSelector.config.grMin) &
-                                           (colors <= self.sourceSelector.config.grMax))
+                        idx2 = numpy.where((colors >= self.sourceSelector.config.grMin)
+                                           & (colors <= self.sourceSelector.config.grMax))
                         idx3 = numpy.where(colors > self.sourceSelector.config.grMax)
                         rms1Long = IqrToSigma*(
                             (numpy.percentile(dlong[idx1], 75) - numpy.percentile(dlong[idx1], 25)))
-                        rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75) -
-                                              numpy.percentile(dlat[idx1], 25))
+                        rms1Lat = IqrToSigma*(numpy.percentile(dlat[idx1], 75)
+                                              - numpy.percentile(dlat[idx1], 25))
                         rms2Long = IqrToSigma*(
                             (numpy.percentile(dlong[idx2], 75) - numpy.percentile(dlong[idx2], 25)))
-                        rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75) -
-                                              numpy.percentile(dlat[idx2], 25))
+                        rms2Lat = IqrToSigma*(numpy.percentile(dlat[idx2], 75)
+                                              - numpy.percentile(dlat[idx2], 25))
                         rms3Long = IqrToSigma*(
                             (numpy.percentile(dlong[idx3], 75) - numpy.percentile(dlong[idx3], 25)))
-                        rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75) -
-                                              numpy.percentile(dlat[idx3], 25))
+                        rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75)
+                                              - numpy.percentile(dlat[idx3], 25))
                         self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" %
                                       (numpy.median(dlong[idx1]), rms1Long,
                                        numpy.median(dlat[idx1]), rms1Lat))
@@ -1016,13 +1016,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 for s in diaSources:
                     x, y = s.getX() - x0, s.getY() - y0
                     ctype = "red" if s.get("flags_negative") else "yellow"
-                    if (s.get("base_PixelFlags_flag_interpolatedCenter") or
-                            s.get("base_PixelFlags_flag_saturatedCenter") or
-                            s.get("base_PixelFlags_flag_crCenter")):
+                    if (s.get("base_PixelFlags_flag_interpolatedCenter")
+                            or s.get("base_PixelFlags_flag_saturatedCenter")
+                            or s.get("base_PixelFlags_flag_crCenter")):
                         ptype = "x"
-                    elif (s.get("base_PixelFlags_flag_interpolated") or
-                          s.get("base_PixelFlags_flag_saturated") or
-                          s.get("base_PixelFlags_flag_cr")):
+                    elif (s.get("base_PixelFlags_flag_interpolated")
+                          or s.get("base_PixelFlags_flag_saturated")
+                          or s.get("base_PixelFlags_flag_cr")):
                         ptype = "+"
                     else:
                         ptype = "o"

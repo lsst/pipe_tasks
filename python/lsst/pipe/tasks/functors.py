@@ -14,7 +14,7 @@ def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
     """Initialize an object defined in a dictionary
 
     The object needs to be importable as
-        '{0}.{1}'.format(basePath, initDict[typeKey])
+        f'{basePath}.{initDict[typeKey]}'
     The positional and keyword arguments (if any) are contained in
     "args" and "kwargs" entries in the dictionary, respectively.
     This is used in `functors.CompositeFunctor.from_yaml` to initialize
@@ -34,7 +34,7 @@ def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
     """
     initDict = initDict.copy()
     # TO DO: DM-21956 We should be able to define functors outside this module
-    pythonType = doImport('{0}.{1}'.format(basePath, initDict.pop(typeKey)))
+    pythonType = doImport(f'{basePath}.{initDict.pop(typeKey)}')
     args = []
     if 'args' in initDict:
         args = initDict.pop('args')
@@ -133,8 +133,8 @@ class Functor(object):
 
     def multilevelColumns(self, parq):
         if not set(parq.columnLevels) == set(self._columnLevels):
-            raise ValueError('ParquetTable does not have the expected column levels. ' +
-                             'Got {0}; expected {1}.'.format(parq.columnLevels, self._columnLevels))
+            raise ValueError('ParquetTable does not have the expected column levels. '
+                             f'Got {parq.columnLevels}; expected {self._columnLevels}.')
 
         columnDict = {'column': self.columns,
                       'dataset': self.dataset}
@@ -143,10 +143,10 @@ class Functor(object):
                 if self.dataset == 'ref':
                     columnDict['filter'] = parq.columnLevelNames['filter'][0]
                 else:
-                    raise ValueError("'filt' not set for functor {}".format(self.name) +
-                                     "(dataset {}) ".format(self.dataset) +
-                                     "and ParquetTable " +
-                                     "contains multiple filters in column index. " +
+                    raise ValueError(f"'filt' not set for functor {self.name}"
+                                     f"(dataset {self.dataset}) "
+                                     "and ParquetTable "
+                                     "contains multiple filters in column index. "
                                      "Set 'filt' or set 'dataset' to 'ref'.")
         else:
             columnDict['filter'] = self.filt
@@ -395,7 +395,7 @@ class CustomFunctor(Functor):
         not_a_col = []
         for c in flux_cols:
             if not re.search('_instFlux$', c):
-                cols.append('{}_instFlux'.format(c))
+                cols.append(f'{c}_instFlux')
                 not_a_col.append(c)
             else:
                 cols.append(c)
@@ -552,7 +552,7 @@ class Mag(Functor):
 
     @property
     def name(self):
-        return 'mag_{0}'.format(self.col)
+        return f'mag_{self.col}'
 
 
 class MagErr(Mag):
@@ -623,11 +623,11 @@ class MagDiff(Functor):
 
     @property
     def name(self):
-        return '(mag_{0} - mag_{1})'.format(self.col1, self.col2)
+        return f'(mag_{self.col1} - mag_{self.col2})'
 
     @property
     def shortname(self):
-        return 'magDiff_{0}_{1}'.format(self.col1, self.col2)
+        return f'magDiff_{self.col1}_{self.col2}'
 
 
 class Color(Functor):
@@ -694,12 +694,11 @@ class Color(Functor):
 
     @property
     def name(self):
-        return '{0} - {1} ({2})'.format(self.filt2, self.filt1, self.col)
+        return f'{self.filt2} - {self.filt1} ({self.col})'
 
     @property
     def shortname(self):
-        return '{0}_{1}m{2}'.format(self.col, self.filt2.replace('-', ''),
-                                    self.filt1.replace('-', ''))
+        return f"{self.col}_{self.filt2.replace('-', '')}m{self.filt1.replace('-', '')}"
 
 
 class Labeller(Functor):
@@ -814,8 +813,8 @@ class HsmTraceSize(Functor):
                 "ext_shapeHSM_HsmSourceMoments_yy")
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"] +
-                               df["ext_shapeHSM_HsmSourceMoments_yy"]))
+        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"]
+                               + df["ext_shapeHSM_HsmSourceMoments_yy"]))
         return srcSize
 
 
@@ -829,10 +828,10 @@ class PsfHsmTraceSizeDiff(Functor):
                 "ext_shapeHSM_HsmPsfMoments_yy")
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"] +
-                               df["ext_shapeHSM_HsmSourceMoments_yy"]))
-        psfSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmPsfMoments_xx"] +
-                               df["ext_shapeHSM_HsmPsfMoments_yy"]))
+        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"]
+                               + df["ext_shapeHSM_HsmSourceMoments_yy"]))
+        psfSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmPsfMoments_xx"]
+                               + df["ext_shapeHSM_HsmPsfMoments_yy"]))
         sizeDiff = 100*(srcSize - psfSize)/(0.5*(srcSize + psfSize))
         return sizeDiff
 
@@ -970,8 +969,8 @@ class LocalWcs(Functor):
         deltaRa = ra2 - ra1
         return 2 * np.arcsin(
             np.sqrt(
-                np.sin(deltaDec / 2) ** 2 +
-                np.cos(dec2) * np.cos(dec1) * np.sin(deltaRa / 2) ** 2))
+                np.sin(deltaDec / 2) ** 2
+                + np.cos(dec2) * np.cos(dec1) * np.sin(deltaRa / 2) ** 2))
 
     def getSkySeperationFromPixel(self, x1, y1, x2, y2, cd11, cd12, cd21, cd22):
         """Compute the distance on the sphere from x2, y1 to x1, y1.
@@ -1136,7 +1135,7 @@ class Photometry(Functor):
 
     @property
     def name(self):
-        return 'mag_{0}'.format(self.col)
+        return f'mag_{self.col}'
 
     @classmethod
     def hypot(cls, a, b):

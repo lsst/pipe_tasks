@@ -557,8 +557,8 @@ class MatchBackgroundsTask(pipeBase.Task):
                                      geom.PointI(int(x0 + xmax-1), int(y0 + ymax-1)))
                 subIm = afwImage.MaskedImageF(maskedImage, subBBox, afwImage.PARENT, False)
                 stats = afwMath.makeStatistics(subIm,
-                                               afwMath.MEAN | afwMath.MEANCLIP | afwMath.MEDIAN |
-                                               afwMath.NPOINT | afwMath.STDEV,
+                                               afwMath.MEAN | afwMath.MEANCLIP | afwMath.MEDIAN
+                                               | afwMath.NPOINT | afwMath.STDEV,
                                                self.sctrl)
                 npoints, _ = stats.getResult(afwMath.NPOINT)
                 if npoints >= 2:
