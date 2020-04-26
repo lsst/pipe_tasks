@@ -649,8 +649,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             dcrNImages = None
 
         subregionSize = geom.Extent2I(*self.config.subregionSize)
-        nSubregions = (ceil(skyInfo.bbox.getHeight()/subregionSize[1]) *
-                       ceil(skyInfo.bbox.getWidth()/subregionSize[0]))
+        nSubregions = (ceil(skyInfo.bbox.getHeight()/subregionSize[1])
+                       * ceil(skyInfo.bbox.getWidth()/subregionSize[0]))
         subIter = 0
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0

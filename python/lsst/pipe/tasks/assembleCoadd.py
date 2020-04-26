@@ -1117,8 +1117,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         """Create an argument parser.
         """
         parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_" +
-                               cls.ConfigClass().warpType + "Warp",
+        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_"
+                               + cls.ConfigClass().warpType + "Warp",
                                help="data ID, e.g. --id tract=12345 patch=1,2",
                                ContainerClass=AssembleCoaddDataIdContainer)
         parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
@@ -1495,8 +1495,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         # the same as AssembleCoaddConfig.connections, and the connections are not
         # needed to run this task anyway.
         configIntersection = {k: getattr(self.config, k)
-                              for k, v in self.config.toDict().items() if (k in config.keys() and
-                                                                           k != "connections")}
+                              for k, v in self.config.toDict().items()
+                              if (k in config.keys() and k != "connections")}
         config.update(**configIntersection)
 
         # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
@@ -2186,8 +2186,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
             if warpDiffExp is not None:
                 # This nImage only approximates the final nImage because it uses the PSF-matched mask
-                nImage.array += (numpy.isfinite(warpDiffExp.image.array) *
-                                 ((warpDiffExp.mask.array & badPixelMask) == 0)).astype(numpy.uint16)
+                nImage.array += (numpy.isfinite(warpDiffExp.image.array)
+                                 * ((warpDiffExp.mask.array & badPixelMask) == 0)).astype(numpy.uint16)
                 fpSet = self.detect.detectFootprints(warpDiffExp, doSmooth=False, clearMask=True)
                 fpSet.positive.merge(fpSet.negative)
                 footprints = fpSet.positive
@@ -2301,12 +2301,12 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             totalN = nImage.array[yIdxLocal, xIdxLocal]
 
             # effectiveMaxNumEpochs is broken line (fraction of N) with characteristic config.maxNumEpochs
-            effMaxNumEpochsHighN = (self.config.maxNumEpochs +
-                                    self.config.maxFractionEpochsHigh*numpy.mean(totalN))
+            effMaxNumEpochsHighN = (self.config.maxNumEpochs
+                                    + self.config.maxFractionEpochsHigh*numpy.mean(totalN))
             effMaxNumEpochsLowN = self.config.maxFractionEpochsLow * numpy.mean(totalN)
             effectiveMaxNumEpochs = int(min(effMaxNumEpochsLowN, effMaxNumEpochsHighN))
-            nPixelsBelowThreshold = numpy.count_nonzero((outlierN > 0) &
-                                                        (outlierN <= effectiveMaxNumEpochs))
+            nPixelsBelowThreshold = numpy.count_nonzero((outlierN > 0)
+                                                        & (outlierN <= effectiveMaxNumEpochs))
             percentBelowThreshold = nPixelsBelowThreshold / len(outlierN)
             if percentBelowThreshold > self.config.spatialThreshold:
                 maskSpanSetList.append(span)

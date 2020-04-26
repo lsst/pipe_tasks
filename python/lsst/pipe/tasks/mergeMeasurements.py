@@ -360,8 +360,8 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             if hasPseudoFilter:
                 bestRecord = priorityRecord
                 bestFlagKeys = priorityFlagKeys
-            elif (prioritySN < self.config.minSN and (maxSN - prioritySN) > self.config.minSNDiff and
-                  maxSNRecord is not None):
+            elif (prioritySN < self.config.minSN and (maxSN - prioritySN) > self.config.minSNDiff
+                  and maxSNRecord is not None):
                 bestRecord = maxSNRecord
                 bestFlagKeys = maxSNFlagKeys
             elif priorityRecord is not None:

@@ -434,8 +434,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     coaddTempExp = coaddTempExps[warpType]
                     if didSetMetadata[warpType]:
                         mimg = exposure.getMaskedImage()
-                        mimg *= (coaddTempExp.getPhotoCalib().getInstFluxAtZeroMagnitude() /
-                                 exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
+                        mimg *= (coaddTempExp.getPhotoCalib().getInstFluxAtZeroMagnitude()
+                                 / exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
                         del mimg
                     numGoodPix[warpType] = coaddUtils.copyGoodPixels(
                         coaddTempExp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())

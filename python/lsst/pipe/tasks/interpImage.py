@@ -69,8 +69,8 @@ class InterpImageConfig(pexConfig.Config):
     def validate(self):
         pexConfig.Config.validate(self)
         if self.useFallbackValueAtEdge:
-            if (not self.negativeFallbackAllowed and self.fallbackValueType == "USER" and
-                    self.fallbackUserValue < 0.0):
+            if (not self.negativeFallbackAllowed and self.fallbackValueType == "USER"
+                    and self.fallbackUserValue < 0.0):
                 raise ValueError("User supplied fallbackValue is negative (%.2f) but "
                                  "negativeFallbackAllowed is False" % self.fallbackUserValue)
 

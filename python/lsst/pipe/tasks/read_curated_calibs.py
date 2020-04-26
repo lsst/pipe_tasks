@@ -80,8 +80,8 @@ def check_metadata(obj, valid_start, instrument, chip_id, filepath, data_name):
     finst = md['INSTRUME']
     fchip_id = md['DETECTOR']
     fdata_name = md['OBSTYPE']
-    if not ((finst.lower(), int(fchip_id), fdata_name) ==
-            (instrument.lower(), chip_id, data_name)):
+    if not ((finst.lower(), int(fchip_id), fdata_name)
+            == (instrument.lower(), chip_id, data_name)):
         raise ValueError(f"Path and file metadata do not agree:\n"
                          f"Path metadata: {instrument} {chip_id} {data_name}\n"
                          f"File metadata: {finst} {fchip_id} {fdata_name}\n"
