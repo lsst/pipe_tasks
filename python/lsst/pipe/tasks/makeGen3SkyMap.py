@@ -78,16 +78,17 @@ class MakeGen3SkyMapTask(pipeBase.Task):
         skyMap = self.config.skyMap.apply()
         skyMap.logSkyMapInfo(self.log)
         skyMapHash = skyMap.getSha1()
+        self.log.info(f"Registering dataset type {self.config.datasetTypeName}.")
+        butler.registry.registerDatasetType(DatasetType(name=self.config.datasetTypeName,
+                                                        dimensions=["skymap"],
+                                                        storageClass="SkyMap",
+                                                        universe=butler.registry.dimensions))
         self.log.info(f"Inserting SkyMap {self.config.name} with hash={skyMapHash}")
         with butler.registry.transaction():
             try:
                 skyMap.register(self.config.name, butler.registry)
             except IntegrityError as err:
                 raise RuntimeError("A skymap with the same name or hash already exists.") from err
-            butler.registry.registerDatasetType(DatasetType(name=self.config.datasetTypeName,
-                                                            dimensions=["skymap"],
-                                                            storageClass="SkyMap",
-                                                            universe=butler.registry.dimensions))
             butler.put(skyMap, self.config.datasetTypeName, {"skymap": self.config.name})
         return pipeBase.Struct(
             skyMap=skyMap
