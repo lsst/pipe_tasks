@@ -35,11 +35,6 @@ parser.add_argument("-C", "--config-file", dest="configFile",
 
 args = parser.parse_args()
 
-# Verify any supplied paths actually exist on disk
-if not os.path.exists(args.butler):
-    print("Butler path specified does not exists")
-    sys.exit(1)
-
 config = MakeGen3DcrSubfiltersConfig()
 if args.configFile:
     if not os.path.exists(args.configFile):
