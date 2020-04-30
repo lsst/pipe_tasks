@@ -177,7 +177,9 @@ class InsertFakesConfig(PipelineTaskConfig,
     )
 
     calibFluxRadius = pexConfig.Field(
-        doc="Radius for the calib flux (in pixels).",
+        doc="Aperture radius (in pixels) that was used to define the calibration for this image+catalog. "
+        "This will be used to produce the correct instrumental fluxes within the radius. "
+        "This value should match that of the field defined in slot_CalibFlux_instFlux.",
         dtype=float,
         default=12.0,
     )
@@ -410,6 +412,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         The names of the columns in the ``fakeCat`` are configurable and are the column names from the
         University of Washington simulations database as default. For more information see the doc strings
         attached to the config options.
+
+        See mkFakeStars doc string for an explanation of calibration to instrumental flux.
         """
 
         self.log.info("Making %d fake galaxy images" % len(fakeCat))
@@ -418,8 +422,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             xy = geom.Point2D(row["x"], row["y"])
 
             try:
-                # Due to the different radii used for calibration and measurement a correction factor is
-                # needed to prevent there being an offset in the final processed output.
                 correctedFlux = psf.computeApertureFlux(self.config.calibFluxRadius, xy)
                 psfKernel = psf.computeKernelImage(xy).getArray()
                 psfKernel /= correctedFlux
@@ -474,6 +476,14 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         starImages : `generator`
                     A generator of tuples of `lsst.afw.image.ImageF` of fake stars and
                     `lsst.geom.Point2D` of their locations.
+
+        Notes
+        -----
+        To take a given magnitude and translate to the number of counts in the image
+        we use photoCalib.magnitudeToInstFlux, which returns the instrumental flux for the
+        given calibration radius used in the photometric calibration step.
+        Thus `calibFluxRadius` should be set to this same radius so that we can normalize
+        the PSF model to the correct instrumental flux within calibFluxRadius.
         """
 
         self.log.info("Making %d fake star images" % len(fakeCat))
@@ -481,9 +491,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
 
+            # We put these two PSF calculations within this same try block so that we catch cases
+            # where the object's position is outside of the image.
             try:
-                # Due to the different radii used for calibration and measurement a correction factor is
-                # needed to prevent there being an offset in the final processed output.
                 correctedFlux = psf.computeApertureFlux(self.config.calibFluxRadius, xy)
                 starIm = psf.computeImage(xy)
                 starIm /= correctedFlux
