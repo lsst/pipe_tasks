@@ -607,6 +607,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     convControl = afwMath.ConvolutionControl()
                     # cannot convolve in place, so make a new MI to receive convolved image
                     srcMI = exposure.getMaskedImage()
+                    exposureOrig = exposure.clone()
                     destMI = srcMI.Factory(srcMI.getDimensions())
                     srcPsf = sciencePsf
                     if self.config.useGaussianForPreConvolution:
@@ -621,6 +622,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
                 else:
                     scienceSigmaPost = scienceSigmaOrig
+                    exposureOrig = exposure
 
                 # If requested, find and select sources from the image
                 # else, AL subtraction will do its own source detection
@@ -821,14 +823,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                         preConvKernel = preConvPsf.getLocalKernel()
                     if self.config.convolveTemplate:
                         self.log.info("Decorrelation after template image convolution")
-                        decorrResult = self.decorrelate.run(exposure, templateExposure,
+                        decorrResult = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
                                                             subtractedExposure,
                                                             subtractRes.psfMatchingKernel,
                                                             spatiallyVarying=self.config.doSpatiallyVarying,
                                                             preConvKernel=preConvKernel)
                     else:
                         self.log.info("Decorrelation after science image convolution")
-                        decorrResult = self.decorrelate.run(templateExposure, exposure,
+                        decorrResult = self.decorrelate.run(subtractRes.warpedExposure, exposureOrig,
                                                             subtractedExposure,
                                                             subtractRes.psfMatchingKernel,
                                                             spatiallyVarying=self.config.doSpatiallyVarying,
