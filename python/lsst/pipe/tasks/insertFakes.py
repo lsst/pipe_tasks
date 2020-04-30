@@ -413,7 +413,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         University of Washington simulations database as default. For more information see the doc strings
         attached to the config options.
 
-        See mkFakeStars doc string for an explanation of calibration to instrumental flux using calibFluxRadius.
+        See mkFakeStars doc string for an explanation of calibration to instrumental flux.
         """
 
         self.log.info("Making %d fake galaxy images" % len(fakeCat))
