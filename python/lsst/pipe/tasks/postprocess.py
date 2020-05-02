@@ -23,8 +23,11 @@ import functools
 import pandas as pd
 from collections import defaultdict
 
+import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.afw.table as afwTable
+from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
 from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
 
@@ -202,7 +205,18 @@ class WriteObjectTableTask(CmdLineTask):
 
 
 class WriteSourceTableConfig(pexConfig.Config):
-    pass
+    doApplyExternalPhotoCalib = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Add local photoCalib columns from the calexp.photoCalib? Should only set True if "
+             "generating Source Tables from older src tables which do not already have local calib columns")
+    )
+    doApplyExternalSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Add local WCS columns from the calexp.wcs? Should only set True if "
+             "generating Source Tables from older src tables which do not already have local calib columns")
+    )
 
 
 class WriteSourceTableTask(CmdLineTask):
@@ -213,6 +227,9 @@ class WriteSourceTableTask(CmdLineTask):
 
     def runDataRef(self, dataRef):
         src = dataRef.get('src')
+        if self.config.doApplyExternalPhotoCalib or self.config.doApplyExternalSkyWcs:
+            src = self.addCalibColumns(src, dataRef)
+
         ccdVisitId = dataRef.get('ccdExposureId')
         result = self.run(src, ccdVisitId=ccdVisitId)
         dataRef.put(result.table, 'source')
@@ -222,7 +239,7 @@ class WriteSourceTableTask(CmdLineTask):
 
         Parameters
         ----------
-        catalog: `lsst.afw.table.SourceCatalog`
+        catalog: `afwTable.SourceCatalog`
             catalog to be converted
         ccdVisitId: `int`
             ccdVisitId to be added as a column
@@ -238,13 +255,61 @@ class WriteSourceTableTask(CmdLineTask):
         df['ccdVisitId'] = ccdVisitId
         return pipeBase.Struct(table=ParquetTable(dataFrame=df))
 
+    def addCalibColumns(self, catalog, dataRef):
+        """Add columns with local calibration evaluated at each centroid
+
+        for backwards compatibility with old repos.
+        This exists for the purpose of converting old src catalogs
+        (which don't have the expected local calib columns) to Source Tables.
+
+        Parameters
+        ----------
+        catalog: `afwTable.SourceCatalog`
+            catalog to which calib columns will be added
+        dataRef: `lsst.daf.persistence.ButlerDataRef
+            for fetching the calibs from disk.
+
+        Returns
+        -------
+        newCat:  `afwTable.SourceCatalog`
+            Source Catalog with requested local calib columns
+        """
+        mapper = afwTable.SchemaMapper(catalog.schema)
+        measureConfig = SingleFrameMeasurementTask.ConfigClass()
+        measureConfig.doReplaceWithNoise = False
+
+        # Just need the WCS or the PhotoCalib attached to an exposue
+        exposure = dataRef.get('calexp_sub',
+                               bbox=lsst.geom.Box2I(lsst.geom.Point2I(0, 0), lsst.geom.Point2I(0, 0)))
+
+        mapper = afwTable.SchemaMapper(catalog.schema)
+        mapper.addMinimalSchema(catalog.schema, True)
+        schema = mapper.getOutputSchema()
+
+        exposureIdInfo = dataRef.get("expIdInfo")
+        measureConfig.plugins.names = []
+        if self.config.doApplyExternalSkyWcs:
+            plugin = 'base_LocalWcs'
+            if plugin in schema:
+                raise RuntimeError(f"{plugin} already in src catalog. Set doApplyExternalSkyWcs=False")
+            else:
+                measureConfig.plugins.names.add(plugin)
+
+        if self.config.doApplyExternalPhotoCalib:
+            plugin = 'base_LocalPhotoCalib'
+            if plugin in schema:
+                raise RuntimeError(f"{plugin} already in src catalog. Set doApplyExternalPhotoCalib=False")
+            else:
+                measureConfig.plugins.names.add(plugin)
+
+        measurement = SingleFrameMeasurementTask(config=measureConfig, schema=schema)
+        newCat = afwTable.SourceCatalog(schema)
+        newCat.extend(catalog, mapper=mapper)
+        measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
+        return newCat
+
     def writeMetadata(self, dataRef):
         """No metadata to write.
-        """
-        pass
-
-    def writeConfig(self, butler, clobber=False, doBackup=True):
-        """No config to write.
         """
         pass
 
