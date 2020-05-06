@@ -1,6 +1,7 @@
 from lsst.meas.algorithms import Defects
 from lsst.meas.algorithms.simple_curve import Curve
 from lsst.ip.isr import Linearizer
+from lsst.ip.isr import CrosstalkCalib
 
 import os
 import glob
@@ -26,7 +27,8 @@ def read_one_chip(root, chip_name, chip_id):
         A dictionary of objects constructed from the appropriate factory class.
         The key is the validity start time as a `datetime` object.
     """
-    factory_map = {'qe_curve': Curve, 'defects': Defects, 'linearizer': Linearizer}
+    factory_map = {'qe_curve': Curve, 'defects': Defects, 'linearizer': Linearizer,
+                   'crosstalk': CrosstalkCalib}
     files = []
     extensions = (".ecsv", ".yaml")
     for ext in extensions:
@@ -80,8 +82,8 @@ def check_metadata(obj, valid_start, instrument, chip_id, filepath, data_name):
     finst = md['INSTRUME']
     fchip_id = md['DETECTOR']
     fdata_name = md['OBSTYPE']
-    if not ((finst.lower(), int(fchip_id), fdata_name)
-            == (instrument.lower(), chip_id, data_name)):
+    if not ((finst.lower(), int(fchip_id), fdata_name.lower())
+            == (instrument.lower(), chip_id, data_name.lower())):
         raise ValueError(f"Path and file metadata do not agree:\n"
                          f"Path metadata: {instrument} {chip_id} {data_name}\n"
                          f"File metadata: {finst} {fchip_id} {fdata_name}\n"
