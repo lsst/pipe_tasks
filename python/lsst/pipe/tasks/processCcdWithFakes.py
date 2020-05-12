@@ -29,7 +29,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 
 from .insertFakes import InsertFakesTask
-from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
 from lsst.meas.base import (SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask,
                             PerTractCcdDataIdContainer)
 from lsst.meas.deblender import SourceDeblendTask
@@ -163,6 +163,8 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
     catalogCalculation = pexConfig.ConfigurableField(target=CatalogCalculationTask,
                                                      doc="The catalog calculation task to use.")
 
+    skySources = pexConfig.ConfigurableField(target=SkyObjectsTask, doc="Generate sky sources")
+
     def setDefaults(self):
         self.detection.reEstimateBackground = False
         super().setDefaults()
@@ -222,6 +224,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("applyApCorr", schema=self.schema)
         self.makeSubtask("catalogCalculation", schema=self.schema)
+        self.makeSubtask("skySources")
+        self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
 
     def runDataRef(self, dataRef):
         """Read in/write out the required data products and add fake sources to the calexp.
@@ -356,6 +360,12 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         detRes = self.detection.run(table=table, exposure=exposure, doSmooth=True)
         sourceCat = detRes.sources
+        skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=exposureIdInfo.expId)
+        if skySourceFootprints:
+            for foot in skySourceFootprints:
+                s = sourceCat.addNew()
+                s.setFootprint(foot)
+                s.set(self.skySourceKey, True)
         self.deblend.run(exposure=exposure, sources=sourceCat)
         self.measurement.run(measCat=sourceCat, exposure=exposure, exposureId=exposureIdInfo.expId)
         self.applyApCorr.run(catalog=sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
