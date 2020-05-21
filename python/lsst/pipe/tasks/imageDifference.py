@@ -93,6 +93,11 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
         deferLoad=True
     )
+    outputSchema = pipeBase.connectionTypes.InitOutput(
+        doc="Schema (as an example catalog) for output DIASource catalog.",
+        storageClass="SourceCatalog",
+        name="{fakesType}{coaddName}Diff_diaSrc_schema",
+    )
     subtractedExposure = pipeBase.connectionTypes.Output(
         doc="Output difference image",
         dimensions=("instrument", "visit", "detector"),
@@ -383,6 +388,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
+
+        # initialize InitOutputs
+        self.outputSchema = afwTable.SourceCatalog(self.schema)
+        self.outputSchema.getTable().setMetadata(self.algMetadata)
 
     @staticmethod
     def makeIdFactory(expId, expBits):
@@ -1080,9 +1089,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
 
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced by this task."""
-        diaSrc = afwTable.SourceCatalog(self.schema)
-        diaSrc.getTable().setMetadata(self.algMetadata)
-        return {self.config.coaddName + "Diff_diaSrc": diaSrc}
+        return {self.config.coaddName + "Diff_diaSrc": self.outputSchema}
 
     @classmethod
     def _makeArgumentParser(cls):
