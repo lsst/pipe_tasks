@@ -26,19 +26,15 @@ from astropy.table import Table
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.daf.base as dafBase
 
 from .insertFakes import InsertFakesTask
-from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
-from lsst.meas.base import (SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask,
-                            PerTractCcdDataIdContainer)
-from lsst.meas.deblender import SourceDeblendTask
-from lsst.afw.table import SourceTable, IdFactory
+from lsst.meas.base import PerTractCcdDataIdContainer
+from lsst.afw.table import SourceTable
 from lsst.obs.base import ExposureIdInfo
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, CmdLineTask, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
-
+from lsst.pipe.tasks.calibrate import CalibrateTask
 
 __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
 
@@ -124,17 +120,10 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
         default="deep",
     )
 
-    calibrationFieldsToCopy = pexConfig.ListField(
-        dtype=str,
-        default=("calib_psf_candidate", "calib_psf_used", "calib_psf_reserved"),
-        doc=("Fields to copy from the icSource catalog to the output catalog "
-             "for matching sources Any missing fields will trigger a "
-             "RuntimeError exception.")
-    )
-
     srcFieldsToCopy = pexConfig.ListField(
         dtype=str,
-        default=("calib_photometry_reserved", "calib_photometry_used", "calib_astrometry_used"),
+        default=("calib_photometry_reserved", "calib_photometry_used", "calib_astrometry_used",
+                 "calib_psf_candidate", "calib_psf_used", "calib_psf_reserved"),
         doc=("Fields to copy from the `src` catalog to the output catalog "
              "for matching sources Any missing fields will trigger a "
              "RuntimeError exception.")
@@ -146,32 +135,20 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
         doc=("Match radius for matching icSourceCat objects to sourceCat objects (pixels)"),
     )
 
+    calibrate = pexConfig.ConfigurableField(target=CalibrateTask,
+                                            doc="The calibration task to use.")
+
     insertFakes = pexConfig.ConfigurableField(target=InsertFakesTask,
                                               doc="Configuration for the fake sources")
 
-    detection = pexConfig.ConfigurableField(target=SourceDetectionTask,
-                                            doc="The detection task to use.")
-
-    deblend = pexConfig.ConfigurableField(target=SourceDeblendTask, doc="The deblending task to use.")
-
-    measurement = pexConfig.ConfigurableField(target=SingleFrameMeasurementTask,
-                                              doc="The measurement task to use")
-
-    applyApCorr = pexConfig.ConfigurableField(target=ApplyApCorrTask,
-                                              doc="The apply aperture correction task to use.")
-
-    catalogCalculation = pexConfig.ConfigurableField(target=CatalogCalculationTask,
-                                                     doc="The catalog calculation task to use.")
-
-    skySources = pexConfig.ConfigurableField(target=SkyObjectsTask, doc="Generate sky sources")
-
     def setDefaults(self):
-        self.detection.reEstimateBackground = False
         super().setDefaults()
-        self.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("FAKE")
-        self.measurement.plugins["base_PixelFlags"].masksFpCenter.append("FAKE")
-        self.deblend.maxFootprintSize = 2000
-        self.measurement.plugins.names |= ["base_LocalPhotoCalib", "base_LocalWcs"]
+        self.calibrate.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("FAKE")
+        self.calibrate.measurement.plugins["base_PixelFlags"].masksFpCenter.append("FAKE")
+        self.calibrate.doAstrometry = False
+        self.calibrate.doWriteMatches = False
+        self.calibrate.doPhotoCal = False
+        self.calibrate.detection.reEstimateBackground = False
 
 
 class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
@@ -218,14 +195,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             schema = SourceTable.makeMinimalSchema()
         self.schema = schema
         self.makeSubtask("insertFakes")
-        self.algMetadata = dafBase.PropertyList()
-        self.makeSubtask("detection", schema=self.schema)
-        self.makeSubtask("deblend", schema=self.schema)
-        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("applyApCorr", schema=self.schema)
-        self.makeSubtask("catalogCalculation", schema=self.schema)
-        self.makeSubtask("skySources")
-        self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
+        self.makeSubtask("calibrate")
 
     def runDataRef(self, dataRef):
         """Read in/write out the required data products and add fake sources to the calexp.
@@ -353,24 +323,9 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         # detect, deblend and measure sources
         if exposureIdInfo is None:
             exposureIdInfo = ExposureIdInfo()
+        returnedStruct = self.calibrate.run(exposure, exposureIdInfo=exposureIdInfo)
+        sourceCat = returnedStruct.sourceCat
 
-        sourceIdFactory = IdFactory.makeSource(exposureIdInfo.expId, exposureIdInfo.unusedBits)
-        table = SourceTable.make(self.schema, sourceIdFactory)
-        table.setMetadata(self.algMetadata)
-
-        detRes = self.detection.run(table=table, exposure=exposure, doSmooth=True)
-        sourceCat = detRes.sources
-        skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=exposureIdInfo.expId)
-        if skySourceFootprints:
-            for foot in skySourceFootprints:
-                s = sourceCat.addNew()
-                s.setFootprint(foot)
-                s.set(self.skySourceKey, True)
-        self.deblend.run(exposure=exposure, sources=sourceCat)
-        self.measurement.run(measCat=sourceCat, exposure=exposure, exposureId=exposureIdInfo.expId)
-        self.applyApCorr.run(catalog=sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
-        self.catalogCalculation.run(sourceCat)
-        sourceCat = self.copyCalibrationFields(icSourceCat, sourceCat, self.config.calibrationFieldsToCopy)
         sourceCat = self.copyCalibrationFields(sfdSourceCat, sourceCat, self.config.srcFieldsToCopy)
 
         resultStruct = pipeBase.Struct(outputExposure=exposure, outputCat=sourceCat)
