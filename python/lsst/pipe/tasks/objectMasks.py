@@ -24,7 +24,7 @@ import os.path
 import lsst.daf.base as dafBase
 import lsst.geom as geom
 import lsst.afw.table as afwTable
-from lsst.daf.butler.formatters.fileFormatter import FileFormatter
+from lsst.daf.butler.formatters.file import FileFormatter
 from lsst.log import Log
 
 
