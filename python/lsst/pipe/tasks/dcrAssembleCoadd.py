@@ -558,7 +558,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         except Exception as e:
             self.log.warn("Unable to calculate restricted PSF, using default coadd PSF: %s" % e)
         else:
-            psf = templateCoadd.psf
+            psf = templateCoadd.getPsf()
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
                                        self.config.dcrNumSubfilters,
                                        filterInfo=filterInfo,
