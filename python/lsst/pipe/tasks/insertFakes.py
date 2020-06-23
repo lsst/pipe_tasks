@@ -229,6 +229,11 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 deepCoadd
         """
 
+        infoStr = "Adding fakes to: tract: %d, patch: %s, filter: %s" % (dataRef.dataId["tract"],
+                                                                         dataRef.dataId["patch"],
+                                                                         dataRef.dataId["filter"])
+        self.log.info(infoStr)
+
         # To do: should it warn when asked to insert variable sources into the coadd
 
         if self.config.fakeType == "static":
@@ -309,11 +314,23 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         pixelScale = wcs.getPixelScale().asArcseconds()
         psf = image.getPsf()
 
-        galaxies = (fakeCat[self.config.sourceType] == "galaxy")
+        if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
+            galCheckVal = "galaxy"
+            starCheckVal = "star"
+        elif isinstance(fakeCat[self.config.sourceType].iloc[0], bytes):
+            galCheckVal = b"galaxy"
+            starCheckVal = b"star"
+        elif isinstance(fakeCat[self.config.sourceType].iloc[0], (int, float)):
+            galCheckVal = 1
+            starCheckVal = 0
+        else:
+            raise TypeError("sourceType column does not have required type, should be str, bytes or int")
+
+        galaxies = (fakeCat[self.config.sourceType] == galCheckVal)
         galImages = self.mkFakeGalsimGalaxies(fakeCat[galaxies], band, photoCalib, pixelScale, psf, image)
         image = self.addFakeSources(image, galImages, "galaxy")
 
-        stars = (fakeCat[self.config.sourceType] == "star")
+        stars = (fakeCat[self.config.sourceType] == starCheckVal)
         starImages = self.mkFakeStars(fakeCat[stars], band, photoCalib, psf, image)
         image = self.addFakeSources(image, starImages, "star")
         resultStruct = pipeBase.Struct(imageWithFakes=image)
@@ -511,7 +528,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             yield ((starIm.convertF(), xy))
 
     def cleanCat(self, fakeCat):
-        """Remove rows from the fakes catalog which have HLR = 0 for either the buldge or disk component
+        """Remove rows from the fakes catalog which have HLR = 0 for either the buldge or disk component,
+           also remove rows that have Sersic index outside the galsim min and max allowed. (0.3 <= n <= 6.2)
 
         Parameters
         ----------
@@ -525,9 +543,17 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         """
 
         goodRows = ((fakeCat[self.config.bulgeHLR] != 0.0) & (fakeCat[self.config.diskHLR] != 0.0))
-
         badRows = len(fakeCat) - len(goodRows)
         self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk" % badRows)
+        fakeCat = fakeCat[goodRows]
+
+        minN = galsim.Sersic._minimum_n
+        maxN = galsim.Sersic._maximum_n
+        goodRows = ((fakeCat[self.config.nBulge] >= minN) & (fakeCat[self.config.nBulge] <= maxN)
+                    & (fakeCat[self.config.nDisk] >= minN) & (fakeCat[self.config.nDisk] <= maxN))
+        badRows = len(fakeCat) - len(goodRows)
+        self.log.info("Removing %d rows with nBulge or nDisk outside of %0.2f <= n <= %0.2f" %
+                      (badRows, minN, maxN))
 
         return fakeCat[goodRows]
 
