@@ -17,9 +17,7 @@ It is the second of three postprocessing tasks to convert a `src` table to a
 per-visit Source Table that conforms to the standard data model. The first is
 :doc:`lsst.pipe.tasks.postprocess.WriteSourceTableTask`, and the third is :doc:`lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask`.
 
-``TransformSourceTableTask`` is available as a
-:ref:`command-line task <pipe-tasks-command-line-tasks>`,
-:command:`transformSourceTableTask.py`.
+``TransformSourceTableTask`` is available as a :ref:`command-line task <lsst.pipe.tasks-command-line-tasks>`, :command:`transformSourceTableTask.py`.
 
 .. _lsst.pipe.tasks.postprocess.TransformSourceTableTask-summary:
 

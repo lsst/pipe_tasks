@@ -5,7 +5,7 @@ ProcessCcdTask
 ##############
 
 ``ProcessCcdTask`` provides a preliminary astrometric and photometric calibration for a single frame (a ``raw`` dataset), yielding a ``calexp`` dataset.
-``ProcessCcdTask`` is available as a :ref:`command-line task <pipe-tasks-command-line-tasks>`, ``processCcd.py``.
+``ProcessCcdTask`` is available as a :ref:`command-line task <lsst.pipe.tasks-command-line-tasks>`, ``processCcd.py``.
 
 .. todo::
 
@@ -51,12 +51,14 @@ processCcd.py command-line interface
 
 Key arguments:
 
-:option:`REPOPATH`
+.. option:: REPOPATH
+
    The input Butler repository's URI or file path.
 
 Key options:
 
-:option:`--id`:
+.. option:: --id
+
    The data IDs to process.
 
 .. seealso::
@@ -184,7 +186,7 @@ Then run the ``processCcd.py`` task:
 
    processCcd.py $OBS_TEST_DIR/data/input --output processCcdOut --id
 
-Using :option:`--id` without any data ID keys finds all available ``raw`` data in the Butler dataset for processing.
+Using the ``--id`` option without any data ID keys finds all available ``raw`` data in the Butler dataset for processing.
 The output ``calexp`` and ``src`` datasets are written to the :file:`processCcdOut` directory.
 
 .. important::

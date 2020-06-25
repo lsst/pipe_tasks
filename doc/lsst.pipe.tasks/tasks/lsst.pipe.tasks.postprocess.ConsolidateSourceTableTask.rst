@@ -13,7 +13,7 @@ It is the third of three postprocessing tasks to convert a `src` table to a
 per-visit Source Table that conforms to the standard data model. The first is
 :doc:`lsst.pipe.tasks.postprocess.WriteSourceTableTask`. The second is :doc:`lsst.pipe.tasks.postprocess.TransformSourceTableTask`.
 
-``ConsolidateSourceTableTask`` is available as a :ref:`command-line task <pipe-tasks-command-line-tasks>`, :command:`consolidateSourceTable.py`.
+``ConsolidateSourceTableTask`` is available as a :ref:`command-line task <lsst.pipe.tasks-command-line-tasks>`, :command:`consolidateSourceTable.py`.
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-summary:
 
@@ -26,7 +26,7 @@ Processing summary
 .. lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-cli:
 
 consolidateSourceTable.py command-line interface
-=============================================
+================================================
 
 .. code-block:: text
 
@@ -34,12 +34,14 @@ consolidateSourceTable.py command-line interface
 
 Key arguments:
 
-:option:`REPOPATH`
+.. option:: REPOPATH
+
    The input Butler repository's URI or file path.
 
 Key options:
 
-:option:`--id`:
+.. option:: --id
+
    The data IDs to process.
 
 .. seealso::
@@ -67,7 +69,7 @@ Input datasets
 --------------
 
 ``sourceTable``
-    Per-detector, parquet-formatted Source Table that has been transformed to `DPDD_-specification
+    Per-detector, parquet-formatted Source Table that has been transformed to DPDD_-specification
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-butler-outputs:
 

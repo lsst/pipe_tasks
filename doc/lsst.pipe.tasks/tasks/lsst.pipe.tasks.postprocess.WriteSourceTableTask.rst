@@ -11,7 +11,7 @@ It is the first of three postprocessing tasks to convert a `src` table to a
 per-visit Source Table that conforms to the standard data model. The second is
 :doc:`lsst.pipe.tasks.postprocess.TransformSourceTableTask`, and the third is :doc:`lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask`.
 
-``WriteSourceTableTask`` is available as a :ref:`command-line task <pipe-tasks-command-line-tasks>`, :command:`writeSourceTable.py`.
+``WriteSourceTableTask`` is available as a :ref:`command-line task <lsst.pipe.tasks-command-line-tasks>`, :command:`writeSourceTable.py`.
 
 .. _lsst.pipe.tasks.postprocess.WriteSourceTableTask-summary:
 
@@ -24,7 +24,7 @@ Processing summary
 .. lsst.pipe.tasks.postprocess.WriteSourceTableTask-cli:
 
 writeSourceTable.py command-line interface
-=======================================
+==========================================
 
 .. code-block:: text
 
