@@ -104,6 +104,12 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         name="{fakesType}{coaddName}Diff_differenceExp",
     )
+    warpedExposure = pipeBase.connectionTypes.Output(
+        doc="Warped template used to create `subtractedExposure`.",
+        dimensions=("instrument", "visit", "detector"),
+        storageClass="ExposureF",
+        name="{fakesType}{coaddName}Diff_warpedExp",
+    )
     diaSources = pipeBase.connectionTypes.Output(
         doc="Output detected diaSources on the difference image",
         dimensions=("instrument", "visit", "detector"),
@@ -165,6 +171,8 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         default=True,
         doc="Force photometer diaSource locations on PVI?")
     doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
+    doWriteWarpedExp = pexConfig.Field(dtype=bool, default=False,
+                                       doc="Write WCS, warped template coadd exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
                                         doc="Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
@@ -508,6 +516,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
 
         if self.config.doWriteSources and results.diaSources is not None:
             sensorRef.put(results.diaSources, self.config.coaddName + "Diff_diaSrc")
+        if self.config.doWriteWarpedExp:
+            sensorRef.put(results.warpedExposure, self.config.coaddName + "Diff_warpedExp")
         if self.config.doWriteMatchedExp:
             sensorRef.put(results.matchedExposure, self.config.coaddName + "Diff_matchedExp")
         if self.config.doAddMetrics and self.config.doSelectSources:
@@ -979,6 +989,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
         return pipeBase.Struct(
             subtractedExposure=subtractedExposure,
+            warpedExposure=subtractRes.warpedExposure,
             matchedExposure=subtractRes.matchedExposure,
             subtractRes=subtractRes,
             diaSources=diaSources,
