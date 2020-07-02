@@ -28,7 +28,6 @@ from glob import glob
 from contextlib import contextmanager
 
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
-import lsst.pex.exceptions
 from lsst.afw.fits import readMetadata
 from lsst.pipe.base import Task, InputOnlyArgumentParser
 from lsst.afw.fits import DEFAULT_HDU
@@ -105,16 +104,23 @@ class ParseTask(Task):
 
     @staticmethod
     def getExtensionName(md):
-        """ Get the name of an extension.
-        @param md: PropertySet like one obtained from lsst.afw.fits.readMetadata)
-        @return Name of the extension if it exists.  None otherwise.
+        """ Get the name of a FITS extension.
+
+        Parameters
+        ----------
+        md : `lsst.daf.base.PropertySet`
+            FITS header metadata.
+
+        Returns
+        -------
+        result : `str` or `None`
+            The string from the EXTNAME header card if it exists. None otherwise.
         """
         try:
-            # This returns a tuple
-            ext = md.getScalar("EXTNAME")
-            return ext[1]
-        except lsst.pex.exceptions.Exception:
-            return None
+            ext = md["EXTNAME"]
+        except KeyError:
+            ext = None
+        return ext
 
     def getInfoFromMetadata(self, md, info=None):
         """Attempt to pull the desired information out of the header
