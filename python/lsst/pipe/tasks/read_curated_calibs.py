@@ -135,6 +135,6 @@ def read_all(root, camera):
 
     no_data = all([v == {} for v in data_by_chip.values()])
     if no_data:
-        raise RuntimeError(f'No data to ingest')
+        raise RuntimeError("No data to ingest")
 
     return data_by_chip, calib_type
