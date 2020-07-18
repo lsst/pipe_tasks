@@ -127,6 +127,18 @@ def read_all(root, camera):
     calib_types = set()
     for d in dirs:
         chip_name = os.path.basename(d)
+        # Give informative error message if the detector name is not known
+        # rather than a simple KeyError
+        if chip_name not in name_map:
+            detectors = [det for det in camera.getNameIter()]
+            max_detectors = 10
+            note_str = "knows"
+            if len(detectors) > max_detectors:
+                # report example subset
+                note_str = "examples"
+                detectors = detectors[:max_detectors]
+            raise RuntimeError(f"Detector {chip_name} not known to supplied camera "
+                               f"{camera.getName()} ({note_str}: {','.join(detectors)})")
         chip_id = camera[name_map[chip_name]].getId()
         data_by_chip[chip_name], calib_type = read_one_chip(root, chip_name, chip_id)
         calib_types.add(calib_type)
