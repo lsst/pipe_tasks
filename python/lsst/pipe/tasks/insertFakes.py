@@ -190,6 +190,20 @@ class InsertFakesConfig(PipelineTaskConfig,
         default="deep",
     )
 
+    doSubSelectSources = pexConfig.Field(
+        doc="Set to True if you wish to sub select sources to be input based on the value in the column"
+            "set in the sourceSelectionColName config option.",
+        dtype=bool,
+        default=False
+    )
+
+    sourceSelectionColName = pexConfig.Field(
+        doc="The name of the column in the input fakes catalogue to be used to determine which sources to"
+            "add, default is none and when this is used all sources are added.",
+        dtype=str,
+        default="templateSource"
+    )
+
 
 class InsertFakesTask(PipelineTask, CmdLineTask):
     """Insert fake objects into images.
@@ -209,7 +223,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         input file.
     `cleanCat`
         Remove rows of the input fake catalog which have half light radius, of either the bulge or the disk,
-        that are 0.
+        that are 0. Also removes rows that have Sersic index outside of galsim's allowed paramters. If
+        the config option sourceSelectionColName is set then this function limits the catalog of input fakes
+        to only those which are True in this column.
     `addFakeSources`
         Add the fake sources to the image.
 
@@ -540,22 +556,36 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         -------
         fakeCat : `pandas.core.frame.DataFrame`
                     The input catalog of fake sources but with the bad objects removed
+
+        Notes
+        -----
+        If the config option sourceSelectionColName is set then only objects with this column set to True
+        will be added.
         """
 
-        goodRows = ((fakeCat[self.config.bulgeHLR] != 0.0) & (fakeCat[self.config.diskHLR] != 0.0))
-        badRows = len(fakeCat) - len(goodRows)
-        self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk" % badRows)
-        fakeCat = fakeCat[goodRows]
+        rowsToKeep = ((fakeCat[self.config.bulgeHLR] != 0.0) & (fakeCat[self.config.diskHLR] != 0.0))
+        numRowsNotUsed = len(fakeCat) - len(rowsToKeep)
+        self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk" % numRowsNotUsed)
+        fakeCat = fakeCat[rowsToKeep]
 
         minN = galsim.Sersic._minimum_n
         maxN = galsim.Sersic._maximum_n
-        goodRows = ((fakeCat[self.config.nBulge] >= minN) & (fakeCat[self.config.nBulge] <= maxN)
-                    & (fakeCat[self.config.nDisk] >= minN) & (fakeCat[self.config.nDisk] <= maxN))
-        badRows = len(fakeCat) - len(goodRows)
+        rowsToKeep = ((fakeCat[self.config.nBulge] >= minN) & (fakeCat[self.config.nBulge] <= maxN)
+                      & (fakeCat[self.config.nDisk] >= minN) & (fakeCat[self.config.nDisk] <= maxN))
+        numRowsNotUsed = len(fakeCat) - len(rowsToKeep)
         self.log.info("Removing %d rows with nBulge or nDisk outside of %0.2f <= n <= %0.2f" %
-                      (badRows, minN, maxN))
+                      (numRowsNotUsed, minN, maxN))
 
-        return fakeCat[goodRows]
+        if self.config.doSubSelectSources:
+            try:
+                rowsToKeep = (fakeCat[self.config.sourceSelectionColName])
+            except KeyError:
+                raise KeyError("Given column, %s, for source selection not found." %
+                               self.config.sourceSelectionColName)
+            numRowsNotUsed = len(fakeCat) - len(rowsToKeep)
+            self.log.info("Removing %d rows which were not designated as template sources" % numRowsNotUsed)
+
+        return fakeCat[rowsToKeep]
 
     def addFakeSources(self, image, fakeImages, sourceType):
         """Add the fake sources to the given image
