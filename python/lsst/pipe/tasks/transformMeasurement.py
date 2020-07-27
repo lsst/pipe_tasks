@@ -128,6 +128,7 @@ class TransformTask(pipeBase.Task):
         transformedSrc = afwTable.BaseCatalog(self.mapper.getOutputSchema())
         return {self.outputDataset: transformedSrc}
 
+    @pipeBase.timeMethod
     def run(self, inputCat, wcs, photoCalib):
         """!Transform raw source measurements to calibrated quantities.
 

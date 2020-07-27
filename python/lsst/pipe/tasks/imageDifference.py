@@ -526,6 +526,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             sensorRef.put(results.subtractedExposure, subtractedExposureName)
         return results
 
+    @pipeBase.timeMethod
     def run(self, exposure=None, selectSources=None, templateExposure=None, templateSources=None,
             idFactory=None, calexpBackgroundExposure=None, subtractedExposure=None):
         """PSF matches, subtract two images and perform detection on the difference image.

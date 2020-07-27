@@ -565,6 +565,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        psf=psf)
         return dcrModels
 
+    @pipeBase.timeMethod
     def run(self, skyInfo, warpRefList, imageScalerList, weightList,
             supplementaryData=None):
         """Assemble the coadd.

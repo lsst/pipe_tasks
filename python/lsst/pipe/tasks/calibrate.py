@@ -636,6 +636,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             outputs.matches = normalizedMatches
         butlerQC.put(outputs, outputRefs)
 
+    @pipeBase.timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None,
             icSourceCat=None):
         """!Calibrate an exposure (science image or coadd)
