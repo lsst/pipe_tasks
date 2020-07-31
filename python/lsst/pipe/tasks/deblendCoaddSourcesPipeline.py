@@ -24,7 +24,7 @@ import lsst.pipe.base.connectionTypes as cT
 
 from lsst.pex.config import ConfigurableField
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.meas.extensions.scarlet.deblend import ScarletDeblendTask
+from lsst.meas.extensions.scarlet import ScarletDeblendTask
 
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
