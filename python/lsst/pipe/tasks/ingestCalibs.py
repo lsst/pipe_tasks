@@ -161,7 +161,7 @@ class CalibsRegisterTask(RegisterTask):
             # A calib is valid until it is superseded
             for thisDate, nextDate in zip(dates[:-1], dates[1:]):
                 valids[thisDate][0] = thisDate
-                valids[thisDate][1] = nextDate - datetime.timedelta(1)
+                valids[thisDate][1] = nextDate
             valids[dates[-1]][0] = dates[-1]
             valids[dates[-1]][1] = _convertToDate("2037-12-31")  # End of UNIX time
         else:
@@ -175,7 +175,7 @@ class CalibsRegisterTask(RegisterTask):
                 if valids[date][1] > midpoint:
                     nextDate = dates[i + 1]
                     valids[nextDate][0] = midpoint + datetime.timedelta(1)
-                    valids[date][1] = midpoint
+                    valids[date][1] = midpoint + datetime.timedelta(1)
             del midpoints
         del dates
         # Update the validity data in the registry
