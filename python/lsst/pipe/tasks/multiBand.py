@@ -28,7 +28,7 @@ from lsst.pex.config import Config, Field, ConfigurableField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
-from lsst.meas.extensions.scarlet.deblend import ScarletDeblendTask
+from lsst.meas.extensions.scarlet import ScarletDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
