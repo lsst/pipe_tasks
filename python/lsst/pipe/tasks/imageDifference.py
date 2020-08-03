@@ -605,11 +605,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 self.metadata.add("scaleTemplateVarianceFactor", templateVarFactor)
 
             if self.config.subtract.name == 'zogy':
-                subtractRes = self.subtract.subtractExposures(templateExposure, exposure,
-                                                              doWarping=True,
-                                                              spatiallyVarying=self.config.doSpatiallyVarying,
-                                                              doPreConvolve=self.config.doPreConvolve)
-                subtractedExposure = subtractRes.subtractedExposure
+                subtractRes = self.subtract.run(exposure, templateExposure, doWarping=True)
+                if self.config.doPreConvolve:
+                    subtractedExposure = subtractRes.scoreExp
+                else:
+                    subtractedExposure = subtractRes.diffExp
+                subtractRes.subtractedExposure = subtractedExposure
+                subtractRes.matchedExposure = None
 
             elif self.config.subtract.name == 'al':
                 # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
