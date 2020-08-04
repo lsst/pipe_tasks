@@ -257,7 +257,8 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     )
     setPrimaryFlags = pexConfig.ConfigurableField(
         target=SetPrimaryFlagsTask,
-        doc="Set flags for primary source classification in single frame processing"
+        doc=("Set flags for primary source classification in single frame "
+             "processing. True if sources are not sky sources and not a parent.")
     )
     doApCorr = pexConfig.Field(
         dtype=bool,

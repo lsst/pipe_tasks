@@ -43,7 +43,8 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         del self.exposure
 
     def testIsPrimaryFlag(self):
-        """Tests detect_isPrimary column gets added when run.
+        """Tests detect_isPrimary column gets added when run, and that sources
+        labelled as detect_isPrimary are not sky sources and have no children.
         """
         charImConfig = CharacterizeImageConfig()
         charImTask = CharacterizeImageTask(config=charImConfig)
@@ -56,9 +57,9 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         outputCat = calibResults.outputCat
         self.assertTrue("detect_isPrimary" in outputCat.schema.getNames())
         # make sure all sky sources are flagged as not primary
-        self.assertTrue(sum((outputCat["detect_isPrimary"]) & (outputCat["sky_source"])) == 0)
+        self.assertEqual(sum((outputCat["detect_isPrimary"]) & (outputCat["sky_source"])), 0)
         # make sure all parent sources are flagged as not primary
-        self.assertTrue(sum((outputCat["detect_isPrimary"]) & (outputCat["deblend_nChild"] > 0)) == 0)
+        self.assertEqual(sum((outputCat["detect_isPrimary"]) & (outputCat["deblend_nChild"] > 0)), 0)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
