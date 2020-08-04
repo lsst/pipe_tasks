@@ -30,7 +30,7 @@ from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, Characteriz
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 
 
-class SkySourcesTestCase(lsst.utils.tests.TestCase):
+class IsPrimaryTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):
         # Load sample input from disk
@@ -42,19 +42,9 @@ class SkySourcesTestCase(lsst.utils.tests.TestCase):
     def tearDown(self):
         del self.exposure
 
-    def testDoSkySources(self):
-        """Tests sky_source column gets added when run.
-        """
-        self._checkSkySourceColumnExistence(doSkySources=True)
-        self._checkSkySourceColumnExistence(doSkySources=False)
-
-    def _checkSkySourceColumnExistence(self, doSkySources):
-        """Implements sky_source column checking.
-
-        Parameters
-        ----------
-        doSkySource : `bool`
-            Value of the config flag determining whether to insert sky sources.
+    def testIsPrimaryFlag(self):
+        """Tests detect_isPrimary column gets added when run, and that sources
+        labelled as detect_isPrimary are not sky sources and have no children.
         """
         charImConfig = CharacterizeImageConfig()
         charImTask = CharacterizeImageTask(config=charImConfig)
@@ -62,13 +52,14 @@ class SkySourcesTestCase(lsst.utils.tests.TestCase):
         calibConfig = CalibrateConfig()
         calibConfig.doAstrometry = False
         calibConfig.doPhotoCal = False
-        calibConfig.doSkySources = doSkySources
         calibTask = CalibrateTask(config=calibConfig)
         calibResults = calibTask.run(charImResults.exposure)
-        if doSkySources:
-            self.assertTrue('sky_source' in calibResults.outputCat.schema.getNames())
-        else:
-            self.assertFalse('sky_source' in calibResults.outputCat.schema.getNames())
+        outputCat = calibResults.outputCat
+        self.assertTrue("detect_isPrimary" in outputCat.schema.getNames())
+        # make sure all sky sources are flagged as not primary
+        self.assertEqual(sum((outputCat["detect_isPrimary"]) & (outputCat["sky_source"])), 0)
+        # make sure all parent sources are flagged as not primary
+        self.assertEqual(sum((outputCat["detect_isPrimary"]) & (outputCat["deblend_nChild"] > 0)), 0)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

@@ -37,6 +37,7 @@ from lsst.meas.base import (SingleFrameMeasurementTask,
                             ApplyApCorrTask,
                             CatalogCalculationTask)
 from lsst.meas.deblender import SourceDeblendTask
+from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
 
@@ -253,6 +254,11 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     measurement = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
         doc="Measure sources"
+    )
+    setPrimaryFlags = pexConfig.ConfigurableField(
+        target=SetPrimaryFlagsTask,
+        doc=("Set flags for primary source classification in single frame "
+             "processing. True if sources are not sky sources and not a parent.")
     )
     doApCorr = pexConfig.Field(
         dtype=bool,
@@ -499,6 +505,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
         self.makeSubtask('measurement', schema=self.schema,
                          algMetadata=self.algMetadata)
+        self.makeSubtask("setPrimaryFlags", schema=self.schema, isSingleFrame=True)
         if self.config.doApCorr:
             self.makeSubtask('applyApCorr', schema=self.schema)
         self.makeSubtask('catalogCalculation', schema=self.schema)
@@ -697,6 +704,8 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 apCorrMap=exposure.getInfo().getApCorrMap()
             )
         self.catalogCalculation.run(sourceCat)
+
+        self.setPrimaryFlags.run(sourceCat, includeDeblend=self.config.doDeblend)
 
         if icSourceCat is not None and \
            len(self.config.icSourceFieldsToCopy) > 0:

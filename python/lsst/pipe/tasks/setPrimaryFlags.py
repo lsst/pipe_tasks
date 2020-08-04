@@ -34,82 +34,125 @@ class SetPrimaryFlagsConfig(Config):
 
 
 class SetPrimaryFlagsTask(Task):
+    """Add isPrimaryKey to a given schema.
+
+    Parameters
+    ----------
+    schema : `lsst.afw.table.Schema`
+        The input schema.
+    isSingleFrame : `bool`
+        Flag specifying if task is operating with single frame imaging.
+    kwargs :
+        Keyword arguments passed to the task.
+    """
+
     ConfigClass = SetPrimaryFlagsConfig
 
-    def __init__(self, schema, **kwargs):
+    def __init__(self, schema, isSingleFrame=False, **kwargs):
         Task.__init__(self, **kwargs)
         self.schema = schema
-        self.isPatchInnerKey = self.schema.addField(
-            "detect_isPatchInner", type="Flag",
-            doc="true if source is in the inner region of a coadd patch",
-        )
-        self.isTractInnerKey = self.schema.addField(
-            "detect_isTractInner", type="Flag",
-            doc="true if source is in the inner region of a coadd tract",
-        )
+        self.isSingleFrame = isSingleFrame
+        if not self.isSingleFrame:
+            primaryDoc = ("true if source has no children and is in the inner region of a coadd patch "
+                          "and is in the inner region of a coadd tract "
+                          "and is not \"detected\" in a pseudo-filter (see config.pseudoFilterList)")
+            self.isPatchInnerKey = self.schema.addField(
+                "detect_isPatchInner", type="Flag",
+                doc="true if source is in the inner region of a coadd patch",
+            )
+            self.isTractInnerKey = self.schema.addField(
+                "detect_isTractInner", type="Flag",
+                doc="true if source is in the inner region of a coadd tract",
+            )
+        else:
+            primaryDoc = "true if source has no children and is not a sky source"
         self.isPrimaryKey = self.schema.addField(
             "detect_isPrimary", type="Flag",
-            doc="true if source has no children and is in the inner region of a coadd patch "
-                "and is in the inner region of a coadd tract "
-                "and is not \"detected\" in a pseudo-filter (see config.pseudoFilterList)",
+            doc=primaryDoc,
         )
 
-    def run(self, sources, skyMap, tractInfo, patchInfo, includeDeblend=True):
-        """Set is-primary and related flags on sources
+    def run(self, sources, skyMap=None, tractInfo=None, patchInfo=None,
+            includeDeblend=True):
+        """Set is-patch-inner, is-tract-inner and is-primary flags on sources.
+        For coadded imaging, the is-primary flag returns True when an object
+        has no children, is in the inner region of a coadd patch, is in the
+        inner region of a coadd trach, and is not detected in a pseudo-filter
+        (e.g., a sky_object).
+        For single frame imaging, the is-primary flag returns True when a
+        source has no children and is not a sky source.
 
-        @param[in,out] sources   a SourceTable
-            - reads centroid fields and an nChild field
-            - writes is-patch-inner, is-tract-inner and is-primary flags
-        @param[in] skyMap   sky tessellation object (subclass of lsst.skymap.BaseSkyMap)
-        @param[in] tractInfo   tract object (subclass of lsst.skymap.TractInfo)
-        @param[in] patchInfo   patch object (subclass of lsst.skymap.PatchInfo)
-        @param[in] includeDeblend   include deblend information in isPrimary?
+        Parameters
+        ----------
+        sources : `lsst.afw.table.SourceCatalog`
+            A sourceTable. Reads in centroid fields and an nChild field.
+            Writes is-patch-inner, is-tract-inner, and is-primary flags.
+        skyMap : `lsst.skymap.BaseSkyMap`
+            Sky tessellation object
+        tractInfo : `lsst.skymap.TractInfo`
+            Tract object
+        patchInfo : `lsst.skymap.PatchInfo`
+            Patch object
+        includeDeblend : `bool`
+            Include deblend information in isPrimary?
         """
         nChildKey = None
         if includeDeblend:
             nChildKey = self.schema.find(self.config.nChildKeyName).key
 
-        # set inner flags for each source and set primary flags for sources with no children
-        # (or all sources if deblend info not available)
-        innerFloatBBox = Box2D(patchInfo.getInnerBBox())
+        # coadd case
+        if not self.isSingleFrame:
+            # set inner flags for each source and set primary flags for sources with no children
+            # (or all sources if deblend info not available)
+            innerFloatBBox = Box2D(patchInfo.getInnerBBox())
 
-        # When the centroider fails, we can still fall back to the peak, but we don't trust
-        # that quite as much - so we use a slightly smaller box for the patch comparison.
-        # That's trickier for the tract comparison, so we just use the peak without extra
-        # care there.
-        shrunkInnerFloatBBox = Box2D(innerFloatBBox)
-        shrunkInnerFloatBBox.grow(-1)
+            # When the centroider fails, we can still fall back to the peak, but we don't trust
+            # that quite as much - so we use a slightly smaller box for the patch comparison.
+            # That's trickier for the tract comparison, so we just use the peak without extra
+            # care there.
+            shrunkInnerFloatBBox = Box2D(innerFloatBBox)
+            shrunkInnerFloatBBox.grow(-1)
 
-        pseudoFilterKeys = []
-        for filt in self.config.pseudoFilterList:
-            try:
-                pseudoFilterKeys.append(self.schema.find("merge_peak_%s" % filt).getKey())
-            except Exception:
-                self.log.warn("merge_peak is not set for pseudo-filter %s" % filt)
+            pseudoFilterKeys = []
+            for filt in self.config.pseudoFilterList:
+                try:
+                    pseudoFilterKeys.append(self.schema.find("merge_peak_%s" % filt).getKey())
+                except Exception:
+                    self.log.warn("merge_peak is not set for pseudo-filter %s" % filt)
 
-        tractId = tractInfo.getId()
-        for source in sources:
-            centroidPos = source.getCentroid()
-            if numpy.any(numpy.isnan(centroidPos)):
-                continue
-            if source.getCentroidFlag():
-                # Use a slightly smaller box to guard against bad centroids (see above)
-                isPatchInner = shrunkInnerFloatBBox.contains(centroidPos)
-            else:
-                isPatchInner = innerFloatBBox.contains(centroidPos)
-            source.setFlag(self.isPatchInnerKey, isPatchInner)
-
-            skyPos = source.getCoord()
-            sourceInnerTractId = skyMap.findTract(skyPos).getId()
-            isTractInner = sourceInnerTractId == tractId
-            source.setFlag(self.isTractInnerKey, isTractInner)
-
-            if nChildKey is None or source.get(nChildKey) == 0:
-                for pseudoFilterKey in pseudoFilterKeys:
-                    if source.get(pseudoFilterKey):
-                        isPseudo = True
-                        break
+            tractId = tractInfo.getId()
+            for source in sources:
+                centroidPos = source.getCentroid()
+                if numpy.any(numpy.isnan(centroidPos)):
+                    continue
+                if source.getCentroidFlag():
+                    # Use a slightly smaller box to guard against bad centroids (see above)
+                    isPatchInner = shrunkInnerFloatBBox.contains(centroidPos)
                 else:
-                    isPseudo = False
+                    isPatchInner = innerFloatBBox.contains(centroidPos)
+                source.setFlag(self.isPatchInnerKey, isPatchInner)
 
-                source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner and not isPseudo)
+                skyPos = source.getCoord()
+                sourceInnerTractId = skyMap.findTract(skyPos).getId()
+                isTractInner = sourceInnerTractId == tractId
+                source.setFlag(self.isTractInnerKey, isTractInner)
+
+                if nChildKey is None or source.get(nChildKey) == 0:
+                    for pseudoFilterKey in pseudoFilterKeys:
+                        if source.get(pseudoFilterKey):
+                            isPseudo = True
+                            break
+                    else:
+                        isPseudo = False
+
+                    source.setFlag(self.isPrimaryKey, isPatchInner and isTractInner and not isPseudo)
+
+        # single frame case
+        else:
+            hasSkySources = True if "sky_source" in sources.schema else False
+            for source in sources:
+                hasNoChildren = True if nChildKey is None or source.get(nChildKey) == 0 else False
+                isSkySource = False
+                if hasSkySources:
+                    if source["sky_source"]:
+                        isSkySource = True
+                source.setFlag(self.isPrimaryKey, hasNoChildren and not isSkySource)
