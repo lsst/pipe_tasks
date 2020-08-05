@@ -38,6 +38,7 @@ from lsst.ip.diffim import (DipoleAnalysis, SourceFlagChecker, KernelCandidateF,
                             KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig,
                             GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask,
                             DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry)
+from lsst.meas.deblender import SourceDeblendTask
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 import lsst.afw.display as afwDisplay
@@ -85,6 +86,15 @@ class ImageDifferenceConfig(pexConfig.Config):
         default=True,
         doc="Store calibration products (local wcs and photoCalib) in the "
             "output DiaSource catalog.")
+    doDeblend = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Run deblender input exposure"
+    )
+    deblend = pexConfig.ConfigurableField(
+        target=SourceDeblendTask,
+        doc="Split blended sources into their components"
+    )
     doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
     doForcedMeasurement = pexConfig.Field(
         dtype=bool,
@@ -271,6 +281,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
         self.algMetadata = dafBase.PropertyList()
         if self.config.doDetection:
             self.makeSubtask("detection", schema=self.schema)
+        if self.config.doDeblend:
+            self.makeSubtask("deblend", schema=self.schema)
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
@@ -636,6 +648,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask):
                 self.log.info("Merging detections into %d sources" % (len(diaSources)))
             else:
                 diaSources = results.sources
+
+            if self.config.doDeblend:
+                self.deblend.run(exposure=subtractedExposure, sources=diaSources)
 
             if self.config.doMeasurement:
                 newDipoleFitting = self.config.doDipoleFitting
