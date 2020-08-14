@@ -709,6 +709,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
         return pipeBase.Struct(ctrl=statsCtrl, flags=statsFlags)
 
+    @pipeBase.timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
             altMaskList=None, mask=None, supplementaryData=None):
         """Assemble a coadd from input warps
@@ -1422,6 +1423,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         self.makeSubtask("assembleMeanCoadd")
 
     @utils.inheritDoc(AssembleCoaddTask)
+    @pipeBase.timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
         """Assemble the coadd for a region.
 
@@ -2075,6 +2077,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return message
 
     @utils.inheritDoc(AssembleCoaddTask)
+    @pipeBase.timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
             supplementaryData, *args, **kwargs):
         """Assemble the coadd.

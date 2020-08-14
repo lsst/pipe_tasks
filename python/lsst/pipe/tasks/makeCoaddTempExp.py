@@ -379,6 +379,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         return dataRefList
 
+    @pipeBase.timeMethod
     def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None):
         """Create a Warp from inputs
 
