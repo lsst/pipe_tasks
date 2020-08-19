@@ -30,6 +30,9 @@ import sys
 from lsst.pipe import base as pipeBase
 from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
 import lsst.pex.config as pexConfig
+from lsst.afw import math as afwMath
+from lsst.afw import image as afwImage
+from lsst.geom import Extent2I
 
 
 class MeasureExtendedPsfConfig(pexConfig.Config):
@@ -40,6 +43,37 @@ class MeasureExtendedPsfConfig(pexConfig.Config):
         doc="Size, in pixels, of the subregions over which the stacking be "
             "iteratively performed.",
         default=(20, 20)
+    )
+    stackingStatistic = pexConfig.ChoiceField(
+        dtype=str,
+        doc="Type of statistic to use for stacking.",
+        default="MEANCLIP",
+        allowed={
+            "MEAN": "mean",
+            "MEDIAN": "median",
+            "MEANCLIP": "clipped mean",
+        }
+    )
+    numSigmaClip = pexConfig.Field(
+        dtype=float,
+        doc="Sigma for outlier rejection; ignored if stackingStatistic != 'MEANCLIP'.",
+        default=4
+    )
+    numIter = pexConfig.Field(
+        dtype=int,
+        doc="Number of iterations of outlier rejection; ignored if atackingStatistic != 'MEANCLIP'.",
+        default=3
+    )
+    badMaskPlanes = pexConfig.ListField(
+        dtype=str,
+        doc="Mask planes that, if set, lead to associated pixels not being included in the stacking of the "
+            "bright star stamps.",
+        default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
+    )
+    modelFilename = pexConfig.Field(
+        dtype=str,
+        doc="Full path to where the extended PSF model fits file should be saved.",
+        default="extendedPsf.fits"
     )
 
 
@@ -74,7 +108,6 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
 
     def __init__(self, initInputs=None, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
-        self.subBBoxes = AssembleCoaddTask._subBBoxIter(None, self.config.subregionSize)
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -86,5 +119,46 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
                                ContainerClass=pipeBase.DataIdContainer)
         return parser
 
+    @pipeBase.timeMethod
     def runDataRef(self, butler, selectDataList=None):
-        return 1
+        self.log.info("Stacking bright star stamps from %i different exposures." % (len(selectDataList)))
+        # read in example set of full stamps
+        dataId = {'visit': selectDataList[0]["visit"], 'ccd': selectDataList[0]["ccd"]}
+        bss = butler.get("brightStarStamps", dataId)
+        exampleStamp = bss[0].starStamp
+        # create model image
+        extPsf = afwImage.MaskedImageF(exampleStamp.getBBox())
+        # divide model image into smaller subregions
+        subregionSize = Extent2I(*self.config.subregionSize)
+        subBBoxes = AssembleCoaddTask._subBBoxIter(extPsf.getBBox(), subregionSize)
+        # compute approximate number of subregions
+        nbSubregions = int(extPsf.getDimensions()[0]/subregionSize[0] + 1)*int(
+            extPsf.getDimensions()[1]/subregionSize[1] + 1)
+        # set up stacking statistic
+        statsControl = afwMath.StatisticsControl()
+        statsControl.setNumSigmaClip(self.config.numSigmaClip)
+        statsControl.setNumIter(self.config.numIter)
+        badMasks = self.config.badMaskPlanes
+        if badMasks:
+            andMask = exampleStamp.mask.getPlaneBitMask(badMasks[0])
+            for bm in badMasks[1:]:
+                andMask = andMask | exampleStamp.mask.getPlaneBitMask(bm)
+            statsControl.setAndMask(andMask)
+        statsFlags = afwMath.stringToStatisticsProperty(self.config.stackingStatistic)
+        # iteratively stack over small subregions
+        for jbbox, bbox in enumerate(subBBoxes):
+            self.log.info("Stacking subregion %i out of %i" % (jbbox+1, nbSubregions))
+            allStars = None
+            for stampId in selectDataList:
+                dataId = {'visit': stampId["visit"], 'ccd': stampId["ccd"]}
+                readStars = butler.get("brightStarStamps_sub", dataId, bbox=bbox)
+                if allStars:
+                    allStars.extend(readStars)
+                else:
+                    allStars = readStars
+            # TODO: DM-????? add computation of per-star weights
+            weightList = [1.]*len(allStars)
+            coaddSubregion = afwMath.statisticsStack(allStars.getMaskedImages(), statsFlags, statsControl,
+                                                     weightList)
+            extPsf.assign(coaddSubregion, bbox)
+        extPsf.writeFits(self.config.modelFilename)
