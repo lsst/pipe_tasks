@@ -588,8 +588,12 @@ class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
         image = exposure.getMaskedImage()
         detector = exposure.getDetector()
         bbox = image.getBBox()
-        cache.bgModel = bgModel.toCcdBackground(detector, bbox)
-        image -= cache.bgModel.getImage()
+        try:
+            cache.bgModel = bgModel.toCcdBackground(detector, bbox)
+            image -= cache.bgModel.getImage()
+        except RuntimeError:
+            self.log.error(f"There was an error processing {dataId}, no calib file produced")
+            return
         cache.bgList.append(cache.bgModel[0])
         return self.collect(cache)
 
