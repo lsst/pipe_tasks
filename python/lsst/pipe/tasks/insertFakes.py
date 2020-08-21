@@ -352,14 +352,13 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         if not self.config.insertImages:
             if self.config.doCleanCat:
-                fakeCat = self.cleanCat(fakeCat)
+                fakeCat = self.cleanCat(fakeCat, starCheckVal)
 
             galaxies = (fakeCat[self.config.sourceType] == galCheckVal)
             galImages = self.mkFakeGalsimGalaxies(fakeCat[galaxies], band, photoCalib, pixelScale, psf, image)
 
             stars = (fakeCat[self.config.sourceType] == starCheckVal)
             starImages = self.mkFakeStars(fakeCat[stars], band, photoCalib, psf, image)
-
         else:
             galImages, starImages = self.processImagesForInsertion(fakeCat, wcs, psf, photoCalib, band,
                                                                    pixelScale)
@@ -649,14 +648,17 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             starIm *= flux
             yield ((starIm.convertF(), xy))
 
-    def cleanCat(self, fakeCat):
+    def cleanCat(self, fakeCat, starCheckVal):
         """Remove rows from the fakes catalog which have HLR = 0 for either the buldge or disk component,
-           also remove rows that have Sersic index outside the galsim min and max allowed. (0.3 <= n <= 6.2)
+           also remove galaxies that have Sersic index outside the galsim min and max
+           allowed (0.3 <= n <= 6.2).
 
         Parameters
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
                     The catalog of fake sources to be input
+        starCheckVal : `str`, `bytes` or `int`
+                    The value that is set in the sourceType column to specifiy an object is a star.
 
         Returns
         -------
@@ -670,28 +672,31 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         """
 
         rowsToKeep = ((fakeCat[self.config.bulgeHLR] != 0.0) & (fakeCat[self.config.diskHLR] != 0.0))
-        numRowsNotUsed = len(fakeCat) - len(rowsToKeep)
+        numRowsNotUsed = len(fakeCat) - len(np.where(rowsToKeep)[0])
         self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk" % numRowsNotUsed)
         fakeCat = fakeCat[rowsToKeep]
 
         minN = galsim.Sersic._minimum_n
         maxN = galsim.Sersic._maximum_n
-        rowsToKeep = ((fakeCat[self.config.nBulge] >= minN) & (fakeCat[self.config.nBulge] <= maxN)
-                      & (fakeCat[self.config.nDisk] >= minN) & (fakeCat[self.config.nDisk] <= maxN))
-        numRowsNotUsed = len(fakeCat) - len(rowsToKeep)
-        self.log.info("Removing %d rows with nBulge or nDisk outside of %0.2f <= n <= %0.2f" %
+        rowsWithGoodSersic = (((fakeCat[self.config.nBulge] >= minN) & (fakeCat[self.config.nBulge] <= maxN)
+                              & (fakeCat[self.config.nDisk] >= minN) & (fakeCat[self.config.nDisk] <= maxN))
+                              | (fakeCat[self.config.sourceType] == starCheckVal))
+        numRowsNotUsed = len(fakeCat) - len(np.where(rowsWithGoodSersic)[0])
+        self.log.info("Removing %d rows of galaxies with nBulge or nDisk outside of %0.2f <= n <= %0.2f" %
                       (numRowsNotUsed, minN, maxN))
+        fakeCat = fakeCat[rowsWithGoodSersic]
 
         if self.config.doSubSelectSources:
             try:
-                rowsToKeep = (fakeCat[self.config.sourceSelectionColName])
+                rowsSelected = (fakeCat[self.config.sourceSelectionColName])
             except KeyError:
                 raise KeyError("Given column, %s, for source selection not found." %
                                self.config.sourceSelectionColName)
-            numRowsNotUsed = len(fakeCat) - len(rowsToKeep)
+            numRowsNotUsed = len(fakeCat) - len(rowsSelected)
             self.log.info("Removing %d rows which were not designated as template sources" % numRowsNotUsed)
+            fakeCat = fakeCat[rowsSelected]
 
-        return fakeCat[rowsToKeep]
+        return fakeCat
 
     def addFakeSources(self, image, fakeImages, sourceType):
         """Add the fake sources to the given image
