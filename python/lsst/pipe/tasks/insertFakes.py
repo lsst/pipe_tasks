@@ -211,6 +211,12 @@ class InsertFakesConfig(PipelineTaskConfig,
         default=False,
     )
 
+    doProcessAllDataIds = pexConfig.Field(
+        doc="If True, all input data IDs will be processed, even those containing no fake sources.",
+        dtype=bool,
+        default=False,
+    )
+
 
 class InsertFakesTask(PipelineTask, CmdLineTask):
     """Insert fake objects into images.
@@ -334,37 +340,40 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         psf = image.getPsf()
         pixelScale = wcs.getPixelScale().asArcseconds()
 
-        if len(fakeCat) == 0:
-            errMsg = "No fakes found for this dataRef."
-            raise RuntimeError(errMsg)
+        if len(fakeCat) > 0:
+            if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
+                galCheckVal = "galaxy"
+                starCheckVal = "star"
+            elif isinstance(fakeCat[self.config.sourceType].iloc[0], bytes):
+                galCheckVal = b"galaxy"
+                starCheckVal = b"star"
+            elif isinstance(fakeCat[self.config.sourceType].iloc[0], (int, float)):
+                galCheckVal = 1
+                starCheckVal = 0
+            else:
+                raise TypeError("sourceType column does not have required type, should be str, bytes or int")
 
-        if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
-            galCheckVal = "galaxy"
-            starCheckVal = "star"
-        elif isinstance(fakeCat[self.config.sourceType].iloc[0], bytes):
-            galCheckVal = b"galaxy"
-            starCheckVal = b"star"
-        elif isinstance(fakeCat[self.config.sourceType].iloc[0], (int, float)):
-            galCheckVal = 1
-            starCheckVal = 0
+            if not self.config.insertImages:
+                if self.config.doCleanCat:
+                    fakeCat = self.cleanCat(fakeCat, starCheckVal)
+
+                galaxies = (fakeCat[self.config.sourceType] == galCheckVal)
+                galImages = self.mkFakeGalsimGalaxies(fakeCat[galaxies], band, photoCalib, pixelScale, psf,
+                                                      image)
+
+                stars = (fakeCat[self.config.sourceType] == starCheckVal)
+                starImages = self.mkFakeStars(fakeCat[stars], band, photoCalib, psf, image)
+            else:
+                galImages, starImages = self.processImagesForInsertion(fakeCat, wcs, psf, photoCalib, band,
+                                                                       pixelScale)
+
+            image = self.addFakeSources(image, galImages, "galaxy")
+            image = self.addFakeSources(image, starImages, "star")
+        elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
+            self.log.warn("No fakes found for this dataRef; processing anyway.")
         else:
-            raise TypeError("sourceType column does not have required type, should be str, bytes or int")
+            raise RuntimeError("No fakes found for this dataRef.")
 
-        if not self.config.insertImages:
-            if self.config.doCleanCat:
-                fakeCat = self.cleanCat(fakeCat, starCheckVal)
-
-            galaxies = (fakeCat[self.config.sourceType] == galCheckVal)
-            galImages = self.mkFakeGalsimGalaxies(fakeCat[galaxies], band, photoCalib, pixelScale, psf, image)
-
-            stars = (fakeCat[self.config.sourceType] == starCheckVal)
-            starImages = self.mkFakeStars(fakeCat[stars], band, photoCalib, psf, image)
-        else:
-            galImages, starImages = self.processImagesForInsertion(fakeCat, wcs, psf, photoCalib, band,
-                                                                   pixelScale)
-
-        image = self.addFakeSources(image, galImages, "galaxy")
-        image = self.addFakeSources(image, starImages, "star")
         resultStruct = pipeBase.Struct(imageWithFakes=image)
 
         return resultStruct
