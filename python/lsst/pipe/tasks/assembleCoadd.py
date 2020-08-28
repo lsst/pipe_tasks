@@ -42,6 +42,7 @@ from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .scaleVariance import ScaleVarianceTask
+from .maskStreaks import MaskStreaksTask
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.daf.butler import DeferredDatasetHandle
 
@@ -1744,6 +1745,17 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
         target=SourceDetectionTask,
         doc="Detect sources on static sky model. Only used if doPreserveContainedBySource is True"
     )
+    maskStreaks = pexConfig.ConfigurableField(
+        target=MaskStreaksTask,
+        doc="Detect streaks on difference between each psfMatched warp and static sky model. Only used if "
+            "doFilterMorphological is True. Adds a mask plane to an exposure, with the mask plane name set by"
+            "streakMaskName"
+    )
+    streakMaskName = pexConfig.Field(
+        dtype=str,
+        default="STREAK",
+        doc="Name of mask bit used for streaks"
+    )
     maxNumEpochs = pexConfig.Field(
         doc="Charactistic maximum local number of epochs/visits in which an artifact candidate can appear  "
             "and still be masked.  The effective maxNumEpochs is a broken linear function of local "
@@ -1811,6 +1823,12 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
         doc="Prefilter artifact candidates with less than this fraction overlapping good pixels",
         dtype=float,
         default=0.05
+    )
+    doFilterMorphological = pexConfig.Field(
+        doc="Filter artifact candidates based on morphological criteria, i.g. those that appear to "
+            "be streaks.",
+        dtype=bool,
+        default=False
     )
 
     def setDefaults(self):
@@ -1993,6 +2011,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             self.makeSubtask("detectTemplate", schema=afwTable.SourceTable.makeMinimalSchema())
         if self.config.doScaleWarpVariance:
             self.makeSubtask("scaleWarpVariance")
+        if self.config.doFilterMorphological:
+            self.makeSubtask("maskStreaks")
 
     @utils.inheritDoc(AssembleCoaddTask)
     def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
@@ -2175,6 +2195,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         spanSetArtifactList = []
         spanSetNoDataMaskList = []
         spanSetEdgeList = []
+        spanSetBadMorphoList = []
         badPixelMask = self.getBadPixelMask()
 
         # mask of the warp diffs should = that of only the warp
@@ -2200,9 +2221,20 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 # Remove artifacts due to defects before they contribute to the epochCountImage
                 if self.config.doPrefilterArtifacts:
                     spanSetList = self.prefilterArtifacts(spanSetList, warpDiffExp)
+
+                # Clear mask before adding prefiltered spanSets
+                self.detect.clearMask(warpDiffExp.mask)
                 for spans in spanSetList:
                     spans.setImage(slateIm, 1, doClip=True)
+                    spans.setMask(warpDiffExp.mask, warpDiffExp.mask.getPlaneBitMask("DETECTED"))
                 epochCountImage += slateIm
+
+                if self.config.doFilterMorphological:
+                    maskName = self.config.streakMaskName
+                    _ = self.maskStreaks.run(warpDiffExp)
+                    streakMask = warpDiffExp.mask
+                    spanSetStreak = afwGeom.SpanSet.fromMask(streakMask,
+                                                             streakMask.getPlaneBitMask(maskName)).split()
 
                 # PSF-Matched warps have less available area (~the matching kernel) because the calexps
                 # undergo a second convolution. Pixels with data in the direct warp
@@ -2220,12 +2252,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 nansMask = afwImage.MaskX(coaddBBox, 1)
                 spanSetList = []
                 spanSetEdgeMask = []
+                spanSetStreak = []
 
             spanSetNoDataMask = afwGeom.SpanSet.fromMask(nansMask).split()
 
             spanSetNoDataMaskList.append(spanSetNoDataMask)
             spanSetArtifactList.append(spanSetList)
             spanSetEdgeList.append(spanSetEdgeMask)
+            if self.config.doFilterMorphological:
+                spanSetBadMorphoList.append(spanSetStreak)
 
         if lsstDebug.Info(__name__).saveCountIm:
             path = self._dataRef2DebugPath("epochCountIm", tempExpRefList[0], coaddLevel=True)
@@ -2236,6 +2271,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 filteredSpanSetList = self.filterArtifacts(spanSetList, epochCountImage, nImage,
                                                            templateFootprints)
                 spanSetArtifactList[i] = filteredSpanSetList
+            if self.config.doFilterMorphological:
+                spanSetArtifactList[i] += spanSetBadMorphoList[i]
 
         altMasks = []
         for artifacts, noData, edge in zip(spanSetArtifactList, spanSetNoDataMaskList, spanSetEdgeList):
