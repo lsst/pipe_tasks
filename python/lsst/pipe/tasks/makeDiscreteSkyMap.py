@@ -158,7 +158,7 @@ class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     RunnerClass = MakeDiscreteSkyMapRunner
 
     def __init__(self, **kwargs):
-        pipeBase.CmdLineTask.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
