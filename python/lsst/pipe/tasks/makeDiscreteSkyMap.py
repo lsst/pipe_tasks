@@ -29,10 +29,41 @@ import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
-from lsst.pipe.base import ArgumentParser
+from lsst.pipe.base import ArgumentParser, connectionTypes
 
 
-class MakeDiscreteSkyMapConfig(pexConfig.Config):
+class MakeDiscreteSkyMapConnections(pipeBase.PipelineTaskConnections,
+                                    dimensions={"instrument", },
+                                    defaultTemplates={}):
+    calexp_md_list = connectionTypes.Input(
+        name="calexp.metadata",
+        doc="Calibrated exposure metadata to compute sky map from",
+        storageClass="PropertyList",
+        dimensions=["instrument", "visit", "detector"],
+        multiple=True,
+    )
+    calexp_wcs_list = connectionTypes.Input(
+        name="calexp.wcs",
+        doc="Calibrated exposure wcs to compute sky map from",
+        storageClass="Wcs",
+        dimensions=["instrument", "visit", "detector"],
+        multiple=True,
+    )
+    out_skymap = connectionTypes.Output(
+        name="deepCoadd_SkyMap",  # Same as above, I guess
+        doc="Output sky map",
+        storageClass="SkyMap",
+        dimensions=["instrument", ],
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.doWrite is not True:
+            self.outputs.discard(f"{config.coaddName}Coadd_SkyMap")
+
+
+class MakeDiscreteSkyMapConfig(pipeBase.PipelineTaskConfig,
+                               pipelineConnections=MakeDiscreteSkyMapConnections):
     """Config for MakeDiscreteSkyMapTask
     """
     coaddName = pexConfig.Field(
@@ -116,7 +147,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
             )
 
 
-class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
+class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
 
     The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
@@ -129,23 +160,59 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
-    @pipeBase.timeMethod
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        inputs['isGen3'] = True
+        if self.config.doAppend:
+            ## This doesn't work yet.  Need to iterate on how to do incremental
+            inputs['oldSkyMap'] = butlerQC.get(outputRefs)['out_skymap']
+        outputs = self.run(**inputs)
+        outputs = pipeBase.Struct(out_skymap=outputs.skyMap)
+        butlerQC.put(outputs, outputRefs)
+
     def runDataRef(self, butler, dataRefList):
-        """!Make a skymap from the bounds of the given set of calexps.
+        """!Make a skymap from the bounds of the given set of calexps using the butler.
 
         @param[in]  butler        data butler used to save the SkyMap
         @param[in]  dataRefList   dataRefs of calexps used to determine the size and pointing of the SkyMap
         @return     a pipeBase Struct containing:
                     - skyMap: the constructed SkyMap
         """
-        self.log.info("Extracting bounding boxes of %d images" % len(dataRefList))
-        points = []
+        calexp_md_list = []
+        oldSkyMap = None
+        datasetName = self.config.coaddName + "Coadd_skyMap"
         for dataRef in dataRefList:
             if not dataRef.datasetExists("calexp"):
                 self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
                 continue
-            md = dataRef.get("calexp_md", immediate=True)
-            wcs = afwGeom.makeSkyWcs(md)
+            calexp_md_list.append(dataRef.get("calexp_md", immediate=True))
+        if self.config.doAppend and butler.datasetExists(datasetName):
+            oldSkyMap = butler.get(datasetName, immediate=True)
+            if not isinstance(oldSkyMap.config, DiscreteSkyMap.ConfigClass):
+                raise TypeError("Cannot append to existing non-discrete skymap")
+            compareLog = []
+            if not self.config.skyMap.compare(oldSkyMap.config, output=compareLog.append):
+                raise ValueError("Cannot append to existing skymap - configurations differ:", *compareLog)
+        result = self.run(calexp_md_list, oldSkyMap)
+        if self.config.doWrite:
+            butler.put(result.skyMap, datasetName)
+
+    @pipeBase.timeMethod
+    def run(self, calexp_md_list, calexp_wcs_list=None, oldSkyMap=None, isGen3=False):
+        """!Make a skymap from the bounds of the given set of calexp metadata.
+
+        @param[in]  calexp_md_list        A list containing the calexp metadata to use to build the sky map
+        @param[in]  oldSkyMap (optional)  A sky map to append to
+        @return     a pipeBase Struct containing:
+                    - skyMap: the constructed SkyMap
+        """
+        self.log.info("Extracting bounding boxes of %d images" % len(calexp_md_list))
+        points = []
+        for i, md in enumerate(calexp_md_list):
+            if isGen3:
+                wcs = calexp_wcs_list[i]
+            else:
+                wcs = afwGeom.makeSkyWcs(md)
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
             boxI = afwImage.bboxFromMetadata(md)
             boxD = geom.Box2D(boxI)
@@ -161,16 +228,8 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             )
         circle = polygon.getBoundingCircle()
 
-        datasetName = self.config.coaddName + "Coadd_skyMap"
-
         skyMapConfig = DiscreteSkyMap.ConfigClass()
-        if self.config.doAppend and butler.datasetExists(datasetName):
-            oldSkyMap = butler.get(datasetName, immediate=True)
-            if not isinstance(oldSkyMap.config, DiscreteSkyMap.ConfigClass):
-                raise TypeError("Cannot append to existing non-discrete skymap")
-            compareLog = []
-            if not self.config.skyMap.compare(oldSkyMap.config, output=compareLog.append):
-                raise ValueError("Cannot append to existing skymap - configurations differ:", *compareLog)
+        if oldSkyMap:
             skyMapConfig.raList.extend(oldSkyMap.config.raList)
             skyMapConfig.decList.extend(oldSkyMap.config.decList)
             skyMapConfig.radiusList.extend(oldSkyMap.config.radiusList)
@@ -196,8 +255,6 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" %
                           (tractInfo.getId(), ", ".join(posStrList),
                            tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
-        if self.config.doWrite:
-            butler.put(skyMap, datasetName)
         return pipeBase.Struct(
             skyMap=skyMap
         )
