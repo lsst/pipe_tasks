@@ -369,6 +369,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
             image = self.addFakeSources(image, galImages, "galaxy")
             image = self.addFakeSources(image, starImages, "star")
+
         elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
             self.log.warn("No fakes found for this dataRef; processing anyway.")
         else:
@@ -680,7 +681,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         will be added.
         """
 
-        rowsToKeep = ((fakeCat[self.config.bulgeHLR] != 0.0) & (fakeCat[self.config.diskHLR] != 0.0))
+        rowsToKeep = (((fakeCat[self.config.bulgeHLR] != 0.0) & (fakeCat[self.config.diskHLR] != 0.0))
+                      | (fakeCat[self.config.sourceType] == starCheckVal))
         numRowsNotUsed = len(fakeCat) - len(np.where(rowsToKeep)[0])
         self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk" % numRowsNotUsed)
         fakeCat = fakeCat[rowsToKeep]
