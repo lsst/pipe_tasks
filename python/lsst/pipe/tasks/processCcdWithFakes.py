@@ -39,7 +39,8 @@ from lsst.pipe.tasks.calibrate import CalibrateTask
 __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
 
 
-class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
+class ProcessCcdWithFakesConnections(PipelineTaskConnections,
+                                     dimensions=("skymap", "tract", "instrument", "visit", "detector"),
                                      defaultTemplates={"CoaddName": "deep"}):
 
     exposure = cT.Input(
@@ -52,7 +53,7 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instr
     fakeCat = cT.Input(
         doc="Catalog of fake sources to draw inputs from.",
         name="{CoaddName}Coadd_fakeSourceCat",
-        storageClass="Parquet",
+        storageClass="DataFrame",
         dimensions=("tract", "skymap")
     )
 
@@ -60,42 +61,42 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections, dimensions=("instr
         doc="WCS information for the input exposure.",
         name="jointcal_wcs",
         storageClass="Wcs",
-        dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
+        dimensions=("tract", "skymap", "instrument", "visit", "detector")
     )
 
     photoCalib = cT.Input(
         doc="Calib information for the input exposure.",
         name="jointcal_photoCalib",
         storageClass="PhotoCalib",
-        dimensions=("Tract", "SkyMap", "Instrument", "Visit", "Detector")
+        dimensions=("tract", "skymap", "instrument", "visit", "detector")
     )
 
     icSourceCat = cT.Input(
         doc="Catalog of calibration sources",
         name="icSrc",
-        storageClass="sourceCatalog",
-        dimensions=("tract", "skymap", "instrument", "visit", "detector")
+        storageClass="SourceCatalog",
+        dimensions=("instrument", "visit", "detector")
     )
 
     sfdSourceCat = cT.Input(
         doc="Catalog of calibration sources",
         name="src",
-        storageClass="sourceCatalog",
-        dimensions=("tract", "skymap", "instrument", "visit", "detector")
+        storageClass="SourceCatalog",
+        dimensions=("instrument", "visit", "detector")
     )
 
     outputExposure = cT.Output(
         doc="Exposure with fake sources added.",
         name="fakes_calexp",
         storageClass="ExposureF",
-        dimensions=("instrument", "visit", "detector")
+        dimensions=("tract", "instrument", "visit", "detector")
     )
 
     outputCat = cT.Output(
         doc="Source catalog produced in calibrate task with fakes also measured.",
         name="fakes_src",
         storageClass="SourceCatalog",
-        dimensions=("instrument", "visit", "detector"),
+        dimensions=("tract", "instrument", "visit", "detector"),
     )
 
 
