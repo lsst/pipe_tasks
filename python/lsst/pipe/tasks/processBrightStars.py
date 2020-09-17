@@ -299,9 +299,6 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             if not goodPix:
                 self.log.debug("Warping of a star failed: no good pixel in output")
 
-            # Arbitrarily set origin of shifted star to 0
-            destImage.setXY0(0, 0)
-
             # Apply rotation if apropriate
             if nb90Rots:
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
