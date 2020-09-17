@@ -38,6 +38,7 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogC
 from lsst.meas.deblender import SourceDeblendTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
+from lsst.pex.exceptions import LengthError
 
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
@@ -184,6 +185,11 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     repair = pexConfig.ConfigurableField(
         target=RepairTask,
         doc="Remove cosmic rays",
+    )
+    requireCrForPsf = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Require cosmic ray detection and masking to run successfully before measuring the PSF."
     )
     checkUnitsParseStrict = pexConfig.Field(
         doc="Strictness of Astropy unit compatibility check, can be 'raise', 'warn' or 'silent'",
@@ -545,7 +551,15 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.installSimplePsf.run(exposure=exposure)
 
         # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
-        self.repair.run(exposure=exposure, keepCRs=True)
+        if self.config.requireCrForPsf:
+            self.repair.run(exposure=exposure, keepCRs=True)
+        else:
+            try:
+                self.repair.run(exposure=exposure, keepCRs=True)
+            except LengthError:
+                self.log.warn("Skipping cosmic ray detection: Too many CR pixels (max %0.f)" %
+                              self.config.repair.cosmicray.nCrPixelMax)
+
         self.display("repair_iter", exposure=exposure)
 
         if background is None:
