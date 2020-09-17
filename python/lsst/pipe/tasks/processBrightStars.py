@@ -260,6 +260,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             - ``warpTransforms``: `list` [`afwGeom.TransformPoint2ToPoint2`] of
                   the corresponding Transform from the initial star stamp to
                   the common model grid
+           - ``nb90Rots``: `int`, the number of 90 degrees rotation required
+                  to compensate for detector orientation
         """
         # warping control; only contains shiftingALg provided in config
         warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
