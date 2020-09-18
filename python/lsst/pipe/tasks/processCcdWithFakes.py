@@ -89,15 +89,22 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         doc="Exposure with fake sources added.",
         name="fakes_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector")
     )
 
     outputCat = cT.Output(
         doc="Source catalog produced in calibrate task with fakes also measured.",
         name="fakes_src",
         storageClass="SourceCatalog",
-        dimensions=("tract", "instrument", "visit", "detector"),
+        dimensions=("instrument", "visit", "detector"),
     )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+
+        if not config.useUpdatedCalibs:
+            self.prerequisiteInputs.remove("wcs")
+            self.prerequisiteInputs.remove("photoCalib")
 
 
 class ProcessCcdWithFakesConfig(PipelineTaskConfig,
