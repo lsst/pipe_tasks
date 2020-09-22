@@ -37,7 +37,7 @@ deblendBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep"}
 
 
 class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
-                                          dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                          dimensions=("tract", "patch", "band", "skymap"),
                                           defaultTemplates=deblendBaseTemplates):
     inputSchema = cT.InitInput(
         doc="Input schema to use in the deblend catalog",
@@ -59,13 +59,13 @@ class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
         doc="Exposure on which to run deblending",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     measureCatalog = cT.Output(
         doc="The output measurement catalog of deblended sources",
         name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     outputSchema = cT.InitOutput(
         doc="Output of the schema used in deblending task",
@@ -110,7 +110,7 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         multiple=True,
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     outputSchema = cT.InitOutput(
         doc="Output of the schema used in deblending task",
@@ -122,13 +122,13 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
             "if conserve flux is turned off",
         name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     templateCatalogs = cT.Output(
         doc="Template catalogs produced by multiband deblending",
         name="{outputCoaddName}Coadd_deblendedModel",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
 
     def __init__(self, *, config=None):
@@ -198,7 +198,7 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         inputs = butlerQC.get(inputRefs)
         packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
-        inputs["filters"] = [dRef.dataId["abstract_filter"] for dRef in inputRefs.coadds]
+        inputs["filters"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 

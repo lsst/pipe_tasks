@@ -44,7 +44,7 @@ __all__ = ["DcrAssembleCoaddConnections", "DcrAssembleCoaddTask", "DcrAssembleCo
 
 
 class DcrAssembleCoaddConnections(pipeBase.PipelineTaskConnections,
-                                  dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                  dimensions=("tract", "patch", "band", "skymap"),
                                   defaultTemplates={"inputCoaddName": "deep",
                                                     "outputCoaddName": "dcr",
                                                     "warpType": "direct",
@@ -70,26 +70,26 @@ class DcrAssembleCoaddConnections(pipeBase.PipelineTaskConnections,
              " BRIGHT_OBJECT."),
         name="brightObjectMask",
         storageClass="ObjectMaskCatalog",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
     )
     templateExposure = pipeBase.connectionTypes.Input(
         doc="Input coadded exposure, produced by previous call to AssembleCoadd",
         name="{fakesType}{inputCoaddName}Coadd{warpTypeSuffix}",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
     )
     dcrCoadds = pipeBase.connectionTypes.Output(
         doc="Output coadded exposure, produced by stacking input warps",
         name="{fakesType}{outputCoaddName}Coadd{warpTypeSuffix}",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "abstract_filter", "subfilter"),
+        dimensions=("tract", "patch", "skymap", "band", "subfilter"),
         multiple=True,
     )
     dcrNImages = pipeBase.connectionTypes.Output(
         doc="Output image of number of input images per pixel",
         name="{outputCoaddName}Coadd_nImage",
         storageClass="ImageU",
-        dimensions=("tract", "patch", "skymap", "abstract_filter", "subfilter"),
+        dimensions=("tract", "patch", "skymap", "band", "subfilter"),
         multiple=True,
     )
 

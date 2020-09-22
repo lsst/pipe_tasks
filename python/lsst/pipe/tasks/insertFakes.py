@@ -43,13 +43,13 @@ __all__ = ["InsertFakesConfig", "InsertFakesTask"]
 
 
 class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddName": "deep"},
-                             dimensions=("tract", "patch", "abstract_filter", "skymap")):
+                             dimensions=("tract", "patch", "band", "skymap")):
 
     image = cT.Input(
         doc="Image into which fakes are to be added.",
         name="{CoaddName}Coadd",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
 
     fakeCat = cT.Input(
@@ -63,7 +63,7 @@ class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddNa
         doc="Image with fake sources added.",
         name="fakes_{CoaddName}Coadd",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
 
 
