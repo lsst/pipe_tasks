@@ -103,8 +103,8 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         super().__init__(config=config)
 
         if not config.useUpdatedCalibs:
-            self.prerequisiteInputs.remove("wcs")
-            self.prerequisiteInputs.remove("photoCalib")
+            self.inputs.remove("wcs")
+            self.inputs.remove("photoCalib")
 
 
 class ProcessCcdWithFakesConfig(PipelineTaskConfig,
@@ -259,9 +259,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
-        if inputs["wcs"] is None:
+        if self.config.useUpdatedCalibs:
             inputs["wcs"] = inputs["image"].getWcs()
-        if inputs["photoCalib"] is None:
             inputs["photoCalib"] = inputs["image"].getPhotoCalib()
 
         outputs = self.run(**inputs)
