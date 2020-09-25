@@ -160,16 +160,6 @@ class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
-        inputs['isGen3'] = True
-        if self.config.doAppend:
-            ## This doesn't work yet.  Need to iterate on how to do incremental
-            inputs['oldSkyMap'] = butlerQC.get(outputRefs)['out_skymap']
-        outputs = self.run(**inputs)
-        outputs = pipeBase.Struct(out_skymap=outputs.skyMap)
-        butlerQC.put(outputs, outputRefs)
-
     def runDataRef(self, butler, dataRefList):
         """!Make a skymap from the bounds of the given set of calexps using the butler.
 
@@ -196,6 +186,7 @@ class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         result = self.run(calexp_md_list, oldSkyMap)
         if self.config.doWrite:
             butler.put(result.skyMap, datasetName)
+        return result
 
     @pipeBase.timeMethod
     def run(self, calexp_md_list, calexp_wcs_list=None, oldSkyMap=None, isGen3=False):

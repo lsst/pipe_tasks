@@ -19,12 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from lsst.daf.butler import Butler
+from lsst.daf.butler import Butler, DatasetType
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, MakeDiscreteSkyMapConfig
 from lsst.obs.base.utils import getInstrument
 
 
-def makeDiscreteSkyMap(repo, config_file, collections, instrument, out_collection):
+def makeDiscreteSkyMap(repo, config_file, collections, instrument,
+                       out_collection='skymaps', skymap_id='discrete'):
     """Implements the command line interface `butler make-discrete-skymap` subcommand,
     should only be called by command line tools and unit test code that tests
     this function.
@@ -44,33 +45,45 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument, out_collectio
         with the calibrated exposures.
     insrument : `str`
         The name or fully-qualified class name of an instrument.
-    append : `bool`
-        If True, an existing skymap will be loaded to seed the skymap.
+    out_collection : `str`, optional
+        The name of the collection to save the skymap to.  Default is 'skymaps'.
+    skymap_id : `str`, optional
+        The identifier of the skymap to save.  Default is 'discrete'.
     """
-    butler = Butler(repo, collections=collections, writeable=True)
+    butler = Butler(repo, collections=collections, writeable=True, run=out_collection)
     instr = getInstrument(instrument, butler.registry)
     config = MakeDiscreteSkyMapConfig()
     instr.applyConfigOverrides(MakeDiscreteSkyMapTask._DefaultName, config)
 
-
     if config_file is not None:
         config.load(config_file)
+    skymap_name = config.coaddName + "Coadd_skyMap"
     oldSkyMap = None
     if config.doAppend:
-        # Add the default collection if appending
-        coll_set = set(collections)
-        coll_set.add("skymaps")
-        collections = list(coll_set)
+        if out_collection in collections:
+            raise ValueError(f"Cannot overwrite dataset.  If appending, specify an output "
+                             f"collection not in the input collections.")
+        dataId = {'skymap': skymap_id}
         try:
-            oldSkyMap = butler.get(config.coaddName + "Coadd_skyMap", collections=collections)
-        except ValueError:
-            raise ValueError(f"Could not find seed sky map for {config.coaddName}Coadd_skyMap, "
-                             "but doAppend is set to True.  Aborting.")
+            oldSkyMap = butler.get(skymap_name, collections=collections, dataId=dataId)
+        except LookupError as e:
+            msg = (f"Could not find seed skymap for {skymap_name} with dataId {dataId} "
+                   f"in collections {collections} but doAppend is {config.doAppend}.  Aborting...")
+            raise LookupError(msg, *e.args[1:])
+
     calexp_md_list = []
     calexp_wcs_list = []
     id_list = butler.registry.queryDatasets('calexp', collections=collections)
     for i in id_list:
-        calexp_md_list.append(butler.get('calexp.md', dataId=i, collections=collections))
-        calexp_wcs_list.append(butler.get('calexp.wcs', dataId=i, collections=collections))
-    task = MakeDiscreteSkyMapTask(config=config, butler=butler)
-    task.run(calexp_md_list, calexp_wcs_list, oldSkyMap, isGen3=True)
+        calexp_md_list.append(butler.get('calexp.metadata', dataId=i.dataId, collections=collections))
+        calexp_wcs_list.append(butler.get('calexp.wcs', dataId=i.dataId, collections=collections))
+    task = MakeDiscreteSkyMapTask(config=config)
+    result = task.run(calexp_md_list, calexp_wcs_list, oldSkyMap, isGen3=True)
+    skymap_dataset_type = DatasetType(skymap_name, dimensions=["skymap", ],
+                                      universe=butler.registry.dimensions,
+                                      storageClass="SkyMap")
+    butler.registry.registerDatasetType(skymap_dataset_type)
+    if config.doAppend:
+        # By definition if appending the dataset has already been registered
+        result.skyMap.register(skymap_id, butler.registry)
+    butler.put(result.skyMap, skymap_name, dataId={'skymap': skymap_id})

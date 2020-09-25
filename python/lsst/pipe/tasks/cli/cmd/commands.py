@@ -41,6 +41,9 @@ from ... import script
 @click.option("--out-collection",
               help=("The collection to write the skymap to."),
               type=str, default="skymaps", show_default=True)
+@click.option("--skymap-id",
+              help=("The identifier of the skymap to write."),
+              type=str, default="discrete", show_default=True)
 @instrument_option(required=True)
 def make_discrete_skymap(*args, **kwargs):
     """Define a discrete skymap from calibrated exposures in the butler registry."""
