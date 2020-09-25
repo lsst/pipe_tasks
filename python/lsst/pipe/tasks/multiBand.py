@@ -66,7 +66,7 @@ the mergeDet, meas, and ref dataset Footprints:
 
 ##############################################################################################################
 class DetectCoaddSourcesConnections(PipelineTaskConnections,
-                                    dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                    dimensions=("tract", "patch", "band", "skymap"),
                                     defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"}):
     detectionSchema = cT.InitOutput(
         doc="Schema of the detection catalog",
@@ -77,25 +77,25 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         doc="Exposure on which detections are to be performed",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     outputBackgrounds = cT.Output(
         doc="Output Backgrounds used in detection",
         name="{outputCoaddName}Coadd_calexp_background",
         storageClass="Background",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     outputSources = cT.Output(
         doc="Detected sources catalog",
         name="{outputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     outputExposure = cT.Output(
         doc="Exposure post detection",
         name="{outputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
 
 
@@ -286,7 +286,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch_abstract_filter", returnMaxBits=True)
+        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch_band", returnMaxBits=True)
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         inputs["expId"] = packedId
         outputs = self.run(**inputs)
@@ -585,7 +585,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 
 
 class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
-                                           dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                                           dimensions=("tract", "patch", "band", "skymap"),
                                            defaultTemplates={"inputCoaddName": "deep",
                                                              "outputCoaddName": "deep"}):
     inputSchema = cT.InitInput(
@@ -610,7 +610,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         doc="Input coadd image",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "abstract_filter", "skymap")
+        dimensions=("tract", "patch", "band", "skymap")
     )
     skyMap = cT.Input(
         doc="SkyMap to use in processing",
@@ -619,7 +619,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         dimensions=("skymap",),
     )
     visitCatalogs = cT.Input(
-        doc="Source catalogs for visits which overlap input tract, patch, abstract_filter. Will be "
+        doc="Source catalogs for visits which overlap input tract, patch, band. Will be "
             "further filtered in the task for the purpose of propagating flags from image calibration "
             "and characterization to codd objects",
         name="src",
@@ -636,25 +636,25 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
              "be 'mergeDet'"),
         name="{inputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+        dimensions=("tract", "patch", "band", "skymap"),
     )
     outputSources = cT.Output(
         doc="Source catalog containing all the measurement information generated in this task",
         name="{outputCoaddName}Coadd_meas",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+        dimensions=("tract", "patch", "band", "skymap"),
         storageClass="SourceCatalog",
     )
     matchResult = cT.Output(
         doc="Match catalog produced by configured matcher, optional on doMatchSources",
         name="{outputCoaddName}Coadd_measMatch",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+        dimensions=("tract", "patch", "band", "skymap"),
         storageClass="Catalog",
     )
     denormMatches = cT.Output(
         doc="Denormalized Match catalog produced by configured matcher, optional on "
             "doWriteMatchesDenormalized",
         name="{outputCoaddName}Coadd_measMatchFull",
-        dimensions=("tract", "patch", "abstract_filter", "skymap"),
+        dimensions=("tract", "patch", "band", "skymap"),
         storageClass="Catalog",
     )
 

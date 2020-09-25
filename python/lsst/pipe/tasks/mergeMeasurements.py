@@ -53,7 +53,7 @@ class MergeMeasurementsConnections(PipelineTaskConnections,
         name="{inputCoaddName}Coadd_meas",
         multiple=True,
         storageClass="SourceCatalog",
-        dimensions=["abstract_filter", "skymap", "tract", "patch"],
+        dimensions=["band", "skymap", "tract", "patch"],
     )
     mergedCatalog = cT.Output(
         doc="Output merged catalog.",
@@ -217,8 +217,7 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         dataIds = (ref.dataId for ref in inputRefs.catalogs)
-        catalogDict = {dataId['abstract_filter']: cat for dataId, cat in zip(dataIds,
-                                                                             inputs['catalogs'])}
+        catalogDict = {dataId['band']: cat for dataId, cat in zip(dataIds, inputs['catalogs'])}
         inputs['catalogs'] = catalogDict
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)

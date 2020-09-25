@@ -62,7 +62,7 @@ class MergeDetectionsConnections(PipelineTaskConnections,
         doc="Detection Catalogs to be merged",
         name="{inputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
         multiple=True
     )
 
@@ -248,7 +248,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
         inputs["skySeed"] = packedId
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
-        catalogDict = {ref.dataId['abstract_filter']: cat for ref, cat in zip(inputRefs.catalogs,
+        catalogDict = {ref.dataId['band']: cat for ref, cat in zip(inputRefs.catalogs,
                        inputs['catalogs'])}
         inputs['catalogs'] = catalogDict
         skyMap = inputs.pop('skyMap')

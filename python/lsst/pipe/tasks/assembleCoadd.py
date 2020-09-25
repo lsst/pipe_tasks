@@ -52,7 +52,7 @@ __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig
 
 
 class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
-                               dimensions=("tract", "patch", "abstract_filter", "skymap"),
+                               dimensions=("tract", "patch", "band", "skymap"),
                                defaultTemplates={"inputCoaddName": "deep",
                                                  "outputCoaddName": "deep",
                                                  "warpType": "direct",
@@ -78,19 +78,19 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
              " BRIGHT_OBJECT."),
         name="brightObjectMask",
         storageClass="ObjectMaskCatalog",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
     )
     coaddExposure = pipeBase.connectionTypes.Output(
         doc="Output coadded exposure, produced by stacking input warps",
         name="{fakesType}{outputCoaddName}Coadd{warpTypeSuffix}",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
     )
     nImage = pipeBase.connectionTypes.Output(
         doc="Output image of number of input images per pixel",
         name="{outputCoaddName}Coadd_nImage",
         storageClass="ImageU",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
     )
 
     def __init__(self, *, config=None):
@@ -1726,7 +1726,7 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections):
              "sigma-clipped coadd. Written if and only if assembleStaticSkyModel.doWrite=True"),
         name="{fakesType}{outputCoaddName}CoaddPsfMatched",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
     )
 
     def __init__(self, *, config=None):

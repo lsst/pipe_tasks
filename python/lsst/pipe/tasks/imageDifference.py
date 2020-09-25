@@ -79,7 +79,7 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
     )
     coaddExposures = pipeBase.connectionTypes.Input(
         doc="Input template to match and subtract from the exposure",
-        dimensions=("tract", "patch", "skymap", "abstract_filter"),
+        dimensions=("tract", "patch", "skymap", "band"),
         storageClass="ExposureF",
         name="{fakesType}{coaddName}Coadd{warpTypeSuffix}",
         multiple=True,
@@ -89,7 +89,7 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         doc="Input DCR template to match and subtract from the exposure",
         name="{fakesType}dcrCoadd{warpTypeSuffix}",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "skymap", "abstract_filter", "subfilter"),
+        dimensions=("tract", "patch", "skymap", "band", "subfilter"),
         multiple=True,
         deferLoad=True
     )
