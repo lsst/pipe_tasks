@@ -1,5 +1,10 @@
 # -*- python -*-
-from lsst.sconsUtils import scripts
+import os
+
+from lsst.sconsUtils import env, scripts
 
 scripts.BasicSConscript.tests(pySingles=['nopytest_test_coadds.py'],
                               pyList=[])
+
+if "DAF_BUTLER_PLUGINS" in os.environ:
+    env["ENV"]["DAF_BUTLER_PLUGINS"] = os.environ["DAF_BUTLER_PLUGINS"]
