@@ -193,7 +193,9 @@ class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         """!Make a skymap from the bounds of the given set of calexp metadata.
 
         @param[in]  calexp_md_list        A list containing the calexp metadata to use to build the sky map
+        @param[in]  calexp_wcs_list       A list containing the calexp wcs to use to build the sky map
         @param[in]  oldSkyMap (optional)  A sky map to append to
+        @param[in]  isGen3 (optional)     Is this being run with a gen3 butler?
         @return     a pipeBase Struct containing:
                     - skyMap: the constructed SkyMap
         """
