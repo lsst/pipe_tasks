@@ -25,7 +25,6 @@ import lsst.sphgeom
 
 import lsst.geom as geom
 import lsst.afw.image as afwImage
-import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
@@ -169,6 +168,7 @@ class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                     - skyMap: the constructed SkyMap
         """
         calexp_md_list = []
+        calexp_wcs_list = []
         oldSkyMap = None
         datasetName = self.config.coaddName + "Coadd_skyMap"
         for dataRef in dataRefList:
@@ -176,6 +176,7 @@ class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
                 continue
             calexp_md_list.append(dataRef.get("calexp_md", immediate=True))
+            calexp_wcs_list.append(dataRef.get("calexp_wcs", immediate=True))
         if self.config.doAppend and butler.datasetExists(datasetName):
             oldSkyMap = butler.get(datasetName, immediate=True)
             if not isinstance(oldSkyMap.config, DiscreteSkyMap.ConfigClass):
@@ -183,29 +184,24 @@ class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             compareLog = []
             if not self.config.skyMap.compare(oldSkyMap.config, output=compareLog.append):
                 raise ValueError("Cannot append to existing skymap - configurations differ:", *compareLog)
-        result = self.run(calexp_md_list, oldSkyMap)
+        result = self.run(calexp_md_list, calexp_wcs_list, oldSkyMap)
         if self.config.doWrite:
             butler.put(result.skyMap, datasetName)
         return result
 
     @pipeBase.timeMethod
-    def run(self, calexp_md_list, calexp_wcs_list=None, oldSkyMap=None, isGen3=False):
+    def run(self, calexp_md_list, calexp_wcs_list, oldSkyMap=None):
         """!Make a skymap from the bounds of the given set of calexp metadata.
 
         @param[in]  calexp_md_list        A list containing the calexp metadata to use to build the sky map
         @param[in]  calexp_wcs_list       A list containing the calexp wcs to use to build the sky map
         @param[in]  oldSkyMap (optional)  A sky map to append to
-        @param[in]  isGen3 (optional)     Is this being run with a gen3 butler?
         @return     a pipeBase Struct containing:
                     - skyMap: the constructed SkyMap
         """
         self.log.info("Extracting bounding boxes of %d images" % len(calexp_md_list))
         points = []
-        for i, md in enumerate(calexp_md_list):
-            if isGen3:
-                wcs = calexp_wcs_list[i]
-            else:
-                wcs = afwGeom.makeSkyWcs(md)
+        for wcs, md in zip(calexp_wcs_list, calexp_md_list):
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
             boxI = afwImage.bboxFromMetadata(md)
             boxD = geom.Box2D(boxI)

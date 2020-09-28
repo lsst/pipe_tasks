@@ -78,7 +78,7 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
         calexp_md_list.append(butler.get('calexp.metadata', dataId=i.dataId, collections=collections))
         calexp_wcs_list.append(butler.get('calexp.wcs', dataId=i.dataId, collections=collections))
     task = MakeDiscreteSkyMapTask(config=config)
-    result = task.run(calexp_md_list, calexp_wcs_list, oldSkyMap, isGen3=True)
+    result = task.run(calexp_md_list, calexp_wcs_list, oldSkyMap)
     skymap_dataset_type = DatasetType(skymap_name, dimensions=["skymap", ],
                                       universe=butler.registry.dimensions,
                                       storageClass="SkyMap")
