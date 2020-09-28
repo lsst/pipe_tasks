@@ -21,7 +21,7 @@
 
 import click
 
-from lsst.daf.butler.cli.opt import (repo_argument, config_file_option)
+from lsst.daf.butler.cli.opt import (repo_argument, config_file_option, options_file_option)
 from lsst.daf.butler.cli.utils import (cli_handle_exception, split_commas, typeStrAcceptsMultiple)
 from lsst.obs.base.cli.opt import instrument_option
 from ... import script
@@ -31,6 +31,7 @@ from ... import script
 @repo_argument(required=True)
 @config_file_option(help="Path to a pex_config override to be included after the Instrument config overrides"
                          "are applied.")
+@options_file_option()
 @click.option("--collections",
               help=("The collections to be searched (in order) when reading datasets. "
                     "This includes the seed skymap if --append is specified."),
