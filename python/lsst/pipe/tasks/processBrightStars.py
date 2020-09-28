@@ -257,6 +257,9 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             - ``warpedStars``:
                   `list` [`afwImage.maskedImage.maskedImage.MaskedImage`] of
                   stamps of warped stars
+            - ``XY0s``:
+                  `list` [`geom.Point2I`] of coordinates of the bottom-left
+                  pixels of each stamp, before rotation
             - ``warpTransforms``: `list` [`afwGeom.TransformPoint2ToPoint2`] of
                   the corresponding Transform from the initial star stamp to
                   the common model grid
@@ -280,7 +283,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         nb90Rots = np.argmin(np.abs(possibleRots - float(yaw)))
 
         # apply transformation to each star
-        warpedStars, warpTransforms = [], []
+        warpedStars, XY0s, warpTransforms = [], [], []
         for star, cent in zip(stamps, pixCenters):
             # (re)create empty destination image
             destImage = afwImage.MaskedImageF(*self.modelStampSize)
@@ -290,6 +293,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1]/2)
             # Convert to int
             newBottomLeft = geom.Point2I(newBottomLeft)
+            XY0s.append(newBottomLeft)
             # Set origin
             destImage.setXY0(newBottomLeft)
 
@@ -314,7 +318,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
             warpedStars.append(destImage.clone())
             warpTransforms.append(starWarper)
-        return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms)
+        return pipeBase.Struct(warpedStars=warpedStars, XY0s=XY0s, warpTransforms=warpTransforms,
+                               nb90Rots=nb90Rots)
 
     @pipeBase.timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None):
@@ -352,6 +357,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         brightStarList = [bSS.BrightStarStamp(stamp_im=warp,
                                               gaiaGMag=extractedStamps.GMags[j],
                                               gaiaId=extractedStamps.gaiaIds[j],
+                                              XY0=warpOutputs.XY0s[j],
                                               transform=warpOutputs.warpTransforms[j])
                           for j, warp in enumerate(warpedStars)]
         # Compute annularFlux and normalize
