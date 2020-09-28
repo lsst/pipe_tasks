@@ -260,7 +260,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             - ``warpTransforms``: `list` [`afwGeom.TransformPoint2ToPoint2`] of
                   the corresponding Transform from the initial star stamp to
                   the common model grid
-           - ``nb90Rots``: `int`, the number of 90 degrees rotation required
+           - ``nb90Rots``: `int`, the number of 90 degrees rotations required
                   to compensate for detector orientation
         """
         # warping control; only contains shiftingALg provided in config
@@ -351,7 +351,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         warpedStars = warpOutputs.warpedStars
         brightStarList = [bSS.BrightStarStamp(stamp_im=warp,
                                               gaiaGMag=extractedStamps.GMags[j],
-                                              gaiaId=extractedStamps.gaiaIds[j])
+                                              gaiaId=extractedStamps.gaiaIds[j],
+                                              transform=warpOutputs.warpTransforms[j])
                           for j, warp in enumerate(warpedStars)]
         # Compute annularFlux and normalize
         self.log.info("Computing annular flux and normalizing %i bright stars from exposure %s",
@@ -369,6 +370,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                                                  statsControl=statsControl,
                                                                  statsFlag=statsFlag,
                                                                  badMaskPlanes=self.config.badMaskPlanes)
+        brightStarStamps = bSS.BrightStarStamps(brightStarList, *self.config.annularFluxRadii,
+                                                nb90Rots=warpOutputs.nb90Rots)
         return pipeBase.Struct(brightStarStamps=brightStarStamps)
 
     def runDataRef(self, dataRef):
