@@ -55,7 +55,7 @@ class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddNa
     fakeCat = cT.Input(
         doc="Catalog of fake sources to draw inputs from.",
         name="{CoaddName}Coadd_fakeSourceCat",
-        storageClass="Parquet",
+        storageClass="DataFrame",
         dimensions=("tract", "skymap")
     )
 
@@ -336,7 +336,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         fakeCat = self.addPixCoords(fakeCat, wcs)
         fakeCat = self.trimFakeCat(fakeCat, image, wcs)
-        band = image.getFilter().getName()
+        band = image.getFilter().getCanonicalName()[0]
         psf = image.getPsf()
         pixelScale = wcs.getPixelScale().asArcseconds()
 
@@ -369,7 +369,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
             image = self.addFakeSources(image, galImages, "galaxy")
             image = self.addFakeSources(image, starImages, "star")
-
         elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
             self.log.warn("No fakes found for this dataRef; processing anyway.")
         else:
