@@ -43,7 +43,7 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
         reading datasets, and optionally dataset type restrictions on them.
         At least one collection must be specified.  This is the collection
         with the calibrated exposures.
-    insrument : `str`
+    instrument : `str`
         The name or fully-qualified class name of an instrument.
     out_collection : `str`, optional
         The name of the collection to save the skymap to.  Default is 'skymaps'.
