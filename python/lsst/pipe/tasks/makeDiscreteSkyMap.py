@@ -136,16 +136,15 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         @return     a pipeBase Struct containing:
                     - skyMap: the constructed SkyMap
         """
-        calexp_md_list = []
-        calexp_wcs_list = []
+        wcs_md_tuple_list = []
         oldSkyMap = None
         datasetName = self.config.coaddName + "Coadd_skyMap"
         for dataRef in dataRefList:
             if not dataRef.datasetExists("calexp"):
                 self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
                 continue
-            calexp_md_list.append(dataRef.get("calexp_md", immediate=True))
-            calexp_wcs_list.append(dataRef.get("calexp_wcs", immediate=True))
+            wcs_md_tuple_list.append((dataRef.get("calexp_wcs", immediate=True),
+                                      dataRef.get("calexp_md", immediate=True)))
         if self.config.doAppend and butler.datasetExists(datasetName):
             oldSkyMap = butler.get(datasetName, immediate=True)
             if not isinstance(oldSkyMap.config, DiscreteSkyMap.ConfigClass):
@@ -153,24 +152,23 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             compareLog = []
             if not self.config.skyMap.compare(oldSkyMap.config, output=compareLog.append):
                 raise ValueError("Cannot append to existing skymap - configurations differ:", *compareLog)
-        result = self.run(calexp_md_list, calexp_wcs_list, oldSkyMap)
+        result = self.run(wcs_md_tuple_list, oldSkyMap)
         if self.config.doWrite:
             butler.put(result.skyMap, datasetName)
         return result
 
     @pipeBase.timeMethod
-    def run(self, calexp_md_list, calexp_wcs_list, oldSkyMap=None):
-        """!Make a skymap from the bounds of the given set of calexp metadata.
+    def run(self, wcs_md_tuple_list, oldSkyMap=None):
+        """!Make a sky map from the bounds of the given set of calexp metadata.
 
-        @param[in]  calexp_md_list        A list containing the calexp metadata to use to build the sky map
-        @param[in]  calexp_wcs_list       A list containing the calexp wcs to use to build the sky map
+        @param[in]  wcs_md_tuple_list     A list of (wcs, metadata) tuples for building the sky map
         @param[in]  oldSkyMap (optional)  A sky map to append to
         @return     a pipeBase Struct containing:
                     - skyMap: the constructed SkyMap
         """
-        self.log.info("Extracting bounding boxes of %d images" % len(calexp_md_list))
+        self.log.info("Extracting bounding boxes of %d images" % len(wcs_md_tuple_list))
         points = []
-        for wcs, md in zip(calexp_wcs_list, calexp_md_list):
+        for wcs, md in wcs_md_tuple_list:
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
             boxI = afwImage.bboxFromMetadata(md)
             boxD = geom.Box2D(boxI)

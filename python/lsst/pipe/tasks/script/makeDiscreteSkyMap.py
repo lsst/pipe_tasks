@@ -71,14 +71,13 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
                    f"in collections {collections} but doAppend is {config.doAppend}.  Aborting...")
             raise LookupError(msg, *e.args[1:])
 
-    calexp_md_list = []
-    calexp_wcs_list = []
+    wcs_md_tuple_list = []
     id_list = butler.registry.queryDatasets('calexp', collections=collections)
     for i in id_list:
-        calexp_md_list.append(butler.get('calexp.metadata', dataId=i.dataId, collections=collections))
-        calexp_wcs_list.append(butler.get('calexp.wcs', dataId=i.dataId, collections=collections))
+        wcs_md_tuple_list.append((butler.get('calexp.metadata', dataId=i.dataId, collections=collections),
+                                  butler.get('calexp.wcs', dataId=i.dataId, collections=collections)))
     task = MakeDiscreteSkyMapTask(config=config)
-    result = task.run(calexp_md_list, calexp_wcs_list, oldSkyMap)
+    result = task.run(wcs_md_tuple_list, oldSkyMap)
     skymap_dataset_type = DatasetType(skymap_name, dimensions=["skymap", ],
                                       universe=butler.registry.dimensions,
                                       storageClass="SkyMap")
