@@ -28,41 +28,10 @@ import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
-from lsst.pipe.base import ArgumentParser, connectionTypes
+from lsst.pipe.base import ArgumentParser
 
 
-class MakeDiscreteSkyMapConnections(pipeBase.PipelineTaskConnections,
-                                    dimensions={"instrument", },
-                                    defaultTemplates={}):
-    calexp_md_list = connectionTypes.Input(
-        name="calexp.metadata",
-        doc="Calibrated exposure metadata to compute sky map from",
-        storageClass="PropertyList",
-        dimensions=["instrument", "visit", "detector"],
-        multiple=True,
-    )
-    calexp_wcs_list = connectionTypes.Input(
-        name="calexp.wcs",
-        doc="Calibrated exposure wcs to compute sky map from",
-        storageClass="Wcs",
-        dimensions=["instrument", "visit", "detector"],
-        multiple=True,
-    )
-    out_skymap = connectionTypes.Output(
-        name="deepCoadd_SkyMap",  # Same as above, I guess
-        doc="Output sky map",
-        storageClass="SkyMap",
-        dimensions=["instrument", ],
-    )
-
-    def __init__(self, *, config=None):
-        super().__init__(config=config)
-        if config.doWrite is not True:
-            self.outputs.discard(f"{config.coaddName}Coadd_SkyMap")
-
-
-class MakeDiscreteSkyMapConfig(pipeBase.PipelineTaskConfig,
-                               pipelineConnections=MakeDiscreteSkyMapConnections):
+class MakeDiscreteSkyMapConfig(pexConfig.Config):
     """Config for MakeDiscreteSkyMapTask
     """
     coaddName = pexConfig.Field(
@@ -146,7 +115,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
             )
 
 
-class MakeDiscreteSkyMapTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
+class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
     """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
 
     The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
