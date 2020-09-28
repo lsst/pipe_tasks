@@ -129,12 +129,18 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         super().__init__(**kwargs)
 
     def runDataRef(self, butler, dataRefList):
-        """!Make a skymap from the bounds of the given set of calexps using the butler.
+        """Make a skymap from the bounds of the given set of calexps using the butler.
 
-        @param[in]  butler        data butler used to save the SkyMap
-        @param[in]  dataRefList   dataRefs of calexps used to determine the size and pointing of the SkyMap
-        @return     a pipeBase Struct containing:
-                    - skyMap: the constructed SkyMap
+        Parameters
+        ----------
+        butler : `lsst.daf.persistence.Butler`
+           Gen2 data butler used to save the SkyMap
+        dataRefList : iterable
+           A list of Gen2 data refs of calexps used to determin the size and pointing of the SkyMap
+        Returns
+        -------
+        struct : `lsst.pipe.base.Struct`
+           The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
         """
         wcs_md_tuple_list = []
         oldSkyMap = None
@@ -159,12 +165,18 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
 
     @pipeBase.timeMethod
     def run(self, wcs_md_tuple_list, oldSkyMap=None):
-        """!Make a sky map from the bounds of the given set of calexp metadata.
+        """Make a SkyMap from the bounds of the given set of calexp metadata.
 
-        @param[in]  wcs_md_tuple_list     A list of (wcs, metadata) tuples for building the sky map
-        @param[in]  oldSkyMap (optional)  A sky map to append to
-        @return     a pipeBase Struct containing:
-                    - skyMap: the constructed SkyMap
+        Parameters
+        ----------
+        wcs_md_tuple_list : iterable
+           A list of tuples with each element expected to be a (Wcs, PropertySet) pair
+        oldSkyMap : `lsst.skymap.DiscreteSkyMap`, option
+           The SkyMap to extend if appending
+        Returns
+        -------
+        struct : `lsst.pipe.base.Struct
+           The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
         """
         self.log.info("Extracting bounding boxes of %d images" % len(wcs_md_tuple_list))
         points = []
