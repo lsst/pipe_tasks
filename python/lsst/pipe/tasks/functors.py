@@ -190,6 +190,11 @@ class Functor(object):
 
         return vals
 
+    def difference(self, parq1, parq2, **kwargs):
+        """Computes difference between functor called on two different ParquetTable objects
+        """
+        return self(parq1, **kwargs) - self(parq2, **kwargs)
+
     def fail(self, df):
         return pd.Series(np.full(len(df), np.nan), index=df.index)
 
