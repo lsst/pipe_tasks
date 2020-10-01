@@ -88,6 +88,23 @@ class FunctorTestCase(unittest.TestCase):
 
         return val
 
+    def _differenceVal(self, functor, parq1, parq2):
+        self.assertIsInstance(functor.name, str)
+        self.assertIsInstance(functor.shortname, str)
+
+        val = functor.difference(parq1, parq2)
+        self.assertIsInstance(val, pd.Series)
+
+        val = functor.difference(parq1, parq2, dropna=True)
+        self.assertEqual(val.isnull().sum(), 0)
+
+        val1 = self._funcVal(functor, parq1)
+        val2 = self._funcVal(functor, parq2)
+
+        self.assertTrue(np.allclose(val, val1 - val2))
+
+        return val
+
     def testColumn(self):
         self.columns.append("base_FootprintArea_value")
         self.dataDict["base_FootprintArea_value"] = \
@@ -172,6 +189,25 @@ class FunctorTestCase(unittest.TestCase):
             mag2 = self._funcVal(Mag('base_PsfFlux', filt=filt), parq)
             self.assertTrue(np.allclose((mag2 - mag1).dropna(), val, rtol=0, atol=1e-13))
 
+    def testDifference(self):
+        """Test .difference method using MagDiff as the example.
+        """
+        self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr",
+                             "modelfit_CModel_instFlux", "modelfit_CModel_instFluxErr"])
+
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
+        self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1000)
+        parq1 = self.simulateMultiParquet(self.dataDict)
+
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 999)
+        self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 999)
+        parq2 = self.simulateMultiParquet(self.dataDict)
+
+        magDiff = MagDiff('base_PsfFlux', 'modelfit_CModel', filt='HSC-G')
+
+        # Asserts that differences computed properly
+        self._differenceVal(magDiff, parq1, parq2)
+
     def testLabeller(self):
         # Covering the code is better than nothing
         self.columns.append("base_ClassificationExtendedness_value")
@@ -218,6 +254,26 @@ class FunctorTestCase(unittest.TestCase):
 
         # Check that there are no nulls
         self.assertFalse(df.isnull().any(axis=None))
+
+        return df
+
+    def _compositeDifferenceVal(self, functor, parq1, parq2):
+        self.assertIsInstance(functor, CompositeFunctor)
+
+        df = functor.difference(parq1, parq2)
+
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertTrue(np.all([k in df.columns for k in functor.funcDict.keys()]))
+
+        df = functor.difference(parq1, parq2, dropna=True)
+
+        # Check that there are no nulls
+        self.assertFalse(df.isnull().any(axis=None))
+
+        df1 = functor(parq1)
+        df2 = functor(parq2)
+
+        self.assertTrue(np.allclose(df.values, df1.values - df2.values))
 
         return df
 
@@ -274,6 +330,21 @@ class FunctorTestCase(unittest.TestCase):
                     'c': Color('base_PsfFlux', 'HSC-G', 'HSC-R')}
         # Covering the code is better than nothing
         df = self._compositeFuncVal(CompositeFunctor(funcDict), parq)  # noqa
+
+    def testCompositeDifference(self):
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
+        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
+        parq1 = self.simulateMultiParquet(self.dataDict)
+
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 999)
+        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 9)
+        parq2 = self.simulateMultiParquet(self.dataDict)
+
+        funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='HSC-G'),
+                    'b': Mag('base_PsfFlux', dataset='forced_src', filt='HSC-G'),
+                    'c': Color('base_PsfFlux', 'HSC-G', 'HSC-R')}
+        # Covering the code is better than nothing
+        df = self._compositeDifferenceVal(CompositeFunctor(funcDict), parq1, parq2)  # noqa
 
     def testLocalPhotometry(self):
         """Test the local photometry functors.
