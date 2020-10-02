@@ -41,7 +41,8 @@ __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,
                                      dimensions=("skymap", "tract", "instrument", "visit", "detector"),
-                                     defaultTemplates={"CoaddName": "deep"}):
+                                     defaultTemplates={"CoaddName": "deep", "wcsName": "jointcal",
+                                                       "photoCalibName": "jointcal"}):
 
     exposure = cT.Input(
         doc="Exposure into which fakes are to be added.",
@@ -59,14 +60,14 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
 
     wcs = cT.Input(
         doc="WCS information for the input exposure.",
-        name="jointcal_wcs",
+        name="{wcsName}_wcs",
         storageClass="Wcs",
         dimensions=("tract", "skymap", "instrument", "visit", "detector")
     )
 
     photoCalib = cT.Input(
         doc="Calib information for the input exposure.",
-        name="jointcal_photoCalib",
+        name="{photoCalibName}_photoCalib",
         storageClass="PhotoCalib",
         dimensions=("tract", "skymap", "instrument", "visit", "detector")
     )
@@ -102,8 +103,9 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
     def __init__(self, *, config=None):
         super().__init__(config=config)
 
-        if not config.useUpdatedCalibs:
+        if config.doApplyExternalSkyWcs is False:
             self.inputs.remove("wcs")
+        if config.doApplyExternalPhotoCalib is False:
             self.inputs.remove("photoCalib")
 
 
@@ -116,10 +118,38 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
     The default column names are those from the UW sims database.
     """
 
-    useUpdatedCalibs = pexConfig.Field(
-        doc="Use updated calibs and wcs from jointcal?",
+    doApplyExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
         default=False,
+        doc="Whether to apply an external photometric calibration via an "
+            "`lsst.afw.image.PhotoCalib` object. Uses the "
+            "`externalPhotoCalibName` config option to determine which "
+            "calibration to use."
+    )
+
+    externalPhotoCalibName = pexConfig.ChoiceField(
+        doc="What type of external photo calib to use.",
+        dtype=str,
+        default="jointcal",
+        allowed={"jointcal": "Use jointcal_photoCalib",
+                 "fgcm": "Use fgcm_photoCalib",
+                 "fgcm_tract": "Use fgcm_tract_photoCalib"}
+    )
+
+    doApplyExternalSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to apply an external astrometric calibration via an "
+            "`lsst.afw.geom.SkyWcs` object. Uses the "
+            "`externalSkyWcsName` config option to determine which "
+            "calibration to use."
+    )
+
+    externalSkyWcsName = pexConfig.ChoiceField(
+        doc="What type of updated WCS calib to use.",
+        dtype=str,
+        default="jointcal",
+        allowed={"jointcal": "Use jointcal_wcs"}
     )
 
     coaddName = pexConfig.Field(
@@ -220,9 +250,10 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         Notes
         -----
         Uses the calibration and WCS information attached to the calexp for the posistioning and calibration
-        of the sources unless the config option config.useUpdatedCalibs is set then it uses the
-        meas_mosaic/jointCal outputs. The config defualts for the column names in the catalog of fakes are
-        taken from the University of Washington simulations database. Operates on one ccd at a time.
+        of the sources unless the config option config.externalPhotoCalibName or config.externalSkyWcsName
+        are set then it uses the specified outputs. The config defualts for the column names in the catalog
+        of fakes are taken from the University of Washington simulations database.
+        Operates on one ccd at a time.
         """
         exposureIdInfo = dataRef.get("expIdInfo")
 
@@ -234,12 +265,16 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             fakeCat = Table.read(self.config.insertFakes.fakeType).to_pandas()
 
         calexp = dataRef.get("calexp")
-        if self.config.useUpdatedCalibs:
-            self.log.info("Using updated calibs from meas_mosaic/jointCal")
-            wcs = dataRef.get("jointcal_wcs")
-            photoCalib = dataRef.get("jointcal_photoCalib")
+        if self.config.doApplyExternalSkyWcs:
+            self.log.info("Using external wcs from " + self.config.externalSkyWcsName)
+            wcs = dataRef.get(self.config.externalSkyWcsName + "_wcs")
         else:
             wcs = calexp.getWcs()
+
+        if self.config.doApplyExternalPhotoCalib:
+            self.log.info("Using external photocalib from " + self.config.externalPhotoCalibName)
+            photoCalib = dataRef.get(self.config.externalPhotoCalibName + "_photoCalib")
+        else:
             photoCalib = calexp.getPhotoCalib()
 
         icSourceCat = dataRef.get("icSrc", immediate=True)
@@ -259,8 +294,10 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
-        if self.config.useUpdatedCalibs:
+        if not self.config.doApplyExternalSkyWcs:
             inputs["wcs"] = inputs["image"].getWcs()
+
+        if not self.config.doApplyExternalPhotoCalib:
             inputs["photoCalib"] = inputs["image"].getPhotoCalib()
 
         outputs = self.run(**inputs)
