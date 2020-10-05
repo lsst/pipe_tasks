@@ -31,6 +31,7 @@ from lsst.afw import image as afwImage
 import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
+from lsst.pex import exceptions as pexExceptions
 
 
 class SubtractBrightStarsConfig(pexConfig.Config):
@@ -52,16 +53,15 @@ class SubtractBrightStarsConfig(pexConfig.Config):
         default="subtractor"
     )
     doWriteSubtractedExposure = pexConfig.Field(
-        dtype=str,
-        doc="(TEMP) Absolute path to where the subtracted exposure file should be written."
-            "An ersatz of dataId template will be added.",
-        default="subtracted_calexp"
+        dtype=bool,
+        doc="Should an exposure with bright stars subtracted be written to disk?",
+         default=True
     )
     subtractedExposureFilename = pexConfig.Field(
         dtype=str,
         doc="(TEMP) Absolute path to where the subtractor file should be written."
             "An ersatz of dataId template will be added.",
-        default="subtractor"
+        default="subtractedExposure"
     )
     magLimit = pexConfig.Field(
         dtype=float,
@@ -110,7 +110,7 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
                 model.setXY0(star.XY0)
                 # create empty destination image
                 invTransform = star.transform.inverted()
-                invXY0 = geom.Point2I(invTransform.applyForward(star.XY0))
+                invXY0 = geom.Point2I(invTransform.applyForward(geom.Point2D(star.XY0)))
                 bbox = geom.Box2I(corner=invXY0, dimensions=modelStampSize)
                 invImage = afwImage.MaskedImageF(bbox)
                 # Apply inverse transform
@@ -125,7 +125,12 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
                 # Multiply by annularFlux
                 invImage.image *= star.annularFlux
                 # Add matched model to subtractor exposure
-                subtractor[bbox] -= invImage
+                try:
+                    subtractor[bbox] += invImage
+                except pexExceptions.LengthError:
+                    # TODO: handle stars close to the edge (DM-25894)
+                    self.log.debug(f"Star {star.gaiaId} not included in the subtractor"
+                                   "because it was too close to the edge.")
         return subtractor
 
     @pipeBase.timeMethod
@@ -151,14 +156,14 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
         # Create an empty image the size of the exposure
         brightStarSubtractor = afwImage.MaskedImageF(bbox=inputExposure.getBBox())
         # Warp (and shift, and potentially rotate) model to fit each star
-        subtractor = self.matchModels(model, brightStarSubtractor, bss)
+        subtractor = self.matchModel(model, bss, brightStarSubtractor)
         if self.config.doWriteSubtractor:
             if dataId is not None:
                 subtractor.writeFits(self.config.subtractorFilename
                                      + f"-{dataId['visit']}-{dataId['ccd']}.fits")
         if self.config.doWriteSubtractedExposure:
             subtractedExposure = inputExposure.clone()
-            subtractedExposure.image -= subtractor
+            subtractedExposure.image -= subtractor.image
             if dataId is not None:
                 subtractedExposure.writeFits(self.config.subtractedExposureFilename
                                              + f"-{dataId['visit']}-{dataId['ccd']}.fits")
@@ -177,6 +182,4 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
         calexp = dataRef.get("calexp")
         bss = dataRef.get("brightStarStamps")
         output = self.run(calexp, bss, dataId=dataRef.dataId)
-        # Save processed bright star stamps
-        dataRef.put(output.brightStarStamps, "brightStarStamps")
-        return pipeBase.Struct(brightStarStamps=output.brightStarStamps)
+        return pipeBase.Struct(subtractor=output)
