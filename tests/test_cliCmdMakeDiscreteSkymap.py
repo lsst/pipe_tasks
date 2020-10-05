@@ -43,7 +43,7 @@ class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
         """Test the most basic required arguments."""
         self.run_test(["make-discrete-skymap",
                        "--collections", "foo/bar,baz",
-                       "--instrument", "a.b.c", "here"],
+                       "here", "a.b.c"],
                       self.makeExpected(repo="here",
                                         collections=("foo/bar", "baz"),
                                         out_collection="skymaps",
@@ -53,13 +53,12 @@ class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
     def test_all(self):
         """Test all the arguments."""
         self.run_test(["make-discrete-skymap",
-                       "--instrument", "a.b.c",
                        "--collections", "foo/bar,baz",
                        "--config-file", "/path/to/config",
                        "--collections", "boz",
                        "--out-collection", "biz",
                        "--skymap-id", "wiz",
-                       "here"],
+                       "here", "a.b.c"],
                       self.makeExpected(repo="here",
                                         instrument="a.b.c",
                                         config_file="/path/to/config",
@@ -73,11 +72,11 @@ class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
 
     def test_missing(self):
         """test a missing argument"""
-        self.run_missing(["make-discrete-skymap", "--collections", "foo/bar,baz", "--instrument", "a.b.c"],
+        self.run_missing(["make-discrete-skymap", "--collections", "foo/bar,baz"],
                          'Missing argument "REPO"')
         self.run_missing(["make-discrete-skymap", "--collections", "foo/bar,baz", "here"],
-                         'Missing option "-i" / "--instrument"')
-        self.run_missing(["make-discrete-skymap", "--instrument", "a.b.c", "here"],
+                         'Missing argument "INSTRUMENT"')
+        self.run_missing(["make-discrete-skymap", "here", "a.b.c"],
                          'Error: Missing option "--collections".')
 
 
