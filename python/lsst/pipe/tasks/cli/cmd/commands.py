@@ -23,12 +23,13 @@ import click
 
 from lsst.daf.butler.cli.opt import (repo_argument, config_file_option, options_file_option)
 from lsst.daf.butler.cli.utils import (cli_handle_exception, split_commas, typeStrAcceptsMultiple)
-from lsst.obs.base.cli.opt import instrument_option
+from lsst.obs.base.cli.opt import instrument_argument
 from ... import script
 
 
 @click.command(short_help="Define a discrete skymap from calibrated exposures.")
 @repo_argument(required=True)
+@instrument_argument(required=True)
 @config_file_option(help="Path to a pex_config override to be included after the Instrument config overrides"
                          "are applied.")
 @options_file_option()
@@ -45,7 +46,6 @@ from ... import script
 @click.option("--skymap-id",
               help=("The identifier of the skymap to write."),
               type=str, default="discrete", show_default=True)
-@instrument_option(required=True)
 def make_discrete_skymap(*args, **kwargs):
     """Define a discrete skymap from calibrated exposures in the butler registry."""
     cli_handle_exception(script.makeDiscreteSkyMap, *args, **kwargs)
