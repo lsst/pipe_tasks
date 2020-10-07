@@ -25,6 +25,8 @@ single visit) level.
 
 __all__ = ["SubtractBrightStarsTask"]
 
+import numpy as np
+
 from lsst import geom
 from lsst.afw import math as afwMath
 from lsst.afw import image as afwImage
@@ -124,6 +126,8 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
                     invImage.setXY0(invXY0)
                 # Multiply by annularFlux
                 invImage.image *= star.annularFlux
+                # Replace nans before subtraction (note all nan pixels have the NO_DATA flag)
+                invImage.image.array[np.isnan(invImage.image.array)] = 0
                 # Add matched model to subtractor exposure
                 try:
                     subtractor[bbox] += invImage
