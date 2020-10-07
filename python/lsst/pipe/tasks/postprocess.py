@@ -21,11 +21,13 @@
 
 import functools
 import pandas as pd
+import numpy as np
 from collections import defaultdict
 
 import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
@@ -787,6 +789,167 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
                                level="sensor",
                                help="data ID, e.g. --id visit=12345 ccd=0")
         return parser
+
+
+class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
+                                         dimensions=("instrument", "visit",),
+                                         defaultTemplates={}):
+    calexp = cT.Input(
+        doc="Calibrated exposures used for metadata",
+        name="calexp",
+        storageClass="ExposureF",
+        dimensions=("instrument", "visit", "detector"),
+        deferLoad=True,
+        multiple=True,
+    )
+    visitSummary = cT.Output(
+        doc="Consolidated visit-level exposure metadata",
+        name="visitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+    )
+
+
+class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
+                                    pipelineConnections=ConsolidateVisitSummaryConnections):
+    """Config for ConsolidateVisitSummaryTask"""
+    pass
+
+
+class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
+    """Task to consolidate per-detector visit metadata
+    """
+    _DefaultName = "consolidateVisitSummary"
+    ConfigClass = ConsolidateVisitSummaryConfig
+
+    @classmethod
+    def _makeArgumentParser(cls):
+        parser = ArgumentParser(name=cls._DefaultName)
+
+        parser.add_id_argument("--id", "calexp",
+                               help="data ID, e.g. --id visit=12345",
+                               ContainerClass=VisitDataIdContainer)
+        return parser
+
+    def writeMetadata(self, dataRef):
+        """No metadata to write.
+        """
+        pass
+
+    def writeConfig(self, butler, clobber=False, doBackup=True):
+        """No config to write.
+        """
+        pass
+
+    def runDataRef(self, dataRefList):
+        self.isGen3 = False
+
+        visit = dataRefList[0].dataId['visit']
+
+        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)" %
+                       (len(dataRefList), visit))
+
+        expCatalog = self.run(visit, dataRefList)
+
+        dataRefList[0].put(expCatalog, 'visitSummary', visit=visit)
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        self.isGen3 = True
+
+        dataRefs = butlerQC.get(inputRefs.calexp)
+        visit = dataRefs[0].dataId.byName()['visit']
+
+        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)" %
+                       (len(dataRefs), visit))
+
+        expCatalog = self.run(visit, dataRefs)
+
+        butlerQC.put(expCatalog, outputRefs.visitSummary)
+
+    def run(self, visit, dataRefs):
+        """Make a combined exposure catalog from a list of dataRefs.
+
+        Parameters
+        ----------
+        visit : `int`
+            Visit identification number
+        dataRefs : `list`
+            List of calexp dataRefs in visit.  May be list of
+            `lsst.daf.persistence.ButlerDataRef` (Gen2) or
+            `lsst.daf.butler.DeferredDatasetHandle` (Gen3).
+
+        Returns
+        -------
+        visitSummary : `lsst.afw.table.ExposureCatalog`
+            Exposure catalog with per-detector summary information.
+        """
+        schema = afwTable.ExposureTable.makeMinimalSchema()
+        schema.addField('visit', type='I', doc='Visit number')
+        schema.addField('ccd', type='I', doc='Detector number')
+        schema.addField('filterName', type='String', size=20, doc='Filter name')
+        schema.addField('psfSigma', type='F',
+                        doc='PSF model full width half-maximum (center of chip)')
+        schema.addField('psfArea', type='F',
+                        doc='PSF model effective area (center of chip)')
+        schema.addField('psfIxx', type='F',
+                        doc='PSF model Ixx (center of chip)')
+        schema.addField('psfIyy', type='F',
+                        doc='PSF model Iyy (center of chip)')
+        schema.addField('psfIxy', type='F',
+                        doc='PSF model Ixy (center of chip)')
+        schema.addField('raCorners', type='ArrayD', size=4,
+                        doc='Right Ascension of bounding box corners')
+        schema.addField('decCorners', type='ArrayD', size=4,
+                        doc='Declination of bounding box corners')
+
+        cat = afwTable.ExposureCatalog(schema)
+        cat.resize(len(dataRefs))
+
+        cat['visit'] = visit
+
+        if not self.isGen3:
+            bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
+
+        for i, dataRef in enumerate(dataRefs):
+            if self.isGen3:
+                visitInfo = dataRef.get(component='visitInfo')
+                f = dataRef.get(component='filter')
+                psf = dataRef.get(component='psf')
+                wcs = dataRef.get(component='wcs')
+                photoCalib = dataRef.get(component='photoCalib')
+                detector = dataRef.get(component='detector')
+                bbox = dataRef.get(component='bbox')
+            else:
+                exp = dataRef.get(datasetType='calexp_sub', bbox=bbox)
+                visitInfo = exp.getInfo().getVisitInfo()
+                f = exp.getFilter()
+                psf = exp.getPsf()
+                wcs = exp.getWcs()
+                photoCalib = exp.getPhotoCalib()
+                detector = exp.getDetector()
+                bbox = dataRef.get(datasetType='calexp_bbox')
+
+            rec = cat[i]
+            rec.setBBox(bbox)
+            rec.setVisitInfo(visitInfo)
+            rec.setWcs(wcs)
+            rec.setPhotoCalib(photoCalib)
+
+            rec['filterName'] = f.getName()
+            rec['ccd'] = detector.getId()
+            shape = psf.computeShape(bbox.getCenter())
+            rec['psfSigma'] = shape.getDeterminantRadius()
+            rec['psfIxx'] = shape.getIxx()
+            rec['psfIyy'] = shape.getIyy()
+            rec['psfIxy'] = shape.getIxy()
+            im = psf.computeKernelImage(bbox.getCenter())
+            rec['psfArea'] = np.sum(im.array)/np.sum(im.array**2.)
+
+            sph_pts = wcs.pixelToSky(lsst.geom.Box2D(bbox).getCorners())
+            rec['raCorners'][:] = [sph.getRa().asDegrees() for sph in sph_pts]
+            rec['decCorners'][:] = [sph.getDec().asDegrees() for sph in sph_pts]
+
+        return cat
 
 
 class VisitDataIdContainer(DataIdContainer):
