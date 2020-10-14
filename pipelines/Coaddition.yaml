@@ -1,4 +1,0 @@
-description: Coaddition
-tasks:
-  makeWarpTask: lsst.pipe.tasks.makeCoaddTempExp.MakeWarpTask
-  assembleCoadd: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask

@@ -5,3 +5,13 @@ tasks:
   deblend: lsst.pipe.tasks.deblendCoaddSourcesPipeline.DeblendCoaddSourcesSingleTask
   measure: lsst.pipe.tasks.multiBand.MeasureMergedCoaddSourcesTask
   mergeMeasurements: lsst.pipe.tasks.mergeMeasurements.MergeMeasurementsTask
+subsets:
+  multiband:
+    subset:
+      - detection
+      - mergeDetections
+      - deblend
+      - measure
+      - mergeMeasurements
+    description: A set of tasks to run when making measurements on one or more
+      bands of coadd outputs

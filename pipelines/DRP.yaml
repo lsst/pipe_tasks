@@ -1,0 +1,6 @@
+description: Base Pipeline that describes the Data Release Production process.
+inherits:
+  - location: $PIPE_TASKS_DIR/pipelines/_SingleFrame.yaml
+  - location: $PIPE_TASKS_DIR/pipelines/_Coaddition.yaml
+  - location: $PIPE_TASKS_DIR/pipelines/_Multiband.yaml
+  - location: $PIPE_TASKS_DIR/pipelines/_Forced.yaml
