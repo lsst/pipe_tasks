@@ -27,6 +27,8 @@ __all__ = ["ProcessBrightStarsTask"]
 
 import numpy as np
 import astropy.units as u
+from operator import ior
+from functools import reduce
 
 from lsst import geom
 from lsst.afw import math as afwMath
@@ -128,13 +130,13 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             " annular flux.",
         default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
     )
-    refCatLoader = pexConfig.ConfigurableField(
+    refObjLoader = pexConfig.ConfigurableField(
         target=LoadIndexedReferenceObjectsTask,
         doc="reference object loader for astrometric calibration",
     )
 
     def setDefaults(self):
-        self.refCatLoader.ref_dataset_name = "gaia_dr2_20200414"
+        self.refObjLoader.ref_dataset_name = "gaia_dr2_20200414"
 
 
 class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
@@ -159,7 +161,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, butler=None, initInputs=None, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         # Compute (model) stamp size depending on provided "buffer" value
         self.modelStampSize = (int(self.config.stampSize[0]*self.config.modelStampBuffer),
                                int(self.config.stampSize[1]*self.config.modelStampBuffer))
@@ -172,17 +174,17 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.modelCenter = self.modelStampSize[0]//2, self.modelStampSize[1]//2
         # configure Gaia refcat
         if butler is not None:
-            self.makeSubtask('refCatLoader', butler=butler)
+            self.makeSubtask('refObjLoader', butler=butler)
 
-    def extractStamps(self, inputExposure, refCatLoader=None):
+    def extractStamps(self, inputExposure, refObjLoader=None):
         """ Read position of bright stars within `inputExposure` from refCat
-        amd extract them.
+        and extract them.
 
         Parameters
         ----------
         inputExposure : `afwImage.exposure.exposure.ExposureF`
             The image from which bright star stamps should be extracted.
-        refCatLoader : `LoadIndexedReferenceObjectsTask`, optional
+        refObjLoader : `LoadIndexedReferenceObjectsTask`, optional
             Loader to find objects within a reference catalog.
 
         Returns
@@ -197,13 +199,13 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             - ``gaiaIds``: `np.ndarray` of corresponding unique Gaia
                 identifiers.
         """
-        if refCatLoader is None:
-            refCatLoader = self.refCatLoader
+        if refObjLoader is None:
+            refObjLoader = self.refObjLoader
         starIms = []
         pixCenters = []
         wcs = inputExposure.getWcs()
         # select stars within input exposure from refcat
-        withinCalexp = refCatLoader.loadPixelBox(inputExposure.getBBox(), wcs, filterName="phot_g_mean")
+        withinCalexp = refObjLoader.loadPixelBox(inputExposure.getBBox(), wcs, filterName="phot_g_mean")
         refCat = withinCalexp.refCat
         # keep bright objects
         fluxLimit = ((self.config.magLimit*u.ABmag).to(u.nJy)).to_value()
@@ -221,8 +223,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                     and cpix[0] < inputExposure.getDimensions()[0] - self.config.stampSize[0]/2
                     and cpix[1] >= self.config.stampSize[1]/2
                     and cpix[1] < inputExposure.getDimensions()[1] - self.config.stampSize[1]/2):
-                starIms += [inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize))]
-                pixCenters += [cpix]
+                starIms.append(inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize)))
+                pixCenters.append(cpix)
         return pipeBase.Struct(starIms=starIms,
                                pixCenters=pixCenters,
                                GMags=GMags,
@@ -298,15 +300,15 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             # Apply rotation if apropriate
             if nb90Rots:
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
-            warpedStars += [destImage.clone()]
+            warpedStars.append(destImage.clone())
         return warpedStars
 
     def computeAnnularFlux(self, image):
         """ Computes "AnnularFLux", the integrated flux within an annulus
         around an object's center. Since the center of bright stars are
         saturated and/or heavily affected by ghosts, we measure their flux
-        in an annulus with a large enough inner radius to avoid the worst
-        of ghosting and have enough non-saturated pixels.
+        in an annulus with a large enough inner radius to avoid the most
+        severe ghosts and contain enough non-saturated pixels.
 
         Parameters
         ----------
@@ -327,7 +329,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # create image with the same pixel values within annulus, NO_DATA
         # elsewhere
         annulusImage = afwImage.MaskedImageF(image.getDimensions(), planeDict=maskPlaneDict)
-        annulusMask = annulusImage.getMask()
+        annulusMask = annulusImage.mask
         annulusMask.array[:] = maskPlaneDict['NO_DATA']
         annulus.copyMaskedImage(image, annulusImage)
         # annularFlux statistic set-up, including mask planes
@@ -335,9 +337,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         statsControl.setNumSigmaClip(self.config.numSigmaClip)
         statsControl.setNumIter(self.config.numIter)
         badMasks = self.config.badMaskPlanes
-        andMask = annulusMask.getPlaneBitMask(badMasks[0])
-        for bm in badMasks[1:]:
-            andMask = andMask | annulusMask.getPlaneBitMask(bm)
+        andMask = reduce(ior, (annulusMask.getPlaneBitMask(bm) for bm in badMasks))
         statsControl.setAndMask(andMask)
         # compute annularFlux
         statsFlags = afwMath.stringToStatisticsProperty(self.config.annularFluxStatistic)
@@ -355,8 +355,11 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         ----------
         inputExposure : `afwImage.exposure.exposure.ExposureF`
             The image from which bright star stamps should be extracted.
-        refCatLoader : `LoadIndexedReferenceObjectsTask`, optional
+        refObjLoader : `LoadIndexedReferenceObjectsTask`, optional
             Loader to find objects within a reference catalog.
+        dataId : `dict`
+            The dataId of the exposure (and detector) bright stars should be
+            extracted from.
 
         Returns
         -------
@@ -367,7 +370,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         """
         self.log.info("Extracting bright stars from exposure %s" % (dataId))
         # Extract stamps around bright stars
-        extractedStamps = self.extractStamps(inputExposure, refCatLoader=refObjLoader)
+        extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
         # Warp (and shift, and potentially rotate) them
         self.log.info("Applying warp to %i star stamps from exposure %s" % (len(extractedStamps.starIms),
                                                                             dataId))
@@ -379,12 +382,12 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         for wstar in warpedStars:
             annularFlux = self.computeAnnularFlux(wstar)
             wstar.image.array /= annularFlux
-            fluxes += [annularFlux]
-        brightStarList = [bSS.BrightStarStamp(starStamp=warpedStars[j],
+            fluxes.append(annularFlux)
+        brightStarList = [bSS.BrightStarStamp(starStamp=warp,
                                               gaiaGMag=extractedStamps.GMags[j],
                                               gaiaId=extractedStamps.gaiaIds[j],
                                               annularFlux=fluxes[j])
-                          for j in range(len(warpedStars))]
+                          for j, warp in enumerate(warpedStars)]
         brightStarStamps = bSS.BrightStarStamps(brightStarList, *self.config.annularFluxRadii)
         return pipeBase.Struct(brightStarStamps=brightStarStamps)
 
