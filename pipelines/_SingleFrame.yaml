@@ -1,0 +1,12 @@
+description: ProcessCcd
+tasks:
+  isr: lsst.ip.isr.IsrTask
+  characterizeImage: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
+  calibrate: lsst.pipe.tasks.calibrate.CalibrateTask
+subsets:
+  processCcd:
+    subset:
+      - isr
+      - characterizeImage
+      - calibrate
+    description: A set of tasks to run when doing single frame processing

@@ -1,0 +1,10 @@
+description: Coaddition
+tasks:
+  makeWarp: lsst.pipe.tasks.makeCoaddTempExp.MakeWarpTask
+  assembleCoadd: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask
+subsets:
+  coaddition:
+    subset:
+      - makeWarp
+      - assembleCoadd
+    description: A set of tasks to run when coadding images

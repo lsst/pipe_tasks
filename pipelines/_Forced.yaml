@@ -2,3 +2,10 @@ description: Forced
 tasks:
   forcedPhotCcd: lsst.meas.base.forcedPhotCcd.ForcedPhotCcdTask
   forcedPhotCoadd: lsst.meas.base.forcedPhotCoadd.ForcedPhotCoaddTask
+subsets:
+  forced:
+    subset:
+      - forcedPhotCcd
+      - forcedPhotCoadd
+    description: A set of tasks to run when doing forced measurements
+

@@ -1,5 +1,0 @@
-description: ProcessCcd
-tasks:
-  isr: lsst.ip.isr.IsrTask
-  charImage: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
-  calibrate: lsst.pipe.tasks.calibrate.CalibrateTask
