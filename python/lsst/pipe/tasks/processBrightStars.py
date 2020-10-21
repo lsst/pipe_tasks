@@ -40,7 +40,6 @@ import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.pipe.base import connectionTypes as cT
 from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
-from lsst.meas.algorithms import ReferenceObjectLoader
 from lsst.meas.algorithms import brightStarStamps as bSS
 
 
@@ -50,14 +49,6 @@ class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections, dimensions
         name="calexp",
         storageClass="ExposureF",
         dimensions=("visit", "detector")
-    )
-    refCat = cT.PrerequisiteInput(
-        doc="Reference catalog that contains bright star positions",
-        name="gaia_dr2_20200414",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        multiple=True,
-        deferLoad=True
     )
     brightStarStamps = cT.Output(
         doc="Set of preprocessed postage stamps, each centered on a single bright star.",
@@ -140,10 +131,14 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
 
 
 class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
-    """Task to extract, process, and store small image cut-outs (or "postage
-    stamps") around bright stars.
+    """The description of the parameters for this Task are detailed in
+    :lsst-task:`~lsst.pipe.base.PipelineTask`.
 
-    `ProcessBrightStarsTask` relies on three methods, called in succession:
+    Notes
+    -----
+    `ProcessBrightStarsTask` is used to extract, process, and store small
+    image cut-outs (or "postage stamps") around bright stars. It relies on
+    three methods, called in succession:
 
     `extractStamps`
         Find bright stars within the exposure using a reference catalog and
@@ -415,9 +410,14 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         inputs['dataId'] = str(butlerQC.quantum.dataId)
-        refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
-                                                      for ref in inputRefs.refCat],
-                                             refCats=inputs.pop("refCat"),
-                                             config=self.config.refObjLoader)
+        # TODO (DM-27262): remove workaround and load refcat in gen3
+        self.log.info("Gaia refcat is not yet available in gen3; as a temporary fix, "
+                      "reading it in from a gen2 butler")
+        from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
+        from lsst.daf.persistence import Butler
+        refcatConfig = LoadIndexedReferenceObjectsTask.ConfigClass()
+        refcatConfig.ref_dataset_name = 'gaia_dr2_20200414'
+        gen2butler = Butler('/datasets/hsc/repo/rerun/RC/w_2020_03/DM-23121_obj/')
+        refObjLoader = LoadIndexedReferenceObjectsTask(gen2butler, config=refcatConfig)
         output = self.run(**inputs, refObjLoader=refObjLoader)
         butlerQC.put(output, outputRefs)
