@@ -88,7 +88,8 @@ class CalibsRegisterConfig(RegisterConfig):
     incrementValidEnd = Field(
         dtype=bool,
         default=True,
-        doc="Fix the off-by-one error by incrementing validEnd?",
+        doc="Fix the off-by-one error by incrementing validEnd. See "
+        "fixSubsetValidity for more details.",
     )
 
 
@@ -138,6 +139,12 @@ class CalibsRegisterTask(RegisterTask):
         if there are overlaps, a midpoint is used to fix the overlaps,
         so that the calibration data with whose date is nearest the date
         of the observation is used.
+
+        DM generated calibrations contain a CALIB_ID header
+        keyword. These calibrations likely require the
+        incrementValidEnd configuration option set to True.  Other
+        calibrations generate the calibDate via the DATE-OBS header
+        keyword, and likely require incrementValidEnd=False.
 
         @param conn: Database connection
         @param table: Name of table to be selected
