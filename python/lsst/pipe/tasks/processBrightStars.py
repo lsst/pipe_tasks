@@ -151,10 +151,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     `warpStamps`
         Shift and warp each stamp to remove optical distortions and sample all
         stars on the same pixel grid.
-    `computeAnnularFlux`
-        Computes the flux of an object in an annulus. This is required to
-        normalize each bright star stamp as their central pixels are likely
-        saturated and/or contain ghosts, and cannot be used.
+    `measureAndNormalize`
+        Compute the flux of an object in an annulus and normalize it. This is
+        required to normalize each bright star stamp as their central pixels
+        are likely saturated and/or contain ghosts, and cannot be used.
     """
     ConfigClass = ProcessBrightStarsConfig
     _DefaultName = "processBrightStars"
@@ -239,7 +239,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         ----------
         stamps : `collections.abc.Sequence`
                      [`afwImage.exposure.exposure.ExposureF`]
-            Image cutout centered on a single object.
+            Image cutouts centered on a single object.
         pixCenters : `collections.abc.Sequence` [`geom.Point2D`]
             Positions of each object's center (as obtained from the refCat),
             in pixels.
@@ -303,46 +303,56 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             warpedStars.append(destImage.clone())
         return warpedStars
 
-    def computeAnnularFlux(self, image):
-        """ Computes "AnnularFLux", the integrated flux within an annulus
-        around an object's center. Since the center of bright stars are
-        saturated and/or heavily affected by ghosts, we measure their flux
-        in an annulus with a large enough inner radius to avoid the most
-        severe ghosts and contain enough non-saturated pixels.
+    def measureAndNormalize(self, warpedStamps):
+        """Compute "annularFlux", the integrated flux within an annulus
+        around each object's center, and normalize them.
+
+        Since the center of bright stars are saturated and/or heavily affected
+        by ghosts, we measure their flux in an annulus with a large enough
+        inner radius to avoid the most severe ghosts and contain enough
+        non-saturated pixels.
 
         Parameters
         ----------
-        image : `afwImage.maskedImage.maskedImage.MaskedImageF`
-            Small image (stamp) centered on the object whose annularFlux is to
-            be computed.
+        warpedStamps : `collections.abc.Sequence`
+                           [`afwImage.exposure.exposure.ExposureF`]
+            Image cutouts centered on a single object and warped to the same
+            arbirtary grid.
 
         Returns
         -------
-        annularFlux : `float`
+        annularFluxes : `list` [`float`]
         """
-        maskPlaneDict = image.getMask().getMaskPlaneDict()
         innerRadius, outerRadius = self.config.annularFluxRadii
         # Create SpanSet of annulus
         outerCircle = afwGeom.SpanSet.fromShape(outerRadius, afwGeom.Stencil.CIRCLE, offset=self.modelCenter)
         innerCircle = afwGeom.SpanSet.fromShape(innerRadius, afwGeom.Stencil.CIRCLE, offset=self.modelCenter)
         annulus = outerCircle.intersectNot(innerCircle)
-        # create image with the same pixel values within annulus, NO_DATA
-        # elsewhere
-        annulusImage = afwImage.MaskedImageF(image.getDimensions(), planeDict=maskPlaneDict)
-        annulusMask = annulusImage.mask
-        annulusMask.array[:] = maskPlaneDict['NO_DATA']
-        annulus.copyMaskedImage(image, annulusImage)
-        # annularFlux statistic set-up, including mask planes
+        # annularFlux statistic set-up, excluding mask planes
         statsControl = afwMath.StatisticsControl()
         statsControl.setNumSigmaClip(self.config.numSigmaClip)
         statsControl.setNumIter(self.config.numIter)
-        badMasks = self.config.badMaskPlanes
-        andMask = reduce(ior, (annulusMask.getPlaneBitMask(bm) for bm in badMasks))
-        statsControl.setAndMask(andMask)
-        # compute annularFlux
-        statsFlags = afwMath.stringToStatisticsProperty(self.config.annularFluxStatistic)
-        annulusStat = afwMath.makeStatistics(annulusImage, statsFlags, statsControl)
-        return annulusStat.getValue()
+        annularFluxes = []
+        for image in warpedStamps:
+            # create image with the same pixel values within annulus, NO_DATA
+            # elsewhere
+            maskPlaneDict = image.getMask().getMaskPlaneDict()
+            annulusImage = afwImage.MaskedImageF(image.getDimensions(), planeDict=maskPlaneDict)
+            annulusMask = annulusImage.mask
+            annulusMask.array[:] = maskPlaneDict['NO_DATA']
+            annulus.copyMaskedImage(image, annulusImage)
+            # set mask planes to be ignored
+            badMasks = self.config.badMaskPlanes
+            andMask = reduce(ior, (annulusMask.getPlaneBitMask(bm) for bm in badMasks))
+            statsControl.setAndMask(andMask)
+            # compute annularFlux
+            statsFlags = afwMath.stringToStatisticsProperty(self.config.annularFluxStatistic)
+            annulusStat = afwMath.makeStatistics(annulusImage, statsFlags, statsControl)
+            annularFlux = annulusStat.getValue()
+            annularFluxes.append(annularFlux)
+            # normalize stamps
+            image.image.array /= annularFlux
+        return annularFluxes
 
     @pipeBase.timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None):
@@ -378,11 +388,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # Compute annularFlux and normalize
         self.log.info("Computing annular flux and normalizing %i bright stars from exposure %s",
                       len(warpedStars), dataId)
-        fluxes = []
-        for wstar in warpedStars:
-            annularFlux = self.computeAnnularFlux(wstar)
-            wstar.image.array /= annularFlux
-            fluxes.append(annularFlux)
+        fluxes = self.measureAndNormalize(warpedStars)
         brightStarList = [bSS.BrightStarStamp(starStamp=warp,
                                               gaiaGMag=extractedStamps.GMags[j],
                                               gaiaId=extractedStamps.gaiaIds[j],
