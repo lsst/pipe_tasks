@@ -368,16 +368,16 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
             - ``brightStarStamps``: ``bSS.BrightStarStamps``
         """
-        self.log.info("Extracting bright stars from exposure %s" % (dataId))
+        self.log.info("Extracting bright stars from exposure %s", dataId)
         # Extract stamps around bright stars
         extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
         # Warp (and shift, and potentially rotate) them
-        self.log.info("Applying warp to %i star stamps from exposure %s" % (len(extractedStamps.starIms),
-                                                                            dataId))
+        self.log.info("Applying warp to %i star stamps from exposure %s",
+                      len(extractedStamps.starIms), dataId)
         warpedStars = self.warpStamps(extractedStamps.starIms, extractedStamps.pixCenters)
         # Compute annularFlux and normalize
-        self.log.info("Computing annular flux and normalizing %i bright stars from exposure %s" % (
-            len(warpedStars), dataId))
+        self.log.info("Computing annular flux and normalizing %i bright stars from exposure %s",
+                      len(warpedStars), dataId)
         fluxes = []
         for wstar in warpedStars:
             annularFlux = self.computeAnnularFlux(wstar)
