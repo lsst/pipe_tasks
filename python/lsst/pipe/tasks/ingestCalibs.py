@@ -85,6 +85,12 @@ class CalibsRegisterConfig(RegisterConfig):
                                         doc="Tables for which to set validity for a calib from when it is "
                                         "taken until it is superseded by the next; validity in other tables "
                                         "is calculated by applying the validity range.")
+    incrementValidEnd = Field(
+        dtype=bool,
+        default=True,
+        doc="Fix the off-by-one error by incrementing validEnd. See "
+        "fixSubsetValidity for more details.",
+    )
 
 
 class CalibsRegisterTask(RegisterTask):
@@ -134,6 +140,12 @@ class CalibsRegisterTask(RegisterTask):
         so that the calibration data with whose date is nearest the date
         of the observation is used.
 
+        DM generated calibrations contain a CALIB_ID header
+        keyword. These calibrations likely require the
+        incrementValidEnd configuration option set to True.  Other
+        calibrations generate the calibDate via the DATE-OBS header
+        keyword, and likely require incrementValidEnd=False.
+
         @param conn: Database connection
         @param table: Name of table to be selected
         @param detectorData: Values identifying a detector (from columns in self.config.detector)
@@ -175,7 +187,10 @@ class CalibsRegisterTask(RegisterTask):
                 if valids[date][1] > midpoint:
                     nextDate = dates[i + 1]
                     valids[nextDate][0] = midpoint + datetime.timedelta(1)
-                    valids[date][1] = midpoint + datetime.timedelta(1)
+                    if self.config.incrementValidEnd:
+                        valids[date][1] = midpoint + datetime.timedelta(1)
+                    else:
+                        valids[date][1] = midpoint
             del midpoints
         del dates
         # Update the validity data in the registry
