@@ -73,11 +73,11 @@ class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
     def test_missing(self):
         """test a missing argument"""
         self.run_missing(["make-discrete-skymap", "--collections", "foo/bar,baz"],
-                         'Missing argument "REPO"')
+                         "Missing argument ['\"]REPO['\"]")
         self.run_missing(["make-discrete-skymap", "--collections", "foo/bar,baz", "here"],
-                         'Missing argument "INSTRUMENT"')
+                         "Missing argument ['\"]INSTRUMENT['\"]")
         self.run_missing(["make-discrete-skymap", "here", "a.b.c"],
-                         'Error: Missing option "--collections".')
+                         "Error: Missing option ['\"]--collections['\"].")
 
 
 if __name__ == "__main__":
