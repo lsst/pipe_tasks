@@ -316,6 +316,9 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             # Apply rotation if appropriate
             if nb90Rots:
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
+            # If not, manually set origin to 0,0 (as is done by rotateImageBy90)
+            else:
+                destImage.setXY0(0, 0)
             warpedStars.append(destImage.clone())
             warpTransforms.append(starWarper)
         return pipeBase.Struct(warpedStars=warpedStars, XY0s=XY0s, warpTransforms=warpTransforms,
