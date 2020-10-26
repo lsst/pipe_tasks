@@ -102,9 +102,12 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
         if butler is not None:
             self.makeSubtask('refCatLoader', butler=butler)
 
-    def matchModel(self, model, bss, subtractor):
+    def matchModel(self, inputModel, bss, subtractor):
+        # make a copy of the input model
+        model = inputModel.clone()
         modelStampSize = model.getDimensions()
         inv90Rots = 4 - bss.nb90Rots
+        model = afwMath.rotateImageBy90(model, inv90Rots)
         warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
         for star in bss:
             if star.gaiaGMag < self.config.magLimit:
@@ -120,10 +123,6 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
                 if not goodPix:
                     self.log.debug(f"Warping of a model failed for star {star.gaiaId}:"
                                    "no good pixel in output")
-                # And rotate if necessary
-                if inv90Rots < 4:
-                    invImage = afwMath.rotateImageBy90(invImage, inv90Rots)
-                    invImage.setXY0(invXY0)
                 # Multiply by annularFlux
                 invImage.image *= star.annularFlux
                 # Replace nans before subtraction (note all nan pixels have the NO_DATA flag)
