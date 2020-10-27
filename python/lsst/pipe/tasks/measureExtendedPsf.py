@@ -147,7 +147,8 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
         statsFlags = afwMath.stringToStatisticsProperty(self.config.stackingStatistic)
         # iteratively stack over small subregions
         for jbbox, bbox in enumerate(subBBoxes):
-            self.log.info("Stacking subregion %i out of %i" % (jbbox+1, nbSubregions))
+            if not jbbox % 50:
+                self.log.info("Stacking subregion %i out of %i" % (jbbox+1, nbSubregions))
             allStars = None
             for stampId in selectDataList:
                 dataId = {'visit': stampId["visit"], 'ccd': stampId["ccd"]}
@@ -157,8 +158,6 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
                 else:
                     allStars = readStars
             # TODO: DM-????? add computation of per-star weights
-            weightList = [1.]*len(allStars)
-            coaddSubregion = afwMath.statisticsStack(allStars.getMaskedImages(), statsFlags, statsControl,
-                                                     weightList)
+            coaddSubregion = afwMath.statisticsStack(allStars.getMaskedImages(), statsFlags, statsControl)
             extPsf.assign(coaddSubregion, bbox)
         extPsf.writeFits(self.config.modelFilename)
