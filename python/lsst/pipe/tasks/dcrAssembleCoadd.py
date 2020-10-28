@@ -224,6 +224,18 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig,
         target=MeasurePsfTask,
         doc="Task to measure the PSF of the coadd, if ``doCalculatePsf`` is set.",
     )
+    effectiveWavelength = pexConfig.Field(
+        doc="Effective wavelength of the filter, in nm."
+        "Required if transmission curves aren't used."
+        "Support for using transmission curves is to be added in DM-13668.",
+        dtype=float,
+    )
+    bandwidth = pexConfig.Field(
+        doc="Bandwidth of the physical filter, in nm."
+        "Required if transmission curves aren't used."
+        "Support for using transmission curves is to be added in DM-13668.",
+        dtype=float,
+    )
 
     def setDefaults(self):
         CompareWarpAssembleCoaddConfig.setDefaults(self)
@@ -520,10 +532,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
         filterInfo = templateCoadd.getFilter()
-        if np.isnan(filterInfo.getFilterProperty().getLambdaMin()):
-            raise NotImplementedError("No minimum/maximum wavelength information found"
-                                      " in the filter definition! Please add lambdaMin and lambdaMax"
-                                      " to the Mapper class in your obs package.")
         tempExpName = self.getTempExpDatasetName(self.warpType)
         dcrShifts = []
         airmassDict = {}
@@ -548,7 +556,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             if self.config.doAirmassWeight:
                 weightList[visitNum] *= airmass
             dcrShifts.append(np.max(np.abs(calculateDcr(visitInfo, templateCoadd.getWcs(),
-                                                        filterInfo, self.config.dcrNumSubfilters))))
+                                                        self.config.effectiveWavelength,
+                                                        self.config.bandwidth,
+                                                        self.config.dcrNumSubfilters))))
         self.log.info("Selected airmasses:\n%s", airmassDict)
         self.log.info("Selected parallactic angles:\n%s", angleDict)
         self.log.info("Selected PSF sizes:\n%s", psfSizeDict)
@@ -561,6 +571,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             psf = templateCoadd.getPsf()
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
                                        self.config.dcrNumSubfilters,
+                                       effectiveWavelength=self.config.effectiveWavelength,
+                                       bandwidth=self.config.bandwidth,
                                        filterInfo=filterInfo,
                                        psf=psf)
         return dcrModels
@@ -773,7 +785,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             weightImage[(mask.array & statsCtrl.getAndMask()) == 0] = 1.
             # The weights must be shifted in exactly the same way as the residuals,
             # because they will be used as the denominator in the weighted average of residuals.
-            weightsGenerator = self.dcrResiduals(weightImage, visitInfo, wcs, dcrModels.filter)
+            weightsGenerator = self.dcrResiduals(weightImage, visitInfo, wcs,
+                                                 dcrModels.effectiveWavelength, dcrModels.bandwidth)
             for shiftedWeights, dcrNImage, dcrWeight in zip(weightsGenerator, dcrNImages, dcrWeights):
                 dcrNImage.array += np.rint(shiftedWeights).astype(dcrNImage.array.dtype)
                 dcrWeight.array += shiftedWeights
@@ -851,7 +864,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             # The residuals are stored as a list of generators.
             # This allows the residual for a given subfilter and exposure to be created
             # on the fly, instead of needing to store them all in memory.
-            residualGeneratorList.append(self.dcrResiduals(residual, visitInfo, wcs, dcrModels.filter))
+            residualGeneratorList.append(self.dcrResiduals(residual, visitInfo, wcs,
+                                                           dcrModels.effectiveWavelength,
+                                                           dcrModels.bandwidth))
 
         dcrSubModelOut = self.newModelFromResidual(dcrModels, residualGeneratorList, dcrBBox, statsCtrl,
                                                    gain=gain,
@@ -860,7 +875,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                                    dcrWeights=dcrWeights)
         dcrModels.assign(dcrSubModelOut, bbox)
 
-    def dcrResiduals(self, residual, visitInfo, wcs, filterInfo):
+    def dcrResiduals(self, residual, visitInfo, wcs, effectiveWavelength, bandwidth):
         """Prepare a residual image for stacking in each subfilter by applying the reverse DCR shifts.
 
         Parameters
@@ -874,7 +889,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Coordinate system definition (wcs) for the exposure.
         filterInfo : `lsst.afw.image.Filter`
             The filter definition, set in the current instruments' obs package.
-            Required for any calculation of DCR, including making matched templates.
+            Note: this object will be changed in DM-21333.
 
         Yields
         ------
@@ -886,7 +901,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         filteredResidual = ndimage.spline_filter(residual, order=self.config.imageInterpOrder)
         # Note that `splitSubfilters` is always turned off in the reverse direction.
         # This option introduces additional blurring if applied to the residuals.
-        dcrShift = calculateDcr(visitInfo, wcs, filterInfo, self.config.dcrNumSubfilters,
+        dcrShift = calculateDcr(visitInfo, wcs, effectiveWavelength, bandwidth, self.config.dcrNumSubfilters,
                                 splitSubfilters=False)
         for dcr in dcrShift:
             yield applyDcr(filteredResidual, dcr, useInverse=True, splitSubfilters=False,
@@ -944,7 +959,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                           self.config.regularizationWidth)
         dcrModels.conditionDcrModel(newModelImages, dcrBBox, gain=gain)
         self.applyModelWeights(newModelImages, refImage[dcrBBox], modelWeights)
-        return DcrModel(newModelImages, dcrModels.filter, dcrModels.psf,
+        return DcrModel(newModelImages, dcrModels.filter, dcrModels.effectiveWavelength,
+                        dcrModels.bandwidth, dcrModels.psf,
                         dcrModels.mask, dcrModels.variance)
 
     def calculateConvergence(self, dcrModels, subExposures, bbox, warpRefList, weightList, statsCtrl):

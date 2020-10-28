@@ -182,6 +182,8 @@ class MockDcrAssembleCoaddConfig(DcrAssembleCoaddConfig):
         self.assembleStaticSkyModel.retarget(MockCompareWarpAssembleCoaddTask)
         self.assembleStaticSkyModel.doWrite = False
         self.doWrite = False
+        self.effectiveWavelength = 476.31  # Use LSST g band values for the test.
+        self.bandwidth = 552. - 405.
 
 
 class MockDcrAssembleCoaddTask(MockAssembleCoaddTask, DcrAssembleCoaddTask):
