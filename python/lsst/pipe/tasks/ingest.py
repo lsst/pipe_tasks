@@ -27,6 +27,7 @@ from fnmatch import fnmatch
 from glob import glob
 from contextlib import contextmanager
 
+from astro_metadata_translator import fix_header
 from lsst.pex.config import Config, Field, DictField, ListField, ConfigurableField
 from lsst.afw.fits import readMetadata
 from lsst.pipe.base import Task, InputOnlyArgumentParser
@@ -67,6 +68,14 @@ class ParseTask(Task):
     """Task that will parse the filename and/or its contents to get the required information
     for putting the file in the correct location and populating the registry."""
     ConfigClass = ParseConfig
+    translator_class = None
+    """Metadata translation support (astro_metadata_translator.MetadataTranslator).
+
+    Notes
+    -----
+    The default of `None` will attempt to guess the correct translator,
+    but specifying one (e.g., in obs-package specific ingest) will be faster.
+    """
 
     def getInfo(self, filename):
         """Get information about the image from the filename and its contents
@@ -78,6 +87,7 @@ class ParseTask(Task):
         @return File properties; list of file properties for each extension
         """
         md = readMetadata(filename, self.config.hdu)
+        fix_header(md, translator_class=self.translator_class)
         phuInfo = self.getInfoFromMetadata(md)
         if len(self.config.extnames) == 0:
             # No extensions to worry about
@@ -90,6 +100,7 @@ class ParseTask(Task):
             extnum += 1
             try:
                 md = readMetadata(filename, extnum)
+                fix_header(md, translator_class=self.translator_class)
             except Exception as e:
                 self.log.warn("Error reading %s extensions %s: %s" % (filename, extnames, e))
                 break
