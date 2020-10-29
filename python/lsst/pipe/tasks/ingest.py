@@ -83,8 +83,17 @@ class ParseTask(Task):
         Here, we open the image and parse the header, but one could also look at the filename itself
         and derive information from that, or set values from the configuration.
 
-        @param filename    Name of file to inspect
-        @return File properties; list of file properties for each extension
+        Parameters
+        ----------
+        filename : `str`
+            Name of file to inspect
+
+        Returns
+        -------
+        phuInfo : `dict`
+            File properties
+        infoList : `list`
+            List of file properties for each extension
         """
         md = readMetadata(filename, self.config.hdu)
         fix_header(md, translator_class=self.translator_class)
