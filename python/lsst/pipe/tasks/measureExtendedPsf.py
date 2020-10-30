@@ -26,6 +26,7 @@ __all__ = ["MeasureExtendedPsfTask"]
 
 import traceback
 import sys
+import numpy as np
 
 from lsst.pipe import base as pipeBase
 from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
@@ -139,6 +140,7 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
         statsControl.setNumSigmaClip(self.config.numSigmaClip)
         statsControl.setNumIter(self.config.numIter)
         badMasks = self.config.badMaskPlanes
+        statsControl.setWeighted(True)
         if badMasks:
             andMask = exampleStamp.mask.getPlaneBitMask(badMasks[0])
             for bm in badMasks[1:]:
@@ -150,14 +152,19 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
             if not jbbox % 50:
                 self.log.info("Stacking subregion %i out of %i" % (jbbox+1, nbSubregions))
             allStars = None
+            weights = None
             for stampId in selectDataList:
                 dataId = {'visit': stampId["visit"], 'ccd': stampId["ccd"]}
                 readStars = butler.get("brightStarStamps_sub", dataId, bbox=bbox)
+                readWeights = 18. - np.array(readStars.getMagnitudes())
                 if allStars:
                     allStars.extend(readStars)
+                    weights = np.hstack((weights, readWeights))
                 else:
                     allStars = readStars
-            # TODO: DM-????? add computation of per-star weights
-            coaddSubregion = afwMath.statisticsStack(allStars.getMaskedImages(), statsFlags, statsControl)
+                    weights = readWeights
+            weights /= np.sum(weights)
+            coaddSubregion = afwMath.statisticsStack(allStars.getMaskedImages(), statsFlags, statsControl,
+                                                     wvector=weights)
             extPsf.assign(coaddSubregion, bbox)
         extPsf.writeFits(self.config.modelFilename)
