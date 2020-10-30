@@ -752,7 +752,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                         srcToMatch = {x.second.getId(): x.first for x in matches}
 
                         refCoordKey = wcsResults.matches[0].first.getTable().getCoordKey()
-                        inCentroidKey = wcsResults.matches[0].second.getTable().getCentroidKey()
+                        inCentroidKey = wcsResults.matches[0].second.getTable().getCentroidSlot().getMeasKey()
                         sids = [m.first.getId() for m in wcsResults.matches]
                         positions = [m.first.get(refCoordKey) for m in wcsResults.matches]
                         residuals = [m.first.get(refCoordKey).getOffsetFrom(wcsResults.wcs.pixelToSky(
@@ -1148,12 +1148,12 @@ class Winter2013ImageDifferenceTask(ImageDifferenceTask):
         if self.config.winter2013WcsShift > 0.0:
             offset = geom.Extent2D(self.config.winter2013WcsShift,
                                    self.config.winter2013WcsShift)
-            cKey = templateSources[0].getTable().getCentroidKey()
+            cKey = templateSources[0].getTable().getCentroidSlot().getMeasKey()
             for source in templateSources:
                 centroid = source.get(cKey)
                 source.set(cKey, centroid + offset)
         elif self.config.winter2013WcsRms > 0.0:
-            cKey = templateSources[0].getTable().getCentroidKey()
+            cKey = templateSources[0].getTable().getCentroidSlot().getMeasKey()
             for source in templateSources:
                 offset = geom.Extent2D(self.config.winter2013WcsRms*numpy.random.normal(),
                                        self.config.winter2013WcsRms*numpy.random.normal())
