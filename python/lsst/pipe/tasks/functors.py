@@ -431,16 +431,21 @@ class CompositeFunctor(Functor):
         )
 
     def __call__(self, data, **kwargs):
+        """Apply the functor to the data table
+
+        Parameters
+        ----------
+        data : `lsst.daf.butler.DeferredDatasetHandle`,
+               `lsst.pipe.tasks.parquetTable.MultilevelParquetTable`,
+               `lsst.pipe.tasks.parquetTable.ParquetTable`,
+               or `pandas.DataFrame`.
+            The table or a pointer to a table on disk from which columns can
+            be accessed
+        """
         columnIndex = self._get_columnIndex(data)
 
         # First, determine whether data has a multilevel index (either gen2 or gen3)
         is_multiLevel = isinstance(data, MultilevelParquetTable) or isinstance(columnIndex, pd.MultiIndex)
-
-        # Simple single-level column index, gen2
-        if isinstance(data, ParquetTable) and not is_multiLevel:
-            columns = self.columns
-            df = data.toDataFrame(columns=columns)
-            valDict = {k: f._func(df) for k, f in self.funcDict.items()}
 
         # Multilevel index, gen2 or gen3
         if is_multiLevel:
@@ -463,10 +468,17 @@ class CompositeFunctor(Functor):
                 except Exception:
                     valDict[k] = f.fail(subdf)
 
-        # non-multilevel, gen3 (TODO: this should work, but this case is not tested in test_functors.py)
-        elif isinstance(data, DeferredDatasetHandle):
-            columns = self.columns
-            df = data.get(parameters={"columns": columns})
+        else:
+            if isinstance(data, DeferredDatasetHandle):
+                # input if Gen3 deferLoad=True
+                df = data.get(columns=self.columns)
+            elif isinstance(data, pd.DataFrame):
+                # input if Gen3 deferLoad=False
+                df = data
+            else:
+                # Original Gen2 input is type ParquetTable and the fallback
+                df = data.toDataFrame(columns=self.columns)
+
             valDict = {k: f._func(df) for k, f in self.funcDict.items()}
 
         try:
