@@ -57,7 +57,7 @@ class SubtractBrightStarsConfig(pexConfig.Config):
     doWriteSubtractedExposure = pexConfig.Field(
         dtype=bool,
         doc="Should an exposure with bright stars subtracted be written to disk?",
-         default=True
+        default=True
     )
     subtractedExposureFilename = pexConfig.Field(
         dtype=str,
@@ -125,7 +125,8 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
                                    "no good pixel in output")
                 # Multiply by annularFlux
                 invImage.image *= star.annularFlux
-                # Replace nans before subtraction (note all nan pixels have the NO_DATA flag)
+                # Replace nans before subtraction (note all nan pixels have
+                # the NO_DATA flag)
                 invImage.image.array[np.isnan(invImage.image.array)] = 0
                 # Add matched model to subtractor exposure
                 try:
