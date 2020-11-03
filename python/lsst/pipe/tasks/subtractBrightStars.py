@@ -34,6 +34,7 @@ import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
 from lsst.pex import exceptions as pexExceptions
+from lsst.daf.persistence import butlerExceptions as bE
 
 
 class SubtractBrightStarsConfig(pexConfig.Config):
@@ -184,6 +185,10 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
             Data reference to the calexp to subtract bright stars from.
         """
         calexp = dataRef.get("calexp")
-        bss = dataRef.get("brightStarStamps")
+        try:
+            bss = dataRef.get("brightStarStamps")
+        except bE.NoResults:
+            self.log.info(f"No bright stars to subtract from exposure {dataRef.dataId}.")
+            return
         output = self.run(calexp, bss, dataId=dataRef.dataId)
         return pipeBase.Struct(subtractor=output)
