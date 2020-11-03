@@ -70,7 +70,7 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
     minMag = pexConfig.Field(
         dtype=float,
         doc="TEMP: only keep stars fainter than that",
-        default=16
+        default=-10
     )
     stampSize = pexConfig.ListField(
         dtype=int,
@@ -82,6 +82,16 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         doc="'Buffer' factor to be applied to determine the size of the stamp the processed stars will "
             "be saved in. This will also be the size of the extended PSF model.",
         default=1.1
+    )
+    readFromMask = pexConfig.Field(
+        dtype=bool,
+        doc="Whether bright stars should be selected by reading in bright object mask center positions",
+        default=False
+    )
+    tract = pexConfig.Field(
+        dtype=int,
+        doc="If readFromMask, which tract do the current visits correspond to?",
+        default=9615
     )
     warpingKernelName = pexConfig.ChoiceField(
         dtype=str,
@@ -163,8 +173,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def __init__(self, butler=None, initInputs=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Compute (model) stamp size depending on provided "buffer" value
-        self.modelStampSize = (int(self.config.stampSize[0]*self.config.modelStampBuffer),
-                               int(self.config.stampSize[1]*self.config.modelStampBuffer))
+        self.modelStampSize = [int(self.config.stampSize[0]*self.config.modelStampBuffer),
+                               int(self.config.stampSize[1]*self.config.modelStampBuffer)]
         # force it to be odd-sized so we have a central pixel
         if not self.modelStampSize[0] % 2:
             self.modelStampSize[0] += 1
@@ -231,6 +241,48 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                pixCenters=pixCenters,
                                GMags=GMags,
                                gaiaIds=ids)
+
+    def extractStampsFromMask(self, inputExposure, dataId):
+        wcs = inputExposure.getWcs()
+        patches = ["{},{}".format(i,j) for i in range(9) for j in range(9)]
+        maskPath = "/datasets/hsc/BrightObjectMasks/GouldingMasksS18A/{}/".format(self.config.tract)
+        maskFiles = [maskPath + 'BrightObjectMask-{}-{}-{}.reg'.format(
+                         self.config.tract, patch, dataId["filter"]) for patch in patches]
+        starIms, pixCenters, mags = [], [], []
+        for maskFile in maskFiles:
+            f = open(maskFile, 'r')
+
+            # read mask info
+            for line in f:
+                if line[:6] == 'circle':
+                    maskinfo, comm = line.split('#')
+                    objid, mag = comm.split(',')
+                    maskinfo = maskinfo.split(',')
+                    circle = [float(maskinfo[0][7:]), # remove "circle("
+                              float(maskinfo[1])]
+                    # also save magnitude (as put down by Andy)...
+                    mag = float(mag[5:-2]) # remove " mag:" and the trailing \n
+                    # avoid duplicates if reading from per-patch .reg files
+                    if mag in mags or mag > self.config.magLimit:
+                        continue
+                    sp = geom.SpherePoint(circle[0], circle[1], geom.degrees)
+                    mags += [mag]
+                    cpix = wcs.skyToPixel(sp)
+                    # TODO: DM-25894 keep objects on or slightly beyond CCD edge
+                    if (cpix[0] >= self.config.stampSize[0]/2
+                            and cpix[0] < inputExposure.getDimensions()[0] - self.config.stampSize[0]/2
+                            and cpix[1] >= self.config.stampSize[1]/2
+                            and cpix[1] < inputExposure.getDimensions()[1] - self.config.stampSize[1]/2):
+                        starIms.append(inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize)))
+                        pixCenters.append(cpix)
+                elif line[:3] == 'box': # ignore saturation spikes/bleed trail boxes
+                    pass
+        ids = [-1] * len(starIms)
+        return pipeBase.Struct(starIms=starIms,
+               pixCenters=pixCenters,
+               GMags=mags,
+               gaiaIds=ids)
+
 
     def warpStamps(self, stamps, pixCenters):
         """Warps and shifts all given stamps so they are sampled on the same
@@ -398,7 +450,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         """
         self.log.info("Extracting bright stars from exposure %s", dataId)
         # Extract stamps around bright stars
-        extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
+        if self.config.readFromMask:
+            extractedStamps = self.extractStampsFromMask(inputExposure, dataId)
+        else:
+            extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
         # Warp (and shift, and potentially rotate) them
         self.log.info("Applying warp to %i star stamps from exposure %s",
                       len(extractedStamps.starIms), dataId)
