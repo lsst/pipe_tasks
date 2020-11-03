@@ -132,20 +132,27 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     print("psf Ixx = %r, Iyy = %r, Ixy = %r" % (psfIxx, psfIyy, psfIxy))
 
                     self.assertEqual(len(icSrc), 28)
-                    self.assertEqual(len(src), 185 + 100)  # 185 real sources plus 100 sky sources
+                    self.assertEqual(len(src), 184 + 100)  # 184 real sources plus 100 sky sources
 
+                    # NOTE: These values are purely empirical, and need to be
+                    # updated to reflect major algorithmic changes.
+                    # If this test fails after an algorithmic change due to
+                    # small numeric changes here, check on slack at
+                    # #dm-science-pipelines as to whether the changes are
+                    # reasonable, and then replace the failing values by
+                    # running the test to determine the updated values.
                     expectedPlaces = 7  # Tolerance for numerical comparisons
                     for name, var, val in [
-                        ("bgMean", bgMean, 191.48635852060525),
-                        ("bgStdDev", bgStdDev, 0.2399466881603354),
-                        ("numGoodPix", numGoodPix, 1966820),
-                        ("imMean", imMean, 1.1237668985230562),
-                        ("imStdDev", imStdDev, 85.81296241298496),
+                        ("bgMean", bgMean, 191.48623786891795),
+                        ("bgStdDev", bgStdDev, 0.23994185672586282),
+                        ("numGoodPix", numGoodPix, 1966606),
+                        ("imMean", imMean, 1.1242456954648634),
+                        ("imStdDev", imStdDev, 85.8129750182329),
                         ("varMean", varMean, 131.24003624152013),
                         ("varStdDev", varStdDev, 55.98012493452948),
-                        ("psfIxx", psfIxx, 2.769679536557131),
-                        ("psfIyy", psfIyy, 2.2013649766299324),
-                        ("psfIxy", psfIxy, 0.14797939531970852)
+                        ("psfIxx", psfIxx, 2.843329671276296),
+                        ("psfIyy", psfIyy, 2.2249941554078156),
+                        ("psfIxy", psfIxy, 0.16073332780683286)
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces, msg=name)
 
