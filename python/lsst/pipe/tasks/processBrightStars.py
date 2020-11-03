@@ -67,6 +67,11 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed",
         default=18
     )
+    minMag = pexConfig.Field(
+        dtype=float,
+        doc="TEMP: only keep stars fainter than that",
+        default=16
+    )
     stampSize = pexConfig.ListField(
         dtype=int,
         doc="Size of the stamps to be extracted, in pixels",
@@ -204,8 +209,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         refCat = withinCalexp.refCat
         # keep bright objects
         fluxLimit = ((self.config.magLimit*u.ABmag).to(u.nJy)).to_value()
+        fluxMax = ((self.config.minMag*u.ABmag).to(u.nJy)).to_value()
         GFluxes = np.array(refCat['phot_g_mean_flux'])
         bright = GFluxes > fluxLimit
+        bright *= GFluxes < fluxMax
         # convert to AB magnitudes
         GMags = [((gFlux*u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]]
         ids = refCat.columns.extract("id", where=bright)["id"]
