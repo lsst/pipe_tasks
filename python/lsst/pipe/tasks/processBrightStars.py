@@ -251,7 +251,6 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         starIms, pixCenters, mags = [], [], []
         for maskFile in maskFiles:
             f = open(maskFile, 'r')
-
             # read mask info
             for line in f:
                 if line[:6] == 'circle':
@@ -266,7 +265,6 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                     if mag in mags or mag > self.config.magLimit:
                         continue
                     sp = geom.SpherePoint(circle[0], circle[1], geom.degrees)
-                    mags += [mag]
                     cpix = wcs.skyToPixel(sp)
                     # TODO: DM-25894 keep objects on or slightly beyond CCD edge
                     if (cpix[0] >= self.config.stampSize[0]/2
@@ -275,6 +273,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                             and cpix[1] < inputExposure.getDimensions()[1] - self.config.stampSize[1]/2):
                         starIms.append(inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize)))
                         pixCenters.append(cpix)
+                        mags.append(mag)
                 elif line[:3] == 'box': # ignore saturation spikes/bleed trail boxes
                     pass
         ids = [-1] * len(starIms)
@@ -454,6 +453,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             extractedStamps = self.extractStampsFromMask(inputExposure, dataId)
         else:
             extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
+        if not extractedStamps.starIms:
+            return None
         # Warp (and shift, and potentially rotate) them
         self.log.info("Applying warp to %i star stamps from exposure %s",
                       len(extractedStamps.starIms), dataId)
@@ -485,9 +486,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         """
         calexp = dataRef.get("calexp")
         output = self.run(calexp, dataId=dataRef.dataId)
-        # Save processed bright star stamps
-        dataRef.put(output.brightStarStamps, "brightStarStamps")
-        return pipeBase.Struct(brightStarStamps=output.brightStarStamps)
+        if output:
+            # Save processed bright star stamps
+            dataRef.put(output.brightStarStamps, "brightStarStamps")
+            return pipeBase.Struct(brightStarStamps=output.brightStarStamps)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -502,4 +504,5 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         gen2butler = Butler('/datasets/hsc/repo/rerun/RC/w_2020_03/DM-23121_obj/')
         refObjLoader = LoadIndexedReferenceObjectsTask(gen2butler, config=refcatConfig)
         output = self.run(**inputs, refObjLoader=refObjLoader)
-        butlerQC.put(output, outputRefs)
+        if output:
+            butlerQC.put(output, outputRefs)
