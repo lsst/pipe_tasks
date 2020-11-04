@@ -182,6 +182,8 @@ class MockDcrAssembleCoaddConfig(DcrAssembleCoaddConfig):
         self.assembleStaticSkyModel.retarget(MockCompareWarpAssembleCoaddTask)
         self.assembleStaticSkyModel.doWrite = False
         self.doWrite = False
+        self.effectiveWavelength = 476.31  # Use LSST g band values for the test.
+        self.bandwidth = 552. - 405.
 
 
 class MockDcrAssembleCoaddTask(MockAssembleCoaddTask, DcrAssembleCoaddTask):
@@ -234,26 +236,31 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
 
     def testGen2Gen3Compatibility(self):
         config = MockAssembleCoaddConfig()
+        config.validate()
         assembleTask = MockAssembleCoaddTask(config=config)
         self.checkGen2Gen3Compatibility(assembleTask)
 
     def testPsfMatchedGen2Gen3Compatibility(self):
         config = MockAssembleCoaddConfig(warpType="psfMatched")
+        config.validate()
         assembleTask = MockAssembleCoaddTask(config=config)
         self.checkGen2Gen3Compatibility(assembleTask, warpType="psfMatched")
 
     def testSafeClipGen2Gen3Compatibility(self):
         config = MockSafeClipAssembleCoaddConfig()
+        config.validate()
         assembleTask = MockSafeClipAssembleCoaddTask(config=config)
         self.checkGen2Gen3Compatibility(assembleTask)
 
     def testCompareWarpGen2Gen3Compatibility(self):
         config = MockCompareWarpAssembleCoaddConfig()
+        config.validate()
         assembleTask = MockCompareWarpAssembleCoaddTask(config=config)
         self.checkGen2Gen3Compatibility(assembleTask)
 
     def testDcrGen2Gen3Compatibility(self):
         config = MockDcrAssembleCoaddConfig()
+        config.validate()
         assembleTask = MockDcrAssembleCoaddTask(config=config)
         self.checkGen2Gen3Compatibility(assembleTask)
 
