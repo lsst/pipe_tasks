@@ -110,6 +110,7 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
         inv90Rots = 4 - bss.nb90Rots
         model = afwMath.rotateImageBy90(model, inv90Rots)
         warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
+        invImages = []
         for star in bss:
             if star.gaiaGMag < self.config.magLimit:
                 # set origin
@@ -132,11 +133,12 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
                 # Add matched model to subtractor exposure
                 try:
                     subtractor[bbox] += invImage
+                    invImages.append(invImage)
                 except pexExceptions.LengthError:
                     # TODO: handle stars close to the edge (DM-25894)
                     self.log.debug(f"Star {star.gaiaId} not included in the subtractor"
                                    "because it was too close to the edge.")
-        return subtractor
+        return subtractor, invImages
 
     @pipeBase.timeMethod
     def run(self, inputExposure, bss, refObjLoader=None, dataId=None):
@@ -161,7 +163,7 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
         # Create an empty image the size of the exposure
         brightStarSubtractor = afwImage.MaskedImageF(bbox=inputExposure.getBBox())
         # Warp (and shift, and potentially rotate) model to fit each star
-        subtractor = self.matchModel(model, bss, brightStarSubtractor)
+        subtractor, invImages = self.matchModel(model, bss, brightStarSubtractor)
         if self.config.doWriteSubtractor:
             if dataId is not None:
                 subtractor.writeFits(self.config.subtractorFilename
