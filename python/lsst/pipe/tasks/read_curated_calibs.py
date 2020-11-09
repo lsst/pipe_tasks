@@ -1,7 +1,5 @@
-from lsst.meas.algorithms import Defects
 from lsst.meas.algorithms.simple_curve import Curve
-from lsst.ip.isr import Linearizer
-from lsst.ip.isr import CrosstalkCalib
+from lsst.ip.isr import (Linearizer, CrosstalkCalib, Defects)
 
 import os
 import glob

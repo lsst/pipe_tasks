@@ -35,7 +35,7 @@ import lsst.utils.tests
 import lsst.geom
 import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
-import lsst.meas.algorithms as measAlg
+import lsst.ip.isr as ipIsr
 from lsst.pipe.tasks.interpImage import InterpImageTask
 
 try:
@@ -80,7 +80,7 @@ class InterpolationTestCase(lsst.utils.tests.TestCase):
         # more bad of columns next to bad right edge
         mi[-nBadCol - 4:-nBadCol - 1, 0:10, afwImage.LOCAL] = (100, badBit, 0)
 
-        defectList = measAlg.Defects.fromMask(mi, pixelPlane)
+        defectList = ipIsr.Defects.fromMask(mi, pixelPlane)
 
         if display:
             afwDisplay.Display(frame=0).mtv(mi, title=self._testMethodName + ": image")

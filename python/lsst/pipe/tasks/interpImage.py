@@ -24,6 +24,7 @@ import lsst.pex.config as pexConfig
 import lsst.geom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+import lsst.ip.isr as ipIsr
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 
@@ -137,7 +138,7 @@ class InterpImageTask(pipeBase.Task):
         @param[in]     fwhmPixels  FWHM of core star (pixels)
                                    If None the default is used, where the default
                                    is set to the exposure psf if available
-        @param[in]     defects     List of defects of type measAlg.Defects
+        @param[in]     defects     List of defects of type ipIsr.Defects
                                    over which to interpolate.
         """
         try:
@@ -150,8 +151,8 @@ class InterpImageTask(pipeBase.Task):
             if defects is None:
                 raise ValueError("No defects or plane name provided")
             else:
-                if not isinstance(defects, measAlg.Defects):
-                    defectList = measAlg.Defects(defects)
+                if not isinstance(defects, ipIsr.Defects):
+                    defectList = ipIsr.Defects(defects)
                 else:
                     defectList = defects
                 planeName = "defects"
@@ -160,7 +161,7 @@ class InterpImageTask(pipeBase.Task):
                 raise ValueError("Provide EITHER a planeName OR a list of defects, not both")
             if planeName not in maskedImage.getMask().getMaskPlaneDict():
                 raise ValueError("maskedImage does not contain mask plane %s" % planeName)
-            defectList = measAlg.Defects.fromMask(maskedImage, planeName)
+            defectList = ipIsr.Defects.fromMask(maskedImage, planeName)
 
         # set psf from exposure if provided OR using modelPsf with fwhmPixels provided
         try:
