@@ -26,13 +26,17 @@ import numpy as np
 import os
 import pandas as pd
 import unittest
+import tempfile
+import shutil
 
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
 import lsst.geom as geom
+from lsst.sphgeom import HtmPixelization
 import lsst.meas.base as measBase
 import lsst.utils.tests
 from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
+from lsst.daf.butler import Butler, DatasetType
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                       DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
                                       DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
@@ -66,6 +70,13 @@ class FunctorTestCase(unittest.TestCase):
 
         return MultilevelParquetTable(dataFrame=df)
 
+    def getDatasetHandle(self, parq):
+        df = parq._df
+        lo, hi = HtmPixelization(7).universe().ranges()[0]
+        value = np.random.randint(lo, hi)
+        ref = self.butler.put(df, self.datasetType, dataId={'htm7': value})
+        return self.butler.getDeferred(ref)
+
     def setUp(self):
         np.random.seed(1234)
         self.datasets = ['forced_src', 'meas', 'ref']
@@ -76,14 +87,32 @@ class FunctorTestCase(unittest.TestCase):
             "coord_ra": [3.77654137, 3.77643059, 3.77621148, 3.77611944, 3.77610396],
             "coord_dec": [0.01127624, 0.01127787, 0.01127543, 0.01127543, 0.01127543]}
 
+        # Set up butler
+        self.root = tempfile.mkdtemp(dir=ROOT)
+        Butler.makeRepo(self.root)
+        self.butler = Butler(self.root, run="test_run")
+        self.datasetType = DatasetType("data", dimensions=('htm7',), storageClass="DataFrame",
+                                       universe=self.butler.registry.dimensions)
+        self.butler.registry.registerDatasetType(self.datasetType)
+
+    def tearDown(self):
+        if os.path.exists(self.root):
+            shutil.rmtree(self.root, ignore_errors=True)
+
     def _funcVal(self, functor, parq):
         self.assertIsInstance(functor.name, str)
         self.assertIsInstance(functor.shortname, str)
 
+        handle = self.getDatasetHandle(parq)
+
         val = functor(parq)
+        val2 = functor(handle)
+        self.assertTrue((val == val2).all())
         self.assertIsInstance(val, pd.Series)
 
         val = functor(parq, dropna=True)
+        val2 = functor(handle, dropna=True)
+        self.assertTrue((val == val2).all())
         self.assertEqual(val.isnull().sum(), 0)
 
         return val
@@ -92,10 +121,17 @@ class FunctorTestCase(unittest.TestCase):
         self.assertIsInstance(functor.name, str)
         self.assertIsInstance(functor.shortname, str)
 
+        handle1 = self.getDatasetHandle(parq1)
+        handle2 = self.getDatasetHandle(parq2)
+
         val = functor.difference(parq1, parq2)
+        val2 = functor.difference(handle1, handle2)
+        self.assertTrue(val.equals(val2))
         self.assertIsInstance(val, pd.Series)
 
         val = functor.difference(parq1, parq2, dropna=True)
+        val2 = functor.difference(handle1, handle2, dropna=True)
+        self.assertTrue(val.equals(val2))
         self.assertEqual(val.isnull().sum(), 0)
 
         val1 = self._funcVal(functor, parq1)
@@ -245,12 +281,18 @@ class FunctorTestCase(unittest.TestCase):
     def _compositeFuncVal(self, functor, parq):
         self.assertIsInstance(functor, CompositeFunctor)
 
+        handle = self.getDatasetHandle(parq)
+
         df = functor(parq)
+        df2 = functor(handle)
+        self.assertTrue(df.equals(df2))
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertTrue(np.all([k in df.columns for k in functor.funcDict.keys()]))
 
         df = functor(parq, dropna=True)
+        df2 = functor(handle, dropna=True)
+        self.assertTrue(df.equals(df2))
 
         # Check that there are no nulls
         self.assertFalse(df.isnull().any(axis=None))
@@ -260,12 +302,19 @@ class FunctorTestCase(unittest.TestCase):
     def _compositeDifferenceVal(self, functor, parq1, parq2):
         self.assertIsInstance(functor, CompositeFunctor)
 
+        handle1 = self.getDatasetHandle(parq1)
+        handle2 = self.getDatasetHandle(parq2)
+
         df = functor.difference(parq1, parq2)
+        df2 = functor.difference(handle1, handle2)
+        self.assertTrue(df.equals(df2))
 
         self.assertIsInstance(df, pd.DataFrame)
         self.assertTrue(np.all([k in df.columns for k in functor.funcDict.keys()]))
 
         df = functor.difference(parq1, parq2, dropna=True)
+        df2 = functor.difference(handle1, handle2, dropna=True)
+        self.assertTrue(df.equals(df2))
 
         # Check that there are no nulls
         self.assertFalse(df.isnull().any(axis=None))
