@@ -9,8 +9,7 @@ from lsst.daf.persistence import doImport
 from .parquetTable import MultilevelParquetTable
 
 
-def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
-                  typeKey='functor', name=None):
+def init_fromDict(initDict, basePath="lsst.pipe.tasks.functors", typeKey="functor", name=None):
     """Initialize an object defined in a dictionary
 
     The object needs to be importable as
@@ -34,10 +33,10 @@ def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
     """
     initDict = initDict.copy()
     # TO DO: DM-21956 We should be able to define functors outside this module
-    pythonType = doImport(f'{basePath}.{initDict.pop(typeKey)}')
+    pythonType = doImport(f"{basePath}.{initDict.pop(typeKey)}")
     args = []
-    if 'args' in initDict:
-        args = initDict.pop('args')
+    if "args" in initDict:
+        args = initDict.pop("args")
         if isinstance(args, str):
             args = [args]
     try:
@@ -106,9 +105,9 @@ class Functor(object):
 
     """
 
-    _defaultDataset = 'ref'
-    _columnLevels = ('filter', 'dataset', 'column')
-    _dfLevels = ('column',)
+    _defaultDataset = "ref"
+    _columnLevels = ("filter", "dataset", "column")
+    _dfLevels = ("column",)
     _defaultNoDup = False
 
     def __init__(self, filt=None, dataset=None, noDup=None):
@@ -127,34 +126,37 @@ class Functor(object):
     def columns(self):
         """Columns required to perform calculation
         """
-        if not hasattr(self, '_columns'):
-            raise NotImplementedError('Must define columns property or _columns attribute')
+        if not hasattr(self, "_columns"):
+            raise NotImplementedError("Must define columns property or _columns attribute")
         return self._columns
 
     def multilevelColumns(self, parq):
         if not set(parq.columnLevels) == set(self._columnLevels):
-            raise ValueError('ParquetTable does not have the expected column levels. '
-                             f'Got {parq.columnLevels}; expected {self._columnLevels}.')
+            raise ValueError(
+                "ParquetTable does not have the expected column levels. "
+                f"Got {parq.columnLevels}; expected {self._columnLevels}."
+            )
 
-        columnDict = {'column': self.columns,
-                      'dataset': self.dataset}
+        columnDict = {"column": self.columns, "dataset": self.dataset}
         if self.filt is None:
-            if 'filter' in parq.columnLevels:
-                if self.dataset == 'ref':
-                    columnDict['filter'] = parq.columnLevelNames['filter'][0]
+            if "filter" in parq.columnLevels:
+                if self.dataset == "ref":
+                    columnDict["filter"] = parq.columnLevelNames["filter"][0]
                 else:
-                    raise ValueError(f"'filt' not set for functor {self.name}"
-                                     f"(dataset {self.dataset}) "
-                                     "and ParquetTable "
-                                     "contains multiple filters in column index. "
-                                     "Set 'filt' or set 'dataset' to 'ref'.")
+                    raise ValueError(
+                        f"'filt' not set for functor {self.name}"
+                        f"(dataset {self.dataset}) "
+                        "and ParquetTable "
+                        "contains multiple filters in column index. "
+                        "Set 'filt' or set 'dataset' to 'ref'."
+                    )
         else:
-            columnDict['filter'] = self.filt
+            columnDict["filter"] = self.filt
 
         return parq._colsFromDict(columnDict)
 
     def _func(self, df, dropna=True):
-        raise NotImplementedError('Must define calculation on dataframe')
+        raise NotImplementedError("Must define calculation on dataframe")
 
     def _get_cols(self, parq):
         """Retrieve dataframe necessary for calculation.
@@ -240,6 +242,7 @@ class CompositeFunctor(Functor):
         into a dictonary according to the `.shortname` attribute of each functor.
 
     """
+
     dataset = None
 
     def __init__(self, funcs, **kwargs):
@@ -270,7 +273,7 @@ class CompositeFunctor(Functor):
         elif isinstance(new, CompositeFunctor):
             self.funcDict.update(new.funcDict)
         else:
-            raise TypeError('Can only update with dictionary or CompositeFunctor.')
+            raise TypeError("Can only update with dictionary or CompositeFunctor.")
 
         # Make sure new functors have the same 'filt' set
         if self.filt is not None:
@@ -281,8 +284,7 @@ class CompositeFunctor(Functor):
         return list(set([x for y in [f.columns for f in self.funcDict.values()] for x in y]))
 
     def multilevelColumns(self, parq):
-        return list(set([x for y in [f.multilevelColumns(parq)
-                                     for f in self.funcDict.values()] for x in y]))
+        return list(set([x for y in [f.multilevelColumns(parq) for f in self.funcDict.values()] for x in y]))
 
     def __call__(self, parq, **kwargs):
         if isinstance(parq, MultilevelParquetTable):
@@ -306,8 +308,8 @@ class CompositeFunctor(Functor):
             print([(k, type(v)) for k, v in valDict.items()])
             raise
 
-        if kwargs.get('dropna', False):
-            valDf = valDf.dropna(how='any')
+        if kwargs.get("dropna", False):
+            valDf = valDf.dropna(how="any")
 
         return valDf
 
@@ -330,21 +332,21 @@ class CompositeFunctor(Functor):
     @classmethod
     def from_yaml(cls, translationDefinition, **kwargs):
         funcs = {}
-        for func, val in translationDefinition['funcs'].items():
+        for func, val in translationDefinition["funcs"].items():
             funcs[func] = init_fromDict(val, name=func)
 
-        if 'flag_rename_rules' in translationDefinition:
-            renameRules = translationDefinition['flag_rename_rules']
+        if "flag_rename_rules" in translationDefinition:
+            renameRules = translationDefinition["flag_rename_rules"]
         else:
             renameRules = None
 
-        if 'refFlags' in translationDefinition:
-            for flag in translationDefinition['refFlags']:
-                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='ref')
+        if "refFlags" in translationDefinition:
+            for flag in translationDefinition["refFlags"]:
+                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset="ref")
 
-        if 'flags' in translationDefinition:
-            for flag in translationDefinition['flags']:
-                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='meas')
+        if "flags" in translationDefinition:
+            for flag in translationDefinition["flags"]:
+                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset="meas")
 
         return cls(funcs, **kwargs)
 
@@ -363,10 +365,10 @@ def mag_aware_eval(df, expr):
         Expression.
     """
     try:
-        expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>)/log(10)', expr)
+        expr_new = re.sub(r"mag\((\w+)\)", r"-2.5*log(\g<1>)/log(10)", expr)
         val = df.eval(expr_new, truediv=True)
     except Exception:  # Should check what actually gets raised
-        expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>_instFlux)/log(10)', expr)
+        expr_new = re.sub(r"mag\((\w+)\)", r"-2.5*log(\g<1>_instFlux)/log(10)", expr)
         val = df.eval(expr_new, truediv=True)
     return val
 
@@ -382,7 +384,8 @@ class CustomFunctor(Functor):
     expr : str
         Expression to evaluate, to be parsed and executed by `mag_aware_eval`.
     """
-    _ignore_words = ('mag', 'sin', 'cos', 'exp', 'log', 'sqrt')
+
+    _ignore_words = ("mag", "sin", "cos", "exp", "log", "sqrt")
 
     def __init__(self, expr, **kwargs):
         self.expr = expr
@@ -394,13 +397,13 @@ class CustomFunctor(Functor):
 
     @property
     def columns(self):
-        flux_cols = re.findall(r'mag\(\s*(\w+)\s*\)', self.expr)
+        flux_cols = re.findall(r"mag\(\s*(\w+)\s*\)", self.expr)
 
-        cols = [c for c in re.findall(r'[a-zA-Z_]+', self.expr) if c not in self._ignore_words]
+        cols = [c for c in re.findall(r"[a-zA-Z_]+", self.expr) if c not in self._ignore_words]
         not_a_col = []
         for c in flux_cols:
-            if not re.search('_instFlux$', c):
-                cols.append(f'{c}_instFlux')
+            if not re.search("_instFlux$", c):
+                cols.append(f"{c}_instFlux")
                 not_a_col.append(c)
             else:
                 cols.append(c)
@@ -435,8 +438,8 @@ class Index(Functor):
     """Return the value of the index for each object
     """
 
-    columns = ['coord_ra']  # just a dummy; something has to be here
-    _defaultDataset = 'ref'
+    columns = ["coord_ra"]  # just a dummy; something has to be here
+    _defaultDataset = "ref"
     _defaultNoDup = True
 
     def _func(self, df):
@@ -444,7 +447,7 @@ class Index(Functor):
 
 
 class IDColumn(Column):
-    col = 'id'
+    col = "id"
     _allow_difference = False
     _defaultNoDup = True
 
@@ -453,12 +456,13 @@ class IDColumn(Column):
 
 
 class FootprintNPix(Column):
-    col = 'base_Footprint_nPix'
+    col = "base_Footprint_nPix"
 
 
 class CoordColumn(Column):
     """Base class for coordinate column, in degrees
     """
+
     _radians = True
 
     def __init__(self, col, **kwargs):
@@ -473,11 +477,12 @@ class CoordColumn(Column):
 class RAColumn(CoordColumn):
     """Right Ascension, in degrees
     """
-    name = 'RA'
+
+    name = "RA"
     _defaultNoDup = True
 
     def __init__(self, **kwargs):
-        super().__init__('coord_ra', **kwargs)
+        super().__init__("coord_ra", **kwargs)
 
     def __call__(self, catalog, **kwargs):
         return super().__call__(catalog, **kwargs)
@@ -486,25 +491,26 @@ class RAColumn(CoordColumn):
 class DecColumn(CoordColumn):
     """Declination, in degrees
     """
-    name = 'Dec'
+
+    name = "Dec"
     _defaultNoDup = True
 
     def __init__(self, **kwargs):
-        super().__init__('coord_dec', **kwargs)
+        super().__init__("coord_dec", **kwargs)
 
     def __call__(self, catalog, **kwargs):
         return super().__call__(catalog, **kwargs)
 
 
 def fluxName(col):
-    if not col.endswith('_instFlux'):
-        col += '_instFlux'
+    if not col.endswith("_instFlux"):
+        col += "_instFlux"
     return col
 
 
 def fluxErrName(col):
-    if not col.endswith('_instFluxErr'):
-        col += '_instFluxErr'
+    if not col.endswith("_instFluxErr"):
+        col += "_instFluxErr"
     return col
 
 
@@ -532,7 +538,8 @@ class Mag(Functor):
     calib : `lsst.afw.image.calib.Calib` (optional)
         Object that knows zero point.
     """
-    _defaultDataset = 'meas'
+
+    _defaultDataset = "meas"
 
     def __init__(self, col, calib=None, **kwargs):
         self.col = fluxName(col)
@@ -551,13 +558,13 @@ class Mag(Functor):
 
     def _func(self, df):
         with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
-            return -2.5*np.log10(df[self.col] / self.fluxMag0)
+            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+            np.warnings.filterwarnings("ignore", r"divide by zero")
+            return -2.5 * np.log10(df[self.col] / self.fluxMag0)
 
     @property
     def name(self):
-        return f'mag_{self.col}'
+        return f"mag_{self.col}"
 
 
 class MagErr(Mag):
@@ -577,25 +584,25 @@ class MagErr(Mag):
         if self.calib is not None:
             self.fluxMag0Err = self.calib.getFluxMag0()[1]
         else:
-            self.fluxMag0Err = 0.
+            self.fluxMag0Err = 0.0
 
     @property
     def columns(self):
-        return [self.col, self.col + 'Err']
+        return [self.col, self.col + "Err"]
 
     def _func(self, df):
         with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
+            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+            np.warnings.filterwarnings("ignore", r"divide by zero")
             fluxCol, fluxErrCol = self.columns
             x = df[fluxErrCol] / df[fluxCol]
             y = self.fluxMag0Err / self.fluxMag0
-            magErr = (2.5 / np.log(10.)) * np.sqrt(x*x + y*y)
+            magErr = (2.5 / np.log(10.0)) * np.sqrt(x * x + y * y)
             return magErr
 
     @property
     def name(self):
-        return super().name + '_err'
+        return super().name + "_err"
 
 
 class NanoMaggie(Mag):
@@ -607,7 +614,7 @@ class NanoMaggie(Mag):
 
 
 class MagDiff(Functor):
-    _defaultDataset = 'meas'
+    _defaultDataset = "meas"
 
     """Functor to calculate magnitude difference"""
 
@@ -622,17 +629,17 @@ class MagDiff(Functor):
 
     def _func(self, df):
         with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
-            return -2.5*np.log10(df[self.col1]/df[self.col2])
+            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+            np.warnings.filterwarnings("ignore", r"divide by zero")
+            return -2.5 * np.log10(df[self.col1] / df[self.col2])
 
     @property
     def name(self):
-        return f'(mag_{self.col1} - mag_{self.col2})'
+        return f"(mag_{self.col1} - mag_{self.col2})"
 
     @property
     def shortname(self):
-        return f'magDiff_{self.col1}_{self.col2}'
+        return f"magDiff_{self.col1}_{self.col2}"
 
 
 class Color(Functor):
@@ -660,8 +667,9 @@ class Color(Functor):
         Filters from which to compute magnitude difference.
         Color computed is `Mag(filt2) - Mag(filt1)`.
     """
-    _defaultDataset = 'forced_src'
-    _dfLevels = ('filter', 'column')
+
+    _defaultDataset = "forced_src"
+    _dfLevels = ("filter", "column")
     _defaultNoDup = True
 
     def __init__(self, col, filt2, filt1, **kwargs):
@@ -694,12 +702,11 @@ class Color(Functor):
         return [self.mag1.col, self.mag2.col]
 
     def multilevelColumns(self, parq):
-        return [(self.dataset, self.filt1, self.col),
-                (self.dataset, self.filt2, self.col)]
+        return [(self.dataset, self.filt1, self.col), (self.dataset, self.filt2, self.col)]
 
     @property
     def name(self):
-        return f'{self.filt2} - {self.filt1} ({self.col})'
+        return f"{self.filt2} - {self.filt1} ({self.col})"
 
     @property
     def shortname(self):
@@ -709,9 +716,10 @@ class Color(Functor):
 class Labeller(Functor):
     """Main function of this subclass is to override the dropna=True
     """
-    _null_label = 'null'
+
+    _null_label = "null"
     _allow_difference = False
-    name = 'label'
+    name = "label"
     _force_str = False
 
     def __call__(self, parq, dropna=False, **kwargs):
@@ -730,16 +738,17 @@ class StarGalaxyLabeller(Labeller):
 
         # TODO: DM-21954 Look into veracity of inline comment below
         # are these backwards?
-        categories = ['galaxy', 'star', self._null_label]
-        label = pd.Series(pd.Categorical.from_codes(test, categories=categories),
-                          index=x.index, name='label')
+        categories = ["galaxy", "star", self._null_label]
+        label = pd.Series(
+            pd.Categorical.from_codes(test, categories=categories), index=x.index, name="label"
+        )
         if self._force_str:
             label = label.astype(str)
         return label
 
 
 class NumStarLabeller(Labeller):
-    _columns = ['numStarFlags']
+    _columns = ["numStarFlags"]
     labels = {"star": 0, "maybe": 1, "notStar": 2}
 
     def _func(self, df):
@@ -748,9 +757,8 @@ class NumStarLabeller(Labeller):
         # Number of filters
         n = len(x.unique()) - 1
 
-        labels = ['noStar', 'maybe', 'star']
-        label = pd.Series(pd.cut(x, [-1, 0, n-1, n], labels=labels),
-                          index=x.index, name='label')
+        labels = ["noStar", "maybe", "star"]
+        label = pd.Series(pd.cut(x, [-1, 0, n - 1, n], labels=labels), index=x.index, name="label")
 
         if self._force_str:
             label = label.astype(str)
@@ -759,20 +767,23 @@ class NumStarLabeller(Labeller):
 
 
 class DeconvolvedMoments(Functor):
-    name = 'Deconvolved Moments'
-    shortname = 'deconvolvedMoments'
-    _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
-                "ext_shapeHSM_HsmSourceMoments_yy",
-                "base_SdssShape_xx", "base_SdssShape_yy",
-                "ext_shapeHSM_HsmPsfMoments_xx",
-                "ext_shapeHSM_HsmPsfMoments_yy")
+    name = "Deconvolved Moments"
+    shortname = "deconvolvedMoments"
+    _columns = (
+        "ext_shapeHSM_HsmSourceMoments_xx",
+        "ext_shapeHSM_HsmSourceMoments_yy",
+        "base_SdssShape_xx",
+        "base_SdssShape_yy",
+        "ext_shapeHSM_HsmPsfMoments_xx",
+        "ext_shapeHSM_HsmPsfMoments_yy",
+    )
 
     def _func(self, df):
         """Calculate deconvolved moments"""
         if "ext_shapeHSM_HsmSourceMoments_xx" in df.columns:  # _xx added by tdm
             hsm = df["ext_shapeHSM_HsmSourceMoments_xx"] + df["ext_shapeHSM_HsmSourceMoments_yy"]
         else:
-            hsm = np.ones(len(df))*np.nan
+            hsm = np.ones(len(df)) * np.nan
         sdss = df["base_SdssShape_xx"] + df["base_SdssShape_yy"]
         if "ext_shapeHSM_HsmPsfMoments_xx" in df.columns:
             psf = df["ext_shapeHSM_HsmPsfMoments_xx"] + df["ext_shapeHSM_HsmPsfMoments_yy"]
@@ -780,77 +791,85 @@ class DeconvolvedMoments(Functor):
             # LSST does not have shape.sdss.psf.  Could instead add base_PsfShape to catalog using
             # exposure.getPsf().computeShape(s.getCentroid()).getIxx()
             # raise TaskError("No psf shape parameter found in catalog")
-            raise RuntimeError('No psf shape parameter found in catalog')
+            raise RuntimeError("No psf shape parameter found in catalog")
 
         return hsm.where(np.isfinite(hsm), sdss) - psf
 
 
 class SdssTraceSize(Functor):
     """Functor to calculate SDSS trace radius size for sources"""
+
     name = "SDSS Trace Size"
-    shortname = 'sdssTrace'
+    shortname = "sdssTrace"
     _columns = ("base_SdssShape_xx", "base_SdssShape_yy")
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["base_SdssShape_xx"] + df["base_SdssShape_yy"]))
+        srcSize = np.sqrt(0.5 * (df["base_SdssShape_xx"] + df["base_SdssShape_yy"]))
         return srcSize
 
 
 class PsfSdssTraceSizeDiff(Functor):
     """Functor to calculate SDSS trace radius size difference (%) between object and psf model"""
+
     name = "PSF - SDSS Trace Size"
-    shortname = 'psf_sdssTrace'
-    _columns = ("base_SdssShape_xx", "base_SdssShape_yy",
-                "base_SdssShape_psf_xx", "base_SdssShape_psf_yy")
+    shortname = "psf_sdssTrace"
+    _columns = ("base_SdssShape_xx", "base_SdssShape_yy", "base_SdssShape_psf_xx", "base_SdssShape_psf_yy")
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["base_SdssShape_xx"] + df["base_SdssShape_yy"]))
-        psfSize = np.sqrt(0.5*(df["base_SdssShape_psf_xx"] + df["base_SdssShape_psf_yy"]))
-        sizeDiff = 100*(srcSize - psfSize)/(0.5*(srcSize + psfSize))
+        srcSize = np.sqrt(0.5 * (df["base_SdssShape_xx"] + df["base_SdssShape_yy"]))
+        psfSize = np.sqrt(0.5 * (df["base_SdssShape_psf_xx"] + df["base_SdssShape_psf_yy"]))
+        sizeDiff = 100 * (srcSize - psfSize) / (0.5 * (srcSize + psfSize))
         return sizeDiff
 
 
 class HsmTraceSize(Functor):
     """Functor to calculate HSM trace radius size for sources"""
-    name = 'HSM Trace Size'
-    shortname = 'hsmTrace'
-    _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
-                "ext_shapeHSM_HsmSourceMoments_yy")
+
+    name = "HSM Trace Size"
+    shortname = "hsmTrace"
+    _columns = ("ext_shapeHSM_HsmSourceMoments_xx", "ext_shapeHSM_HsmSourceMoments_yy")
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"]
-                               + df["ext_shapeHSM_HsmSourceMoments_yy"]))
+        srcSize = np.sqrt(
+            0.5 * (df["ext_shapeHSM_HsmSourceMoments_xx"] + df["ext_shapeHSM_HsmSourceMoments_yy"])
+        )
         return srcSize
 
 
 class PsfHsmTraceSizeDiff(Functor):
     """Functor to calculate HSM trace radius size difference (%) between object and psf model"""
-    name = 'PSF - HSM Trace Size'
-    shortname = 'psf_HsmTrace'
-    _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
-                "ext_shapeHSM_HsmSourceMoments_yy",
-                "ext_shapeHSM_HsmPsfMoments_xx",
-                "ext_shapeHSM_HsmPsfMoments_yy")
+
+    name = "PSF - HSM Trace Size"
+    shortname = "psf_HsmTrace"
+    _columns = (
+        "ext_shapeHSM_HsmSourceMoments_xx",
+        "ext_shapeHSM_HsmSourceMoments_yy",
+        "ext_shapeHSM_HsmPsfMoments_xx",
+        "ext_shapeHSM_HsmPsfMoments_yy",
+    )
 
     def _func(self, df):
-        srcSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmSourceMoments_xx"]
-                               + df["ext_shapeHSM_HsmSourceMoments_yy"]))
-        psfSize = np.sqrt(0.5*(df["ext_shapeHSM_HsmPsfMoments_xx"]
-                               + df["ext_shapeHSM_HsmPsfMoments_yy"]))
-        sizeDiff = 100*(srcSize - psfSize)/(0.5*(srcSize + psfSize))
+        srcSize = np.sqrt(
+            0.5 * (df["ext_shapeHSM_HsmSourceMoments_xx"] + df["ext_shapeHSM_HsmSourceMoments_yy"])
+        )
+        psfSize = np.sqrt(0.5 * (df["ext_shapeHSM_HsmPsfMoments_xx"] + df["ext_shapeHSM_HsmPsfMoments_yy"]))
+        sizeDiff = 100 * (srcSize - psfSize) / (0.5 * (srcSize + psfSize))
         return sizeDiff
 
 
 class HsmFwhm(Functor):
-    name = 'HSM Psf FWHM'
-    _columns = ('ext_shapeHSM_HsmPsfMoments_xx', 'ext_shapeHSM_HsmPsfMoments_yy')
+    name = "HSM Psf FWHM"
+    _columns = ("ext_shapeHSM_HsmPsfMoments_xx", "ext_shapeHSM_HsmPsfMoments_yy")
     # TODO: DM-21403 pixel scale should be computed from the CD matrix or transform matrix
     pixelScale = 0.168
-    SIGMA2FWHM = 2*np.sqrt(2*np.log(2))
+    SIGMA2FWHM = 2 * np.sqrt(2 * np.log(2))
 
     def _func(self, df):
-        return self.pixelScale*self.SIGMA2FWHM*np.sqrt(
-            0.5*(df['ext_shapeHSM_HsmPsfMoments_xx'] + df['ext_shapeHSM_HsmPsfMoments_yy']))
+        return (
+            self.pixelScale
+            * self.SIGMA2FWHM
+            * np.sqrt(0.5 * (df["ext_shapeHSM_HsmPsfMoments_xx"] + df["ext_shapeHSM_HsmPsfMoments_yy"]))
+        )
 
 
 class E1(Functor):
@@ -886,11 +905,10 @@ class E2(Functor):
         return [self.colXX, self.colXY, self.colYY]
 
     def _func(self, df):
-        return 2*df[self.colXY] / (df[self.colXX] + df[self.colYY])
+        return 2 * df[self.colXY] / (df[self.colXX] + df[self.colYY])
 
 
 class RadiusFromQuadrupole(Functor):
-
     def __init__(self, colXX, colXY, colYY, **kwargs):
         self.colXX = colXX
         self.colXY = colXY
@@ -902,20 +920,16 @@ class RadiusFromQuadrupole(Functor):
         return [self.colXX, self.colXY, self.colYY]
 
     def _func(self, df):
-        return (df[self.colXX]*df[self.colYY] - df[self.colXY]**2)**0.25
+        return (df[self.colXX] * df[self.colYY] - df[self.colXY] ** 2) ** 0.25
 
 
 class LocalWcs(Functor):
     """Computations using the stored localWcs.
     """
+
     name = "LocalWcsOperations"
 
-    def __init__(self,
-                 colCD_1_1,
-                 colCD_1_2,
-                 colCD_2_1,
-                 colCD_2_2,
-                 **kwargs):
+    def __init__(self, colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs):
         self.colCD_1_1 = colCD_1_1
         self.colCD_1_2 = colCD_1_2
         self.colCD_2_1 = colCD_2_1
@@ -973,9 +987,8 @@ class LocalWcs(Functor):
         deltaDec = dec2 - dec1
         deltaRa = ra2 - ra1
         return 2 * np.arcsin(
-            np.sqrt(
-                np.sin(deltaDec / 2) ** 2
-                + np.cos(dec2) * np.cos(dec1) * np.sin(deltaRa / 2) ** 2))
+            np.sqrt(np.sin(deltaDec / 2) ** 2 + np.cos(dec2) * np.cos(dec1) * np.sin(deltaRa / 2) ** 2)
+        )
 
     def getSkySeperationFromPixel(self, x1, y1, x2, y2, cd11, cd12, cd21, cd22):
         """Compute the distance on the sphere from x2, y1 to x1, y1.
@@ -1015,14 +1028,12 @@ class LocalWcs(Functor):
 class ComputePixelScale(LocalWcs):
     """Compute the local pixel scale from the stored CDMatrix.
     """
+
     name = "PixelScale"
 
     @property
     def columns(self):
-        return [self.colCD_1_1,
-                self.colCD_1_2,
-                self.colCD_2_1,
-                self.colCD_2_2]
+        return [self.colCD_1_1, self.colCD_1_2, self.colCD_2_1, self.colCD_2_2]
 
     def pixelScaleArcseconds(self, cd11, cd12, cd21, cd22):
         """Compute the local pixel to scale conversion in arcseconds.
@@ -1048,29 +1059,18 @@ class ComputePixelScale(LocalWcs):
         return 3600 * np.degrees(np.sqrt(np.fabs(cd11 * cd22 - cd12 * cd21)))
 
     def _func(self, df):
-        return self.pixelScaleArcseconds(df[self.colCD_1_1],
-                                         df[self.colCD_1_2],
-                                         df[self.colCD_2_1],
-                                         df[self.colCD_2_2])
+        return self.pixelScaleArcseconds(
+            df[self.colCD_1_1], df[self.colCD_1_2], df[self.colCD_2_1], df[self.colCD_2_2]
+        )
 
 
 class ConvertPixelToArcseconds(ComputePixelScale):
     """Convert a value in units pixels to units arcseconds.
     """
 
-    def __init__(self,
-                 col,
-                 colCD_1_1,
-                 colCD_1_2,
-                 colCD_2_1,
-                 colCD_2_2,
-                 **kwargs):
+    def __init__(self, col, colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs):
         self.col = col
-        super().__init__(colCD_1_1,
-                         colCD_1_2,
-                         colCD_2_1,
-                         colCD_2_2,
-                         **kwargs)
+        super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
 
     @property
     def name(self):
@@ -1078,36 +1078,33 @@ class ConvertPixelToArcseconds(ComputePixelScale):
 
     @property
     def columns(self):
-        return [self.col,
-                self.colCD_1_1,
-                self.colCD_1_2,
-                self.colCD_2_1,
-                self.colCD_2_2]
+        return [self.col, self.colCD_1_1, self.colCD_1_2, self.colCD_2_1, self.colCD_2_2]
 
     def _func(self, df):
-        return df[self.col] * self.pixelScaleArcseconds(df[self.colCD_1_1],
-                                                        df[self.colCD_1_2],
-                                                        df[self.colCD_2_1],
-                                                        df[self.colCD_2_2])
+        return df[self.col] * self.pixelScaleArcseconds(
+            df[self.colCD_1_1], df[self.colCD_1_2], df[self.colCD_2_1], df[self.colCD_2_2]
+        )
 
 
 class ReferenceBand(Functor):
-    name = 'Reference Band'
-    shortname = 'refBand'
+    name = "Reference Band"
+    shortname = "refBand"
 
     @property
     def columns(self):
-        return ["merge_measurement_i",
-                "merge_measurement_r",
-                "merge_measurement_z",
-                "merge_measurement_y",
-                "merge_measurement_g"]
+        return [
+            "merge_measurement_i",
+            "merge_measurement_r",
+            "merge_measurement_z",
+            "merge_measurement_y",
+            "merge_measurement_g",
+        ]
 
     def _func(self, df):
         def getFilterAliasName(row):
             # get column name with the max value (True > False)
             colName = row.idxmax()
-            return colName.replace('merge_measurement_', '')
+            return colName.replace("merge_measurement_", "")
 
         return df[self.columns].apply(getFilterAliasName, axis=1)
 
@@ -1129,8 +1126,8 @@ class Photometry(Functor):
         if calib is not None:
             self.fluxMag0, self.fluxMag0Err = calib.getFluxMag0()
         else:
-            self.fluxMag0 = 1./np.power(10, -0.4*self.COADD_ZP)
-            self.fluxMag0Err = 0.
+            self.fluxMag0 = 1.0 / np.power(10, -0.4 * self.COADD_ZP)
+            self.fluxMag0Err = 0.0
 
         super().__init__(**kwargs)
 
@@ -1140,25 +1137,25 @@ class Photometry(Functor):
 
     @property
     def name(self):
-        return f'mag_{self.col}'
+        return f"mag_{self.col}"
 
     @classmethod
     def hypot(cls, a, b):
         if np.abs(a) < np.abs(b):
             a, b = b, a
-        if a == 0.:
-            return 0.
-        q = b/a
-        return np.abs(a) * np.sqrt(1. + q*q)
+        if a == 0.0:
+            return 0.0
+        q = b / a
+        return np.abs(a) * np.sqrt(1.0 + q * q)
 
     def dn2flux(self, dn, fluxMag0):
         return self.AB_FLUX_SCALE * dn / fluxMag0
 
     def dn2mag(self, dn, fluxMag0):
         with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
-            return -2.5 * np.log10(dn/fluxMag0)
+            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+            np.warnings.filterwarnings("ignore", r"divide by zero")
+            return -2.5 * np.log10(dn / fluxMag0)
 
     def dn2fluxErr(self, dn, dnErr, fluxMag0, fluxMag0Err):
         retVal = self.vhypot(dn * fluxMag0Err, dnErr * fluxMag0)
@@ -1223,14 +1220,10 @@ class LocalPhotometry(Functor):
     LocalMagnitude
     LocalMagnitudeErr
     """
+
     logNJanskyToAB = (1 * u.nJy).to_value(u.ABmag)
 
-    def __init__(self,
-                 instFluxCol,
-                 instFluxErrCol,
-                 photoCalibCol,
-                 photoCalibErrCol,
-                 **kwargs):
+    def __init__(self, instFluxCol, instFluxErrCol, photoCalibCol, photoCalibErrCol, **kwargs):
         self.instFluxCol = instFluxCol
         self.instFluxErrCol = instFluxErrCol
         self.photoCalibCol = photoCalibCol
@@ -1332,7 +1325,7 @@ class LocalNanojansky(LocalPhotometry):
 
     @property
     def name(self):
-        return f'flux_{self.instFluxCol}'
+        return f"flux_{self.instFluxCol}"
 
     def _func(self, df):
         return self.instFluxToNanojansky(df[self.instFluxCol], df[self.photoCalibCol])
@@ -1351,16 +1344,16 @@ class LocalNanojanskyErr(LocalPhotometry):
 
     @property
     def columns(self):
-        return [self.instFluxCol, self.instFluxErrCol,
-                self.photoCalibCol, self.photoCalibErrCol]
+        return [self.instFluxCol, self.instFluxErrCol, self.photoCalibCol, self.photoCalibErrCol]
 
     @property
     def name(self):
-        return f'fluxErr_{self.instFluxCol}'
+        return f"fluxErr_{self.instFluxCol}"
 
     def _func(self, df):
-        return self.instFluxErrToNanojanskyErr(df[self.instFluxCol], df[self.instFluxErrCol],
-                                               df[self.photoCalibCol], df[self.photoCalibErrCol])
+        return self.instFluxErrToNanojanskyErr(
+            df[self.instFluxCol], df[self.instFluxErrCol], df[self.photoCalibCol], df[self.photoCalibErrCol]
+        )
 
 
 class LocalMagnitude(LocalPhotometry):
@@ -1380,11 +1373,10 @@ class LocalMagnitude(LocalPhotometry):
 
     @property
     def name(self):
-        return f'mag_{self.instFluxCol}'
+        return f"mag_{self.instFluxCol}"
 
     def _func(self, df):
-        return self.instFluxToMagnitude(df[self.instFluxCol],
-                                        df[self.photoCalibCol])
+        return self.instFluxToMagnitude(df[self.instFluxCol], df[self.photoCalibCol])
 
 
 class LocalMagnitudeErr(LocalPhotometry):
@@ -1400,15 +1392,13 @@ class LocalMagnitudeErr(LocalPhotometry):
 
     @property
     def columns(self):
-        return [self.instFluxCol, self.instFluxErrCol,
-                self.photoCalibCol, self.photoCalibErrCol]
+        return [self.instFluxCol, self.instFluxErrCol, self.photoCalibCol, self.photoCalibErrCol]
 
     @property
     def name(self):
-        return f'magErr_{self.instFluxCol}'
+        return f"magErr_{self.instFluxCol}"
 
     def _func(self, df):
-        return self.instFluxErrToMagnitudeErr(df[self.instFluxCol],
-                                              df[self.instFluxErrCol],
-                                              df[self.photoCalibCol],
-                                              df[self.photoCalibErrCol])
+        return self.instFluxErrToMagnitudeErr(
+            df[self.instFluxCol], df[self.instFluxErrCol], df[self.photoCalibCol], df[self.photoCalibErrCol]
+        )
