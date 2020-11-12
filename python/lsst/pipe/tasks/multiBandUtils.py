@@ -138,13 +138,12 @@ def getInputSchema(task, butler=None, schema=None):
     return schema
 
 
+# TODO: DM-27170 should remove this function.
 def getShortFilterName(name):
     """Given a longer, camera-specific filter name (e.g. "HSC-I") return its shorthand name ("i").
     """
-    # I'm not sure if this is the way this is supposed to be implemented, but it seems to work,
-    # and its the only way I could get it to work.
     try:
-        return afwImage.Filter(name).getFilterProperty().getName()
+        return afwImage.Filter(name).getCanonicalName()
     except pexExceptions.NotFoundError:
         # No mapping could be found, try proceeding with given name
         return name
