@@ -152,6 +152,10 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                                     doc="Convolve science image by its PSF before PSF-matching?")
     doScaleTemplateVariance = pexConfig.Field(dtype=bool, default=False,
                                               doc="Scale variance of the template before PSF matching")
+    doScaleDiffimVariance = pexConfig.Field(dtype=bool, default=False,
+                                            doc="Scale variance of the diffim before PSF matching. "
+                                                "You may do either this or template variance scaling, "
+                                                "or neither. (Doing both is a waste of CPU.)")
     useGaussianForPreConvolution = pexConfig.Field(dtype=bool, default=True,
                                                    doc="Use a simple gaussian PSF model for pre-convolution "
                                                        "(else use fit PSF)? Ignored if doPreConvolve false.")
@@ -323,6 +327,9 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         if hasattr(self.getTemplate, "coaddName"):
             if self.getTemplate.coaddName != self.coaddName:
                 raise ValueError("Mis-matched coaddName and getTemplate.coaddName in the config.")
+        if self.doScaleDiffimVariance and self.doScaleTemplateVariance:
+            raise ValueError("Scaling the diffim variance and scaling the template variance "
+                             "are both set. Please choose one or the other.")
 
 
 class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
@@ -353,7 +360,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.subtract.name == 'al' and self.config.doDecorrelation:
             self.makeSubtask("decorrelate")
 
-        if self.config.doScaleTemplateVariance:
+        if self.config.doScaleTemplateVariance or self.config.doScaleDiffimVariance:
             self.makeSubtask("scaleVariance")
 
         if self.config.doUseRegister:
@@ -601,8 +608,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
 
         if self.config.doSubtract:
             if self.config.doScaleTemplateVariance:
+                self.log.info("Rescaling template variance")
                 templateVarFactor = self.scaleVariance.run(
                     templateExposure.getMaskedImage())
+                self.log.info("Template variance scaling factor: %.2f" % templateVarFactor)
                 self.metadata.add("scaleTemplateVarianceFactor", templateVarFactor)
 
             if self.config.subtract.name == 'zogy':
@@ -863,6 +872,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         # END (if self.config.doSubtract)
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
+
+            # Rescale difference image variance plane
+            if self.config.doScaleDiffimVariance:
+                self.log.info("Rescaling diffim variance")
+                diffimVarFactor = self.scaleVariance.run(subtractedExposure.getMaskedImage())
+                self.log.info("Diffim variance scaling factor: %.2f" % diffimVarFactor)
+                self.metadata.add("scaleDiffimVarianceFactor", diffimVarFactor)
+
             # Erase existing detection mask planes
             mask = subtractedExposure.getMaskedImage().getMask()
             mask &= ~(mask.getPlaneBitMask("DETECTED") | mask.getPlaneBitMask("DETECTED_NEGATIVE"))
