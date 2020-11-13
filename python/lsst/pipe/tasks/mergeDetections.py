@@ -30,6 +30,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
 from lsst.meas.algorithms import SkyObjectsTask
+from lsst.skymap import BaseSkyMap
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, ConfigField
 from lsst.pipe.base import (CmdLineTask, PipelineTask, PipelineTaskConfig, Struct,
                             PipelineTaskConnections)
@@ -68,7 +69,7 @@ class MergeDetectionsConnections(PipelineTaskConnections,
 
     skyMap = cT.Input(
         doc="SkyMap to be used in merging",
-        name="{inputCoaddName}Coadd_skyMap",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
         storageClass="SkyMap",
         dimensions=("skymap",),
     )

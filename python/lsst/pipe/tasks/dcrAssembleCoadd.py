@@ -34,6 +34,7 @@ from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.utils as utils
+from lsst.skymap import BaseSkyMap
 from .assembleCoadd import (AssembleCoaddTask,
                             CompareWarpAssembleCoaddConfig,
                             CompareWarpAssembleCoaddTask)
@@ -61,7 +62,7 @@ class DcrAssembleCoaddConnections(pipeBase.PipelineTaskConnections,
     )
     skyMap = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
-        name="{inputCoaddName}Coadd_skyMap",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
         storageClass="SkyMap",
         dimensions=("skymap", ),
     )

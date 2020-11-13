@@ -30,6 +30,7 @@ import lsst.pipe.base.connectionTypes as cT
 import lsst.log as log
 import lsst.utils as utils
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
+from lsst.skymap import BaseSkyMap
 from .coaddBase import CoaddBaseTask, makeSkyInfo
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -596,7 +597,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
     )
     skyMap = cT.Input(
         doc="Input definition of geometry/bbox and projection/wcs for warped exposures",
-        name="{coaddName}Coadd_skyMap",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
         storageClass="SkyMap",
         dimensions=("skymap",),
     )

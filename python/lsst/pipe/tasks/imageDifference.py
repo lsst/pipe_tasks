@@ -43,6 +43,7 @@ from lsst.ip.diffim import (DipoleAnalysis, SourceFlagChecker, KernelCandidateF,
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
 import lsst.afw.display as afwDisplay
+from lsst.skymap import BaseSkyMap
 
 __all__ = ["ImageDifferenceConfig", "ImageDifferenceTask"]
 FwhmPerSigma = 2*math.sqrt(2*math.log(2))
@@ -73,7 +74,7 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
 
     skyMap = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for template exposures",
-        name="{skyMapName}Coadd_skyMap",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
         dimensions=("skymap", ),
         storageClass="SkyMap",
     )

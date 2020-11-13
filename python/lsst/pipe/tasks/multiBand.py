@@ -39,6 +39,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
+from lsst.skymap import BaseSkyMap
 
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
@@ -614,7 +615,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
     )
     skyMap = cT.Input(
         doc="SkyMap to use in processing",
-        name="{inputCoaddName}Coadd_skyMap",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
