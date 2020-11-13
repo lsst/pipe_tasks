@@ -30,8 +30,6 @@ from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig, MakeGen3SkyMapT
 # Build a parser for command line arguments
 parser = argparse.ArgumentParser(description="Make a SkyMap and add it to a gen3 repository.")
 parser.add_argument("butler", metavar="Butler", type=str, help="Path to a gen3 butler")
-parser.add_argument("collection", type=str, metavar="Collection",
-                    help="Name of the Butler collection the SkyMap should be inserted into")
 parser.add_argument("-C", "--config-file", dest="configFile",
                     help="Path to a config file overrides file")
 
@@ -46,5 +44,5 @@ if args.configFile:
 
 # Construct the SkyMap Creation task and run it
 skyMapTask = MakeGen3SkyMapTask(config=config)
-butler = Butler(args.butler, run=args.collection)
+butler = Butler(args.butler, writeable=True)
 skyMapTask.run(butler)

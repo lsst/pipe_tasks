@@ -19,13 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from lsst.daf.butler import Butler, DatasetType
+from lsst.daf.butler import Butler
+from lsst.skymap import BaseSkyMap
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, MakeDiscreteSkyMapConfig
 from lsst.obs.base.utils import getInstrument
 
 
 def makeDiscreteSkyMap(repo, config_file, collections, instrument,
-                       out_collection='skymaps', skymap_id='discrete'):
+                       skymap_id='discrete', old_skymap_id=None):
     """Implements the command line interface `butler make-discrete-skymap` subcommand,
     should only be called by command line tools and unit test code that tests
     this function.
@@ -45,29 +46,31 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
         with the calibrated exposures.
     instrument : `str`
         The name or fully-qualified class name of an instrument.
-    out_collection : `str`, optional
-        The name of the collection to save the skymap to.  Default is 'skymaps'.
     skymap_id : `str`, optional
         The identifier of the skymap to save.  Default is 'discrete'.
+    old_skymap_id : `str`, optional
+        The identifer of the skymap to append to.  Must differ from
+        ``skymap_id``.  Ignored unless ``config.doAppend=True``.
     """
-    butler = Butler(repo, collections=collections, writeable=True, run=out_collection)
+    butler = Butler(repo, collections=collections, writeable=True)
     instr = getInstrument(instrument, butler.registry)
     config = MakeDiscreteSkyMapConfig()
     instr.applyConfigOverrides(MakeDiscreteSkyMapTask._DefaultName, config)
 
     if config_file is not None:
         config.load(config_file)
-    skymap_name = config.coaddName + "Coadd_skyMap"
+    # The coaddName for a SkyMap is only relevant in Gen2, and we completely
+    # ignore it here; once Gen2 is gone it can be removed.
     oldSkyMap = None
     if config.doAppend:
-        if out_collection in collections:
-            raise ValueError(f"Cannot overwrite dataset.  If appending, specify an output "
-                             f"collection not in the input collections.")
-        dataId = {'skymap': skymap_id}
+        if old_skymap_id is None:
+            raise ValueError("old_skymap_id must be provided if config.doAppend is True.")
+        dataId = {'skymap': old_skymap_id}
         try:
-            oldSkyMap = butler.get(skymap_name, collections=collections, dataId=dataId)
+            oldSkyMap = butler.get(BaseSkyMap.SKYMAP_DATASET_TYPE_NAME, collections=collections,
+                                   dataId=dataId)
         except LookupError as e:
-            msg = (f"Could not find seed skymap for {skymap_name} with dataId {dataId} "
+            msg = (f"Could not find seed skymap with dataId {dataId} "
                    f"in collections {collections} but doAppend is {config.doAppend}.  Aborting...")
             raise LookupError(msg, *e.args[1:])
 
@@ -76,11 +79,6 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
                          for ref in datasets]
     task = MakeDiscreteSkyMapTask(config=config)
     result = task.run(wcs_md_tuple_list, oldSkyMap)
-    skymap_dataset_type = DatasetType(skymap_name, dimensions=["skymap", ],
-                                      universe=butler.registry.dimensions,
-                                      storageClass="SkyMap")
-    butler.registry.registerDatasetType(skymap_dataset_type)
-    if config.doAppend:
-        # By definition if appending the dataset has already been registered
-        result.skyMap.register(skymap_id, butler.registry)
-    butler.put(result.skyMap, skymap_name, dataId={'skymap': skymap_id})
+    result.skyMap.register(skymap_id, butler)
+    butler.put(result.skyMap, BaseSkyMap.SKYMAP_DATASET_TYPE_NAME, dataId={'skymap': skymap_id},
+               run=BaseSkyMap.SKYMAP_RUN_COLLECTION_NAME)

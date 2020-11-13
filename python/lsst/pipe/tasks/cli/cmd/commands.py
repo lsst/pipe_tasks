@@ -45,12 +45,12 @@ from ... import script
               callback=split_commas,
               metavar=typeStrAcceptsMultiple,
               required=True)
-@click.option("--out-collection",
-              help=("The collection to write the skymap to."),
-              type=str, default="skymaps", show_default=True)
 @click.option("--skymap-id",
               help=("The identifier of the skymap to write."),
               type=str, default="discrete", show_default=True)
+@click.option("--old-skymap-id",
+              help=("The identifier of the previous skymap to append to, if config.doAppend is True."),
+              type=str, default=None)
 def make_discrete_skymap(*args, **kwargs):
     """Define a discrete skymap from calibrated exposures in the butler registry."""
     cli_handle_exception(script.makeDiscreteSkyMap, *args, **kwargs)
