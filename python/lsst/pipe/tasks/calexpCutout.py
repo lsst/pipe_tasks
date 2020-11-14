@@ -1,16 +1,13 @@
-import numpy
-
 import lsst.pipe.base as pipeBase
-import lsst.pex.config as pexConfig
 import lsst.geom as geom
-import lsst.sphgeom as sphgeom
 from lsst.meas.algorithms import Stamp, Stamps
 
 __all__ = ['CalexpCutoutTaskConfig', 'CalexpCutoutTask']
 
+
 class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
-                            dimensions=("instrument", 'visit', 'detector'),
-                            defaultTemplates={}):
+                                  dimensions=("instrument", 'visit', 'detector'),
+                                  defaultTemplates={}):
     in_cat = pipeBase.connectionTypes.Input(
         doc="Locations for cutouts",
         name="cutout_positions",
@@ -56,7 +53,7 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
             pix = wcs.skyToPixel(pt)
             # Clamp to LL corner of the LL pixel and draw extent from there
             box = geom.Box2I(geom.Point2I(int(pix.x-size/2), int(pix.y-size/2)),
-                            geom.Extent2I(size, size))
+                             geom.Extent2I(size, size))
             # I think we need to think about what we want the origin to be: LOCAL or PARENT
             sub = mim.Factory(mim, box)
             stamp = Stamp(stamp_im=sub, position=pt, size=size)
