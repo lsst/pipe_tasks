@@ -1,5 +1,6 @@
 import lsst.pipe.base as pipeBase
 import lsst.geom as geom
+from lsst.pex.config import Field
 from lsst.meas.algorithms import Stamp, Stamps
 
 __all__ = ['CalexpCutoutTaskConfig', 'CalexpCutoutTask']
@@ -30,7 +31,8 @@ class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
 
 class CalexpCutoutTaskConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=CalexpCutoutTaskConnections):
-    pass
+    max_cutouts = Field(dtype=int, default=100, doc='Maximum number of entries to process. '
+                                                   'The result will be the first N in the catalog.')
 
 
 class CalexpCutoutTask(pipeBase.PipelineTask):
@@ -39,15 +41,16 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
     _DefaultName = "calexpCutoutTask"
 
     def run(self, in_cat, calexp):
+        max_idx = self.config.max_cutouts
         cutout_list = []
         wcs = calexp.getWcs()
         mim = calexp.getMaskedImage()
         metadata = calexp.getMetadata()
-        metadata['RA_DEG'] = in_cat['ra'][:100]
-        metadata['DEC_DEG'] = in_cat['dec'][:100]
-        metadata['SIZE'] = in_cat['size'][:100]
-        for i, ra, dec, size in zip(in_cat['ident'][:100], in_cat['ra'][:100],
-                                    in_cat['dec'][:100], in_cat['size'][:100]):
+        metadata['RA_DEG'] = in_cat['ra'][:max_idx]
+        metadata['DEC_DEG'] = in_cat['dec'][:max_idx]
+        metadata['SIZE'] = in_cat['size'][:max_idx]
+        for ident, ra, dec, size in zip(in_cat['ident'][:max_idx], in_cat['ra'][:max_idx],
+                                        in_cat['dec'][:max_idx], in_cat['size'][:max_idx]):
             pt = geom.SpherePoint(geom.Angle(ra, geom.degrees),
                                   geom.Angle(dec, geom.degrees))
             pix = wcs.skyToPixel(pt)
