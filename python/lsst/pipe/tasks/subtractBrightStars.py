@@ -26,24 +26,49 @@ single visit) level.
 __all__ = ["SubtractBrightStarsTask"]
 
 import numpy as np
-import astropy.units as u
 
 from lsst import geom
-# from lsst.afw import math as afwMath
+from lsst.afw import math as afwMath
 from lsst.afw import image as afwImage
-from lsst.afw import cameraGeom as cg
-from lsst.afw.geom import transformFactory as tFactory
 import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
+from lsst.pex import exceptions as pexExceptions
+from lsst.daf.persistence import butlerExceptions as bE
 
 
 class SubtractBrightStarsConfig(pexConfig.Config):
     """Configuration parameters for SubtractBrightStarsTask
     """
+    modelFilename = pexConfig.Field(
+        dtype=str,
+        doc="Absolute path to saved extended PSF model (temporary)",
+    )
+    doWriteSubtractor = pexConfig.Field(
+        dtype=bool,
+        doc="Should an exposure containing all bright star models be written to disk?",
+        default=True
+    )
+    subtractorFilename = pexConfig.Field(
+        dtype=str,
+        doc="(TEMP) Absolute path to where the subtractor file should be written."
+            "An ersatz of dataId template will be added.",
+        default="subtractor"
+    )
+    doWriteSubtractedExposure = pexConfig.Field(
+        dtype=bool,
+        doc="Should an exposure with bright stars subtracted be written to disk?",
+        default=True
+    )
+    subtractedExposureFilename = pexConfig.Field(
+        dtype=str,
+        doc="(TEMP) Absolute path to where the subtractor file should be written."
+            "An ersatz of dataId template will be added.",
+        default="subtractedExposure"
+    )
     magLimit = pexConfig.Field(
         dtype=float,
-        doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed",
+        doc="Magnitude limit, in Gaia G; all stars brighter than this value will be subtracted",
         default=18
     )
     warpingKernelName = pexConfig.ChoiceField(
@@ -55,17 +80,11 @@ class SubtractBrightStarsConfig(pexConfig.Config):
             "lanczos3": "Lanczos kernel of order 3",
             "lanczos4": "Lanczos kernel of order 4",
             "lanczos5": "Lanczos kernel of order 5",
-        },
+        }
     )
     refCatLoader = pexConfig.ConfigurableField(
         target=LoadIndexedReferenceObjectsTask,
         doc="reference object loader for astrometric calibration",
-    )
-    # TODO: Store this in brightStarStamps
-    modelCenter = pexConfig.Field(
-        dtype=int,
-        doc="to be removed",
-        default=(275, 275)
     )
 
     def setDefaults(self):
@@ -84,133 +103,78 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
         if butler is not None:
             self.makeSubtask('refCatLoader', butler=butler)
 
-    def recoverBrightStarInfo(self, inputExposure, refCatLoader=None):
-        """ TODO? fix docstring if this ends up still being needed
-
-        Read position of bright stars within `inputExposure` from refCat
-        amd extract them.
-
-        Parameters
-        ----------
-        inputExposure : `afwImage.exposure.exposure.ExposureF`
-            The image from which bright star stamps should be extracted.
-        refCatLoader : `LoadIndexedReferenceObjectsTask`, optional
-            Loader to find objects within a reference catalog.
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-            Result struct with components:
-
-            - ``starIms``: `list` of stamps
-            - ``pixCenters``: `list` of corresponding coordinates to each
-                star's center, in pixels.
-            - ``GMags``: `list` of corresponding (Gaia) G magnitudes.
-            - ``gaiaIds``: `np.ndarray` of corresponding unique Gaia
-                identifiers.
-        """
-        if refCatLoader is None:
-            refCatLoader = self.refCatLoader
-        pixCenters = []
-        wcs = inputExposure.getWcs()
-        # select stars within input exposure from refcat
-        withinCalexp = refCatLoader.loadPixelBox(inputExposure.getBBox(), wcs, filterName="phot_g_mean")
-        refCat = withinCalexp.refCat
-        # keep bright objects
-        fluxLimit = ((self.config.magLimit*u.ABmag).to(u.nJy)).to_value()
-        GFluxes = np.array(refCat['phot_g_mean_flux'])
-        bright = GFluxes > fluxLimit
-        ids = refCat.columns.extract("id", where=bright)["id"]
-        selectedColumns = refCat.columns.extract('coord_ra', 'coord_dec', where=bright)
-        for ra, dec in zip(selectedColumns["coord_ra"], selectedColumns["coord_dec"]):
-            sp = geom.SpherePoint(ra, dec, geom.radians)
-            cpix = wcs.skyToPixel(sp)
-            # TODO: DM-25894 keep objects on or slightly beyond CCD edge
-            if (cpix[0] >= self.config.stampSize[0]/2
-                    and cpix[0] < inputExposure.getDimensions()[0] - self.config.stampSize[0]/2
-                    and cpix[1] >= self.config.stampSize[1]/2
-                    and cpix[1] < inputExposure.getDimensions()[1] - self.config.stampSize[1]/2):
-                pixCenters += [cpix]
-        return pipeBase.Struct(pixCenters=pixCenters,
-                               gaiaIds=ids)
-
-    def getTransform(self, stamps, pixCenters, model):
-        """ TODO: hopefully this goes away too and we just read the
-        transform from the bss
-        """
-        # warping control; only contains shiftingALg provided in config
-        # warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
-        # Compare model to star stamp sizes
-        bufferPix = (self.modelStampSize[0] - self.config.stampSize[0],
-                     self.modelStampSize[1] - self.config.stampSize[1])
-        # Initialize detector instance (note all stars were extracted from an
-        # exposure from the same detector)
-        det = stamps[0].getDetector()
-        # Define correction for optical distortions
-        pixToTan = det.getTransform(cg.PIXELS, cg.TAN_PIXELS)
-        # Array of all possible rotations for detector orientation:
-        possibleRots = np.array([k*np.pi/2 for k in range(4)])
-        # determine how many, if any, rotations are required
-        yaw = det.getOrientation().getYaw()
-        nb90Rots = np.argmin(np.abs(possibleRots - float(yaw)))
-
-        # apply transformation to each star
-        # warpedModels = []
-        for star, cent in zip(stamps, pixCenters):
-            # (re)create empty destination image
-            destImage = afwImage.MaskedImageF(*self.modelStampSize)
-            # TODO: get this from bss
-            bottomLeft = geom.Point2D(star.getImage().getXY0())
-            newBottomLeft = pixToTan.applyForward(bottomLeft)
-            newBottomLeft.setX(newBottomLeft.getX() - bufferPix[0]/2)
-            newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1]/2)
-            # Convert to int
-            newBottomLeft = geom.Point2I(newBottomLeft)
-            # Set origin
-            destImage.setXY0(newBottomLeft)
-
-            # Define linear shifting to recenter stamps
-            newCenter = pixToTan.applyForward(cent)  # center of warped star
-            shift = self.modelCenter[0] + newBottomLeft[0] - newCenter[0],\
-                self.modelCenter[1] + newBottomLeft[1] - newCenter[1]
-            affineShift = geom.AffineTransform(shift)
-            shiftTransform = tFactory.makeTransform(affineShift)
-
-            # Define full transform (warp and shift)
-            starWarper = pixToTan.then(shiftTransform)
-            modelWarper = starWarper.inverted()
-
-            # TODO: get this from bss
-            return modelWarper, nb90Rots
+    def matchModel(self, inputModel, bss, subtractor):
+        # make a copy of the input model
+        model = inputModel.clone()
+        modelStampSize = model.getDimensions()
+        inv90Rots = 4 - bss.nb90Rots
+        model = afwMath.rotateImageBy90(model, inv90Rots)
+        warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
+        invImages = []
+        for star in bss:
+            if star.gaiaGMag < self.config.magLimit:
+                # set origin
+                model.setXY0(star.XY0)
+                # create empty destination image
+                invTransform = star.transform.inverted()
+                invXY0 = geom.Point2I(invTransform.applyForward(geom.Point2D(star.XY0)))
+                bbox = geom.Box2I(corner=invXY0, dimensions=modelStampSize)
+                invImage = afwImage.MaskedImageF(bbox)
+                # Apply inverse transform
+                goodPix = afwMath.warpImage(invImage, model, invTransform, warpCont)
+                if not goodPix:
+                    self.log.debug(f"Warping of a model failed for star {star.gaiaId}:"
+                                   "no good pixel in output")
+                # Multiply by annularFlux
+                invImage.image *= star.annularFlux
+                # Replace nans before subtraction (note all nan pixels have
+                # the NO_DATA flag)
+                invImage.image.array[np.isnan(invImage.image.array)] = 0
+                # Add matched model to subtractor exposure
+                try:
+                    subtractor[bbox] += invImage
+                    invImages.append(invImage)
+                except pexExceptions.LengthError:
+                    # TODO: handle stars close to the edge (DM-25894)
+                    self.log.debug(f"Star {star.gaiaId} not included in the subtractor"
+                                   "because it was too close to the edge.")
+        return subtractor, invImages
 
     @pipeBase.timeMethod
-    def run(self, inputExposure, refObjLoader=None, dataId=None):
+    def run(self, inputExposure, bss, refObjLoader=None, dataId=None):
         """TODO: write docstring
 
         Parameters
         ----------
         inputExposure : `afwImage.exposure.exposure.ExposureF`
             The image from which bright stars should be subtracted.
+        bss : `meas.algorithms.brightStarStamps.BrightStarStamps`
+            Set of bright star stamps extracted from this exposure.
         refCatLoader : `LoadIndexedReferenceObjectsTask`, optional
             Loader to find objects within a reference catalog.
 
         Returns
         -------
-        result :  `lsst.pipe.base.Struct`
-            TBW
+        result : TBW
         """
         self.log.info("Subtracting bright stars from exposure %s" % (dataId))
-        # Recover info. Essentially what ProcessBrightStarsTask.extractStamps
-        # TODO: fix this.
-        # brightStarInfo = self.recoverBrightStarInfo(inputExposure,
-        # refCatLoader=refObjLoader)
-        # Warp (and shift, and potentially rotate) model to fit stars
-        # warpedStars = self.warpStamps(extractedStamps.starIms,
-        # extractedStamps.pixCenters)
-        # Multiply by annular flux to revert normalization
-
-        # Subtract model
-        return
+        # Read model
+        model = afwImage.MaskedImageF(self.config.modelFilename)
+        # Create an empty image the size of the exposure
+        brightStarSubtractor = afwImage.MaskedImageF(bbox=inputExposure.getBBox())
+        # Warp (and shift, and potentially rotate) model to fit each star
+        subtractor, invImages = self.matchModel(model, bss, brightStarSubtractor)
+        if self.config.doWriteSubtractor:
+            if dataId is not None:
+                subtractor.writeFits(self.config.subtractorFilename
+                                     + f"-{dataId['visit']}-{dataId['ccd']}.fits")
+        if self.config.doWriteSubtractedExposure:
+            subtractedExposure = inputExposure.clone()
+            subtractedExposure.image -= subtractor.image
+            if dataId is not None:
+                subtractedExposure.writeFits(self.config.subtractedExposureFilename
+                                             + f"-{dataId['visit']}-{dataId['ccd']}.fits")
+        return subtractor
 
     def runDataRef(self, dataRef):
         """ Read in selected calexp, corresponding bright star stamps
@@ -223,7 +187,10 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
             Data reference to the calexp to subtract bright stars from.
         """
         calexp = dataRef.get("calexp")
-        output = self.run(calexp, dataId=dataRef.dataId)
-        # Save processed bright star stamps
-        dataRef.put(output.brightStarStamps, "brightStarStamps")
-        return pipeBase.Struct(brightStarStamps=output.brightStarStamps)
+        try:
+            bss = dataRef.get("brightStarStamps")
+        except bE.NoResults:
+            self.log.info(f"No bright stars to subtract from exposure {dataRef.dataId}.")
+            return
+        output = self.run(calexp, bss, dataId=dataRef.dataId)
+        return pipeBase.Struct(subtractor=output)
