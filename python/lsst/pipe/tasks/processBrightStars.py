@@ -136,6 +136,11 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             " annular flux.",
         default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
     )
+    doApplySkyCorr = pexConfig.Field(
+        dtype=bool,
+        doc="Apply sky correction before extracting stars?",
+        default=True
+    )
     refObjLoader = pexConfig.ConfigurableField(
         target=LoadIndexedReferenceObjectsTask,
         doc="reference object loader for astrometric calibration",
@@ -185,6 +190,26 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # configure Gaia refcat
         if butler is not None:
             self.makeSubtask('refObjLoader', butler=butler)
+
+    def applySkyCorr(self, dataRef, calexp):
+        """Apply correction to the sky background level
+        Sky corrections can be generated with the 'skyCorrection.py'
+        executable in pipe_drivers. Because the sky model used by that
+        code extends over the entire focal plane, this can produce
+        better sky subtraction.
+        The calexp is updated in-place.
+        Parameters
+        ----------
+        dataRef : `lsst.daf.persistence.ButlerDataRef`
+            Data reference for calexp.
+        calexp : `lsst.afw.image.Exposure` or `lsst.afw.image.MaskedImage`
+            Calibrated exposure.
+        """
+        bg = dataRef.get("skyCorr")
+        self.log.debug("Applying sky correction to %s", dataRef.dataId)
+        if isinstance(calexp, afwImage.Exposure):
+            calexp = calexp.getMaskedImage()
+        calexp -= bg.getImage()
 
     def extractStamps(self, inputExposure, refObjLoader=None):
         """ Read position of bright stars within `inputExposure` from refCat
@@ -244,10 +269,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     def extractStampsFromMask(self, inputExposure, dataId):
         wcs = inputExposure.getWcs()
-        patches = ["{},{}".format(i,j) for i in range(9) for j in range(9)]
+        patches = ["{},{}".format(i, j) for i in range(9) for j in range(9)]
         maskPath = "/datasets/hsc/BrightObjectMasks/GouldingMasksS18A/{}/".format(self.config.tract)
         maskFiles = [maskPath + 'BrightObjectMask-{}-{}-{}.reg'.format(
-                         self.config.tract, patch, dataId["filter"]) for patch in patches]
+            self.config.tract, patch, dataId["filter"]) for patch in patches]
         starIms, pixCenters, mags = [], [], []
         for maskFile in maskFiles:
             f = open(maskFile, 'r')
@@ -257,16 +282,17 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                     maskinfo, comm = line.split('#')
                     objid, mag = comm.split(',')
                     maskinfo = maskinfo.split(',')
-                    circle = [float(maskinfo[0][7:]), # remove "circle("
+                    circle = [float(maskinfo[0][7:]),  # remove "circle("
                               float(maskinfo[1])]
                     # also save magnitude (as put down by Andy)...
-                    mag = float(mag[5:-2]) # remove " mag:" and the trailing \n
+                    mag = float(mag[5:-2])  # remove " mag:" and the trailing \n
                     # avoid duplicates if reading from per-patch .reg files
                     if mag in mags or mag > self.config.magLimit:
                         continue
                     sp = geom.SpherePoint(circle[0], circle[1], geom.degrees)
                     cpix = wcs.skyToPixel(sp)
-                    # TODO: DM-25894 keep objects on or slightly beyond CCD edge
+                    # TODO: DM-25894 keep objects on or slightly beyond CCD
+                    # edge
                     if (cpix[0] >= self.config.stampSize[0]/2
                             and cpix[0] < inputExposure.getDimensions()[0] - self.config.stampSize[0]/2
                             and cpix[1] >= self.config.stampSize[1]/2
@@ -274,14 +300,13 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                         starIms.append(inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize)))
                         pixCenters.append(cpix)
                         mags.append(mag)
-                elif line[:3] == 'box': # ignore saturation spikes/bleed trail boxes
+                elif line[:3] == 'box':  # ignore saturation spikes/bleed trail boxes
                     pass
         ids = [-1] * len(starIms)
         return pipeBase.Struct(starIms=starIms,
-               pixCenters=pixCenters,
-               GMags=mags,
-               gaiaIds=ids)
-
+                               pixCenters=pixCenters,
+                               GMags=mags,
+                               gaiaIds=ids)
 
     def warpStamps(self, stamps, pixCenters):
         """Warps and shifts all given stamps so they are sampled on the same
@@ -364,7 +389,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             # Apply rotation if appropriate
             if nb90Rots:
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
-            # If not, manually set origin to 0,0 (as is done by rotateImageBy90)
+            # If not, manually set origin to 0,0 (as is done by
+            # rotateImageBy90)
             else:
                 destImage.setXY0(0, 0)
             warpedStars.append(destImage.clone())
@@ -485,6 +511,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             Data reference to the calexp to extract bright stars from.
         """
         calexp = dataRef.get("calexp")
+        if self.config.doApplySkyCorr:
+            self.applySkyCorr(dataRef, calexp)
         output = self.run(calexp, dataId=dataRef.dataId)
         if output:
             # Save processed bright star stamps
