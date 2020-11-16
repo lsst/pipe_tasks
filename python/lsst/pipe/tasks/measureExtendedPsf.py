@@ -34,6 +34,7 @@ import lsst.pex.config as pexConfig
 from lsst.afw import math as afwMath
 from lsst.afw import image as afwImage
 from lsst.geom import Extent2I
+from lsst.daf.persistence import butlerExceptions as bE
 
 
 class MeasureExtendedPsfConfig(pexConfig.Config):
@@ -155,14 +156,18 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
             weights = None
             for stampId in selectDataList:
                 dataId = {'visit': stampId["visit"], 'ccd': stampId["ccd"]}
-                readStars = butler.get("brightStarStamps_sub", dataId, bbox=bbox)
-                readWeights = 18. - np.array(readStars.getMagnitudes())
-                if allStars:
-                    allStars.extend(readStars)
-                    weights = np.hstack((weights, readWeights))
-                else:
-                    allStars = readStars
-                    weights = readWeights
+                try:
+                    readStars = butler.get("brightStarStamps_sub", dataId, bbox=bbox)
+                    readWeights = 18. - np.array(readStars.getMagnitudes())
+                    if allStars:
+                        allStars.extend(readStars)
+                        weights = np.hstack((weights, readWeights))
+                    else:
+                        allStars = readStars
+                        weights = readWeights
+                except bE.NoResults:
+                    self.log.info(f"No BrightStarStamps found for dataId {dataId}; skipping it")
+                    continue
             weights /= np.sum(weights)
             coaddSubregion = afwMath.statisticsStack(allStars.getMaskedImages(), statsFlags, statsControl,
                                                      wvector=weights)
