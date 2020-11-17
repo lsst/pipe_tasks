@@ -93,6 +93,11 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         doc="If readFromMask, which tract do the current visits correspond to?",
         default=9615
     )
+    doApplyTransform = pexConfig.Field(
+        dtype=bool,
+        doc="Apply transform to PIX_TAN to correct for optical distortions?",
+        default=True
+    )
     warpingKernelName = pexConfig.ChoiceField(
         dtype=str,
         doc="Warping kernel",
@@ -348,7 +353,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # exposure from the same detector)
         det = stamps[0].getDetector()
         # Define correction for optical distortions
-        pixToTan = det.getTransform(cg.PIXELS, cg.TAN_PIXELS)
+        if self.config.doApplyTransform:
+            pixToTan = det.getTransform(cg.PIXELS, cg.TAN_PIXELS)
         # Array of all possible rotations for detector orientation:
         possibleRots = np.array([k*np.pi/2 for k in range(4)])
         # determine how many, if any, rotations are required
@@ -361,7 +367,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             # (re)create empty destination image
             destImage = afwImage.MaskedImageF(*self.modelStampSize)
             bottomLeft = geom.Point2D(star.getImage().getXY0())
-            newBottomLeft = pixToTan.applyForward(bottomLeft)
+            if self.config.doApplyTransform:
+                newBottomLeft = pixToTan.applyForward(bottomLeft)
+            else:
+                newBottomLeft = bottomLeft.clone()
             newBottomLeft.setX(newBottomLeft.getX() - bufferPix[0]/2)
             newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1]/2)
             # Convert to int
@@ -371,21 +380,26 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             destImage.setXY0(newBottomLeft)
 
             # Define linear shifting to recenter stamps
-            newCenter = pixToTan.applyForward(cent)  # center of warped star
+            if self.config.doApplyTransform:
+                newCenter = pixToTan.applyForward(cent)  # center of warped star
+            else:
+                newCenter = cent.clone()
             shift = self.modelCenter[0] + newBottomLeft[0] - newCenter[0],\
                 self.modelCenter[1] + newBottomLeft[1] - newCenter[1]
             affineShift = geom.AffineTransform(shift)
             shiftTransform = tFactory.makeTransform(affineShift)
 
             # Define full transform (warp and shift)
-            starWarper = pixToTan.then(shiftTransform)
+            if self.config.doApplyTransform:
+                starWarper = pixToTan.then(shiftTransform)
+            else:
+                starWarper = shiftTransform
 
             # Apply it
             goodPix = afwMath.warpImage(destImage, star.getMaskedImage(),
                                         starWarper, warpCont)
             if not goodPix:
                 self.log.debug("Warping of a star failed: no good pixel in output")
-
             # Apply rotation if appropriate
             if nb90Rots:
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
