@@ -22,12 +22,17 @@
 import click
 
 from lsst.daf.butler.cli.opt import (repo_argument, config_file_option, options_file_option)
-from lsst.daf.butler.cli.utils import (cli_handle_exception, split_commas, typeStrAcceptsMultiple)
+from lsst.daf.butler.cli.utils import (
+    ButlerCommand,
+    cli_handle_exception,
+    split_commas,
+    typeStrAcceptsMultiple,
+)
 from lsst.obs.base.cli.opt import instrument_argument
 from ... import script
 
 
-@click.command(short_help="Define a discrete skymap from calibrated exposures.")
+@click.command(cls=ButlerCommand, short_help="Define a discrete skymap from calibrated exposures.")
 @repo_argument(required=True)
 @instrument_argument(required=True)
 @config_file_option(help="Path to a pex_config override to be included after the Instrument config overrides"
