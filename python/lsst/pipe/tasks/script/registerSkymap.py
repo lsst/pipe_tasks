@@ -2,7 +2,7 @@
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (https://www.lsst.org).
+# (http://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
@@ -19,7 +19,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-__all__ = ["make_discrete_skymap",]
+from lsst.daf.butler import Butler
+from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig, MakeGen3SkyMapTask
 
 
-from .commands import make_discrete_skymap, register_skymap
+def registerSkymap(repo, config_file):
+    """Make and register a SkyMap in a butler repository.
+
+    Parameters
+    ----------
+    repo : `str`
+        URI to the location of the butler repository.
+    config_file : `str` or `None`
+        Path to a config overrides file.
+
+    Raises
+    ------
+    RuntimeError
+        If a config overrides file is given and does not exist.
+    """
+    config = MakeGen3SkyMapConfig()
+    if config_file:
+        config.load(config_file)
+
+    # Construct the SkyMap Creation task and run it
+    skyMapTask = MakeGen3SkyMapTask(config=config)
+    butler = Butler(repo, writeable=True)
+    skyMapTask.run(butler)

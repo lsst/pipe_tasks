@@ -25,7 +25,49 @@
 import unittest
 
 from lsst.daf.butler.tests import CliCmdTestBase
-from lsst.pipe.tasks.cli.cmd import make_discrete_skymap
+from lsst.pipe.tasks.cli.cmd import make_discrete_skymap, register_skymap
+
+
+class RegisterSkymapTest(CliCmdTestBase, unittest.TestCase):
+
+    @staticmethod
+    def defaultExpected():
+        return dict(config_file=None)
+
+    @staticmethod
+    def command():
+        return register_skymap
+
+    def test_minimal(self):
+        self.run_test(["register-skymap", "repo"],
+                      self.makeExpected(repo="repo"))
+
+    def test_all(self):
+        self.run_test(["register-skymap", "repo",
+                       "--config-file", "path/to/file"],
+                      self.makeExpected(repo="repo",
+                                        config_file="path/to/file"))
+
+    def test_missing(self):
+        self.run_missing(["register-skymap"],
+                         "Missing argument ['\"]REPO['\"]")
+
+
+class RegisterSkymapConfigTest(unittest.TestCase):
+
+    def setUp(self):
+        self.runner = LogCliRunner()
+
+    def testNonExistantConfigFile(self):
+        """Verify an expected error when a given config override file does not
+        exist. """
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(butlerCli, ["create", "repo"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            result = self.runner.invoke(butlerCli, ["register-skymap", "repo",
+                                                    "--config-file", "foo.py"])
+            # foo.py does not exist; exit could should be non-zero.
+            self.assertNotEqual(result.exit_code, 0, clickResultMsg(result))
 
 
 class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
