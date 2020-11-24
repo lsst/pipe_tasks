@@ -95,7 +95,11 @@ class QuickFrameMeasurement(pipeBase.Task):
         max25, max25srcNum = 0, 0
         # import ipdb as pdb; pdb.set_trace()
         for srcNum in sorted(objData.keys()):  # srcNum not contiguous so don't use a list comp
-            nonRoundness = objData[srcNum]['xx']/objData[srcNum]['yy']
+            xx = objData[srcNum]['xx']
+            yy = objData[srcNum]['yy']
+            if xx == 0.0 or yy == 0.0:
+                continue
+            nonRoundness = xx/yy
             nonRoundness = max(nonRoundness, 1/nonRoundness)
             if nonRoundness > MAX_NON_ROUNDNESS:
                 continue  # skip very unround things
@@ -162,6 +166,13 @@ class QuickFrameMeasurement(pipeBase.Task):
         objData['apFlux70'] = measurementResult.apFlux70
         objData['apFlux25'] = measurementResult.apFlux25
         return objData
+
+    def checkResult(self, exp, centroid):
+        # XXX Check that result is in the 99.5 percentile of image
+        # values or something like that
+        # anything else?
+
+        return
 
     def run(self, exp, nSigma=20, doDisplay=False):
         median = np.nanmedian(exp.image.array)
@@ -241,13 +252,14 @@ class QuickFrameMeasurement(pipeBase.Task):
 if __name__ == '__main__':
     import lsst.afw.image as afwImage
     exp = afwImage.ExposureF('/home/mfl/big_repos/afwdata/LATISS/postISRCCD/temp/postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz')
-    
+
     config = QuickFrameMeasurementConfig()
     config.imageIsDispersed = False
     qfm = QuickFrameMeasurement(config=config)
 
-    qfm.run(exp)
-    
+    result = qfm.run(exp)
+    print(result)
+
     # from lsst.rapid.analysis.bestEffort import BestEffortIsr
     # REPODIR = '/project/shared/auxTel/'
     # bestEffort = BestEffortIsr(REPODIR)
