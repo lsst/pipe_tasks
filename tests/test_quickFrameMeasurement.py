@@ -36,7 +36,6 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
         afwDataDir = None
 
     truthValues = {"postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz": (2496, 1105),
-                #    "": (1, 2),
                    }
 
     TOLERANCE = 5  # number of pixels total distance it's acceptable to miss by
