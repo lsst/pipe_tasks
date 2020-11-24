@@ -21,12 +21,15 @@
 
 import click
 
-from lsst.daf.butler.cli.opt import (repo_argument, config_file_option, options_file_option)
+from lsst.daf.butler.cli.opt import (
+    collections_option,
+    config_file_option,
+    options_file_option,
+    repo_argument,
+)
 from lsst.daf.butler.cli.utils import (
     ButlerCommand,
     cli_handle_exception,
-    split_commas,
-    typeStrAcceptsMultiple,
 )
 from lsst.obs.base.cli.opt import instrument_argument
 from ... import script
@@ -37,20 +40,16 @@ from ... import script
 @instrument_argument(required=True)
 @config_file_option(help="Path to a pex_config override to be included after the Instrument config overrides"
                          "are applied.")
-@options_file_option()
-@click.option("--collections",
-              help=("The collections to be searched (in order) when reading datasets. "
-                    "This includes the seed skymap if --append is specified."),
-              multiple=True,
-              callback=split_commas,
-              metavar=typeStrAcceptsMultiple,
-              required=True)
+@collections_option(help="The collections to be searched (in order) when reading datasets. "
+                         "This includes the seed skymap if --append is specified.",
+                    required=True)
 @click.option("--skymap-id",
-              help=("The identifier of the skymap to write."),
+              help="The identifier of the skymap to write.",
               type=str, default="discrete", show_default=True)
 @click.option("--old-skymap-id",
               help=("The identifier of the previous skymap to append to, if config.doAppend is True."),
               type=str, default=None)
+@options_file_option()
 def make_discrete_skymap(*args, **kwargs):
     """Define a discrete skymap from calibrated exposures in the butler registry."""
     cli_handle_exception(script.makeDiscreteSkyMap, *args, **kwargs)
