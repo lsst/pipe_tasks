@@ -35,8 +35,15 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
     except Exception:
         afwDataDir = None
 
-    truthValues = {"postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz": (2496, 1105),
-                   }
+    truthValuesDirect = {
+        "postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz": (2496, 1105),
+        "postISRCCD_2020021800027-KPNO_406_828nm~EMPTY-det000.fits.fz": (1550, 1423),
+        "postISRCCD_2020021800224-EMPTY~EMPTY-det000.fits.fz": (1866, 2274),
+    }
+    truthValuesDispersed = {
+        "postISRCCD_2020021700249-EMPTY~ronchi90lpmm-det000.fits.fz": (2531, 2286),
+        "postISRCCD_2020031500119-EMPTY~ronchi90lpmm-det000.fits.fz": (2112, 2183),
+    }
 
     TOLERANCE = 5  # number of pixels total distance it's acceptable to miss by
 
@@ -52,11 +59,11 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def testDirectCentroiding(self):
         task = self.directTask
-        filenames = ["postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz"]
+        filenames = self.truthValuesDirect.keys()
 
         for filename in filenames:
             fullName = os.path.join(self.afwDataDir, "LATISS/postISRCCD", filename)
-            trueCentroid = self.truthValues[filename]
+            trueCentroid = self.truthValuesDirect[filename]
 
             exp = afwImage.ExposureF(fullName)
             result = task.run(exp)
@@ -64,11 +71,24 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
 
             dist = distance.euclidean(foundCentroid, trueCentroid)
             self.assertLess(dist, self.TOLERANCE)
+            print(f"Passed direct {filename} with distance {dist:.2f}")
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def testDispersedCentroiding(self):
+        task = self.dispersedTask
+        filenames = self.truthValuesDispersed.keys()
 
-        pass
+        for filename in filenames:
+            fullName = os.path.join(self.afwDataDir, "LATISS/postISRCCD", filename)
+            trueCentroid = self.truthValuesDispersed[filename]
+
+            exp = afwImage.ExposureF(fullName)
+            result = task.run(exp)
+            foundCentroid = result.brightestObjCentroid
+
+            dist = distance.euclidean(foundCentroid, trueCentroid)
+            self.assertLess(dist, self.TOLERANCE)
+            print(f"Passed dispersed {filename} with distance {dist:.2f}")
 
 
 def setup_module(module):
