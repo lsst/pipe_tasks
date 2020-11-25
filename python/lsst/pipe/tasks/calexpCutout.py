@@ -9,6 +9,8 @@ __all__ = ['CalexpCutoutTaskConfig', 'CalexpCutoutTask']
 class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
                                   dimensions=("instrument", 'visit', 'detector'),
                                   defaultTemplates={}):
+    """Connections class for CalexpCutoutTask
+    """
     in_cat = pipeBase.connectionTypes.Input(
         doc="Locations for cutouts",
         name="cutout_positions",
@@ -31,16 +33,37 @@ class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
 
 class CalexpCutoutTaskConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=CalexpCutoutTaskConnections):
+    """Configuration for CalexpCutoutTask
+    """
     max_cutouts = Field(dtype=int, default=100, doc='Maximum number of entries to process. '
                                                    'The result will be the first N in the catalog.')
 
 
 class CalexpCutoutTask(pipeBase.PipelineTask):
-
+    """Task for computing cutouts on a specific calexp given
+    positions and sizes of the stamps.
+    """
     ConfigClass = CalexpCutoutTaskConfig
     _DefaultName = "calexpCutoutTask"
 
     def run(self, in_cat, calexp):
+        """Compute and return the cutouts.
+
+        Parameters
+        ----------
+        in_cat : `dict`
+            A dictionary containing at least the following columns: ra, dec, size.
+            The coordinates should be in ICRS degrees.  The size is in pixels.
+        calexp : `lsst.afw.image.ExposureF`
+            The calibrated exposure from which to extract cutouts
+
+        Returns
+        -------
+        output : `lsst.pipe.base.Struct`
+            A struct containing a container class that wraps a list of
+            masked images of the cutouts and a PropertyList containing
+            the metadata to be persisted with the cutouts
+        """
         max_idx = self.config.max_cutouts
         cutout_list = []
         wcs = calexp.getWcs()
