@@ -36,7 +36,9 @@ class CalexpCutoutTaskConfig(pipeBase.PipelineTaskConfig,
     """Configuration for CalexpCutoutTask
     """
     max_cutouts = Field(dtype=int, default=100, doc='Maximum number of entries to process. '
-                                                   'The result will be the first N in the catalog.')
+                                                    'The result will be the first N in the catalog.')
+    skip_bad = Field(dtype=bool, default=True, doc='Skip cutouts that do not fall completely within'
+                                                   ' the calexp bounding box?')
 
 
 class CalexpCutoutTask(pipeBase.PipelineTask):
@@ -80,6 +82,11 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
             # Clamp to LL corner of the LL pixel and draw extent from there
             box = geom.Box2I(geom.Point2I(int(pix.x-size/2), int(pix.y-size/2)),
                              geom.Extent2I(size, size))
+            if not mim.getBBox().contains(box):
+                if not self.config.skip_bad:
+                    raise ValueError(f'Cutout bounding box is not completely contained in the image: {box}')
+                else:
+                    continue
             # I think we need to think about what we want the origin to be: LOCAL or PARENT
             sub = mim.Factory(mim, box)
             stamp = Stamp(stamp_im=sub, position=pt, size=size)
