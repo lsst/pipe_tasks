@@ -32,8 +32,6 @@ import lsst.afw.display as afwDisplay
 
 from lsst.rapid.analysis.utils import detectObjectsInExp
 
-MAX_NON_ROUNDNESS = 3.5  # spectra tend to be >25 and stars are often around 1.3
-
 
 class QuickFrameMeasurementConfig(pexConfig.Config):
     imageIsDispersed = pexConfig.Field(
@@ -41,9 +39,14 @@ class QuickFrameMeasurementConfig(pexConfig.Config):
         doc="Is this a dispersed (spectroscopic) image?",
         default=False,
     )
+    maxNonRoundness = pexConfig.Field(
+        dtype=float,
+        doc="Ratio of xx to yy (or vice versa) above which to cut, in order to exclude spectra",
+        default=3.5,
+    )
 
 
-class QuickFrameMeasurement(pipeBase.Task):
+class QuickFrameMeasurementTask(pipeBase.Task):
     """WARNING: Experimental new task with changable API! Do not rely on yet!
 
     This task finds the centroid of the brightest source in a given CCD-image
@@ -53,8 +56,11 @@ class QuickFrameMeasurement(pipeBase.Task):
     to provide pointing offsets, allowing subsequent pointings to place
     a source at an exact pixel position.
     """
+    ConfigClass = QuickFrameMeasurementConfig
+    _DefaultName = 'quickFrameMeasurementTask'
 
-    def __init__(self, initialPsfWidth=20, display=None, **kwargs):
+    def __init__(self, config, *, initialPsfWidth=20, display=None, **kwargs):
+        super().__init__(config=config, **kwargs)
         self.display = None
         if display:
             self.display = display
@@ -89,8 +95,7 @@ class QuickFrameMeasurement(pipeBase.Task):
         medianYy = np.nanmedian([objData[i]['yy'] for i in objData.keys()])
         return medianXx, medianYy
 
-    @staticmethod
-    def _calcBrightestObjSrcNum(objData):
+    def _calcBrightestObjSrcNum(self, objData):
         max70, max70srcNum = 0, 0
         max25, max25srcNum = 0, 0
         # import ipdb as pdb; pdb.set_trace()
@@ -101,7 +106,7 @@ class QuickFrameMeasurement(pipeBase.Task):
                 continue
             nonRoundness = xx/yy
             nonRoundness = max(nonRoundness, 1/nonRoundness)
-            if nonRoundness > MAX_NON_ROUNDNESS:
+            if nonRoundness > self.config.maxNonRoundness:
                 continue  # skip very unround things
 
             ap70 = objData[srcNum]['apFlux70']
@@ -251,11 +256,12 @@ class QuickFrameMeasurement(pipeBase.Task):
 
 if __name__ == '__main__':
     import lsst.afw.image as afwImage
-    exp = afwImage.ExposureF('/home/mfl/big_repos/afwdata/LATISS/postISRCCD/temp/postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz')
+    exp = afwImage.ExposureF('/home/mfl/big_repos/afwdata/LATISS/postISRCCD/postISRCCD_2020021800073-'
+                             'KPNO_406_828nm~EMPTY-det000.fits.fz')
 
     config = QuickFrameMeasurementConfig()
     config.imageIsDispersed = False
-    qfm = QuickFrameMeasurement(config=config)
+    qfm = QuickFrameMeasurementTask(config=config)
 
     result = qfm.run(exp)
     print(result)

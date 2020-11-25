@@ -88,6 +88,7 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
 
             dist = distance.euclidean(foundCentroid, trueCentroid)
             self.assertLess(dist, self.TOLERANCE)
+            # XXX remove this before merge
             print(f"Passed dispersed {filename} with distance {dist:.2f}")
 
 
