@@ -74,8 +74,8 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
         metadata['RA_DEG'] = in_cat['ra'][:max_idx]
         metadata['DEC_DEG'] = in_cat['dec'][:max_idx]
         metadata['SIZE'] = in_cat['size'][:max_idx]
-        for ident, ra, dec, size in zip(in_cat['ident'][:max_idx], in_cat['ra'][:max_idx],
-                                        in_cat['dec'][:max_idx], in_cat['size'][:max_idx]):
+        for ra, dec, size in zip(in_cat['ra'][:max_idx], in_cat['dec'][:max_idx],
+                                 in_cat['size'][:max_idx]):
             pt = geom.SpherePoint(geom.Angle(ra, geom.degrees),
                                   geom.Angle(dec, geom.degrees))
             pix = wcs.skyToPixel(pt)
@@ -89,7 +89,7 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
                     continue
             # I think we need to think about what we want the origin to be: LOCAL or PARENT
             sub = mim.Factory(mim, box)
-            stamp = Stamp(stamp_im=sub, position=pt, size=size)
+            stamp = Stamp(stamp_im=sub, position=pt)
             cutout_list.append(stamp)
         # We are using this stamp container as a place holder because it already has
         # the storage class defined
