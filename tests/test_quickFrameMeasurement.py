@@ -26,7 +26,7 @@ from scipy.spatial import distance
 
 import lsst.afw.image as afwImage
 import lsst.utils.tests
-from lsst.pipe.tasks.quickFrameMeasurement import QuickFrameMeasurement, QuickFrameMeasurementConfig
+from lsst.pipe.tasks.quickFrameMeasurement import QuickFrameMeasurementTask, QuickFrameMeasurementTaskConfig
 
 
 class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
@@ -49,12 +49,12 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def setUp(self):
-        self.directConfig = QuickFrameMeasurementConfig()
-        self.directTask = QuickFrameMeasurement(config=self.directConfig)
+        self.directConfig = QuickFrameMeasurementTaskConfig()
+        self.directTask = QuickFrameMeasurementTask(config=self.directConfig)
 
-        self.dispersedConfig = QuickFrameMeasurementConfig()
+        self.dispersedConfig = QuickFrameMeasurementTaskConfig()
         self.dispersedConfig.imageIsDispersed = True
-        self.dispersedTask = QuickFrameMeasurement(config=self.dispersedConfig)
+        self.dispersedTask = QuickFrameMeasurementTask(config=self.dispersedConfig)
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def testDirectCentroiding(self):
