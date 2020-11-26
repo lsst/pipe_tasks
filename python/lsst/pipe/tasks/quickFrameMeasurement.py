@@ -28,12 +28,11 @@ import lsst.pex.config as pexConfig
 from lsst.meas.base import MeasurementError
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
-import lsst.afw.display as afwDisplay
 
 from lsst.rapid.analysis.utils import detectObjectsInExp
 
 
-class QuickFrameMeasurementConfig(pexConfig.Config):
+class QuickFrameMeasurementTaskConfig(pexConfig.Config):
     imageIsDispersed = pexConfig.Field(
         dtype=bool,
         doc="Is this a dispersed (spectroscopic) image?",
@@ -56,7 +55,6 @@ class QuickFrameMeasurementConfig(pexConfig.Config):
     )
 
 
-
 class QuickFrameMeasurementTask(pipeBase.Task):
     """WARNING: Experimental new task with changable API! Do not rely on yet!
 
@@ -67,7 +65,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
     to provide pointing offsets, allowing subsequent pointings to place
     a source at an exact pixel position.
     """
-    ConfigClass = QuickFrameMeasurementConfig
+    ConfigClass = QuickFrameMeasurementTaskConfig
     _DefaultName = 'quickFrameMeasurementTask'
 
     def __init__(self, config, *, display=None, **kwargs):
@@ -188,6 +186,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         return
 
     def run(self, exp, doDisplay=False):
+        try:
+            result = self._run(exp=exp, doDisplay=doDisplay)
+            return result
+        except Exception as e:
+            raise RuntimeError("Failed to find main source centroid") from e
+
+
+    def _run(self, exp, doDisplay=False):
         median = np.nanmedian(exp.image.array)
         exp.image -= median
         self.installPsfTask.run(exp)
@@ -283,7 +289,7 @@ if __name__ == '__main__':
     exp = afwImage.ExposureF('/home/mfl/big_repos/afwdata/LATISS/postISRCCD/postISRCCD_2020021800073-'
                              'KPNO_406_828nm~EMPTY-det000.fits.fz')
 
-    config = QuickFrameMeasurementConfig()
+    config = QuickFrameMeasurementTaskConfig()
     config.imageIsDispersed = False
     qfm = QuickFrameMeasurementTask(config=config)
 
