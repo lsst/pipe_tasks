@@ -20,20 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.daf.butler import DatasetType
 from lsst.skymap import skyMapRegistry
-
-from sqlalchemy.exc import IntegrityError
 
 
 class MakeGen3SkyMapConfig(pexConfig.Config):
     """Config for MakeGen3SkyMapTask
     """
-    datasetTypeName = pexConfig.Field(
-        doc="Name assigned to created skymap in butler registry",
-        dtype=str,
-        default="deepCoadd_skyMap",
-    )
     name = pexConfig.Field(
         doc="Name assigned to created skymap in butler registry",
         dtype=str,
@@ -77,19 +69,7 @@ class MakeGen3SkyMapTask(pipeBase.Task):
         """
         skyMap = self.config.skyMap.apply()
         skyMap.logSkyMapInfo(self.log)
-        skyMapHash = skyMap.getSha1()
-        self.log.info(f"Registering dataset type {self.config.datasetTypeName}.")
-        butler.registry.registerDatasetType(DatasetType(name=self.config.datasetTypeName,
-                                                        dimensions=["skymap"],
-                                                        storageClass="SkyMap",
-                                                        universe=butler.registry.dimensions))
-        self.log.info(f"Inserting SkyMap {self.config.name} with hash={skyMapHash}")
-        with butler.registry.transaction():
-            try:
-                skyMap.register(self.config.name, butler.registry)
-            except IntegrityError as err:
-                raise RuntimeError("A skymap with the same name or hash already exists.") from err
-            butler.put(skyMap, self.config.datasetTypeName, {"skymap": self.config.name})
+        skyMap.register(self.config.name, butler)
         return pipeBase.Struct(
             skyMap=skyMap
         )

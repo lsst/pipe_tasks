@@ -37,6 +37,7 @@ import lsst.meas.algorithms as measAlg
 import lsst.log as log
 import lsstDebug
 import lsst.utils as utils
+from lsst.skymap import BaseSkyMap
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo, makeCoaddSuffix
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
@@ -69,7 +70,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
     )
     skyMap = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
-        name="{inputCoaddName}Coadd_skyMap",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
         storageClass="SkyMap",
         dimensions=("skymap", ),
     )

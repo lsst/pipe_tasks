@@ -46,9 +46,9 @@ class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
                        "here", "a.b.c"],
                       self.makeExpected(repo="here",
                                         collections=("foo/bar", "baz"),
-                                        out_collection="skymaps",
                                         skymap_id="discrete",
-                                        instrument="a.b.c"))
+                                        instrument="a.b.c",
+                                        old_skymap_id=None))
 
     def test_all(self):
         """Test all the arguments."""
@@ -56,14 +56,14 @@ class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
                        "--collections", "foo/bar,baz",
                        "--config-file", "/path/to/config",
                        "--collections", "boz",
-                       "--out-collection", "biz",
                        "--skymap-id", "wiz",
+                       "--old-skymap-id", "nuz",
                        "here", "a.b.c"],
                       self.makeExpected(repo="here",
                                         instrument="a.b.c",
                                         config_file="/path/to/config",
-                                        out_collection="biz",
                                         skymap_id="wiz",
+                                        old_skymap_id="nuz",
                                         # The list of collections must be in
                                         # exactly the same order as it is
                                         # passed in the list of arguments to
