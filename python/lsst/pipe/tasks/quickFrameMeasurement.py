@@ -44,6 +44,17 @@ class QuickFrameMeasurementConfig(pexConfig.Config):
         doc="Ratio of xx to yy (or vice versa) above which to cut, in order to exclude spectra",
         default=3.5,
     )
+    initialPsfWidth = pexConfig.Field(
+        dtype=float,
+        doc="Guess at the initial PSF in XXX ???? pixels FWHM or sigma or something?",
+        default=20,
+    )
+    nSigmaDetection = pexConfig.Field(
+        dtype=float,
+        doc="Number of sigma for the detection limit",
+        default=20,
+    )
+
 
 
 class QuickFrameMeasurementTask(pipeBase.Task):
@@ -59,14 +70,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
     ConfigClass = QuickFrameMeasurementConfig
     _DefaultName = 'quickFrameMeasurementTask'
 
-    def __init__(self, config, *, initialPsfWidth=20, display=None, **kwargs):
+    def __init__(self, config, *, display=None, **kwargs):
         super().__init__(config=config, **kwargs)
         self.display = None
         if display:
             self.display = display
 
         psfInstallConfig = InstallGaussianPsfTask.ConfigClass()
-        psfInstallConfig.fwhm = initialPsfWidth
+        psfInstallConfig.fwhm = self.config.initialPsfWidth
         self.installPsfTask = InstallGaussianPsfTask(config=psfInstallConfig)
 
         self.centroidName = "base_SdssCentroid"
@@ -86,9 +97,6 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         # make sure to call this last!
         self.table = afwTable.SourceTable.make(self.schema)
 
-    def _getDayObsSeqNumFromExpId(self, expId):
-        return self.butler.queryMetadata('raw', ['dayObs', 'seqNum'], expId=expId)[0]
-
     @staticmethod
     def _calcMedianPsf(objData):
         medianXx = np.nanmedian([objData[i]['xx'] for i in objData.keys()])
@@ -98,7 +106,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
     def _calcBrightestObjSrcNum(self, objData):
         max70, max70srcNum = 0, 0
         max25, max25srcNum = 0, 0
-        # import ipdb as pdb; pdb.set_trace()
+
         for srcNum in sorted(objData.keys()):  # srcNum not contiguous so don't use a list comp
             xx = objData[srcNum]['xx']
             yy = objData[srcNum]['yy']
@@ -179,40 +187,56 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         return
 
-    def run(self, exp, nSigma=20, doDisplay=False):
+    def run(self, exp, doDisplay=False):
         median = np.nanmedian(exp.image.array)
         exp.image -= median
         self.installPsfTask.run(exp)
-        sources = detectObjectsInExp(exp, nSigma=nSigma)
-        if doDisplay:
+        sources = detectObjectsInExp(exp, nSigma=self.config.nSigmaDetection)
+
+        if doDisplay:  # TODO: check if display still works
             if self.display is None:
                 raise RuntimeError("Display failed as no display provided during init()")
             self.display.mtv(exp)
 
         fpSet = sources.getFootprints()
-        print(f"Found {len(fpSet)} sources in exposure")
+        self.log.info(f"Found {len(fpSet)} sources in exposure")
 
         objData = {}
         nMeasured = 0
+        # for srcNum, fp in enumerate(fpSet):
+        #     try:
+        #         src = self._measureFp(fp, exp)
+        #         result = self._getDataFromSrcRecord(src)
+        #         objData[srcNum] = self._measurementResultToDict(result)
+        #         nMeasured += 1
+        #         if doDisplay:  # TODO: Add buffering? Messier due to optional display
+        #             self.display.dot(src.getShape(), *src.getCentroid(), ctype=afwDisplay.BLUE)
+        #     except MeasurementError:
+        #         try:
+        #             # gets shape and centroid from footprint
+        #             result = self._getDataFromFootprintOnly(fp, exp)
+        #             objData[srcNum] = self._measurementResultToDict(result)
+        #             nMeasured += 1
+        #         except MeasurementError as e:
+        #             self.log.info(f"Skipped measuring source {srcNum}: {e}")
+        #         pass
+        #     ############################
+
         for srcNum, fp in enumerate(fpSet):
             try:
                 src = self._measureFp(fp, exp)
                 result = self._getDataFromSrcRecord(src)
-                objData[srcNum] = self._measurementResultToDict(result)
-                nMeasured += 1
-                if doDisplay:  # TODO: Add buffering? Messier due to optional display
-                    self.display.dot(src.getShape(), *src.getCentroid(), ctype=afwDisplay.BLUE)
             except MeasurementError:
                 try:
                     # gets shape and centroid from footprint
                     result = self._getDataFromFootprintOnly(fp, exp)
-                    objData[srcNum] = self._measurementResultToDict(result)
-                    nMeasured += 1
                 except MeasurementError as e:
-                    print(f"Skipped measuring source {srcNum}: {e}")
-                pass
+                    self.log.info(f"Skipped measuring source {srcNum}: {e}")
+                    continue
+            objData[srcNum] = self._measurementResultToDict(result)
+            nMeasured += 1
 
-        print(f"Measured {nMeasured} of {len(fpSet)} sources in exposure")
+        self.log.info(f"Measured {nMeasured} of {len(fpSet)} sources in exposure")
 
         medianPsf = self._calcMedianPsf(objData)
 
