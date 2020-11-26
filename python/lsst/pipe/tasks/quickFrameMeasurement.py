@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
+import lsst.afw.detection as afwDetect
 import lsst.afw.table as afwTable
 import lsst.meas.base as measBase
 import lsst.daf.base as dafBase
@@ -29,7 +30,15 @@ from lsst.meas.base import MeasurementError
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 
-from lsst.rapid.analysis.utils import detectObjectsInExp
+
+def detectObjectsInExp(exp, nSigma, nPixMin, grow=0):
+    """Return the footPrintSet for the objects in a postISR exposure."""
+    threshold = afwDetect.Threshold(nSigma, afwDetect.Threshold.STDEV)
+    footPrintSet = afwDetect.FootprintSet(exp.getMaskedImage(), threshold, "DETECTED", nPixMin)
+    if grow > 0:
+        isotropic = True
+        footPrintSet = afwDetect.FootprintSet(footPrintSet, grow, isotropic)
+    return footPrintSet
 
 
 class QuickFrameMeasurementTaskConfig(pexConfig.Config):
@@ -52,6 +61,11 @@ class QuickFrameMeasurementTaskConfig(pexConfig.Config):
         dtype=float,
         doc="Number of sigma for the detection limit",
         default=20,
+    )
+    nPixMinDetection = pexConfig.Field(
+        dtype=int,
+        doc="Minimum number of pixels in a detected source",
+        default=10,
     )
 
 
@@ -192,12 +206,12 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         except Exception as e:
             raise RuntimeError("Failed to find main source centroid") from e
 
-
     def _run(self, exp, doDisplay=False):
         median = np.nanmedian(exp.image.array)
         exp.image -= median
         self.installPsfTask.run(exp)
-        sources = detectObjectsInExp(exp, nSigma=self.config.nSigmaDetection)
+        sources = detectObjectsInExp(exp, nSigma=self.config.nSigmaDetection,
+                                     nPixMin=self.config.nPixMinDetection)
 
         if doDisplay:  # TODO: check if display still works
             if self.display is None:
