@@ -448,7 +448,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             maskPlaneDict = image.getMask().getMaskPlaneDict()
             annulusImage = afwImage.MaskedImageF(image.getDimensions(), planeDict=maskPlaneDict)
             annulusMask = annulusImage.mask
-            annulusMask.array[:] = maskPlaneDict['NO_DATA']
+            annulusMask.array[:] = 2**maskPlaneDict['NO_DATA']
             annulus.copyMaskedImage(image, annulusImage)
             # set mask planes to be ignored
             badMasks = self.config.badMaskPlanes
