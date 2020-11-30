@@ -20,7 +20,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
-from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig, MakeGen3SkyMapTask
+from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig, makeGen3SkyMap
 
 
 def registerSkymap(repo, config_file):
@@ -42,7 +42,5 @@ def registerSkymap(repo, config_file):
     if config_file:
         config.load(config_file)
 
-    # Construct the SkyMap Creation task and run it
-    skyMapTask = MakeGen3SkyMapTask(config=config)
     butler = Butler(repo, writeable=True)
-    skyMapTask.run(butler)
+    makeGen3SkyMap(butler, config)

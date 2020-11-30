@@ -18,13 +18,19 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+import logging
+
 import lsst.pex.config as pexConfig
-import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
 
 
+_log = logging.getLogger(__name__.partition(".")[2])
+
+
 class MakeGen3SkyMapConfig(pexConfig.Config):
-    """Config for MakeGen3SkyMapTask
+    """Config for makeGen3SkyMap.
     """
     name = pexConfig.Field(
         doc="Name assigned to created skymap in butler registry",
@@ -43,33 +49,16 @@ class MakeGen3SkyMapConfig(pexConfig.Config):
                              "skymap to use when writing to the butler")
 
 
-class MakeGen3SkyMapTask(pipeBase.Task):
-    ConfigClass = MakeGen3SkyMapConfig
-    _DefaultName = "makeGen3SkyMap"
-
-    """This is a task to construct and optionally save a SkyMap into a gen3
-    butler repository.
+def makeGen3SkyMap(butler, config):
+    """Construct and save a SkyMap into a gen3 butler repository.
 
     Parameters
     ----------
+    butler : `lsst.daf.butler.Butler`
+        Butler repository to which the new skymap will be written.
     config : `MakeGen3SkyMapConfig` or None
-        Instance of a configuration class specifying task options, a default
-        config is created if value is None
+        Instance of a configuration class specifying task options.
     """
-
-    def __init__(self, *, config=None, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-    def run(self, butler):
-        """Construct and optionally save a SkyMap into a gen3 repository
-        Parameters
-        ----------
-        butler : `lsst.daf.butler.Butler`
-            Butler repository to which the new skymap will be written
-        """
-        skyMap = self.config.skyMap.apply()
-        skyMap.logSkyMapInfo(self.log)
-        skyMap.register(self.config.name, butler)
-        return pipeBase.Struct(
-            skyMap=skyMap
-        )
+    skyMap = config.skyMap.apply()
+    skyMap.logSkyMapInfo(_log)
+    skyMap.register(config.name, butler)
