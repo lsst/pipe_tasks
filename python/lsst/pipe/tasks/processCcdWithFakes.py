@@ -295,10 +295,10 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
         if not self.config.doApplyExternalSkyWcs:
-            inputs["wcs"] = inputs["image"].getWcs()
+            inputs["wcs"] = inputs["exposure"].getWcs()
 
         if not self.config.doApplyExternalPhotoCalib:
-            inputs["photoCalib"] = inputs["image"].getPhotoCalib()
+            inputs["photoCalib"] = inputs["exposure"].getPhotoCalib()
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
