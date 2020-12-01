@@ -156,9 +156,11 @@ class ReprocessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         hackyStarVal = np.nanmean(croppedStar.image.array.flatten()[flatIdx])
         hackyModelVal = np.nanmean(croppedModel.image.array.flatten()[flatIdx])
         hackyFlux = hackyStarVal / hackyModelVal
+        if np.isnan(hackyFlux):
+            hackyFlux = 0
         if normalize:
             starIm.image.array /= hackyFlux
-        return hackyFlux
+        return float(hackyFlux)
 
     @pipeBase.timeMethod
     def run(self, bss, dataId=None):
