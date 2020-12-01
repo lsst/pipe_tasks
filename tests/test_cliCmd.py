@@ -24,7 +24,11 @@
 
 import unittest
 
+from lsst.daf.butler.cli.butler import cli as butlerCli
+from lsst.daf.butler import Butler
+from lsst.daf.butler.cli.utils import clickResultMsg, LogCliRunner
 from lsst.daf.butler.tests import CliCmdTestBase
+from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig
 from lsst.pipe.tasks.cli.cmd import make_discrete_skymap, register_skymap
 
 
@@ -32,7 +36,7 @@ class RegisterSkymapTest(CliCmdTestBase, unittest.TestCase):
 
     @staticmethod
     def defaultExpected():
-        return dict(config_file=None)
+        return dict(config={}, config_file=None)
 
     @staticmethod
     def command():
@@ -44,9 +48,11 @@ class RegisterSkymapTest(CliCmdTestBase, unittest.TestCase):
 
     def test_all(self):
         self.run_test(["register-skymap", "repo",
-                       "--config-file", "path/to/file"],
+                       "--config-file", "path/to/file",
+                       "--config", "foo=bar"],
                       self.makeExpected(repo="repo",
-                                        config_file="path/to/file"))
+                                        config_file="path/to/file",
+                                        config=dict(foo="bar")))
 
     def test_missing(self):
         self.run_missing(["register-skymap"],
@@ -57,6 +63,42 @@ class RegisterSkymapConfigTest(unittest.TestCase):
 
     def setUp(self):
         self.runner = LogCliRunner()
+
+    def testNoConfigOverride(self):
+        """Verify expected arguments are passed to makeSkyMap with no config
+        overrides."""
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(butlerCli, ["create", "repo"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            with unittest.mock.patch("lsst.pipe.tasks.makeGen3SkyMap.makeGen3SkyMap") as mock:
+                # call without any config overrides
+                result = self.runner.invoke(butlerCli, ["register-skymap", "repo"])
+                self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+                expectedConfig = MakeGen3SkyMapConfig()
+                mock.assert_called_once()
+                # assert that the first argument to the call to makeGen3SkyMap was a butler
+                self.assertIsInstance(mock.call_args[0][0], Butler)
+                # assert that the second argument matches the expected config
+                self.assertEqual(mock.call_args[0][1], expectedConfig)
+
+    def testConfigOverride(self):
+        """Verify expected arguments are passed to makeSkyMap with config
+        overrides."""
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(butlerCli, ["create", "repo"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            with unittest.mock.patch("lsst.pipe.tasks.makeGen3SkyMap.makeGen3SkyMap") as mock:
+                # call and override the name parameter of the config
+                result = self.runner.invoke(butlerCli, ["register-skymap", "repo",
+                                                        "--config", "name=bar"])
+                self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+                expectedConfig = MakeGen3SkyMapConfig()
+                expectedConfig.update(name="bar")
+                mock.assert_called_once()
+                # assert that the first argument to the makeGen3SkyMap call was a butler
+                self.assertIsInstance(mock.call_args[0][0], Butler)
+                # assert that the second argument matches the expected config
+                self.assertEqual(mock.call_args[0][1], expectedConfig)
 
     def testNonExistantConfigFile(self):
         """Verify an expected error when a given config override file does not

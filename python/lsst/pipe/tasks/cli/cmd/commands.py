@@ -23,6 +23,7 @@ import click
 
 from lsst.daf.butler.cli.opt import (
     collections_option,
+    config_option,
     config_file_option,
     options_file_option,
     repo_argument,
@@ -57,6 +58,7 @@ def make_discrete_skymap(*args, **kwargs):
 
 @click.command(cls=ButlerCommand)
 @repo_argument(required=True)
+@config_option()
 @config_file_option(help="Path to a config file overrides file.")
 @options_file_option()
 def register_skymap(*args, **kwargs):

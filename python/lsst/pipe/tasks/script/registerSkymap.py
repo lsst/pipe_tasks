@@ -20,16 +20,19 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
-from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig, makeGen3SkyMap
+# Preserve the import path of makeGen3SkyMap so that it is easily mockable:
+import lsst.pipe.tasks.makeGen3SkyMap
 
 
-def registerSkymap(repo, config_file):
+def registerSkymap(repo, config, config_file):
     """Make and register a SkyMap in a butler repository.
 
     Parameters
     ----------
     repo : `str`
         URI to the location of the butler repository.
+    config : `dict` [`str`, `str`] or `None`
+        Key-value pairs to apply as overrides to the ingest config.
     config_file : `str` or `None`
         Path to a config overrides file.
 
@@ -38,9 +41,12 @@ def registerSkymap(repo, config_file):
     RuntimeError
         If a config overrides file is given and does not exist.
     """
-    config = MakeGen3SkyMapConfig()
+    skyMapConfig = lsst.pipe.tasks.makeGen3SkyMap.MakeGen3SkyMapConfig()
     if config_file:
-        config.load(config_file)
+        skyMapConfig.load(config_file)
+
+    if config:
+        skyMapConfig.update(**config)
 
     butler = Butler(repo, writeable=True)
-    makeGen3SkyMap(butler, config)
+    lsst.pipe.tasks.makeGen3SkyMap.makeGen3SkyMap(butler, skyMapConfig)
