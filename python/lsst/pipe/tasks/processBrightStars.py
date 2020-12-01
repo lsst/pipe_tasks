@@ -243,6 +243,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             refObjLoader = self.refObjLoader
         starIms = []
         pixCenters = []
+        GMags = []
+        ids = []
         wcs = inputExposure.getWcs()
         # select stars within input exposure from refcat
         withinCalexp = refObjLoader.loadPixelBox(inputExposure.getBBox(), wcs, filterName="phot_g_mean")
@@ -254,10 +256,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         bright = GFluxes > fluxLimit
         bright *= GFluxes < fluxMax
         # convert to AB magnitudes
-        GMags = [((gFlux*u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]]
-        ids = refCat.columns.extract("id", where=bright)["id"]
+        allGMags = [((gFlux*u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]]
+        allIds = list(refCat.columns.extract("id", where=bright)["id"])
         selectedColumns = refCat.columns.extract('coord_ra', 'coord_dec', where=bright)
-        for ra, dec in zip(selectedColumns["coord_ra"], selectedColumns["coord_dec"]):
+        for j, (ra, dec) in enumerate(zip(selectedColumns["coord_ra"], selectedColumns["coord_dec"])):
             sp = geom.SpherePoint(ra, dec, geom.radians)
             cpix = wcs.skyToPixel(sp)
             # TODO: DM-25894 keep objects on or slightly beyond CCD edge
@@ -267,6 +269,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                     and cpix[1] < inputExposure.getDimensions()[1] - self.config.stampSize[1]/2):
                 starIms.append(inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize)))
                 pixCenters.append(cpix)
+                GMags.append(allGMags[j])
+                ids.append(allIds[j])
         return pipeBase.Struct(starIms=starIms,
                                pixCenters=pixCenters,
                                GMags=GMags,
