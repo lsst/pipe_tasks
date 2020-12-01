@@ -63,4 +63,4 @@ def make_discrete_skymap(*args, **kwargs):
 @options_file_option()
 def register_skymap(*args, **kwargs):
     """Make a SkyMap and add it to a repository."""
-    cli_handle_exception(script.registerSkymap, *args, **kwargs)
+    cli_handle_exception(script.registerSkymap.registerSkymap, *args, **kwargs)

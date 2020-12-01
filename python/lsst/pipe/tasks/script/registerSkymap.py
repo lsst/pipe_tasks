@@ -19,9 +19,49 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
+
 from lsst.daf.butler import Butler
-# Preserve the import path of makeGen3SkyMap so that it is easily mockable:
-import lsst.pipe.tasks.makeGen3SkyMap
+import lsst.pex.config as pexConfig
+from lsst.skymap import skyMapRegistry
+
+
+_log = logging.getLogger(__name__.partition(".")[2])
+
+
+class MakeSkyMapConfig(pexConfig.Config):
+    """Config for makeSkyMap.
+    """
+    name = pexConfig.Field(
+        doc="Name assigned to created skymap in butler registry",
+        dtype=str,
+        default=None,
+        optional=True
+    )
+    skyMap = skyMapRegistry.makeField(
+        doc="type of skyMap",
+        default="dodeca",
+    )
+
+    def validate(self):
+        if self.name is None:
+            raise ValueError("The name field must be set to the name of the specific "
+                             "skymap to use when writing to the butler")
+
+
+def makeSkyMap(butler, config):
+    """Construct and save a SkyMap into a gen3 butler repository.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        Butler repository to which the new skymap will be written.
+    config : `MakeSkyMapConfig` or None
+        Instance of a configuration class specifying task options.
+    """
+    skyMap = config.skyMap.apply()
+    skyMap.logSkyMapInfo(_log)
+    skyMap.register(config.name, butler)
 
 
 def registerSkymap(repo, config, config_file):
@@ -41,7 +81,8 @@ def registerSkymap(repo, config, config_file):
     RuntimeError
         If a config overrides file is given and does not exist.
     """
-    skyMapConfig = lsst.pipe.tasks.makeGen3SkyMap.MakeGen3SkyMapConfig()
+
+    skyMapConfig = MakeSkyMapConfig()
     if config_file:
         skyMapConfig.load(config_file)
 
@@ -49,4 +90,4 @@ def registerSkymap(repo, config, config_file):
         skyMapConfig.update(**config)
 
     butler = Butler(repo, writeable=True)
-    lsst.pipe.tasks.makeGen3SkyMap.makeGen3SkyMap(butler, skyMapConfig)
+    makeSkyMap(butler, skyMapConfig)

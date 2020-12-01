@@ -28,7 +28,7 @@ from lsst.daf.butler.cli.butler import cli as butlerCli
 from lsst.daf.butler import Butler
 from lsst.daf.butler.cli.utils import clickResultMsg, LogCliRunner
 from lsst.daf.butler.tests import CliCmdTestBase
-from lsst.pipe.tasks.makeGen3SkyMap import MakeGen3SkyMapConfig
+from lsst.pipe.tasks.script import registerSkymap
 from lsst.pipe.tasks.cli.cmd import make_discrete_skymap, register_skymap
 
 
@@ -70,13 +70,13 @@ class RegisterSkymapConfigTest(unittest.TestCase):
         with self.runner.isolated_filesystem():
             result = self.runner.invoke(butlerCli, ["create", "repo"])
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
-            with unittest.mock.patch("lsst.pipe.tasks.makeGen3SkyMap.makeGen3SkyMap") as mock:
+            with unittest.mock.patch("lsst.pipe.tasks.script.registerSkymap.makeSkyMap") as mock:
                 # call without any config overrides
                 result = self.runner.invoke(butlerCli, ["register-skymap", "repo"])
                 self.assertEqual(result.exit_code, 0, clickResultMsg(result))
-                expectedConfig = MakeGen3SkyMapConfig()
+                expectedConfig = registerSkymap.MakeSkyMapConfig()
                 mock.assert_called_once()
-                # assert that the first argument to the call to makeGen3SkyMap was a butler
+                # assert that the first argument to the call to makeSkyMap was a butler
                 self.assertIsInstance(mock.call_args[0][0], Butler)
                 # assert that the second argument matches the expected config
                 self.assertEqual(mock.call_args[0][1], expectedConfig)
@@ -87,15 +87,15 @@ class RegisterSkymapConfigTest(unittest.TestCase):
         with self.runner.isolated_filesystem():
             result = self.runner.invoke(butlerCli, ["create", "repo"])
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
-            with unittest.mock.patch("lsst.pipe.tasks.makeGen3SkyMap.makeGen3SkyMap") as mock:
+            with unittest.mock.patch("lsst.pipe.tasks.script.registerSkymap.makeSkyMap") as mock:
                 # call and override the name parameter of the config
                 result = self.runner.invoke(butlerCli, ["register-skymap", "repo",
                                                         "--config", "name=bar"])
                 self.assertEqual(result.exit_code, 0, clickResultMsg(result))
-                expectedConfig = MakeGen3SkyMapConfig()
+                expectedConfig = registerSkymap.MakeSkyMapConfig()
                 expectedConfig.update(name="bar")
                 mock.assert_called_once()
-                # assert that the first argument to the makeGen3SkyMap call was a butler
+                # assert that the first argument to the makeSkyMap call was a butler
                 self.assertIsInstance(mock.call_args[0][0], Butler)
                 # assert that the second argument matches the expected config
                 self.assertEqual(mock.call_args[0][1], expectedConfig)

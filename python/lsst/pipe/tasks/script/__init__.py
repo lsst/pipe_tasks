@@ -20,4 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from .makeDiscreteSkyMap import makeDiscreteSkyMap
-from .registerSkymap import registerSkymap
+from . import registerSkymap
+
+# Don't import registerSkymap from registerSkymap; we mock it's internals in
+# unit tests, and "from .registerSkymap import registerSkymap" hides the file
+# and prevents mocking.
