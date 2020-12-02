@@ -37,9 +37,10 @@ class CalexpCutoutTaskConfig(pipeBase.PipelineTaskConfig,
     """Configuration for CalexpCutoutTask
     """
     max_cutouts = Field(dtype=int, default=100, doc='Maximum number of entries to process. '
-                                                    'The result will be the first N in the catalog.')
+                                                    'The result will be the first N in the input table.')
     skip_bad = Field(dtype=bool, default=True, doc='Skip cutouts that do not fall completely within'
-                                                   ' the calexp bounding box?')
+                                                   ' the calexp bounding box?  If set to False a ValueError'
+                                                   ' is raised instead.')
 
 
 class CalexpCutoutTask(pipeBase.PipelineTask):
