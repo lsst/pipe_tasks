@@ -56,7 +56,7 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
         Parameters
         ----------
         in_cat : `dict`
-            A dictionary containing at least the following columns: ra, dec, size.
+            A dictionary containing at least the following keys: ra, dec, size.
             The coordinates should be in ICRS degrees.  The size is in pixels.
         calexp : `lsst.afw.image.ExposureF`
             The calibrated exposure from which to extract cutouts
