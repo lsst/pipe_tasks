@@ -77,6 +77,16 @@ class MeasureExtendedPsfConfig(pexConfig.Config):
         doc="Full path to where the extended PSF model fits file should be saved.",
         default="extendedPsf.fits"
     )
+    doMagCut = pexConfig.Field(
+        dtype=bool,
+        doc="Reapply mag cut before stacking?",
+        default=False
+    )
+    magLimit = pexConfig.Field(
+        dtype=float,
+        doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed",
+        default=18
+    )
 
 
 class ExtendedPsfTaskRunner(pipeBase.TaskRunner):
@@ -158,6 +168,8 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
                 dataId = {'visit': stampId["visit"], 'ccd': stampId["ccd"]}
                 try:
                     readStars = butler.get("brightStarStamps_sub", dataId, bbox=bbox)
+                    if self.config.doMagCut:
+                        readStars = readStars.selectByMag(magMax=self.config.magLimit)
                     readWeights = 18. - np.array(readStars.getMagnitudes())
                     if allStars:
                         allStars.extend(readStars)
