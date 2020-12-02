@@ -4,10 +4,11 @@ from lsst.pex.config import Field
 from lsst.meas.algorithms import Stamp, Stamps
 
 __all__ = ['CalexpCutoutTaskConfig', 'CalexpCutoutTask']
+DETECTOR_DIMENSIONS = ('instrument', 'visit', 'detector')
 
 
 class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
-                                  dimensions=("instrument", 'visit', 'detector'),
+                                  dimensions=DETECTOR_DIMENSIONS,
                                   defaultTemplates={}):
     """Connections class for CalexpCutoutTask
     """
@@ -15,19 +16,19 @@ class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
         doc="Locations for cutouts",
         name="cutout_positions",
         storageClass="StructuredDataDict",
-        dimensions=("instrument", 'visit', 'detector'),
+        dimensions=DETECTOR_DIMENSIONS,
     )
     calexp = pipeBase.connectionTypes.Input(
         doc="Calexp objects",
         name="calexp",
         storageClass="ExposureF",
-        dimensions=['instrument', 'visit', 'detector'],
+        dimensions=DETECTOR_DIMENSIONS,
     )
     cutouts = pipeBase.connectionTypes.Output(
         doc="Cutouts",
         name="calexp_cutouts",
         storageClass="Stamps",
-        dimensions=("instrument", 'visit', 'detector'),
+        dimensions=DETECTOR_DIMENSIONS,
     )
 
 
