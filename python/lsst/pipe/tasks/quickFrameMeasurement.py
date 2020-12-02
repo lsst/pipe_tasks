@@ -223,24 +223,6 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         objData = {}
         nMeasured = 0
-        # for srcNum, fp in enumerate(fpSet):
-        #     try:
-        #         src = self._measureFp(fp, exp)
-        #         result = self._getDataFromSrcRecord(src)
-        #         objData[srcNum] = self._measurementResultToDict(result)
-        #         nMeasured += 1
-        #         if doDisplay:  # TODO: Add buffering? Messier due to optional display
-        #             self.display.dot(src.getShape(), *src.getCentroid(), ctype=afwDisplay.BLUE)
-        #     except MeasurementError:
-        #         try:
-        #             # gets shape and centroid from footprint
-        #             result = self._getDataFromFootprintOnly(fp, exp)
-        #             objData[srcNum] = self._measurementResultToDict(result)
-        #             nMeasured += 1
-        #         except MeasurementError as e:
-        #             self.log.info(f"Skipped measuring source {srcNum}: {e}")
-        #         pass
-        #     ############################
 
         for srcNum, fp in enumerate(fpSet):
             try:
@@ -282,7 +264,15 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         imCharConfig.doMeasurePsf = True
         imCharConfig.doApCorr = False
         imCharConfig.doDeblend = False
-        imCharConfig.repair.cosmicray.nCrPixelMax = 200000
+
+        imCharConfig.doWrite = False
+        imCharConfig.doWriteExposure = False
+        imCharConfig.psfIterations = 1
+        imCharConfig.detection.reEstimateBackground = False
+        imCharConfig.repair.doInterpolate = False
+        imCharConfig.repair.doCosmicRay = False
+
+        # imCharConfig.repair.cosmicray.nCrPixelMax = 200000
         imCharTask = CharacterizeImageTask(config=imCharConfig)
         _ = imCharTask.run(exp)
 
