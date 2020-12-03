@@ -22,4 +22,4 @@
 __all__ = ["make_discrete_skymap",]
 
 
-from .commands import make_discrete_skymap
+from .commands import make_discrete_skymap, register_skymap

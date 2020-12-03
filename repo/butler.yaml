@@ -1,0 +1,14 @@
+datastore:
+  cls: lsst.daf.butler.datastores.fileDatastore.FileDatastore
+  records:
+    table: file_datastore_records
+  root: <butlerRoot>
+registry:
+  db: sqlite:///<butlerRoot>/gen3.sqlite3
+  managers:
+    attributes: lsst.daf.butler.registry.attributes.DefaultButlerAttributeManager
+    collections: lsst.daf.butler.registry.collections.synthIntKey.SynthIntKeyCollectionManager
+    datasets: lsst.daf.butler.registry.datasets.byDimensions.ByDimensionsDatasetRecordStorageManager
+    datastores: lsst.daf.butler.registry.bridge.monolithic.MonolithicDatastoreRegistryBridgeManager
+    dimensions: lsst.daf.butler.registry.dimensions.static.StaticDimensionRecordStorageManager
+    opaque: lsst.daf.butler.registry.opaque.ByNameOpaqueTableStorageManager

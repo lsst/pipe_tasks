@@ -2,3 +2,4 @@ cmd:
   import: lsst.pipe.tasks.cli.cmd
   commands:
     - make-discrete-skymap
+    - register-skymap
