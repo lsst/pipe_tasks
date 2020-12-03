@@ -492,10 +492,9 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             # The input sources are the same for all bands, since it is a merged catalog
             sources = self.readSources(patchRef)
             exposure = afwImage.MultibandExposure.fromExposures(filters, exposures)
-            fluxCatalogs, templateCatalogs = self.multiBandDeblend.run(exposure, sources)
+            templateCatalogs = self.multiBandDeblend.run(exposure, sources)
             for n in range(len(patchRefList)):
-                fluxCat = fluxCatalogs if fluxCatalogs is None else fluxCatalogs[filters[n]]
-                self.write(patchRefList[n], fluxCat, templateCatalogs[filters[n]])
+                self.write(patchRefList[n], templateCatalogs[filters[n]])
         else:
             # Use the singeband deblender to deblend each band separately
             for patchRef in patchRefList:
@@ -534,14 +533,14 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         sources.extend(merged, self.schemaMapper)
         return sources
 
-    def write(self, dataRef, flux_sources, template_sources=None):
+    def write(self, dataRef, sources):
         """Write the source catalog(s)
 
         Parameters
         ----------
         dataRef: Data Reference
             Reference to the output catalog.
-        flux_sources: `SourceCatalog`
+        sources: `SourceCatalog`
             Flux conserved sources to write to file.
             If using the single band deblender, this is the catalog
             generated.
@@ -549,19 +548,8 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             Source catalog using the multiband template models
             as footprints.
         """
-        # The multiband deblender does not have to conserve flux,
-        # so only write the flux conserved catalog if it exists
-        if flux_sources is not None:
-            assert not self.config.simultaneous or self.config.multiBandDeblend.conserveFlux
-            dataRef.put(flux_sources, self.config.coaddName + "Coadd_deblendedFlux")
-            self.log.info("Wrote %d sources: %s" % (len(flux_sources), dataRef.dataId))
-        # Only the multiband deblender has the option to output the
-        # template model catalog, which can optionally be used
-        # in MeasureMergedCoaddSources
-        if template_sources is not None:
-            assert self.config.multiBandDeblend.saveTemplates
-            dataRef.put(template_sources, self.config.coaddName + "Coadd_deblendedModel")
-            self.log.info("Wrote %d sources: %s" % (len(template_sources), dataRef.dataId))
+        dataRef.put(sources, self.config.coaddName + "Coadd_deblendedFlux")
+        self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
 
     def writeMetadata(self, dataRefList):
         """Write the metadata produced from processing the data.
