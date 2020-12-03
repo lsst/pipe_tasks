@@ -23,37 +23,75 @@
 
 Run the task on one test image and perform various checks on the results
 """
-import json
 import os
+import random
 import unittest
+from astropy.coordinates import SkyCoord
+from astropy.table import QTable
+import astropy.units as u
 
 import lsst.utils
 import lsst.utils.tests
 from lsst.afw.image import ExposureF
 from lsst.pipe.tasks.calexpCutout import CalexpCutoutTask
 
+random.seed(208241138)
+
 packageDir = lsst.utils.getPackageDir('pipe_tasks')
 datadir = os.path.join(packageDir, 'tests', "data")
 
 
-class CalexpCutoutTestCase(lsst.utils.tests.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        with open(os.path.join(datadir, 'cutout_data.json'), 'r') as fh:
-            cls.data = json.load(fh)
-        cls.exp = ExposureF.readFits(os.path.join(datadir, 'v695833-e0-c000-a00.sci.fits'))
+def make_data(bbox, wcs, border=100, ngood=13, nbad=1):
+    dx, dy = bbox.getDimensions()
+    data = {}
 
-    @classmethod
-    def tearDownClass(cls):
-        del cls.data
-        del cls.exp
+    ident = []
+    pt = []
+    size = []
+    for i in range(ngood):
+        x = random.random()*(dx - 2*border) + border
+        y = random.random()*(dy - 2*border) + border
+        sphpt = wcs.pixelToSky(x, y)
+        pt.append(SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(),
+                           frame='icrs', unit=u.deg))
+        ident.append((i+1)*u.dimensionless_unscaled)
+        size.append(random.randint(13, 26)*u.dimensionless_unscaled)
+    data['good'] = QTable([ident, pt, size], names=['id', 'position', 'size'])
+
+    ident = []
+    pt = []
+    size = []
+    for i in range(nbad):
+        x = random.random()*(dx - 2*border) + border
+        y = random.random()*(dy - 2*border) + border
+        sphpt = wcs.pixelToSky(-x, -y)
+        pt.append(SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(),
+                           frame='icrs', unit=u.deg))
+        ident.append((i+1)*u.dimensionless_unscaled)
+        size.append(random.randint(13, 26)*u.dimensionless_unscaled)
+    data['bad'] = QTable([ident, pt, size], names=['id', 'position', 'size'])
+
+    sphpt = wcs.pixelToSky(0, 0)
+    pt = SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(), frame='icrs', unit=u.deg)
+    data['edge'] = QTable([[1*u.dimensionless_unscaled, ], [pt, ], [18*u.dimensionless_unscaled, ]],
+                          names=['id', 'position', 'size'])
+    return data
+
+
+class CalexpCutoutTestCase(lsst.utils.tests.TestCase):
+    def setUp(self):
+        self.exp = ExposureF.readFits(os.path.join(datadir, 'v695833-e0-c000-a00.sci.fits'))
+        self.data = make_data(self.exp.getBBox(), self.exp.getWcs())
+
+    def tearDown(self):
+        del self.data
+        del self.exp
 
     def testCalexpCutout(self):
         config = CalexpCutoutTask.ConfigClass()
         task = CalexpCutoutTask(config=config)
         result = task.run(self.data['good'], self.exp)
-        self.assertEqual(len(result.cutouts), len(self.data['good']['ra']))
+        self.assertEqual(len(result.cutouts), len(self.data['good']))
 
         # Test configuration of the max number of cutouts
         config.max_cutouts = 4
@@ -89,6 +127,11 @@ class CalexpCutoutTestCase(lsst.utils.tests.TestCase):
         # Should now raise for cutouts outside the image
         with self.assertRaises(ValueError):
             result = task.run(self.data['bad'], self.exp)
+
+    def testBadColumns(self):
+        table = QTable([[],[]], names=['one', 'two'])
+        with self.assertRaises(ValueError):
+            result = task.run(table, self.exp)
 
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):

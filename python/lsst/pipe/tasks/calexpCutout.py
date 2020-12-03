@@ -12,10 +12,10 @@ class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
                                   defaultTemplates={}):
     """Connections class for CalexpCutoutTask
     """
-    in_cat = pipeBase.connectionTypes.Input(
+    in_table = pipeBase.connectionTypes.Input(
         doc="Locations for cutouts",
         name="cutout_positions",
-        storageClass="StructuredDataDict",
+        storageClass="AstroQTable",
         dimensions=DETECTOR_DIMENSIONS,
     )
     calexp = pipeBase.connectionTypes.Input(
@@ -50,37 +50,52 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
     ConfigClass = CalexpCutoutTaskConfig
     _DefaultName = "calexpCutoutTask"
 
-    def run(self, in_cat, calexp):
+    def run(self, in_table, calexp):
         """Compute and return the cutouts.
 
         Parameters
         ----------
-        in_cat : `dict`
-            A dictionary containing at least the following keys: ra, dec, size.
-            The coordinates should be in ICRS degrees.  The size is in pixels.
+        in_table : `astropy.QTable`
+            A table containing at least the following columns: position, size.
+            The position should be an `astropy.SkyCoord`.  The size is in pixels.
         calexp : `lsst.afw.image.ExposureF`
             The calibrated exposure from which to extract cutouts
 
         Returns
         -------
         output : `lsst.pipe.base.Struct`
-            A struct containing a container class that wraps a list of
-            masked images of the cutouts and a PropertyList containing
-            the metadata to be persisted with the cutouts
+            A struct containing a `lsst.meas.algorithms.Stamps` object
+            that wraps a list of masked images of the cutouts and a
+            `PropertyList` containing the metadata to be persisted
+            with the cutouts.  The exposure metadata is preserved and,
+            in addition, arrays holding the RA and Dec of each stamp
+            in degrees are added to the metadata.
+
+        Raises
+        ------
+        ValueError
+            If the input catalog doesn't have the required columns,
+            a ValueError is raised
         """
+        if 'position' not in in_table.colnames or 'size' not in in_table.colnames:
+            raise ValueError('Required column missing from the input table.  '
+                             'Required columns are "position" and "size".'
+                             f'The column names are: {in_table.colnames}')
         max_idx = self.config.max_cutouts
         cutout_list = []
         wcs = calexp.getWcs()
         mim = calexp.getMaskedImage()
-        metadata = calexp.getMetadata()
-        metadata['RA_DEG'] = in_cat['ra'][:max_idx]
-        metadata['DEC_DEG'] = in_cat['dec'][:max_idx]
-        metadata['SIZE'] = in_cat['size'][:max_idx]
-        for ra, dec, size in zip(in_cat['ra'][:max_idx], in_cat['dec'][:max_idx],
-                                 in_cat['size'][:max_idx]):
+        ras = []
+        decs = []
+        for rec in in_table[:max_idx]:
+            ra = rec['position'].ra.degree
+            dec = rec['position'].dec.degree
+            ras.append(ra)
+            decs.append(dec)
             pt = geom.SpherePoint(geom.Angle(ra, geom.degrees),
                                   geom.Angle(dec, geom.degrees))
             pix = wcs.skyToPixel(pt)
+            size = rec['size'].value
             # Clamp to LL corner of the LL pixel and draw extent from there
             box = geom.Box2I(geom.Point2I(int(pix.x-size/2), int(pix.y-size/2)),
                              geom.Extent2I(size, size))
@@ -89,10 +104,10 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
                     raise ValueError(f'Cutout bounding box is not completely contained in the image: {box}')
                 else:
                     continue
-            # I think we need to think about what we want the origin to be: LOCAL or PARENT
             sub = mim.Factory(mim, box)
             stamp = Stamp(stamp_im=sub, position=pt)
             cutout_list.append(stamp)
-        # We are using this stamp container as a place holder because it already has
-        # the storage class defined
+        metadata = calexp.getMetadata()
+        metadata['RA_DEG'] = ras
+        metadata['DEC_DEG'] = decs
         return pipeBase.Struct(cutouts=Stamps(cutout_list, metadata=metadata))
