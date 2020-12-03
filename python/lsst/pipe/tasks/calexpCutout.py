@@ -15,7 +15,7 @@ class CalexpCutoutTaskConnections(pipeBase.PipelineTaskConnections,
     in_table = pipeBase.connectionTypes.Input(
         doc="Locations for cutouts",
         name="cutout_positions",
-        storageClass="AstroQTable",
+        storageClass="AstropyQTable",
         dimensions=DETECTOR_DIMENSIONS,
     )
     calexp = pipeBase.connectionTypes.Input(
