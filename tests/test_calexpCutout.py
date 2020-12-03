@@ -129,9 +129,11 @@ class CalexpCutoutTestCase(lsst.utils.tests.TestCase):
             result = task.run(self.data['bad'], self.exp)
 
     def testBadColumns(self):
-        table = QTable([[],[]], names=['one', 'two'])
+        config = CalexpCutoutTask.ConfigClass()
+        task = CalexpCutoutTask(config=config)
+        table = QTable([[], []], names=['one', 'two'])
         with self.assertRaises(ValueError):
-            result = task.run(table, self.exp)
+            result = task.run(table, self.exp)  # noqa
 
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
