@@ -34,6 +34,8 @@ from lsst.pipe.tasks.cli.cmd import make_discrete_skymap, register_skymap
 
 class RegisterSkymapTest(CliCmdTestBase, unittest.TestCase):
 
+    mockFunc = "lsst.pipe.tasks.cli.cmd.commands.script.registerSkymap.registerSkymap"
+
     @staticmethod
     def defaultExpected():
         return dict(config={}, config_file=None)
@@ -113,6 +115,8 @@ class RegisterSkymapConfigTest(unittest.TestCase):
 
 
 class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
+
+    mockFunc = "lsst.pipe.tasks.cli.cmd.commands.script.makeDiscreteSkyMap"
 
     @staticmethod
     def defaultExpected():
