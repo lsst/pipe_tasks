@@ -34,7 +34,7 @@ from lsst.pipe.base import connectionTypes as cT
 from lsst.meas.algorithms import brightStarStamps as bSS
 
 
-def replaceMaskedPixels(maskedIm, maskPlane, val=0, inPlace=False, verbose=False):
+def replaceMaskedPixels(maskedIm, maskPlane, val=0, inPlace=False):
     mask = maskedIm.mask
     mpd = mask.getMaskPlaneDict()
     mpValues = set(list(mask.array.flatten()))
@@ -46,8 +46,6 @@ def replaceMaskedPixels(maskedIm, maskPlane, val=0, inPlace=False, verbose=False
             if int(binPv[-(bitNb + 1)]):
                 badVals += [mpv]
     if not badVals:
-        if verbose:
-            print(f'Mask plane {maskPlane} seems absent from image; returning it unchanged')
         return maskedIm
     if inPlace:
         newIm = maskedIm
@@ -92,7 +90,7 @@ class ReprocessBrightStarsConfig(pipeBase.PipelineTaskConfig,
     erosionFactor = pexConfig.Field(
         dtype=int,
         doc="Erosion factor to apply to get small insert centered on objects for hackyFlux computation",
-        default=0,
+        default=0
     )
     centerFew = pexConfig.Field(
         dtype=int,
@@ -143,10 +141,10 @@ class ReprocessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             croppedStar.image.array[croppedCenter[0] - self.config.centerFew:
                                         croppedCenter[0] + self.config.centerFew,
                                     croppedCenter[1] - self.config.centerFew:
-                                        croppedCenter[1] + self.config.centerFew] = np.isnan
+                                        croppedCenter[1] + self.config.centerFew] = np.nan
         croppedModel.image.array[np.isnan(croppedStar.image.array)] = np.nan
-        X = croppedModel.image.array.flatten()
-        Y = croppedStar.image.array.flatten()
+        X = croppedModel.image.array
+        Y = croppedStar.image.array
         scaling = np.nansum(X*Y) / np.nansum(X*X)
         if normalize:
             starIm.image.array /= scaling
