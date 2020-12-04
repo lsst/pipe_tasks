@@ -89,15 +89,10 @@ class ReprocessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             " annular flux.",
         default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
     )
-    nMaxPix = pexConfig.Field(
-        dtype=int,
-        doc="Number of maximal SNR pixels to use to compute hackyFlux",
-        default=400,
-    )
     erosionFactor = pexConfig.Field(
         dtype=int,
         doc="Erosion factor to apply to get small insert centered on objects for hackyFlux computation",
-        default=300,
+        default=0,
     )
     centerFew = pexConfig.Field(
         dtype=int,
@@ -137,30 +132,25 @@ class ReprocessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.modelStampSize = np.array(self.model.getDimensions())
         self.modelCenter = self.modelStampSize[0]//2, self.modelStampSize[1]//2
 
-    def hackyFlux(self, starIm, normalize=False):
+    def leastSquareFlux(self, starIm, normalize=False):
         bbox = starIm.getBBox().erodedBy(self.config.erosionFactor)
         croppedStar = starIm.clone()[bbox]
         croppedModel = self.model.clone()[bbox]
         for bm in self.config.badMaskPlanes:
-            croppedStar = replaceMaskedPixels(croppedStar, bm, val=0, inPlace=True)
+            croppedStar = replaceMaskedPixels(croppedStar, bm, val=np.nan, inPlace=True)
         if self.config.centerFew:
             croppedCenter = np.array(croppedStar.getDimensions()) // 2
             croppedStar.image.array[croppedCenter[0] - self.config.centerFew:
                                         croppedCenter[0] + self.config.centerFew,
                                     croppedCenter[1] - self.config.centerFew:
-                                        croppedCenter[1] + self.config.centerFew] = 0
-        croppedModel.image.array[croppedStar.image.array == 0] = 0
-        # get positions of nMaxPix largest-valued pixels
-        flatIdx = np.argsort(croppedModel.image.array.flatten())[-self.config.nMaxPix:]
-        #xIdx, yIdx = np.unravel_index(flatIdx, croppedStar.image.array.shape)
-        hackyStarVal = np.nanmean(croppedStar.image.array.flatten()[flatIdx])
-        hackyModelVal = np.nanmean(croppedModel.image.array.flatten()[flatIdx])
-        hackyFlux = hackyStarVal / hackyModelVal
-        if np.isnan(hackyFlux):
-            hackyFlux = 0
+                                        croppedCenter[1] + self.config.centerFew] = np.isnan
+        croppedModel.image.array[np.isnan(croppedStar.image.array)] = np.nan
+        X = croppedModel.image.array.flatten()
+        Y = croppedStar.image.array.flatten()
+        scaling = np.nansum(X*Y) / np.nansum(X*X)
         if normalize:
-            starIm.image.array /= hackyFlux
-        return float(hackyFlux)
+            starIm.image.array /= scaling
+        return float(scaling)
 
     @pipeBase.timeMethod
     def run(self, bss, dataId=None):
@@ -186,17 +176,17 @@ class ReprocessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
             - ``brightStarStamps``: ``bSS.BrightStarStamps``
         """
-        self.log.info("Computing hacky flux for exposure %s", dataId)
+        self.log.info("Computing least square fit flux for exposure %s", dataId)
         # Unnormalize 1st pass bss
         for j, (starIm, flux) in enumerate(zip(bss.getMaskedImages(), bss.getAnnularFluxes())):
             starIm.image.array *= flux
         # compute hacky flux
-        hackyFluxes = [self.hackyFlux(starIm, normalize=True) for starIm in bss.getMaskedImages()]
+        fluxes = [self.leastSquareFlux(starIm, normalize=True) for starIm in bss.getMaskedImages()]
         brightStarList = [bSS.BrightStarStamp(starStamp=warp,
                                               gaiaGMag=bss.getMagnitudes()[j],
                                               gaiaId=bss.getGaiaIds()[j],
                                               XY0=bss.getXY0s()[j],
-                                              annularFlux=hackyFluxes[j],
+                                              annularFlux=fluxes[j],
                                               transform=bss.getTransforms()[j])
                           for j, warp in enumerate(bss.getMaskedImages())]
         brightStarStamps = bSS.BrightStarStamps(brightStarList, -1, -1,
