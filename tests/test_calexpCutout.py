@@ -41,7 +41,7 @@ packageDir = lsst.utils.getPackageDir('pipe_tasks')
 datadir = os.path.join(packageDir, 'tests', "data")
 
 
-def make_data(bbox, wcs, border=100, ngood=13, nbad=1):
+def make_data(bbox, wcs, border=100, ngood=13, nbad=7, nedge=3):
     dx, dy = bbox.getDimensions()
     data = {}
 
@@ -71,10 +71,24 @@ def make_data(bbox, wcs, border=100, ngood=13, nbad=1):
         size.append(random.randint(13, 26)*u.dimensionless_unscaled)
     data['bad'] = QTable([ident, pt, size], names=['id', 'position', 'size'])
 
-    sphpt = wcs.pixelToSky(0, 0)
-    pt = SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(), frame='icrs', unit=u.deg)
-    data['edge'] = QTable([[1*u.dimensionless_unscaled, ], [pt, ], [18*u.dimensionless_unscaled, ]],
-                          names=['id', 'position', 'size'])
+    ident = []
+    pt = []
+    size = []
+    for i in range(nedge):
+        x_or_y = random.randint(0, 1)
+        if x_or_y:
+            x = random.random()*dx
+            y = [0, dy][random.randint(0, 1)]
+        else:
+            x = [0, dx][random.randint(0, 1)]
+            y = random.random()*dy
+
+        sphpt = wcs.pixelToSky(x, y)
+        pt.append(SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(),
+                           frame='icrs', unit=u.deg))
+        ident.append((i+1)*u.dimensionless_unscaled)
+        size.append(random.randint(13, 26)*u.dimensionless_unscaled)
+    data['edge'] = QTable([ident, pt, size], names=['id', 'position', 'size'])
     return data
 
 
@@ -108,6 +122,7 @@ class CalexpCutoutTestCase(lsst.utils.tests.TestCase):
         result = task.run(self.data['edge'], self.exp)
         # Cutouts on the edge should be skipped
         self.assertEqual(len(result.cutouts), 0)
+        self.assertEqual(len(result.skipped_positions), len(self.data['edge']))
 
         config.skip_bad = False
         task = CalexpCutoutTask(config=config)
@@ -121,6 +136,7 @@ class CalexpCutoutTestCase(lsst.utils.tests.TestCase):
         result = task.run(self.data['bad'], self.exp)
         # Cutouts outside the image should be skipped
         self.assertEqual(len(result.cutouts), 0)
+        self.assertEqual(len(result.skipped_positions), len(self.data['bad']))
 
         config.skip_bad = False
         task = CalexpCutoutTask(config=config)

@@ -57,19 +57,27 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
         ----------
         in_table : `astropy.QTable`
             A table containing at least the following columns: position, size.
-            The position should be an `astropy.SkyCoord`.  The size is in pixels.
+            The position should be an `astropy.SkyCoord`.  The size is
+            the size of the cutout in pixels.  All cutouts are square in pixel
+            space.
         calexp : `lsst.afw.image.ExposureF`
             The calibrated exposure from which to extract cutouts
 
         Returns
         -------
         output : `lsst.pipe.base.Struct`
-            A struct containing a `lsst.meas.algorithms.Stamps` object
-            that wraps a list of masked images of the cutouts and a
-            `PropertyList` containing the metadata to be persisted
-            with the cutouts.  The exposure metadata is preserved and,
-            in addition, arrays holding the RA and Dec of each stamp
-            in degrees are added to the metadata.
+            A struct containing:
+
+            * cutouts: an `lsst.meas.algorithms.Stamps` object
+                       that wraps a list of masked images of the cutouts and a
+                       `PropertyList` containing the metadata to be persisted
+                       with the cutouts.  The exposure metadata is preserved and,
+                       in addition, arrays holding the RA and Dec of each stamp
+                       in degrees are added to the metadata.  Note: the origin
+                       of the output stamps is `lsst.afw.image.PARENT`.
+            * skipped_positions: a `list` of `lsst.geom.SpherePoint` objects for
+                                 stamps that were skiped for being off the image
+                                 or partially off the image
 
         Raises
         ------
@@ -87,6 +95,7 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
         mim = calexp.getMaskedImage()
         ras = []
         decs = []
+        skipped_positions = []
         for rec in in_table[:max_idx]:
             ra = rec['position'].ra.degree
             dec = rec['position'].dec.degree
@@ -103,6 +112,7 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
                 if not self.config.skip_bad:
                     raise ValueError(f'Cutout bounding box is not completely contained in the image: {box}')
                 else:
+                    skipped_positions.append(pt)
                     continue
             sub = mim.Factory(mim, box)
             stamp = Stamp(stamp_im=sub, position=pt)
@@ -110,4 +120,5 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
         metadata = calexp.getMetadata()
         metadata['RA_DEG'] = ras
         metadata['DEC_DEG'] = decs
-        return pipeBase.Struct(cutouts=Stamps(cutout_list, metadata=metadata))
+        return pipeBase.Struct(cutouts=Stamps(cutout_list, metadata=metadata),
+                               skipped_positions=skipped_positions)
