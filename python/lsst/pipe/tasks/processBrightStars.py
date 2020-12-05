@@ -262,8 +262,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         wcs = inputExposure.getWcs()
         bmp = inputExposure.mask.getMaskPlaneDict()
         # select stars within, or close enough to input exposure from refcat
-        dilatationExtent = np.array(self.config.stampSize) - self.config.minPixelsWithinFrame
-        bbox = inputExposure.getBBox().dilatedBy(dilatationExtent))
+        dilatationExtent = geom.Extent2I(np.array(self.config.stampSize) - self.config.minPixelsWithinFrame)
+        bbox = inputExposure.getBBox().dilatedBy(dilatationExtent)
         withinCalexp = refObjLoader.loadPixelBox(bbox, wcs, filterName="phot_g_mean")
         refCat = withinCalexp.refCat
         # keep bright objects
@@ -289,6 +289,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 idealBBox = geom.Box2I(geom.Point2I(bboxCorner), geom.Extent2I(self.config.stampSize))
                 bottomLeft = idealBBox.getBegin()
                 topRight = idealBBox.getEnd()
+                # can any pixel be salvaged?
+                if np.any(np.array(bottomLeft) > np.array(inputExposure.getDimensions())) or \
+                   np.any(np.array(topRight) < 0):
+                    continue
                 # create smaller subBBox containing overlapping pixels
                 subBBoxCorner = bottomLeft.clone()
                 subBBoxExtent = idealBBox.getDimensions()
@@ -314,6 +318,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 starIm.mask.array[:] = 2**bmp['NO_DATA']
                 starIm.image[subBBox] = subStarIm.image
                 starIm.mask[subBBox] = subStarIm.mask
+                # below check should be superfluous; these should have been caught with the check above
                 if np.all(np.isnan(starIm.image.array)):
                     continue
             if self.config.doRemoveDetected:
