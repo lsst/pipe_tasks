@@ -314,6 +314,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 subStarIm = inputExposure.getCutout(subSp, subBBoxExtent)
                 # and create full-sized stamp with NO_DATA elsewhere
                 starIm = afwImage.ExposureF(idealBBox)
+                starIm.setDetector(inputExposure.getDetector())
+                starIm.setWcs(inputExposure.getWcs())
                 starIm.image.array[:] = np.nan
                 starIm.mask.array[:] = 2**bmp['NO_DATA']
                 starIm.image[subBBox] = subStarIm.image
