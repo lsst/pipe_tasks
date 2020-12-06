@@ -35,6 +35,7 @@ from lsst.afw import math as afwMath
 from lsst.afw import image as afwImage
 from lsst.geom import Extent2I
 from lsst.daf.persistence import butlerExceptions as bE
+from lsst.daf.persistence.butlerExceptions import NoResults
 
 
 class MeasureExtendedPsfConfig(pexConfig.Config):
@@ -135,8 +136,13 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
     def runDataRef(self, butler, selectDataList=None):
         self.log.info("Stacking bright star stamps from %i different exposures." % (len(selectDataList)))
         # read in example set of full stamps
-        dataId = {'visit': selectDataList[0]["visit"], 'ccd': selectDataList[0]["ccd"]}
-        bss = butler.get("brightStarStamps", dataId)
+        for sdl in selectDataList:
+            dataId = {'visit': sdl["visit"], 'ccd': sdl["ccd"]}
+            try:
+                bss = butler.get("brightStarStamps", dataId)
+                break
+            except NoResults:
+                self.log.info(f'Could not load brightStarStamps for dataId {dataId}.')
         exampleStamp = bss[0].starStamp
         # create model image
         extPsf = afwImage.MaskedImageF(exampleStamp.getBBox())
@@ -160,7 +166,7 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
         statsFlags = afwMath.stringToStatisticsProperty(self.config.stackingStatistic)
         # iteratively stack over small subregions
         for jbbox, bbox in enumerate(subBBoxes):
-            if not jbbox % 50:
+            if not jbbox % 5:
                 self.log.info("Stacking subregion %i out of %i" % (jbbox+1, nbSubregions))
             allStars = None
             weights = None
