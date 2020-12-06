@@ -32,6 +32,7 @@ import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.pipe.base import connectionTypes as cT
 from lsst.meas.algorithms import brightStarStamps as bSS
+from lsst.daf.persistence import butlerExceptions as bE
 
 
 def replaceMaskedPixels(maskedIm, maskPlane, val=0, inPlace=False):
@@ -96,6 +97,16 @@ class ReprocessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         dtype=int,
         doc="Number of pixels around center (in each direction) to ignore even if not saturated",
         default=6,
+    )
+    doMagCut = pexConfig.Field(
+        dtype=bool,
+        doc="Reapply mag cut before stacking?",
+        default=False
+    )
+    magLimit = pexConfig.Field(
+        dtype=float,
+        doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed",
+        default=18
     )
 
 
@@ -200,7 +211,13 @@ class ReprocessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
             Data reference to the calexp to extract bright stars from.
         """
-        bss1stpass = dataRef.get("brightStarStamps")
+        try:
+            bss1stpass = dataRef.get("brightStarStamps")
+        except bE.NoResults:
+            self.log.info(f"No BrightStarStamps found for dataId {dataId}; skipping it")
+            return
+        if self.config.doMagCut:
+            bss1stpass = bss1stpass.selectByMag(magMax=self.config.magLimit)
         output = self.run(bss1stpass, dataId=dataRef.dataId)
         # Save processed bright star stamps
         dataRef.put(output.brightStarStamps, "brightStarStamps")
