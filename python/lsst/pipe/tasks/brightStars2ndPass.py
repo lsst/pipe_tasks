@@ -212,7 +212,6 @@ class ReprocessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             Data reference to the calexp to extract bright stars from.
         """
         try:
-            print(dataRef.get("brightStarStamps_filename"))
             bss1stpass = dataRef.get("brightStarStamps")
         except bE.NoResults:
             self.log.info(f"No BrightStarStamps found for dataId {dataRef.dataId}; skipping it")
