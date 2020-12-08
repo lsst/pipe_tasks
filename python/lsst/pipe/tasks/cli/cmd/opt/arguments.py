@@ -2,7 +2,7 @@
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (https://www.lsst.org).
+# (http://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
@@ -17,15 +17,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from .makeDiscreteSkyMap import makeDiscreteSkyMap
 
-# Don't import registerDcrSubfilters from registerDcrSubfilters; we need
-# access to objects in the file for unit testing.
-from . import registerDcrSubfilters
+import click
 
-# Don't import registerSkymap from registerSkymap; we mock it's internals in
-# unit tests, and "from .registerSkymap import registerSkymap" hides the file
-# and prevents mocking.
-from . import registerSkymap
+from lsst.daf.butler.cli.utils import (
+    MWArgumentDecorator,
+    split_commas,
+    unwrap,
+)
+
+
+num_subfilters_argument = MWArgumentDecorator(
+    "NUM_SUBFILTERS",
+    help="NUM_SUBFILTERS is the number of subfilters to be used for chromatic modeling.",
+    type=click.IntRange(min=1),
+    required=True
+)
+
+band_names_argument = MWArgumentDecorator(
+    "BAND_NAMES",
+    help=unwrap("""BAND_NAMES names of the bands to define chromatic subfilters for in the registry. Each
+                band will have the same number of subfilters defined, for example 'g0', 'g1', and 'g2' for
+                three subfilters and band 'g'."""),
+    callback=split_commas,
+    required=True,
+    nargs=-1,
+)

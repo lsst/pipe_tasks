@@ -19,7 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-__all__ = ["make_discrete_skymap",]
 
-
-from .commands import make_discrete_skymap, register_skymap
+from .commands import (
+    make_discrete_skymap,
+    register_dcr_subfilters,
+    register_skymap,
+)
