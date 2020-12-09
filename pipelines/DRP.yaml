@@ -1,5 +1,5 @@
 description: Base Pipeline that describes the Data Release Production process.
-inherits:
+imports:
   - location: $PIPE_TASKS_DIR/pipelines/_SingleFrame.yaml
   - location: $PIPE_TASKS_DIR/pipelines/_ConsolidateVisit.yaml
   - location: $PIPE_TASKS_DIR/pipelines/_Coaddition.yaml
