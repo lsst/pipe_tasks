@@ -28,10 +28,7 @@ from lsst.daf.butler.cli.opt import (
     options_file_option,
     repo_argument,
 )
-from lsst.daf.butler.cli.utils import (
-    ButlerCommand,
-    cli_handle_exception,
-)
+from lsst.daf.butler.cli.utils import ButlerCommand
 from lsst.obs.base.cli.opt import instrument_argument
 from ... import script
 
@@ -53,7 +50,7 @@ from ... import script
 @options_file_option()
 def make_discrete_skymap(*args, **kwargs):
     """Define a discrete skymap from calibrated exposures in the butler registry."""
-    cli_handle_exception(script.makeDiscreteSkyMap, *args, **kwargs)
+    script.makeDiscreteSkyMap(*args, **kwargs)
 
 
 @click.command(cls=ButlerCommand)
@@ -63,4 +60,4 @@ def make_discrete_skymap(*args, **kwargs):
 @options_file_option()
 def register_skymap(*args, **kwargs):
     """Make a SkyMap and add it to a repository."""
-    cli_handle_exception(script.registerSkymap.registerSkymap, *args, **kwargs)
+    script.registerSkymap.registerSkymap(*args, **kwargs)
