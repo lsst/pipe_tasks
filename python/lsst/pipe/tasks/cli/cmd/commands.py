@@ -30,6 +30,10 @@ from lsst.daf.butler.cli.opt import (
 )
 from lsst.daf.butler.cli.utils import ButlerCommand
 from lsst.obs.base.cli.opt import instrument_argument
+from .opt import (
+    band_names_argument,
+    num_subfilters_argument,
+)
 from ... import script
 
 
@@ -61,3 +65,15 @@ def make_discrete_skymap(*args, **kwargs):
 def register_skymap(*args, **kwargs):
     """Make a SkyMap and add it to a repository."""
     script.registerSkymap.registerSkymap(*args, **kwargs)
+
+
+@click.command(cls=ButlerCommand,
+               short_help="Add subfilters for chaotic modeling.")
+@repo_argument(required=True)
+@num_subfilters_argument()
+@band_names_argument()
+@options_file_option()
+def register_dcr_subfilters(**kwargs):
+    """Construct a set of subfilters for chromatic modeling and add them to a
+    registry."""
+    print(script.registerDcrSubfilters.registerDcrSubfilters(**kwargs))

@@ -22,13 +22,15 @@
 """Unit tests for daf_butler CLI make-discrete-skymap command.
 """
 
+from astropy.table import Table as AstropyTable
 import unittest
 
 from lsst.daf.butler.cli.butler import cli as butlerCli
 from lsst.daf.butler import Butler
 from lsst.daf.butler.cli.utils import clickResultMsg, LogCliRunner
 from lsst.daf.butler.tests import CliCmdTestBase
-from lsst.pipe.tasks.script import registerSkymap
+from lsst.daf.butler.tests.utils import ButlerTestHelper, readTable
+from lsst.pipe.tasks.script import registerSkymap, registerDcrSubfilters
 from lsst.pipe.tasks.cli.cmd import make_discrete_skymap, register_skymap
 
 
@@ -166,6 +168,55 @@ class DefineMakeDiscreteSkymap(CliCmdTestBase, unittest.TestCase):
                          "Missing argument ['\"]INSTRUMENT['\"]")
         self.run_missing(["make-discrete-skymap", "here", "a.b.c"],
                          "Error: Missing option ['\"]--collections['\"].")
+
+
+class RegisterDcrSubfiltersTest(unittest.TestCase, ButlerTestHelper):
+
+    def setUp(self):
+        self.runner = LogCliRunner()
+        self.repo = "here"
+
+    def testRegisterFilters(self):
+        """Register a few filters and verify they are added to the repo."""
+
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(butlerCli, ["create", self.repo])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+
+            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "3", "foo"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            self.assertIn(registerDcrSubfilters.registeredMsg.format(band="foo", subfilters="[0, 1, 2]"),
+                          result.output)
+
+            result = self.runner.invoke(butlerCli, ["query-dimension-records", self.repo, "subfilter"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            self.assertAstropyTablesEqual(
+                AstropyTable((("foo", "foo", "foo"), (0, 1, 2)), names=("band", "id")),
+                readTable(result.output))
+
+            # Verify expected output message for registering subfilters in a
+            # band that already has subfilters
+            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "5", "foo"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            self.assertIn(registerDcrSubfilters.notRegisteredMsg.format(band="foo", subfilters="[0, 1, 2]"),
+                          result.output)
+
+            # Add subfilters for two filters, one new filter and one existing.
+            # Verify expected result messages and registry values.
+            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "3", "foo", "bar"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            self.assertIn(registerDcrSubfilters.notRegisteredMsg.format(band="foo", subfilters="[0, 1, 2]"),
+                          result.output)
+            self.assertIn(registerDcrSubfilters.registeredMsg.format(band="bar", subfilters="[0, 1, 2]"),
+                          result.output)
+            result = self.runner.invoke(butlerCli, ["query-dimension-records", self.repo, "subfilter"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            resultTable = readTable(result.output)
+            resultTable.sort(["band", "id"])
+            self.assertAstropyTablesEqual(
+                AstropyTable((("bar", "bar", "bar", "foo", "foo", "foo"),
+                              (0, 1, 2, 0, 1, 2)), names=("band", "id")),
+                resultTable)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 cmd:
   import: lsst.pipe.tasks.cli.cmd
   commands:
+    - register-dcr-subfilters
     - make-discrete-skymap
     - register-skymap
