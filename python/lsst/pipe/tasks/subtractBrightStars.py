@@ -33,7 +33,6 @@ from lsst.afw import image as afwImage
 import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
-from lsst.pex import exceptions as pexExceptions
 from lsst.daf.persistence import butlerExceptions as bE
 
 
@@ -131,13 +130,30 @@ class SubtractBrightStarsTask(pipeBase.CmdLineTask):
                 # the NO_DATA flag)
                 invImage.image.array[np.isnan(invImage.image.array)] = 0
                 # Add matched model to subtractor exposure
-                try:
-                    subtractor[bbox] += invImage
-                    invImages.append(invImage)
-                except pexExceptions.LengthError:
-                    # TODO: handle stars close to the edge (DM-25894)
-                    self.log.debug(f"Star {star.gaiaId} not included in the subtractor"
-                                   "because it was too close to the edge.")
+                bottomLeft = bbox.getBegin()
+                topRight = bbox.getEnd()
+                # can any pixel be salvaged?
+                if np.any(np.array(bottomLeft) > np.array(subtractor.getDimensions())) or \
+                   np.any(np.array(topRight) < 0):
+                    continue
+                # create smaller subBBox containing overlapping pixels
+                subBBoxCorner = bottomLeft.clone()
+                subBBoxExtent = bbox.getDimensions()
+                beyondX = topRight[0] - subtractor.getDimensions()[0]
+                beyondY = topRight[1] - subtractor.getDimensions()[1]
+                if bottomLeft[0] < 0:
+                    subBBoxCorner[0] = 0
+                    subBBoxExtent[0] -= np.abs(bottomLeft[0])
+                elif beyondX > 0:
+                    subBBoxExtent[0] -= beyondX
+                if bottomLeft[1] < 0:
+                    subBBoxCorner[1] = 0
+                    subBBoxExtent[1] -= np.abs(bottomLeft[1])
+                elif beyondY > 0:
+                    subBBoxExtent[1] -= beyondY
+                subBBox = geom.Box2I(subBBoxCorner, subBBoxExtent)
+                subtractor[subBBox] += invImage[subBBox]
+                invImages.append(invImage)
         return subtractor, invImages
 
     @pipeBase.timeMethod
