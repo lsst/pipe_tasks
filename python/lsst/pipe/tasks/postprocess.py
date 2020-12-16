@@ -990,26 +990,20 @@ class VisitDataIdContainer(DataIdContainer):
         namespace : `argparse.Namespace`
             Namespace used by `lsst.pipe.base.CmdLineTask` to parse command line arguments
         """
-        def ccdDataRefList(visitId):
-            """Get all possible ccds for a given visit"""
-            ccds = namespace.butler.queryMetadata('src', ['ccd'], dataId={'visit': visitId})
-            return [namespace.butler.dataRef(datasetType=self.datasetType,
-                                             visit=visitId,
-                                             ccd=ccd) for ccd in ccds]
         # Group by visits
         visitRefs = defaultdict(list)
         for dataId in self.idList:
             if "visit" in dataId:
                 visitId = dataId["visit"]
-                if "ccd" in dataId:
-                    visitRefs[visitId].append(namespace.butler.dataRef(datasetType=self.datasetType,
-                                                                       visit=visitId, ccd=dataId['ccd']))
-                else:
-                    visitRefs[visitId] += ccdDataRefList(visitId)
+                # append all subsets to
+                subset = namespace.butler.subset(self.datasetType, dataId=dataId)
+                visitRefs[visitId].extend([dataRef for dataRef in subset])
+
         outputRefList = []
         for refList in visitRefs.values():
             existingRefs = [ref for ref in refList if ref.datasetExists()]
-            outputRefList.append(existingRefs)
+            if existingRefs:
+                outputRefList.append(existingRefs)
 
         self.refList = outputRefList
 
