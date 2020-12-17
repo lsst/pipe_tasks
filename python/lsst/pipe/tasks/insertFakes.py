@@ -42,7 +42,9 @@ from lsst.sphgeom import ConvexPolygon
 __all__ = ["InsertFakesConfig", "InsertFakesTask"]
 
 
-class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddName": "deep"},
+class InsertFakesConnections(PipelineTaskConnections,
+                             defaultTemplates={"CoaddName": "deep",
+                                               "fakesType": "fakes_"},
                              dimensions=("tract", "patch", "band", "skymap")):
 
     image = cT.Input(
@@ -61,7 +63,7 @@ class InsertFakesConnections(PipelineTaskConnections, defaultTemplates={"CoaddNa
 
     imageWithFakes = cT.Output(
         doc="Image with fake sources added.",
-        name="fakes_{CoaddName}Coadd",
+        name="{fakesType}{CoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
