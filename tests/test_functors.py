@@ -395,6 +395,18 @@ class FunctorTestCase(unittest.TestCase):
         # Covering the code is better than nothing
         df = self._compositeDifferenceVal(CompositeFunctor(funcDict), parq1, parq2)  # noqa
 
+    def testCompositeFail(self):
+        """Test a composite functor where one of the functors should be junk.
+        """
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
+        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
+        parq = self.simulateMultiParquet(self.dataDict)
+
+        funcDict = {'good': Column("base_PsfFlux_instFlux"),
+                    'bad': Column('not_a_column')}
+
+        df = self._compositeFuncVal(CompositeFunctor(funcDict), parq)  # noqa
+
     def testLocalPhotometry(self):
         """Test the local photometry functors.
         """
