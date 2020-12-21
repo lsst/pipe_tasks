@@ -37,7 +37,6 @@ import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.geom import SpherePoint, radians, Box2D
-from lsst.sphgeom import ConvexPolygon
 
 __all__ = ["InsertFakesConfig", "InsertFakesTask"]
 
@@ -502,6 +501,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
     def trimFakeCat(self, fakeCat, image, wcs):
         """Trim the fake cat to about the size of the input image.
 
+        `fakeCat` must be processed with addPixCoords before using this method.
+
         Parameters
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
@@ -518,14 +519,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         """
 
         bbox = Box2D(image.getBBox())
-        corners = bbox.getCorners()
-
-        skyCorners = wcs.pixelToSky(corners)
-        region = ConvexPolygon([s.getVector() for s in skyCorners])
 
         def trim(row):
-            coord = SpherePoint(row[self.config.raColName], row[self.config.decColName], radians)
-            return region.contains(coord.getVector())
+            return bbox.contains(row["x"], row["y"])
 
         return fakeCat[fakeCat.apply(trim, axis=1)]
 
