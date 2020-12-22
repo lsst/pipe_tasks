@@ -399,7 +399,6 @@ class FunctorTestCase(unittest.TestCase):
         """Test a composite functor where one of the functors should be junk.
         """
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
-        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
 
         funcDict = {'good': Column("base_PsfFlux_instFlux"),

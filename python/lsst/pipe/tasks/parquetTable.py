@@ -281,7 +281,7 @@ class MultilevelParquetTable(ParquetTable):
                 newColumns = [c for c in columns if c in self.columnIndex]
                 if not newColumns:
                     raise ValueError("None of the requested columns ({}) are available!".format(columns))
-                df = self._df[columns]
+                df = self._df[newColumns]
         else:
             pfColumns = self._stringify(columns)
             try:
