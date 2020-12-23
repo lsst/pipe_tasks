@@ -131,8 +131,6 @@ class MockSafeClipAssembleCoaddConfig(SafeClipAssembleCoaddConfig):
 
     def setDefaults(self):
         super().setDefaults()
-        self.assembleMeanCoadd.retarget(MockAssembleCoaddTask)
-        self.assembleMeanClipCoadd.retarget(MockAssembleCoaddTask)
         self.doWrite = False
 
 
