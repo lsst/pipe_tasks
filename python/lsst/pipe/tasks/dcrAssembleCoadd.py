@@ -532,7 +532,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             If ``lambdaMin`` is missing from the Mapper class of the obs package being used.
         """
         sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
-        filterInfo = templateCoadd.getFilter()
+        filterLabel = templateCoadd.getFilterLabel()
         tempExpName = self.getTempExpDatasetName(self.warpType)
         dcrShifts = []
         airmassDict = {}
@@ -574,7 +574,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        self.config.dcrNumSubfilters,
                                        effectiveWavelength=self.config.effectiveWavelength,
                                        bandwidth=self.config.bandwidth,
-                                       filterInfo=filterInfo,
+                                       filterLabel=filterLabel,
                                        psf=psf)
         return dcrModels
 
@@ -888,9 +888,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Metadata for the exposure.
         wcs : `lsst.afw.geom.SkyWcs`
             Coordinate system definition (wcs) for the exposure.
-        filterInfo : `lsst.afw.image.Filter`
-            The filter definition, set in the current instruments' obs package.
-            Note: this object will be changed in DM-21333.
 
         Yields
         ------

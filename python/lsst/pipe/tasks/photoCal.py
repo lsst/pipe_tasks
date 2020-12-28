@@ -443,7 +443,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
             except Exception:
                 self.fig = pyplot.figure()
 
-        filterName = exposure.getFilter().getName()
+        filterName = exposure.getFilterLabel().bandLabel
 
         # Match sources
         matchResults = self.match.run(sourceCat, filterName)

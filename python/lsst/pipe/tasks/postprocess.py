@@ -924,7 +924,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         for i, dataRef in enumerate(dataRefs):
             if isGen3:
                 visitInfo = dataRef.get(component='visitInfo')
-                filter_ = dataRef.get(component='filter')
+                filterLabel = dataRef.get(component='filterLabel')
                 psf = dataRef.get(component='psf')
                 wcs = dataRef.get(component='wcs')
                 photoCalib = dataRef.get(component='photoCalib')
@@ -937,7 +937,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 gen2_read_bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
                 exp = dataRef.get(datasetType='calexp_sub', bbox=gen2_read_bbox)
                 visitInfo = exp.getInfo().getVisitInfo()
-                filter_ = exp.getFilter()
+                filterLabel = exp.getFilterLabel()
                 psf = exp.getPsf()
                 wcs = exp.getWcs()
                 photoCalib = exp.getPhotoCalib()
@@ -953,9 +953,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             rec.setDetector(detector)
             rec.setValidPolygon(validPolygon)
 
-            # TODO: When RFC-730 is implemented we can fill both of these.
-            rec['physical_filter'] = filter_.getName()
-            rec['band'] = ''
+            rec['physical_filter'] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
+            rec['band'] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
             rec['detector_id'] = detector.getId()
             shape = psf.computeShape(bbox.getCenter())
             rec['psfSigma'] = shape.getDeterminantRadius()

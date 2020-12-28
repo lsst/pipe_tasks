@@ -112,7 +112,7 @@ class CoaddTempExpInputRecorder:
             self._setExposureInfoInRecord(exposure=calExp, record=record)
             if self.task.config.saveCcdWeights:
                 record.setD(self.task.ccdWeightKey, 1.0)  # No weighting or overlap when warping
-            record.set(self.task.ccdFilterKey, calExp.getFilter().getName())
+            record.set(self.task.ccdFilterKey, calExp.getFilterLabel().physicalLabel)
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
@@ -179,9 +179,9 @@ class CoaddInputRecorderTask(pipeBase.Task):
             self.ccdWeightKey = self.ccdSchema.addField("weight", type=float,
                                                         doc="Weight for this visit in the coadd")
         self.visitFilterKey = self.visitSchema.addField("filter", type=str, size=32,
-                                                        doc="Filter associated with this visit.")
+                                                        doc="Physical filter associated with this visit.")
         self.ccdFilterKey = self.ccdSchema.addField("filter", type=str, size=32,
-                                                    doc="Filter associated with this visit.")
+                                                    doc="Physical filter associated with this visit.")
 
     def makeCoaddTempExpRecorder(self, visitId, num=0):
         """Return a CoaddTempExpInputRecorder instance to help with saving a CoaddTempExp's inputs.
@@ -216,7 +216,7 @@ class CoaddInputRecorderTask(pipeBase.Task):
         outputVisitRecord = coaddInputs.visits.addNew()
         outputVisitRecord.assign(inputVisitRecord)
         outputVisitRecord.setD(self.visitWeightKey, weight)
-        outputVisitRecord.set(self.visitFilterKey, coaddTempExp.getFilter().getName())
+        outputVisitRecord.set(self.visitFilterKey, coaddTempExp.getFilterLabel().physicalLabel)
         for inputCcdRecord in tempExpInputs.ccds:
             if inputCcdRecord.getL(self.ccdVisitKey) != inputVisitRecord.getId():
                 self.log.warn("CoaddInputs for coaddTempExp with id %d contains CCDs with visit=%d. "
@@ -226,5 +226,5 @@ class CoaddInputRecorderTask(pipeBase.Task):
             outputCcdRecord.assign(inputCcdRecord)
             if self.config.saveCcdWeights:
                 outputCcdRecord.setD(self.ccdWeightKey, weight)
-            outputCcdRecord.set(self.ccdFilterKey, coaddTempExp.getFilter().getName())
+            outputCcdRecord.set(self.ccdFilterKey, coaddTempExp.getFilterLabel().physicalLabel)
         return inputVisitRecord
