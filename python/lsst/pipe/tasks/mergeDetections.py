@@ -22,7 +22,7 @@
 #
 
 from .multiBandUtils import (CullPeaksConfig, MergeSourcesRunner, _makeMakeIdFactory, makeMergeArgumentParser,
-                             getInputSchema, getShortFilterName, readCatalog)
+                             getInputSchema, readCatalog)
 
 
 import lsst.afw.detection as afwDetect
@@ -101,7 +101,7 @@ class MergeDetectionsConfig(PipelineTaskConfig, pipelineConnections=MergeDetecti
                           "(N.b. should be in MergeMeasurementsConfig.pseudoFilterList)")
     skyObjects = ConfigurableField(target=SkyObjectsTask, doc="Generate sky objects")
     priorityList = ListField(dtype=str, default=[],
-                             doc="Priority-ordered list of bands for the merge.")
+                             doc="Priority-ordered list of filter bands for the merge.")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
 
     def setDefaults(self):
@@ -230,8 +230,8 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         self.makeSubtask("skyObjects")
         self.schema = self.getInputSchema(butler=butler, schema=schema)
 
-        filterNames = [getShortFilterName(name) for name in self.config.priorityList]
-        filterNames += [self.config.skyFilterName]
+        filterNames = list(self.config.priorityList)
+        filterNames.append(self.config.skyFilterName)
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
         self.outputSchema = afwTable.SourceCatalog(self.schema)
         self.outputPeakSchema = afwDetect.PeakCatalog(self.merged.getPeakSchema())
@@ -290,8 +290,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
 
         # Put catalogs, filters in priority order
         orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
-        orderedBands = [getShortFilterName(band) for band in self.config.priorityList
-                        if band in catalogs.keys()]
+        orderedBands = [band for band in self.config.priorityList if band in catalogs.keys()]
 
         mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
                                                         self.schema, idFactory,

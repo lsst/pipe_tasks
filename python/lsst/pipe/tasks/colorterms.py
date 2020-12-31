@@ -25,9 +25,7 @@ import numpy as np
 import astropy.units as u
 
 from lsst.afw.image import abMagErrFromFluxErr
-import lsst.pex.exceptions as pexExcept
 from lsst.pex.config import Config, Field, ConfigDictField
-from lsst.afw.image import Filter
 
 __all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
 
@@ -238,17 +236,11 @@ class ColortermLibrary(Config):
                         "No colorterm dict found with photoCatName %r" % photoCatName)
             ctDict = ctDictConfig.data
             if filterName not in ctDict:
-                # Perhaps it's an alias
-                try:
-                    filterName = Filter(Filter(filterName).getId()).getName()
-                except pexExcept.NotFoundError:
-                    pass  # this will be handled shortly
-                if filterName not in ctDict:
-                    errMsg = "No colorterm found for filter %r with photoCatName %r" % (
-                        filterName, photoCatName)
-                    if trueRefCatName is not None:
-                        errMsg += " = catalog %r" % (trueRefCatName,)
-                    raise ColortermNotFoundError(errMsg)
+                errMsg = "No colorterm found for filter %r with photoCatName %r" % (
+                    filterName, photoCatName)
+                if trueRefCatName is not None:
+                    errMsg += " = catalog %r" % (trueRefCatName,)
+                raise ColortermNotFoundError(errMsg)
             return ctDict[filterName]
         except ColortermNotFoundError:
             if doRaise:

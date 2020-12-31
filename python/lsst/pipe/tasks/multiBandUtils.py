@@ -1,6 +1,4 @@
-import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
-import lsst.pex.exceptions as pexExceptions
 
 from lsst.coadd.utils import ExistingCoaddDataIdContainer
 from lsst.pipe.base import TaskRunner, ArgumentParser
@@ -136,17 +134,6 @@ def getInputSchema(task, butler=None, schema=None):
         schema = butler.get(task.config.coaddName + "Coadd_" + task.inputDataset + "_schema",
                             immediate=True).schema
     return schema
-
-
-# TODO: DM-27170 should remove this function.
-def getShortFilterName(name):
-    """Given a longer, camera-specific filter name (e.g. "HSC-I") return its shorthand name ("i").
-    """
-    try:
-        return afwImage.Filter(name).getCanonicalName()
-    except pexExceptions.NotFoundError:
-        # No mapping could be found, try proceeding with given name
-        return name
 
 
 def readCatalog(task, patchRef):

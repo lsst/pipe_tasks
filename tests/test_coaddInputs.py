@@ -107,6 +107,7 @@ class MockExposure:
         expInfo.setPhotoCalib(lsst.afw.image.makePhotoCalibFromCalibZeroPoint(1.1e12, 2.2e10))
         expInfo.setApCorrMap(self.makeApCorrMap())
         expInfo.setValidPolygon(lsst.afw.geom.Polygon(lsst.geom.Box2D(bbox).getCorners()))
+        expInfo.setFilterLabel(lsst.afw.image.FilterLabel(physical="fakeFilter", band="fake"))
         if self.version > 1:
             expInfo.setVisitInfo(self.makeVisitInfo())
 

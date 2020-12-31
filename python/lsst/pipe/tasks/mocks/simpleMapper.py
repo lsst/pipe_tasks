@@ -37,7 +37,6 @@ import lsst.geom
 import lsst.daf.persistence
 import lsst.afw.cameraGeom
 import lsst.afw.geom
-import lsst.afw.image.utils as afwImageUtils
 import lsst.afw.image as afwImage
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
@@ -333,7 +332,6 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
         super(SimpleMapper, self).__init__(**kwargs)
         self.root = root
         self.camera = makeSimpleCamera(nX=1, nY=2, sizeX=400, sizeY=200, gapX=2, gapY=2)
-        afwImageUtils.defineFilter('r', 619.42)
         self.update()
 
     def getDefaultLevel(self):
@@ -384,7 +382,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
         detectorId = dataId["ccd"]
         detector = self.camera[detectorId]
         item.setDetector(detector)
-        item.setFilter(afwImage.Filter("r"))
+        item.setFilterLabel(afwImage.FilterLabel(band="r", physical="rMock"))
         return item
 
     def _computeCcdExposureId(self, dataId):
