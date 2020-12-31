@@ -41,6 +41,7 @@ import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
 from lsst.skymap import BaseSkyMap
 
+# NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
 from .multiBandUtils import MergeSourcesRunner, CullPeaksConfig, _makeGetSchemaCatalogs  # noqa: F401
