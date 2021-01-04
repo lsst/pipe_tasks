@@ -343,7 +343,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         statsControl.setNumIter(self.config.numIter)
         innerRadius, outerRadius = self.config.annularFluxRadii
         statsFlag = afwMath.stringToStatisticsProperty(self.config.annularFluxStatistic)
-        brightStarStamps = bSS.BrightStarStamps(brightStarList, normalize=True,
+        brightStarStamps = bSS.BrightStarStamps.initAndNormalize(brightStarList,
                                                 innerRadius=innerRadius, outerRadius=outerRadius,
                                                 imCenter=self.modelCenter,
                                                 statsControl=statsControl, statsFlag=statsFlag,
