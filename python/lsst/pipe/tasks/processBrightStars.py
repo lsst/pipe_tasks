@@ -344,10 +344,12 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         innerRadius, outerRadius = self.config.annularFluxRadii
         statsFlag = afwMath.stringToStatisticsProperty(self.config.annularFluxStatistic)
         brightStarStamps = bSS.BrightStarStamps.initAndNormalize(brightStarList,
-                                                innerRadius=innerRadius, outerRadius=outerRadius,
-                                                imCenter=self.modelCenter,
-                                                statsControl=statsControl, statsFlag=statsFlag,
-                                                badMaskPlanes=self.config.badMaskPlanes)
+                                                                 innerRadius=innerRadius,
+                                                                 outerRadius=outerRadius,
+                                                                 imCenter=self.modelCenter,
+                                                                 statsControl=statsControl,
+                                                                 statsFlag=statsFlag,
+                                                                 badMaskPlanes=self.config.badMaskPlanes)
         return pipeBase.Struct(brightStarStamps=brightStarStamps)
 
     def runDataRef(self, dataRef):
