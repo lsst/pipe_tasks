@@ -38,6 +38,7 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogC
 from lsst.meas.deblender import SourceDeblendTask
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
+from .computeExposureSummary import ComputeExposureSummaryTask
 from lsst.pex.exceptions import LengthError
 
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
@@ -156,6 +157,15 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     catalogCalculation = pexConfig.ConfigurableField(
         target=CatalogCalculationTask,
         doc="Subtask to run catalogCalculation plugins on catalog"
+    )
+    doComputeSummary = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Run subtask to measure exposure summary statistics"
+    )
+    computeSummary = pexConfig.ConfigurableField(
+        target=ComputeExposureSummaryTask,
+        doc="Subtask to run computeSummary on exposure"
     )
     useSimplePsf = pexConfig.Field(
         dtype=bool,
@@ -368,6 +378,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.makeSubtask('measureApCorr', schema=self.schema)
             self.makeSubtask('applyApCorr', schema=self.schema)
         self.makeSubtask('catalogCalculation', schema=self.schema)
+        if self.config.doComputeSummary:
+            self.makeSubtask('computeSummary')
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
@@ -502,6 +514,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             dmeRes.exposure.getInfo().setApCorrMap(apCorrMap)
             self.applyApCorr.run(catalog=dmeRes.sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
         self.catalogCalculation.run(dmeRes.sourceCat)
+        if self.config.doComputeSummary:
+            summary = self.computeSummary.run(exposure=dmeRes.exposure,
+                                              sources=dmeRes.sourceCat,
+                                              background=dmeRes.background)
+            dmeRes.exposure.getInfo().setComponent('SUMMARY', summary)
 
         self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 

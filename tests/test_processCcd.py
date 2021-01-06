@@ -115,6 +115,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                 varMean = varArr.mean(dtype=np.float64)
                 varStdDev = varArr.std(dtype=np.float64)
 
+                summary = exposure.getInfo().getComponent('SUMMARY')
+
                 psfShape = exposure.getPsf().computeShape()
                 psfIxx = psfShape.getIxx()
                 psfIyy = psfShape.getIyy()
@@ -152,7 +154,19 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                         ("varStdDev", varStdDev, 55.98012493452948),
                         ("psfIxx", psfIxx, 2.843329671276296),
                         ("psfIyy", psfIyy, 2.2249941554078156),
-                        ("psfIxy", psfIxy, 0.16073332780683286)
+                        ("psfIxy", psfIxy, 0.16073332780683286),
+                        ("summary_psfSigma", summary.psfSigma, 1.581520120798809),
+                        ("summary_psfIxx", summary.psfIxx, 2.8524883317493583),
+                        ("summary_psfIyy", summary.psfIyy, 2.2028393759764615),
+                        ("summary_psfIxy", summary.psfIxy, 0.16595993509518148),
+                        ("summary_psfArea", summary.psfArea, 38.63468352371086),
+                        ("summary_ra", summary.ra, 78.85551507080474),
+                        ("summary_decl", summary.decl, -9.800258687592303),
+                        ("summary_zenithDistance", summary.zenithDistance, 47.63899860851718),
+                        ("summary_zeroPoint", summary.zeroPoint, 30.940228147639207),
+                        ("summary_skyBg", summary.skyBg, 191.4352211728692),
+                        ("summary_skyNoise", summary.skyNoise, 12.512330367008024),
+                        ("summary_meanVar", summary.meanVar, 130.61335199119068)
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces, msg=name)
 
