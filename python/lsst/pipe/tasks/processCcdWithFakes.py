@@ -41,7 +41,7 @@ __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,
                                      dimensions=("skymap", "tract", "instrument", "visit", "detector"),
-                                     defaultTemplates={"CoaddName": "deep",
+                                     defaultTemplates={"coaddName": "deep",
                                                        "wcsName": "jointcal",
                                                        "photoCalibName": "jointcal",
                                                        "fakesType": "fakes_"}):
@@ -55,7 +55,7 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
 
     fakeCat = cT.Input(
         doc="Catalog of fake sources to draw inputs from.",
-        name="{CoaddName}Coadd_fakeSourceCat",
+        name="{fakesType}fakeSourceCat",
         storageClass="DataFrame",
         dimensions=("tract", "skymap")
     )
