@@ -162,7 +162,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                         ("summary_psfArea", summary.psfArea, 38.63468352371086),
                         ("summary_ra", summary.ra, 78.85551507080474),
                         ("summary_decl", summary.decl, -9.800258687592303),
-                        ("summary_zenithDistance", summary.zenithDistance, 47.63899860851718),
+                        ("summary_zenithDistance", float('%.6f' % (summary.zenithDistance)), 47.638999),
                         ("summary_zeroPoint", summary.zeroPoint, 30.940228147639207),
                         ("summary_skyBg", summary.skyBg, 191.4352211728692),
                         ("summary_skyNoise", summary.skyNoise, 12.512330367008024),

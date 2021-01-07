@@ -23,14 +23,11 @@ from __future__ import annotations
 
 import warnings
 import numpy as np
-from dataclasses import dataclass, asdict
-import yaml
 import astropy.units as units
 from astropy.time import Time
 from astropy.coordinates import AltAz, SkyCoord, EarthLocation
 from lsst.daf.base import DateTime
 
-from lsst.afw.typehandling import Storable, StorableHelperFactory
 import lsst.pipe.base as pipeBase
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
@@ -38,46 +35,7 @@ import lsst.afw.image as afwImage
 import lsst.geom
 
 
-__all__ = ("ComputeExposureSummaryTask", "ComputeExposureSummaryConfig", "ExposureSummary")
-
-
-@dataclass
-class ExposureSummary(Storable):
-    _factory = StorableHelperFactory(__name__, "ExposureSummary")
-
-    psfSigma: float
-    psfArea: float
-    psfIxx: float
-    psfIyy: float
-    psfIxy: float
-    ra: float
-    decl: float
-    zenithDistance: float
-    zeroPoint: float
-    skyBg: float
-    skyNoise: float
-    meanVar: float
-    raCorners: list[float]
-    decCorners: list[float]
-
-    def __post_init__(self):
-        Storable.__init__(self)  # required for trampoline
-
-    def isPersistable(self):
-        return True
-
-    def _getPersistenceName(self):
-        return "ExposureSummary"
-
-    def _getPythonModule(self):
-        return __name__
-
-    def _write(self):
-        return yaml.dump(asdict(self), encoding='utf-8')
-
-    @staticmethod
-    def _read(bytes):
-        return ExposureSummary(**yaml.load(bytes, Loader=yaml.SafeLoader))
+__all__ = ("ComputeExposureSummaryTask", "ComputeExposureSummaryConfig")
 
 
 class ComputeExposureSummaryConfig(pexConfig.Config):
@@ -103,7 +61,7 @@ class ComputeExposureSummaryTask(pipeBase.Task):
     """Task to compute exposure summary statistics.
 
     This task computes various quantities suitable for DPDD and other
-    downstream processing, including:
+    downstream processing at the detector centers, including:
     - psfSigma
     - psfArea
     - psfIxx
@@ -134,7 +92,7 @@ class ComputeExposureSummaryTask(pipeBase.Task):
 
         Returns
         -------
-        summary : `lsst.pipe.base.ExposureSummary`
+        summary : `lsst.afw.image.ExposureSummary`
         """
         self.log.info("Measuring exposure statistics")
 
@@ -182,18 +140,26 @@ class ComputeExposureSummaryTask(pipeBase.Task):
             zeroPoint = np.nan
 
         visitInfo = exposure.getInfo().getVisitInfo()
-        observatory = visitInfo.getObservatory()
-        loc = EarthLocation(lat=observatory.getLatitude().asDegrees()*units.deg,
-                            lon=observatory.getLongitude().asDegrees()*units.deg,
-                            height=observatory.getElevation()*units.m)
-        obstime = Time(visitInfo.getDate().get(system=DateTime.MJD),
-                       location=loc, format='mjd')
-        coord = SkyCoord(ra*units.degree, decl*units.degree, obstime=obstime, location=loc)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            altaz = coord.transform_to(AltAz)
+        date = visitInfo.getDate()
 
-        zenithDistance = altaz.alt.degree
+        if date.isValid():
+            # We compute the zenithDistance at the center of the detector rather
+            # than use the boresight value available via the visitInfo, because
+            # the zenithDistance may vary significantly over a large field of view.
+            observatory = visitInfo.getObservatory()
+            loc = EarthLocation(lat=observatory.getLatitude().asDegrees()*units.deg,
+                                lon=observatory.getLongitude().asDegrees()*units.deg,
+                                height=observatory.getElevation()*units.m)
+            obstime = Time(visitInfo.getDate().get(system=DateTime.MJD),
+                           location=loc, format='mjd')
+            coord = SkyCoord(ra*units.degree, decl*units.degree, obstime=obstime, location=loc)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                altaz = coord.transform_to(AltAz)
+
+            zenithDistance = altaz.alt.degree
+        else:
+            zenithDistance = np.nan
 
         if background is not None:
             bgStats = (bg[0].getStatsImage().getImage().array
@@ -217,19 +183,19 @@ class ComputeExposureSummaryTask(pipeBase.Task):
                                          afwMath.MEANCLIP, statsCtrl)
         meanVar, _ = statObj.getResult(afwMath.MEANCLIP)
 
-        summary = ExposureSummary(psfSigma=float(psfSigma),
-                                  psfArea=float(psfArea),
-                                  psfIxx=float(psfIxx),
-                                  psfIyy=float(psfIyy),
-                                  psfIxy=float(psfIxy),
-                                  ra=float(ra),
-                                  decl=float(decl),
-                                  zenithDistance=float(zenithDistance),
-                                  zeroPoint=float(zeroPoint),
-                                  skyBg=float(skyBg),
-                                  skyNoise=float(skyNoise),
-                                  meanVar=float(meanVar),
-                                  raCorners=raCorners,
-                                  decCorners=decCorners)
+        summary = afwImage.ExposureSummary(psfSigma=float(psfSigma),
+                                           psfArea=float(psfArea),
+                                           psfIxx=float(psfIxx),
+                                           psfIyy=float(psfIyy),
+                                           psfIxy=float(psfIxy),
+                                           ra=float(ra),
+                                           decl=float(decl),
+                                           zenithDistance=float(zenithDistance),
+                                           zeroPoint=float(zeroPoint),
+                                           skyBg=float(skyBg),
+                                           skyNoise=float(skyNoise),
+                                           meanVar=float(meanVar),
+                                           raCorners=raCorners,
+                                           decCorners=decCorners)
 
         return summary
