@@ -41,8 +41,10 @@ __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,
                                      dimensions=("skymap", "tract", "instrument", "visit", "detector"),
-                                     defaultTemplates={"CoaddName": "deep", "wcsName": "jointcal",
-                                                       "photoCalibName": "jointcal"}):
+                                     defaultTemplates={"coaddName": "deep",
+                                                       "wcsName": "jointcal",
+                                                       "photoCalibName": "jointcal",
+                                                       "fakesType": "fakes_"}):
 
     exposure = cT.Input(
         doc="Exposure into which fakes are to be added.",
@@ -53,7 +55,7 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
 
     fakeCat = cT.Input(
         doc="Catalog of fake sources to draw inputs from.",
-        name="{CoaddName}Coadd_fakeSourceCat",
+        name="{fakesType}fakeSourceCat",
         storageClass="DataFrame",
         dimensions=("tract", "skymap")
     )
@@ -88,14 +90,14 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
 
     outputExposure = cT.Output(
         doc="Exposure with fake sources added.",
-        name="fakes_calexp",
+        name="{fakesType}calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector")
     )
 
     outputCat = cT.Output(
         doc="Source catalog produced in calibrate task with fakes also measured.",
-        name="fakes_src",
+        name="{fakesType}src",
         storageClass="SourceCatalog",
         dimensions=("instrument", "visit", "detector"),
     )
