@@ -321,7 +321,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             The image from which bright star stamps should be extracted.
         refObjLoader : `LoadIndexedReferenceObjectsTask`, optional
             Loader to find objects within a reference catalog.
-        dataId : `dict`
+        dataId : `dict` or `lsst.daf.butler.DataCoordinate`
             The dataId of the exposure (and detector) bright stars should be
             extracted from.
 
