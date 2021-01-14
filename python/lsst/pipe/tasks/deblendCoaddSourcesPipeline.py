@@ -114,27 +114,16 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
     )
     outputSchema = cT.InitOutput(
         doc="Output of the schema used in deblending task",
-        name="{outputCoaddName}Coadd_deblendedModel_schema",
+        name="{outputCoaddName}Coadd_deblendedFlux_schema",
         storageClass="SourceCatalog"
-    )
-    fluxCatalogs = cT.Output(
-        doc="Flux catalogs produced by multiband deblending, not written "
-            "if conserve flux is turned off",
-        name="{outputCoaddName}Coadd_deblendedFlux",
-        storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "band", "skymap")
     )
     templateCatalogs = cT.Output(
         doc="Template catalogs produced by multiband deblending",
-        name="{outputCoaddName}Coadd_deblendedModel",
+        name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "band", "skymap")
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True
     )
-
-    def __init__(self, *, config=None):
-        super().__init__(config=config)
-        if not config.multibandDeblend.conserveFlux:
-            self.outputs -= set(("fluxCatalogs",))
 
 
 class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
@@ -200,13 +189,16 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
         inputs["filters"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)
+        sortedTemplateCatalogs = []
+        for outRef in outputRefs.templateCatalogs:
+            band = outRef.dataId['band']
+            sortedTemplateCatalogs.append(outputs.templateCatalogs[band])
+        outputs.templateCatalogs = sortedTemplateCatalogs
         butlerQC.put(outputs, outputRefs)
 
     def run(self, coadds, filters, mergedDetections, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
         multiExposure = afwImage.MultibandExposure.fromExposures(filters, coadds)
-        fluxCatalogs, templateCatalogs = self.multibandDeblend.run(multiExposure, sources)
-        retStruct = Struct(templateCatalogs)
-        if self.config.multibandDeblend.conserveFlux:
-            retStruct.fluxCatalogs = fluxCatalogs
+        templateCatalogs = self.multibandDeblend.run(multiExposure, sources)
+        retStruct = Struct(templateCatalogs=templateCatalogs)
         return retStruct
