@@ -282,6 +282,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
         deepMergedCoaddId_bits=SimpleMapping(BypassPersistenceType),
         deepCoadd_skyMap=SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
         deepCoadd=SkyMapping(ExposurePersistenceType),
+        deepCoadd_filterLabel=SkyMapping(ExposurePersistenceType),
         deepCoaddPsfMatched=SkyMapping(ExposurePersistenceType),
         deepCoadd_calexp=SkyMapping(ExposurePersistenceType),
         deepCoadd_calexp_background=SkyMapping(CatalogPersistenceType),
@@ -332,6 +333,12 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
         super(SimpleMapper, self).__init__(**kwargs)
         self.root = root
         self.camera = makeSimpleCamera(nX=1, nY=2, sizeX=400, sizeY=200, gapX=2, gapY=2)
+        # NOTE: we set band/physical here because CoaddsTestCase.testCoaddInputs()
+        # expects "r" for both the input dataIds (gen2 dataIds could be either
+        # physical or band) and the output CoaddInputRecords.
+        # The original data had just `Filter("r")`, so this has always assumed
+        # that physicalLabel==bandLabel, even though CoaddInputRecords are physical.
+        self.filterLabel = afwImage.FilterLabel(band="r", physical="r")
         self.update()
 
     def getDefaultLevel(self):
@@ -382,7 +389,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
         detectorId = dataId["ccd"]
         detector = self.camera[detectorId]
         item.setDetector(detector)
-        item.setFilterLabel(afwImage.FilterLabel(band="r", physical="rMock"))
+        item.setFilterLabel(self.filterLabel)
         return item
 
     def _computeCcdExposureId(self, dataId):
@@ -421,6 +428,10 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
 
     def bypass_deepMergedCoaddId_bits(self, datasetType, pythonType, location, dataId):
         return 1 + 7 + 13*2 + 3
+
+    def bypass_deepCoadd_filterLabel(self, *args, **kwargs):
+        """To return a useful filterLabel for MergeDetectionsTask."""
+        return afwImage.FilterLabel(band=self.filterLabel.bandLabel)
 
 
 def makeSimpleCamera(

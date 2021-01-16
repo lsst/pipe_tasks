@@ -133,17 +133,17 @@ class WriteObjectTableTask(CmdLineTask):
 
         Returns
         -------
-        Tuple consisting of filter name and a dict of catalogs, keyed by
+        Tuple consisting of band name and a dict of catalogs, keyed by
         dataset name
         """
-        filterName = patchRef.dataId["filter"]
+        band = patchRef.get(self.config.coaddName + "Coadd_filterLabel", immediate=True).bandLabel
         catalogDict = {}
         for dataset in self.inputDatasets:
             catalog = patchRef.get(self.config.coaddName + "Coadd_" + dataset, immediate=True)
             self.log.info("Read %d sources from %s for filter %s: %s" %
-                          (len(catalog), dataset, filterName, patchRef.dataId))
+                          (len(catalog), dataset, band, patchRef.dataId))
             catalogDict[dataset] = catalog
-        return filterName, catalogDict
+        return band, catalogDict
 
     def run(self, catalogs, tract, patch):
         """Merge multiple catalogs.

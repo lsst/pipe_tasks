@@ -491,7 +491,8 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             exposures = []
             for patchRef in patchRefList:
                 exposure = patchRef.get(coaddType + "Coadd_calexp", immediate=True)
-                filters.append(patchRef.dataId["filter"])
+                filter = patchRef.get(coaddType + "Coadd_filterLabel", immediate=True)
+                filters.append(filter.bandLabel)
                 exposures.append(exposure)
             # The input sources are the same for all bands, since it is a merged catalog
             sources = self.readSources(patchRef)

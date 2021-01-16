@@ -164,12 +164,12 @@ def readCatalog(task, patchRef):
     class variable.
 
     @param[in]  patchRef   data reference for patch
-    @return tuple consisting of the filter name and the catalog
+    @return tuple consisting of the band name and the catalog
     """
-    filterName = patchRef.dataId["filter"]
+    band = patchRef.get(task.config.coaddName + "Coadd_filterLabel", immediate=True).bandLabel
     catalog = patchRef.get(task.config.coaddName + "Coadd_" + task.inputDataset, immediate=True)
-    task.log.info("Read %d sources for filter %s: %s" % (len(catalog), filterName, patchRef.dataId))
-    return filterName, catalog
+    task.log.info("Read %d sources for band %s: %s" % (len(catalog), band, patchRef.dataId))
+    return band, catalog
 
 
 class CullPeaksConfig(Config):
