@@ -18,9 +18,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-from __future__ import annotations
-
 import warnings
 import numpy as np
 import astropy.units as units
@@ -35,10 +32,10 @@ import lsst.afw.image as afwImage
 import lsst.geom
 
 
-__all__ = ("ComputeExposureSummaryTask", "ComputeExposureSummaryConfig")
+__all__ = ("ComputeExposureSummaryStatsTask", "ComputeExposureSummaryStatsConfig")
 
 
-class ComputeExposureSummaryConfig(pexConfig.Config):
+class ComputeExposureSummaryStatsConfig(pexConfig.Config):
     """Config for ComputeExposureSummaryTask"""
     sigmaClip = pexConfig.Field(
         dtype=float,
@@ -57,7 +54,7 @@ class ComputeExposureSummaryConfig(pexConfig.Config):
     )
 
 
-class ComputeExposureSummaryTask(pipeBase.Task):
+class ComputeExposureSummaryStatsTask(pipeBase.Task):
     """Task to compute exposure summary statistics.
 
     This task computes various quantities suitable for DPDD and other
@@ -77,8 +74,8 @@ class ComputeExposureSummaryTask(pipeBase.Task):
     - raCorners
     - decCorners
     """
-    ConfigClass = ComputeExposureSummaryConfig
-    _DefaultName = "computeExposureSummary"
+    ConfigClass = ComputeExposureSummaryStatsConfig
+    _DefaultName = "computeExposureSummaryStats"
 
     @pipeBase.timeMethod
     def run(self, exposure, sources, background):
@@ -183,19 +180,19 @@ class ComputeExposureSummaryTask(pipeBase.Task):
                                          afwMath.MEANCLIP, statsCtrl)
         meanVar, _ = statObj.getResult(afwMath.MEANCLIP)
 
-        summary = afwImage.ExposureSummary(psfSigma=float(psfSigma),
-                                           psfArea=float(psfArea),
-                                           psfIxx=float(psfIxx),
-                                           psfIyy=float(psfIyy),
-                                           psfIxy=float(psfIxy),
-                                           ra=float(ra),
-                                           decl=float(decl),
-                                           zenithDistance=float(zenithDistance),
-                                           zeroPoint=float(zeroPoint),
-                                           skyBg=float(skyBg),
-                                           skyNoise=float(skyNoise),
-                                           meanVar=float(meanVar),
-                                           raCorners=raCorners,
-                                           decCorners=decCorners)
+        summary = afwImage.ExposureSummaryStats(psfSigma=float(psfSigma),
+                                                psfArea=float(psfArea),
+                                                psfIxx=float(psfIxx),
+                                                psfIyy=float(psfIyy),
+                                                psfIxy=float(psfIxy),
+                                                ra=float(ra),
+                                                decl=float(decl),
+                                                zenithDistance=float(zenithDistance),
+                                                zeroPoint=float(zeroPoint),
+                                                skyBg=float(skyBg),
+                                                skyNoise=float(skyNoise),
+                                                meanVar=float(meanVar),
+                                                raCorners=raCorners,
+                                                decCorners=decCorners)
 
         return summary

@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Test ComputeExposureSummaryTask.
+"""Test ComputeExposureSummaryStatsTask.
 """
 import unittest
 
@@ -32,7 +32,7 @@ import lsst.afw.math as afwMath
 from lsst.daf.base import DateTime
 from lsst.afw.coord import Observatory
 from lsst.afw.geom import makeCdMatrix, makeSkyWcs
-from lsst.pipe.tasks.computeExposureSummary import ComputeExposureSummaryTask
+from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 
 
 class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
@@ -87,7 +87,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         background.append(backobj)
 
         # Run the task
-        expSummaryTask = ComputeExposureSummaryTask()
+        expSummaryTask = ComputeExposureSummaryStatsTask()
         summary = expSummaryTask.run(exposure, None, background)
 
         # Test the outputs
