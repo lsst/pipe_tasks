@@ -52,10 +52,15 @@ class QuickFrameMeasurementTaskConfig(pexConfig.Config):
         doc="Ratio of xx to yy (or vice versa) above which to cut, in order to exclude spectra",
         default=3.5,
     )
+    maxExtendedness = pexConfig.Field(
+        dtype=float,
+        doc="Max absolute value of xx and yy above which to cut, in order to exclude large/things",
+        default=100,
+    )
     initialPsfWidth = pexConfig.Field(
         dtype=float,
         doc="Guess at the initial PSF in XXX ???? pixels FWHM or sigma or something?",
-        default=20,
+        default=10,
     )
     nSigmaDetection = pexConfig.Field(
         dtype=float,
@@ -123,6 +128,8 @@ class QuickFrameMeasurementTask(pipeBase.Task):
             xx = objData[srcNum]['xx']
             yy = objData[srcNum]['yy']
             if xx == 0.0 or yy == 0.0:
+                continue
+            if xx > self.config.maxExtendedness or yy > self.config.maxExtendedness:
                 continue
             nonRoundness = xx/yy
             nonRoundness = max(nonRoundness, 1/nonRoundness)
