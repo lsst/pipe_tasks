@@ -61,7 +61,7 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         doc="Input science exposure to subtract from.",
         dimensions=("instrument", "visit", "detector"),
         storageClass="ExposureF",
-        name="calexp"
+        name="{fakesType}calexp"
     )
 
     # TODO DM-22953
