@@ -290,8 +290,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 bottomLeft = idealBBox.getBegin()
                 topRight = idealBBox.getEnd()
                 # can any pixel be salvaged?
-                if np.any(np.array(bottomLeft) > np.array(inputExposure.getDimensions())) or \
-                   np.any(np.array(topRight) < 0):
+                if np.any(np.array(bottomLeft) >= np.array(inputExposure.getDimensions())) or \
+                   np.any(np.array(topRight) <= 0):
                     continue
                 # create smaller subBBox containing overlapping pixels
                 subBBoxCorner = bottomLeft.clone()
