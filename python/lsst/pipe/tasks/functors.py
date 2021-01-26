@@ -189,16 +189,16 @@ class Functor(object):
         new_colDict = {}
         columnLevels = self._get_data_columnLevels(None, columnIndex=columnIndex)
 
-        for i, l in enumerate(columnLevels):
-            if l in colDict:
-                if isinstance(colDict[l], str):
-                    new_colDict[l] = [colDict[l]]
+        for i, lev in enumerate(columnLevels):
+            if lev in colDict:
+                if isinstance(colDict[lev], str):
+                    new_colDict[lev] = [colDict[lev]]
                 else:
-                    new_colDict[l] = colDict[l]
+                    new_colDict[lev] = colDict[lev]
             else:
-                new_colDict[l] = columnIndex.levels[i]
+                new_colDict[lev] = columnIndex.levels[i]
 
-        levelCols = [new_colDict[l] for l in columnLevels]
+        levelCols = [new_colDict[lev] for lev in columnLevels]
         cols = product(*levelCols)
         return list(cols)
 

@@ -346,9 +346,9 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
             keyDict = self.mappings[datasetType].keys
         if level is not None and level in self.levels:
             keyDict = dict(keyDict)
-            for l in self.levels[level]:
-                if l in keyDict:
-                    del keyDict[l]
+            for lev in self.levels[level]:
+                if lev in keyDict:
+                    del keyDict[lev]
         return keyDict
 
     def update(self):

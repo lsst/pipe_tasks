@@ -295,7 +295,7 @@ class MultilevelParquetTable(ParquetTable):
 
         if droplevels:
             # Drop levels of column index that have just one entry
-            levelsToDrop = [n for l, n in zip(df.columns.levels, df.columns.names) if len(l) == 1]
+            levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]
 
             # Prevent error when trying to drop *all* columns
             if len(levelsToDrop) == len(df.columns.names):
@@ -307,16 +307,16 @@ class MultilevelParquetTable(ParquetTable):
 
     def _colsFromDict(self, colDict):
         new_colDict = {}
-        for i, l in enumerate(self.columnLevels):
-            if l in colDict:
-                if isinstance(colDict[l], str):
-                    new_colDict[l] = [colDict[l]]
+        for i, lev in enumerate(self.columnLevels):
+            if lev in colDict:
+                if isinstance(colDict[lev], str):
+                    new_colDict[lev] = [colDict[lev]]
                 else:
-                    new_colDict[l] = colDict[l]
+                    new_colDict[lev] = colDict[lev]
             else:
-                new_colDict[l] = self.columnIndex.levels[i]
+                new_colDict[lev] = self.columnIndex.levels[i]
 
-        levelCols = [new_colDict[l] for l in self.columnLevels]
+        levelCols = [new_colDict[lev] for lev in self.columnLevels]
         cols = product(*levelCols)
         return list(cols)
 
