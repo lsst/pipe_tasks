@@ -73,18 +73,18 @@ class Functor(object):
     * `name`: A name appropriate for a figure axis label
     * `shortname`: A name appropriate for use as a dictionary key
 
-    On initialization, a `Functor` should declare what filter (`filt` kwarg)
+    On initialization, a `Functor` should declare what band (`filt` kwarg)
     and dataset (e.g. `'ref'`, `'meas'`, `'forced_src'`) it is intended to be
     applied to. This enables the `_get_data` method to extract the proper
     columns from the parquet file. If not specified, the dataset will fall back
-    on the `_defaultDataset`attribute. If filter is not specified and `dataset`
+    on the `_defaultDataset`attribute. If band is not specified and `dataset`
     is anything other than `'ref'`, then an error will be raised when trying to
     perform the calculation.
 
     As currently implemented, `Functor` is only set up to expect a
     dataset of the format of the `deepCoadd_obj` dataset; that is, a
     dataframe with a multi-level column index,
-     with the levels of the column index being `filter`,
+     with the levels of the column index being `band`,
     `dataset`, and `column`. This is defined in the `_columnLevels` attribute,
     as well as being implicit in the role of the `filt` and `dataset` attributes
     defined at initialization.  In addition, the `_get_data` method that reads
@@ -96,7 +96,7 @@ class Functor(object):
     be changed, unless `_func` needs columns from multiple filters or datasets
     to do the calculation.
     An example of this is the `lsst.pipe.tasks.functors.Color` functor, for
-    which `_dfLevels = ('filter', 'column')`, and `_func` expects the dataframe
+    which `_dfLevels = ('band', 'column')`, and `_func` expects the dataframe
     it gets to have those levels in the column index.
 
     Parameters
@@ -111,7 +111,7 @@ class Functor(object):
     """
 
     _defaultDataset = 'ref'
-    _columnLevels = ('filter', 'dataset', 'column')
+    _columnLevels = ('band', 'dataset', 'column')
     _dfLevels = ('column',)
     _defaultNoDup = False
 
@@ -238,9 +238,9 @@ class Functor(object):
                       'dataset': self.dataset}
         if self.filt is None:
             columnLevelNames = self._get_data_columnLevelNames(data, columnIndex)
-            if "filter" in columnLevels:
+            if "band" in columnLevels:
                 if self.dataset == "ref":
-                    columnDict["filter"] = columnLevelNames["filter"][0]
+                    columnDict["band"] = columnLevelNames["band"][0]
                 else:
                     raise ValueError(f"'filt' not set for functor {self.name}"
                                      f"(dataset {self.dataset}) "
@@ -248,7 +248,7 @@ class Functor(object):
                                      "contains multiple filters in column index. "
                                      "Set 'filt' or set 'dataset' to 'ref'.")
         else:
-            columnDict['filter'] = self.filt
+            columnDict['band'] = self.filt
 
         if isinstance(data, MultilevelParquetTable):
             return data._colsFromDict(columnDict)
@@ -812,7 +812,7 @@ class Color(Functor):
     then returning the difference.
 
     This is enabled by the `_func` expecting a dataframe with a
-    multilevel column index, with both `'filter'` and `'column'`,
+    multilevel column index, with both `'band'` and `'column'`,
     instead of just `'column'`, which is the `Functor` default.
     This is controlled by the `_dfLevels` attribute.
 
@@ -830,7 +830,7 @@ class Color(Functor):
         Color computed is `Mag(filt2) - Mag(filt1)`.
     """
     _defaultDataset = 'forced_src'
-    _dfLevels = ('filter', 'column')
+    _dfLevels = ('band', 'column')
     _defaultNoDup = True
 
     def __init__(self, col, filt2, filt1, **kwargs):
