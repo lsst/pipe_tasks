@@ -619,7 +619,7 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig):
         dtype=bool,
         default=True,
         doc=("Write per-filter columns names with camelCase, else underscore "
-             "For example: gPsfFlux instead of g_PsfFlux.")
+             "For example: gPsFlux instead of g_PsFlux.")
     )
     multilevelOutput = pexConfig.Field(
         dtype=bool,
