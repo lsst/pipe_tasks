@@ -81,10 +81,10 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
             return super().adjustQuantum(datasetRefMap)
         except pipeBase.ScalarError as err:
             raise pipeBase.ScalarError(
-                f"CharacterizeImageTask can at present only be run on visits that are associated with "
-                f"exactly one exposure.  Either this is not a valid exposure for this pipeline, or the "
-                f"snap-combination step you probably want hasn't been configured to run between ISR and "
-                f"this task (as of this writing, that would be because it hasn't been implemented yet)."
+                "CharacterizeImageTask can at present only be run on visits that are associated with "
+                "exactly one exposure.  Either this is not a valid exposure for this pipeline, or the "
+                "snap-combination step you probably want hasn't been configured to run between ISR and "
+                "this task (as of this writing, that would be because it hasn't been implemented yet)."
             ) from err
 
 

@@ -426,7 +426,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
 
         else:
             if len(psfSizes) == 0:
-                self.log.warn(f"0 images selected.")
+                self.log.warn("0 images selected.")
             else:
                 self.log.debug(f"{len(psfSizes)} images selected with FWHM range "
                                f"of {psfSizes[0]}--{psfSizes[-1]} arcseconds")
