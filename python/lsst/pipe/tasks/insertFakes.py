@@ -218,6 +218,13 @@ class InsertFakesConfig(PipelineTaskConfig,
         default=False,
     )
 
+    trimBuffer = pexConfig.Field(
+        doc="Size of the pixel buffer surrounding the image. Only those fake sources with a centroid"
+        "falling within the image+buffer region will be considered for fake source injection.",
+        dtype=int,
+        default=100,
+    )
+
 
 class InsertFakesTask(PipelineTask, CmdLineTask):
     """Insert fake objects into images.
@@ -521,7 +528,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         bbox = Box2D(image.getBBox())
 
         def trim(row):
-            return bbox.contains(row["x"], row["y"])
+            return bbox.dilatedBy(self.config.trimBuffer).contains(row["x"], row["y"])
 
         return fakeCat[fakeCat.apply(trim, axis=1)]
 
