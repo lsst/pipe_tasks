@@ -41,8 +41,18 @@ def detectObjectsInExp(exp, nSigma, nPixMin, grow=0):
     return footPrintSet
 
 
+def checkResult(exp, centroid, percentile=99.9):
+    """Sanity check that the centroid of the source is actually bright."""
+    threshold = np.percentile(exp.image.array, percentile)
+    pixelValue = exp.image[centroid]
+    if pixelValue < threshold:
+        raise ValueError(f"Value of brightest star central pixel = {pixelValue:3f} < "
+                         f"{percentile} percentile of image = {threshold:3f}")
+    return
+
+
 class QuickFrameMeasurementTaskConfig(pexConfig.Config):
-    imageIsDispersed = pexConfig.Field(
+    imageIsDispersed = pexConfig.Field(  # XXX Doesn't seem like this should be necessary
         dtype=bool,
         doc="Is this a dispersed (spectroscopic) image?",
         default=False,
@@ -199,16 +209,6 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         objData['apFlux25'] = measurementResult.apFlux25
         return objData
 
-    @staticmethod
-    def checkResult(exp, centroid, percentile=99.9):
-        """Sanity check that the centroid of the source is actually bright."""
-        threshold = np.percentile(exp.image.array, percentile)
-        pixelValue = exp.image[centroid]
-        if pixelValue < threshold:
-            raise ValueError(f"Value of brightest star central pixel = {pixelValue:3f} < "
-                             f"{percentile} percentile of image = {threshold:3f}")
-        return
-
     def run(self, exp, doDisplay=False):
         try:
             result = self._run(exp=exp, doDisplay=doDisplay)
@@ -262,7 +262,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         brightestObjApFlux25 = objData[brightestObjSrcNum]['apFlux25']
 
         exp.image += median  # put background back in
-        self.checkResult(exp, brightestObjCentroid)
+        checkResult(exp, brightestObjCentroid)
         return pipeBase.Struct(brightestObjCentroid=brightestObjCentroid,
                                brightestObj_xXyY=(xx, yy),
                                brightestObjApFlux70=brightestObjApFlux70,

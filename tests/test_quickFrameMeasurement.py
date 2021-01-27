@@ -26,7 +26,9 @@ from scipy.spatial import distance
 
 import lsst.afw.image as afwImage
 import lsst.utils.tests
-from lsst.pipe.tasks.quickFrameMeasurement import QuickFrameMeasurementTask, QuickFrameMeasurementTaskConfig
+from lsst.pipe.tasks.quickFrameMeasurement import (QuickFrameMeasurementTask, QuickFrameMeasurementTaskConfig,
+                                                   checkResult)
+# from lsst.pipe.tasks.quickFrameMeasurement import (QuickFrameMeasurementTaskQuickFrameMeasurementTaskConfig)
 
 
 class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
@@ -72,6 +74,14 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
             dist = distance.euclidean(foundCentroid, trueCentroid)
             self.assertLess(dist, self.TOLERANCE)
             print(f"Passed direct {filename} with distance {dist:.2f}")
+
+            # offset size shouldn't really matter, just make it >> PSF, and make
+            # sure the value isn't off-chip or right by the edge for any of the
+            # test images
+            offset = 100
+            wrongCentroid = (foundCentroid[0]+offset, foundCentroid[1]+offset)
+            with self.assertRaises(ValueError):
+                checkResult(exp, wrongCentroid)
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def testDispersedCentroiding(self):
