@@ -199,11 +199,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         objData['apFlux25'] = measurementResult.apFlux25
         return objData
 
-    def checkResult(self, exp, centroid):
-        # XXX Check that result is in the 99.5 percentile of image
-        # values or something like that
-        # anything else?
-
+    @staticmethod
+    def checkResult(exp, centroid, percentile=99.9):
+        """Sanity check that the centroid of the source is actually bright."""
+        threshold = np.percentile(exp.image.array, percentile)
+        pixelValue = exp.image[centroid]
+        if pixelValue < threshold:
+            raise ValueError(f"Value of brightest star central pixel = {pixelValue:3f} < "
+                             f"{percentile} percentile of image = {threshold:3f}")
         return
 
     def run(self, exp, doDisplay=False):
@@ -259,6 +262,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         brightestObjApFlux25 = objData[brightestObjSrcNum]['apFlux25']
 
         exp.image += median  # put background back in
+        self.checkResult(exp, brightestObjCentroid)
         return pipeBase.Struct(brightestObjCentroid=brightestObjCentroid,
                                brightestObj_xXyY=(xx, yy),
                                brightestObjApFlux70=brightestObjApFlux70,
@@ -306,24 +310,3 @@ if __name__ == '__main__':
 
     result = qfm.run(exp)
     print(result)
-
-    # from lsst.rapid.analysis.bestEffort import BestEffortIsr
-    # REPODIR = '/project/shared/auxTel/'
-    # bestEffort = BestEffortIsr(REPODIR)
-    # dataId = {'dayObs': '2020-02-18', 'seqNum': 82}  # undispersed
-    # exp = bestEffort.getExposure(dataId)
-    # qm = QuickFrameMeasurement()
-    # result = qm.run(exp)
-    # print(result)
-    # expectedCentroid = (1534.98, 1497.54)  # for sigma=20
-    # assert abs(result.brightestObjCentroid[0] - expectedCentroid[0]) < 2
-    # assert abs(result.brightestObjCentroid[1] - expectedCentroid[1]) < 2
-
-    # dataId = {'dayObs': '2020-03-12', 'seqNum': 319}  # dispersed
-    # exp = bestEffort.getExposure(dataId)
-    # qm = QuickFrameMeasurement()
-    # result = qm.run(exp)
-    # print(result)
-    # expectedCentroid = (1788.08, 1670.57)  # for sigma=20
-    # assert abs(result.brightestObjCentroid[0] - expectedCentroid[0]) < 2
-    # assert abs(result.brightestObjCentroid[1] - expectedCentroid[1]) < 2
