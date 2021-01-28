@@ -353,7 +353,10 @@ class DeblendCoaddSourcesConfig(Config):
                                           doc="Deblend sources separately in each band")
     multiBandDeblend = ConfigurableField(target=ScarletDeblendTask,
                                          doc="Deblend sources simultaneously across bands")
-    simultaneous = Field(dtype=bool, default=False, doc="Simultaneously deblend all bands?")
+    simultaneous = Field(dtype=bool,
+                         default=True,
+                         doc="Simultaneously deblend all bands? "
+                             "True uses 'singleBandDeblend' while False uses 'multibandDeblend'")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     hasFakes = Field(dtype=bool,
                      default=False,
