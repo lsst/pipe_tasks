@@ -505,7 +505,8 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
         self.makeSubtask('measurement', schema=self.schema,
                          algMetadata=self.algMetadata)
-        self.makeSubtask("setPrimaryFlags", schema=self.schema, isSingleFrame=True)
+        self.makeSubtask("setPrimaryFlags", schema=self.schema,
+                         isSingleFrame=True, includeDeblend=self.config.doDeblend)
         if self.config.doApCorr:
             self.makeSubtask('applyApCorr', schema=self.schema)
         self.makeSubtask('catalogCalculation', schema=self.schema)
@@ -706,7 +707,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             )
         self.catalogCalculation.run(sourceCat)
 
-        self.setPrimaryFlags.run(sourceCat, includeDeblend=self.config.doDeblend)
+        self.setPrimaryFlags.run(sourceCat)
 
         if icSourceCat is not None and \
            len(self.config.icSourceFieldsToCopy) > 0:

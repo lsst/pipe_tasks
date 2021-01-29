@@ -918,7 +918,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         self.schema = self.schemaMapper.getOutputSchema()
         self.algMetadata = PropertyList()
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
-        self.makeSubtask("setPrimaryFlags", schema=self.schema)
+        self.makeSubtask("setPrimaryFlags", schema=self.schema, includeDeblend=self.deblended)
         if self.config.doMatchSources:
             self.makeSubtask("match", butler=butler, refObjLoader=refObjLoader)
         if self.config.doPropagateFlags:
@@ -1088,7 +1088,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
             self.catalogCalculation.run(sources)
 
         self.setPrimaryFlags.run(sources, skyMap=skyInfo.skyMap, tractInfo=skyInfo.tractInfo,
-                                 patchInfo=skyInfo.patchInfo, includeDeblend=self.deblended)
+                                 patchInfo=skyInfo.patchInfo)
         if self.config.doPropagateFlags:
             self.propagateFlags.run(butler, sources, ccdInputs, exposure.getWcs(), visitCatalogs, wcsUpdates)
 
