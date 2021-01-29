@@ -23,7 +23,7 @@ from contextlib import contextmanager
 import numpy as np
 
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
-from lsst.pipe.base import Task
+from lsst.pipe.base import Task, Struct
 from lsst.meas.algorithms import SubtractBackgroundTask
 
 __all__ = ["ScaleVarianceConfig", "ScaleVarianceTask"]
@@ -123,6 +123,30 @@ class ScaleVarianceTask(Task):
             maskedImage.variance *= factor
         return factor
 
+    def calculateBothFactors(self, maskedImage):
+        """Rescale the variance in a maskedImage
+
+        Parameters
+        ----------
+        maskedImage :  `lsst.afw.image.MaskedImage`
+            Image for which to determine the variance rescaling factor.
+
+        Returns
+        -------
+        factor : `float`
+            Variance rescaling factor.
+
+        Raises
+        ------
+        RuntimeError
+            If the estimated variance rescaling factor exceeds the
+            configured limit.
+        """
+        with self.subtractedBackground(maskedImage):
+            pixFactor = self.pixelBased(maskedImage)
+            imageFactor = self.imageBased(maskedImage)
+        return Struct(pixFactor=pixFactor, imageFactor=imageFactor)
+
     def pixelBased(self, maskedImage):
         """Determine the variance rescaling factor from pixel statistics
 
@@ -145,10 +169,16 @@ class ScaleVarianceTask(Task):
         factor : `float`
             Variance rescaling factor.
         """
-        variance = maskedImage.variance
-        snr = maskedImage.image.array/np.sqrt(variance.array)
         maskVal = maskedImage.mask.getPlaneBitMask(self.config.maskPlanes)
+        detMaskVal = maskedImage.mask.getPlaneBitMask(["DETECTED", "DETECTED_NEGATIVE"])
+        nDetPix = np.sum((maskedImage.mask.array & detMaskVal) != 0)
+        self.log.debugf("No. of detection pixels {}", nDetPix)
         isGood = ((maskedImage.mask.array & maskVal) == 0) & (maskedImage.variance.array > 0)
+        self.log.debugf("Good: {} vs. all {}", np.sum(isGood), isGood.size)
+
+        variance = maskedImage.variance
+        self.log.infof("Median of good image pixels: {}", np.median(maskedImage.image.array[isGood]))
+        snr = maskedImage.image.array/np.sqrt(variance.array)
         # Robust measurement of stdev using inter-quartile range
         try:
             q1, q3 = np.percentile(snr[isGood], (25, 75))
