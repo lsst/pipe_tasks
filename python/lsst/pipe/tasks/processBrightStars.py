@@ -85,6 +85,11 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             "be saved in. This will also be the size of the extended PSF model.",
         default=1.1
     )
+    doApplyTransform = pexConfig.Field(
+        dtype=bool,
+        doc="Apply transform to bright star stamps to correct for optical distortions?",
+        default=True
+    )
     warpingKernelName = pexConfig.ChoiceField(
         dtype=str,
         doc="Warping kernel",
@@ -297,7 +302,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # exposure from the same detector)
         det = stamps[0].getDetector()
         # Define correction for optical distortions
-        pixToTan = det.getTransform(cg.PIXELS, cg.TAN_PIXELS)
+        if self.config.doApplyTransform:
+            pixToTan = det.getTransform(cg.PIXELS, cg.TAN_PIXELS)
+        else:
+            pixToTan = tFactory.makeIdentityTransform()
         # Array of all possible rotations for detector orientation:
         possibleRots = np.array([k*np.pi/2 for k in range(4)])
         # determine how many, if any, rotations are required
@@ -371,7 +379,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # Extract stamps around bright stars
         extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
         # Warp (and shift, and potentially rotate) them
-        self.log.info("Applying warp to %i star stamps from exposure %s",
+        self.log.info("Applying warp and/or shift to %i star stamps from exposure %s",
                       len(extractedStamps.starIms), dataId)
         warpedStars = self.warpStamps(extractedStamps.starIms, extractedStamps.pixCenters)
         brightStarList = [bSS.BrightStarStamp(stamp_im=warp,
