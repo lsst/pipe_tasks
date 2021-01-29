@@ -56,14 +56,14 @@ class FunctorTestCase(unittest.TestCase):
         simpleDF = pd.DataFrame(dataDict)
         dfFilterDSCombos = []
         for ds in self.datasets:
-            for filterName in self.filters:
+            for band in self.bands:
                 df = copy.copy(simpleDF)
                 df.reindex(sorted(df.columns), axis=1)
                 df['dataset'] = ds
-                df['filter'] = filterName
+                df['band'] = band
                 df.columns = pd.MultiIndex.from_tuples(
-                    [(ds, filterName, c) for c in df.columns],
-                    names=('dataset', 'filter', 'column'))
+                    [(ds, band, c) for c in df.columns],
+                    names=('dataset', 'band', 'column'))
                 dfFilterDSCombos.append(df)
 
         df = functools.reduce(lambda d1, d2: d1.join(d2), dfFilterDSCombos)
@@ -80,7 +80,7 @@ class FunctorTestCase(unittest.TestCase):
     def setUp(self):
         np.random.seed(1234)
         self.datasets = ['forced_src', 'meas', 'ref']
-        self.filters = ['HSC-G', 'HSC-R']
+        self.bands = ['g', 'r']
         self.columns = ['coord_ra', 'coord_dec']
         self.nRecords = 5
         self.dataDict = {
@@ -146,7 +146,7 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_FootprintArea_value"] = \
             np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
-        func = Column('base_FootprintArea_value', filt='HSC-G')
+        func = Column('base_FootprintArea_value', filt='g')
         self._funcVal(func, parq)
 
     def testCustom(self):
@@ -154,10 +154,10 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_FootprintArea_value"] = \
             np.random.rand(self.nRecords)
         parq = self.simulateMultiParquet(self.dataDict)
-        func = CustomFunctor('2*base_FootprintArea_value', filt='HSC-G')
+        func = CustomFunctor('2*base_FootprintArea_value', filt='g')
         val = self._funcVal(func, parq)
 
-        func2 = Column('base_FootprintArea_value', filt='HSC-G')
+        func2 = Column('base_FootprintArea_value', filt='g')
 
         np.allclose(val.values, 2*func2(parq).values, atol=1e-13, rtol=0)
 
@@ -166,12 +166,12 @@ class FunctorTestCase(unittest.TestCase):
         ra = self._funcVal(RAColumn(), parq)
         dec = self._funcVal(DecColumn(), parq)
 
-        columnDict = {'dataset': 'ref', 'filter': 'HSC-G',
+        columnDict = {'dataset': 'ref', 'band': 'g',
                       'column': ['coord_ra', 'coord_dec']}
         coords = parq.toDataFrame(columns=columnDict, droplevels=True) / np.pi * 180.
 
-        self.assertTrue(np.allclose(ra, coords[('ref', 'HSC-G', 'coord_ra')], atol=1e-13, rtol=0))
-        self.assertTrue(np.allclose(dec, coords[('ref', 'HSC-G', 'coord_dec')], atol=1e-13, rtol=0))
+        self.assertTrue(np.allclose(ra, coords[('ref', 'g', 'coord_ra')], atol=1e-13, rtol=0))
+        self.assertTrue(np.allclose(dec, coords[('ref', 'g', 'coord_dec')], atol=1e-13, rtol=0))
 
     def testMag(self):
         self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr"])
@@ -179,20 +179,20 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
         # Change one dataset filter combinations value.
-        parq._df[("meas", "HSC-G", "base_PsfFlux_instFlux")] -= 1
+        parq._df[("meas", "g", "base_PsfFlux_instFlux")] -= 1
 
         fluxName = 'base_PsfFlux'
 
         # Check that things work when you provide dataset explicitly
         for dataset in ['forced_src', 'meas']:
             psfMag_G = self._funcVal(Mag(fluxName, dataset=dataset,
-                                         filt='HSC-G'),
+                                         filt='g'),
                                      parq)
             psfMag_R = self._funcVal(Mag(fluxName, dataset=dataset,
-                                         filt='HSC-R'),
+                                         filt='r'),
                                      parq)
 
-            psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R',
+            psfColor_GR = self._funcVal(Color(fluxName, 'g', 'r',
                                               dataset=dataset),
                                         parq)
 
@@ -200,10 +200,10 @@ class FunctorTestCase(unittest.TestCase):
 
         # Check that behavior as expected when dataset not provided;
         #  that is, that the color comes from forced and default Mag is meas
-        psfMag_G = self._funcVal(Mag(fluxName, filt='HSC-G'), parq)
-        psfMag_R = self._funcVal(Mag(fluxName, filt='HSC-R'), parq)
+        psfMag_G = self._funcVal(Mag(fluxName, filt='g'), parq)
+        psfMag_R = self._funcVal(Mag(fluxName, filt='r'), parq)
 
-        psfColor_GR = self._funcVal(Color(fluxName, 'HSC-G', 'HSC-R'), parq)
+        psfColor_GR = self._funcVal(Color(fluxName, 'g', 'r'), parq)
 
         # These should *not* be equal.
         self.assertFalse(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
@@ -217,8 +217,8 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["modelfit_CModel_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
 
-        for filt in self.filters:
-            filt = 'HSC-G'
+        for filt in self.bands:
+            filt = 'g'
             val = self._funcVal(MagDiff('base_PsfFlux', 'modelfit_CModel', filt=filt), parq)
 
             mag1 = self._funcVal(Mag('modelfit_CModel', filt=filt), parq)
@@ -239,7 +239,7 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 999)
         parq2 = self.simulateMultiParquet(self.dataDict)
 
-        magDiff = MagDiff('base_PsfFlux', 'modelfit_CModel', filt='HSC-G')
+        magDiff = MagDiff('base_PsfFlux', 'modelfit_CModel', filt='g')
 
         # Asserts that differences computed properly
         self._differenceVal(magDiff, parq1, parq2)
@@ -271,7 +271,7 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_SdssShape_psf_yy"] = np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
         # Covering the code is better than nothing
-        for filt in self.filters:
+        for filt in self.bands:
             for Func in [DeconvolvedMoments,
                          SdssTraceSize,
                          PsfSdssTraceSizeDiff,
@@ -332,9 +332,9 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1)
         parq = self.simulateMultiParquet(self.dataDict)
         # Modify r band value slightly.
-        parq._df[("meas", "HSC-R", "base_PsfFlux_instFlux")] -= 0.1
+        parq._df[("meas", "r", "base_PsfFlux_instFlux")] -= 0.1
 
-        filt = 'HSC-G'
+        filt = 'g'
         funcDict = {'psfMag_ref': Mag('base_PsfFlux', dataset='ref'),
                     'ra': RAColumn(),
                     'dec': DecColumn(),
@@ -356,7 +356,7 @@ class FunctorTestCase(unittest.TestCase):
         df2 = self._compositeFuncVal(func2, parq)
         self.assertTrue(df.equals(df2))
 
-        func2.filt = 'HSC-R'
+        func2.filt = 'r'
         df3 = self._compositeFuncVal(func2, parq)
         # Because we modified the R filter this should fail.
         self.assertFalse(df2.equals(df3))
@@ -374,9 +374,9 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
-        funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='HSC-G'),
-                    'b': Mag('base_PsfFlux', dataset='forced_src', filt='HSC-G'),
-                    'c': Color('base_PsfFlux', 'HSC-G', 'HSC-R')}
+        funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='g'),
+                    'b': Mag('base_PsfFlux', dataset='forced_src', filt='g'),
+                    'c': Color('base_PsfFlux', 'g', 'r')}
         # Covering the code is better than nothing
         df = self._compositeFuncVal(CompositeFunctor(funcDict), parq)  # noqa
 
@@ -389,9 +389,9 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 9)
         parq2 = self.simulateMultiParquet(self.dataDict)
 
-        funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='HSC-G'),
-                    'b': Mag('base_PsfFlux', dataset='forced_src', filt='HSC-G'),
-                    'c': Color('base_PsfFlux', 'HSC-G', 'HSC-R')}
+        funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='g'),
+                    'b': Mag('base_PsfFlux', dataset='forced_src', filt='g'),
+                    'c': Color('base_PsfFlux', 'g', 'r')}
         # Covering the code is better than nothing
         df = self._compositeDifferenceVal(CompositeFunctor(funcDict), parq1, parq2)  # noqa
 
@@ -425,27 +425,27 @@ class FunctorTestCase(unittest.TestCase):
                                "base_LocalPhotoCalib",
                                "base_LocalPhotoCalibErr")
         df = parq.toDataFrame(columns={"dataset": "meas",
-                                       "filter": "HSC-G",
+                                       "band": "g",
                                        "columns": ["base_PsfFlux_instFlux",
                                                    "base_PsfFlux_instFluxErr",
                                                    "base_LocalPhotoCalib",
                                                    "base_LocalPhotoCalibErr"]})
         nanoJansky = func.instFluxToNanojansky(
-            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
-            df[("meas", "HSC-G", "base_LocalPhotoCalib")])
+            df[("meas", "g", "base_PsfFlux_instFlux")],
+            df[("meas", "g", "base_LocalPhotoCalib")])
         mag = func.instFluxToMagnitude(
-            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
-            df[("meas", "HSC-G", "base_LocalPhotoCalib")])
+            df[("meas", "g", "base_PsfFlux_instFlux")],
+            df[("meas", "g", "base_LocalPhotoCalib")])
         nanoJanskyErr = func.instFluxErrToNanojanskyErr(
-            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
-            df[("meas", "HSC-G", "base_PsfFlux_instFluxErr")],
-            df[("meas", "HSC-G", "base_LocalPhotoCalib")],
-            df[("meas", "HSC-G", "base_LocalPhotoCalibErr")])
+            df[("meas", "g", "base_PsfFlux_instFlux")],
+            df[("meas", "g", "base_PsfFlux_instFluxErr")],
+            df[("meas", "g", "base_LocalPhotoCalib")],
+            df[("meas", "g", "base_LocalPhotoCalibErr")])
         magErr = func.instFluxErrToMagnitudeErr(
-            df[("meas", "HSC-G", "base_PsfFlux_instFlux")],
-            df[("meas", "HSC-G", "base_PsfFlux_instFluxErr")],
-            df[("meas", "HSC-G", "base_LocalPhotoCalib")],
-            df[("meas", "HSC-G", "base_LocalPhotoCalibErr")])
+            df[("meas", "g", "base_PsfFlux_instFlux")],
+            df[("meas", "g", "base_PsfFlux_instFluxErr")],
+            df[("meas", "g", "base_LocalPhotoCalib")],
+            df[("meas", "g", "base_LocalPhotoCalibErr")])
 
         self.assertTrue(np.allclose(nanoJansky.values,
                                     flux * calib,
@@ -532,7 +532,7 @@ class FunctorTestCase(unittest.TestCase):
                                 "base_LocalWcs_CDMatrix_2_1",
                                 "base_LocalWcs_CDMatrix_2_2")
                 df = parq.toDataFrame(columns={"dataset": "meas",
-                                               "filter": "HSC-G",
+                                               "band": "g",
                                                "columns": ["dipoleSep",
                                                            "slot_Centroid_x",
                                                            "slot_Centroid_y",
@@ -545,14 +545,14 @@ class FunctorTestCase(unittest.TestCase):
 
                 # Exercise the full set of functions in LocalWcs.
                 sepRadians = func.getSkySeperationFromPixel(
-                    df[("meas", "HSC-G", "someCentroid_x")] - df[("meas", "HSC-G", "slot_Centroid_x")],
-                    df[("meas", "HSC-G", "someCentroid_y")] - df[("meas", "HSC-G", "slot_Centroid_y")],
+                    df[("meas", "g", "someCentroid_x")] - df[("meas", "g", "slot_Centroid_x")],
+                    df[("meas", "g", "someCentroid_y")] - df[("meas", "g", "slot_Centroid_y")],
                     0.0,
                     0.0,
-                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_1")],
-                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_1_2")],
-                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_1")],
-                    df[("meas", "HSC-G", "base_LocalWcs_CDMatrix_2_2")])
+                    df[("meas", "g", "base_LocalWcs_CDMatrix_1_1")],
+                    df[("meas", "g", "base_LocalWcs_CDMatrix_1_2")],
+                    df[("meas", "g", "base_LocalWcs_CDMatrix_2_1")],
+                    df[("meas", "g", "base_LocalWcs_CDMatrix_2_2")])
 
                 # Test functor values against afw SkyWcs computations.
                 for centX, centY, sep in zip(testPixelDeltas[:, 0],

@@ -41,10 +41,11 @@ import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
 from lsst.skymap import BaseSkyMap
 
+# NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
 from .multiBandUtils import MergeSourcesRunner, CullPeaksConfig, _makeGetSchemaCatalogs  # noqa: F401
-from .multiBandUtils import getInputSchema, getShortFilterName, readCatalog, _makeMakeIdFactory  # noqa: F401
+from .multiBandUtils import getInputSchema, readCatalog, _makeMakeIdFactory  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiConfig  # noqa: F401
@@ -490,7 +491,8 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             exposures = []
             for patchRef in patchRefList:
                 exposure = patchRef.get(coaddType + "Coadd_calexp", immediate=True)
-                filters.append(patchRef.dataId["filter"])
+                filter = patchRef.get(coaddType + "Coadd_filterLabel", immediate=True)
+                filters.append(filter.bandLabel)
                 exposures.append(exposure)
             # The input sources are the same for all bands, since it is a merged catalog
             sources = self.readSources(patchRef)
@@ -1093,7 +1095,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         results = Struct()
 
         if self.config.doMatchSources:
-            matchResult = self.match.run(sources, exposure.getInfo().getFilter().getName())
+            matchResult = self.match.run(sources, exposure.getInfo().getFilterLabel().bandLabel)
             matches = afwTable.packMatches(matchResult.matches)
             matches.table.setMetadata(matchResult.matchMeta)
             results.matchResult = matches

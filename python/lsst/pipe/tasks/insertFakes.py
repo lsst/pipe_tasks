@@ -337,7 +337,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         fakeCat = self.addPixCoords(fakeCat, wcs)
         fakeCat = self.trimFakeCat(fakeCat, image, wcs)
-        band = image.getFilter().getCanonicalName()[0]
+        band = image.getFilterLabel().bandLabel
         psf = image.getPsf()
         pixelScale = wcs.getPixelScale().asArcseconds()
 

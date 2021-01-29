@@ -57,8 +57,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config = TransformObjectCatalogConfig()
         # Want y band columns despite the input data do not have them
         # Exclude g band columns despite the input data have them
-        filterMap = {"HSC-R": "r", "HSC-I": "i", "HSC-Y": "y"}
-        config.filterMap = filterMap
+        config.outputBands = ["r", "i", "y"]
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
         df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
@@ -66,7 +65,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         for column in ('coord_ra', 'coord_dec'):
             self.assertIn(column, df.columns)
 
-        for filt in filterMap.values():
+        for filt in config.outputBands:
             self.assertIn(filt + 'Fwhm', df.columns)
 
         self.assertNotIn('gFwhm', df.columns)
@@ -76,27 +75,39 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
     def testUnderscoreColumnFormat(self):
         """Test the per-filter column format with an underscore"""
         config = TransformObjectCatalogConfig()
-        filterMap = {"HSC-G": "g", "HSC-R": "r", "HSC-I": "i"}
-        config.filterMap = filterMap
+        config.outputBands = ["g", "r", "i"]
         config.camelCase = False
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
         df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
-        for filt in filterMap.values():
+        for filt in config.outputBands:
             self.assertIn(filt + '_Fwhm', df.columns)
 
     def testMultilevelOutput(self):
         """Test the non-flattened result dataframe with a multilevel column index"""
         config = TransformObjectCatalogConfig()
-        filterMap = {"HSC-R": "r", "HSC-I": "i"}
-        config.filterMap = filterMap
+        config.outputBands = ["r", "i"]
+        config.multilevelOutput = True
+        task = TransformObjectCatalogTask(config=config)
+        funcs = {'Fwhm': HsmFwhm(dataset='meas')}
+        df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertNotIn('g', df)
+        for filt in config.outputBands:
+            self.assertIsInstance(df[filt], pd.DataFrame)
+            self.assertIn('Fwhm', df[filt].columns)
+
+    def testNoOutputBands(self):
+        """All the input bands should go into the output, and nothing else.
+        """
+        config = TransformObjectCatalogConfig()
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
         df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('HSC-G', df)
-        for filt in filterMap:
+        for filt in ['g', 'r', 'i']:
             self.assertIsInstance(df[filt], pd.DataFrame)
             self.assertIn('Fwhm', df[filt].columns)

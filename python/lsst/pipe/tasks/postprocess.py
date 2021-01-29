@@ -38,14 +38,14 @@ from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
 from .functors import CompositeFunctor, RAColumn, DecColumn, Column
 
 
-def flattenFilters(df, filterDict, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
+def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
     """Flattens a dataframe with multilevel column index
     """
     newDf = pd.DataFrame()
-    for filt, filtShort in filterDict.items():
-        subdf = df[filt]
+    for band in set(df.columns.to_frame()['band']):
+        subdf = df[band]
         columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
-        newColumns = {c: columnFormat.format(filtShort, c)
+        newColumns = {c: columnFormat.format(band, c)
                       for c in subdf.columns if c not in noDupCols}
         cols = list(newColumns.keys())
         newDf = pd.concat([newDf, subdf[cols].rename(columns=newColumns)], axis=1)
@@ -133,17 +133,17 @@ class WriteObjectTableTask(CmdLineTask):
 
         Returns
         -------
-        Tuple consisting of filter name and a dict of catalogs, keyed by
+        Tuple consisting of band name and a dict of catalogs, keyed by
         dataset name
         """
-        filterName = patchRef.dataId["filter"]
+        band = patchRef.get(self.config.coaddName + "Coadd_filterLabel", immediate=True).bandLabel
         catalogDict = {}
         for dataset in self.inputDatasets:
             catalog = patchRef.get(self.config.coaddName + "Coadd_" + dataset, immediate=True)
-            self.log.info("Read %d sources from %s for filter %s: %s" %
-                          (len(catalog), dataset, filterName, patchRef.dataId))
+            self.log.info("Read %d sources from %s for band %s: %s" %
+                          (len(catalog), dataset, band, patchRef.dataId))
             catalogDict[dataset] = catalog
-        return filterName, catalogDict
+        return band, catalogDict
 
     def run(self, catalogs, tract, patch):
         """Merge multiple catalogs.
@@ -177,7 +177,7 @@ class WriteObjectTableTask(CmdLineTask):
 
                 # Make columns a 3-level MultiIndex
                 df.columns = pd.MultiIndex.from_tuples([(dataset, filt, c) for c in df.columns],
-                                                       names=('dataset', 'filter', 'column'))
+                                                       names=('dataset', 'band', 'column'))
                 dfs.append(df)
 
         catalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
@@ -510,10 +510,6 @@ class TransformCatalogBaseTask(CmdLineTask):
 
     The "flags" entry will be expanded out per band.
 
-    Note, if `'filter'` is provided as part of the `dataId` when running this task (even though
-    `deepCoadd_obj` does not use `'filter'`), then this will override the `filt` kwargs
-    provided in the YAML file, and the calculations will be done in that filter.
-
     This task uses the `lsst.pipe.tasks.postprocess.PostprocessAnalysis` object
     to organize and excecute the calculations.
 
@@ -541,7 +537,7 @@ class TransformCatalogBaseTask(CmdLineTask):
         self.write(df, dataRef)
         return df
 
-    def run(self, parq, funcs=None, dataId=None):
+    def run(self, parq, funcs=None, dataId=None, band=None):
         """Do postprocessing calculations
 
         Takes a `ParquetTable` object and dataId,
@@ -555,6 +551,8 @@ class TransformCatalogBaseTask(CmdLineTask):
             Functors to apply to the table's columns
         dataId : dict, optional
             Used to add a `patchId` column to the output dataframe.
+        band : `str`, optional
+            Filter band that is being processed.
 
         Returns
         ------
@@ -563,8 +561,7 @@ class TransformCatalogBaseTask(CmdLineTask):
         """
         self.log.info("Transforming/standardizing the source table dataId: %s", dataId)
 
-        filt = dataId.get('filter', None)
-        df = self.transform(filt, parq, funcs, dataId).df
+        df = self.transform(band, parq, funcs, dataId).df
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
         return df
 
@@ -573,15 +570,15 @@ class TransformCatalogBaseTask(CmdLineTask):
         funcs.update(dict(PostprocessAnalysis._defaultFuncs))
         return funcs
 
-    def getAnalysis(self, parq, funcs=None, filt=None):
+    def getAnalysis(self, parq, funcs=None, band=None):
         # Avoids disk access if funcs is passed
         if funcs is None:
             funcs = self.getFunctors()
-        analysis = PostprocessAnalysis(parq, funcs, filt=filt)
+        analysis = PostprocessAnalysis(parq, funcs, filt=band)
         return analysis
 
-    def transform(self, filt, parq, funcs, dataId):
-        analysis = self.getAnalysis(parq, funcs=funcs, filt=filt)
+    def transform(self, band, parq, funcs, dataId):
+        analysis = self.getAnalysis(parq, funcs=funcs, band=band)
         df = analysis.df
         if dataId is not None:
             for key, value in dataId.items():
@@ -607,19 +604,30 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig):
         default="deep",
         doc="Name of coadd"
     )
+    # TODO: remove in DM-27177
     filterMap = pexConfig.DictField(
         keytype=str,
         itemtype=str,
         default={},
         doc=("Dictionary mapping full filter name to short one for column name munging."
              "These filters determine the output columns no matter what filters the "
-             "input data actually contain.")
+             "input data actually contain."),
+        deprecated=("Coadds are now identified by the band, so this transform is unused."
+                    "Will be removed after v22.")
+    )
+    outputBands = pexConfig.ListField(
+        dtype=str,
+        default=None,
+        optional=True,
+        doc=("These bands and only these bands will appear in the output,"
+             " NaN-filled if the input does not include them."
+             " If None, then use all bands found in the input.")
     )
     camelCase = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Write per-filter columns names with camelCase, else underscore "
-             "For example: gPsfFlux instead of g_PsfFlux.")
+        doc=("Write per-band columns names with camelCase, else underscore "
+             "For example: gPsFlux instead of g_PsFlux.")
     )
     multilevelOutput = pexConfig.Field(
         dtype=bool,
@@ -630,7 +638,8 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig):
 
 
 class TransformObjectCatalogTask(TransformCatalogBaseTask):
-    """Compute Flatted Object Table as defined in the DPDD
+    """Produce a flattened Object Table to match the format specified in
+    sdm_schemas.
 
     Do the same set of postprocessing calculations on all bands
 
@@ -653,38 +662,40 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                                help="data ID, e.g. --id tract=12345 patch=1,2")
         return parser
 
-    def run(self, parq, funcs=None, dataId=None):
+    def run(self, parq, funcs=None, dataId=None, band=None):
+        # NOTE: band kwarg is ignored here.
         dfDict = {}
         analysisDict = {}
         templateDf = pd.DataFrame()
-        # Perform transform for data of filters that exist in parq and are
-        # specified in config.filterMap
-        for filt in parq.columnLevelNames['filter']:
-            if filt not in self.config.filterMap:
-                self.log.info("Ignoring %s data in the input", filt)
+        outputBands = parq.columnLevelNames['band'] if self.config.outputBands is None else \
+            self.config.outputBands
+
+        # Perform transform for data of filters that exist in parq.
+        for inputBand in parq.columnLevelNames['band']:
+            if inputBand not in outputBands:
+                self.log.info("Ignoring %s band data in the input", inputBand)
                 continue
-            self.log.info("Transforming the catalog of filter %s", filt)
-            result = self.transform(filt, parq, funcs, dataId)
-            dfDict[filt] = result.df
-            analysisDict[filt] = result.analysis
+            self.log.info("Transforming the catalog of band %s", inputBand)
+            result = self.transform(inputBand, parq, funcs, dataId)
+            dfDict[inputBand] = result.df
+            analysisDict[inputBand] = result.analysis
             if templateDf.empty:
                 templateDf = result.df
 
-        # Fill NaNs in columns of other wanted filters
-        for filt in self.config.filterMap:
+        # Fill NaNs in columns of other wanted bands
+        for filt in outputBands:
             if filt not in dfDict:
-                self.log.info("Adding empty columns for filter %s", filt)
+                self.log.info("Adding empty columns for band %s", filt)
                 dfDict[filt] = pd.DataFrame().reindex_like(templateDf)
 
-        # This makes a multilevel column index, with filter as first level
-        df = pd.concat(dfDict, axis=1, names=['filter', 'column'])
+        # This makes a multilevel column index, with band as first level
+        df = pd.concat(dfDict, axis=1, names=['band', 'column'])
 
         if not self.config.multilevelOutput:
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
             if dataId is not None:
                 noDupCols += list(dataId.keys())
-            df = flattenFilters(df, self.config.filterMap, noDupCols=noDupCols,
-                                camelCase=self.config.camelCase)
+            df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase)
 
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
         return df
@@ -789,6 +800,15 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
                                level="sensor",
                                help="data ID, e.g. --id visit=12345 ccd=0")
         return parser
+
+    def runDataRef(self, dataRef):
+        """Override to specify band label to run()."""
+        parq = dataRef.get()
+        funcs = self.getFunctors()
+        band = dataRef.get("calexp_filterLabel", immediate=True).bandLabel
+        df = self.run(parq, funcs=funcs, dataId=dataRef.dataId, band=band)
+        self.write(df, dataRef)
+        return df
 
 
 class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
@@ -924,7 +944,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         for i, dataRef in enumerate(dataRefs):
             if isGen3:
                 visitInfo = dataRef.get(component='visitInfo')
-                filter_ = dataRef.get(component='filter')
+                filterLabel = dataRef.get(component='filterLabel')
                 psf = dataRef.get(component='psf')
                 wcs = dataRef.get(component='wcs')
                 photoCalib = dataRef.get(component='photoCalib')
@@ -937,7 +957,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 gen2_read_bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
                 exp = dataRef.get(datasetType='calexp_sub', bbox=gen2_read_bbox)
                 visitInfo = exp.getInfo().getVisitInfo()
-                filter_ = exp.getFilter()
+                filterLabel = exp.getFilterLabel()
                 psf = exp.getPsf()
                 wcs = exp.getWcs()
                 photoCalib = exp.getPhotoCalib()
@@ -953,9 +973,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             rec.setDetector(detector)
             rec.setValidPolygon(validPolygon)
 
-            # TODO: When RFC-730 is implemented we can fill both of these.
-            rec['physical_filter'] = filter_.getName()
-            rec['band'] = ''
+            rec['physical_filter'] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
+            rec['band'] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
             rec['detector_id'] = detector.getId()
             shape = psf.computeShape(bbox.getCenter())
             rec['psfSigma'] = shape.getDeterminantRadius()

@@ -73,7 +73,7 @@ class PhotoCalTest(unittest.TestCase):
         smallExposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
         self.exposure = afwImage.ExposureF(self.bbox)
         self.exposure.setWcs(smallExposure.getWcs())
-        self.exposure.setFilter(smallExposure.getFilter())
+        self.exposure.setFilterLabel(smallExposure.getFilterLabel())
         self.exposure.setPhotoCalib(smallExposure.getPhotoCalib())
 
         coordKey = self.srcCat.getCoordKey()

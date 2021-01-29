@@ -23,7 +23,7 @@
 import numpy
 
 from .multiBandUtils import (MergeSourcesRunner, _makeGetSchemaCatalogs, makeMergeArgumentParser,
-                             getInputSchema, getShortFilterName, readCatalog)
+                             getInputSchema, readCatalog)
 
 
 import lsst.afw.table as afwTable
@@ -103,7 +103,7 @@ class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasu
     priorityList = pexConfig.ListField(
         dtype=str,
         default=[],
-        doc="Priority-ordered list of bands for the merge."
+        doc="Priority-ordered list of filter bands for the merge."
     )
     coaddName = pexConfig.Field(
         dtype=str,
@@ -245,14 +245,13 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         self.flagKeys = {}
         for band in self.config.priorityList:
-            short = getShortFilterName(band)
             outputKey = self.schemaMapper.editOutputSchema().addField(
-                "merge_measurement_%s" % short,
+                "merge_measurement_%s" % band,
                 type="Flag",
                 doc="Flag field set if the measurements here are from the %s filter" % band
             )
-            peakKey = inputSchema.find("merge_peak_%s" % short).key
-            footprintKey = inputSchema.find("merge_footprint_%s" % short).key
+            peakKey = inputSchema.find("merge_peak_%s" % band).key
+            footprintKey = inputSchema.find("merge_footprint_%s" % band).key
             self.flagKeys[band] = pipeBase.Struct(peak=peakKey, footprint=footprintKey, output=outputKey)
         self.schema = self.schemaMapper.getOutputSchema()
 

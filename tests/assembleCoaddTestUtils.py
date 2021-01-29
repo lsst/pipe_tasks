@@ -33,7 +33,6 @@ import numpy as np
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.afw.image.utils as afwImageUtils
 import lsst.daf.butler
 import lsst.daf.persistence.dataId
 import lsst.geom as geom
@@ -321,9 +320,9 @@ class MockCoaddTestData:
     """
     rotAngle = 0.*degrees
     "Rotation of the pixel grid on the sky, East from North (`lsst.geom.Angle`)."
-    filterInfo = None
+    filterLabel = None
     """The filter definition, usually set in the current instruments' obs package.
-    For these tests, a simple filter is defined without using an obs package (`lsst.afw.image.Filter`).
+    For these tests, a simple filter is defined without using an obs package (`lsst.afw.image.FilterLabel`).
     """
     rngData = None
     """Pre-initialized random number generator for constructing the test images
@@ -360,7 +359,7 @@ class MockCoaddTestData:
         self.patch = patch
         self.patchGen2 = patchGen2
         self.tract = tract
-        self.filterInfo = self.defineFilter()
+        self.filterLabel = afwImage.FilterLabel(band="gTest", physical="gTest")
         self.rngData = np.random.default_rng(seed)
         self.rngMods = np.random.default_rng(seed + 1)
         self.bbox = geom.Box2I(offset, shape)
@@ -426,7 +425,7 @@ class MockCoaddTestData:
         tempExp = rawExposure.clone()
         tempExp.setWcs(self.wcs)
 
-        tempExp.setFilter(self.filterInfo)
+        tempExp.setFilterLabel(self.filterLabel)
         tempExp.setPhotoCalib(self.photoCalib)
         tempExp.getInfo().setVisitInfo(visitInfo)
         tempExp.getInfo().setDetector(self.detector)
@@ -511,31 +510,6 @@ class MockCoaddTestData:
                                       )
         visitInfo = MakeRawVisitInfoViaObsInfo.observationInfo2visitInfo(obsInfo)
         return visitInfo
-
-    def defineFilter(self, lambdaEff=476.31, lambdaMin=405., lambdaMax=552., filterName="gTest"):
-        """Construct a `Filter` with sufficient information to calculate DCR.
-
-        Parameters
-        ----------
-        lambdaEff : `float`, optional
-            The effective wavelength of the filter, defaults to LSST g-band value.
-        lambdaMin : float, optional
-            The minimum wavelength of the filter with greater than 1% transmission,
-            defaults to LSST g-band value.
-        lambdaMax : `float`, optional
-            The maximum wavelength of the filter with greater than 1% transmission,
-            defaults to LSST g-band value.
-        filterName : `str`, optional
-            The simplified name of the filter.
-
-        Returns
-        -------
-        filterInfo : `lsst.afw.image.Filter`
-            The filter definition.
-        """
-        afwImageUtils.defineFilter(filterName, lambdaEff,
-                                   lambdaMin=lambdaMin, lambdaMax=lambdaMax)
-        return afwImage.Filter(filterName)
 
     def makeTestImage(self, expId, noiseLevel=None, psfSize=None, backgroundLevel=None,
                       detectionSigma=5.):

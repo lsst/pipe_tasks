@@ -1,6 +1,24 @@
-import lsst.afw.image as afwImage
+# This file is part of pipe_tasks.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import lsst.afw.table as afwTable
-import lsst.pex.exceptions as pexExceptions
 
 from lsst.coadd.utils import ExistingCoaddDataIdContainer
 from lsst.pipe.base import TaskRunner, ArgumentParser
@@ -138,17 +156,6 @@ def getInputSchema(task, butler=None, schema=None):
     return schema
 
 
-# TODO: DM-27170 should remove this function.
-def getShortFilterName(name):
-    """Given a longer, camera-specific filter name (e.g. "HSC-I") return its shorthand name ("i").
-    """
-    try:
-        return afwImage.Filter(name).getCanonicalName()
-    except pexExceptions.NotFoundError:
-        # No mapping could be found, try proceeding with given name
-        return name
-
-
 def readCatalog(task, patchRef):
     """!
     @brief Read input catalog.
@@ -157,12 +164,12 @@ def readCatalog(task, patchRef):
     class variable.
 
     @param[in]  patchRef   data reference for patch
-    @return tuple consisting of the filter name and the catalog
+    @return tuple consisting of the band name and the catalog
     """
-    filterName = patchRef.dataId["filter"]
+    band = patchRef.get(task.config.coaddName + "Coadd_filterLabel", immediate=True).bandLabel
     catalog = patchRef.get(task.config.coaddName + "Coadd_" + task.inputDataset, immediate=True)
-    task.log.info("Read %d sources for filter %s: %s" % (len(catalog), filterName, patchRef.dataId))
-    return filterName, catalog
+    task.log.info("Read %d sources for band %s: %s" % (len(catalog), band, patchRef.dataId))
+    return band, catalog
 
 
 class CullPeaksConfig(Config):

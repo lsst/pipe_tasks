@@ -447,7 +447,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                    100.0*numGoodPix[warpType]/skyInfo.bbox.getArea(), warpType)
                     if numGoodPix[warpType] > 0 and not didSetMetadata[warpType]:
                         coaddTempExp.setPhotoCalib(exposure.getPhotoCalib())
-                        coaddTempExp.setFilter(exposure.getFilter())
+                        coaddTempExp.setFilterLabel(exposure.getFilterLabel())
                         coaddTempExp.getInfo().setVisitInfo(exposure.getInfo().getVisitInfo())
                         # PSF replaced with CoaddPsf after loop if and only if creating direct warp
                         coaddTempExp.setPsf(exposure.getPsf())
