@@ -31,7 +31,7 @@ import lsst.geom as geom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
-from lsst.meas.base import ForcedMeasurementTask
+from lsst.meas.base import ForcedMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
@@ -208,6 +208,15 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
     measurement = pexConfig.ConfigurableField(
         target=DipoleFitTask,
         doc="Enable updated dipole fitting method",
+    )
+    doApCorr = lsst.pex.config.Field(
+        dtype=bool,
+        default=True,
+        doc="Run subtask to apply aperture corrections"
+    )
+    applyApCorr = lsst.pex.config.ConfigurableField(
+        target=ApplyApCorrTask,
+        doc="Subtask to apply aperture corrections"
     )
     forcedMeasurement = pexConfig.ConfigurableField(
         target=ForcedMeasurementTask,
@@ -876,6 +885,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                                              subtractRes.matchedExposure)
                     else:
                         self.measurement.run(diaSources, subtractedExposure, exposure)
+                if self.config.doApCorr:
+                    self.applyApCorr.run(
+                        catalog=diaSources,
+                        apCorrMap=subtractedExposure.getInfo().getApCorrMap()
+                    )
 
             if self.config.doForcedMeasurement:
                 # Run forced psf photometry on the PVI at the diaSource locations.
