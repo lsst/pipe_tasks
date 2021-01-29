@@ -47,7 +47,8 @@ def make_data(bbox, wcs, border=100, ngood=13, nbad=7, nedge=3):
 
     ident = []
     pt = []
-    size = []
+    xspan = []
+    yspan = []
     for i in range(ngood):
         x = random.random()*(dx - 2*border) + border
         y = random.random()*(dy - 2*border) + border
@@ -55,12 +56,14 @@ def make_data(bbox, wcs, border=100, ngood=13, nbad=7, nedge=3):
         pt.append(SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(),
                            frame='icrs', unit=u.deg))
         ident.append((i+1)*u.dimensionless_unscaled)
-        size.append(random.randint(13, 26)*u.dimensionless_unscaled)
-    data['good'] = QTable([ident, pt, size], names=['id', 'position', 'size'])
+        xspan.append(random.randint(13, 26)*u.dimensionless_unscaled)
+        yspan.append(random.randint(13, 26)*u.dimensionless_unscaled)
+    data['good'] = QTable([ident, pt, xspan, yspan], names=['id', 'position', 'xspan', 'yspan'])
 
     ident = []
     pt = []
-    size = []
+    xspan = []
+    yspan = []
     for i in range(nbad):
         x = random.random()*(dx - 2*border) + border
         y = random.random()*(dy - 2*border) + border
@@ -68,12 +71,14 @@ def make_data(bbox, wcs, border=100, ngood=13, nbad=7, nedge=3):
         pt.append(SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(),
                            frame='icrs', unit=u.deg))
         ident.append((i+1)*u.dimensionless_unscaled)
-        size.append(random.randint(13, 26)*u.dimensionless_unscaled)
-    data['bad'] = QTable([ident, pt, size], names=['id', 'position', 'size'])
+        xspan.append(random.randint(13, 26)*u.dimensionless_unscaled)
+        yspan.append(random.randint(13, 26)*u.dimensionless_unscaled)
+    data['bad'] = QTable([ident, pt, xspan, yspan], names=['id', 'position', 'xspan', 'yspan'])
 
     ident = []
     pt = []
-    size = []
+    xspan = []
+    yspan = []
     for i in range(nedge):
         x_or_y = random.randint(0, 1)
         if x_or_y:
@@ -87,8 +92,9 @@ def make_data(bbox, wcs, border=100, ngood=13, nbad=7, nedge=3):
         pt.append(SkyCoord(sphpt.getRa().asDegrees(), sphpt.getDec().asDegrees(),
                            frame='icrs', unit=u.deg))
         ident.append((i+1)*u.dimensionless_unscaled)
-        size.append(random.randint(13, 26)*u.dimensionless_unscaled)
-    data['edge'] = QTable([ident, pt, size], names=['id', 'position', 'size'])
+        xspan.append(random.randint(13, 26)*u.dimensionless_unscaled)
+        yspan.append(random.randint(13, 26)*u.dimensionless_unscaled)
+    data['edge'] = QTable([ident, pt, xspan, yspan], names=['id', 'position', 'xspan', 'yspan'])
     return data
 
 
