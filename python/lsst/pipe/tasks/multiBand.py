@@ -1089,7 +1089,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
             self.catalogCalculation.run(sources)
 
         self.setPrimaryFlags.run(sources, skyMap=skyInfo.skyMap, tractInfo=skyInfo.tractInfo,
-                                 patchInfo=skyInfo.patchInfo, includeDeblend=self.deblended)
+                                 patchInfo=skyInfo.patchInfo)
         if self.config.doPropagateFlags:
             self.propagateFlags.run(butler, sources, ccdInputs, exposure.getWcs(), visitCatalogs, wcsUpdates)
 
