@@ -368,6 +368,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
+        if self.config.doApCorr:
+            self.makeSubtask("applyApCorr", schema=self.measurement.schema)
         if self.config.doForcedMeasurement:
             self.schema.addField(
                 "ip_diffim_forced_PsfFlux_instFlux", "D",
