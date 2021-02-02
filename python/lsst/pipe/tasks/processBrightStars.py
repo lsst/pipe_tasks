@@ -31,6 +31,7 @@ import astropy.units as u
 from lsst import geom
 from lsst.afw import math as afwMath
 from lsst.afw import image as afwImage
+from lsst.afw import detection as afwDetect
 from lsst.afw import cameraGeom as cg
 from lsst.afw.geom import transformFactory as tFactory
 import lsst.pex.config as pexConfig
@@ -83,6 +84,12 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         doc="'Buffer' factor to be applied to determine the size of the stamp the processed stars will "
             "be saved in. This will also be the size of the extended PSF model.",
         default=1.1
+    )
+    doRemoveDetected = pexConfig.Field(
+        dtype=bool,
+        doc="Whether DETECTION footprints, other than that for the central object, should be changed to "
+            "BAD",
+        default=True
     )
     warpingKernelName = pexConfig.ChoiceField(
         dtype=str,
@@ -226,7 +233,24 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                     and cpix[0] < inputExposure.getDimensions()[0] - self.config.stampSize[0]/2
                     and cpix[1] >= self.config.stampSize[1]/2
                     and cpix[1] < inputExposure.getDimensions()[1] - self.config.stampSize[1]/2):
-                starIms.append(inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize)))
+                starIm = inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize))
+                if self.config.doRemoveDetected:
+                    # give detection footprint of other objects the BAD flag
+                    detThreshold = afwDetect.Threshold(starIm.mask.getPlaneBitMask("DETECTED"),
+                                                       afwDetect.Threshold.BITMASK)
+                    omask = afwDetect.FootprintSet(starIm.mask, detThreshold)
+                    allFootprints = omask.getFootprints()
+                    otherFootprints = []
+                    for fs in allFootprints:
+                        if not fs.contains(geom.Point2I(cpix)):
+                            otherFootprints.append(fs)
+                    nbMatchingFootprints = len(allFootprints) - len(otherFootprints)
+                    if not nbMatchingFootprints == 1:
+                        self.log.warn("Failed to uniquely identify central DETECTION footprint for star "
+                                      f"{allIds[j]}; found {nbMatchingFootprints} footprints instead.")
+                    omask.setFootprints(otherFootprints)
+                    omask.setMask(starIm.mask, "BAD")
+                starIms.append(starIm)
                 pixCenters.append(cpix)
                 GMags.append(allGMags[j])
                 ids.append(allIds[j])
@@ -274,7 +298,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         for star, cent in zip(stamps, pixCenters):
             # (re)create empty destination image
             destImage = afwImage.MaskedImageF(*self.modelStampSize)
-            bottomLeft = geom.Point2D(star.getImage().getXY0())
+            bottomLeft = geom.Point2D(star.image.getXY0())
             newBottomLeft = pixToTan.applyForward(bottomLeft)
             newBottomLeft.setX(newBottomLeft.getX() - bufferPix[0]/2)
             newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1]/2)
