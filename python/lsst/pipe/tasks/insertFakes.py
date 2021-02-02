@@ -745,15 +745,14 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             self.log.debug("Adding fake source at %d, %d" % (xy.getX(), xy.getY()))
             if sourceType == "galaxy":
                 interpFakeImage = afwMath.offsetImage(fakeImage, X0, Y0, "lanczos3")
-                interpFakeImBBox = interpFakeImage.getBBox()
             else:
                 interpFakeImage = fakeImage
-                interpFakeImBBox = fakeImage.getBBox()
 
+            interpFakeImBBox = interpFakeImage.getBBox()
             interpFakeImBBox.clip(imageBBox)
-            imageMIView = imageMI.Factory(imageMI, interpFakeImBBox)
 
             if interpFakeImBBox.getArea() > 0:
+                imageMIView = imageMI.Factory(imageMI, interpFakeImBBox)
                 clippedFakeImage = interpFakeImage.Factory(interpFakeImage, interpFakeImBBox)
                 clippedFakeImageMI = afwImage.MaskedImageF(clippedFakeImage)
                 clippedFakeImageMI.mask.set(self.bitmask)
