@@ -45,7 +45,7 @@ class CalexpCutoutTaskConfig(pipeBase.PipelineTaskConfig,
 
 class CalexpCutoutTask(pipeBase.PipelineTask):
     """Task for computing cutouts on a specific calexp given
-    positions, widths, and heights of the stamps.
+    positions, xspans, and yspans of the stamps.
     """
     ConfigClass = CalexpCutoutTaskConfig
     _DefaultName = "calexpCutoutTask"
@@ -104,11 +104,11 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
             pt = geom.SpherePoint(geom.Angle(ra, geom.degrees),
                                   geom.Angle(dec, geom.degrees))
             pix = wcs.skyToPixel(pt)
-            width = rec['xspan'].value
-            height = rec['yspan'].value
+            xspan = rec['xspan'].value
+            yspan = rec['yspan'].value
             # Clamp to LL corner of the LL pixel and draw extent from there
-            box = geom.Box2I(geom.Point2I(int(pix.x-width/2), int(pix.y-height/2)),
-                             geom.Extent2I(width, height))
+            box = geom.Box2I(geom.Point2I(int(pix.x-xspan/2), int(pix.y-yspan/2)),
+                             geom.Extent2I(xspan, yspan))
             if not mim.getBBox().contains(box):
                 if not self.config.skip_bad:
                     raise ValueError(f'Cutout bounding box is not completely contained in the image: {box}')

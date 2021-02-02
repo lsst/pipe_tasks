@@ -112,12 +112,19 @@ class CalexpCutoutTestCase(lsst.utils.tests.TestCase):
         task = CalexpCutoutTask(config=config)
         result = task.run(self.data['good'], self.exp)
         self.assertEqual(len(result.cutouts), len(self.data['good']))
+        indims = [(x, y) for x, y in zip(self.data['good']['xspan'], self.data['good']['yspan'])]
+        outdims = [tuple(el.stamp_im.getDimensions()) for el in result.cutouts]
+        self.assertEqual(indims, outdims)
 
         # Test configuration of the max number of cutouts
         config.max_cutouts = 4
         task = CalexpCutoutTask(config=config)
         result = task.run(self.data['good'], self.exp)
         self.assertEqual(len(result.cutouts), task.config.max_cutouts)
+        indims = [(x, y) for x, y in zip(self.data['good']['xspan'][:config.max_cutouts],
+                                         self.data['good']['yspan'][:config.max_cutouts])]
+        outdims = [tuple(el.stamp_im.getDimensions()) for el in result.cutouts[:config.max_cutouts]]
+        self.assertEqual(indims, outdims)
 
     def testEdge(self):
         # Currently edge cutouts are handled the same way
