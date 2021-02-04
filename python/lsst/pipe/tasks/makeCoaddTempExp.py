@@ -29,6 +29,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 import lsst.log as log
 import lsst.utils as utils
+import lsst.geom
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
 from .coaddBase import CoaddBaseTask, makeSkyInfo
@@ -381,7 +382,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         return dataRefList
 
     @pipeBase.timeMethod
-    def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None):
+    def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None, **kwargs):
         """Create a Warp from inputs
 
         We iterate over the multiple calexps in a single exposure to construct
@@ -580,6 +581,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
+        deferLoad=True,
     )
     backgroundList = cT.Input(
         doc="Input backgrounds to be added back into the calexp if bgSubtracted=False",
@@ -615,6 +617,35 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
     )
+    # TODO DM-28769, have selectImages subtask indicate which connections they need:
+    wcsList = cT.Input(
+        doc="WCSs of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
+        name="calexp.wcs",
+        storageClass="Wcs",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+    )
+    bboxList = cT.Input(
+        doc="BBoxes of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
+        name="calexp.bbox",
+        storageClass="Box2I",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+    )
+    srcList = cT.Input(
+        doc="src catalogs used by PsfWcsSelectImages subtask to further select on PSF stability",
+        name="src",
+        storageClass="SourceCatalog",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+    )
+    psfList = cT.Input(
+        doc="PSF models used by BestSeeingWcsSelectImages subtask to futher select on seeing",
+        name="calexp.psf",
+        storageClass="Psf",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -626,6 +657,12 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
             self.outputs.remove("direct")
         if not config.makePsfMatched:
             self.outputs.remove("psfMatched")
+        # TODO DM-28769: add connection per selectImages connections
+        # instead of removing if not PsfWcsSelectImagesTask here:
+        if config.select.target != lsst.pipe.tasks.selectImages.PsfWcsSelectImagesTask:
+            self.inputs.remove("srcList")
+        if config.select.target != lsst.pipe.tasks.selectImages.BestSeeingWcsSelectImagesTask:
+            self.inputs.remove("psfList")
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
@@ -642,7 +679,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
                                "Please set doApplyExternalSkyWcs=False.")
 
 
-class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
+class MakeWarpTask(MakeCoaddTempExpTask):
     """Warp and optionally PSF-Match calexps onto an a common projection
 
     First Draft of a Gen3 compatible MakeWarpTask which
@@ -672,10 +709,19 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         skyInfo = makeSkyInfo(skyMap, tractId=quantumDataId['tract'], patchId=quantumDataId['patch'])
 
         # Construct list of input DataIds expected by `run`
-        dataIdList = [ref.dataId for ref in inputRefs.calExpList]
-
+        dataIdList = [ref.datasetRef.dataId for ref in inputRefs.calExpList]
         # Construct list of packed integer IDs expected by `run`
         ccdIdList = [dataId.pack("visit_detector") for dataId in dataIdList]
+
+        # Run the selector and filter out calexps that were not selected
+        # primarily because they do not overlap the patch
+        cornerPosList = lsst.geom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
+        goodIndices = self.select.run(**inputs, coordList=coordList, dataIds=dataIdList)
+        inputs = self.filterInputs(indices=goodIndices, inputs=inputs)
+
+        # Read from disk only the selected calexps
+        inputs['calExpList'] = [ref.get() for ref in inputs['calExpList']]
 
         # Extract integer visitId requested by `run`
         visits = [dataId['visit'] for dataId in dataIdList]
@@ -683,14 +729,28 @@ class MakeWarpTask(MakeCoaddTempExpTask, pipeBase.PipelineTask):
         visitId = visits[0]
 
         self.prepareCalibratedExposures(**inputs)
-        results = self.run(**inputs, visitId=visitId, ccdIdList=ccdIdList, dataIdList=dataIdList,
+        results = self.run(**inputs, visitId=visitId,
+                           ccdIdList=[ccdIdList[i] for i in goodIndices],
+                           dataIdList=[dataIdList[i] for i in goodIndices],
                            skyInfo=skyInfo)
         if self.config.makeDirect:
             butlerQC.put(results.exposures["direct"], outputRefs.direct)
         if self.config.makePsfMatched:
             butlerQC.put(results.exposures["psfMatched"], outputRefs.psfMatched)
 
-    def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None):
+    def filterInputs(self, indices, inputs):
+        """Return task inputs with their lists filtered by indices
+
+        Parameters
+        ----------
+        indices : `list` of integers
+        inputs : `dict` of `list` of input connections to be passed to run
+        """
+        for key in inputs.keys():
+            inputs[key] = [inputs[key][ind] for ind in indices]
+        return inputs
+
+    def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None, **kwargs):
         """Calibrate and add backgrounds to input calExpList in place
 
         TODO DM-17062: apply jointcal/meas_mosaic here

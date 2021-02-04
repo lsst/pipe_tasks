@@ -128,7 +128,7 @@ class CoaddTaskRunner(pipeBase.TaskRunner):
                                                  **kwargs)
 
 
-class CoaddBaseTask(pipeBase.CmdLineTask):
+class CoaddBaseTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
     """!Base class for coaddition.
 
     Subclasses must specify _DefaultName
