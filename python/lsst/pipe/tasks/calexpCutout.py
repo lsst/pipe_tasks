@@ -45,7 +45,7 @@ class CalexpCutoutTaskConfig(pipeBase.PipelineTaskConfig,
 
 class CalexpCutoutTask(pipeBase.PipelineTask):
     """Task for computing cutouts on a specific calexp given
-    positions and sizes of the stamps.
+    positions, xspans, and yspans of the stamps.
     """
     ConfigClass = CalexpCutoutTaskConfig
     _DefaultName = "calexpCutoutTask"
@@ -56,10 +56,9 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
         Parameters
         ----------
         in_table : `astropy.QTable`
-            A table containing at least the following columns: position, size.
-            The position should be an `astropy.SkyCoord`.  The size is
-            the size of the cutout in pixels.  All cutouts are square in pixel
-            space.
+            A table containing at least the following columns: position, xspan
+            and yspan.  The position should be an `astropy.SkyCoord`.  The
+            xspan and yspan are the extent of the cutout in x and y in pixels.
         calexp : `lsst.afw.image.ExposureF`
             The calibrated exposure from which to extract cutouts
 
@@ -85,9 +84,10 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
             If the input catalog doesn't have the required columns,
             a ValueError is raised
         """
-        if 'position' not in in_table.colnames or 'size' not in in_table.colnames:
+        cols = in_table.colnames
+        if 'position' not in cols or 'xspan' not in cols or 'yspan' not in cols:
             raise ValueError('Required column missing from the input table.  '
-                             'Required columns are "position" and "size".'
+                             'Required columns are "position", "xspan", and "yspan".  '
                              f'The column names are: {in_table.colnames}')
         max_idx = self.config.max_cutouts
         cutout_list = []
@@ -104,10 +104,11 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
             pt = geom.SpherePoint(geom.Angle(ra, geom.degrees),
                                   geom.Angle(dec, geom.degrees))
             pix = wcs.skyToPixel(pt)
-            size = rec['size'].value
+            xspan = rec['xspan'].value
+            yspan = rec['yspan'].value
             # Clamp to LL corner of the LL pixel and draw extent from there
-            box = geom.Box2I(geom.Point2I(int(pix.x-size/2), int(pix.y-size/2)),
-                             geom.Extent2I(size, size))
+            box = geom.Box2I(geom.Point2I(int(pix.x-xspan/2), int(pix.y-yspan/2)),
+                             geom.Extent2I(xspan, yspan))
             if not mim.getBBox().contains(box):
                 if not self.config.skip_bad:
                     raise ValueError(f'Cutout bounding box is not completely contained in the image: {box}')
