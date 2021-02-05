@@ -50,6 +50,12 @@ class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections, dimensions
         storageClass="ExposureF",
         dimensions=("visit", "detector")
     )
+    skyCorr = cT.Input(
+        doc="Input Sky Correction to be subtracted from the calexp if doApplySkyCorr=True",
+        name="skyCorr",
+        storageClass="Background",
+        dimensions=("instrument", "visit", "detector")
+    )
     refCat = cT.PrerequisiteInput(
         doc="Reference catalog that contains bright star positions",
         name="gaia_dr2_20200414",
@@ -64,6 +70,11 @@ class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections, dimensions
         storageClass="BrightStarStamps",
         dimensions=("visit", "detector")
     )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if not config.doApplySkyCorr:
+            self.inputs.remove("skyCorr")
 
 
 class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
@@ -146,6 +157,11 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             " saved when its center is beyond the exposure boundary.",
         default=50
     )
+    doApplySkyCorr = pexConfig.Field(
+        dtype=bool,
+        doc="Apply full focal plane sky correction before extracting stars?",
+        default=True
+    )
     refObjLoader = pexConfig.ConfigurableField(
         target=LoadIndexedReferenceObjectsTask,
         doc="Reference object loader for astrometric calibration.",
@@ -195,6 +211,28 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # configure Gaia refcat
         if butler is not None:
             self.makeSubtask('refObjLoader', butler=butler)
+
+    def applySkyCorr(self, calexp, skyCorr):
+        """Apply correction to the sky background level.
+
+        Sky corrections can be generated with the 'skyCorrection.py'
+        executable in pipe_drivers. Because the sky model used by that
+        code extends over the entire focal plane, this can produce
+        better sky subtraction.
+        The calexp is updated in-place.
+
+        Parameters
+        ----------
+        calexp : `lsst.afw.image.Exposure` or `lsst.afw.image.MaskedImage`
+            Calibrated exposure.
+        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or None,
+                  optional
+            Full focal plane sky correction, obtained by running
+            `lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`.
+        """
+        if isinstance(calexp, afwImage.Exposure):
+            calexp = calexp.getMaskedImage()
+        calexp -= skyCorr.getImage()
 
     def extractStamps(self, inputExposure, refObjLoader=None):
         """ Read position of bright stars within `inputExposure` from refCat
@@ -370,7 +408,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         return warpedStars
 
     @pipeBase.timeMethod
-    def run(self, inputExposure, refObjLoader=None, dataId=None):
+    def run(self, inputExposure, refObjLoader=None, dataId=None, skyCorr=None):
         """Identify bright stars within an exposure using a reference catalog,
         extract stamps around each, then preprocess them. The preprocessing
         steps are: shifting, warping and potentially rotating them to the same
@@ -385,6 +423,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         dataId : `dict` or `lsst.daf.butler.DataCoordinate`
             The dataId of the exposure (and detector) bright stars should be
             extracted from.
+        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or ``None``,
+                  optional
+            Full focal plane sky correction, obtained by running
+            `lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`.
 
         Returns
         -------
@@ -393,6 +435,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
             - ``brightStarStamps``: ``bSS.BrightStarStamps``
         """
+        if self.config.doApplySkyCorr:
+            self.log.info("Applying sky correction to exposure %s (exposure will be modified in-place).",
+                          dataId)
+            self.applySkyCorr(inputExposure, skyCorr)
         self.log.info("Extracting bright stars from exposure %s", dataId)
         # Extract stamps around bright stars
         extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
@@ -423,7 +469,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         return pipeBase.Struct(brightStarStamps=brightStarStamps)
 
     def runDataRef(self, dataRef):
-        """ Read in required calexp, extract and process stamps around bright
+        """Read in required calexp, extract and process stamps around bright
         stars and write them to disk.
 
         Parameters
@@ -432,7 +478,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             Data reference to the calexp to extract bright stars from.
         """
         calexp = dataRef.get("calexp")
-        output = self.run(calexp, dataId=dataRef.dataId)
+        skyCorr = dataRef.get("skyCorr") if self.config.doApplySkyCorr else None
+        output = self.run(calexp, dataId=dataRef.dataId, skyCorr=skyCorr)
         # Save processed bright star stamps
         dataRef.put(output.brightStarStamps, "brightStarStamps")
         return pipeBase.Struct(brightStarStamps=output.brightStarStamps)
