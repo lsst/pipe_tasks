@@ -383,10 +383,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.doForcedMeasurement:
             self.schema.addField(
                 "ip_diffim_forced_PsfFlux_instFlux", "D",
-                "Forced PSF flux measured on the direct image.")
+                "Forced PSF flux measured on the direct image.",
+                units="count")
             self.schema.addField(
                 "ip_diffim_forced_PsfFlux_instFluxErr", "D",
-                "Forced PSF flux error measured on the direct image.")
+                "Forced PSF flux error measured on the direct image.",
+                units="count")
             self.schema.addField(
                 "ip_diffim_forced_PsfFlux_area", "F",
                 "Forced PSF flux effective area of PSF.",
