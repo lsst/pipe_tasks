@@ -1234,14 +1234,6 @@ def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
 class SafeClipAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=AssembleCoaddConnections):
     """Configuration parameters for the SafeClipAssembleCoaddTask.
     """
-    assembleMeanCoadd = pexConfig.ConfigurableField(
-        target=AssembleCoaddTask,
-        doc="Task to assemble an initial Coadd using the MEAN statistic.",
-    )
-    assembleMeanClipCoadd = pexConfig.ConfigurableField(
-        target=AssembleCoaddTask,
-        doc="Task to assemble an initial Coadd using the MEANCLIP statistic.",
-    )
     clipDetection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
         doc="Detect sources on difference between unclipped and clipped coadd")
@@ -1296,10 +1288,6 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=Assem
         self.sigmaClip = 1.5
         self.clipIter = 3
         self.statistic = "MEAN"
-        self.assembleMeanCoadd.statistic = 'MEAN'
-        self.assembleMeanClipCoadd.statistic = 'MEANCLIP'
-        self.assembleMeanCoadd.doWrite = False
-        self.assembleMeanClipCoadd.doWrite = False
 
     def validate(self):
         if self.doSigmaClip:
@@ -1429,8 +1417,6 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         AssembleCoaddTask.__init__(self, *args, **kwargs)
         schema = afwTable.SourceTable.makeMinimalSchema()
         self.makeSubtask("clipDetection", schema=schema)
-        self.makeSubtask("assembleMeanClipCoadd")
-        self.makeSubtask("assembleMeanCoadd")
 
     @utils.inheritDoc(AssembleCoaddTask)
     @pipeBase.timeMethod
@@ -1514,11 +1500,24 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         exp : `lsst.afw.image.Exposure`
             Difference image of unclipped and clipped coadd wrapped in an Exposure
         """
-        coaddMean = self.assembleMeanCoadd.run(skyInfo, tempExpRefList,
-                                               imageScalerList, weightList).coaddExposure
+        config = AssembleCoaddConfig()
+        # getattr necessary because subtasks do not survive Config.toDict()
+        # exclude connections because the class of self.config.connections is not
+        # the same as AssembleCoaddConfig.connections, and the connections are not
+        # needed to run this task anyway.
+        configIntersection = {k: getattr(self.config, k)
+                              for k, v in self.config.toDict().items()
+                              if (k in config.keys() and k != "connections")}
+        config.update(**configIntersection)
 
-        coaddClip = self.assembleMeanClipCoadd.run(skyInfo, tempExpRefList,
-                                                   imageScalerList, weightList).coaddExposure
+        # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
+        config.statistic = 'MEAN'
+        task = AssembleCoaddTask(config=config)
+        coaddMean = task.run(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
+
+        config.statistic = 'MEANCLIP'
+        task = AssembleCoaddTask(config=config)
+        coaddClip = task.run(skyInfo, tempExpRefList, imageScalerList, weightList).coaddExposure
 
         coaddDiff = coaddMean.getMaskedImage().Factory(coaddMean.getMaskedImage())
         coaddDiff -= coaddClip.getMaskedImage()
