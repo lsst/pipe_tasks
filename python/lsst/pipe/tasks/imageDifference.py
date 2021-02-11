@@ -31,7 +31,7 @@ import lsst.geom as geom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
-from lsst.meas.base import ForcedMeasurementTask
+from lsst.meas.base import ForcedMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
@@ -227,6 +227,15 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         target=DipoleFitTask,
         doc="Enable updated dipole fitting method",
     )
+    doApCorr = lsst.pex.config.Field(
+        dtype=bool,
+        default=True,
+        doc="Run subtask to apply aperture corrections"
+    )
+    applyApCorr = lsst.pex.config.ConfigurableField(
+        target=ApplyApCorrTask,
+        doc="Subtask to apply aperture corrections"
+    )
     forcedMeasurement = pexConfig.ConfigurableField(
         target=ForcedMeasurementTask,
         doc="Subtask to force photometer PVI at diaSource location.",
@@ -380,6 +389,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema,
                              algMetadata=self.algMetadata)
+        if self.config.doApCorr:
+            self.makeSubtask("applyApCorr", schema=self.measurement.schema)
         if self.config.doForcedMeasurement:
             self.schema.addField(
                 "ip_diffim_forced_PsfFlux_instFlux", "D",
@@ -910,6 +921,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                                              subtractRes.matchedExposure)
                     else:
                         self.measurement.run(diaSources, subtractedExposure, exposure)
+                if self.config.doApCorr:
+                    self.applyApCorr.run(
+                        catalog=diaSources,
+                        apCorrMap=subtractedExposure.getInfo().getApCorrMap()
+                    )
 
             if self.config.doForcedMeasurement:
                 # Run forced psf photometry on the PVI at the diaSource locations.
