@@ -855,20 +855,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     preConvKernel = None
                     if preConvPsf is not None:
                         preConvKernel = preConvPsf.getLocalKernel()
-                    if self.config.convolveTemplate:
-                        self.log.info("Decorrelation after template image convolution")
-                        decorrResult = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
-                                                            subtractedExposure,
-                                                            subtractRes.psfMatchingKernel,
-                                                            spatiallyVarying=self.config.doSpatiallyVarying,
-                                                            preConvKernel=preConvKernel)
-                    else:
-                        self.log.info("Decorrelation after science image convolution")
-                        decorrResult = self.decorrelate.run(subtractRes.warpedExposure, exposureOrig,
-                                                            subtractedExposure,
-                                                            subtractRes.psfMatchingKernel,
-                                                            spatiallyVarying=self.config.doSpatiallyVarying,
-                                                            preConvKernel=preConvKernel)
+                    decorrResult = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
+                                                        subtractedExposure,
+                                                        subtractRes.psfMatchingKernel,
+                                                        spatiallyVarying=self.config.doSpatiallyVarying,
+                                                        preConvKernel=preConvKernel,
+                                                        templateMatched=self.config.convolveTemplate)
                     subtractedExposure = decorrResult.correctedExposure
 
             # END (if subtractAlgorithm == 'AL')
