@@ -266,7 +266,6 @@ class WriteSourceTableTask(CmdLineTask):
         newCat:  `afwTable.SourceCatalog`
             Source Catalog with requested local calib columns
         """
-        mapper = afwTable.SchemaMapper(catalog.schema)
         measureConfig = SingleFrameMeasurementTask.ConfigClass()
         measureConfig.doReplaceWithNoise = False
 
@@ -274,6 +273,7 @@ class WriteSourceTableTask(CmdLineTask):
         exposure = dataRef.get('calexp_sub',
                                bbox=lsst.geom.Box2I(lsst.geom.Point2I(0, 0), lsst.geom.Point2I(0, 0)))
 
+        aliasMap = catalog.schema.getAliasMap()
         mapper = afwTable.SchemaMapper(catalog.schema)
         mapper.addMinimalSchema(catalog.schema, True)
         schema = mapper.getOutputSchema()
@@ -295,6 +295,7 @@ class WriteSourceTableTask(CmdLineTask):
                 measureConfig.plugins.names.add(plugin)
 
         measurement = SingleFrameMeasurementTask(config=measureConfig, schema=schema)
+        schema.setAliasMap(aliasMap)
         newCat = afwTable.SourceCatalog(schema)
         newCat.extend(catalog, mapper=mapper)
         measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
