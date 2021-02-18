@@ -3,6 +3,9 @@ tasks:
   isr: lsst.ip.isr.IsrTask
   characterizeImage: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
   calibrate: lsst.pipe.tasks.calibrate.CalibrateTask
+  writeSourceTable: lsst.pipe.tasks.postprocess.WriteSourceTableTask
+  transformSourceTable: lsst.pipe.tasks.postprocess.TransformSourceTableTask
+  consolidateSourceTable: lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask
 subsets:
   processCcd:
     subset:
@@ -10,3 +13,18 @@ subsets:
       - characterizeImage
       - calibrate
     description: A set of tasks to run when doing single frame processing
+  sourceTable:
+    subset:
+      - writeSourceTable
+      - transformSourceTable
+      - consolidateSourceTable
+    description: Set of tasks to generate parquet Source Tables from output of processCcd subset.
+  singleFrame:
+    subset:
+      - isr
+      - characterizeImage
+      - calibrate
+      - writeSourceTable
+      - transformSourceTable
+      - consolidateSourceTable
+    description: Set of tasks for complete single frame processing. Analogous to SingleFrameDriver.
