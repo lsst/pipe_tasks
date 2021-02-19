@@ -41,13 +41,15 @@ def detectObjectsInExp(exp, nSigma, nPixMin, grow=0):
     return footPrintSet
 
 
-def checkResult(exp, centroid, percentile=90):
+def checkResult(exp, centroid, srcNum, percentile=90):
     """Sanity check that the centroid of the source is actually bright."""
     threshold = np.percentile(exp.image.array, percentile)
     pixelValue = exp.image[centroid]
     if pixelValue < threshold:
-        raise ValueError(f"Value of brightest star central pixel = {pixelValue:3f} < "
-                         f"{percentile} percentile of image = {threshold:3f}")
+        msg = (f"Sanity check failed: srcNum {srcNum} at {centroid}"
+               f" has central pixel = {pixelValue:3f} <"
+               f" {percentile} percentile of image = {threshold:3f}")
+        raise ValueError(msg)
     return
 
 
@@ -60,7 +62,8 @@ class QuickFrameMeasurementTaskConfig(pexConfig.Config):
     maxNonRoundness = pexConfig.Field(
         dtype=float,
         doc="Ratio of xx to yy (or vice versa) above which to cut, in order to exclude spectra",
-        default=15.,
+        default=5.,
+        # edge defect sometimes 6.8
     )
     maxExtendedness = pexConfig.Field(
         dtype=float,
@@ -141,8 +144,8 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         return medianXx, medianYy
 
     def _calcBrightestObjSrcNum(self, objData):
-        max70, max70srcNum = 0, 0
-        max25, max25srcNum = 0, 0
+        max70, max70srcNum = -1, -1
+        max25, max25srcNum = -1, -1
 
         for srcNum in sorted(objData.keys()):  # srcNum not contiguous so don't use a list comp
             skip = False
@@ -184,7 +187,10 @@ class QuickFrameMeasurementTask(pipeBase.Task):
                 max25srcNum = srcNum
         if max70srcNum != max25srcNum:
             print("WARNING! Max apFlux70 for different object than with max apFlux25")
-        return max70srcNum
+
+        if max70srcNum >= 0:  # starts as -1, return None if nothing is acceptable
+            return max70srcNum
+        return None
 
     def _measureFp(self, fp, exp):
         src = self.table.makeRecord()
@@ -281,6 +287,9 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         medianPsf = self._calcMedianPsf(objData)
 
         brightestObjSrcNum = self._calcBrightestObjSrcNum(objData)
+        if brightestObjSrcNum is None:
+            raise RuntimeError("No sources in image passed cuts")
+
         x = objData[brightestObjSrcNum]['xCentroid']
         y = objData[brightestObjSrcNum]['yCentroid']
         brightestObjCentroid = (x, y)
@@ -290,7 +299,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         brightestObjApFlux25 = objData[brightestObjSrcNum]['apFlux25']
 
         exp.image += median  # put background back in
-        checkResult(exp, brightestObjCentroid)
+        checkResult(exp, brightestObjCentroid, brightestObjSrcNum)
         return pipeBase.Struct(brightestObjCentroid=brightestObjCentroid,
                                brightestObj_xXyY=(xx, yy),
                                brightestObjApFlux70=brightestObjApFlux70,
@@ -332,7 +341,7 @@ if __name__ == '__main__':
     # exp = afwImage.ExposureF('/home/mfl/big_repos/afwdata/LATISS/postISRCCD/postISRCCD_2020021800073-'
     #                          'KPNO_406_828nm~EMPTY-det000.fits.fz')
 
-    dataId = {'dayObs': '2021-02-18', 'seqNum': 277}
+    dataId = {'dayObs': '2021-02-17', 'seqNum': 246}
 
     try:
         import lsst.daf.persistence as dafPersist
