@@ -957,7 +957,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 gen2_read_bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
                 exp = dataRef.get(datasetType='calexp_sub', bbox=gen2_read_bbox)
                 visitInfo = exp.getInfo().getVisitInfo()
-                filterLabel = exp.getFilterLabel()
+                filterLabel = dataRef.get("calexp_filterLabel")
                 psf = exp.getPsf()
                 wcs = exp.getWcs()
                 photoCalib = exp.getPhotoCalib()
