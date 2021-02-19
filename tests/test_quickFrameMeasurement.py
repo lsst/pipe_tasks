@@ -78,7 +78,7 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
             # offset size shouldn't really matter, just make it >> PSF, and make
             # sure the value isn't off-chip or right by the edge for any of the
             # test images
-            offset = 100
+            offset = 250
             wrongCentroid = (foundCentroid[0]+offset, foundCentroid[1]+offset)
             with self.assertRaises(ValueError):
                 checkResult(exp, wrongCentroid)

@@ -41,7 +41,7 @@ def detectObjectsInExp(exp, nSigma, nPixMin, grow=0):
     return footPrintSet
 
 
-def checkResult(exp, centroid, percentile=99.9):
+def checkResult(exp, centroid, percentile=90):
     """Sanity check that the centroid of the source is actually bright."""
     threshold = np.percentile(exp.image.array, percentile)
     pixelValue = exp.image[centroid]
@@ -60,12 +60,17 @@ class QuickFrameMeasurementTaskConfig(pexConfig.Config):
     maxNonRoundness = pexConfig.Field(
         dtype=float,
         doc="Ratio of xx to yy (or vice versa) above which to cut, in order to exclude spectra",
-        default=3.5,
+        default=15.,
     )
     maxExtendedness = pexConfig.Field(
         dtype=float,
         doc="Max absolute value of xx and yy above which to cut, in order to exclude large/things",
         default=100,
+    )
+    doExtendednessCut = pexConfig.Field(
+        dtype=bool,
+        doc="Apply the extendeness cut, as definted by maxExtendedness",
+        default=False,
     )
     initialPsfWidth = pexConfig.Field(
         dtype=float,
@@ -81,6 +86,11 @@ class QuickFrameMeasurementTaskConfig(pexConfig.Config):
         dtype=int,
         doc="Minimum number of pixels in a detected source",
         default=10,
+    )
+    doPrintSourceData = pexConfig.Field(  # XXX move this to debug log messages instead
+        dtype=bool,
+        doc="Print source data for debug?",
+        default=False,
     )
 
 
@@ -135,16 +145,34 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         max25, max25srcNum = 0, 0
 
         for srcNum in sorted(objData.keys()):  # srcNum not contiguous so don't use a list comp
+            skip = False
             xx = objData[srcNum]['xx']
             yy = objData[srcNum]['yy']
-            if xx == 0.0 or yy == 0.0:
-                continue
-            if xx > self.config.maxExtendedness or yy > self.config.maxExtendedness:
-                continue
+
+            # don't just skip because we want to always run for debug purposes
+            # but need to protect against division by zero
+            xx = max(xx, 1e-9)
+            yy = max(yy, 1e-9)
+
+            if self.config.doExtendednessCut:
+                if xx > self.config.maxExtendedness or yy > self.config.maxExtendedness:
+                    skip = skip or True
+
             nonRoundness = xx/yy
             nonRoundness = max(nonRoundness, 1/nonRoundness)
             if nonRoundness > self.config.maxNonRoundness:
-                continue  # skip very unround things
+                skip = skip or True
+
+            if self.config.doPrintSourceData:
+                text = f"src {srcNum}: {objData[srcNum]['xCentroid']:.0f}, {objData[srcNum]['yCentroid']:.0f}"
+                text += f" - xx={xx:.1f}, yy={yy:.1f}, nonRound={nonRoundness:.1f}"
+                text += f" - ap70={objData[srcNum]['apFlux70']:,.0f}"
+                text += f" - ap25={objData[srcNum]['apFlux25']:,.0f}"
+                text += f" - skip={skip}"
+                print(text)
+
+            if skip:
+                continue
 
             ap70 = objData[srcNum]['apFlux70']
             ap25 = objData[srcNum]['apFlux25']
@@ -300,12 +328,26 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
 
 if __name__ == '__main__':
-    import lsst.afw.image as afwImage
-    exp = afwImage.ExposureF('/home/mfl/big_repos/afwdata/LATISS/postISRCCD/postISRCCD_2020021800073-'
-                             'KPNO_406_828nm~EMPTY-det000.fits.fz')
+    # import lsst.afw.image as afwImage
+    # exp = afwImage.ExposureF('/home/mfl/big_repos/afwdata/LATISS/postISRCCD/postISRCCD_2020021800073-'
+    #                          'KPNO_406_828nm~EMPTY-det000.fits.fz')
+
+    dataId = {'dayObs': '2021-02-18', 'seqNum': 277}
+
+    try:
+        import lsst.daf.persistence as dafPersist
+        butler = dafPersist.Butler('/project/shared/auxTel/rerun/quickLook')
+        exp = butler.get('quickLookExp', **dataId)
+    except Exception:
+        from lsst.rapid.analysis.bestEffort import BestEffortIsr
+        REPODIR = '/project/shared/auxTel/'
+        bestEffort = BestEffortIsr(REPODIR)
+        exp = bestEffort.getExposure(dataId)
 
     config = QuickFrameMeasurementTaskConfig()
     config.imageIsDispersed = False
+    config.doPrintSourceData = True
+    config.doExtendednessCut = False
     qfm = QuickFrameMeasurementTask(config=config)
 
     result = qfm.run(exp)
