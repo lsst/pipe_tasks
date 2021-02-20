@@ -55,11 +55,6 @@ def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
 
 
 class WriteObjectTableConfig(pexConfig.Config):
-    priorityList = pexConfig.ListField(
-        dtype=str,
-        default=[],
-        doc="Priority-ordered list of bands for the merge."
-    )
     engine = pexConfig.Field(
         dtype=str,
         default="pyarrow",
@@ -70,11 +65,6 @@ class WriteObjectTableConfig(pexConfig.Config):
         default="deep",
         doc="Name of coadd"
     )
-
-    def validate(self):
-        pexConfig.Config.validate(self)
-        if len(self.priorityList) == 0:
-            raise RuntimeError("No priority list provided")
 
 
 class WriteObjectTableTask(CmdLineTask):
