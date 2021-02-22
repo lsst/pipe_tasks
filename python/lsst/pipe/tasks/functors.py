@@ -292,9 +292,11 @@ class Functor(object):
             df = data.toDataFrame(columns=columns)
             return df
 
-        # Get proper multi-level columns specification for this functor
+        # Get proper columns specification for this functor
         if is_multiLevel:
             columns = self.multilevelColumns(data, columnIndex=columnIndex)
+        else:
+            columns = self.columns
 
         if isinstance(data, MultilevelParquetTable):
             # Load in-memory dataframe with appropriate columns the gen2 way
@@ -304,7 +306,9 @@ class Functor(object):
             df = data.get(parameters={"columns": columns})
 
         # Drop unnecessary column levels
-        df = self._setLevels(df)
+        if is_multiLevel:
+            df = self._setLevels(df)
+
         return df
 
     def _setLevels(self, df):

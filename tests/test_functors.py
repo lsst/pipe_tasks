@@ -35,7 +35,7 @@ import lsst.geom as geom
 from lsst.sphgeom import HtmPixelization
 import lsst.meas.base as measBase
 import lsst.utils.tests
-from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
+from lsst.pipe.tasks.parquetTable import MultilevelParquetTable, ParquetTable
 from lsst.daf.butler import Butler, DatasetType
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                       DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
@@ -69,6 +69,10 @@ class FunctorTestCase(unittest.TestCase):
         df = functools.reduce(lambda d1, d2: d1.join(d2), dfFilterDSCombos)
 
         return MultilevelParquetTable(dataFrame=df)
+
+    def simulateParquet(self, dataDict):
+        df = pd.DataFrame(dataDict)
+        return ParquetTable(dataFrame=df)
 
     def getDatasetHandle(self, parq):
         df = parq._df
@@ -149,6 +153,10 @@ class FunctorTestCase(unittest.TestCase):
         func = Column('base_FootprintArea_value', filt='g')
         self._funcVal(func, parq)
 
+        parq = self.simulateParquet(self.dataDict)
+        func = Column('base_FootprintArea_value')
+        self._funcVal(func, parq)
+
     def testCustom(self):
         self.columns.append("base_FootprintArea_value")
         self.dataDict["base_FootprintArea_value"] = \
@@ -161,6 +169,13 @@ class FunctorTestCase(unittest.TestCase):
 
         np.allclose(val.values, 2*func2(parq).values, atol=1e-13, rtol=0)
 
+        parq = self.simulateParquet(self.dataDict)
+        func = CustomFunctor('2 * base_FootprintArea_value')
+        val = self._funcVal(func, parq)
+        func2 = Column('base_FootprintArea_value')
+
+        np.allclose(val.values, 2*func2(parq).values, atol=1e-13, rtol=0)
+
     def testCoords(self):
         parq = self.simulateMultiParquet(self.dataDict)
         ra = self._funcVal(RAColumn(), parq)
@@ -168,10 +183,21 @@ class FunctorTestCase(unittest.TestCase):
 
         columnDict = {'dataset': 'ref', 'band': 'g',
                       'column': ['coord_ra', 'coord_dec']}
+
         coords = parq.toDataFrame(columns=columnDict, droplevels=True) / np.pi * 180.
 
         self.assertTrue(np.allclose(ra, coords[('ref', 'g', 'coord_ra')], atol=1e-13, rtol=0))
         self.assertTrue(np.allclose(dec, coords[('ref', 'g', 'coord_dec')], atol=1e-13, rtol=0))
+
+        # single-level column index table
+        parq = self.simulateParquet(self.dataDict)
+        ra = self._funcVal(RAColumn(), parq)
+        dec = self._funcVal(DecColumn(), parq)
+
+        coords = parq.toDataFrame(columns=['coord_ra', 'coord_dec']) / np.pi * 180.
+
+        self.assertTrue(np.allclose(ra, coords['coord_ra'], atol=1e-13, rtol=0))
+        self.assertTrue(np.allclose(dec, coords['coord_dec'], atol=1e-13, rtol=0))
 
     def testMag(self):
         self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr"])
@@ -330,6 +356,7 @@ class FunctorTestCase(unittest.TestCase):
         self.columns.extend(["modelfit_CModel_instFlux", "base_PsfFlux_instFlux"])
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1)
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1)
+
         parq = self.simulateMultiParquet(self.dataDict)
         # Modify r band value slightly.
         parq._df[("meas", "r", "base_PsfFlux_instFlux")] -= 0.1
@@ -369,6 +396,22 @@ class FunctorTestCase(unittest.TestCase):
                  MagDiff('base_PsfFlux', 'modelfit_CModel', filt=filt)]
 
         df = self._compositeFuncVal(CompositeFunctor(funcs), parq)
+
+    def testCompositeSimple(self):
+        """Test single-level composite functor for functionality
+        """
+        self.columns.extend(["modelfit_CModel_instFlux", "base_PsfFlux_instFlux"])
+        self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1)
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1)
+
+        parq = self.simulateParquet(self.dataDict)
+        funcDict = {'ra': RAColumn(),
+                    'dec': DecColumn(),
+                    'psfMag': Mag('base_PsfFlux'),
+                    'cmodel_magDiff': MagDiff('base_PsfFlux',
+                                              'modelfit_CModel')}
+        func = CompositeFunctor(funcDict)
+        df = self._compositeFuncVal(func, parq)  # noqa
 
     def testCompositeColor(self):
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
