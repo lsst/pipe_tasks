@@ -112,6 +112,39 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
             exposure[subBox].mask.array |= bitmask
 
 
+def _isWCSGalsimDefault(wcs, hdr):
+    """Decide if wcs = galsim.PixelScale(1.0) is explicitly present in header,
+    or if it's just the galsim default.
+
+    Parameters
+    ----------
+    wcs : galsim.BaseWCS
+        Potentially default WCS.
+    hdr : galsim.fits.FitsHeader
+        Header as read in by galsim.
+
+    Returns
+    -------
+    isDefault : bool
+        True if default, False if explicitly set in header.
+    """
+    if wcs != galsim.PixelScale(1.0):
+        return False
+    if hdr.get('GS_WCS') is not None:
+        return False
+    if hdr.get('CTYPE1', 'LINEAR') == 'LINEAR':
+        return not any(k in hdr for k in ['CD1_1', 'CDELT1'])
+    for wcs_type in galsim.fitswcs.fits_wcs_types:
+        # If one of these succeeds, then assume result is explicit
+        try:
+            wcs_type._readHeader(hdr)
+            return False
+        except Exception:
+            pass
+    else:
+        return not any(k in hdr for k in ['CD1_1', 'CDELT1'])
+
+
 class InsertFakesConnections(PipelineTaskConnections,
                              defaultTemplates={"coaddName": "deep",
                                                "fakesType": "fakes_"},
@@ -513,6 +546,61 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 yield skyCoord, star
             else:
                 raise TypeError(f"Unknown sourceType {sourceType}")
+
+    def _generateGSObjectsFromImages(self, exposure, fakeCat):
+        """Process catalog to generate `galsim.GSObject` s.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+            The exposure into which the fake sources should be added
+        fakeCat : `pandas.core.frame.DataFrame`
+            The catalog of fake sources to be input
+
+        Yields
+        ------
+        gsObjects : `generator`
+            A generator of tuples of `lsst.geom.SpherePoint` and `galsim.GSObject`.
+        """
+        band = exposure.getFilterLabel().bandLabel
+        wcs = exposure.getWcs()
+        photoCalib = exposure.getPhotoCalib()
+
+        self.log.info(f"Processing {len(fakeCat)} fake images")
+
+        for (index, row) in fakeCat.iterrows():
+            ra = row[self.config.raColName]
+            dec = row[self.config.decColName]
+            skyCoord = SpherePoint(ra, dec, radians)
+            xy = wcs.skyToPixel(skyCoord)
+
+            try:
+                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+            except LogicError:
+                continue
+
+            imFile = row[band+"imFilename"]
+            try:
+                imFile = imFile.decode("utf-8")
+            except AttributeError:
+                pass
+            imFile = imFile.strip()
+            im = galsim.fits.read(imFile, read_header=True)
+
+            # GalSim will always attach a WCS to the image read in as above.  If
+            # it can't find a WCS in the header, then it defaults to scale = 1.0
+            # arcsec / pix.  So if that's the scale, then we need to check if it
+            # was explicitly set or if it's just the default.  If it's just the
+            # default then we should override with the pixel scale of the target
+            # image.
+            if _isWCSGalsimDefault(im.wcs, im.header):
+                im.wcs = galsim.PixelScale(
+                    wcs.getPixelScale().asArcseconds()
+                )
+
+            obj = galsim.InterpolatedImage(im)
+            obj = obj.withFlux(flux)
+            yield skyCoord, obj
 
     def processImagesForInsertion(self, fakeCat, wcs, psf, photoCalib, band, pixelScale):
         """Process images from files into the format needed for insertion.
