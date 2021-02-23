@@ -457,6 +457,63 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return resultStruct
 
+    def _generateGSObjectsFromCatalog(self, exposure, fakeCat, galCheckVal, starCheckVal):
+        """Process catalog to generate `galsim.GSObject` s.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+            The exposure into which the fake sources should be added
+        fakeCat : `pandas.core.frame.DataFrame`
+            The catalog of fake sources to be input
+        galCheckVal : `str`, `bytes` or `int`
+            The value that is set in the sourceType column to specifiy an object is a galaxy.
+        starCheckVal : `str`, `bytes` or `int`
+            The value that is set in the sourceType column to specifiy an object is a star.
+
+        Yields
+        ------
+        gsObjects : `generator`
+            A generator of tuples of `lsst.geom.SpherePoint` and `galsim.GSObject`.
+        """
+        band = exposure.getFilterLabel().bandLabel
+        wcs = exposure.getWcs()
+        photoCalib = exposure.getPhotoCalib()
+
+        self.log.info(f"Making {len(fakeCat)} objects for insertion")
+
+        for (index, row) in fakeCat.iterrows():
+            ra = row[self.config.raColName]
+            dec = row[self.config.decColName]
+            skyCoord = SpherePoint(ra, dec, radians)
+            xy = wcs.skyToPixel(skyCoord)
+
+            try:
+                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+            except LogicError:
+                continue
+
+            sourceType = row[self.config.sourceType]
+            if sourceType == galCheckVal:
+                bulge = galsim.Sersic(n=row[self.config.nBulge], half_light_radius=row[self.config.bulgeHLR])
+                axisRatioBulge = row[self.config.bBulge]/row[self.config.aBulge]
+                bulge = bulge.shear(q=axisRatioBulge, beta=((90 - row[self.config.paBulge])*galsim.degrees))
+
+                disk = galsim.Sersic(n=row[self.config.nDisk], half_light_radius=row[self.config.diskHLR])
+                axisRatioDisk = row[self.config.bDisk]/row[self.config.aDisk]
+                disk = disk.shear(q=axisRatioDisk, beta=((90 - row[self.config.paDisk])*galsim.degrees))
+
+                gal = bulge + disk
+                gal = gal.withFlux(flux)
+
+                yield skyCoord, gal
+            elif sourceType == starCheckVal:
+                star = galsim.DeltaFunction()
+                star = star.withFlux(flux)
+                yield skyCoord, star
+            else:
+                raise TypeError(f"Unknown sourceType {sourceType}")
+
     def processImagesForInsertion(self, fakeCat, wcs, psf, photoCalib, band, pixelScale):
         """Process images from files into the format needed for insertion.
 
