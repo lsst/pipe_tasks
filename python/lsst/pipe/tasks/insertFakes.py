@@ -442,15 +442,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         this is then convolved with the PSF at that point.
         """
 
-        image.mask.addMaskPlane("FAKE")
-        self.bitmask = image.mask.getPlaneBitMask("FAKE")
-        self.log.info("Adding mask plane with bitmask %d" % self.bitmask)
-
         fakeCat = self.addPixCoords(fakeCat, wcs)
         fakeCat = self.trimFakeCat(fakeCat, image, wcs)
-        band = image.getFilterLabel().bandLabel
-        psf = image.getPsf()
-        pixelScale = wcs.getPixelScale().asArcseconds()
 
         if len(fakeCat) > 0:
             if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
@@ -469,18 +462,10 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 if self.config.doCleanCat:
                     fakeCat = self.cleanCat(fakeCat, starCheckVal)
 
-                galaxies = (fakeCat[self.config.sourceType] == galCheckVal)
-                galImages = self.mkFakeGalsimGalaxies(fakeCat[galaxies], band, photoCalib, pixelScale, psf,
-                                                      image)
-
-                stars = (fakeCat[self.config.sourceType] == starCheckVal)
-                starImages = self.mkFakeStars(fakeCat[stars], band, photoCalib, psf, image)
+                generator = self._generateGSObjectsFromCatalog(image, fakeCat, galCheckVal, starCheckVal)
             else:
-                galImages, starImages = self.processImagesForInsertion(fakeCat, wcs, psf, photoCalib, band,
-                                                                       pixelScale)
-
-            image = self.addFakeSources(image, galImages, "galaxy")
-            image = self.addFakeSources(image, starImages, "star")
+                generator = self._generateGSObjectsFromImages(image, fakeCat)
+            _add_fake_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
         elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
             self.log.warn("No fakes found for this dataRef; processing anyway.")
         else:
