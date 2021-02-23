@@ -496,10 +496,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         ras = fakeCat[self.config.raColName].values
         decs = fakeCat[self.config.decColName].values
-        skyCoords = [SpherePoint(ra, dec, radians) for (ra, dec) in zip(ras, decs)]
-        pixCoords = wcs.skyToPixel(skyCoords)
-        xs = [coord.getX() for coord in pixCoords]
-        ys = [coord.getY() for coord in pixCoords]
+        xs, ys = wcs.skyToPixelArray(ras, decs)
         fakeCat["x"] = xs
         fakeCat["y"] = ys
 
