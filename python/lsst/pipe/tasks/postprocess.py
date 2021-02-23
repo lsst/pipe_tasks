@@ -230,6 +230,7 @@ class WriteSourceTableTask(CmdLineTask):
         ccdVisitId = dataRef.get('ccdExposureId')
         result = self.run(src, ccdVisitId=ccdVisitId)
         dataRef.put(result.table, 'source')
+        return result
 
     def run(self, catalog, ccdVisitId=None):
         """Convert `src` catalog to parquet
