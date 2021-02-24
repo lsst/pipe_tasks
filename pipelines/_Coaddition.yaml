@@ -1,6 +1,10 @@
 description: Coaddition
 tasks:
-  makeWarp: lsst.pipe.tasks.makeCoaddTempExp.MakeWarpTask
+  makeWarp:
+    class: lsst.pipe.tasks.makeCoaddTempExp.MakeWarpTask
+    config:
+      makePsfMatched: true
+      doWriteEmptyWarps: true
   assembleCoadd: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask
 subsets:
   coaddition:
