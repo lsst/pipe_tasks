@@ -522,12 +522,16 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     The original fakeCat trimmed to the area of the image
         """
 
-        bbox = Box2D(image.getBBox())
+        bbox = Box2D(image.getBBox()).dilatedBy(self.config.trimBuffer)
+        xs = fakeCat["x"].values
+        ys = fakeCat["y"].values
 
-        def trim(row):
-            return bbox.dilatedBy(self.config.trimBuffer).contains(row["x"], row["y"])
+        isContained = xs >= bbox.minX
+        isContained &= xs <= bbox.maxX
+        isContained &= ys >= bbox.minY
+        isContained &= ys <= bbox.maxY
 
-        return fakeCat[fakeCat.apply(trim, axis=1)]
+        return fakeCat[isContained]
 
     def mkFakeGalsimGalaxies(self, fakeCat, band, photoCalib, pixelScale, psf, image):
         """Make images of fake galaxies using GalSim.
