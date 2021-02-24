@@ -6,7 +6,7 @@ __all__ = ["ConfigurableActionsField", "ConfigurableAction"]
 import ast
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Union, Type, Any
+from typing import Iterable, Mapping, Union, Type, Any, Tuple
 
 from lsst.pex.config.config import Config, Field, FieldValidationError, _typeStr, _joinNamePath
 from lsst.pex.config.comparison import compareConfigs, compareScalars, getComparisonName
@@ -103,7 +103,7 @@ class ConfigurableActionStruct:
         else:
             super().__delattr__(name)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Tuple[str, ConfigurableAction]]:
         yield from self._attrs.items()
 
 

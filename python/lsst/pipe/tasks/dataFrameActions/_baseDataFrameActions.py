@@ -21,7 +21,7 @@ class DataFrameAction(ConfigurableAction):
         raise NotImplementedError("This method should be overloaded in a subclass")
 
     @classmethod
-    def fromArgs(cls, *, **kwargs):
+    def fromArgs(cls, **kwargs):
         """This supports directly creating an action from a script or notebook
         outside of a config hierarchy.
         """

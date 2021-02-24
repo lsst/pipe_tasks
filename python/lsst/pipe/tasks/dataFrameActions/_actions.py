@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+__all__ = ("SingleColumnAction", "MultiColumnAction", "CoordColumn", "MagColumn", "SumColumns", "AddColumn",
+           "DivideColumns", "SubtractColumns", "MultiplyColumns", "BaseBinOp")
+
 from typing import Iterable
 
 import numpy as np
@@ -12,7 +15,7 @@ from lsst.pex.config import Field, ConfigField
 
 
 class SingleColumnAction(DataFrameAction):
-    column = Field(doc="Column to load for this action", dtype=str)
+    column = Field(doc="Column to load for this action", dtype=str, optional=False)
 
     @property
     def columns(self) -> Iterable[str]:
@@ -47,13 +50,49 @@ class MagColumn(SingleColumnAction):
             return -2.5 * np.log10(df[self.column] / fluxMag0)
 
 
-class SumColumns(MultiColumnAction):
+class BaseBinOp(MultiColumnAction):
+    """This is a baseclass for various binary operator actions
+    """
+    def setDefaults(self):
+        super().setDefaults()
+        self.actions.ColA = SingleColumnAction
+        self.actions.ColB = SingleColumnAction
+
+
+class SumColumns(BaseBinOp):
     """This is a `MultiColumnAction` that is designed to add two columns
     together and return the result. The names in the `actions` field should
     be ColA and ColB
     """
     def __call__(self, df, **kwargs):
         return self.actions.ColA(df, kwargs) + self.actions.ColB(df, kwargs)
+
+
+class SubtractColumns(BaseBinOp):
+    """This is a `MultiColumnAction` that is designed to subtract two columns
+    together and return the result. The names in the `actions` field should
+    be ColA and ColB
+    """
+    def __call__(self, df, **kwargs):
+        return self.actions.ColA(df, kwargs) - self.actions.ColB(df, kwargs)
+
+
+class MultiplyColumns(BaseBinOp):
+    """This is a `MultiColumnAction` that is designed to multiply two columns
+    together and return the result. The names in the `actions` field should
+    be ColA and ColB
+    """
+    def __call__(self, df, **kwargs):
+        return self.actions.ColA(df, kwargs) * self.actions.ColB(df, kwargs)
+
+
+class DivideColumns(BaseBinOp):
+    """This is a `MultiColumnAction` that is designed to multiply two columns
+    together and return the result. The names in the `actions` field should
+    be ColA and ColB
+    """
+    def __call__(self, df, **kwargs):
+        return self.actions.ColA(df, kwargs) / self.actions.ColB(df, kwargs)
 
 
 class AddColumn(DataFrameAction):
