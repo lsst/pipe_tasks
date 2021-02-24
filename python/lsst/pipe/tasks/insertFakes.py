@@ -441,9 +441,15 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         The galsim galaxies are made using a double sersic profile, one for the bulge and one for the disk,
         this is then convolved with the PSF at that point.
         """
+        # Attach overriding wcs and photoCalib to image, but retain originals
+        # so we can reset at the end.
+        origWcs = image.getWcs()
+        origPhotoCalib = image.getPhotoCalib()
+        image.setWcs(wcs)
+        image.setPhotoCalib(photoCalib)
 
-        fakeCat = self.addPixCoords(fakeCat, wcs)
-        fakeCat = self.trimFakeCat(fakeCat, image, wcs)
+        fakeCat = self.addPixCoords(fakeCat, image)
+        fakeCat = self.trimFakeCat(fakeCat, image)
 
         if len(fakeCat) > 0:
             if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
@@ -470,6 +476,10 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             self.log.warn("No fakes found for this dataRef; processing anyway.")
         else:
             raise RuntimeError("No fakes found for this dataRef.")
+
+        # restore original exposure WCS and photoCalib
+        image.setWcs(origWcs)
+        image.setPhotoCalib(origPhotoCalib)
 
         resultStruct = pipeBase.Struct(imageWithFakes=image)
 
@@ -674,7 +684,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return galImages, starImages
 
-    def addPixCoords(self, fakeCat, wcs):
+    def addPixCoords(self, fakeCat, image):
 
         """Add pixel coordinates to the catalog of fakes.
 
@@ -682,19 +692,14 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
                     The catalog of fake sources to be input
-        wcs : `lsst.afw.geom.SkyWcs`
-                    WCS to use to add fake sources
+        image : `lsst.afw.image.exposure.exposure.ExposureF`
+                    The image into which the fake sources should be added
 
         Returns
         -------
         fakeCat : `pandas.core.frame.DataFrame`
-
-        Notes
-        -----
-        The default option is to use the WCS information from the image. If the ``useUpdatedCalibs`` config
-        option is set then it will use the updated WCS from jointCal.
         """
-
+        wcs = image.getWcs()
         ras = fakeCat[self.config.raColName].values
         decs = fakeCat[self.config.decColName].values
         xs, ys = wcs.skyToPixelArray(ras, decs)
@@ -703,7 +708,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return fakeCat
 
-    def trimFakeCat(self, fakeCat, image, wcs):
+    def trimFakeCat(self, fakeCat, image):
         """Trim the fake cat to about the size of the input image.
 
         `fakeCat` must be processed with addPixCoords before using this method.
@@ -714,8 +719,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     The catalog of fake sources to be input
         image : `lsst.afw.image.exposure.exposure.ExposureF`
                     The image into which the fake sources should be added
-        wcs : `lsst.afw.geom.SkyWcs`
-                    WCS to use to add fake sources
 
         Returns
         -------
