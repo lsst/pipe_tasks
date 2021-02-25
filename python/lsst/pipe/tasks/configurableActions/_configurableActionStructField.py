@@ -1,21 +1,18 @@
 from __future__ import annotations
 import inspect
 
-__all__ = ["ConfigurableActionsField", "ConfigurableAction"]
+__all__ = ("ConfigurableActionStructField",)
 
 import ast
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Union, Type, Any, Tuple
+from typing import Iterable, Mapping, Union, Type, Tuple
 
 from lsst.pex.config.config import Config, Field, FieldValidationError, _typeStr, _joinNamePath
 from lsst.pex.config.comparison import compareConfigs, compareScalars, getComparisonName
 from lsst.pex.config.callStack import getCallStack, getStackFrame
 
-
-class ConfigurableAction(Config):
-    def __call__(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("This method should be overloaded in subclasses")
+from . import ConfigurableAction
 
 
 @dataclass
@@ -103,11 +100,14 @@ class ConfigurableActionStruct:
         else:
             super().__delattr__(name)
 
-    def __iter__(self) -> Iterable[Tuple[str, ConfigurableAction]]:
-        yield from self._attrs.items()
+    def __iter__(self) -> ConfigurableAction:
+        yield from self._attrs.values()
+
+    def items(self) -> Iterable[Tuple[str, ConfigurableAction]]:
+        yield from self._attrs.items()()
 
 
-class ConfigurableActionsField(Field):
+class ConfigurableActionStructField(Field):
 
     StructClass = ConfigurableActionStruct
 
@@ -226,8 +226,8 @@ class ConfigurableActionsField(Field):
         -----
         Floating point comparisons are performed by `numpy.allclose`.
         """
-        d1 = getattr(instance1, self.name)
-        d2 = getattr(instance2, self.name)
+        d1: ConfigurableActionStruct = getattr(instance1, self.name)
+        d2: ConfigurableActionStruct = getattr(instance2, self.name)
         name = getComparisonName(
             _joinNamePath(instance1._name, self.name),
             _joinNamePath(instance2._name, self.name)
@@ -235,7 +235,7 @@ class ConfigurableActionsField(Field):
         if not compareScalars(f"keys for {name}", set(d1.fieldNames), set(d2.fieldNames), output=output):
             return False
         equal = True
-        for k, v1 in d1:
+        for k, v1 in d1.items():
             v2 = getattr(d2, k)
             result = compareConfigs(f"{name}.{k}", v1, v2, shortcut=shortcut,
                                     rtol=rtol, atol=atol, output=output)

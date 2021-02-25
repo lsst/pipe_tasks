@@ -8,10 +8,10 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-from ..configurableActions import ConfigurableActionsField
+from ..configurableActions import ConfigurableActionStructField, ConfigurableActionField
 from ._baseDataFrameActions import DataFrameAction
 
-from lsst.pex.config import Field, ConfigField
+from lsst.pex.config import Field
 
 
 class SingleColumnAction(DataFrameAction):
@@ -21,12 +21,12 @@ class SingleColumnAction(DataFrameAction):
     def columns(self) -> Iterable[str]:
         return (self.column, )
 
-    def __call__(self, df):
+    def __call__(self, df, **kwargs):
         return df[self.column]
 
 
 class MultiColumnAction(DataFrameAction):
-    actions = ConfigurableActionsField(doc="Configurable actions to use in a joint action")
+    actions = ConfigurableActionStructField(doc="Configurable actions to use in a joint action")
 
     @property
     def columns(self) -> Iterable[str]:
@@ -96,8 +96,8 @@ class DivideColumns(BaseBinOp):
 
 
 class AddColumn(DataFrameAction):
-    aggregator = ConfigField(doc="This is an instance of a Dataframe action that will be used to "
-                             "create a new column", dtype=DataFrameAction)
+    aggregator = ConfigurableActionField(doc="This is an instance of a Dataframe action that will be used "
+                                         "to create a new column", dtype=DataFrameAction)
     newColumn = Field(doc="Name of the new column to add", dtype=str)
 
     @property

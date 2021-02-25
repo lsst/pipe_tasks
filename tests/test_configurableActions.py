@@ -23,7 +23,7 @@ import unittest
 
 import lsst.utils.tests
 
-from lsst.pipe.tasks.configurableActions import ConfigurableActionsField, ConfigurableAction
+from lsst.pipe.tasks.configurableActions import ConfigurableActionStructField, ConfigurableAction
 from lsst.pex.config import Config, Field
 
 
@@ -51,7 +51,7 @@ class TestAction3(ConfigurableAction):
 class ConfigurableActionsTestCase(unittest.TestCase):
     def _createConfig(self, default=None):
         class TestConfig(Config):
-            actions = ConfigurableActionsField(doc="Actions to be tested", default=default)
+            actions = ConfigurableActionStructField(doc="Actions to be tested", default=default)
         return TestConfig
 
     def testConfigInstatiation(self):
@@ -78,7 +78,7 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test2"))
         self.assertEqual(config.actions.test2.var, 1)
 
-        ### NOTE DESIGN DISCUSSION TO BE HAD HERE
+        # ## NOTE DESIGN DISCUSSION TO BE HAD HERE
         # Test that a dictionary can be used to add multiple parallel
         # assignments (useful for pipeline assingment)
         configClass = self._createConfig(default={"test1": TestAction1})
@@ -94,11 +94,6 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         config.actions = {"test2": 'TestAction2', "test3": 'TestAction3'}
         self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test2", "test3"))
         self.assertIsInstance(config.actions.test2, TestAction2)
-
-
-
-
-
 
 
 def setup_module(module):
