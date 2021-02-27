@@ -23,7 +23,7 @@ from contextlib import contextmanager
 import numpy as np
 
 from lsst.pex.config import Config, Field, ListField, ConfigurableField
-from lsst.pipe.base import Task
+from lsst.pipe.base import Task, Struct
 from lsst.meas.algorithms import SubtractBackgroundTask
 
 __all__ = ["ScaleVarianceConfig", "ScaleVarianceTask"]
@@ -54,6 +54,8 @@ class ScaleVarianceTask(Task):
     attempts to correct for this by scaling the variance plane to match
     the observed variance in the image. This is not perfect (because we're
     not tracking the covariance) but it's simple and is often good enough.
+
+    The task implements a pixel-based and an image-based correction estimator.
     """
     ConfigClass = ScaleVarianceConfig
     _DefaultName = "scaleVariance"
@@ -92,12 +94,13 @@ class ScaleVarianceTask(Task):
             maskedImage += bgImage
 
     def run(self, maskedImage):
-        """Rescale the variance in a maskedImage
+        """Rescale the variance in a maskedImage in place.
 
         Parameters
         ----------
         maskedImage :  `lsst.afw.image.MaskedImage`
-            Image for which to determine the variance rescaling factor.
+            Image for which to determine the variance rescaling factor. The image
+            is modified in place.
 
         Returns
         -------
@@ -107,29 +110,57 @@ class ScaleVarianceTask(Task):
         Raises
         ------
         RuntimeError
-            If the estimated variance rescaling factor exceeds the
+            If the estimated variance rescaling factor by both methods exceed the
             configured limit.
+
+        Notes
+        -----
+        The task calculates and applies the pixel-based correction unless
+        it is over the ``config.limit`` threshold. In this case, the image-based
+        method is applied.
         """
         with self.subtractedBackground(maskedImage):
             factor = self.pixelBased(maskedImage)
-            if np.isnan(factor) or factor > self.config.limit:
+            if factor > self.config.limit:
                 self.log.warn("Pixel-based variance rescaling factor (%f) exceeds configured limit (%f); "
                               "trying image-based method", factor, self.config.limit)
                 factor = self.imageBased(maskedImage)
-                if np.isnan(factor) or factor > self.config.limit:
+                if factor > self.config.limit:
                     raise RuntimeError("Variance rescaling factor (%f) exceeds configured limit (%f)" %
                                        (factor, self.config.limit))
             self.log.info("Renormalizing variance by %f" % (factor,))
             maskedImage.variance *= factor
         return factor
 
+    def computeScaleFactors(self, maskedImage):
+        """Calculate and return both variance scaling factors without modifying the image.
+
+        Parameters
+        ----------
+        maskedImage :  `lsst.afw.image.MaskedImage`
+            Image for which to determine the variance rescaling factor.
+
+        Returns
+        -------
+        R : `lsst.pipe.base.Struct`
+          - ``pixelFactor`` : `float` The pixel based variance rescaling factor
+            or 1 if all pixels are masked or invalid.
+          - ``imageFactor`` : `float` The image based variance rescaling factor
+            or 1 if all pixels are masked or invalid.
+        """
+        with self.subtractedBackground(maskedImage):
+            pixelFactor = self.pixelBased(maskedImage)
+            imageFactor = self.imageBased(maskedImage)
+        return Struct(pixelFactor=pixelFactor, imageFactor=imageFactor)
+
     def pixelBased(self, maskedImage):
         """Determine the variance rescaling factor from pixel statistics
 
         We calculate SNR = image/sqrt(variance), and the distribution
         for most of the background-subtracted image should have a standard
-        deviation of unity. The variance rescaling factor is the factor that
-        brings that distribution to have unit standard deviation.
+        deviation of unity. We use the interquartile range as a robust estimator
+        of the SNR standard deviation. The variance rescaling factor is the
+        factor that brings that distribution to have unit standard deviation.
 
         This may not work well if the image has a lot of structure in it, as
         the assumptions are violated. In that case, use an alternate
@@ -143,21 +174,24 @@ class ScaleVarianceTask(Task):
         Returns
         -------
         factor : `float`
-            Variance rescaling factor.
+            Variance rescaling factor or 1 if all pixels are masked or non-finite.
+
         """
-        variance = maskedImage.variance
-        snr = maskedImage.image.array/np.sqrt(variance.array)
         maskVal = maskedImage.mask.getPlaneBitMask(self.config.maskPlanes)
-        isGood = ((maskedImage.mask.array & maskVal) == 0) & (maskedImage.variance.array > 0)
-        # Robust measurement of stdev using inter-quartile range
-        try:
-            q1, q3 = np.percentile(snr[isGood], (25, 75))
-        except IndexError:
-            # This error is raised when all data is nan. Catch error so that it does not
-            # propagate any higher. Set the stdev to one will not fix the bad data, but
-            # it will allow the task to complete. It should be the job of higher level
-            # tasks to handle missing or bad data
+        isGood = (((maskedImage.mask.array & maskVal) == 0)
+                  & np.isfinite(maskedImage.image.array)
+                  & np.isfinite(maskedImage.variance.array)
+                  & (maskedImage.variance.array > 0))
+
+        nGood = np.sum(isGood)
+        self.log.debugf("Number of selected background pixels: {} of {}.", nGood, isGood.size)
+        if nGood < 2:
+            # Not enough good data, np.percentile needs at least 2 points
+            # to estimate a range
             return 1.0
+        # Robust measurement of stdev using inter-quartile range
+        snr = maskedImage.image.array[isGood]/np.sqrt(maskedImage.variance.array[isGood])
+        q1, q3 = np.percentile(snr, (25, 75))
         stdev = 0.74*(q3 - q1)
         return stdev**2
 
@@ -165,7 +199,8 @@ class ScaleVarianceTask(Task):
         """Determine the variance rescaling factor from image statistics
 
         We calculate average(SNR) = stdev(image)/median(variance), and
-        the value should be unity. The variance rescaling factor is the
+        the value should be unity. We use the interquartile range as a robust
+        estimator of the stdev. The variance rescaling factor is the
         factor that brings this value to unity.
 
         This may not work well if the pixels from which we measure the
@@ -181,10 +216,19 @@ class ScaleVarianceTask(Task):
         Returns
         -------
         factor : `float`
-            Variance rescaling factor.
+            Variance rescaling factor or 1 if all pixels are masked or non-finite.
         """
         maskVal = maskedImage.mask.getPlaneBitMask(self.config.maskPlanes)
-        isGood = ((maskedImage.mask.array & maskVal) == 0) & (maskedImage.variance.array > 0)
+        isGood = (((maskedImage.mask.array & maskVal) == 0)
+                  & np.isfinite(maskedImage.image.array)
+                  & np.isfinite(maskedImage.variance.array)
+                  & (maskedImage.variance.array > 0))
+        nGood = np.sum(isGood)
+        self.log.debugf("Number of selected background pixels: {} of {}.", nGood, isGood.size)
+        if nGood < 2:
+            # Not enough good data, np.percentile needs at least 2 points
+            # to estimate a range
+            return 1.0
         # Robust measurement of stdev
         q1, q3 = np.percentile(maskedImage.image.array[isGood], (25, 75))
         ratio = 0.74*(q3 - q1)/np.sqrt(np.median(maskedImage.variance.array[isGood]))
