@@ -37,6 +37,7 @@ from lsst.afw.geom import transformFactory as tFactory
 import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.pipe.base import connectionTypes as cT
+from lsst.pex.exceptions import InvalidParameterError
 from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
 from lsst.meas.algorithms import ReferenceObjectLoader
 from lsst.meas.algorithms import brightStarStamps as bSS
@@ -139,9 +140,15 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             " annular flux.",
         default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
     )
+    minPixelsWithinFrame = pexConfig.Field(
+        dtype=int,
+        doc="Minimum number of pixels that must fall within the stamp boundary for the bright star to be"
+            " saved when its center is beyond the exposure boundary.",
+        default=50
+    )
     refObjLoader = pexConfig.ConfigurableField(
         target=LoadIndexedReferenceObjectsTask,
-        doc="reference object loader for astrometric calibration",
+        doc="Reference object loader for astrometric calibration.",
     )
 
     def setDefaults(self):
@@ -219,8 +226,13 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         GMags = []
         ids = []
         wcs = inputExposure.getWcs()
-        # select stars within input exposure from refcat
-        withinCalexp = refObjLoader.loadPixelBox(inputExposure.getBBox(), wcs, filterName="phot_g_mean")
+        # select stars within, or close enough to input exposure from refcat
+        inputIm = inputExposure.maskedImage
+        inputExpBBox = inputExposure.getBBox()
+        dilatationExtent = geom.Extent2I(np.array(self.config.stampSize) - self.config.minPixelsWithinFrame)
+        # TODO (DM-25894): handle catalog with stars missing from Gaia
+        withinCalexp = refObjLoader.loadPixelBox(inputExpBBox.dilatedBy(dilatationExtent), wcs,
+                                                 filterName="phot_g_mean")
         refCat = withinCalexp.refCat
         # keep bright objects
         fluxLimit = ((self.config.magLimit*u.ABmag).to(u.nJy)).to_value()
@@ -233,32 +245,49 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         for j, (ra, dec) in enumerate(zip(selectedColumns["coord_ra"], selectedColumns["coord_dec"])):
             sp = geom.SpherePoint(ra, dec, geom.radians)
             cpix = wcs.skyToPixel(sp)
-            # TODO: DM-25894 keep objects on or slightly beyond CCD edge
-            if (cpix[0] >= self.config.stampSize[0]/2
-                    and cpix[0] < inputExposure.getDimensions()[0] - self.config.stampSize[0]/2
-                    and cpix[1] >= self.config.stampSize[1]/2
-                    and cpix[1] < inputExposure.getDimensions()[1] - self.config.stampSize[1]/2):
+            try:
                 starIm = inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize))
-                if self.config.doRemoveDetected:
-                    # give detection footprint of other objects the BAD flag
-                    detThreshold = afwDetect.Threshold(starIm.mask.getPlaneBitMask("DETECTED"),
-                                                       afwDetect.Threshold.BITMASK)
-                    omask = afwDetect.FootprintSet(starIm.mask, detThreshold)
-                    allFootprints = omask.getFootprints()
-                    otherFootprints = []
-                    for fs in allFootprints:
-                        if not fs.contains(geom.Point2I(cpix)):
-                            otherFootprints.append(fs)
-                    nbMatchingFootprints = len(allFootprints) - len(otherFootprints)
-                    if not nbMatchingFootprints == 1:
-                        self.log.warn("Failed to uniquely identify central DETECTION footprint for star "
-                                      f"{allIds[j]}; found {nbMatchingFootprints} footprints instead.")
-                    omask.setFootprints(otherFootprints)
-                    omask.setMask(starIm.mask, "BAD")
-                starIms.append(starIm)
-                pixCenters.append(cpix)
-                GMags.append(allGMags[j])
-                ids.append(allIds[j])
+            except InvalidParameterError:
+                # star is beyond boundary
+                bboxCorner = np.array(cpix) - np.array(self.config.stampSize)/2
+                # compute bbox as it would be otherwise
+                idealBBox = geom.Box2I(geom.Point2I(bboxCorner), geom.Extent2I(self.config.stampSize))
+                clippedStarBBox = geom.Box2I(idealBBox)
+                clippedStarBBox.clip(inputExpBBox)
+                if clippedStarBBox.getArea() > 0:
+                    # create full-sized stamp with all pixels
+                    # flagged as NO_DATA
+                    starIm = afwImage.ExposureF(bbox=idealBBox)
+                    starIm.image[:] = np.nan
+                    starIm.mask.set(inputExposure.mask.getPlaneBitMask("NO_DATA"))
+                    # recover pixels from intersection with the exposure
+                    clippedIm = inputIm.Factory(inputIm, clippedStarBBox)
+                    starIm.maskedImage[clippedStarBBox] = clippedIm
+                    # set detector and wcs, used in warpStars
+                    starIm.setDetector(inputExposure.getDetector())
+                    starIm.setWcs(inputExposure.getWcs())
+                else:
+                    continue
+            if self.config.doRemoveDetected:
+                # give detection footprint of other objects the BAD flag
+                detThreshold = afwDetect.Threshold(starIm.mask.getPlaneBitMask("DETECTED"),
+                                                   afwDetect.Threshold.BITMASK)
+                omask = afwDetect.FootprintSet(starIm.mask, detThreshold)
+                allFootprints = omask.getFootprints()
+                otherFootprints = []
+                for fs in allFootprints:
+                    if not fs.contains(geom.Point2I(cpix)):
+                        otherFootprints.append(fs)
+                nbMatchingFootprints = len(allFootprints) - len(otherFootprints)
+                if not nbMatchingFootprints == 1:
+                    self.log.warn("Failed to uniquely identify central DETECTION footprint for star "
+                                  f"{allIds[j]}; found {nbMatchingFootprints} footprints instead.")
+                omask.setFootprints(otherFootprints)
+                omask.setMask(starIm.mask, "BAD")
+            starIms.append(starIm)
+            pixCenters.append(cpix)
+            GMags.append(allGMags[j])
+            ids.append(allIds[j])
         return pipeBase.Struct(starIms=starIms,
                                pixCenters=pixCenters,
                                GMags=GMags,
