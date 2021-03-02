@@ -66,14 +66,6 @@ class CoaddBaseConfig(pexConfig.Config):
         default=False
     )
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
-    doApplyUberCal = pexConfig.Field(
-        dtype=bool,
-        doc=("Apply ubercalibrated WCS and PhotoCalib results to input calexps? "
-             "This field is no longer used, and has been deprecated by DM-21308. "
-             "It will be removed after v20. Use doApplyExternalPhotoCalib and "
-             "doApplyExternalSkyWcs instead."),
-        default=False
-    )
     doApplyExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -82,9 +74,18 @@ class CoaddBaseConfig(pexConfig.Config):
              "`externalPhotoCalibName` field to determine which calibration "
              "to load.")
     )
+    useGlobalExternalPhotoCalib = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc=("When using doApplyExternalPhotoCalib, use 'global' calibrations "
+             "that are not run per-tract.  When False, use per-tract photometric "
+             "calibration files.")
+    )
     externalPhotoCalibName = pexConfig.ChoiceField(
+        # TODO: Remove this config with the removal of Gen2 in DM-20572.
         dtype=str,
-        doc="Type of external PhotoCalib if `doApplyExternalPhotoCalib` is True.",
+        doc=("Type of external PhotoCalib if `doApplyExternalPhotoCalib` is True. "
+             "This field is only used for Gen2 middleware."),
         default="jointcal",
         allowed={
             "jointcal": "Use jointcal_photoCalib",
@@ -99,9 +100,18 @@ class CoaddBaseConfig(pexConfig.Config):
              "`lsst.afw.geom.SkyWcs` object.  Uses `externalSkyWcsName` "
              "field to determine which calibration to load.")
     )
+    useGlobalExternalSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
+             "that are not run per-tract.  When False, use per-tract wcs "
+             "files.")
+    )
     externalSkyWcsName = pexConfig.ChoiceField(
+        # TODO: Remove this config with the removal of Gen2 in DM-20572.
         dtype=str,
-        doc="Type of external SkyWcs if `doApplyExternalSkyWcs` is True.",
+        doc=("Type of external SkyWcs if `doApplyExternalSkyWcs` is True. "
+             "This field is only used for Gen2 middleware."),
         default="jointcal",
         allowed={
             "jointcal": "Use jointcal_wcs"
