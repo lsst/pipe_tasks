@@ -168,10 +168,7 @@ class SelectStruct(pipeBase.Struct):
 
 
 class WcsSelectImagesTask(BaseSelectImagesTask):
-    """Select images using their Wcs"""
-
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """Select images in the selectDataList that overlap the patch
+    """Select images using their Wcs
 
         We use the "convexHull" method of lsst.sphgeom.ConvexPolygon to define
         polygons on the celestial sphere, and test the polygon of the
@@ -180,6 +177,13 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         We use "convexHull" instead of generating a ConvexPolygon
         directly because the standard for the inputs to ConvexPolygon
         are pretty high and we don't want to be responsible for reaching them.
+        """
+
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
+        """Select images in the selectDataList that overlap the patch
+
+        This method is the old entry point for the Gen2 commandline tasks and drivers
+        Will be deprecated in v22.
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
         @param coordList: List of ICRS coordinates (lsst.geom.SpherePoint) specifying boundary of patch
@@ -197,19 +201,8 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
             imageWcs = data.wcs
             imageBox = data.bbox
 
-            try:
-                imageCorners = [imageWcs.pixelToSky(pix) for pix in geom.Box2D(imageBox).getCorners()]
-            except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
-                # Protecting ourselves from awful Wcs solutions in input images
-                self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataRef.dataId, e)
-                continue
-
-            imagePoly = lsst.sphgeom.ConvexPolygon.convexHull([coord.getVector() for coord in imageCorners])
-            if imagePoly is None:
-                self.log.debug("Unable to create polygon from image %s: deselecting", dataRef.dataId)
-                continue
-            if patchPoly.intersects(imagePoly):  # "intersects" also covers "contains" or "is contained by"
-                self.log.info("Selecting calexp %s" % dataRef.dataId)
+            imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId=None)
+            if imageCorners:
                 dataRefList.append(dataRef)
                 exposureInfoList.append(BaseExposureInfo(dataRef.dataId, imageCorners))
 
@@ -218,8 +211,67 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
             exposureInfoList=exposureInfoList,
         )
 
+    def run(self, wcsList, bboxList, coordList, dataIds=None, **kwargs):
+        """Return indices of provided lists that meet the selection criteria
 
-class PsfWcsSelectImagesConfig(pexConfig.Config):
+        Parameters:
+        -----------
+        wcsList : `list` of `lsst.afw.geom.SkyWcs`
+            specifying the WCS's of the input ccds to be selected
+        bboxList : `list` of `lsst.geom.Box2I`
+            specifying the bounding boxes of the input ccds to be selected
+        coordList : `list` of `lsst.geom.SpherePoint`
+            ICRS coordinates specifying boundary of the patch.
+
+        Returns:
+        --------
+        result: `list` of `int`
+            of indices of selected ccds
+        """
+        if dataIds is None:
+            dataIds = [None] * len(wcsList)
+        patchVertices = [coord.getVector() for coord in coordList]
+        patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
+        result = []
+        for i, (imageWcs, imageBox, dataId) in enumerate(zip(wcsList, bboxList, dataIds)):
+            imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId)
+            if imageCorners:
+                result.append(i)
+        return result
+
+    def getValidImageCorners(self, imageWcs, imageBox, patchPoly, dataId=None):
+        "Return corners or None if bad"
+        try:
+            imageCorners = [imageWcs.pixelToSky(pix) for pix in geom.Box2D(imageBox).getCorners()]
+        except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
+            # Protecting ourselves from awful Wcs solutions in input images
+            self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataId, e)
+            return
+
+        imagePoly = lsst.sphgeom.ConvexPolygon.convexHull([coord.getVector() for coord in imageCorners])
+        if imagePoly is None:
+            self.log.debug("Unable to create polygon from image %s: deselecting", dataId)
+            return
+
+        if patchPoly.intersects(imagePoly):
+            # "intersects" also covers "contains" or "is contained by"
+            self.log.info("Selecting calexp %s" % dataId)
+            return imageCorners
+
+
+def sigmaMad(array):
+    "Return median absolute deviation scaled to normally distributed data"
+    return 1.4826*np.median(np.abs(array - np.median(array)))
+
+
+class PsfWcsSelectImagesConnections(pipeBase.PipelineTaskConnections,
+                                    dimensions=("tract", "patch", "skymap", "instrument", "visit"),
+                                    defaultTemplates={"coaddName": "deep"}):
+    pass
+
+
+class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
+                               pipelineConnections=PsfWcsSelectImagesConnections):
     maxEllipResidual = pexConfig.Field(
         doc="Maximum median ellipticity residual",
         dtype=float,
@@ -254,19 +306,8 @@ class PsfWcsSelectImagesConfig(pexConfig.Config):
     )
 
 
-def sigmaMad(array):
-    "Return median absolute deviation scaled to normally distributed data"
-    return 1.4826*np.median(np.abs(array - np.median(array)))
-
-
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
-    """Select images using their Wcs and cuts on the PSF properties"""
-
-    ConfigClass = PsfWcsSelectImagesConfig
-    _DefaultName = "PsfWcsSelectImages"
-
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """Select images in the selectDataList that overlap the patch and satisfy PSF quality critera.
+    """Select images using their Wcs and cuts on the PSF properties
 
         The PSF quality criteria are based on the size and ellipticity residuals from the
         adaptive second moments of the star and the PSF.
@@ -276,6 +317,16 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
           - the robust scatter of the size residuals (using the median absolute deviation)
           - the robust scatter of the size residuals scaled by the square of
             the median size
+    """
+
+    ConfigClass = PsfWcsSelectImagesConfig
+    _DefaultName = "PsfWcsSelectImages"
+
+    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
+        """Select images in the selectDataList that overlap the patch and satisfy PSF quality critera.
+
+        This method is the old entry point for the Gen2 commandline tasks and drivers
+        Will be deprecated in v22.
 
         @param dataRef: Data reference for coadd/tempExp (with tract, patch)
         @param coordList: List of ICRS coordinates (lsst.geom.SpherePoint) specifying boundary of patch
@@ -290,45 +341,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
             butler = dataRef.butlerSubset.butler
             srcCatalog = butler.get('src', dataRef.dataId)
-            mask = srcCatalog[self.config.starSelection]
-
-            starXX = srcCatalog[self.config.starShape+'_xx'][mask]
-            starYY = srcCatalog[self.config.starShape+'_yy'][mask]
-            starXY = srcCatalog[self.config.starShape+'_xy'][mask]
-            psfXX = srcCatalog[self.config.psfShape+'_xx'][mask]
-            psfYY = srcCatalog[self.config.psfShape+'_yy'][mask]
-            psfXY = srcCatalog[self.config.psfShape+'_xy'][mask]
-
-            starSize = np.power(starXX*starYY - starXY**2, 0.25)
-            starE1 = (starXX - starYY)/(starXX + starYY)
-            starE2 = 2*starXY/(starXX + starYY)
-            medianSize = np.median(starSize)
-
-            psfSize = np.power(psfXX*psfYY - psfXY**2, 0.25)
-            psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
-            psfE2 = 2*psfXY/(psfXX + psfYY)
-
-            medianE1 = np.abs(np.median(starE1 - psfE1))
-            medianE2 = np.abs(np.median(starE2 - psfE2))
-            medianE = np.sqrt(medianE1**2 + medianE2**2)
-
-            scatterSize = sigmaMad(starSize - psfSize)
-            scaledScatterSize = scatterSize/medianSize**2
-
-            valid = True
-            if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
-                self.log.info("Removing visit %s because median e residual too large: %f vs %f" %
-                              (dataRef.dataId, medianE, self.config.maxEllipResidual))
-                valid = False
-            elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
-                self.log.info("Removing visit %s because size scatter is too large: %f vs %f" %
-                              (dataRef.dataId, scatterSize, self.config.maxSizeScatter))
-                valid = False
-            elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
-                self.log.info("Removing visit %s because scaled size scatter is too large: %f vs %f" %
-                              (dataRef.dataId, scaledScatterSize, self.config.maxScaledSizeScatter))
-                valid = False
-
+            valid = self.isValid(srcCatalog, dataRef.dataId)
             if valid is False:
                 continue
 
@@ -340,14 +353,103 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             exposureInfoList=exposureInfoList,
         )
 
+    def run(self, wcsList, bboxList, coordList, srcList, dataIds=None, **kwargs):
+        """Return indices of provided lists that meet the selection criteria
+
+        Parameters:
+        -----------
+        wcsList : `list` of `lsst.afw.geom.SkyWcs`
+            specifying the WCS's of the input ccds to be selected
+        bboxList : `list` of `lsst.geom.Box2I`
+            specifying the bounding boxes of the input ccds to be selected
+        coordList : `list` of `lsst.geom.SpherePoint`
+            ICRS coordinates specifying boundary of the patch.
+        srcList : `list` of `lsst.afw.table.SourceCatalog`
+            containing the PSF shape information for the input ccds to be selected
+
+        Returns:
+        --------
+        goodPsf: `list` of `int`
+            of indices of selected ccds
+        """
+        goodWcs = super(PsfWcsSelectImagesTask, self).run(wcsList=wcsList, bboxList=bboxList,
+                                                          coordList=coordList, dataIds=dataIds)
+
+        goodPsf = []
+        if dataIds is None:
+            dataIds = [None] * len(srcList)
+        for i, (srcCatalog, dataId) in enumerate(zip(srcList, dataIds)):
+            if i not in goodWcs:
+                continue
+            if self.isValid(srcCatalog, dataId):
+                goodPsf.append(i)
+
+        return goodPsf
+
+    def isValid(self, srcCatalog, dataId=None):
+        """Should this ccd be selected based on its PSF shape information
+
+        Parameters
+        ----------
+        srcCatalog : `lsst.afw.table.SourceCatalog`
+        dataId : `dict` of dataId keys, optional.
+            Used only for logging. Defaults to None.
+
+        Returns
+        -------
+        valid : `bool`
+            True if selected.
+        """
+        mask = srcCatalog[self.config.starSelection]
+
+        starXX = srcCatalog[self.config.starShape+'_xx'][mask]
+        starYY = srcCatalog[self.config.starShape+'_yy'][mask]
+        starXY = srcCatalog[self.config.starShape+'_xy'][mask]
+        psfXX = srcCatalog[self.config.psfShape+'_xx'][mask]
+        psfYY = srcCatalog[self.config.psfShape+'_yy'][mask]
+        psfXY = srcCatalog[self.config.psfShape+'_xy'][mask]
+
+        starSize = np.power(starXX*starYY - starXY**2, 0.25)
+        starE1 = (starXX - starYY)/(starXX + starYY)
+        starE2 = 2*starXY/(starXX + starYY)
+        medianSize = np.median(starSize)
+
+        psfSize = np.power(psfXX*psfYY - psfXY**2, 0.25)
+        psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
+        psfE2 = 2*psfXY/(psfXX + psfYY)
+
+        medianE1 = np.abs(np.median(starE1 - psfE1))
+        medianE2 = np.abs(np.median(starE2 - psfE2))
+        medianE = np.sqrt(medianE1**2 + medianE2**2)
+
+        scatterSize = sigmaMad(starSize - psfSize)
+        scaledScatterSize = scatterSize/medianSize**2
+
+        valid = True
+        if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
+            self.log.info("Removing visit %s because median e residual too large: %f vs %f" %
+                          (dataId, medianE, self.config.maxEllipResidual))
+            valid = False
+        elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
+            self.log.info("Removing visit %s because size scatter is too large: %f vs %f" %
+                          (dataId, scatterSize, self.config.maxSizeScatter))
+            valid = False
+        elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
+            self.log.info("Removing visit %s because scaled size scatter is too large: %f vs %f" %
+                          (dataId, scaledScatterSize, self.config.maxScaledSizeScatter))
+            valid = False
+
+        return valid
+
 
 class BestSeeingWcsSelectImageConfig(WcsSelectImagesTask.ConfigClass):
     """Base configuration for BestSeeingSelectImagesTask.
     """
-    nImagesMax = pexConfig.Field(
+    nImagesMax = pexConfig.RangeField(
         dtype=int,
         doc="Maximum number of images to select",
-        default=5)
+        default=5,
+        min=0)
     maxPsfFwhm = pexConfig.Field(
         dtype=float,
         doc="Maximum PSF FWHM (in arcseconds) to select",
@@ -368,6 +470,9 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
     def runDataRef(self, dataRef, coordList, makeDataRefList=True,
                    selectDataList=None):
         """Select the best-seeing images in the selectDataList that overlap the patch.
+
+        This method is the old entry point for the Gen2 commandline tasks and drivers
+        Will be deprecated in v22.
 
         Parameters
         ----------
@@ -390,9 +495,6 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                 each element of ``exposureList``
                 (`list` of `lsst.daf.persistence.ButlerDataRef`, or `None`).
         """
-        if self.config.nImagesMax <= 0:
-            raise RuntimeError(f"nImagesMax must be greater than zero: {self.config.nImagesMax}")
-
         psfSizes = []
         dataRefList = []
         exposureInfoList = []
@@ -437,3 +539,54 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
             dataRefList=filteredDataRefList if makeDataRefList else None,
             exposureInfoList=filteredExposureInfoList,
         )
+
+    def run(self, wcsList, bboxList, coordList, psfList, dataIds, **kwargs):
+        """Return indices of good calexps from a list.
+
+        This task does not make sense for use with makeWarp where there quanta
+        are per-visit rather than per-patch. This task selectes the best ccds
+        of ONE VISIT that overlap the patch.
+
+        This includes some code duplication with runDataRef,
+        but runDataRef will be deprecated as of v22.
+
+        Parameters:
+        -----------
+        wcsList : `list` of `lsst.afw.geom.SkyWcs`
+            specifying the WCS's of the input ccds to be selected
+        bboxList : `list` of `lsst.geom.Box2I`
+            specifying the bounding boxes of the input ccds to be selected
+        coordList : `list` of `lsst.geom.SpherePoint`
+            ICRS coordinates specifying boundary of the patch.
+        psfList : `list` of `lsst.afw.detection.Psf`
+            specifying the PSF model of the input ccds to be selected
+
+        Returns:
+        --------
+        output: `list` of `int`
+            of indices of selected ccds sorted by seeing
+        """
+        goodWcs = super().run(wcsList=wcsList, bboxList=bboxList, coordList=coordList, dataIds=dataIds)
+
+        psfSizes = []
+        indices = []
+        for i, (wcs, psf) in enumerate(wcsList, psfList):
+            if i not in goodWcs:
+                continue
+            # if min/max PSF values are defined, remove images out of bounds
+            pixToArcseconds = wcs.getPixelScale().asArcseconds()
+            psfSize = psf.computeShape().getDeterminantRadius()*pixToArcseconds
+            sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
+            if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
+                continue
+            if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
+                continue
+            psfSizes.append(psfSize)
+            indices.append(i)
+
+        sortedIndices = [ind for (_, ind) in sorted(zip(psfSizes, indices))]
+        output = sortedIndices[:self.config.nImagesMax]
+        self.log.info(f"{len(output)} images selected with FWHM "
+                      f"range of {psfSizes[indices.index(output[0])]}"
+                      f"--{psfSizes[indices.index(output[-1])]} arcseconds")
+        return output
