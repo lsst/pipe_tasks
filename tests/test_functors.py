@@ -43,7 +43,8 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
                                       LocalMagnitude, LocalMagnitudeErr,
-                                      LocalWcs, ComputePixelScale, ConvertPixelToArcseconds)
+                                      LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
+                                      ConvertPixelSqToArcsecondsSq)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -538,6 +539,7 @@ class FunctorTestCase(unittest.TestCase):
         arcseconds.
         """
         dipoleSep = 10
+        ixx = 10
         np.random.seed(1234)
         testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
         import lsst.afw.table as afwTable
@@ -557,6 +559,7 @@ class FunctorTestCase(unittest.TestCase):
                 linAffMatrix = localWcsPlugin.makeLocalTransformMatrix(wcs,
                                                                        center)
                 self.dataDict["dipoleSep"] = np.full(self.nRecords, dipoleSep)
+                self.dataDict["ixx"] = np.full(self.nRecords, ixx)
                 self.dataDict["slot_Centroid_x"] = np.full(self.nRecords, x)
                 self.dataDict["slot_Centroid_y"] = np.full(self.nRecords, y)
                 self.dataDict["someCentroid_x"] = x + testPixelDeltas[:, 0]
@@ -617,6 +620,7 @@ class FunctorTestCase(unittest.TestCase):
                     rtol=1e-8,
                     atol=0))
 
+                # Test pixel -> arcsec conversion.
                 func = ConvertPixelToArcseconds("dipoleSep",
                                                 "base_LocalWcs_CDMatrix_1_1",
                                                 "base_LocalWcs_CDMatrix_1_2",
@@ -624,6 +628,18 @@ class FunctorTestCase(unittest.TestCase):
                                                 "base_LocalWcs_CDMatrix_2_2")
                 val = self._funcVal(func, parq)
                 self.assertTrue(np.allclose(pixelScale.values * dipoleSep,
+                                            val.values,
+                                            atol=1e-16,
+                                            rtol=1e-16))
+
+                # Test pixel^2 -> arcsec^2 conversion.
+                func = ConvertPixelSqToArcsecondsSq("ixx",
+                                                    "base_LocalWcs_CDMatrix_1_1",
+                                                    "base_LocalWcs_CDMatrix_1_2",
+                                                    "base_LocalWcs_CDMatrix_2_1",
+                                                    "base_LocalWcs_CDMatrix_2_2")
+                val = self._funcVal(func, parq)
+                self.assertTrue(np.allclose(pixelScale.values ** 2 * dipoleSep,
                                             val.values,
                                             atol=1e-16,
                                             rtol=1e-16))

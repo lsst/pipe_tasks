@@ -1239,7 +1239,7 @@ class ComputePixelScale(LocalWcs):
 
 
 class ConvertPixelToArcseconds(ComputePixelScale):
-    """Convert a value in units pixels to units arcseconds.
+    """Convert a value in units pixels squared  to units arcseconds squared.
     """
 
     def __init__(self,
@@ -1273,6 +1273,44 @@ class ConvertPixelToArcseconds(ComputePixelScale):
                                                         df[self.colCD_1_2],
                                                         df[self.colCD_2_1],
                                                         df[self.colCD_2_2])
+
+
+class ConvertPixelSqToArcsecondsSq(ComputePixelScale):
+    """Convert a value in units pixels to units arcseconds.
+    """
+
+    def __init__(self,
+                 col,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.col = col
+        super().__init__(colCD_1_1,
+                         colCD_1_2,
+                         colCD_2_1,
+                         colCD_2_2,
+                         **kwargs)
+
+    @property
+    def name(self):
+        return f"{self.col}_asArcsecondsSq"
+
+    @property
+    def columns(self):
+        return [self.col,
+                self.colCD_1_1,
+                self.colCD_1_2,
+                self.colCD_2_1,
+                self.colCD_2_2]
+
+    def _func(self, df):
+        pixScale = self.pixelScaleArcseconds(df[self.colCD_1_1],
+                                             df[self.colCD_1_2],
+                                             df[self.colCD_2_1],
+                                             df[self.colCD_2_2])
+        return df[self.col] * pixScale * pixScale
 
 
 class ReferenceBand(Functor):
