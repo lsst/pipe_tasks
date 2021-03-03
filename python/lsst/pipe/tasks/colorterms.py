@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import fnmatch
+import warnings
 
 import numpy as np
 import astropy.units as u
@@ -58,15 +59,16 @@ class Colorterm(Config):
     c1 = Field(dtype=float, default=0.0, doc="First-order parameter")
     c2 = Field(dtype=float, default=0.0, doc="Second-order parameter")
 
-    def getCorrectedMagnitudes(self, refCat, filterName):
+    def getCorrectedMagnitudes(self, refCat, filterName="deprecatedArgument"):
         """Return the colorterm corrected magnitudes for a given filter.
 
         Parameters
         ----------
         refCat : `lsst.afw.table.SimpleCatalog`
             The reference catalog to apply color corrections to.
-        filterName : `str`
+        filterName : `str`, deprecated
             The camera filter to correct the reference catalog into.
+            The ``filterName`` argument is unused and will be removed in v23.
 
         Returns
         -------
@@ -86,6 +88,10 @@ class Colorterm(Config):
         WARNING: I do not know that we can trust the propagation of magnitude
         errors returned by this method. They need more thorough tests.
         """
+
+        if filterName != "deprecatedArgument":
+            msg = "Colorterm.getCorrectedMagnitudes() `filterName` arg is unused and will be removed in v23."
+            warnings.warn(msg, category=FutureWarning)
 
         def getFluxes(fluxField):
             """Get the flux and fluxErr of this field from refCat."""

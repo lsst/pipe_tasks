@@ -338,7 +338,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
                 record = refCat.addNew()
                 record.assign(x.first)
 
-            refMagArr, refMagErrArr = colorterm.getCorrectedMagnitudes(refCat, filterName)
+            refMagArr, refMagErrArr = colorterm.getCorrectedMagnitudes(refCat)
             fluxFieldList = [getRefFluxField(refSchema, filt) for filt in (colorterm.primary,
                                                                            colorterm.secondary)]
         else:
