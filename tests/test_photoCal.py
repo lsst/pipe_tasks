@@ -43,10 +43,10 @@ Log.getLogger("LoadIndexedReferenceObjectsTask").setLevel(Log.WARN)
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={
-        "g": Colorterm(primary="g", secondary="r", c0=0.00, c1=0.00),
-        "r": Colorterm(primary="r", secondary="i", c0=0.00, c1=0.00, c2=0.00),
-        "i": Colorterm(primary="i", secondary="z", c0=1.00, c1=0.00, c2=0.00),
-        "z": Colorterm(primary="z", secondary="i", c0=0.00, c1=0.00, c2=0.00),
+        "test-g": Colorterm(primary="g", secondary="r", c0=0.00, c1=0.00),
+        "test-r": Colorterm(primary="r", secondary="i", c0=0.00, c1=0.00, c2=0.00),
+        "test-i": Colorterm(primary="i", secondary="z", c0=1.00, c1=0.00, c2=0.00),
+        "test-z": Colorterm(primary="z", secondary="i", c0=0.00, c1=0.00, c2=0.00),
     })
 })
 
@@ -73,7 +73,7 @@ class PhotoCalTest(unittest.TestCase):
         smallExposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
         self.exposure = afwImage.ExposureF(self.bbox)
         self.exposure.setWcs(smallExposure.getWcs())
-        self.exposure.setFilterLabel(smallExposure.getFilterLabel())
+        self.exposure.setFilterLabel(afwImage.FilterLabel(band="i", physical="test-i"))
         self.exposure.setPhotoCalib(smallExposure.getPhotoCalib())
 
         coordKey = self.srcCat.getCoordKey()
@@ -193,7 +193,7 @@ class PhotoCalTest(unittest.TestCase):
         self.config.photoCatName = "testglob"  # Check glo expansion
         # zerPointOffset is the offset in the zeropoint that we expect from a uniform (i.e. color-independent)
         # colorterm correction.
-        zeroPointOffset = testColorterms.data['test*'].data['i'].c0
+        zeroPointOffset = testColorterms.data['test*'].data['test-i'].c0
         self._runTask()
 
         self.assertLess(np.mean(self.diff), 0.6 + zeroPointOffset)
