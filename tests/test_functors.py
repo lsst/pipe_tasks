@@ -83,7 +83,7 @@ class FunctorTestCase(unittest.TestCase):
         return self.butler.getDeferred(ref)
 
     def setUp(self):
-        np.random.seed(1234)
+        np.random.seed(12345)
         self.datasets = ['forced_src', 'meas', 'ref']
         self.bands = ['g', 'r']
         self.columns = ['coord_ra', 'coord_dec']
@@ -540,7 +540,6 @@ class FunctorTestCase(unittest.TestCase):
         """
         dipoleSep = 10
         ixx = 10
-        np.random.seed(1234)
         testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
         import lsst.afw.table as afwTable
         localWcsPlugin = measBase.EvaluateLocalWcsPlugin(
@@ -551,7 +550,6 @@ class FunctorTestCase(unittest.TestCase):
         for dec in np.linspace(-90, 90, 10):
             for x, y in zip(np.random.uniform(2 * 1109.99981456774, size=10),
                             np.random.uniform(2 * 560.018167811613, size=10)):
-
                 center = geom.Point2D(x, y)
                 wcs = self._makeWcs(dec)
                 skyOrigin = wcs.pixelToSky(center)
