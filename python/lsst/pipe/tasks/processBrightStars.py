@@ -199,8 +199,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def __init__(self, butler=None, initInputs=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Compute (model) stamp size depending on provided "buffer" value
-        self.modelStampSize = (int(self.config.stampSize[0]*self.config.modelStampBuffer),
-                               int(self.config.stampSize[1]*self.config.modelStampBuffer))
+        self.modelStampSize = [int(self.config.stampSize[0]*self.config.modelStampBuffer),
+                               int(self.config.stampSize[1]*self.config.modelStampBuffer)]
         # force it to be odd-sized so we have a central pixel
         if not self.modelStampSize[0] % 2:
             self.modelStampSize[0] += 1
