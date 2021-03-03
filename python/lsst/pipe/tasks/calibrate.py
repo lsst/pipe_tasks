@@ -31,7 +31,7 @@ from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask, SkyObjectsTask
 from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
-from lsst.afw.table import IdFactory, SourceTable
+from lsst.afw.table import SourceTable
 from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import (SingleFrameMeasurementTask,
                             ApplyApCorrTask,
@@ -604,9 +604,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        expId, expBits = butlerQC.quantum.dataId.pack("visit_detector",
-                                                      returnMaxBits=True)
-        inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
+        inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
 
         if self.config.doAstrometry:
             refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
@@ -674,8 +672,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         if background is None:
             background = BackgroundList()
-        sourceIdFactory = IdFactory.makeSource(exposureIdInfo.expId,
-                                               exposureIdInfo.unusedBits)
+        sourceIdFactory = exposureIdInfo.makeSourceIdFactory()
         table = SourceTable.make(self.schema, sourceIdFactory)
         table.setMetadata(self.algMetadata)
 

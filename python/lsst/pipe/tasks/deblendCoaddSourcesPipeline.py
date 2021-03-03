@@ -25,6 +25,7 @@ import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import ConfigurableField
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.meas.extensions.scarlet import ScarletDeblendTask
+from lsst.obs.base import ExposureIdInfo
 
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
@@ -145,8 +146,10 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
-        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        inputs["idFactory"] = ExposureIdInfo.fromDataId(
+            butlerQC.quantum.dataId,
+            "tract_patch"
+        ).makeSourceIdFactory()
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
@@ -185,8 +188,8 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        packedId, maxBits = butlerQC.quantum.dataId.pack("tract_patch", returnMaxBits=True)
-        inputs["idFactory"] = afwTable.IdFactory.makeSource(packedId, 64 - maxBits)
+        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch")
+        inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()
         inputs["filters"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)
         sortedTemplateCatalogs = []
