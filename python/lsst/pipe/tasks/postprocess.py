@@ -27,6 +27,7 @@ from collections import defaultdict
 import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.daf.base as dafBase
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.meas.base import SingleFrameMeasurementTask
@@ -889,7 +890,9 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
     )
     visitSummary = connectionTypes.Output(
-        doc="Consolidated visit-level exposure metadata",
+        doc=("Per-visit consolidated exposure metadata.  These catalogs use "
+             "detector id for the id and are sorted for fast lookups of a "
+             "detector."),
         name="visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
@@ -984,7 +987,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         """
         schema = afwTable.ExposureTable.makeMinimalSchema()
         schema.addField('visit', type='I', doc='Visit number')
-        schema.addField('detector_id', type='I', doc='Detector number')
         schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
         schema.addField('band', type='String', size=32, doc='Name of band')
         schema.addField('psfSigma', type='F',
@@ -1041,7 +1043,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
             rec['physical_filter'] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
             rec['band'] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
-            rec['detector_id'] = detector.getId()
+            rec.setId(detector.getId())
             shape = psf.computeShape(bbox.getCenter())
             rec['psfSigma'] = shape.getDeterminantRadius()
             rec['psfIxx'] = shape.getIxx()
@@ -1058,6 +1060,13 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             rec['raCorners'][:] = [sph.getRa().asDegrees() for sph in sph_pts]
             rec['decCorners'][:] = [sph.getDec().asDegrees() for sph in sph_pts]
 
+        metadata = dafBase.PropertyList()
+        metadata.add("COMMENT", "Catalog id is detector id, sorted.")
+        # We are looping over existing datarefs, so the following is true
+        metadata.add("COMMENT", "Only detectors with data have entries.")
+        cat.setMetadata(metadata)
+
+        cat.sort()
         return cat
 
 
