@@ -37,6 +37,36 @@ __all__ = ["SkyCorrectionConfig", "SkyCorrectionTask"]
 DEBUG = False  # Debugging outputs?
 
 
+def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
+    """Match the order of one list to another, padding if necessary
+
+    Parameters
+    ----------
+    inputList : list
+        List to be reordered and padded. Elements can be any type.
+    inputKeys :  iterable
+        Iterable of values to be compared with outputKeys.
+        Length must match `inputList`
+    outputKeys : iterable
+        Iterable of values to be compared with inputKeys.
+    padWith :
+        Any value to be inserted where inputKey not in outputKeys
+
+    Returns
+    -------
+    list
+        Copy of inputList reordered per outputKeys and padded with `padWith`
+        so that the length matches length of outputKeys.
+    """
+    outputList = []
+    for d in outputKeys:
+        if d in inputKeys:
+            outputList.append(inputList[inputKeys.index(d)])
+        else:
+            outputList.append(padWith)
+    return outputList
+
+
 def makeCameraImage(camera, exposures, filename=None, binning=8):
     """Make and write an image of an entire focal plane
 
@@ -170,6 +200,18 @@ class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
     _DefaultName = "skyCorr"
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
+
+        # reorder skyCalibs and calBkgArray per calExpArray
+        detectorOrder = [ref.dataId['detector'] for ref in inputRefs.calExpArray]
+        inputRefs.skyCalibs = reorderAndPadList(inputRefs.skyCalibs,
+                                                [ref.dataId['detector'] for ref in inputRefs.skyCalibs],
+                                                detectorOrder)
+        inputRefs.calBkgArray = reorderAndPadList(inputRefs.calBkgArray,
+                                                  [ref.dataId['detector'] for ref in inputRefs.calBkgArray],
+                                                  detectorOrder)
+        outputRefs.skyCorr = reorderAndPadList(outputRefs.skyCorr,
+                                               [ref.dataId['detector'] for ref in outputRefs.skyCorr],
+                                               detectorOrder)
         inputs = butlerQC.get(inputRefs)
         inputs.pop("rawLinker", None)
         outputs = self.run(**inputs)
