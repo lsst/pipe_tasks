@@ -514,14 +514,12 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             if astromRefObjLoader is None and butler is not None:
                 self.makeSubtask('astromRefObjLoader', butler=butler)
                 astromRefObjLoader = self.astromRefObjLoader
-                self.pixelMargin = astromRefObjLoader.config.pixelMargin
             self.makeSubtask("astrometry", refObjLoader=astromRefObjLoader,
                              schema=self.schema)
         if self.config.doPhotoCal:
             if photoRefObjLoader is None and butler is not None:
                 self.makeSubtask('photoRefObjLoader', butler=butler)
                 photoRefObjLoader = self.photoRefObjLoader
-                self.pixelMargin = photoRefObjLoader.config.pixelMargin
             self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader,
                              schema=self.schema)
 
@@ -611,7 +609,6 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                                           for ref in inputRefs.astromRefCat],
                                                  refCats=inputs.pop('astromRefCat'),
                                                  config=self.config.astromRefObjLoader, log=self.log)
-            self.pixelMargin = refObjLoader.config.pixelMargin
             self.astrometry.setRefObjLoader(refObjLoader)
 
         if self.config.doPhotoCal:
@@ -620,7 +617,6 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                                       refCats=inputs.pop('photoRefCat'),
                                                       config=self.config.photoRefObjLoader,
                                                       log=self.log)
-            self.pixelMargin = photoRefObjLoader.config.pixelMargin
             self.photoCal.match.setRefObjLoader(photoRefObjLoader)
 
         outputs = self.run(**inputs)
