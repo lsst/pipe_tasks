@@ -44,7 +44,9 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
                                       LocalMagnitude, LocalMagnitudeErr,
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq, Ratio)
+                                      ConvertPixelSqToArcsecondsSq, Ratio,
+                                      LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
+                                      LocalDipoleDiffFlux, LocalDipoleDiffFluxErr)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -541,12 +543,14 @@ class FunctorTestCase(unittest.TestCase):
         fluxErr = 10
         calib = 10
         calibErr = 1
-
+        
+        # compute expected values.
         absMean = 0.5 * (fluxPos - fluxNeg) * calib
-        absDiff = (fluxNeg + fluxNeg) * calib
-        absMeanErr = 0.5 * np.hypot(np.sqrt(2) * (calib *fluxErr),
-                                ((fluxPos - fluxNeg) * calibErr))
-        absDiffErr = meanErr * 2
+        absDiff = (fluxNeg + fluxPos) * calib
+        absMeanErr = 0.5 * np.sqrt(2 * (fluxErr * calib) ** 2
+                                   + ((fluxPos - fluxNeg) * calibErr) ** 2)
+        absDiffErr = np.sqrt(2 * (fluxErr * calib) ** 2
+                             + ((fluxPos + fluxNeg) * calibErr) ** 2)
 
         self.dataDict["ip_diffim_DipoleFluxNeg_instFlux"] = np.full(self.nRecords, fluxNeg)
         self.dataDict["ip_diffim_DipoleFluxNeg_instFluxErr"] = np.full(self.nRecords, fluxErr)
@@ -557,45 +561,54 @@ class FunctorTestCase(unittest.TestCase):
                                                            calibErr)
 
         parq = self.simulateMultiParquet(self.dataDict)
-        func = LocalDipoleMeanFlux("ip_diffim_DipoleFluxNeg_instFlux",
-                                   "ip_diffim_DipoleFluxNeg_instFluxErr",
-                                   "ip_diffim_DipoleFluxPos_instFlux",
-                                   "ip_diffim_DipoleFluxPos_instFluxErr",
+        func = LocalDipoleMeanFlux("ip_diffim_DipoleFluxPos_instFlux",
+                                   "ip_diffim_DipoleFluxNeg_instFlux",
+                                   "ip_diffim_DipoleFluxPeg_instFluxErr",
+                                   "ip_diffim_DipoleFluxNos_instFluxErr",
                                    "base_LocalPhotoCalib",
                                    "base_LocalPhotoCalibErr")
         val = self._funcVal(func, parq)
         self.assertTrue(np.allclose(val.values,
-                                    absMean))
+                                    absMean,
+                                    atol=1e-13,
+                                    rtol=0))
 
-        func = LocalDipoleMeanFluxErr("ip_diffim_DipoleFluxNeg_instFlux",
-                                      "ip_diffim_DipoleFluxNeg_instFluxErr",
-                                      "ip_diffim_DipoleFluxPos_instFlux",
-                                      "ip_diffim_DipoleFluxPos_instFluxErr",
+        func = LocalDipoleMeanFluxErr("ip_diffim_DipoleFluxPeg_instFlux",
+                                      "ip_diffim_DipoleFluxNos_instFlux",
+                                      "ip_diffim_DipoleFluxPeg_instFluxErr",
+                                      "ip_diffim_DipoleFluxNos_instFluxErr",
                                       "base_LocalPhotoCalib",
                                       "base_LocalPhotoCalibErr")
         val = self._funcVal(func, parq)
         self.assertTrue(np.allclose(val.values,
-                                    absMeanErr))
+                                    absMeanErr,
+                                    atol=1e-13,
+                                    rtol=0))
 
         func = LocalDipoleDiffFlux("ip_diffim_DipoleFluxNeg_instFlux",
-                                   "ip_diffim_DipoleFluxNeg_instFluxErr",
                                    "ip_diffim_DipoleFluxPos_instFlux",
+                                   "ip_diffim_DipoleFluxNeg_instFluxErr",
                                    "ip_diffim_DipoleFluxPos_instFluxErr",
                                    "base_LocalPhotoCalib",
                                    "base_LocalPhotoCalibErr")
         val = self._funcVal(func, parq)
         self.assertTrue(np.allclose(val.values,
-                                    absDiff))
+                                    absDiff,
+                                    atol=1e-13,
+                                    rtol=0))
 
         func = LocalDipoleDiffFluxErr("ip_diffim_DipoleFluxNeg_instFlux",
-                                      "ip_diffim_DipoleFluxNeg_instFluxErr",
                                       "ip_diffim_DipoleFluxPos_instFlux",
+                                      "ip_diffim_DipoleFluxNeg_instFluxErr",
                                       "ip_diffim_DipoleFluxPos_instFluxErr",
                                       "base_LocalPhotoCalib",
                                       "base_LocalPhotoCalibErr")
         val = self._funcVal(func, parq)
+        print(val.values[0])
         self.assertTrue(np.allclose(val.values,
-                                    absDiffErr))
+                                    absDiffErr,
+                                    atol=1e-13,
+                                    rtol=0))
 
 
 

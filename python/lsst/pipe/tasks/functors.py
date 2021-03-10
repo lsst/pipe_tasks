@@ -1749,19 +1749,16 @@ class LocalDipoleMeanFluxErr(LocalDipoleMeanFlux):
         return f'dipMeanFluxErr_{self.instFluxNegCol}_{self.instFluxPosCol}'
 
     def _func(self, df):
-        return 0.5 * np.hypot(
-            self.instFluxErrToNanojanskyErr(df[self.instFluxNegCol],
-                                            df[self.instFluxNegErrCol],
-                                            df[self.photoCalibCol],
-                                            df[self.photoCalibErrCol]),
-            self.instFluxErrToNanojanskyErr(df[self.instFluxPosCol],
-                                            df[self.instFluxPosErrCol],
-                                            df[self.photoCalibCol],
-                                            df[self.photoCalibErrCol]))
-
+        return 0.5 * np.sqrt(
+            (np.fabs(df[self.instFluxNegCol]) + np.fabs(df[self.instFluxPosCol])
+             * df[self.photoCalibErrCol]) ** 2
+            + (df[self.instFluxNegErrCol] ** 2 + df[self.instFluxPosErrCol] ** 2)
+            * df[self.photoCalibCol] ** 2)
 
 class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
     """Compute the absolute difference of dipole fluxes.
+
+    Value is (abs(pos) - abs(neg))
 
     See also
     --------
@@ -1786,11 +1783,11 @@ class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
         return f'dipDiffFlux_{self.instFluxNegCol}_{self.instFluxPosCol}'
 
     def _func(self, df):
-        return (np.fabs(self.instFluxToNanojansky(df[self.instFluxNegCol], df[self.photoCalibCol]))
-                - np.fabs(self.instFluxToNanojansky(df[self.instFluxPosCol], df[self.photoCalibCol])))
+        return (np.fabs(self.instFluxToNanojansky(df[self.instFluxPosCol], df[self.photoCalibCol]))
+                - np.fabs(self.instFluxToNanojansky(df[self.instFluxNegCol], df[self.photoCalibCol])))
 
 
-class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
+class LocalDipoleDiffFluxErr(LocalDipoleMeanFlux):
     """Compute the error on the absolute difference of dipole fluxes.
 
     See also
@@ -1819,12 +1816,8 @@ class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
         return f'dipDiffFluxErr_{self.instFluxNegCol}_{self.instFluxPosCol}'
 
     def _func(self, df):
-        return np.hypot(
-            self.instFluxErrToNanojanskyErr(df[self.instFluxNegCol],
-                                            df[self.instFluxNegErrCol],
-                                            df[self.photoCalibCol],
-                                            df[self.photoCalibErrCol]),
-            self.instFluxErrToNanojanskyErr(df[self.instFluxPosCol],
-                                            df[self.instFluxPosErrCol],
-                                            df[self.photoCalibCol],
-                                            df[self.photoCalibErrCol]))
+        return np.sqrt(
+            ((np.fabs(df[self.instFluxPosCol]) - np.fabs(df[self.instFluxNegCol]))
+             * df[self.photoCalibErrCol]) ** 2
+             + (df[self.instFluxPosErrCol] ** 2 + df[self.instFluxNegErrCol] ** 2)
+             * df[self.photoCalibCol] ** 2)
