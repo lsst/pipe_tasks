@@ -534,6 +534,71 @@ class FunctorTestCase(unittest.TestCase):
                                     atol=1e-13,
                                     rtol=0))
 
+    def testDipPhotometry(self):
+        """Test calibrated flux calculations for dipoles."""
+        fluxNeg = -100
+        fluxPos = 101
+        fluxErr = 10
+        calib = 10
+        calibErr = 1
+
+        absMean = 0.5 * (fluxPos - fluxNeg) * calib
+        absDiff = (fluxNeg + fluxNeg) * calib
+        absMeanErr = 0.5 * np.hypot(np.sqrt(2) * (calib *fluxErr),
+                                ((fluxPos - fluxNeg) * calibErr))
+        absDiffErr = meanErr * 2
+
+        self.dataDict["ip_diffim_DipoleFluxNeg_instFlux"] = np.full(self.nRecords, fluxNeg)
+        self.dataDict["ip_diffim_DipoleFluxNeg_instFluxErr"] = np.full(self.nRecords, fluxErr)
+        self.dataDict["ip_diffim_DipoleFluxPos_instFlux"] = np.full(self.nRecords, fluxPos)
+        self.dataDict["ip_diffim_DipoleFluxPos_instFluxErr"] = np.full(self.nRecords, fluxErr)
+        self.dataDict["base_LocalPhotoCalib"] = np.full(self.nRecords, calib)
+        self.dataDict["base_LocalPhotoCalibErr"] = np.full(self.nRecords,
+                                                           calibErr)
+
+        parq = self.simulateMultiParquet(self.dataDict)
+        func = LocalDipoleMeanFlux("ip_diffim_DipoleFluxNeg_instFlux",
+                                   "ip_diffim_DipoleFluxNeg_instFluxErr",
+                                   "ip_diffim_DipoleFluxPos_instFlux",
+                                   "ip_diffim_DipoleFluxPos_instFluxErr",
+                                   "base_LocalPhotoCalib",
+                                   "base_LocalPhotoCalibErr")
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(val.values,
+                                    absMean))
+
+        func = LocalDipoleMeanFluxErr("ip_diffim_DipoleFluxNeg_instFlux",
+                                      "ip_diffim_DipoleFluxNeg_instFluxErr",
+                                      "ip_diffim_DipoleFluxPos_instFlux",
+                                      "ip_diffim_DipoleFluxPos_instFluxErr",
+                                      "base_LocalPhotoCalib",
+                                      "base_LocalPhotoCalibErr")
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(val.values,
+                                    absMeanErr))
+
+        func = LocalDipoleDiffFlux("ip_diffim_DipoleFluxNeg_instFlux",
+                                   "ip_diffim_DipoleFluxNeg_instFluxErr",
+                                   "ip_diffim_DipoleFluxPos_instFlux",
+                                   "ip_diffim_DipoleFluxPos_instFluxErr",
+                                   "base_LocalPhotoCalib",
+                                   "base_LocalPhotoCalibErr")
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(val.values,
+                                    absDiff))
+
+        func = LocalDipoleDiffFluxErr("ip_diffim_DipoleFluxNeg_instFlux",
+                                      "ip_diffim_DipoleFluxNeg_instFluxErr",
+                                      "ip_diffim_DipoleFluxPos_instFlux",
+                                      "ip_diffim_DipoleFluxPos_instFluxErr",
+                                      "base_LocalPhotoCalib",
+                                      "base_LocalPhotoCalibErr")
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(val.values,
+                                    absDiffErr))
+
+
+
     def testConvertPixelToArcseconds(self):
         """Test calculations of the pixel scale and conversions of pixel to
         arcseconds.

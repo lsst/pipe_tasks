@@ -1669,3 +1669,162 @@ class Ratio(Functor):
             np.warnings.filterwarnings('ignore', r'invalid value encountered')
             np.warnings.filterwarnings('ignore', r'divide by zero')
             return df[self.numerator] / df[self.denominator]
+
+
+class LocalDipoleMeanFlux(LocalPhotometry):
+    """Compute absolute mean of dipole fluxes.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    LocalDipoleMeanFlux
+    LocalDipoleMeanFluxErr
+    LocalDipoleDiffFlux
+    LocalDipoleDiffFluxErr
+    """
+    def __init__(self,
+                 instFluxNegCol,
+                 instFluxPosCol,
+                 instFluxNegErrCol,
+                 instFluxPosErrCol,
+                 photoCalibCol,
+                 photoCalibErrCol,
+                 **kwargs):
+        self.instFluxNegCol = instFluxNegCol
+        self.instFluxPosCol = instFluxPosCol
+        self.instFluxNegErrCol = instFluxNegErrCol
+        self.instFluxPosErrCol = instFluxPosErrCol
+        self.photoCalibCol = photoCalibCol
+        self.photoCalibErrCol = photoCalibErrCol
+        super().__init__(instFluxNegCol,
+                         instFluxNegErrCol,
+                         photoCalibCol,
+                         photoCalibErrCol,
+                         **kwargs)
+
+    @property
+    def columns(self):
+        return [self.instFluxNegCol,
+                self.instFluxPosCol,
+                self.photoCalibCol]
+
+    @property
+    def name(self):
+        return f'dipMeanFlux_{self.instFluxNegCol}_{self.instFluxPosCol}'
+
+    def _func(self, df):
+        return 0.5 * (np.fabs(self.instFluxToNanojansky(df[self.instFluxNegCol], df[self.photoCalibCol]))
+                      + np.fabs(self.instFluxToNanojansky(df[self.instFluxPosCol], df[self.photoCalibCol])))
+
+
+class LocalDipoleMeanFluxErr(LocalDipoleMeanFlux):
+    """Compute the error on the absolute mean of dipole fluxes.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    LocalDipoleMeanFlux
+    LocalDipoleMeanFluxErr
+    LocalDipoleDiffFlux
+    LocalDipoleDiffFluxErr
+    """
+
+    @property
+    def columns(self):
+        return [self.instFluxNegCol,
+                self.instFluxPosCol,
+                self.instFluxNegErrCol,
+                self.instFluxPosErrCol,
+                self.photoCalibCol,
+                self.photoCalibErrCol]
+
+    @property
+    def name(self):
+        return f'dipMeanFluxErr_{self.instFluxNegCol}_{self.instFluxPosCol}'
+
+    def _func(self, df):
+        return 0.5 * np.hypot(
+            self.instFluxErrToNanojanskyErr(df[self.instFluxNegCol],
+                                            df[self.instFluxNegErrCol],
+                                            df[self.photoCalibCol],
+                                            df[self.photoCalibErrCol]),
+            self.instFluxErrToNanojanskyErr(df[self.instFluxPosCol],
+                                            df[self.instFluxPosErrCol],
+                                            df[self.photoCalibCol],
+                                            df[self.photoCalibErrCol]))
+
+
+class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
+    """Compute the absolute difference of dipole fluxes.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    LocalDipoleMeanFlux
+    LocalDipoleMeanFluxErr
+    LocalDipoleDiffFlux
+    LocalDipoleDiffFluxErr
+    """
+
+    @property
+    def columns(self):
+        return [self.instFluxNegCol,
+                self.instFluxPosCol,
+                self.photoCalibCol]
+
+    @property
+    def name(self):
+        return f'dipDiffFlux_{self.instFluxNegCol}_{self.instFluxPosCol}'
+
+    def _func(self, df):
+        return (np.fabs(self.instFluxToNanojansky(df[self.instFluxNegCol], df[self.photoCalibCol]))
+                - np.fabs(self.instFluxToNanojansky(df[self.instFluxPosCol], df[self.photoCalibCol])))
+
+
+class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
+    """Compute the error on the absolute difference of dipole fluxes.
+
+    See also
+    --------
+    LocalNanojansky
+    LocalNanojanskyErr
+    LocalMagnitude
+    LocalMagnitudeErr
+    LocalDipoleMeanFlux
+    LocalDipoleMeanFluxErr
+    LocalDipoleDiffFlux
+    LocalDipoleDiffFluxErr
+    """
+
+    @property
+    def columns(self):
+        return [self.instFluxNegCol,
+                self.instFluxPosCol,
+                self.instFluxNegErrCol,
+                self.instFluxPosErrCol,
+                self.photoCalibCol,
+                self.photoCalibErrCol]
+
+    @property
+    def name(self):
+        return f'dipDiffFluxErr_{self.instFluxNegCol}_{self.instFluxPosCol}'
+
+    def _func(self, df):
+        return np.hypot(
+            self.instFluxErrToNanojanskyErr(df[self.instFluxNegCol],
+                                            df[self.instFluxNegErrCol],
+                                            df[self.photoCalibCol],
+                                            df[self.photoCalibErrCol]),
+            self.instFluxErrToNanojanskyErr(df[self.instFluxPosCol],
+                                            df[self.instFluxPosErrCol],
+                                            df[self.photoCalibCol],
+                                            df[self.photoCalibErrCol]))
