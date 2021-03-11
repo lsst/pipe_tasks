@@ -358,7 +358,7 @@ class DeblendCoaddSourcesConfig(Config):
     simultaneous = Field(dtype=bool,
                          default=True,
                          doc="Simultaneously deblend all bands? "
-                             "True uses 'singleBandDeblend' while False uses 'multibandDeblend'")
+                             "True uses `multibandDeblend` while False uses `singleBandDeblend`")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     hasFakes = Field(dtype=bool,
                      default=False,
