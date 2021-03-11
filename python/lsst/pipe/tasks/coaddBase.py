@@ -357,3 +357,33 @@ def makeCoaddSuffix(warpType="direct"):
     """
     suffix = "" if warpType == "direct" else warpType[0].upper() + warpType[1:]
     return suffix
+
+
+def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
+    """Match the order of one list to another, padding if necessary
+
+    Parameters
+    ----------
+    inputList : list
+        List to be reordered and padded. Elements can be any type.
+    inputKeys :  iterable
+        Iterable of values to be compared with outputKeys.
+        Length must match `inputList`
+    outputKeys : iterable
+        Iterable of values to be compared with inputKeys.
+    padWith :
+        Any value to be inserted where inputKey not in outputKeys
+
+    Returns
+    -------
+    list
+        Copy of inputList reordered per outputKeys and padded with `padWith`
+        so that the length matches length of outputKeys.
+    """
+    outputList = []
+    for d in outputKeys:
+        if d in inputKeys:
+            outputList.append(inputList[inputKeys.index(d)])
+        else:
+            outputList.append(padWith)
+    return outputList

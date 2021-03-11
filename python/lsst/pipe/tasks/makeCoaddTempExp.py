@@ -32,9 +32,10 @@ import lsst.utils as utils
 import lsst.geom
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
-from .coaddBase import CoaddBaseTask, makeSkyInfo
+from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
+from collections.abc import Iterable
 
 __all__ = ["MakeCoaddTempExpTask", "MakeWarpTask", "MakeWarpConfig"]
 
@@ -736,6 +737,11 @@ class MakeWarpTask(MakeCoaddTempExpTask):
         PipelineTask (Gen3) entry point to warp and optionally PSF-match
         calexps. This method is analogous to `runDataRef`.
         """
+
+        # Ensure all input lists are in same detector order as the calExpList
+        detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calExpList]
+        inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
+
         # Read in all inputs.
         inputs = butlerQC.get(inputRefs)
 
@@ -875,3 +881,41 @@ class MakeWarpTask(MakeCoaddTempExpTask):
             # Apply skycorr
             if self.config.doApplySkyCorr:
                 mi -= skyCorr.getImage()
+
+
+def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
+    """Reorder inputRefs per outputSortKeyOrder
+
+    Any inputRefs which are lists will be resorted per specified key e.g.,
+    'detector.' Only iterables will be reordered, and values can be of type
+    `lsst.pipe.base.connections.DeferredDatasetRef` or
+    `lsst.daf.butler.core.datasets.ref.DatasetRef`.
+    Returned lists of refs have the same length as the outputSortKeyOrder.
+    If an outputSortKey not in the inputRef, then it will be padded with None.
+    If an inputRef contains an inputSortKey that is not in the
+    outputSortKeyOrder it will be removed.
+
+    Parameters
+    ----------
+    inputRefs : `lsst.pipe.base.connections.QuantizedConnection`
+        Input references to be reordered and padded.
+    outputSortKeyOrder : iterable
+        Iterable of values to be compared with inputRef's dataId[dataIdKey]
+    dataIdKey :  `str`
+        dataIdKey in the dataRefs to compare with the outputSortKeyOrder.
+
+    Returns:
+    --------
+    inputRefs: `lsst.pipe.base.connections.QuantizedConnection`
+        Quantized Connection with sorted DatasetRef values sorted if iterable.
+    """
+    for connectionName, refs in inputRefs:
+        if isinstance(refs, Iterable):
+            if hasattr(refs[0], "dataId"):
+                inputSortKeyOrder = [ref.dataId[dataIdKey] for ref in refs]
+            else:
+                inputSortKeyOrder = [ref.datasetRef.dataId[dataIdKey] for ref in refs]
+            if inputSortKeyOrder != outputSortKeyOrder:
+                setattr(inputRefs, connectionName,
+                        reorderAndPadList(refs, inputSortKeyOrder, outputSortKeyOrder))
+    return inputRefs

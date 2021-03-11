@@ -38,7 +38,7 @@ import lsst.log as log
 import lsstDebug
 import lsst.utils as utils
 from lsst.skymap import BaseSkyMap
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo, makeCoaddSuffix
+from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo, makeCoaddSuffix, reorderAndPadList
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -2442,33 +2442,3 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         directory = lsstDebug.Info(__name__).figPath if lsstDebug.Info(__name__).figPath else "."
         filename = "%s-%s.fits" % (prefix, '-'.join([str(warpRef.dataId[k]) for k in keyList]))
         return os.path.join(directory, filename)
-
-
-def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
-    """Match the order of one list to another, padding if necessary
-
-    Parameters
-    ----------
-    inputList : list
-        List to be reordered and padded. Elements can be any type.
-    inputKeys :  iterable
-        Iterable of values to be compared with outputKeys.
-        Length must match `inputList`
-    outputKeys : iterable
-        Iterable of values to be compared with inputKeys.
-    padWith :
-        Any value to be inserted where inputKey not in outputKeys
-
-    Returns
-    -------
-    list
-        Copy of inputList reordered per outputKeys and padded with `padWith`
-        so that the length matches length of outputKeys.
-    """
-    outputList = []
-    for d in outputKeys:
-        if d in inputKeys:
-            outputList.append(inputList[inputKeys.index(d)])
-        else:
-            outputList.append(padWith)
-    return outputList
