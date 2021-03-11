@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.daf.butler as dafButler
+from lsst.obs.base import ExposureIdInfo
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -48,6 +49,7 @@ class CatalogExposure:
     catalog: Optional[afwTable.SourceCatalog]
     exposure: Optional[afwImage.Exposure]
     dataId: dafButler.DataCoordinate
+    id_tract_patch: Optional[int] = 0
     metadata: Dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -278,6 +280,7 @@ class MultibandFitTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        id_tp = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch").expId
         input_refs_objs = [(inputRefs.cats_meas, inputs['cats_meas']), (inputRefs.coadds, inputs['coadds'])]
         cats, exps = [
             {dRef.dataId: obj for dRef, obj in zip(refs, objs)}
@@ -285,7 +288,9 @@ class MultibandFitTask(pipeBase.PipelineTask):
         ]
         dataIds = set(cats).union(set(exps))
         catexps = [
-            CatalogExposure(catalog=cats.get(dataId), exposure=exps.get(dataId), dataId=dataId)
+            CatalogExposure(
+                catalog=cats.get(dataId), exposure=exps.get(dataId), dataId=dataId, id_tract_patch=id_tp,
+            )
             for dataId in dataIds
         ]
         outputs = self.run(catexps=catexps, cat_ref=inputs['cat_ref'])
