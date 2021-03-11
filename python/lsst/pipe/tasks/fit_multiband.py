@@ -38,6 +38,11 @@ from typing import Dict, Iterable, List, Optional, Set
 
 @dataclass(frozen=True)
 class CatalogExposure:
+    """A class to store a catalog, exposure, and metadata for a given dataId.
+
+    This class is intended to store an exposure and an associated measurement
+    catalog. There are no checks to ensure this, so repurpose responsibly.
+    """
     @property
     def band(self) -> str:
         return self.dataId['band']
@@ -243,8 +248,7 @@ class MultibandFitConfig(
     pipeBase.PipelineTaskConfig,
     pipelineConnections=MultibandFitConnections,
 ):
-    """Configuration class for the MultibandFitTask, containing a
-    configurable subtask that does all fitting.
+    """Configure a MultibandFitTask, including a configurable fitting subtask.
     """
     fit_multiband = pexConfig.ConfigurableField(
         target=MultibandFitSubTask,
@@ -259,7 +263,8 @@ class MultibandFitConfig(
         bands_fit : `set`
             The set of bands that the subtask will fit.
         bands_read_only : `set`
-            The set of bands that the subtask will only read data (measurement catalog and exposure) for.
+            The set of bands that the subtask will only read data
+            (measurement catalog and exposure) for.
         """
         try:
             bands_fit = self.fit_multiband.bands_fit
@@ -270,6 +275,12 @@ class MultibandFitConfig(
 
 
 class MultibandFitTask(pipeBase.PipelineTask):
+    """Fit deblended exposures in multiple bands simultaneously.
+
+    It is generally assumed but not enforced (except optionally by the
+    configurable `fit_multiband` subtask) that there is only one exposure
+    per band, presumably a coadd.
+    """
     ConfigClass = MultibandFitConfig
     _DefaultName = "multibandFit"
 
