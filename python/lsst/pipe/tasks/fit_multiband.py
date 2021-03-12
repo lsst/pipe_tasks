@@ -19,13 +19,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["CatalogExposure", "MultibandFitSubTask", "MultibandFitConfig", "MultibandFitTask"]
+__all__ = [
+    "CatalogExposure", "MultibandFitConfig", "MultibandFitSubConfig", "MultibandFitSubTask",
+    "MultibandFitTask",
+]
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.daf.butler as dafButler
+from lsst.obs.base import ExposureIdInfo
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -34,6 +38,11 @@ from typing import Dict, Iterable, List, Optional, Set
 
 @dataclass(frozen=True)
 class CatalogExposure:
+    """A class to store a catalog, exposure, and metadata for a given dataId.
+
+    This class is intended to store an exposure and an associated measurement
+    catalog. There are no checks to ensure this, so repurpose responsibly.
+    """
     @property
     def band(self) -> str:
         return self.dataId['band']
@@ -45,6 +54,7 @@ class CatalogExposure:
     catalog: Optional[afwTable.SourceCatalog]
     exposure: Optional[afwImage.Exposure]
     dataId: dafButler.DataCoordinate
+    id_tract_patch: Optional[int] = 0
     metadata: Dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -238,8 +248,7 @@ class MultibandFitConfig(
     pipeBase.PipelineTaskConfig,
     pipelineConnections=MultibandFitConnections,
 ):
-    """Configuration class for the MultibandFitTask, containing a
-    configurable subtask that does all fitting.
+    """Configure a MultibandFitTask, including a configurable fitting subtask.
     """
     fit_multiband = pexConfig.ConfigurableField(
         target=MultibandFitSubTask,
@@ -254,7 +263,8 @@ class MultibandFitConfig(
         bands_fit : `set`
             The set of bands that the subtask will fit.
         bands_read_only : `set`
-            The set of bands that the subtask will only read data (measurement catalog and exposure) for.
+            The set of bands that the subtask will only read data
+            (measurement catalog and exposure) for.
         """
         try:
             bands_fit = self.fit_multiband.bands_fit
@@ -265,6 +275,12 @@ class MultibandFitConfig(
 
 
 class MultibandFitTask(pipeBase.PipelineTask):
+    """Fit deblended exposures in multiple bands simultaneously.
+
+    It is generally assumed but not enforced (except optionally by the
+    configurable `fit_multiband` subtask) that there is only one exposure
+    per band, presumably a coadd.
+    """
     ConfigClass = MultibandFitConfig
     _DefaultName = "multibandFit"
 
@@ -275,6 +291,7 @@ class MultibandFitTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        id_tp = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch").expId
         input_refs_objs = [(inputRefs.cats_meas, inputs['cats_meas']), (inputRefs.coadds, inputs['coadds'])]
         cats, exps = [
             {dRef.dataId: obj for dRef, obj in zip(refs, objs)}
@@ -282,7 +299,9 @@ class MultibandFitTask(pipeBase.PipelineTask):
         ]
         dataIds = set(cats).union(set(exps))
         catexps = [
-            CatalogExposure(catalog=cats.get(dataId), exposure=exps.get(dataId), dataId=dataId)
+            CatalogExposure(
+                catalog=cats.get(dataId), exposure=exps.get(dataId), dataId=dataId, id_tract_patch=id_tp,
+            )
             for dataId in dataIds
         ]
         outputs = self.run(catexps=catexps, cat_ref=inputs['cat_ref'])
