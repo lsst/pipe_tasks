@@ -27,7 +27,8 @@ import lsst.geom as geom
 import lsst.pipe.base as pipeBase
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
-           "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask"]
+           "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask", "BestSeeingSelectVisitsTask",
+           "BestSeeingPercentileSelectVisitsTask"]
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
@@ -515,7 +516,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                 continue
             if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
                 continue
-            psfSizes.append(psfSize)
+            psfSizes.append(sizeFwhm)
             dataRefList.append(dataRef)
             exposureInfoList.append(exposureInfo)
 
@@ -590,3 +591,119 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                       f"range of {psfSizes[indices.index(output[0])]}"
                       f"--{psfSizes[indices.index(output[-1])]} arcseconds")
         return output
+
+
+class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
+                                        dimensions=("tract", "patch", "skymap", "band", "instrument"),
+                                        defaultTemplates={"coaddName": "bestSeeing"}):
+    sourceTables = pipeBase.connectionTypes.Input(
+        doc="Source table with PSF size information",
+        name="sourceTable_visit",
+        storageClass="DataFrame",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True
+    )
+    goodVisits = pipeBase.connectionTypes.Output(
+        doc="Selected visits to be coadded.",
+        name="{coaddName}VisitsDict",
+        storageClass="StructuredDataDict",
+        dimensions=("instrument", "tract", "patch", "skymap", "band"),
+    )
+
+
+class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
+                                   pipelineConnections=BestSeeingSelectVisitsConnections):
+    nImagesMax = pexConfig.RangeField(
+        dtype=int,
+        doc="Maximum number of images to select",
+        default=5,
+        min=0)
+    maxPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Maximum PSF FWHM (in arcseconds) to select",
+        default=1.5,
+        optional=True)
+    minPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Minimum PSF FWHM (in arcseconds) to select",
+        default=0.,
+        optional=True)
+
+
+class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
+    ConfigClass = BestSeeingSelectVisitsConfig
+    _DefaultName = 'bestSeeingSelectVisits'
+
+    def run(self, sourceTables):
+        inputVisits = [sourceTable.ref.dataId['visit'] for sourceTable in sourceTables]
+        psfSizes = []
+        visits = []
+        for visit, sourceTable in zip(inputVisits, sourceTables):
+            df = sourceTable.get(parameters={"columns": ['IxxPsf', 'IyyPsf', 'IxyPsf',
+                                                         'LocalWcs_CDMatrix_2_1', 'LocalWcs_CDMatrix_1_1',
+                                                         'LocalWcs_CDMatrix_1_2', 'LocalWcs_CDMatrix_2_2']})
+            wcsDet = (df.LocalWcs_CDMatrix_1_1 * df.LocalWcs_CDMatrix_2_2
+                      - df.LocalWcs_CDMatrix_1_2 * df.LocalWcs_CDMatrix_1_2)
+            # if min/max PSF values are defined, remove images out of bounds
+            pixToArcseconds = np.nanmedian(3600*np.degrees(np.sqrt(np.fabs(wcsDet))))
+            determinantRadius = np.power(np.nanmedian(df.IxxPsf * df.IxxPsf - df.IxyPsf**2), 0.25)
+            psfSize = determinantRadius*pixToArcseconds
+            sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
+            if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
+                continue
+            if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
+                continue
+            psfSizes.append(sizeFwhm)
+            visits.append(visit)
+
+        sortedVisits = [ind for (_, ind) in sorted(zip(psfSizes, visits))]
+        output = sortedVisits[:self.config.nImagesMax]
+        self.log.info(f"{len(output)} images selected with FWHM "
+                      f"range of {psfSizes[visits.index(output[0])]}"
+                      f"--{psfSizes[visits.index(output[-1])]} arcseconds")
+        # In order to store as a StructuredDataDict, convert list to dict
+        goodVisits = {key: True for key in output}
+        print(goodVisits)
+        return pipeBase.Struct(goodVisits=goodVisits)
+
+
+class BestSeeingPercentileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
+                                             pipelineConnections=BestSeeingSelectVisitsConnections):
+    percentile = pexConfig.RangeField(
+        doc="Select top percentile of BestPercentile seeing visits. 1 selects all visits. 0 selects None",
+        dtype=float,
+        default=0.33,
+        min=0,
+        max=1,
+    )
+    nMin = pexConfig.Field(
+        doc="At least this number of visits selected and supercedes percentile. For example, if 10 visits "
+            "cover this patch, percentile=0.33, and nMin=5, the best 5 visits will be selected.",
+        dtype=int,
+        default=3,
+    )
+
+
+class BestSeeingPercentileSelectVisitsTask(pipeBase.PipelineTask):
+    ConfigClass = BestSeeingPercentileSelectVisitsConfig
+    _DefaultName = 'bestSeeingPercentileSelectVisits'
+
+    def run(self, sourceTables):
+
+        visits = [sourceTable.ref.dataId['visit'] for sourceTable in sourceTables]
+
+        radius = []
+        for sourceTable in sourceTables:
+            df = sourceTable.get(parameters={"columns": ['IxxPsf', 'IyyPsf']})
+            traceRadius = np.sqrt(0.5) * np.sqrt(df.IxxPsf + df.IyyPsf)
+            radius.append(traceRadius.median())
+
+        sortedVisits = [v for rad, v in sorted(zip(radius, visits))]
+        cutoff = max(int(np.round(self.config.percentile*len(visits))), self.config.nMin)
+        goodVisits = sortedVisits[:cutoff]
+
+        # In order to store as a StructuredDataDict, convert list to dict
+        goodVisits = {visit: True for visit in goodVisits}
+        print(goodVisits)
+        return pipeBase.Struct(goodVisits=goodVisits)
