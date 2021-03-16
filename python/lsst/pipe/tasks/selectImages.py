@@ -582,7 +582,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                 continue
             if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
                 continue
-            psfSizes.append(psfSize)
+            psfSizes.append(sizeFwhm)
             indices.append(i)
 
         sortedIndices = [ind for (_, ind) in sorted(zip(psfSizes, indices))]
