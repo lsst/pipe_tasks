@@ -43,7 +43,8 @@ from lsst.meas.algorithms import ReferenceObjectLoader
 from lsst.meas.algorithms import brightStarStamps as bSS
 
 
-class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections, dimensions=("visit", "detector")):
+class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections,
+                                    dimensions=("instrument", "visit", "detector")):
     inputExposure = cT.Input(
         doc="Input exposure from which to extract bright star stamps",
         name="calexp",
