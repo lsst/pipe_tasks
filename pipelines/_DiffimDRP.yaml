@@ -1,0 +1,22 @@
+description: DRP Image Differencing Pipeline
+tasks:
+  selectVisits:
+    class: lsst.pipe.tasks.selectImages.BestSeeingPercentileSelectVisitsTask
+    config:
+      connections.goodVisits: "bestSeeingVisitsDict"
+  templateGen:
+    class: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask
+    config:
+        doSelectVisits: true
+        assembleStaticSkyModel.doSelectVisits: true
+        connections.selectedVisits: "bestSeeingVisitsDict"
+        connections.nImage: "bestSeeingCoadd_nImage"
+        connections.coaddExposure: "bestSeeingCoadd"
+subsets:
+  diffimDRP:
+    subset:
+      - selectVisits
+      - templateGen
+    description: Subset for running image differencing in DRP
+contracts:
+  - selectVisits.connections.goodVisits == templateGen.connections.selectedVisits
