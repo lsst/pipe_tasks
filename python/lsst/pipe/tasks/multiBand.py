@@ -358,7 +358,7 @@ class DeblendCoaddSourcesConfig(Config):
     simultaneous = Field(dtype=bool,
                          default=True,
                          doc="Simultaneously deblend all bands? "
-                             "True uses 'singleBandDeblend' while False uses 'multibandDeblend'")
+                             "True uses `multibandDeblend` while False uses `singleBandDeblend`")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     hasFakes = Field(dtype=bool,
                      default=False,
@@ -1089,7 +1089,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
             self.catalogCalculation.run(sources)
 
         self.setPrimaryFlags.run(sources, skyMap=skyInfo.skyMap, tractInfo=skyInfo.tractInfo,
-                                 patchInfo=skyInfo.patchInfo, includeDeblend=self.deblended)
+                                 patchInfo=skyInfo.patchInfo)
         if self.config.doPropagateFlags:
             self.propagateFlags.run(butler, sources, ccdInputs, exposure.getWcs(), visitCatalogs, wcsUpdates)
 

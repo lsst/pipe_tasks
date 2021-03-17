@@ -703,7 +703,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             )
         self.catalogCalculation.run(sourceCat)
 
-        self.setPrimaryFlags.run(sourceCat, includeDeblend=self.config.doDeblend)
+        self.setPrimaryFlags.run(sourceCat)
 
         if icSourceCat is not None and \
            len(self.config.icSourceFieldsToCopy) > 0:
