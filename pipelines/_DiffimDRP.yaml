@@ -1,0 +1,21 @@
+description: Image differencing branch of the DRP pipeline for generating lightcurves
+tasks:
+  selectVisits:
+    class: lsst.pipe.tasks.selectImages.BestSeeingQuantileSelectVisitsTask
+    config:
+      connections.goodVisits: bestSeeingVisitsDict
+  templateGen:
+    class: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask
+    config:
+        doSelectVisits: true
+        assembleStaticSkyModel.doSelectVisits: true
+        connections.selectedVisits: bestSeeingVisitsDict
+        connections.outputCoaddName: bestSeeing
+subsets:
+  diffimDRP:
+    subset:
+      - selectVisits
+      - templateGen
+    description: Subset for running image differencing branch of the DRP pipeline
+contracts:
+  - selectVisits.connections.goodVisits == templateGen.connections.selectedVisits

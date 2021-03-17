@@ -5,3 +5,4 @@ imports:
   - location: $PIPE_TASKS_DIR/pipelines/_Coaddition.yaml
   - location: $PIPE_TASKS_DIR/pipelines/_Multiband.yaml
   - location: $PIPE_TASKS_DIR/pipelines/_Forced.yaml
+  - location: $PIPE_TASKS_DIR/pipelines/_DiffimDRP.yaml
