@@ -43,7 +43,8 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
                                       LocalMagnitude, LocalMagnitudeErr,
-                                      LocalWcs, ComputePixelScale, ConvertPixelToArcseconds)
+                                      LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
+                                      ConvertPixelSqToArcsecondsSq)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -82,7 +83,7 @@ class FunctorTestCase(unittest.TestCase):
         return self.butler.getDeferred(ref)
 
     def setUp(self):
-        np.random.seed(1234)
+        np.random.seed(12345)
         self.datasets = ['forced_src', 'meas', 'ref']
         self.bands = ['g', 'r']
         self.columns = ['coord_ra', 'coord_dec']
@@ -538,7 +539,7 @@ class FunctorTestCase(unittest.TestCase):
         arcseconds.
         """
         dipoleSep = 10
-        np.random.seed(1234)
+        ixx = 10
         testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
         import lsst.afw.table as afwTable
         localWcsPlugin = measBase.EvaluateLocalWcsPlugin(
@@ -549,7 +550,6 @@ class FunctorTestCase(unittest.TestCase):
         for dec in np.linspace(-90, 90, 10):
             for x, y in zip(np.random.uniform(2 * 1109.99981456774, size=10),
                             np.random.uniform(2 * 560.018167811613, size=10)):
-
                 center = geom.Point2D(x, y)
                 wcs = self._makeWcs(dec)
                 skyOrigin = wcs.pixelToSky(center)
@@ -557,6 +557,7 @@ class FunctorTestCase(unittest.TestCase):
                 linAffMatrix = localWcsPlugin.makeLocalTransformMatrix(wcs,
                                                                        center)
                 self.dataDict["dipoleSep"] = np.full(self.nRecords, dipoleSep)
+                self.dataDict["ixx"] = np.full(self.nRecords, ixx)
                 self.dataDict["slot_Centroid_x"] = np.full(self.nRecords, x)
                 self.dataDict["slot_Centroid_y"] = np.full(self.nRecords, y)
                 self.dataDict["someCentroid_x"] = x + testPixelDeltas[:, 0]
@@ -617,6 +618,7 @@ class FunctorTestCase(unittest.TestCase):
                     rtol=1e-8,
                     atol=0))
 
+                # Test pixel -> arcsec conversion.
                 func = ConvertPixelToArcseconds("dipoleSep",
                                                 "base_LocalWcs_CDMatrix_1_1",
                                                 "base_LocalWcs_CDMatrix_1_2",
@@ -624,6 +626,18 @@ class FunctorTestCase(unittest.TestCase):
                                                 "base_LocalWcs_CDMatrix_2_2")
                 val = self._funcVal(func, parq)
                 self.assertTrue(np.allclose(pixelScale.values * dipoleSep,
+                                            val.values,
+                                            atol=1e-16,
+                                            rtol=1e-16))
+
+                # Test pixel^2 -> arcsec^2 conversion.
+                func = ConvertPixelSqToArcsecondsSq("ixx",
+                                                    "base_LocalWcs_CDMatrix_1_1",
+                                                    "base_LocalWcs_CDMatrix_1_2",
+                                                    "base_LocalWcs_CDMatrix_2_1",
+                                                    "base_LocalWcs_CDMatrix_2_2")
+                val = self._funcVal(func, parq)
+                self.assertTrue(np.allclose(pixelScale.values ** 2 * dipoleSep,
                                             val.values,
                                             atol=1e-16,
                                             rtol=1e-16))
