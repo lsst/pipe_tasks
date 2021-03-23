@@ -25,6 +25,7 @@ import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.geom as geom
 import lsst.pipe.base as pipeBase
+from lsst.daf.base import DateTime
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
            "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask", "BestSeeingSelectVisitsTask",
@@ -596,10 +597,10 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
 class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
                                         dimensions=("tract", "patch", "skymap", "band", "instrument"),
                                         defaultTemplates={"coaddName": "bestSeeing"}):
-    sourceTables = pipeBase.connectionTypes.Input(
-        doc="Source table with PSF size information",
-        name="sourceTable_visit",
-        storageClass="DataFrame",
+    visitSummaries = pipeBase.connectionTypes.Input(
+        doc="Per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
+        name="visitSummary",
+        storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
         deferLoad=True
@@ -618,42 +619,63 @@ class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         dtype=int,
         doc="Maximum number of images to select",
         default=5,
-        min=0)
+        min=0
+    )
     maxPsfFwhm = pexConfig.Field(
         dtype=float,
         doc="Maximum PSF FWHM (in arcseconds) to select",
         default=1.5,
-        optional=True)
+        optional=True
+    )
     minPsfFwhm = pexConfig.Field(
         dtype=float,
         doc="Minimum PSF FWHM (in arcseconds) to select",
         default=0.,
-        optional=True)
+        optional=True
+    )
+    minMJD = pexConfig.Field(
+        dtype=float,
+        doc="Minimum MJD to select",
+        default=None,
+        optional=True
+    )
+    maxMJD = pexConfig.Field(
+        dtype=float,
+        doc="Maximum MJD to select",
+        default=None,
+        optional=True
+    )
 
 
 class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
     ConfigClass = BestSeeingSelectVisitsConfig
     _DefaultName = 'bestSeeingSelectVisits'
 
-    def run(self, sourceTables):
-        inputVisits = [sourceTable.ref.dataId['visit'] for sourceTable in sourceTables]
+    def run(self, visitSummaries):
+
+        inputVisits = [visitSummary.ref.dataId['visit'] for visitSummary in visitSummaries]
         psfSizes = []
         visits = []
-        for visit, sourceTable in zip(inputVisits, sourceTables):
-            df = sourceTable.get(parameters={"columns": ['IxxPsf', 'IyyPsf', 'IxyPsf',
-                                                         'LocalWcs_CDMatrix_2_1', 'LocalWcs_CDMatrix_1_1',
-                                                         'LocalWcs_CDMatrix_1_2', 'LocalWcs_CDMatrix_2_2']})
-            wcsDet = (df.LocalWcs_CDMatrix_1_1 * df.LocalWcs_CDMatrix_2_2
-                      - df.LocalWcs_CDMatrix_1_2 * df.LocalWcs_CDMatrix_1_2)
-            # if min/max PSF values are defined, remove images out of bounds
-            pixToArcseconds = np.nanmedian(3600*np.degrees(np.sqrt(np.fabs(wcsDet))))
-            determinantRadius = np.power(np.nanmedian(df.IxxPsf * df.IxxPsf - df.IxyPsf**2), 0.25)
-            psfSize = determinantRadius*pixToArcseconds
-            sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
+        for visit, visitSummary in zip(inputVisits, visitSummaries):
+            visitSummary = visitSummary.get()
+
+            mjd = np.nanmean([vs.getVisitInfo().getDate().get(system=DateTime.MJD) for vs in visitSummary])
+            pixToArcseconds = [vs.getWcs().getPixelScale(vs.getBBox().getCenter()).asArcseconds()
+                               for vs in visitSummary]
+            psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary])
+            sizeFwhm = np.nanmean(psfSigmas * pixToArcseconds) * np.sqrt(8.*np.log(2.))
+
             if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
                 continue
             if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
                 continue
+            if self.config.minMJD and mjd < self.config.minMJD:
+                self.log.debug('time too early, rejecting %f', mjd)
+                continue
+            if self.config.maxMJD and mjd > self.config.maxMJD:
+                self.log.debug('time too late, rejecting %f', mjd)
+                continue
+
             psfSizes.append(sizeFwhm)
             visits.append(visit)
 
@@ -662,14 +684,110 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
         self.log.info(f"{len(output)} images selected with FWHM "
                       f"range of {psfSizes[visits.index(output[0])]}"
                       f"--{psfSizes[visits.index(output[-1])]} arcseconds")
+
         # In order to store as a StructuredDataDict, convert list to dict
         goodVisits = {key: True for key in output}
-        print(goodVisits)
         return pipeBase.Struct(goodVisits=goodVisits)
 
 
+class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
+                                           pipelineConnections=BestSeeingSelectVisitsConnections):
+    qMin = pexConfig.RangeField(
+        doc="Lower bound of quantile range to select. Sorts visits by seeing from narrow to wide, "
+            "and select those in the interquantile range (qMin, qMax). Set qMin to 0 for Best Seeing. "
+            "This config should be changed from zero only for exploratory diffIm testing.",
+        dtype=float,
+        default=0,
+        min=0,
+        max=1,
+    )
+    qMax = pexConfig.RangeField(
+        doc="Upper bound of quantile range to select. Sorts visits by seeing from narrow to wide, "
+            "and select those in the interquantile range (qMin, qMax). Set qMax to 1 for Worst Seeing.",
+        dtype=float,
+        default=0.33,
+        min=0,
+        max=1,
+    )
+    nMin = pexConfig.Field(
+        doc="At least this number of visits selected and supercedes quantile. For example, if 10 visits "
+            "cover this patch, qMin=0.33, and nMin=5, the best 5 visits will be selected.",
+        dtype=int,
+        default=3,
+    )
+    minMJD = pexConfig.Field(
+        dtype=float,
+        doc="Minimum MJD to pre-select",
+        default=None,
+        optional=True
+    )
+    maxMJD = pexConfig.Field(
+        dtype=float,
+        doc="Maximum MJD to pre-select",
+        default=None,
+        optional=True
+    )
+
+
+class BestSeeingQuantileSelectVisitsTask(pipeBase.PipelineTask):
+    ConfigClass = BestSeeingQuantileSelectVisitsConfig
+    _DefaultName = 'bestSeeingQuantileSelectVisits'
+
+    def run(self, visitSummaries):
+        visits = np.array([visitSummary.ref.dataId['visit'] for visitSummary in visitSummaries])
+        nVisits = len(visits)
+        radius = np.empty(nVisits)
+        mjds = np.empty(nVisits)
+        for i, visitSummary in enumerate(visitSummaries):
+            # read in one by one; and only once. There may be hundreds
+            visitSummary = visitSummary.get()
+            # aggregate over dectectors
+            mjd = np.nanmean([vs.getVisitInfo().getDate().get(system=DateTime.MJD) for vs in visitSummary])
+            psfSigma = np.nanmedian([vs['psfSigma'] for vs in visitSummary])
+            print(mjd, psfSigma)
+            radius[i] = psfSigma
+            mjds[i] = mjd
+
+        if self.config.minMJD or self.config.maxMJD:
+            minMJD = self.config.minMJD if self.config.minMJD else np.min(mjds)
+            maxMJD = self.config.maxMJD if self.config.maxMJD else np.max(mjds)
+            timeInd = (minMJD < np.array(mjds)) & (np.array(mjds) <= maxMJD)
+            visits = visits[timeInd]
+            radius = radius[timeInd]
+            self.log.info("Filtering visit by MJD: there are %d of %d visits between MJD %0.3f and %0.3f",
+                          len(visits), nVisits, minMJD, maxMJD)
+
+        sortedVisits = [v for rad, v in sorted(zip(radius, visits))]
+        lowerBound = min(int(np.round(self.config.qMin*len(visits))), max(0, len(visits) - self.config.nMin))
+        upperBound = max(int(np.round(self.config.qMax*len(visits))), self.config.nMin)
+
+        # In order to store as a StructuredDataDict, convert list to dict
+        goodVisits = {int(visit): True for visit in sortedVisits[lowerBound:upperBound]}
+        return pipeBase.Struct(goodVisits=goodVisits)
+
+
+class BestSeeingPercentileSelectVisitsConnections(pipeBase.PipelineTaskConnections,
+                                                  dimensions=("tract", "patch", "skymap", "band",
+                                                              "instrument"),
+                                                  defaultTemplates={"coaddName": "bestSeeing"}):
+    sourceTables = pipeBase.connectionTypes.Input(
+        doc="",
+        name="sourceTable_visit",
+        storageClass="DataFrame",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True
+    )
+    goodVisits = pipeBase.connectionTypes.Output(
+        doc="Selected visits to be coadded.",
+        name="{coaddName}VisitsDict",
+        storageClass="StructuredDataDict",
+        dimensions=("instrument", "tract", "patch", "skymap", "band"),
+    )
+
+
 class BestSeeingPercentileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
-                                             pipelineConnections=BestSeeingSelectVisitsConnections):
+                                             pipelineConnections=BestSeeingPercentileSelectVisitsConnections):
     percentile = pexConfig.RangeField(
         doc="Select top percentile of BestPercentile seeing visits. 1 selects all visits. 0 selects None",
         dtype=float,

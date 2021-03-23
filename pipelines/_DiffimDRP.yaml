@@ -9,9 +9,8 @@ tasks:
     config:
         doSelectVisits: true
         assembleStaticSkyModel.doSelectVisits: true
-        connections.selectedVisits: "bestSeeingVisitsDict"
-        connections.nImage: "bestSeeingCoadd_nImage"
-        connections.coaddExposure: "bestSeeingCoadd"
+        connections.selectedVisits: bestSeeingVisitsDict
+        connections.outputCoaddName: bestSeeing
 subsets:
   diffimDRP:
     subset:
