@@ -1665,4 +1665,7 @@ class Ratio(Functor):
         return f'ratio_{self.numerator}_{self.denominator}'
 
     def _func(self, df):
-        return df[self.numerator] / df[self.denominator]
+        with np.warnings.catch_warnings():
+            np.warnings.filterwarnings('ignore', r'invalid value encountered')
+            np.warnings.filterwarnings('ignore', r'divide by zero')
+            return df[self.numerator] / df[self.denominator]
