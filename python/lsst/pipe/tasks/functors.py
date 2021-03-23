@@ -1634,3 +1634,38 @@ class LocalMagnitudeErr(LocalPhotometry):
                                               df[self.instFluxErrCol],
                                               df[self.photoCalibCol],
                                               df[self.photoCalibErrCol])
+
+
+class Ratio(Functor):
+    """Base class for returning the ratio of 2 columns.
+
+    Can be used to compute a Signal to Noise ratio for any input flux.
+
+    Parameters
+    ----------
+    numerator : `str`
+        Name of the column to use at the numerator in the ratio
+    denominator : `str`
+        Name of the column to use as the denominator in the ratio.
+    """
+    def __init__(self,
+                 numerator,
+                 denominator,
+                 **kwargs):
+        self.numerator = numerator
+        self.denominator = denominator
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [self.numerator, self.denominator]
+
+    @property
+    def name(self):
+        return f'ratio_{self.numerator}_{self.denominator}'
+
+    def _func(self, df):
+        with np.warnings.catch_warnings():
+            np.warnings.filterwarnings('ignore', r'invalid value encountered')
+            np.warnings.filterwarnings('ignore', r'divide by zero')
+            return df[self.numerator] / df[self.denominator]

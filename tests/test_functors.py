@@ -44,7 +44,7 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
                                       LocalMagnitude, LocalMagnitudeErr,
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq)
+                                      ConvertPixelSqToArcsecondsSq, Ratio)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -673,6 +673,21 @@ class FunctorTestCase(unittest.TestCase):
         metadata.setDouble("CD2_1", -8.27440751733828E-07)
 
         return afwGeom.makeSkyWcs(metadata)
+
+    def testRatio(self):
+        """Test the ratio functor where one of the functors should be junk.
+        """
+        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
+        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 100)
+        parq = self.simulateMultiParquet(self.dataDict)
+
+        func = Ratio("base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr")
+
+        val = self._funcVal(func, parq)
+        self.assertTrue(np.allclose(np.full(self.nRecords, 10),
+                                    val.values,
+                                    atol=1e-16,
+                                    rtol=1e-16))
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
