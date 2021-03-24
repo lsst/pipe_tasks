@@ -43,10 +43,10 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
                                       LocalMagnitude, LocalMagnitudeErr,
-                                      LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq, Ratio,
                                       LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
-                                      LocalDipoleDiffFlux, LocalDipoleDiffFluxErr)
+                                      LocalDipoleDiffFlux, LocalDipoleDiffFluxErr,
+                                      LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
+                                      ConvertPixelSqToArcsecondsSq, Ratio)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
