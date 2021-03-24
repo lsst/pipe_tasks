@@ -545,12 +545,12 @@ class FunctorTestCase(unittest.TestCase):
         calibErr = 1
 
         # compute expected values.
-        absMean = 0.5 * (fluxPos - fluxNeg) * calib
-        absDiff = (fluxNeg + fluxPos) * calib
-        absMeanErr = 0.5 * np.sqrt(2 * (fluxErr * calib) ** 2
-                                   + ((fluxPos - fluxNeg) * calibErr) ** 2)
-        absDiffErr = np.sqrt(2 * (fluxErr * calib) ** 2
-                             + ((fluxPos + fluxNeg) * calibErr) ** 2)
+        absMean = 0.5*(fluxPos - fluxNeg)*calib
+        absDiff = (fluxNeg + fluxPos)*calib
+        absMeanErr = 0.5*np.sqrt(2*(fluxErr*calib)**2
+                                 + ((fluxPos - fluxNeg)*calibErr)**2)
+        absDiffErr = np.sqrt(2*(fluxErr*calib)**2
+                             + ((fluxPos + fluxNeg)*calibErr)**2)
 
         self.dataDict["ip_diffim_DipoleFluxNeg_instFlux"] = np.full(self.nRecords, fluxNeg)
         self.dataDict["ip_diffim_DipoleFluxNeg_instFluxErr"] = np.full(self.nRecords, fluxErr)
