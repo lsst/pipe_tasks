@@ -35,7 +35,7 @@ from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
 from lsst.meas.extensions.scarlet.scarletDeblendTask import ScarletDeblendTask
 from lsst.meas.base import SingleFrameMeasurementTask
-from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
+from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask, getPseudoSources
 from lsst.afw.table import SourceCatalog
 
 
@@ -253,8 +253,9 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # deblendedModelPrimary sources,
         # since they both have the same blended sources and only differ
         # over which model to use for the isolated sources.
+        isPseudo = getPseudoSources(outputCat, primaryConfig.pseudoFilterList, schema, setPrimaryTask.log)
         self.assertEqual(
-            np.sum(outputCat["detect_isDeblendedSource"]),
+            np.sum(outputCat["detect_isDeblendedSource"] & ~isPseudo),
             np.sum(outputCat["detect_isDeblendedModelSource"]))
 
         # Check that the sources contained in a tract are all marked appropriately
@@ -269,6 +270,12 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
 
         # make sure all sky sources are flagged as not primary
         self.assertEqual(sum((outputCat["detect_isPrimary"]) & (outputCat["merge_peak_sky"])), 0)
+
+        # Check that sky objects have not been deblended
+        np.testing.assert_array_equal(
+            isPseudo,
+            isPseudo & (outputCat["deblend_nChild"] == 0)
+        )
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
