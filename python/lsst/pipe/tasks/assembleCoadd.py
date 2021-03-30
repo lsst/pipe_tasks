@@ -44,6 +44,7 @@ from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .scaleVariance import ScaleVarianceTask
 from .maskStreaks import MaskStreaksTask
+from .healSparseMapping import HealSparseInputMapTask
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.daf.butler import DeferredDatasetHandle
 
@@ -99,6 +100,12 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         storageClass="ImageU",
         dimensions=("tract", "patch", "skymap", "band"),
     )
+    inputMap = pipeBase.connectionTypes.Output(
+        doc="Output healsparse map of input images",
+        name="{outputCoaddName}Coadd_inputMap",
+        storageClass="HealSparseMap",
+        dimensions=("tract", "patch", "skymap", "band"),
+    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -124,6 +131,9 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
 
         if not config.doNImage:
             self.outputs.remove("nImage")
+
+        if not self.config.doInputMap:
+            self.outputs.remove("inputMap")
 
 
 class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig,
@@ -241,6 +251,15 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         doc="Coadd only visits selected by a SelectVisitsTask",
         dtype=bool,
         default=False,
+    )
+    doInputMap = pexConfig.Field(
+        doc="Create a bitwise map of coadd inputs",
+        dtype=bool,
+        default=False,
+    )
+    inputMapper = pexConfig.ConfigurableField(
+        doc="Input map creation subtask.",
+        target=HealSparseInputMapTask,
     )
 
     def setDefaults(self):
@@ -406,6 +425,9 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 raise RuntimeError("Unable to define mask plane for bright objects; planes used are %s" %
                                    mask.getMaskPlaneDict().keys())
             del mask
+
+        if self.config.doInputMap:
+            self.makeSubtask("inputMapper")
 
         self.warpType = self.config.warpType
 
@@ -773,6 +795,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
            - ``coaddExposure``: coadded exposure (``lsst.afw.image.Exposure``).
            - ``nImage``: exposure count image (``lsst.afw.image.Image``), if requested.
+           - ``inputMap``: bit-wise map of inputs, if requested.
            - ``warpRefList``: input list of refs to the warps (
                               ``lsst.daf.butler.DeferredDatasetHandle`` or
                               ``lsst.daf.persistence.ButlerDataRef``)
@@ -799,6 +822,13 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             nImage = afwImage.ImageU(skyInfo.bbox)
         else:
             nImage = None
+        # If inputMap is requested, create the initial version that can be masked in
+        # assembleSubregion.
+        if self.config.doInputMap:
+            self.inputMapper.buildCcdInputMap(skyInfo.bbox,
+                                              skyInfo.wcs,
+                                              coaddExposure.getInfo().getCoaddInputs().ccds)
+
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             try:
                 self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
@@ -807,13 +837,20 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             except Exception as e:
                 self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
+        # If inputMap is requested, we must finalize the map after the accumulation.
+        if self.config.doInputMap:
+            self.inputMapper.finalizeCcdInputMapMask()
+            inputMap = self.inputMapper.ccdInputMap
+        else:
+            inputMap = None
+
         self.setInexactPsf(coaddMaskedImage.getMask())
         # Despite the name, the following doesn't really deal with "EDGE" pixels: it identifies
         # pixels that didn't receive any unmasked inputs (as occurs around the edge of the field).
         coaddUtils.setCoaddEdgeBits(coaddMaskedImage.getMask(), coaddMaskedImage.getVariance())
         return pipeBase.Struct(coaddExposure=coaddExposure, nImage=nImage,
                                warpRefList=tempExpRefList, imageScalerList=imageScalerList,
-                               weightList=weightList)
+                               weightList=weightList, inputMap=inputMap)
 
     def assembleMetadata(self, coaddExposure, tempExpRefList, weightList):
         """Set the metadata for the coadd.
@@ -946,6 +983,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             if self.config.removeMaskPlanes:
                 self.removeMaskPlanes(maskedImage)
             maskedImageList.append(maskedImage)
+
+            if self.config.doInputMap:
+                visit = exposure.getInfo().getCoaddInputs().visits[0].getId()
+                self.inputMapper.maskWarpBBox(bbox, visit, mask, statsCtrl.getAndMask())
 
         with self.timer("stack"):
             coaddSubregion = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
