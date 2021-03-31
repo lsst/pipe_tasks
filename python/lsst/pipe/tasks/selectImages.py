@@ -518,7 +518,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                 continue
             if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
                 continue
-            psfSizes.append(psfSize)
+            psfSizes.append(sizeFwhm)
             dataRefList.append(dataRef)
             exposureInfoList.append(exposureInfo)
 
