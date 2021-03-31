@@ -87,7 +87,6 @@ class MockAssembleCoaddTask(AssembleCoaddTask):
         """
         inputs = self.prepareInputs(warpRefList)
         supplementaryData = self.makeSupplementaryData(mockSkyInfo, warpRefList=inputs.tempExpRefList)
-
         retStruct = self.run(mockSkyInfo, inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
         return retStruct
@@ -199,6 +198,32 @@ class MockDcrAssembleCoaddTask(MockAssembleCoaddTask, DcrAssembleCoaddTask):
         DcrAssembleCoaddTask.__init__(self, *args, **kwargs)
 
 
+# class MockInputMapAssembleCoaddConfig(MockSafeClipAssembleCoaddConfig):
+class MockInputMapAssembleCoaddConfig(MockCompareWarpAssembleCoaddConfig):
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.doInputMap = True
+
+
+# class MockInputMapAssembleCoaddTask(MockSafeClipAssembleCoaddTask):
+# class MockInputMapAssembleCoaddTask(MockAssembleCoaddTask, SafeClipAssembleCoaddTask):
+class MockInputMapAssembleCoaddTask(MockCompareWarpAssembleCoaddTask):
+    """Lightly modified version of `SafeClipAssembleCoaddTask`
+    for use with unit tests.
+
+    The modifications bypass the usual middleware for loading data and setting
+    up the Task, and instead supply in-memory mock data references to the `run`
+    method so that the coaddition algorithms can be tested without a Butler.
+    """
+    ConfigClass = MockInputMapAssembleCoaddConfig
+    _DefaultName = "inputMapAssembleCoadd"
+
+    def __init__(self, *args, **kwargs):
+        # SafeClipAssembleCoaddTask.__init__(self, *args, **kwargs)
+        CompareWarpAssembleCoaddTask.__init__(self, *args, **kwargs)
+
+
 class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
     """Tests of AssembleCoaddTask and its derived classes.
 
@@ -261,6 +286,56 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
         config.validate()
         assembleTask = MockDcrAssembleCoaddTask(config=config)
         self.checkGen2Gen3Compatibility(assembleTask)
+
+    def testInputMapGen3(self):
+        import numpy as np
+
+        config = MockInputMapAssembleCoaddConfig()
+        config.validate()
+        assembleTask = MockInputMapAssembleCoaddTask(config=config)
+
+        # Make exposures where one of them has a bad region.
+        patch = 42
+        tract = 0
+        testData = MockCoaddTestData(fluxRange=1e4)
+        exposures = {}
+        matchedExposures = {}
+        for expId in range(100, 110):
+            if expId == 105:
+                badBox = lsst.geom.Box2I(lsst.geom.Point2I(testData.bbox.beginX + 10,
+                                                           testData.bbox.beginY + 10),
+                                         lsst.geom.Extent2I(100, 100))
+            else:
+                badBox = None
+            exposures[expId], matchedExposures[expId] = testData.makeTestImage(expId,
+                                                                               badRegionBox=badBox)
+        dataRefList = testData.makeDataRefList(exposures, matchedExposures,
+                                               'direct', patch=patch, tract=tract)
+
+        results = assembleTask.runQuantum(self.skyInfo, dataRefList)
+
+        inputMap = results.inputMap
+        validPix, raPix, decPix = inputMap.valid_pixels_pos(return_pixels=True)
+
+        # Confirm that all the map pixels are in the bounding box
+        xPix, yPix = exposures[100].getWcs().skyToPixelArray(raPix, decPix, degrees=True)
+        self.assertGreater(xPix.min(), testData.bbox.beginX)
+        self.assertGreater(yPix.min(), testData.bbox.beginY)
+        self.assertLess(xPix.max(), testData.bbox.endX)
+        self.assertLess(xPix.max(), testData.bbox.endY)
+
+        # Confirm that all exposures except 105 are completely covered
+        # This assumes we have one input per visit in the mock data.
+        metadata = inputMap.metadata
+        visitBitDict = {}
+        for bit in range(inputMap.wide_mask_maxbits):
+            if f'B{bit:04d}VIS' in metadata:
+                visitBitDict[metadata[f'B{bit:04d}VIS']] = bit
+        for expId in range(100, 110):
+            if expId == 105:
+                self.assertFalse(np.all(inputMap.check_bits_pix(validPix, [visitBitDict[expId]])))
+            else:
+                self.assertTrue(np.all(inputMap.check_bits_pix(validPix, [visitBitDict[expId]])))
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

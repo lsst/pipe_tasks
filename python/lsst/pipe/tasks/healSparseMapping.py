@@ -156,6 +156,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         if len(badPixels[0]) == 0:
             # No bad pixels
             return
+
         badRa, badDec = self._wcs.pixelToSkyArray(badPixels[1].astype(np.float64),
                                                   badPixels[0].astype(np.float64),
                                                   degrees=True)

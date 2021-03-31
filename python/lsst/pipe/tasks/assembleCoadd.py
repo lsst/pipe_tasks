@@ -1586,6 +1586,8 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         configIntersection = {k: getattr(self.config, k)
                               for k, v in self.config.toDict().items()
                               if (k in config.keys() and k != "connections")}
+        configIntersection['doInputMap'] = False
+        configIntersection['doNImage'] = False
         config.update(**configIntersection)
 
         # statistic MEAN copied from self.config.statistic, but for clarity explicitly assign
