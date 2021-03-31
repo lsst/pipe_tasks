@@ -283,11 +283,11 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         return pipeBase.Struct(instFlux=instFlux, instFluxErr=instFluxErr)
 
     @pipeBase.timeMethod
-    def extractMagArrays(self, matches, filterName, sourceKeys):
+    def extractMagArrays(self, matches, filterLabel, sourceKeys):
         """!Extract magnitude and magnitude error arrays from the given matches.
 
         @param[in] matches Reference/source matches, a @link lsst::afw::table::ReferenceMatchVector@endlink
-        @param[in] filterName  Name of filter being calibrated
+        @param[in] filterLabel Label of filter being calibrated
         @param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
 
         @return Struct containing srcMag, refMag, srcMagErr, refMagErr, and magErr numpy arrays
@@ -326,10 +326,11 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
             applyColorTerms = ctDataAvail and photoCatSpecified
 
         if applyColorTerms:
-            self.log.info("Applying color terms for filterName=%r, config.photoCatName=%s because %s",
-                          filterName, self.config.photoCatName, applyCTReason)
-            colorterm = self.config.colorterms.getColorterm(
-                filterName=filterName, photoCatName=self.config.photoCatName, doRaise=True)
+            self.log.info("Applying color terms for filter=%r, config.photoCatName=%s because %s",
+                          filterLabel.physicalLabel, self.config.photoCatName, applyCTReason)
+            colorterm = self.config.colorterms.getColorterm(filterLabel.physicalLabel,
+                                                            self.config.photoCatName,
+                                                            doRaise=True)
             refCat = afwTable.SimpleCatalog(matches[0].first.schema)
 
             # extract the matched refCat as a Catalog for the colorterm code
@@ -338,7 +339,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
                 record = refCat.addNew()
                 record.assign(x.first)
 
-            refMagArr, refMagErrArr = colorterm.getCorrectedMagnitudes(refCat, filterName)
+            refMagArr, refMagErrArr = colorterm.getCorrectedMagnitudes(refCat)
             fluxFieldList = [getRefFluxField(refSchema, filt) for filt in (colorterm.primary,
                                                                            colorterm.secondary)]
         else:
@@ -346,8 +347,8 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
             self.log.info("Not applying color terms because %s", applyCTReason)
             colorterm = None
 
-            fluxFieldList = [getRefFluxField(refSchema, filterName)]
-            fluxField = getRefFluxField(refSchema, filterName)
+            fluxFieldList = [getRefFluxField(refSchema, filterLabel.bandLabel)]
+            fluxField = getRefFluxField(refSchema, filterLabel.bandLabel)
             fluxKey = refSchema.find(fluxField).key
             refFluxArr = np.array([m.first.get(fluxKey) for m in matches])
 
@@ -443,10 +444,10 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
             except Exception:
                 self.fig = pyplot.figure()
 
-        filterName = exposure.getFilterLabel().bandLabel
+        filterLabel = exposure.getFilterLabel()
 
         # Match sources
-        matchResults = self.match.run(sourceCat, filterName)
+        matchResults = self.match.run(sourceCat, filterLabel.bandLabel)
         matches = matchResults.matches
 
         reserveResults = self.reserve.run([mm.second for mm in matches], expId=expId)
@@ -462,7 +463,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
 
         # Prepare for fitting
         sourceKeys = self.getSourceKeys(matches[0].second.schema)
-        arrays = self.extractMagArrays(matches=matches, filterName=filterName, sourceKeys=sourceKeys)
+        arrays = self.extractMagArrays(matches, filterLabel, sourceKeys)
 
         # Fit for zeropoint
         r = self.getZeroPoint(arrays.srcMag, arrays.refMag, arrays.magErr)

@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import fnmatch
+import warnings
 
 import numpy as np
 import astropy.units as u
@@ -58,15 +59,16 @@ class Colorterm(Config):
     c1 = Field(dtype=float, default=0.0, doc="First-order parameter")
     c2 = Field(dtype=float, default=0.0, doc="Second-order parameter")
 
-    def getCorrectedMagnitudes(self, refCat, filterName):
+    def getCorrectedMagnitudes(self, refCat, filterName="deprecatedArgument"):
         """Return the colorterm corrected magnitudes for a given filter.
 
         Parameters
         ----------
         refCat : `lsst.afw.table.SimpleCatalog`
             The reference catalog to apply color corrections to.
-        filterName : `str`
+        filterName : `str`, deprecated
             The camera filter to correct the reference catalog into.
+            The ``filterName`` argument is unused and will be removed in v23.
 
         Returns
         -------
@@ -86,6 +88,10 @@ class Colorterm(Config):
         WARNING: I do not know that we can trust the propagation of magnitude
         errors returned by this method. They need more thorough tests.
         """
+
+        if filterName != "deprecatedArgument":
+            msg = "Colorterm.getCorrectedMagnitudes() `filterName` arg is unused and will be removed in v23."
+            warnings.warn(msg, category=FutureWarning)
 
         def getFluxes(fluxField):
             """Get the flux and fluxErr of this field from refCat."""
@@ -137,7 +143,7 @@ class Colorterm(Config):
 
 
 class ColortermDict(Config):
-    """!A mapping of filterName to Colorterm
+    """A mapping of physical filter label to Colorterm
 
     Different reference catalogs may need different ColortermDicts; see ColortermLibrary
 
@@ -198,7 +204,7 @@ class ColortermLibrary(Config):
         default={},
     )
 
-    def getColorterm(self, filterName, photoCatName, doRaise=True):
+    def getColorterm(self, physicalFilter, photoCatName, doRaise=True):
         """!Get the appropriate Colorterm from the library
 
         Use dict of color terms in the library that matches the photoCatName.
@@ -207,12 +213,12 @@ class ColortermLibrary(Config):
         e.g., "sdss-*" will match "sdss-dr8"), then that is used. If there is no
         exact match and no unique match to the globs, raise an exception.
 
-        @param filterName  name of filter
+        @param physicalFilter  Label of physical filter to correct to.
         @param photoCatName  name of photometric reference catalog from which to retrieve the data.
             This argument is not glob-expanded (but the catalog names in the library are,
             if no exact match is found).
         @param[in] doRaise  if True then raise ColortermNotFoundError if no suitable Colorterm found;
-            if False then return a null Colorterm with filterName as the primary and secondary filter
+            if False then return a null Colorterm with physicalFilter as the primary and secondary filter
         @return the appropriate Colorterm
 
         @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true;
@@ -235,15 +241,15 @@ class ColortermLibrary(Config):
                     raise ColortermNotFoundError(
                         "No colorterm dict found with photoCatName %r" % photoCatName)
             ctDict = ctDictConfig.data
-            if filterName not in ctDict:
+            if physicalFilter not in ctDict:
                 errMsg = "No colorterm found for filter %r with photoCatName %r" % (
-                    filterName, photoCatName)
+                    physicalFilter, photoCatName)
                 if trueRefCatName is not None:
                     errMsg += " = catalog %r" % (trueRefCatName,)
                 raise ColortermNotFoundError(errMsg)
-            return ctDict[filterName]
+            return ctDict[physicalFilter]
         except ColortermNotFoundError:
             if doRaise:
                 raise
             else:
-                return Colorterm(filterName, filterName)
+                return Colorterm(physicalFilter, physicalFilter)
