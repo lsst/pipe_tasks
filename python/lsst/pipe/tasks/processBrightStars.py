@@ -163,6 +163,11 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         doc="Apply full focal plane sky correction before extracting stars?",
         default=True
     )
+    discardNanFluxStars = pexConfig.Field(
+        dtype=bool,
+        doc="Should stars with NaN annular flux be discarded?",
+        default=False
+    )
     refObjLoader = pexConfig.ConfigurableField(
         target=LoadIndexedReferenceObjectsTask,
         doc="Reference object loader for astrometric calibration.",
@@ -466,7 +471,9 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                                                  imCenter=self.modelCenter,
                                                                  statsControl=statsControl,
                                                                  statsFlag=statsFlag,
-                                                                 badMaskPlanes=self.config.badMaskPlanes)
+                                                                 badMaskPlanes=self.config.badMaskPlanes,
+                                                                 discardNanFluxObjects=(
+                                                                     self.config.discardNanFluxStars))
         return pipeBase.Struct(brightStarStamps=brightStarStamps)
 
     def runDataRef(self, dataRef):
