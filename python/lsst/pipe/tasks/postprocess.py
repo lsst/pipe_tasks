@@ -39,11 +39,13 @@ from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
 from .functors import CompositeFunctor, RAColumn, DecColumn, Column
 
 
-def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
+def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False, inputBands=None):
     """Flattens a dataframe with multilevel column index
     """
     newDf = pd.DataFrame()
-    for band in set(df.columns.to_frame()['band']):
+    # band is the level 0 index
+    dfBands = df.columns.unique(level=0).values
+    for band in dfBands:
         subdf = df[band]
         columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
         newColumns = {c: columnFormat.format(band, c)
@@ -51,7 +53,11 @@ def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False):
         cols = list(newColumns.keys())
         newDf = pd.concat([newDf, subdf[cols].rename(columns=newColumns)], axis=1)
 
-    newDf = pd.concat([subdf[noDupCols], newDf], axis=1)
+    # Band must be present in the input and output or else column is all NaN:
+    presentBands = dfBands if inputBands is None else list(set(inputBands).intersection(dfBands))
+    # Get the unexploded columns from any present band's partition
+    noDupDf = df[presentBands[0]][noDupCols]
+    newDf = pd.concat([noDupDf, newDf], axis=1)
     return newDf
 
 
@@ -634,7 +640,7 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
         df = analysis.df
         if dataId is not None:
             for key, value in dataId.items():
-                df[key] = value
+                df[str(key)] = value
 
         return pipeBase.Struct(
             df=df,
@@ -747,7 +753,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
             if dataId is not None:
                 noDupCols += list(dataId.keys())
-            df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase)
+            df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
+                                inputBands=inputBands)
 
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
         return df

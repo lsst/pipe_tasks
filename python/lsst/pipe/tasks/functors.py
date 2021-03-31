@@ -475,7 +475,7 @@ class CompositeFunctor(Functor):
         else:
             if isinstance(data, DeferredDatasetHandle):
                 # input if Gen3 deferLoad=True
-                df = data.get(columns=self.columns)
+                df = data.get(parameters={"columns": columns})
             elif isinstance(data, pd.DataFrame):
                 # input if Gen3 deferLoad=False
                 df = data
