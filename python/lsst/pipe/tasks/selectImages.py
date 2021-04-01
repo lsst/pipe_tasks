@@ -21,13 +21,16 @@
 #
 import numpy as np
 import lsst.sphgeom
+import lsst.utils as utils
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.geom as geom
 import lsst.pipe.base as pipeBase
+from lsst.skymap import BaseSkyMap
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
-           "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask"]
+           "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask", "BestSeeingSelectVisitsTask",
+           "BestSeeingQuantileSelectVisitsTask"]
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
@@ -515,7 +518,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
                 continue
             if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
                 continue
-            psfSizes.append(psfSize)
+            psfSizes.append(sizeFwhm)
             dataRefList.append(dataRef)
             exposureInfoList.append(exposureInfo)
 
@@ -540,53 +543,247 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
             exposureInfoList=filteredExposureInfoList,
         )
 
-    def run(self, wcsList, bboxList, coordList, psfList, dataIds, **kwargs):
-        """Return indices of good calexps from a list.
 
-        This task does not make sense for use with makeWarp where there quanta
-        are per-visit rather than per-patch. This task selectes the best ccds
-        of ONE VISIT that overlap the patch.
+class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
+                                        dimensions=("tract", "patch", "skymap", "band", "instrument"),
+                                        defaultTemplates={"coaddName": "bestSeeing"}):
+    skyMap = pipeBase.connectionTypes.Input(
+        doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
+    visitSummaries = pipeBase.connectionTypes.Input(
+        doc="Per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
+        name="visitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit",),
+        multiple=True,
+        deferLoad=True
+    )
+    goodVisits = pipeBase.connectionTypes.Output(
+        doc="Selected visits to be coadded.",
+        name="{coaddName}VisitsDict",
+        storageClass="StructuredDataDict",
+        dimensions=("instrument", "tract", "patch", "skymap", "band"),
+    )
 
-        This includes some code duplication with runDataRef,
-        but runDataRef will be deprecated as of v22.
+
+class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
+                                   pipelineConnections=BestSeeingSelectVisitsConnections):
+    nVisitsMax = pexConfig.RangeField(
+        dtype=int,
+        doc="Maximum number of visits to select",
+        default=12,
+        min=0
+    )
+    maxPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Maximum PSF FWHM (in arcseconds) to select",
+        default=1.5,
+        optional=True
+    )
+    minPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Minimum PSF FWHM (in arcseconds) to select",
+        default=0.,
+        optional=True
+    )
+    doConfirmOverlap = pexConfig.Field(
+        dtype=bool,
+        doc="Do remove visits that do not actually overlap the patch?",
+        default=True,
+    )
+
+
+class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
+    """Select up to a maximum number of the best-seeing visits
+
+    Don't exceed the FWHM range specified by configs min(max)PsfFwhm.
+    This Task is a port of the Gen2 image-selector used in the AP pipeline:
+    BestSeeingSelectImagesTask. This Task selects full visits based on the
+    average PSF of the entire visit.
+    """
+    ConfigClass = BestSeeingSelectVisitsConfig
+    _DefaultName = 'bestSeeingSelectVisits'
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        quantumDataId = butlerQC.quantum.dataId
+        outputs = self.run(**inputs, dataId=quantumDataId)
+        butlerQC.put(outputs, outputRefs)
+
+    def run(self, visitSummaries, skyMap, dataId):
+        """Run task
 
         Parameters:
         -----------
-        wcsList : `list` of `lsst.afw.geom.SkyWcs`
-            specifying the WCS's of the input ccds to be selected
-        bboxList : `list` of `lsst.geom.Box2I`
-            specifying the bounding boxes of the input ccds to be selected
-        coordList : `list` of `lsst.geom.SpherePoint`
-            ICRS coordinates specifying boundary of the patch.
-        psfList : `list` of `lsst.afw.detection.Psf`
-            specifying the PSF model of the input ccds to be selected
+        visitSummary : `list`
+            List of `lsst.pipe.base.connections.DeferredDatasetRef` of
+            visitSummary tables of type `lsst.afw.table.ExposureCatalog`
+        skyMap : `lsst.skyMap.SkyMap`
+           SkyMap for checking visits overlap patch
+        dataId : `dict` of dataId keys
+            For retrieving patch info for checking visits overlap patch
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+           Result struct with components:
+
+           - `goodVisits`: `dict` with selected visit ids as keys,
+                so that it can be be saved as a StructuredDataDict.
+                StructuredDataList's are currently limited.
+        """
+
+        if self.config.doConfirmOverlap:
+            patchPolygon = self.makePatchPolygon(skyMap, dataId)
+
+        inputVisits = [visitSummary.ref.dataId['visit'] for visitSummary in visitSummaries]
+        fwhmSizes = []
+        visits = []
+        for visit, visitSummary in zip(inputVisits, visitSummaries):
+            # read in one-by-one and only once. There may be hundreds
+            visitSummary = visitSummary.get()
+
+            pixToArcseconds = [vs.getWcs().getPixelScale(vs.getBBox().getCenter()).asArcseconds()
+                               for vs in visitSummary]
+            # psfSigma is PSF model determinant radius at chip center in pixels
+            psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary])
+            fwhm = np.nanmean(psfSigmas * pixToArcseconds) * np.sqrt(8.*np.log(2.))
+
+            if self.config.maxPsfFwhm and fwhm > self.config.maxPsfFwhm:
+                continue
+            if self.config.minPsfFwhm and fwhm < self.config.minPsfFwhm:
+                continue
+            if self.config.doConfirmOverlap and not self.doesIntersectPolygon(visitSummary, patchPolygon):
+                continue
+
+            fwhmSizes.append(fwhm)
+            visits.append(visit)
+
+        sortedVisits = [ind for (_, ind) in sorted(zip(fwhmSizes, visits))]
+        output = sortedVisits[:self.config.nVisitsMax]
+        self.log.info(f"{len(output)} images selected with FWHM "
+                      f"range of {fwhmSizes[visits.index(output[0])]}"
+                      f"--{fwhmSizes[visits.index(output[-1])]} arcseconds")
+
+        # In order to store as a StructuredDataDict, convert list to dict
+        goodVisits = {key: True for key in output}
+        return pipeBase.Struct(goodVisits=goodVisits)
+
+    def makePatchPolygon(self, skyMap, dataId):
+        """Return True if sky polygon overlaps visit
+
+        Parameters:
+        -----------
+        skyMap : `lsst.afw.table.ExposureCatalog`
+            Exposure catalog with per-detector geometry
+        dataId : `dict` of dataId keys
+            For retrieving patch info
 
         Returns:
         --------
-        output: `list` of `int`
-            of indices of selected ccds sorted by seeing
+        result  :` lsst.sphgeom.ConvexPolygon.convexHull`
+            Polygon of patch's outer bbox
         """
-        goodWcs = super().run(wcsList=wcsList, bboxList=bboxList, coordList=coordList, dataIds=dataIds)
+        wcs = skyMap[dataId['tract']].getWcs()
+        bbox = skyMap[dataId['tract']][dataId['patch']].getOuterBBox()
+        sphCorners = wcs.pixelToSky(lsst.geom.Box2D(bbox).getCorners())
+        result = lsst.sphgeom.ConvexPolygon.convexHull([coord.getVector() for coord in sphCorners])
+        return result
 
-        psfSizes = []
-        indices = []
-        for i, (wcs, psf) in enumerate(wcsList, psfList):
-            if i not in goodWcs:
-                continue
-            # if min/max PSF values are defined, remove images out of bounds
-            pixToArcseconds = wcs.getPixelScale().asArcseconds()
-            psfSize = psf.computeShape().getDeterminantRadius()*pixToArcseconds
-            sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
-            if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
-                continue
-            if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
-                continue
-            psfSizes.append(psfSize)
-            indices.append(i)
+    def doesIntersectPolygon(self, visitSummary, polygon):
+        """Return True if sky polygon overlaps visit
 
-        sortedIndices = [ind for (_, ind) in sorted(zip(psfSizes, indices))]
-        output = sortedIndices[:self.config.nImagesMax]
-        self.log.info(f"{len(output)} images selected with FWHM "
-                      f"range of {psfSizes[indices.index(output[0])]}"
-                      f"--{psfSizes[indices.index(output[-1])]} arcseconds")
-        return output
+        Parameters:
+        -----------
+        visitSummary : `lsst.afw.table.ExposureCatalog`
+            Exposure catalog with per-detector geometry
+        polygon :` lsst.sphgeom.ConvexPolygon.convexHull`
+            Polygon to check overlap
+
+        Returns:
+        --------
+        doesIntersect: `bool`
+            Does the visit overlap the polygon
+        """
+        doesIntersect = False
+        for detectorSummary in visitSummary:
+            corners = [lsst.geom.SpherePoint(ra, decl, units=lsst.geom.degrees).getVector() for (ra, decl) in
+                       zip(detectorSummary['raCorners'], detectorSummary['decCorners'])]
+            detectorPolygon = lsst.sphgeom.ConvexPolygon.convexHull(corners)
+            if detectorPolygon.intersects(polygon):
+                doesIntersect = True
+                break
+        return doesIntersect
+
+
+class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
+                                           pipelineConnections=BestSeeingSelectVisitsConnections):
+    qMin = pexConfig.RangeField(
+        doc="Lower bound of quantile range to select. Sorts visits by seeing from narrow to wide, "
+            "and select those in the interquantile range (qMin, qMax). Set qMin to 0 for Best Seeing. "
+            "This config should be changed from zero only for exploratory diffIm testing.",
+        dtype=float,
+        default=0,
+        min=0,
+        max=1,
+    )
+    qMax = pexConfig.RangeField(
+        doc="Upper bound of quantile range to select. Sorts visits by seeing from narrow to wide, "
+            "and select those in the interquantile range (qMin, qMax). Set qMax to 1 for Worst Seeing.",
+        dtype=float,
+        default=0.33,
+        min=0,
+        max=1,
+    )
+    nVisitsMin = pexConfig.Field(
+        doc="At least this number of visits selected and supercedes quantile. For example, if 10 visits "
+            "cover this patch, qMin=0.33, and nVisitsMin=5, the best 5 visits will be selected.",
+        dtype=int,
+        default=3,
+    )
+    doConfirmOverlap = pexConfig.Field(
+        dtype=bool,
+        doc="Do remove visits that do not actually overlap the patch?",
+        default=True,
+    )
+
+
+class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
+    """Select a quantile of the best-seeing visits
+
+    Selects the best (for example, third) full visits based on the average
+    PSF width in the entire visit. It can also be used for difference imaging
+    experiments that require templates with the worst seeing visits.
+    For example, selecting the worst third can be acheived by
+    changing the config parameters qMin to 0.66 and qMax to 1.
+    """
+    ConfigClass = BestSeeingQuantileSelectVisitsConfig
+    _DefaultName = 'bestSeeingQuantileSelectVisits'
+
+    @utils.inheritDoc(BestSeeingSelectVisitsTask)
+    def run(self, visitSummaries, skyMap, dataId):
+        if self.config.doConfirmOverlap:
+            patchPolygon = self.makePatchPolygon(skyMap, dataId)
+        visits = np.array([visitSummary.ref.dataId['visit'] for visitSummary in visitSummaries])
+        radius = np.empty(len(visits))
+        intersects = np.full(len(visits), True)
+        for i, visitSummary in enumerate(visitSummaries):
+            # read in one-by-one and only once. There may be hundreds
+            visitSummary = visitSummary.get()
+            # psfSigma is PSF model determinant radius at chip center in pixels
+            psfSigma = np.nanmedian([vs['psfSigma'] for vs in visitSummary])
+            radius[i] = psfSigma
+            if self.config.doConfirmOverlap:
+                intersects[i] = self.doesIntersectPolygon(visitSummary, patchPolygon)
+
+        sortedVisits = [v for rad, v in sorted(zip(radius[intersects], visits[intersects]))]
+        lowerBound = min(int(np.round(self.config.qMin*len(visits))),
+                         max(0, len(visits) - self.config.nVisitsMin))
+        upperBound = max(int(np.round(self.config.qMax*len(visits))), self.config.nVisitsMin)
+
+        # In order to store as a StructuredDataDict, convert list to dict
+        goodVisits = {int(visit): True for visit in sortedVisits[lowerBound:upperBound]}
+        return pipeBase.Struct(goodVisits=goodVisits)

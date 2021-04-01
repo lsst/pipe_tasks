@@ -74,6 +74,12 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=("skymap", ),
     )
+    selectedVisits = pipeBase.connectionTypes.Input(
+        doc="Selected visits to be coadded.",
+        name="{outputCoaddName}VisitsDict",
+        storageClass="StructuredDataDict",
+        dimensions=("instrument", "tract", "patch", "skymap", "band")
+    )
     brightObjectMask = pipeBase.connectionTypes.PrerequisiteInput(
         doc=("Input Bright Object Mask mask produced with external catalogs to be applied to the mask plane"
              " BRIGHT_OBJECT."),
@@ -112,6 +118,9 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
 
         if not config.doMaskBrightObjects:
             self.prerequisiteInputs.remove("brightObjectMask")
+
+        if not config.doSelectVisits:
+            self.inputs.remove("selectedVisits")
 
         if not config.doNImage:
             self.outputs.remove("nImage")
@@ -227,6 +236,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         dtype=bool,
         default=False,
         doc="Should be set to True if fake sources have been inserted into the input data."
+    )
+    doSelectVisits = pexConfig.Field(
+        doc="Coadd only visits selected by a SelectVisitsTask",
+        dtype=bool,
+        default=False,
     )
 
     def setDefaults(self):
@@ -424,9 +438,11 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                                            tractId=outputDataId['tract'],
                                            patchId=outputDataId['patch'])
 
-        # Construct list of input Deferred Datasets
-        # These quack a bit like like Gen2 DataRefs
-        warpRefList = inputData['inputWarps']
+        if self.config.doSelectVisits:
+            warpRefList = self.filterWarps(inputData['inputWarps'], inputData['selectedVisits'])
+        else:
+            warpRefList = inputData['inputWarps']
+
         # Perform same middle steps as `runDataRef` does
         inputs = self.prepareInputs(warpRefList)
         self.log.info("Found %d %s", len(inputs.tempExpRefList),
@@ -1168,6 +1184,27 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                                        "colShift=%s, rowShift=%s" %
                                        (bbox, subregionSize, colShift, rowShift))
                 yield subBBox
+
+    def filterWarps(self, inputs, goodVisits):
+        """Return list of only inputRefs with visitId in goodVisits ordered by goodVisit
+
+        Parameters
+        ----------
+        inputs : list
+            List of `lsst.pipe.base.connections.DeferredDatasetRef` with dataId containing visit
+        goodVisit : `dict`
+            Dictionary with good visitIds as the keys. Value ignored.
+
+        Returns:
+        --------
+        filteredInputs : `list`
+            Filtered and sorted list of `lsst.pipe.base.connections.DeferredDatasetRef`
+        """
+        inputWarpDict = {inputRef.ref.dataId['visit']: inputRef for inputRef in inputs}
+        filteredInputs = []
+        for visit in goodVisits.keys():
+            filteredInputs.append(inputWarpDict[visit])
+        return filteredInputs
 
 
 class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
