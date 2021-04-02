@@ -28,9 +28,36 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.geom
 import lsst.afw.geom as afwGeom
+from lsst.daf.butler import Formatter
 
 
-__all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig"]
+__all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
+           "HealSparseMapFormatter"]
+
+
+class HealSparseMapFormatter(Formatter):
+    """Interface for reading and writing healsparse.HealSparseMap files
+    """
+    unsupportedParameters = None
+    supportedExtensions = frozenset({".hsp", ".fit", ".fits"})
+    extension = '.hsp'
+
+    def read(self, component=None):
+        if component is not None:
+            raise ValueError("Cannot read a component of a HealSparseMap")
+
+        path = self.fileDescriptor.location.path
+        try:
+            data = hsp.HealSparseMap.read(path)
+        except (OSError, RuntimeError):
+            raise ValueError(f"Unable to read healsparse map with URI {self.fileDescriptor.location.uri}")
+
+        return data
+
+    def write(self, inMemoryDataset):
+        # Update the location with the formatter-preferred file extension
+        self.fileDescriptor.location.updateExtension(self.extension)
+        inMemoryDataset.write(self.fileDescriptor.location.path)
 
 
 class HealSparseInputMapConfig(pexConfig.Config):
@@ -103,7 +130,8 @@ class HealSparseInputMapTask(pipeBase.Task):
             ccdPoly = ccd.getValidPolygon()
             if ccdPoly is None:
                 ccdPoly = afwGeom.Polygon(lsst.geom.Box2D(ccd.getBBox()))
-            ccdPolyRadec = self._pixels_to_radec(wcs, ccdPoly.convexHull().getVertices())
+            # Detectors need to be rendered with their own wcs.
+            ccdPolyRadec = self._pixelsToRadec(ccd.getWcs(), ccdPoly.convexHull().getVertices())
 
             # Create a ccd healsparse polygon
             poly = hsp.Polygon(ra=ccdPolyRadec[: -1, 0],
@@ -112,9 +140,9 @@ class HealSparseInputMapTask(pipeBase.Task):
             self.ccdInputMap.set_bits_pix(poly.get_pixels(nside=self.ccdInputMap.nside_sparse),
                                           [bit])
 
-        # Cut down to the overall bounding box
+        # Cut down to the overall bounding box with associated wcs.
         bboxAfwPoly = afwGeom.Polygon(lsst.geom.Box2D(bbox))
-        bboxPolyRadec = self._pixels_to_radec(wcs, bboxAfwPoly.convexHull().getVertices())
+        bboxPolyRadec = self._pixelsToRadec(self._wcs, bboxAfwPoly.convexHull().getVertices())
         bboxPoly = hsp.Polygon(ra=bboxPolyRadec[: -1, 0], dec=bboxPolyRadec[: -1, 1],
                                value=np.arange(self.ccdInputMap.wide_mask_maxbits))
         bboxPolyMap = bboxPoly.get_map_like(self.ccdInputMap)
@@ -130,8 +158,9 @@ class HealSparseInputMapTask(pipeBase.Task):
                                                                  nside_sparse=self.config.nside,
                                                                  dtype=dtype,
                                                                  primary=dtype[0][0])
-
-        self._ccdInputBadCountMap[self._ccdInputPixels] = np.zeros(1, dtype=dtype)
+        # Don't set input bad map if there are no ccds which overlap the bbox.
+        if len(self._ccdInputPixels) > 0:
+            self._ccdInputBadCountMap[self._ccdInputPixels] = np.zeros(1, dtype=dtype)
 
     def maskWarpBBox(self, bbox, visit, mask, bitMaskValue):
         """Mask a subregion from a visit.  This must be run after
@@ -147,6 +176,10 @@ class HealSparseInputMapTask(pipeBase.Task):
             Mask plane from warp exposure.
         bitMaskValue : `int`
             Bit mask to check for bad pixels.
+
+        Raises
+        ------
+        RuntimeError : Raised if buildCcdInputMap was not run first.
         """
         if self.ccdInputMap is None:
             raise RuntimeError("Must run buildCcdInputMap before maskWarpBBox")
@@ -157,6 +190,7 @@ class HealSparseInputMapTask(pipeBase.Task):
             # No bad pixels
             return
 
+        # Bad pixels come from warps which use the overal wcs.
         badRa, badDec = self._wcs.pixelToSkyArray(badPixels[1].astype(np.float64),
                                                   badPixels[0].astype(np.float64),
                                                   degrees=True)
@@ -184,7 +218,14 @@ class HealSparseInputMapTask(pipeBase.Task):
     def finalizeCcdInputMapMask(self):
         """Use accumulated mask information to finalize the masking of
         ccdInputMap.
+
+        Raises
+        ------
+        RuntimeError : Raised if buildCcdInputMap was not run first.
         """
+        if self.ccdInputMap is None:
+            raise RuntimeError("Must run buildCcdInputMap before finalizeCcdInputMapMask.")
+
         countMapArr = self._ccdInputBadCountMap[self._ccdInputPixels]
         for visit in self._bitsPerVisit:
             toMask, = np.where(countMapArr[f'v{visit}'] > self._minBad)
@@ -196,7 +237,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         # Clear memory
         self._ccdInputBadCountMap = None
 
-    def _pixels_to_radec(self, wcs, pixels):
+    def _pixelsToRadec(self, wcs, pixels):
         """Convert pixels to ra/dec positions using a wcs.
 
         Parameters
