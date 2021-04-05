@@ -21,7 +21,6 @@
 
 import functools
 import pandas as pd
-import numpy as np
 from collections import defaultdict
 
 import lsst.geom
@@ -1082,13 +1081,15 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     def _combineExposureMetadata(self, visit, dataRefs, isGen3=True):
         """Make a combined exposure catalog from a list of dataRefs.
+        These dataRefs must point to exposures with wcs, summaryStats,
+        and other visit metadata.
 
         Parameters
         ----------
         visit : `int`
-            Visit identification number
+            Visit identification number.
         dataRefs : `list`
-            List of calexp dataRefs in visit.  May be list of
+            List of dataRefs in visit.  May be list of
             `lsst.daf.persistence.ButlerDataRef` (Gen2) or
             `lsst.daf.butler.DeferredDatasetHandle` (Gen3).
         isGen3 : `bool`, optional
@@ -1099,6 +1100,73 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         visitSummary : `lsst.afw.table.ExposureCatalog`
             Exposure catalog with per-detector summary information.
         """
+        schema = self._makeVisitSummarySchema()
+        cat = afwTable.ExposureCatalog(schema)
+        cat.resize(len(dataRefs))
+
+        cat['visit'] = visit
+
+        for i, dataRef in enumerate(dataRefs):
+            if isGen3:
+                visitInfo = dataRef.get(component='visitInfo')
+                filterLabel = dataRef.get(component='filterLabel')
+                summaryStats = dataRef.get(component='summaryStats')
+                detector = dataRef.get(component='detector')
+                wcs = dataRef.get(component='wcs')
+                photoCalib = dataRef.get(component='photoCalib')
+                detector = dataRef.get(component='detector')
+                bbox = dataRef.get(component='bbox')
+                validPolygon = dataRef.get(component='validPolygon')
+            else:
+                # Note that we need to read the calexp because there is
+                # no magic access to the psf except through the exposure.
+                gen2_read_bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
+                exp = dataRef.get(datasetType='calexp_sub', bbox=gen2_read_bbox)
+                visitInfo = exp.getInfo().getVisitInfo()
+                filterLabel = dataRef.get("calexp_filterLabel")
+                summaryStats = exp.getInfo().getSummaryStats()
+                wcs = exp.getWcs()
+                photoCalib = exp.getPhotoCalib()
+                detector = exp.getDetector()
+                bbox = dataRef.get(datasetType='calexp_bbox')
+                validPolygon = exp.getInfo().getValidPolygon()
+
+            rec = cat[i]
+            rec.setBBox(bbox)
+            rec.setVisitInfo(visitInfo)
+            rec.setWcs(wcs)
+            rec.setPhotoCalib(photoCalib)
+            rec.setValidPolygon(validPolygon)
+
+            rec['physical_filter'] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
+            rec['band'] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
+            rec.setId(detector.getId())
+            rec['psfSigma'] = summaryStats.psfSigma
+            rec['psfIxx'] = summaryStats.psfIxx
+            rec['psfIyy'] = summaryStats.psfIyy
+            rec['psfIxy'] = summaryStats.psfIxy
+            rec['psfArea'] = summaryStats.psfArea
+            rec['raCorners'][:] = summaryStats.raCorners
+            rec['decCorners'][:] = summaryStats.decCorners
+            rec['ra'] = summaryStats.ra
+            rec['decl'] = summaryStats.decl
+            rec['zenithDistance'] = summaryStats.zenithDistance
+            rec['zeroPoint'] = summaryStats.zeroPoint
+            rec['skyBg'] = summaryStats.skyBg
+            rec['skyNoise'] = summaryStats.skyNoise
+            rec['meanVar'] = summaryStats.meanVar
+
+        metadata = dafBase.PropertyList()
+        metadata.add("COMMENT", "Catalog id is detector id, sorted.")
+        # We are looping over existing datarefs, so the following is true
+        metadata.add("COMMENT", "Only detectors with data have entries.")
+        cat.setMetadata(metadata)
+
+        cat.sort()
+        return cat
+
+    def _makeVisitSummarySchema(self):
+        """Make the schema for the visitSummary catalog."""
         schema = afwTable.ExposureTable.makeMinimalSchema()
         schema.addField('visit', type='I', doc='Visit number')
         schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
@@ -1117,70 +1185,22 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                         doc='Right Ascension of bounding box corners (degrees)')
         schema.addField('decCorners', type='ArrayD', size=4,
                         doc='Declination of bounding box corners (degrees)')
+        schema.addField('ra', type='D',
+                        doc='Right Ascension of bounding box center (degrees)')
+        schema.addField('decl', type='D',
+                        doc='Declination of bounding box center (degrees)')
+        schema.addField('zenithDistance', type='F',
+                        doc='Zenith distance of bounding box center (degrees)')
+        schema.addField('zeroPoint', type='F',
+                        doc='Mean zeropoint in detector (mag)')
+        schema.addField('skyBg', type='F',
+                        doc='Average sky background (ADU)')
+        schema.addField('skyNoise', type='F',
+                        doc='Average sky noise (ADU)')
+        schema.addField('meanVar', type='F',
+                        doc='Mean variance of the weight plane (ADU**2)')
 
-        cat = afwTable.ExposureCatalog(schema)
-        cat.resize(len(dataRefs))
-
-        cat['visit'] = visit
-
-        for i, dataRef in enumerate(dataRefs):
-            if isGen3:
-                visitInfo = dataRef.get(component='visitInfo')
-                filterLabel = dataRef.get(component='filterLabel')
-                psf = dataRef.get(component='psf')
-                wcs = dataRef.get(component='wcs')
-                photoCalib = dataRef.get(component='photoCalib')
-                detector = dataRef.get(component='detector')
-                bbox = dataRef.get(component='bbox')
-                validPolygon = dataRef.get(component='validPolygon')
-            else:
-                # Note that we need to read the calexp because there is
-                # no magic access to the psf except through the exposure.
-                gen2_read_bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
-                exp = dataRef.get(datasetType='calexp_sub', bbox=gen2_read_bbox)
-                visitInfo = exp.getInfo().getVisitInfo()
-                filterLabel = dataRef.get("calexp_filterLabel")
-                psf = exp.getPsf()
-                wcs = exp.getWcs()
-                photoCalib = exp.getPhotoCalib()
-                detector = exp.getDetector()
-                bbox = dataRef.get(datasetType='calexp_bbox')
-                validPolygon = exp.getInfo().getValidPolygon()
-
-            rec = cat[i]
-            rec.setBBox(bbox)
-            rec.setVisitInfo(visitInfo)
-            rec.setWcs(wcs)
-            rec.setPhotoCalib(photoCalib)
-            rec.setValidPolygon(validPolygon)
-
-            rec['physical_filter'] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
-            rec['band'] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
-            rec.setId(detector.getId())
-            shape = psf.computeShape(bbox.getCenter())
-            rec['psfSigma'] = shape.getDeterminantRadius()
-            rec['psfIxx'] = shape.getIxx()
-            rec['psfIyy'] = shape.getIyy()
-            rec['psfIxy'] = shape.getIxy()
-            im = psf.computeKernelImage(bbox.getCenter())
-            # The calculation of effective psf area is taken from
-            # meas_base/src/PsfFlux.cc#L112. See
-            # https://github.com/lsst/meas_base/blob/
-            # 750bffe6620e565bda731add1509507f5c40c8bb/src/PsfFlux.cc#L112
-            rec['psfArea'] = np.sum(im.array)/np.sum(im.array**2.)
-
-            sph_pts = wcs.pixelToSky(lsst.geom.Box2D(bbox).getCorners())
-            rec['raCorners'][:] = [sph.getRa().asDegrees() for sph in sph_pts]
-            rec['decCorners'][:] = [sph.getDec().asDegrees() for sph in sph_pts]
-
-        metadata = dafBase.PropertyList()
-        metadata.add("COMMENT", "Catalog id is detector id, sorted.")
-        # We are looping over existing datarefs, so the following is true
-        metadata.add("COMMENT", "Only detectors with data have entries.")
-        cat.setMetadata(metadata)
-
-        cat.sort()
-        return cat
+        return schema
 
 
 class VisitDataIdContainer(DataIdContainer):
