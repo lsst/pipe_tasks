@@ -44,6 +44,7 @@ class HealSparseMapFormatterTestCase(unittest.TestCase):
         self.hspMap = hsp.HealSparseMap.make_empty(nside_coverage=32, nside_sparse=4096, dtype=np.float32)
         self.hspMap[0: 10000] = 1.0
         self.hspMap[100000: 110000] = 2.0
+        self.hspMap[500000: 510000] = 3.0
 
     def tearDown(self):
         removeTestTempDir(self.root)
@@ -61,6 +62,18 @@ class HealSparseMapFormatterTestCase(unittest.TestCase):
         # Retrieve the full map.
         hspMap = butler.get('map')
         self.assertTrue(np.all(hspMap._sparse_map == self.hspMap._sparse_map))
+
+        # Retrieve the coverage map
+        coverage = butler.get('map.coverage')
+        self.assertTrue(np.all(coverage.coverage_mask == self.hspMap.coverage_mask))
+
+        # Retrieve a partial map
+        pixels = [0, 6]
+        partialMap = butler.get('map', parameters={'pixels': pixels})
+
+        self.assertTrue(np.all(np.where(partialMap.coverage_mask)[0] == np.array(pixels)))
+        self.assertTrue(np.all(partialMap[0: 10000] == self.hspMap[0: 10000]))
+        self.assertTrue(np.all(partialMap[100000: 110000] == self.hspMap[100000: 110000]))
 
 
 if __name__ == "__main__":

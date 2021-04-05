@@ -38,23 +38,36 @@ __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
 class HealSparseMapFormatter(Formatter):
     """Interface for reading and writing healsparse.HealSparseMap files
     """
-    unsupportedParameters = None
+    unsupportedParameters = frozenset()
     supportedExtensions = frozenset({".hsp", ".fit", ".fits"})
     extension = '.hsp'
 
     def read(self, component=None):
-        if component is not None:
-            raise ValueError("Cannot read a component of a HealSparseMap")
-
+        # Docstring inherited from Formatter.read.
         path = self.fileDescriptor.location.path
+
+        if component == 'coverage':
+            try:
+                data = hsp.HealSparseCoverage.read(path)
+            except (OSError, RuntimeError):
+                raise ValueError(f"Unable to read healsparse map with URI {self.fileDescriptor.location.uri}")
+
+            return data
+
+        if self.fileDescriptor.parameters is None:
+            pixels = None
+        else:
+            pixels = self.fileDescriptor.parameters.get('pixels', None)
+
         try:
-            data = hsp.HealSparseMap.read(path)
+            data = hsp.HealSparseMap.read(path, pixels=pixels)
         except (OSError, RuntimeError):
             raise ValueError(f"Unable to read healsparse map with URI {self.fileDescriptor.location.uri}")
 
         return data
 
     def write(self, inMemoryDataset):
+        # Docstring inherited from Formatter.write.
         # Update the location with the formatter-preferred file extension
         self.fileDescriptor.location.updateExtension(self.extension)
         inMemoryDataset.write(self.fileDescriptor.location.path)
