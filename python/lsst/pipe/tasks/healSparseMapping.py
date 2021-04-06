@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from collections import defaultdict
+import numbers
 import numpy as np
 import healpy as hp
 import healsparse as hsp
@@ -56,11 +57,12 @@ class HealSparseMapFormatter(Formatter):
 
         if self.fileDescriptor.parameters is None:
             pixels = None
+            degrade_nside = None
         else:
             pixels = self.fileDescriptor.parameters.get('pixels', None)
-
+            degrade_nside = self.fileDescriptor.parameters.get('degrade_nside', None)
         try:
-            data = hsp.HealSparseMap.read(path, pixels=pixels)
+            data = hsp.HealSparseMap.read(path, pixels=pixels, degrade_nside=degrade_nside)
         except (OSError, RuntimeError):
             raise ValueError(f"Unable to read healsparse map with URI {self.fileDescriptor.location.uri}")
 
@@ -73,19 +75,45 @@ class HealSparseMapFormatter(Formatter):
         inMemoryDataset.write(self.fileDescriptor.location.path)
 
 
+def _is_power_of_two(value):
+    """Check that value is a power of two.
+
+    Parameters
+    ----------
+    value : `int`
+        Value to check.
+
+    Returns
+    -------
+    is_power_of_two : `bool`
+        True if value is a power of two; False otherwise, or
+        if value is not an integer.
+    """
+    if not isinstance(value, numbers.Integral):
+        return False
+
+    # See https://stackoverflow.com/questions/57025836
+    # Every power of 2 has exactly 1 bit set to 1; subtracting
+    # 1 therefore flips every preceding bit.  If you and that
+    # together with the original value it must be 0.
+    return (value & (value - 1) == 0) and value != 0
+
+
 class HealSparseInputMapConfig(pexConfig.Config):
     """Configuration parameters for HealSparseInputMapTask"""
     nside = pexConfig.Field(
         doc="Mapping healpix nside.  Must be power of 2.",
         dtype=int,
         default=32768,
+        check=_is_power_of_two,
     )
-    nsideCoverage = pexConfig.Field(
+    nside_coverage = pexConfig.Field(
         doc="HealSparse coverage map nside.  Must be power of 2.",
         dtype=int,
         default=256,
+        check=_is_power_of_two,
     )
-    badMaskMinCoverage = pexConfig.Field(
+    bad_mask_min_coverage = pexConfig.Field(
         doc=("Minimum area fraction of a map healpixel pixel that must be "
              "covered by bad pixels to be removed from the input map. "
              "This is approximate."),
@@ -103,9 +131,9 @@ class HealSparseInputMapTask(pipeBase.Task):
     def __init__(self, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
 
-        self.patchInputMap = None
+        self.ccd_input_map = None
 
-    def buildCcdInputMap(self, bbox, wcs, ccds):
+    def build_ccd_input_map(self, bbox, wcs, ccds):
         """Build a map from ccd valid polygons or bounding boxes.
 
         Parameters
@@ -117,67 +145,71 @@ class HealSparseInputMapTask(pipeBase.Task):
         ccds : `lsst.afw.table.ExposureCatalog`
             Exposure catalog with ccd data from coadd inputs.
         """
-        self.ccdInputMap = hsp.HealSparseMap.make_empty(nside_coverage=self.config.nsideCoverage,
-                                                        nside_sparse=self.config.nside,
-                                                        dtype=hsp.WIDE_MASK,
-                                                        wide_mask_maxbits=len(ccds))
+        self.ccd_input_map = hsp.HealSparseMap.make_empty(nside_coverage=self.config.nside_coverage,
+                                                          nside_sparse=self.config.nside,
+                                                          dtype=hsp.WIDE_MASK,
+                                                          wide_mask_maxbits=len(ccds))
         self._wcs = wcs
         self._bbox = bbox
         self._ccds = ccds
 
-        pixelScale = wcs.getPixelScale().asArcseconds()
-        hpixAreaArcsec2 = hp.nside2pixarea(self.config.nside, degrees=True)*(3600.**2.)
-        self._minBad = self.config.badMaskMinCoverage*hpixAreaArcsec2/(pixelScale**2.)
+        pixel_scale = wcs.getPixelScale().asArcseconds()
+        hpix_area_arcsec2 = hp.nside2pixarea(self.config.nside, degrees=True)*(3600.**2.)
+        self._min_bad = self.config.bad_mask_min_coverage*hpix_area_arcsec2/(pixel_scale**2.)
 
         metadata = {}
-        self._bitsPerVisitCcd = {}
-        self._bitsPerVisit = defaultdict(list)
+        self._bits_per_visit_ccd = {}
+        self._bits_per_visit = defaultdict(list)
         for bit, ccd in enumerate(ccds):
             metadata[f'B{bit:04d}CCD'] = ccd['ccd']
             metadata[f'B{bit:04d}VIS'] = ccd['visit']
             metadata[f'B{bit:04d}WT'] = ccd['weight']
 
-            self._bitsPerVisitCcd[(ccd['visit'], ccd['ccd'])] = bit
-            self._bitsPerVisit[ccd['visit']].append(bit)
+            self._bits_per_visit_ccd[(ccd['visit'], ccd['ccd'])] = bit
+            self._bits_per_visit[ccd['visit']].append(bit)
 
-            ccdPoly = ccd.getValidPolygon()
-            if ccdPoly is None:
-                ccdPoly = afwGeom.Polygon(lsst.geom.Box2D(ccd.getBBox()))
+            ccd_poly = ccd.getValidPolygon()
+            if ccd_poly is None:
+                ccd_poly = afwGeom.Polygon(lsst.geom.Box2D(ccd.getBBox()))
             # Detectors need to be rendered with their own wcs.
-            ccdPolyRadec = self._pixelsToRadec(ccd.getWcs(), ccdPoly.convexHull().getVertices())
+            ccd_poly_radec = self._pixels_to_radec(ccd.getWcs(), ccd_poly.convexHull().getVertices())
 
             # Create a ccd healsparse polygon
-            poly = hsp.Polygon(ra=ccdPolyRadec[: -1, 0],
-                               dec=ccdPolyRadec[: -1, 1],
+            poly = hsp.Polygon(ra=ccd_poly_radec[: -1, 0],
+                               dec=ccd_poly_radec[: -1, 1],
                                value=[bit])
-            self.ccdInputMap.set_bits_pix(poly.get_pixels(nside=self.ccdInputMap.nside_sparse),
-                                          [bit])
+            self.ccd_input_map.set_bits_pix(poly.get_pixels(nside=self.ccd_input_map.nside_sparse),
+                                            [bit])
 
         # Cut down to the overall bounding box with associated wcs.
-        bboxAfwPoly = afwGeom.Polygon(lsst.geom.Box2D(bbox))
-        bboxPolyRadec = self._pixelsToRadec(self._wcs, bboxAfwPoly.convexHull().getVertices())
-        bboxPoly = hsp.Polygon(ra=bboxPolyRadec[: -1, 0], dec=bboxPolyRadec[: -1, 1],
-                               value=np.arange(self.ccdInputMap.wide_mask_maxbits))
-        bboxPolyMap = bboxPoly.get_map_like(self.ccdInputMap)
-        self.ccdInputMap = hsp.and_intersection([self.ccdInputMap, bboxPolyMap])
-        self.ccdInputMap.metadata = metadata
+        bbox_afw_poly = afwGeom.Polygon(lsst.geom.Box2D(bbox))
+        bbox_poly_radec = self._pixels_to_radec(self._wcs,
+                                                bbox_afw_poly.convexHull().getVertices())
+        bbox_poly = hsp.Polygon(ra=bbox_poly_radec[: -1, 0], dec=bbox_poly_radec[: -1, 1],
+                                value=np.arange(self.ccd_input_map.wide_mask_maxbits))
+        bbox_poly_map = bbox_poly.get_map_like(self.ccd_input_map)
+        self.ccd_input_map = hsp.and_intersection([self.ccd_input_map, bbox_poly_map])
+        self.ccd_input_map.metadata = metadata
 
         # Create a temporary map to hold the count of bad pixels in each healpix pixel
-        self._ccdInputPixels = self.ccdInputMap.valid_pixels
+        self._ccd_input_pixels = self.ccd_input_map.valid_pixels
 
-        dtype = [(f'v{visit}', 'i4') for visit in self._bitsPerVisit.keys()]
+        dtype = [(f'v{visit}', 'i4') for visit in self._bits_per_visit.keys()]
 
-        self._ccdInputBadCountMap = hsp.HealSparseMap.make_empty(nside_coverage=self.config.nsideCoverage,
-                                                                 nside_sparse=self.config.nside,
-                                                                 dtype=dtype,
-                                                                 primary=dtype[0][0])
+        cov = self.config.nside_coverage
+        ns = self.config.nside
+        self._ccd_input_bad_count_map = hsp.HealSparseMap.make_empty(nside_coverage=cov,
+                                                                     nside_sparse=ns,
+                                                                     dtype=dtype,
+                                                                     primary=dtype[0][0])
         # Don't set input bad map if there are no ccds which overlap the bbox.
-        if len(self._ccdInputPixels) > 0:
-            self._ccdInputBadCountMap[self._ccdInputPixels] = np.zeros(1, dtype=dtype)
+        if len(self._ccd_input_pixels) > 0:
+            self._ccd_input_bad_count_map[self._ccd_input_pixels] = np.zeros(1, dtype=dtype)
 
-    def maskWarpBBox(self, bbox, visit, mask, bitMaskValue):
-        """Mask a subregion from a visit.  This must be run after
-        buildCcdInputMap initializes the overall map.
+    def mask_warp_bbox(self, bbox, visit, mask, bit_mask_value):
+        """Mask a subregion from a visit.
+        This must be run after build_ccd_input_map initializes
+        the overall map.
 
         Parameters
         ----------
@@ -187,70 +219,70 @@ class HealSparseInputMapTask(pipeBase.Task):
             Visit number corresponding to warp with mask.
         mask : `lsst.afw.image.MaskX`
             Mask plane from warp exposure.
-        bitMaskValue : `int`
+        bit_mask_value : `int`
             Bit mask to check for bad pixels.
 
         Raises
         ------
-        RuntimeError : Raised if buildCcdInputMap was not run first.
+        RuntimeError : Raised if build_ccd_input_map was not run first.
         """
-        if self.ccdInputMap is None:
-            raise RuntimeError("Must run buildCcdInputMap before maskWarpBBox")
+        if self.ccd_input_map is None:
+            raise RuntimeError("Must run build_ccd_input_map before mask_warp_bbox")
 
         # Find the bad pixels and convert to healpix
-        badPixels = np.where(mask.getArray() & bitMaskValue)
-        if len(badPixels[0]) == 0:
+        bad_pixels = np.where(mask.array & bit_mask_value)
+        if len(bad_pixels[0]) == 0:
             # No bad pixels
             return
 
-        # Bad pixels come from warps which use the overal wcs.
-        badRa, badDec = self._wcs.pixelToSkyArray(badPixels[1].astype(np.float64),
-                                                  badPixels[0].astype(np.float64),
-                                                  degrees=True)
-        badHpix = hp.ang2pix(self.config.nside, badRa, badDec,
-                             lonlat=True, nest=True)
+        # Bad pixels come from warps which use the overall wcs.
+        bad_ra, bad_dec = self._wcs.pixelToSkyArray(bad_pixels[1].astype(np.float64),
+                                                    bad_pixels[0].astype(np.float64),
+                                                    degrees=True)
+        bad_hpix = hp.ang2pix(self.config.nside, bad_ra, bad_dec,
+                              lonlat=True, nest=True)
 
         # Count the number of bad image pixels in each healpix pixel
-        minBadHpix = badHpix.min()
-        badHpixCount = np.zeros(badHpix.max() - minBadHpix + 1, dtype=np.int32)
-        np.add.at(badHpixCount, badHpix - minBadHpix, 1)
+        min_bad_hpix = bad_hpix.min()
+        bad_hpix_count = np.zeros(bad_hpix.max() - min_bad_hpix + 1, dtype=np.int32)
+        np.add.at(bad_hpix_count, bad_hpix - min_bad_hpix, 1)
 
         # Add these to the accumulator map.
         # We need to make sure that the "primary" array has valid values for
         # this pixel to be registered in the accumulator map.
-        pixToAdd, = np.where(badHpixCount > 0)
-        countMapArr = self._ccdInputBadCountMap[minBadHpix + pixToAdd]
-        primary = self._ccdInputBadCountMap.primary
-        countMapArr[primary] = np.clip(countMapArr[primary], 0, None)
+        pix_to_add, = np.where(bad_hpix_count > 0)
+        count_map_arr = self._ccd_input_bad_count_map[min_bad_hpix + pix_to_add]
+        primary = self._ccd_input_bad_count_map.primary
+        count_map_arr[primary] = np.clip(count_map_arr[primary], 0, None)
 
-        countMapArr[f'v{visit}'] = np.clip(countMapArr[f'v{visit}'], 0, None)
-        countMapArr[f'v{visit}'] += badHpixCount[pixToAdd]
+        count_map_arr[f'v{visit}'] = np.clip(count_map_arr[f'v{visit}'], 0, None)
+        count_map_arr[f'v{visit}'] += bad_hpix_count[pix_to_add]
 
-        self._ccdInputBadCountMap[minBadHpix + pixToAdd] = countMapArr
+        self._ccd_input_bad_count_map[min_bad_hpix + pix_to_add] = count_map_arr
 
-    def finalizeCcdInputMapMask(self):
+    def finalize_ccd_input_map_mask(self):
         """Use accumulated mask information to finalize the masking of
-        ccdInputMap.
+        ccd_input_map.
 
         Raises
         ------
-        RuntimeError : Raised if buildCcdInputMap was not run first.
+        RuntimeError : Raised if build_ccd_input_map was not run first.
         """
-        if self.ccdInputMap is None:
-            raise RuntimeError("Must run buildCcdInputMap before finalizeCcdInputMapMask.")
+        if self.ccd_input_map is None:
+            raise RuntimeError("Must run build_ccd_input_map before finalize_ccd_input_map_mask.")
 
-        countMapArr = self._ccdInputBadCountMap[self._ccdInputPixels]
-        for visit in self._bitsPerVisit:
-            toMask, = np.where(countMapArr[f'v{visit}'] > self._minBad)
-            if toMask.size == 0:
+        count_map_arr = self._ccd_input_bad_count_map[self._ccd_input_pixels]
+        for visit in self._bits_per_visit:
+            to_mask, = np.where(count_map_arr[f'v{visit}'] > self._min_bad)
+            if to_mask.size == 0:
                 continue
-            self.ccdInputMap.clear_bits_pix(self._ccdInputPixels[toMask],
-                                            self._bitsPerVisit[visit])
+            self.ccd_input_map.clear_bits_pix(self._ccd_input_pixels[to_mask],
+                                              self._bits_per_visit[visit])
 
         # Clear memory
-        self._ccdInputBadCountMap = None
+        self._ccd_input_bad_count_map = None
 
-    def _pixelsToRadec(self, wcs, pixels):
+    def _pixels_to_radec(self, wcs, pixels):
         """Convert pixels to ra/dec positions using a wcs.
 
         Parameters
@@ -265,6 +297,6 @@ class HealSparseInputMapTask(pipeBase.Task):
         radec : `numpy.ndarray`
             Nx2 array of ra/dec positions associated with pixels.
         """
-        sphPts = wcs.pixelToSky(pixels)
+        sph_pts = wcs.pixelToSky(pixels)
         return np.array([(sph.getRa().asDegrees(), sph.getDec().asDegrees())
-                         for sph in sphPts])
+                         for sph in sph_pts])

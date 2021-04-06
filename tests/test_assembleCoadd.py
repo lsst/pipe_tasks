@@ -24,6 +24,7 @@
 This uses
 """
 import unittest
+import numpy as np
 
 import lsst.utils.tests
 
@@ -198,7 +199,6 @@ class MockDcrAssembleCoaddTask(MockAssembleCoaddTask, DcrAssembleCoaddTask):
         DcrAssembleCoaddTask.__init__(self, *args, **kwargs)
 
 
-# class MockInputMapAssembleCoaddConfig(MockSafeClipAssembleCoaddConfig):
 class MockInputMapAssembleCoaddConfig(MockCompareWarpAssembleCoaddConfig):
 
     def setDefaults(self):
@@ -206,10 +206,8 @@ class MockInputMapAssembleCoaddConfig(MockCompareWarpAssembleCoaddConfig):
         self.doInputMap = True
 
 
-# class MockInputMapAssembleCoaddTask(MockSafeClipAssembleCoaddTask):
-# class MockInputMapAssembleCoaddTask(MockAssembleCoaddTask, SafeClipAssembleCoaddTask):
 class MockInputMapAssembleCoaddTask(MockCompareWarpAssembleCoaddTask):
-    """Lightly modified version of `SafeClipAssembleCoaddTask`
+    """Lightly modified version of `CompareWarpAssembleCoaddTask`
     for use with unit tests.
 
     The modifications bypass the usual middleware for loading data and setting
@@ -220,7 +218,6 @@ class MockInputMapAssembleCoaddTask(MockCompareWarpAssembleCoaddTask):
     _DefaultName = "inputMapAssembleCoadd"
 
     def __init__(self, *args, **kwargs):
-        # SafeClipAssembleCoaddTask.__init__(self, *args, **kwargs)
         CompareWarpAssembleCoaddTask.__init__(self, *args, **kwargs)
 
 
@@ -288,8 +285,6 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
         self.checkGen2Gen3Compatibility(assembleTask)
 
     def testInputMapGen3(self):
-        import numpy as np
-
         config = MockInputMapAssembleCoaddConfig()
         config.validate()
         assembleTask = MockInputMapAssembleCoaddTask(config=config)
@@ -318,6 +313,7 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
         validPix, raPix, decPix = inputMap.valid_pixels_pos(return_pixels=True)
 
         # Confirm that all the map pixels are in the bounding box
+        # Exposure 100 is the first one and they all have the same WCS in the tests.
         xPix, yPix = exposures[100].getWcs().skyToPixelArray(raPix, decPix, degrees=True)
         self.assertGreater(xPix.min(), testData.bbox.beginX)
         self.assertGreater(yPix.min(), testData.bbox.beginY)

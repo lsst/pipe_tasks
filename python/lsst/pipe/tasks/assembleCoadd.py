@@ -825,9 +825,9 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         # If inputMap is requested, create the initial version that can be masked in
         # assembleSubregion.
         if self.config.doInputMap:
-            self.inputMapper.buildCcdInputMap(skyInfo.bbox,
-                                              skyInfo.wcs,
-                                              coaddExposure.getInfo().getCoaddInputs().ccds)
+            self.inputMapper.build_ccd_input_map(skyInfo.bbox,
+                                                 skyInfo.wcs,
+                                                 coaddExposure.getInfo().getCoaddInputs().ccds)
 
         for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
             try:
@@ -839,8 +839,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         # If inputMap is requested, we must finalize the map after the accumulation.
         if self.config.doInputMap:
-            self.inputMapper.finalizeCcdInputMapMask()
-            inputMap = self.inputMapper.ccdInputMap
+            self.inputMapper.finalize_ccd_input_map_mask()
+            inputMap = self.inputMapper.ccd_input_map
         else:
             inputMap = None
 
@@ -986,7 +986,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
             if self.config.doInputMap:
                 visit = exposure.getInfo().getCoaddInputs().visits[0].getId()
-                self.inputMapper.maskWarpBBox(bbox, visit, mask, statsCtrl.getAndMask())
+                self.inputMapper.mask_warp_bbox(bbox, visit, mask, statsCtrl.getAndMask())
 
         with self.timer("stack"):
             coaddSubregion = afwMath.statisticsStack(maskedImageList, statsFlags, statsCtrl, weightList,
