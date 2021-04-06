@@ -75,6 +75,12 @@ class HealSparseMapFormatterTestCase(unittest.TestCase):
         self.assertTrue(np.all(partialMap[0: 10000] == self.hspMap[0: 10000]))
         self.assertTrue(np.all(partialMap[100000: 110000] == self.hspMap[100000: 110000]))
 
+        # Retrieve a degraded map
+        degradedMapRead = butler.get('map', parameters={'degrade_nside': 512})
+        degradedMap = self.hspMap.degrade(512)
+
+        self.assertTrue(np.all(degradedMapRead._sparse_map == degradedMap._sparse_map))
+
 
 if __name__ == "__main__":
     unittest.main()
