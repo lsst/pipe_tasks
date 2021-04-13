@@ -82,6 +82,11 @@ class QuickFrameMeasurementTaskConfig(pexConfig.Config):
         doc="Minimum number of pixels in a detected source.",
         default=10,
     )
+    donutDiameter = pexConfig.Field(
+        dtype=int,
+        doc="The expected diameter of donuts in a donut image, in pixels.",
+        default=400,
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -231,7 +236,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         return medianXx, medianYy
 
     @staticmethod
-    def _getCentreOfMass(exp, nominalCentroid, boxSize=500):
+    def _getCentreOfMass(exp, nominalCentroid, boxSize):
         """Get the centre of mass around a point in the image.
 
         Parameters
@@ -255,7 +260,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         centroidPoint = geom.Point2I(nominalCentroid)
         extent = geom.Extent2I(1, 1)
         bbox = geom.Box2I(centroidPoint, extent)
-        bbox = bbox.dilatedBy(boxSize//2)
+        bbox = bbox.dilatedBy(int(boxSize//2))
         bbox = bbox.clippedTo(exp.getBBox())
         data = exp[bbox].image.array
         xy0 = exp[bbox].getXY0()
@@ -447,7 +452,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result.medianXxYy = (np.nan, np.nan)
         return result
 
-    def run(self, exp, doDisplay=False):
+    def run(self, exp, *, donutDiameter=None, doDisplay=False):
         """Calculate position, flux and shape of the brightest star in an image.
 
         Given an an assembled (and at least minimally ISRed exposure),
@@ -458,6 +463,11 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         ----------
         exp : lsst.afw.image.Exposure
             The exposure in which to find and measure the brightest star.
+
+        donutSize : `int`, optional
+            The expected diameter of donuts in pixels for use in the centre of
+            mass centroid measurement. If None is provided, the config option
+            is used.
 
         doDisplay : bool
             Display the image and found sources. A diplay object must have
@@ -484,18 +494,21 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result.success=False.
         """
         try:
-            result = self._run(exp=exp, doDisplay=doDisplay)
+            result = self._run(exp=exp, donutDiameter=donutDiameter, doDisplay=doDisplay)
             return result
         except Exception as e:
             self.log.warn(f"Failed to find main source centroid {e}")
             result = self._makeEmptyReturnStruct()
             return result
 
-    def _run(self, exp, doDisplay=False):
+    def _run(self, exp, *, donutDiameter=None, doDisplay=False):
         """The actual run method, called by run()
 
         Behaviour is documented in detail in the main run().
         """
+        if donutDiameter is None:
+            donutDiameter = self.config.donutDiameter
+
         self.plateScale = exp.getWcs().getPixelScale().asArcseconds()
         median = np.nanmedian(exp.image.array)
         exp.image -= median  # is put back later
@@ -559,7 +572,8 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         result.brightestObjCentroidCofM = None
         try:
-            centreOfMass = self._getCentreOfMass(exp, brightestObjCentroid)
+            boxSize = donutDiameter * 1.3  # allow some slack, as cutting off side of donut is very bad
+            centreOfMass = self._getCentreOfMass(exp, brightestObjCentroid, boxSize)
             result.brightestObjCentroidCofM = centreOfMass
         except Exception:
             pass
