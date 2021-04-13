@@ -20,8 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
+import scipy.ndimage as ndImage
+
 import lsst.afw.detection as afwDetect
 import lsst.afw.table as afwTable
+import lsst.geom as geom
 import lsst.meas.base as measBase
 import lsst.daf.base as dafBase
 import lsst.pipe.base as pipeBase
@@ -226,6 +229,42 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         medianXx = np.nanmedian([element['xx'] for element in objData.values()])
         medianYy = np.nanmedian([element['xx'] for element in objData.values()])
         return medianXx, medianYy
+
+    @staticmethod
+    def _getCentreOfMass(exp, nominalCentroid, boxSize=500):
+        """Get the centre of mass around a point in the image.
+
+        Parameters
+        ----------
+        exp : lsst.afw.image.Exposure
+            The exposure in question.
+
+        nominalCentroid : `tuple` of `float`
+            Nominal location of the centroid in pixel coordinates.
+
+        boxSize : int
+            The size of the box around the nominalCentroid in which to measure
+            the centre of mass.
+
+        Returns
+        -------
+        com : `tuple` of `float`
+            The locaiton of the centre of mass of the brightest source in pixel
+            coordinates.
+        """
+        centroidPoint = geom.Point2I(nominalCentroid)
+        extent = geom.Extent2I(1, 1)
+        bbox = geom.Box2I(centroidPoint, extent)
+        bbox = bbox.dilatedBy(boxSize//2)
+        bbox = bbox.clippedTo(exp.getBBox())
+        data = exp[bbox].image.array
+        xy0 = exp[bbox].getXY0()
+
+        peak = ndImage.center_of_mass(data)
+        peak = (peak[1], peak[0])  # numpy coords returned
+        com = geom.Point2D(xy0)
+        com.shift(geom.Extent2D(*peak))
+        return (com[0], com[1])
 
     def _calcBrightestObjSrcNum(self, objData):
         """Find the brightest source which passes the cuts among the sources.
@@ -517,4 +556,12 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result.brightestObjApFlux70 = brightestObjApFlux70
         result.brightestObjApFlux25 = brightestObjApFlux25
         result.medianXxYy = medianXxYy
+
+        result.brightestObjCentroidCofM = None
+        try:
+            centreOfMass = self._getCentreOfMass(exp, brightestObjCentroid)
+            result.brightestObjCentroidCofM = centreOfMass
+        except Exception:
+            pass
+
         return result

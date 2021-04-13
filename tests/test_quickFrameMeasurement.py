@@ -71,7 +71,10 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
             foundCentroid = result.brightestObjCentroid
 
             dist = np.linalg.norm(np.asarray(foundCentroid) - np.asarray(trueCentroid))
+            distCoM = np.linalg.norm(np.asarray(result.brightestObjCentroidCofM) - np.asarray(trueCentroid))
+
             self.assertLess(dist, self.TOLERANCE)
+            self.assertLess(distCoM, self.TOLERANCE)
 
             # offset size shouldn't really matter, just make it >> PSF, and make
             # sure the value isn't off-chip or right by the edge for any of the
@@ -95,8 +98,13 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
             foundCentroid = result.brightestObjCentroid
 
             dist = np.linalg.norm(np.asarray(foundCentroid) - np.asarray(trueCentroid))
-
             self.assertLess(dist, self.TOLERANCE)
+
+            # this doesn't matter much as CoM centroid is for donuts
+            # and we don't intend to do dispersed donuts, but good to catch
+            # big regressions. Can be removed later if needed
+            distCoM = np.linalg.norm(np.asarray(result.brightestObjCentroidCofM) - np.asarray(trueCentroid))
+            self.assertLess(distCoM, self.TOLERANCE)
 
 
 def setup_module(module):
