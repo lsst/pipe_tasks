@@ -438,6 +438,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result = pipeBase.Struct()
         result.success = False
         result.brightestObjCentroid = (np.nan, np.nan)
+        result.brightestObjCentroidCofM = None
         result.brightestObj_xXyY = (np.nan, np.nan)
         result.brightestObjApFlux70 = np.nan
         result.brightestObjApFlux25 = np.nan
@@ -552,6 +553,9 @@ class QuickFrameMeasurementTask(pipeBase.Task):
             self.checkResult(exp, brightestObjCentroid, brightestObjSrcNum,
                              self.config.centroidPixelPercentile)
 
+        boxSize = donutDiameter * 1.3  # allow some slack, as cutting off side of donut is very bad
+        centreOfMass = self._getCenterOfMass(exp, brightestObjCentroid, boxSize)
+
         result = self._makeEmptyReturnStruct()
         result.success = True
         result.brightestObjCentroid = brightestObjCentroid
@@ -559,13 +563,6 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result.brightestObjApFlux70 = brightestObjApFlux70
         result.brightestObjApFlux25 = brightestObjApFlux25
         result.medianXxYy = medianXxYy
-
-        result.brightestObjCentroidCofM = None
-        try:
-            boxSize = donutDiameter * 1.3  # allow some slack, as cutting off side of donut is very bad
-            centreOfMass = self._getCenterOfMass(exp, brightestObjCentroid, boxSize)
-            result.brightestObjCentroidCofM = centreOfMass
-        except Exception:
-            pass
+        result.brightestObjCentroidCofM = centreOfMass
 
         return result
