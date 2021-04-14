@@ -455,7 +455,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         ----------
         exp : `lsst.afw.image.Exposure`
             The exposure in which to find and measure the brightest star.
-        donutDiameter : `int`, optional
+        donutDiameter : `int` or `float`, optional
             The expected diameter of donuts in pixels for use in the centre of
             mass centroid measurement. If None is provided, the config option
             is used.
