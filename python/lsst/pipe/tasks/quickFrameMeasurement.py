@@ -20,8 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
+import scipy.ndimage as ndImage
+
 import lsst.afw.detection as afwDetect
 import lsst.afw.table as afwTable
+import lsst.geom as geom
 import lsst.meas.base as measBase
 import lsst.daf.base as dafBase
 import lsst.pipe.base as pipeBase
@@ -79,6 +82,11 @@ class QuickFrameMeasurementTaskConfig(pexConfig.Config):
         doc="Minimum number of pixels in a detected source.",
         default=10,
     )
+    donutDiameter = pexConfig.Field(
+        dtype=int,
+        doc="The expected diameter of donuts in a donut image, in pixels.",
+        default=400,
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -107,15 +115,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
     Parameters
     ----------
-    config : lsst.pipe.tasks.quickFrameMeasurement.QuickFrameMeasurementTaskConfig
+    config : `lsst.pipe.tasks.quickFrameMeasurement.QuickFrameMeasurementTaskConfig`
         Configuration class for the QuickFrameMeasurementTask.
-
-    display : lsst.afw.display.Display, optional
+    display : `lsst.afw.display.Display`, optional
         The display to use for showing the images, detections and centroids.
 
     Returns
     -------
-    result : lsst.pipe.base.Struct()
+    result : `lsst.pipe.base.Struct`
         Return strucure containing whether the task was successful, the main
         source's centroid, its the aperture fluxes, the ixx and iyy of the
         source, and the median ixx, iyy of the detections in the exposure.
@@ -163,21 +170,18 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             Image in which to detect objects.
-
-        nSigma : float
+        nSigma : `float`
             nSigma above image's stddev at which to set the detection threshold.
-
-        nPixMin : int
+        nPixMin : `int`
             Minimum number of pixels for detection.
-
-        grow : int
+        grow : `int`
             Grow the detected footprint by this many pixels.
 
         Returns
         -------
-        footPrintSet : lsst.afw.detection.FootprintSet
+        footPrintSet : `lsst.afw.detection.FootprintSet`
             FootprintSet containing the detections.
         """
         threshold = afwDetect.Threshold(nSigma, afwDetect.Threshold.STDEV)
@@ -193,15 +197,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
+            The exposure on which to operate
         centroid : `tuple` of `float`
             Location of the centroid in pixel coordinates
-
-        scrNum : int
+        scrNum : `int`
             Number of the source in the source catalog. Only used if the check
             is failed, for debug purposes.
-
-        percentile : float
+        percentile : `float`
             Image's percentile above which the pixel containing the centroid
             must be in order to pass the check.
 
@@ -227,6 +230,40 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         medianYy = np.nanmedian([element['xx'] for element in objData.values()])
         return medianXx, medianYy
 
+    @staticmethod
+    def _getCenterOfMass(exp, nominalCentroid, boxSize):
+        """Get the centre of mass around a point in the image.
+
+        Parameters
+        ----------
+        exp : `lsst.afw.image.Exposure`
+            The exposure in question.
+        nominalCentroid : `tuple` of `float`
+            Nominal location of the centroid in pixel coordinates.
+        boxSize : `int`
+            The size of the box around the nominalCentroid in which to measure
+            the centre of mass.
+
+        Returns
+        -------
+        com : `tuple` of `float`
+            The locaiton of the centre of mass of the brightest source in pixel
+            coordinates.
+        """
+        centroidPoint = geom.Point2I(nominalCentroid)
+        extent = geom.Extent2I(1, 1)
+        bbox = geom.Box2I(centroidPoint, extent)
+        bbox = bbox.dilatedBy(int(boxSize//2))
+        bbox = bbox.clippedTo(exp.getBBox())
+        data = exp[bbox].image.array
+        xy0 = exp[bbox].getXY0()
+
+        peak = ndImage.center_of_mass(data)
+        peak = (peak[1], peak[0])  # numpy coords returned
+        com = geom.Point2D(xy0)
+        com.shift(geom.Extent2D(*peak))
+        return (com[0], com[1])
+
     def _calcBrightestObjSrcNum(self, objData):
         """Find the brightest source which passes the cuts among the sources.
 
@@ -237,7 +274,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Returns
         -------
-        srcNum : int
+        srcNum : `int`
             The source number of the brightest source which passes the cuts.
         """
         max70, max70srcNum = -1, -1
@@ -293,15 +330,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        fp : lsst.afw.detection.Footprint
+        fp : `lsst.afw.detection.Footprint`
             The footprint to measure.
-
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             The footprint's parent exposure.
 
         Returns
         -------
-        src : lsst.afw.table.SourceRecord
+        src : `lsst.afw.table.SourceRecord`
             The source record containing the measurements.
         """
         src = self.table.makeRecord()
@@ -316,12 +352,12 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        src : lsst.afw.table.SourceRecord
+        src : `lsst.afw.table.SourceRecord`
             The source record from which to extract the measurements.
 
         Returns
         -------
-        srcData : lsst.pipe.base.Struct
+        srcData : `lsst.pipe.base.Struct`
             The struct containing the extracted measurements.
         """
         pScale = self.plateScale
@@ -345,14 +381,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        fp : lsst.afw.detection.Footprint
+        fp : `lsst.afw.detection.Footprint`
             The footprint to measure.
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             The footprint's parent exposure.
 
         Returns
         -------
-        srcData : lsst.pipe.base.Struct
+        srcData : `lsst.pipe.base.Struct`
             The struct containing the extracted measurements.
         """
         xx = fp.getShape().getIxx()
@@ -373,7 +409,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        measurementResult : lsst.afw.table.SourceRecord
+        measurementResult : `lsst.afw.table.SourceRecord`
             The source record to convert to a dict.
 
         Returns
@@ -396,19 +432,20 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Returns
         -------
-        objData : lsst.pipe.base.Struct
+        objData : `lsst.pipe.base.Struct`
             The default template return structure.
         """
         result = pipeBase.Struct()
         result.success = False
         result.brightestObjCentroid = (np.nan, np.nan)
+        result.brightestObjCentroidCofM = None
         result.brightestObj_xXyY = (np.nan, np.nan)
         result.brightestObjApFlux70 = np.nan
         result.brightestObjApFlux25 = np.nan
         result.medianXxYy = (np.nan, np.nan)
         return result
 
-    def run(self, exp, doDisplay=False):
+    def run(self, exp, *, donutDiameter=None, doDisplay=False):
         """Calculate position, flux and shape of the brightest star in an image.
 
         Given an an assembled (and at least minimally ISRed exposure),
@@ -417,16 +454,19 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             The exposure in which to find and measure the brightest star.
-
-        doDisplay : bool
+        donutDiameter : `int` or `float`, optional
+            The expected diameter of donuts in pixels for use in the centre of
+            mass centroid measurement. If None is provided, the config option
+            is used.
+        doDisplay : `bool`
             Display the image and found sources. A diplay object must have
             been passed to the task constructor.
 
         Returns
         -------
-        result : lsst.pipe.base.Struct
+        result : `lsst.pipe.base.Struct`
             Struct containing:
                 Whether the task ran successfully and found the object (bool)
                 The object's centroid (float, float)
@@ -445,18 +485,21 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result.success=False.
         """
         try:
-            result = self._run(exp=exp, doDisplay=doDisplay)
+            result = self._run(exp=exp, donutDiameter=donutDiameter, doDisplay=doDisplay)
             return result
         except Exception as e:
             self.log.warn(f"Failed to find main source centroid {e}")
             result = self._makeEmptyReturnStruct()
             return result
 
-    def _run(self, exp, doDisplay=False):
+    def _run(self, exp, *, donutDiameter=None, doDisplay=False):
         """The actual run method, called by run()
 
         Behaviour is documented in detail in the main run().
         """
+        if donutDiameter is None:
+            donutDiameter = self.config.donutDiameter
+
         self.plateScale = exp.getWcs().getPixelScale().asArcseconds()
         median = np.nanmedian(exp.image.array)
         exp.image -= median  # is put back later
@@ -510,6 +553,9 @@ class QuickFrameMeasurementTask(pipeBase.Task):
             self.checkResult(exp, brightestObjCentroid, brightestObjSrcNum,
                              self.config.centroidPixelPercentile)
 
+        boxSize = donutDiameter * 1.3  # allow some slack, as cutting off side of donut is very bad
+        centreOfMass = self._getCenterOfMass(exp, brightestObjCentroid, boxSize)
+
         result = self._makeEmptyReturnStruct()
         result.success = True
         result.brightestObjCentroid = brightestObjCentroid
@@ -517,4 +563,6 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result.brightestObjApFlux70 = brightestObjApFlux70
         result.brightestObjApFlux25 = brightestObjApFlux25
         result.medianXxYy = medianXxYy
+        result.brightestObjCentroidCofM = centreOfMass
+
         return result
