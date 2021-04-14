@@ -231,7 +231,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         return medianXx, medianYy
 
     @staticmethod
-    def _getCentreOfMass(exp, nominalCentroid, boxSize):
+    def _getCenterOfMass(exp, nominalCentroid, boxSize):
         """Get the centre of mass around a point in the image.
 
         Parameters
@@ -455,7 +455,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         ----------
         exp : `lsst.afw.image.Exposure`
             The exposure in which to find and measure the brightest star.
-        donutSize : `int`, optional
+        donutDiameter : `int`, optional
             The expected diameter of donuts in pixels for use in the centre of
             mass centroid measurement. If None is provided, the config option
             is used.
@@ -563,7 +563,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         result.brightestObjCentroidCofM = None
         try:
             boxSize = donutDiameter * 1.3  # allow some slack, as cutting off side of donut is very bad
-            centreOfMass = self._getCentreOfMass(exp, brightestObjCentroid, boxSize)
+            centreOfMass = self._getCenterOfMass(exp, brightestObjCentroid, boxSize)
             result.brightestObjCentroidCofM = centreOfMass
         except Exception:
             pass
