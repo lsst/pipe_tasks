@@ -6,3 +6,16 @@ imports:
   - location: $PIPE_TASKS_DIR/pipelines/_Multiband.yaml
   - location: $PIPE_TASKS_DIR/pipelines/_Forced.yaml
   - location: $PIPE_TASKS_DIR/pipelines/_DiffimDRP.yaml
+subsets:
+  multiVisit:
+    subset:
+      - makeWarp
+      - assembleCoadd
+      - detection
+      - mergeDetections
+      - deblend
+      - measure
+      - mergeMeasurements
+      - forcedPhotCcd
+      - forcedPhotCoadd
+
