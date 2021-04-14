@@ -1,21 +1,50 @@
 description: Image differencing branch of the DRP pipeline for generating lightcurves
 tasks:
-  selectVisits:
+  selectGoodSeeingVisits:
     class: lsst.pipe.tasks.selectImages.BestSeeingQuantileSelectVisitsTask
     config:
-      connections.goodVisits: bestSeeingVisitsDict
+      connections.goodVisits: goodSeeingVisits
   templateGen:
     class: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask
     config:
         doSelectVisits: true
         assembleStaticSkyModel.doSelectVisits: true
-        connections.selectedVisits: bestSeeingVisitsDict
-        connections.outputCoaddName: bestSeeing
+        connections.selectedVisits: goodSeeingVisits
+        connections.outputCoaddName: goodSeeing
+        # outputCoaddName isn't filling template for contract check
+        connections.coaddExposure: goodSeeingCoadd
+  imageDifference:
+    class: lsst.pipe.tasks.imageDifference.ImageDifferenceTask
+    config:
+        doDecorrelation: True
+        detection.thresholdValue: 5.0
+        doSelectSources: False
+        doScaleDiffimVariance: True
+        coaddName: goodSeeing
+        getTemplate.coaddName: goodSeeing
+        getTemplate.warpType: direct
+        connections.coaddName: goodSeeing
+        # outputCoaddName isn't filling template for contract check
+        connections.coaddExposures: goodSeeingCoadd
+        connections.subtractedExposure: goodSeeingDiff_differenceExp
+
+  forcedPhotDiffim:
+    class: lsst.meas.base.ForcedPhotCcdTask
+    config:
+      connections.measCat: forced_diff
+      connections.outputSchema:  forced_diff_schema
+      connections.exposure: goodSeeingDiff_differenceExp
+
 subsets:
   diffimDRP:
     subset:
-      - selectVisits
+      - selectGoodSeeingVisits
       - templateGen
+      - imageDifference
+      - forcedPhotDiffim
     description: Subset for running image differencing branch of the DRP pipeline
+
 contracts:
-  - selectVisits.connections.goodVisits == templateGen.connections.selectedVisits
+  - selectGoodSeeingVisits.connections.goodVisits == templateGen.connections.selectedVisits
+  - templateGen.connections.coaddExposure == imageDifference.connections.coaddExposures
+  - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
