@@ -115,15 +115,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
     Parameters
     ----------
-    config : lsst.pipe.tasks.quickFrameMeasurement.QuickFrameMeasurementTaskConfig
+    config : `lsst.pipe.tasks.quickFrameMeasurement.QuickFrameMeasurementTaskConfig`
         Configuration class for the QuickFrameMeasurementTask.
-
-    display : lsst.afw.display.Display, optional
+    display : `lsst.afw.display.Display`, optional
         The display to use for showing the images, detections and centroids.
 
     Returns
     -------
-    result : lsst.pipe.base.Struct()
+    result : `lsst.pipe.base.Struct`
         Return strucure containing whether the task was successful, the main
         source's centroid, its the aperture fluxes, the ixx and iyy of the
         source, and the median ixx, iyy of the detections in the exposure.
@@ -171,21 +170,18 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             Image in which to detect objects.
-
-        nSigma : float
+        nSigma : `float`
             nSigma above image's stddev at which to set the detection threshold.
-
-        nPixMin : int
+        nPixMin : `int`
             Minimum number of pixels for detection.
-
-        grow : int
+        grow : `int`
             Grow the detected footprint by this many pixels.
 
         Returns
         -------
-        footPrintSet : lsst.afw.detection.FootprintSet
+        footPrintSet : `lsst.afw.detection.FootprintSet`
             FootprintSet containing the detections.
         """
         threshold = afwDetect.Threshold(nSigma, afwDetect.Threshold.STDEV)
@@ -201,15 +197,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
+            The exposure on which to operate
         centroid : `tuple` of `float`
             Location of the centroid in pixel coordinates
-
-        scrNum : int
+        scrNum : `int`
             Number of the source in the source catalog. Only used if the check
             is failed, for debug purposes.
-
-        percentile : float
+        percentile : `float`
             Image's percentile above which the pixel containing the centroid
             must be in order to pass the check.
 
@@ -241,13 +236,11 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             The exposure in question.
-
         nominalCentroid : `tuple` of `float`
             Nominal location of the centroid in pixel coordinates.
-
-        boxSize : int
+        boxSize : `int`
             The size of the box around the nominalCentroid in which to measure
             the centre of mass.
 
@@ -281,7 +274,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Returns
         -------
-        srcNum : int
+        srcNum : `int`
             The source number of the brightest source which passes the cuts.
         """
         max70, max70srcNum = -1, -1
@@ -337,15 +330,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        fp : lsst.afw.detection.Footprint
+        fp : `lsst.afw.detection.Footprint`
             The footprint to measure.
-
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             The footprint's parent exposure.
 
         Returns
         -------
-        src : lsst.afw.table.SourceRecord
+        src : `lsst.afw.table.SourceRecord`
             The source record containing the measurements.
         """
         src = self.table.makeRecord()
@@ -360,12 +352,12 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        src : lsst.afw.table.SourceRecord
+        src : `lsst.afw.table.SourceRecord`
             The source record from which to extract the measurements.
 
         Returns
         -------
-        srcData : lsst.pipe.base.Struct
+        srcData : `lsst.pipe.base.Struct`
             The struct containing the extracted measurements.
         """
         pScale = self.plateScale
@@ -389,14 +381,14 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        fp : lsst.afw.detection.Footprint
+        fp : `lsst.afw.detection.Footprint`
             The footprint to measure.
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             The footprint's parent exposure.
 
         Returns
         -------
-        srcData : lsst.pipe.base.Struct
+        srcData : `lsst.pipe.base.Struct`
             The struct containing the extracted measurements.
         """
         xx = fp.getShape().getIxx()
@@ -417,7 +409,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        measurementResult : lsst.afw.table.SourceRecord
+        measurementResult : `lsst.afw.table.SourceRecord`
             The source record to convert to a dict.
 
         Returns
@@ -440,7 +432,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Returns
         -------
-        objData : lsst.pipe.base.Struct
+        objData : `lsst.pipe.base.Struct`
             The default template return structure.
         """
         result = pipeBase.Struct()
@@ -461,21 +453,19 @@ class QuickFrameMeasurementTask(pipeBase.Task):
 
         Parameters
         ----------
-        exp : lsst.afw.image.Exposure
+        exp : `lsst.afw.image.Exposure`
             The exposure in which to find and measure the brightest star.
-
         donutSize : `int`, optional
             The expected diameter of donuts in pixels for use in the centre of
             mass centroid measurement. If None is provided, the config option
             is used.
-
-        doDisplay : bool
+        doDisplay : `bool`
             Display the image and found sources. A diplay object must have
             been passed to the task constructor.
 
         Returns
         -------
-        result : lsst.pipe.base.Struct
+        result : `lsst.pipe.base.Struct`
             Struct containing:
                 Whether the task ran successfully and found the object (bool)
                 The object's centroid (float, float)
