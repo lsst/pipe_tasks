@@ -1,8 +1,0 @@
-description: ConsolidateVisit
-tasks:
-  consolidateVisitSummary: lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask
-subsets:
-  consolidateVisit:
-    subset:
-      - consolidateVisitSummary
-    description: A set of tasks to run to consolidate all detectors from a visit
