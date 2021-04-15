@@ -577,7 +577,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                           dimensions=("tract", "patch", "skymap", "instrument", "visit"),
                           defaultTemplates={"coaddName": "deep",
                                             "skyWcsName": "jointcal",
-                                            "photoCalibName": "fgcmcal"}):
+                                            "photoCalibName": "fgcm"}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="calexp",
