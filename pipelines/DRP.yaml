@@ -104,6 +104,7 @@ subsets:
       - deblend
       - measure
       - mergeMeasurements
+      - forcedPhotCoadd
     description: >
       A set of tasks to run when making measurements on coadds.
   objectTable:
