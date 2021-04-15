@@ -132,6 +132,15 @@ subsets:
       - mergeMeasurements
       - forcedPhotCcd
       - forcedPhotCoadd
+      - transformObjectTable
+      - writeObjectTable
+      - consolidateObjectTable
+    description: >
+      All tasks that process multiple visits together.
+      This subset plus singleFrame should generally be equivalent to the full
+      pipeline.  At present this is not true, because diffimDRP would benefit
+      from more testing before we start running it with everything else by
+      default.
   diffimDRP:
     subset:
       - selectGoodSeeingVisits
@@ -144,4 +153,3 @@ contracts:
   - selectGoodSeeingVisits.connections.goodVisits == templateGen.connections.selectedVisits
   - templateGen.connections.coaddExposure == imageDifference.connections.coaddExposures
   - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
-
