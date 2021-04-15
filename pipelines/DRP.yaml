@@ -87,6 +87,7 @@ subsets:
       - writeSourceTable
       - transformSourceTable
       - consolidateSourceTable
+      - consolidateVisitSummary
     description: >
       Set of tasks for complete single frame processing. Analogous to
       SingleFrameDriver.
