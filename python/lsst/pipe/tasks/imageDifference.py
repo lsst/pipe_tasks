@@ -313,6 +313,11 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         dtype=float, default=0.5,
         doc="Match radius (in arcseconds) for DiaSource to Source association"
     )
+    requiredTemplateFraction = pexConfig.Field(
+        dtype=float, default=0.1,
+        doc="Do not attempt to run task if template covers less than this fraction of pixels."
+        "Setting to 0 will always attempt image subtraction"
+    )
 
     def setDefaults(self):
         # defaults are OK for catalog and diacatalog
@@ -516,13 +521,22 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             inputs['exposure'], butlerQC, inputRefs.skyMap, templateExposures
         )
 
-        outputs = self.run(exposure=inputs['exposure'],
-                           templateExposure=templateStruct.exposure,
-                           idFactory=idFactory)
-        # Consistency with runDataref gen2 handling
-        if outputs.diaSources is None:
-            del outputs.diaSources
-        butlerQC.put(outputs, outputRefs)
+        if templateStruct.area/inputs['exposure'].getBBox().getArea() < self.config.requiredTemplateFraction:
+            # TO DO DM-30649: when available, use exit code for expected failures
+            # In the meantime, raise to exit and register as a failure
+            message = ("Insufficient Template Coverage. (%.1f%% < %.1f%%) Not attempting subtraction. "
+                       "To force subtraction, set config requiredTemplateFraction=0." % (
+                           100*templateStruct.area/inputs['exposure'].getBBox().getArea(),
+                           100*self.config.requiredTemplateFraction))
+            raise pipeBase.TaskError("Expected Failure: %s" % (message))
+        else:
+            outputs = self.run(exposure=inputs['exposure'],
+                               templateExposure=templateStruct.exposure,
+                               idFactory=idFactory)
+            # Consistency with runDataref gen2 handling
+            if outputs.diaSources is None:
+                del outputs.diaSources
+            butlerQC.put(outputs, outputRefs)
 
     @pipeBase.timeMethod
     def runDataRef(self, sensorRef, templateIdList=None):
