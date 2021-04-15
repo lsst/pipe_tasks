@@ -546,7 +546,7 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
 
 class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
                                         dimensions=("tract", "patch", "skymap", "band", "instrument"),
-                                        defaultTemplates={"coaddName": "bestSeeing"}):
+                                        defaultTemplates={"coaddName": "goodSeeing"}):
     skyMap = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
         name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
@@ -563,7 +563,7 @@ class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
     )
     goodVisits = pipeBase.connectionTypes.Output(
         doc="Selected visits to be coadded.",
-        name="{coaddName}VisitsDict",
+        name="{coaddName}Visits",
         storageClass="StructuredDataDict",
         dimensions=("instrument", "tract", "patch", "skymap", "band"),
     )

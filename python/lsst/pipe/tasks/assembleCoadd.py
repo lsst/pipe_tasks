@@ -76,7 +76,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
     )
     selectedVisits = pipeBase.connectionTypes.Input(
         doc="Selected visits to be coadded.",
-        name="{outputCoaddName}VisitsDict",
+        name="{outputCoaddName}Visits",
         storageClass="StructuredDataDict",
         dimensions=("instrument", "tract", "patch", "skymap", "band")
     )
