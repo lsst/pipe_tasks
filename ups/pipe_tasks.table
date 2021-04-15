@@ -1,5 +1,6 @@
 setupRequired(afw)
 setupRequired(daf_persistence)
+setupRequired(daf_butler)
 setupRequired(log)
 setupRequired(meas_base)
 setupRequired(pipe_base)

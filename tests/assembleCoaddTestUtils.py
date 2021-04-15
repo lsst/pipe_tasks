@@ -512,7 +512,7 @@ class MockCoaddTestData:
         return visitInfo
 
     def makeTestImage(self, expId, noiseLevel=None, psfSize=None, backgroundLevel=None,
-                      detectionSigma=5.):
+                      detectionSigma=5., badRegionBox=None):
         """Make a reproduceable PSF-convolved masked image for testing.
 
         Parameters
@@ -527,6 +527,8 @@ class MockCoaddTestData:
             Background value added to all pixels in the simulated images.
         detectionSigma : `float`, optional
             Threshold amplitude of the image to set the "DETECTED" mask.
+        badRegionBox : `lsst.geom.Box2I`, optional
+            Add a bad region bounding box (set to "BAD").
         """
         if backgroundLevel is None:
             backgroundLevel = self.backgroundLevel
@@ -555,6 +557,9 @@ class MockCoaddTestData:
         detectedMask = afwImage.Mask.getPlaneBitMask("DETECTED")
         detectionThreshold = self.backgroundLevel + detectionSigma*noiseLevel
         model.mask.array[model.image.array > detectionThreshold] += detectedMask
+
+        if badRegionBox is not None:
+            model.mask[badRegionBox] = afwImage.Mask.getPlaneBitMask("BAD")
 
         exposure = self.makeCoaddTempExp(model, visitInfo, expId)
         matchedExposure = self.makeCoaddTempExp(modelPsfMatched, visitInfo, expId)
