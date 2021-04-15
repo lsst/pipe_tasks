@@ -281,6 +281,10 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         dtype=float, default=0.5,
         doc="Match radius (in arcseconds) for DiaSource to Source association"
     )
+    requiredTemplateFraction = pexConfig.Field(
+        dtype=float, default=0.02,
+        doc="Do not attempt to run task if template covers less than this fraction"
+    )
 
     def setDefaults(self):
         # defaults are OK for catalog and diacatalog
@@ -464,10 +468,14 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             inputs['exposure'], butlerQC, inputRefs.skyMap, templateExposures
         )
 
-        outputs = self.run(exposure=inputs['exposure'],
-                           templateExposure=templateStruct.exposure,
-                           idFactory=idFactory)
-        butlerQC.put(outputs, outputRefs)
+        if templateStruct.area/inputs['exposure'].getBBox().getArea() < self.config.requiredTemplateFraction:
+            self.log.error("Insufficient Template Coverage. Not attempting to subtract image")
+        else:
+            outputs = self.run(exposure=inputs['exposure'],
+                               templateExposure=templateStruct.exposure,
+                               idFactory=idFactory)
+            butlerQC.put(outputs, outputRefs)
+
 
     @pipeBase.timeMethod
     def runDataRef(self, sensorRef, templateIdList=None):
