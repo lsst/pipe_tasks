@@ -30,10 +30,14 @@ import lsst.pipe.base as pipeBase
 import lsst.geom
 import lsst.afw.geom as afwGeom
 from lsst.daf.butler import Formatter
+from lsst.skymap import BaseSkyMap
+from .healSparseMappingProperties import (BasePropertyMap, BasePropertyMapConfig,
+                                          PropertyMapMap)
 
 
 __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
-           "HealSparseMapFormatter"]
+           "HealSparseMapFormatter", "HealSparsePropertyMapConnections",
+           "HealSparsePropertyMapConfig", "HealSparsePropertyMapTask"]
 
 
 class HealSparseMapFormatter(Formatter):
@@ -300,3 +304,309 @@ class HealSparseInputMapTask(pipeBase.Task):
         sph_pts = wcs.pixelToSky(pixels)
         return np.array([(sph.getRa().asDegrees(), sph.getDec().asDegrees())
                          for sph in sph_pts])
+
+
+class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
+                                       dimensions=("tract", "band", "skymap",),
+                                       defaultTemplates={"coaddName": "deep"}):
+    input_maps = pipeBase.connectionTypes.Input(
+        doc="Healsparse bit-wise coadd input maps",
+        name="{coaddName}Coadd_inputMap",
+        storageClass="HealSparseMap",
+        dimensions=("tract", "patch", "skymap", "band"),
+        multiple=True,
+        deferLoad=True,
+    )
+    visit_summaries = pipeBase.connectionTypes.Input(
+        doc="Visit summary tables with aggregated statistics",
+        name="visitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
+    sky_map = pipeBase.connectionTypes.Input(
+        doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
+
+    # Create output connections for all possible maps defined in the
+    # registry.
+    for name in BasePropertyMap.registry:
+        vars()[f"{name}_map_min"] = pipeBase.connectionTypes.Output(
+            doc=f"Minimum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_min",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+        )
+        vars()[f"{name}_map_max"] = pipeBase.connectionTypes.Output(
+            doc=f"Maximum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_max",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+        )
+        vars()[f"{name}_map_mean"] = pipeBase.connectionTypes.Output(
+            doc=f"Mean-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_mean",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+        )
+        vars()[f"{name}_map_weighted_mean"] = pipeBase.connectionTypes.Output(
+            doc=f"Weighted mean-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_weighted_mean",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+        )
+        vars()[f"{name}_map_sum"] = pipeBase.connectionTypes.Output(
+            doc=f"Sum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_sum",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+        )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+
+        # Remove connections from those that are not configured
+        for name in BasePropertyMap.registry:
+            if name not in config.property_maps:
+                prop_config = BasePropertyMapConfig()
+                prop_config.do_min = False
+                prop_config.do_max = False
+                prop_config.do_mean = False
+                prop_config.do_weighted_mean = False
+                prop_config.do_sum = False
+            else:
+                prop_config = config.property_maps[name]
+
+            if not prop_config.do_min:
+                self.outputs.remove(f"{name}_map_min")
+            if not prop_config.do_max:
+                self.outputs.remove(f"{name}_map_max")
+            if not prop_config.do_mean:
+                self.outputs.remove(f"{name}_map_mean")
+            if not prop_config.do_weighted_mean:
+                self.outputs.remove(f"{name}_map_weighted_mean")
+            if not prop_config.do_sum:
+                self.outputs.remove(f"{name}_map_sum")
+
+
+class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
+                                  pipelineConnections=HealSparsePropertyMapConnections):
+    """Configuration parameters for HealSparsePropertyMapTask"""
+    property_maps = BasePropertyMap.registry.makeField(
+        multi=True,
+        default=["exposure_time",
+                 "psf_size",
+                 "psf_e1",
+                 "psf_e2"],
+        doc="Property map computation objects",
+    )
+
+    def setDefaults(self):
+        self.property_maps['exposure_time'].do_sum = True
+        self.property_maps['psf_size'].do_weighted_mean = True
+        self.property_maps['psf_e1'].do_weighted_mean = True
+        self.property_maps['psf_e2'].do_weighted_mean = True
+
+
+class HealSparsePropertyMapTask(pipeBase.PipelineTask):
+    """Task to compute Healsparse property maps.
+    """
+    ConfigClass = HealSparsePropertyMapConfig
+    _DefaultName = "healSparsePropertyMapTask"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.property_maps = PropertyMapMap()
+        for name, config, PropertyMapClass in self.config.property_maps.apply():
+            self.property_maps[name] = PropertyMapClass(config, name)
+
+    @pipeBase.timeMethod
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+
+        sky_map = inputs.pop("sky_map")
+
+        tract = butlerQC.quantum.dataId["tract"]
+
+        input_map_dict = {ref.dataId["patch"]: ref for ref in inputs["input_maps"]}
+
+        visit_summary_dict = {ref.dataId["visit"]: ref.get() for ref in inputs["visit_summaries"]}
+
+        self.run(sky_map, tract, input_map_dict, visit_summary_dict)
+
+        # Write the outputs
+        for name, property_map in self.property_maps.items():
+            if property_map.config.do_min:
+                butlerQC.put(property_map.min_map,
+                             getattr(outputRefs, f"{name}_map_min"))
+            if property_map.config.do_max:
+                butlerQC.put(property_map.max_map,
+                             getattr(outputRefs, f"{name}_map_max"))
+            if property_map.config.do_mean:
+                butlerQC.put(property_map.mean_map,
+                             getattr(outputRefs, f"{name}_map_mean"))
+            if property_map.config.do_weighted_mean:
+                butlerQC.put(property_map.weighted_mean_map,
+                             getattr(outputRefs, f"{name}_map_weighted_mean"))
+            if property_map.config.do_sum:
+                butlerQC.put(property_map.sum_map,
+                             getattr(outputRefs, f"{name}_map_sum"))
+
+    def run(self, sky_map, tract, input_map_dict, visit_summary_dict):
+        """Run the healsparse property task.
+
+        Parameters
+        ----------
+        sky_map : Sky map object
+        tract : `int`
+            Tract number.
+        input_map_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
+            Dictionary of input map references.  Keys are patch numbers.
+        visit_summary_dict : `dict` [`int`: `lsst.afw.table.ExposureCatalog`]
+            Dictionary of visit summary tables.  Keys are visit numbers.
+        """
+        tract_info = sky_map[tract]
+
+        tract_maps_initialized = False
+
+        for patch in input_map_dict.keys():
+            patch_info = tract_info[patch]
+
+            input_map = input_map_dict[patch].get()
+            input_dict = self._make_input_dict(input_map.wide_mask_maxbits,
+                                               input_map.metadata)
+
+            # Crop input_map to the inner polygon of the patch
+            poly_vertices = patch_info.getInnerSkyPolygon(tract_info.getWcs()).getVertices()
+            patch_radec = self._vertices_to_radec(poly_vertices)
+            patch_poly = hsp.Polygon(ra=patch_radec[:, 0], dec=patch_radec[:, 1],
+                                     value=np.arange(input_map.wide_mask_maxbits))
+            patch_poly_map = patch_poly.get_map_like(input_map)
+            input_map = hsp.and_intersection([input_map, patch_poly_map])
+
+            if not tract_maps_initialized:
+                # We use the first input map nside information to initialize
+                # the tract maps
+                nside_coverage = self._compute_nside_coverage_tract(tract_info)
+                nside = input_map.nside_sparse
+
+                # Initialize the tract maps
+                for property_map in self.property_maps:
+                    property_map.initialize_tract_maps(nside_coverage, nside)
+
+                tract_maps_initialized = True
+
+            valid_pixels, vpix_ra, vpix_dec = input_map.valid_pixels_pos(return_pixels=True)
+
+            # Initialize the value accumulators
+            for property_map in self.property_maps:
+                property_map.initialize_values(valid_pixels.size)
+
+            # Initialize the weight and counter accumulators
+            total_weights = np.zeros(valid_pixels.size)
+            total_inputs = np.zeros(valid_pixels.size, dtype=np.int32)
+
+            for bit in input_dict:
+                # Which pixels in the map are used by this visit/detector
+                inmap, = np.where(input_map.check_bits_pix(valid_pixels, [bit]))
+
+                visit, detector_id, weight = input_dict[bit]
+
+                total_weights[inmap] += weight
+                total_inputs[inmap] += 1
+
+                # Retrieve the correct visitSummary row
+                row = visit_summary_dict[visit].find(detector_id)
+
+                # Accumulate the values
+                for property_map in self.property_maps:
+                    property_map.accumulate_values(inmap,
+                                                   vpix_ra[inmap],
+                                                   vpix_dec[inmap],
+                                                   weight,
+                                                   row)
+
+            # Finalize the mean values and set the tract maps
+            for property_map in self.property_maps:
+                property_map.finalize_mean_values(total_weights, total_inputs)
+                property_map.set_map_values(valid_pixels)
+
+    def _make_input_dict(self, max_bits, metadata):
+        """Make the input table from the input map metadata.
+
+        Parameters
+        ----------
+        max_bits : `int`
+            Maximum number of bits in the input_map.
+        metadata : `dict`
+            Metadata from the input_map.
+
+        Returns
+        -------
+        input_dict : `dict` [`list`]
+            A dictionary that the key is each bit number, and the `list`
+            has visit, detector, weight.
+        """
+        input_dict = {}
+        for bit in range(max_bits):
+            if f'B{bit:04d}VIS' in metadata:
+                input_dict[bit] = [metadata[f'B{bit:04d}VIS'],
+                                   metadata[f'B{bit:04d}CCD'],
+                                   metadata[f'B{bit:04d}WT']]
+
+        return input_dict
+
+    def _vertices_to_radec(self, vertices):
+        """Convert polygon vertices to ra/dec.
+
+        Parameters
+        ----------
+        vertices : `list` of `lsst.sphgeom.UnitVector3d`
+            Vertices for bounding polygon.
+
+        Returns
+        -------
+        radec : `numpy.ndarray`
+            Nx2 array of ra/dec positions (in degrees) associated with vertices.
+        """
+        lonlats = [lsst.sphgeom.LonLat(x) for x in vertices]
+        radec = np.array([(x.getLon().asDegrees(), x.getLat().asDegrees()) for
+                          x in lonlats])
+        return radec
+
+    def _compute_nside_coverage_tract(self, tract_info):
+        """Compute the optimal coverage nside for a tract.
+
+        Parameters
+        ----------
+        tract_info : `lsst.skymap.tractInfo.ExplicitTractInfo`
+            Tract information object.
+
+        Returns
+        -------
+        nside_coverage : `int`
+            Optimal coverage nside for a tract map.
+        """
+        num_patches = tract_info.getNumPatches()
+
+        # Compute approximate patch area
+        patch_info = tract_info.getPatchInfo(0)
+        vertices = patch_info.getInnerSkyPolygon(tract_info.getWcs()).getVertices()
+        radec = self._vertices_to_radec(vertices)
+        delta_ra = np.max(radec[:, 0]) - np.min(radec[:, 0])
+        delta_dec = np.max(radec[:, 1]) - np.min(radec[:, 1])
+        patch_area = delta_ra*delta_dec*np.cos(np.deg2rad(np.mean(radec[:, 1])))
+
+        tract_area = num_patches[0]*num_patches[1]*patch_area
+        # Start with a fairly low nside and increase until we find the approximate area.
+        nside_coverage_tract = 32
+        while hp.nside2pixarea(nside_coverage_tract, degrees=True) > tract_area:
+            nside_coverage_tract = int(2*nside_coverage_tract)
+        # Step back one, but don't go bigger pixels than nside=32
+        nside_coverage_tract = int(np.clip(nside_coverage_tract/2, 32, None))
+
+        return nside_coverage_tract
