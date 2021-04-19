@@ -20,6 +20,7 @@ tasks:
     class: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask
     config:
       doInputMap: true
+  healSparsePropertyMaps: lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask
   detection: lsst.pipe.tasks.multiBand.DetectCoaddSourcesTask
   mergeDetections: lsst.pipe.tasks.mergeDetections.MergeDetectionsTask
   deblend: lsst.pipe.tasks.deblendCoaddSourcesPipeline.DeblendCoaddSourcesMultiTask
