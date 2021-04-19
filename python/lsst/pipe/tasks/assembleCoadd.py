@@ -58,8 +58,8 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
                                defaultTemplates={"inputCoaddName": "deep",
                                                  "outputCoaddName": "deep",
                                                  "warpType": "direct",
-                                                 "warpTypeSuffix": "",
-                                                 "fakesType": ""}):
+                                                 "warpTypeSuffix": ""}):
+
     inputWarps = pipeBase.connectionTypes.Input(
         doc=("Input list of warps to be assemebled i.e. stacked."
              "WarpType (e.g. direct, psfMatched) is controlled by the warpType config parameter"),
@@ -90,7 +90,7 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
     )
     coaddExposure = pipeBase.connectionTypes.Output(
         doc="Output coadded exposure, produced by stacking input warps",
-        name="{fakesType}{outputCoaddName}Coadd{warpTypeSuffix}",
+        name="{outputCoaddName}Coadd{warpTypeSuffix}",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
     )
@@ -116,8 +116,6 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         templateValues = {name: getattr(config.connections, name) for name in self.defaultTemplates}
         templateValues['warpType'] = config.warpType
         templateValues['warpTypeSuffix'] = makeCoaddSuffix(config.warpType)
-        if config.hasFakes:
-            templateValues['fakesType'] = "_fakes"
         self._nameOverrides = {name: getattr(config.connections, name).format(**templateValues)
                                for name in self.allConnections}
         self._typeNameToVarName = {v: k for k, v in self._nameOverrides.items()}
@@ -1806,7 +1804,7 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections):
     templateCoadd = pipeBase.connectionTypes.Output(
         doc=("Model of the static sky, used to find temporal artifacts. Typically a PSF-Matched, "
              "sigma-clipped coadd. Written if and only if assembleStaticSkyModel.doWrite=True"),
-        name="{fakesType}{outputCoaddName}CoaddPsfMatched",
+        name="{outputCoaddName}CoaddPsfMatched",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
     )

@@ -577,10 +577,11 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                           dimensions=("tract", "patch", "skymap", "instrument", "visit"),
                           defaultTemplates={"coaddName": "deep",
                                             "skyWcsName": "jointcal",
-                                            "photoCalibName": "fgcm"}):
+                                            "photoCalibName": "fgcm",
+                                            "calexpType": ""}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
-        name="calexp",
+        name="{calexpType}calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
@@ -653,14 +654,14 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
     # TODO DM-28769, have selectImages subtask indicate which connections they need:
     wcsList = connectionTypes.Input(
         doc="WCSs of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
-        name="calexp.wcs",
+        name="{calexpType}calexp.wcs",
         storageClass="Wcs",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
     )
     bboxList = connectionTypes.Input(
         doc="BBoxes of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
-        name="calexp.bbox",
+        name="{calexpType}calexp.bbox",
         storageClass="Box2I",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
@@ -674,7 +675,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
     )
     psfList = connectionTypes.Input(
         doc="PSF models used by BestSeeingWcsSelectImages subtask to futher select on seeing",
-        name="calexp.psf",
+        name="{calexpType}calexp.psf",
         storageClass="Psf",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,

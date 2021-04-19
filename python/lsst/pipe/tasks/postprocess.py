@@ -255,17 +255,18 @@ class WriteObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
 
 
 class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
+                                  defaultTemplates={"catalogType": ""},
                                   dimensions=("instrument", "visit", "detector")):
 
     catalog = connectionTypes.Input(
         doc="Input full-depth catalog of sources produced by CalibrateTask",
-        name="src",
+        name="{catalogType}src",
         storageClass="SourceCatalog",
         dimensions=("instrument", "visit", "detector")
     )
     outputCatalog = connectionTypes.Output(
         doc="Catalog of sources, `src` in Parquet format",
-        name="source",
+        name="{catalogType}source",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector")
     )
@@ -941,11 +942,12 @@ class ConsolidateObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
 
 
 class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
+                                      defaultTemplates={"catalogType": ""},
                                       dimensions=("instrument", "visit", "detector")):
 
     inputCatalog = connectionTypes.Input(
         doc="Wide input catalog of sources produced by WriteSourceTableTask",
-        name="source",
+        name="{catalogType}source",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True
@@ -953,7 +955,7 @@ class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
     outputCatalog = connectionTypes.Output(
         doc="Narrower, per-detector Source Table transformed and converted per a "
             "specified set of functors",
-        name="sourceTable",
+        name="{catalogType}sourceTable",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector")
     )
@@ -993,10 +995,10 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
 
 class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
                                          dimensions=("instrument", "visit",),
-                                         defaultTemplates={}):
+                                         defaultTemplates={"calexpType": ""}):
     calexp = connectionTypes.Input(
         doc="Processed exposures used for metadata",
-        name="calexp",
+        name="{calexpType}calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True,
@@ -1006,7 +1008,7 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         doc=("Per-visit consolidated exposure metadata.  These catalogs use "
              "detector id for the id and are sorted for fast lookups of a "
              "detector."),
-        name="visitSummary",
+        name="{calexpType}visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
@@ -1236,17 +1238,18 @@ class VisitDataIdContainer(DataIdContainer):
 
 
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
+                                        defaultTemplates={"catalogType": ""},
                                         dimensions=("instrument", "visit")):
     inputCatalogs = connectionTypes.Input(
         doc="Input per-detector Source Tables",
-        name="sourceTable",
+        name="{catalogType}sourceTable",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
         multiple=True
     )
     outputCatalog = connectionTypes.Output(
         doc="Per-visit concatenation of Source Table",
-        name="sourceTable_visit",
+        name="{catalogType}sourceTable_visit",
         storageClass="DataFrame",
         dimensions=("instrument", "visit")
     )
