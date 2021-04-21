@@ -32,7 +32,7 @@ import lsst.afw.geom as afwGeom
 from lsst.daf.butler import Formatter
 from lsst.skymap import BaseSkyMap
 from .healSparseMappingProperties import (BasePropertyMap, BasePropertyMapConfig,
-                                          PropertyMapMap)
+                                          PropertyMapMap, compute_approx_psf_size_and_shape)
 
 
 __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
@@ -164,19 +164,19 @@ class HealSparseInputMapTask(pipeBase.Task):
         metadata = {}
         self._bits_per_visit_ccd = {}
         self._bits_per_visit = defaultdict(list)
-        for bit, ccd in enumerate(ccds):
-            metadata[f'B{bit:04d}CCD'] = ccd['ccd']
-            metadata[f'B{bit:04d}VIS'] = ccd['visit']
-            metadata[f'B{bit:04d}WT'] = ccd['weight']
+        for bit, ccd_row in enumerate(ccds):
+            metadata[f"B{bit:04d}CCD"] = ccd_row["ccd"]
+            metadata[f"B{bit:04d}VIS"] = ccd_row["visit"]
+            metadata[f"B{bit:04d}WT"] = ccd_row["weight"]
 
-            self._bits_per_visit_ccd[(ccd['visit'], ccd['ccd'])] = bit
-            self._bits_per_visit[ccd['visit']].append(bit)
+            self._bits_per_visit_ccd[(ccd_row["visit"], ccd_row["ccd"])] = bit
+            self._bits_per_visit[ccd_row["visit"]].append(bit)
 
-            ccd_poly = ccd.getValidPolygon()
+            ccd_poly = ccd_row.getValidPolygon()
             if ccd_poly is None:
-                ccd_poly = afwGeom.Polygon(lsst.geom.Box2D(ccd.getBBox()))
+                ccd_poly = afwGeom.Polygon(lsst.geom.Box2D(ccd_row.getBBox()))
             # Detectors need to be rendered with their own wcs.
-            ccd_poly_radec = self._pixels_to_radec(ccd.getWcs(), ccd_poly.convexHull().getVertices())
+            ccd_poly_radec = self._pixels_to_radec(ccd_row.getWcs(), ccd_poly.convexHull().getVertices())
 
             # Create a ccd healsparse polygon
             poly = hsp.Polygon(ra=ccd_poly_radec[: -1, 0],
@@ -198,7 +198,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         # Create a temporary map to hold the count of bad pixels in each healpix pixel
         self._ccd_input_pixels = self.ccd_input_map.valid_pixels
 
-        dtype = [(f'v{visit}', 'i4') for visit in self._bits_per_visit.keys()]
+        dtype = [(f"v{visit}", "i4") for visit in self._bits_per_visit.keys()]
 
         cov = self.config.nside_coverage
         ns = self.config.nside
@@ -259,8 +259,8 @@ class HealSparseInputMapTask(pipeBase.Task):
         primary = self._ccd_input_bad_count_map.primary
         count_map_arr[primary] = np.clip(count_map_arr[primary], 0, None)
 
-        count_map_arr[f'v{visit}'] = np.clip(count_map_arr[f'v{visit}'], 0, None)
-        count_map_arr[f'v{visit}'] += bad_hpix_count[pix_to_add]
+        count_map_arr[f"v{visit}"] = np.clip(count_map_arr[f"v{visit}"], 0, None)
+        count_map_arr[f"v{visit}"] += bad_hpix_count[pix_to_add]
 
         self._ccd_input_bad_count_map[min_bad_hpix + pix_to_add] = count_map_arr
 
@@ -277,7 +277,7 @@ class HealSparseInputMapTask(pipeBase.Task):
 
         count_map_arr = self._ccd_input_bad_count_map[self._ccd_input_pixels]
         for visit in self._bits_per_visit:
-            to_mask, = np.where(count_map_arr[f'v{visit}'] > self._min_bad)
+            to_mask, = np.where(count_map_arr[f"v{visit}"] > self._min_bad)
             if to_mask.size == 0:
                 continue
             self.ccd_input_map.clear_bits_pix(self._ccd_input_pixels[to_mask],
@@ -317,13 +317,20 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
         deferLoad=True,
     )
+    coadd_exposures = pipeBase.connectionTypes.Input(
+        doc="Coadded exposures associated with input_maps",
+        name="{coaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "band"),
+        multiple=True,
+        deferLoad=True,
+    )
     visit_summaries = pipeBase.connectionTypes.Input(
         doc="Visit summary tables with aggregated statistics",
         name="visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
-        deferLoad=True,
     )
     sky_map = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
@@ -401,15 +408,29 @@ class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
         default=["exposure_time",
                  "psf_size",
                  "psf_e1",
-                 "psf_e2"],
+                 "psf_e2",
+                 "psf_maglim",
+                 "sky_noise",
+                 "sky_background",
+                 "dcr_dra",
+                 "dcr_ddec",
+                 "dcr_e1",
+                 "dcr_e2"],
         doc="Property map computation objects",
     )
 
     def setDefaults(self):
-        self.property_maps['exposure_time'].do_sum = True
-        self.property_maps['psf_size'].do_weighted_mean = True
-        self.property_maps['psf_e1'].do_weighted_mean = True
-        self.property_maps['psf_e2'].do_weighted_mean = True
+        self.property_maps["exposure_time"].do_sum = True
+        self.property_maps["psf_size"].do_weighted_mean = True
+        self.property_maps["psf_e1"].do_weighted_mean = True
+        self.property_maps["psf_e2"].do_weighted_mean = True
+        self.property_maps["psf_maglim"].do_weighted_mean = True
+        self.property_maps["sky_noise"].do_weighted_mean = True
+        self.property_maps["sky_background"].do_weighted_mean = True
+        self.property_maps["dcr_dra"].do_weighted_mean = True
+        self.property_maps["dcr_ddec"].do_weighted_mean = True
+        self.property_maps["dcr_e1"].do_weighted_mean = True
+        self.property_maps["dcr_e2"].do_weighted_mean = True
 
 
 class HealSparsePropertyMapTask(pipeBase.PipelineTask):
@@ -433,10 +454,13 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         tract = butlerQC.quantum.dataId["tract"]
 
         input_map_dict = {ref.dataId["patch"]: ref for ref in inputs["input_maps"]}
+        coadd_dict = {ref.dataId["patch"]: ref for ref in inputs["coadd_exposures"]}
 
-        visit_summary_dict = {ref.dataId["visit"]: ref.get() for ref in inputs["visit_summaries"]}
+        visit_summary_dict = {ref.dataId["visit"]: visit_summary
+                              for ref, visit_summary in zip(inputRefs.visit_summaries,
+                                                            inputs["visit_summaries"])}
 
-        self.run(sky_map, tract, input_map_dict, visit_summary_dict)
+        self.run(sky_map, tract, coadd_dict, input_map_dict, visit_summary_dict)
 
         # Write the outputs
         for name, property_map in self.property_maps.items():
@@ -456,7 +480,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                 butlerQC.put(property_map.sum_map,
                              getattr(outputRefs, f"{name}_map_sum"))
 
-    def run(self, sky_map, tract, input_map_dict, visit_summary_dict):
+    def run(self, sky_map, tract, coadd_dict, input_map_dict, visit_summary_dict):
         """Run the healsparse property task.
 
         Parameters
@@ -464,6 +488,8 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         sky_map : Sky map object
         tract : `int`
             Tract number.
+        coadd_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
+            Dictionary of coadd exposure references.  Keys are patch numbers.
         input_map_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
             Dictionary of input map references.  Keys are patch numbers.
         visit_summary_dict : `dict` [`int`: `lsst.afw.table.ExposureCatalog`]
@@ -477,8 +503,10 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             patch_info = tract_info[patch]
 
             input_map = input_map_dict[patch].get()
-            input_dict = self._make_input_dict(input_map.wide_mask_maxbits,
-                                               input_map.metadata)
+            coadd_photo_calib = coadd_dict[patch].get(component="photoCalib")
+            coadd_inputs = coadd_dict[patch].get(component="coaddInputs")
+
+            coadd_zeropoint = 2.5*np.log10(coadd_photo_calib.getInstFluxAtZeroMagnitude())
 
             # Crop input_map to the inner polygon of the patch
             poly_vertices = patch_info.getInnerSkyPolygon(tract_info.getWcs()).getVertices()
@@ -494,9 +522,12 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                 nside_coverage = self._compute_nside_coverage_tract(tract_info)
                 nside = input_map.nside_sparse
 
+                do_compute_approx_psf = False
                 # Initialize the tract maps
                 for property_map in self.property_maps:
                     property_map.initialize_tract_maps(nside_coverage, nside)
+                    if property_map.requires_psf:
+                        do_compute_approx_psf = True
 
                 tract_maps_initialized = True
 
@@ -505,16 +536,28 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             # Initialize the value accumulators
             for property_map in self.property_maps:
                 property_map.initialize_values(valid_pixels.size)
+                property_map.zeropoint = coadd_zeropoint
 
             # Initialize the weight and counter accumulators
             total_weights = np.zeros(valid_pixels.size)
             total_inputs = np.zeros(valid_pixels.size, dtype=np.int32)
 
-            for bit in input_dict:
+            for bit, ccd_row in enumerate(coadd_inputs.ccds):
                 # Which pixels in the map are used by this visit/detector
                 inmap, = np.where(input_map.check_bits_pix(valid_pixels, [bit]))
 
-                visit, detector_id, weight = input_dict[bit]
+                # visit, detector_id, weight = input_dict[bit]
+                visit = ccd_row["visit"]
+                detector_id = ccd_row["ccd"]
+                weight = ccd_row["weight"]
+
+                x, y = ccd_row.getWcs().skyToPixelArray(vpix_ra[inmap], vpix_dec[inmap], degrees=True)
+                scalings = self._compute_calib_scale(ccd_row, x, y)
+
+                if do_compute_approx_psf:
+                    psf_array = compute_approx_psf_size_and_shape(ccd_row, vpix_ra[inmap], vpix_dec[inmap])
+                else:
+                    psf_array = None
 
                 total_weights[inmap] += weight
                 total_inputs[inmap] += 1
@@ -528,37 +571,42 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                                                    vpix_ra[inmap],
                                                    vpix_dec[inmap],
                                                    weight,
-                                                   row)
+                                                   scalings,
+                                                   row,
+                                                   psf_array=psf_array)
 
             # Finalize the mean values and set the tract maps
             for property_map in self.property_maps:
                 property_map.finalize_mean_values(total_weights, total_inputs)
                 property_map.set_map_values(valid_pixels)
 
-    def _make_input_dict(self, max_bits, metadata):
-        """Make the input table from the input map metadata.
+    def _compute_calib_scale(self, ccd_row, x, y):
+        """Compute calibration scaling values.
 
         Parameters
         ----------
-        max_bits : `int`
-            Maximum number of bits in the input_map.
-        metadata : `dict`
-            Metadata from the input_map.
+        ccd_row : `lsst.afw.table.ExposureRecord`
+            Exposure metadata for a given detector exposure.
+        x : `np.ndarray`
+            Array of x positions.
+        y : `np.ndarray`
+            Array of y positions.
 
         Returns
         -------
-        input_dict : `dict` [`list`]
-            A dictionary that the key is each bit number, and the `list`
-            has visit, detector, weight.
+        calib_scale : `np.ndarray`
+            Array of calibration scale values.
         """
-        input_dict = {}
-        for bit in range(max_bits):
-            if f'B{bit:04d}VIS' in metadata:
-                input_dict[bit] = [metadata[f'B{bit:04d}VIS'],
-                                   metadata[f'B{bit:04d}CCD'],
-                                   metadata[f'B{bit:04d}WT']]
+        photo_calib = ccd_row.getPhotoCalib()
+        bf = photo_calib.computeScaledCalibration()
+        if bf.getBBox() == ccd_row.getBBox():
+            # Track variable calibration over the detector
+            calib_scale = photo_calib.getCalibrationMean()*bf.evaluate(x, y)
+        else:
+            # Spatially constant calibration
+            calib_scale = photo_calib.getCalibrationMean()
 
-        return input_dict
+        return calib_scale
 
     def _vertices_to_radec(self, vertices):
         """Convert polygon vertices to ra/dec.

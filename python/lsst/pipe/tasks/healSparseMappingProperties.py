@@ -23,13 +23,17 @@ import numpy as np
 import healsparse as hsp
 
 import lsst.pex.config as pexConfig
-# import lsst.pipe.base as pipeBase
+import lsst.geom
+from lsst.afw.math import ChebyshevBoundedField, ChebyshevBoundedFieldControl
 
 
-__all__ = ["BasePropertyMapConfig", "PropertyMapRegistry", "register",
+__all__ = ["BasePropertyMapConfig", "PropertyMapRegistry", "register_property_map",
            "PropertyMapMap", "BasePropertyMap", "ExposureTimePropertyMap",
            "PsfSizePropertyMap", "PsfE1PropertyMap", "PsfE2PropertyMap",
-           "NExposurePropertyMap"]
+           "NExposurePropertyMap", "PsfMaglimPropertyMapConfig",
+           "PsfMaglimPropertyMap", "SkyBackgroundPropertyMap", "SkyNoisePropertyMap",
+           "DcrDraPropertyMap", "DcrDdecPropertyMap", "DcrE1PropertyMap",
+           "DcrE2PropertyMap", "compute_approx_psf_size_and_shape"]
 
 
 class BasePropertyMapConfig(pexConfig.Config):
@@ -80,12 +84,94 @@ class PropertyMapRegistry(pexConfig.Registry):
         pexConfig.Registry.register(self, name, self.Configurable(name, PropertyMapClass))
 
 
-def register(name):
+def register_property_map(name):
     """A decorator to register a property map class in its base class's registry."""
     def decorate(PropertyMapClass):
         PropertyMapClass.registry.register(name, PropertyMapClass)
         return PropertyMapClass
     return decorate
+
+
+def compute_approx_psf_size_and_shape(ccd_row, ra, dec, nx=20, ny=20, orderx=2, ordery=2):
+    """Compute the approximate psf size and shape.
+
+    This routine fits how the psf size and shape varies over a field by approximating
+    with a Chebyshev bounded field.
+
+    Parameters
+    ----------
+    ccd_row : `lsst.afw.table.ExposureRecord`
+        Exposure metadata for a given detector exposure.
+    ra : `np.ndarray`
+        Right ascension of points to compute size and shape (degrees).
+    dec : `np.ndarray`
+        Declination of points to compute size and shape (degrees).
+    nx : `int`, optional
+        Number of sampling points in the x direction.
+    ny : `int`, optional
+        Number of sampling points in the y direction.
+    orderx : `int`, optional
+        Chebyshev polynomial order for fit in x direction.
+    ordery : `int`, optional
+        Chebyshev polynomial order for fit in y direction.
+
+    Returns
+    -------
+    psf_array : `np.ndarray`
+        Record array with "psf_size", "psf_e1", "psf_e2".
+    """
+    pts = [lsst.geom.SpherePoint(r*lsst.geom.degrees, d*lsst.geom.degrees) for
+           r, d in zip(ra, dec)]
+    pixels = ccd_row.getWcs().skyToPixel(pts)
+
+    ctrl = ChebyshevBoundedFieldControl()
+    ctrl.orderX = orderx
+    ctrl.orderY = ordery
+    ctrl.triangular = False
+
+    bbox = ccd_row.getBBox()
+    xSteps = np.linspace(bbox.getMinX(), bbox.getMaxX(), nx)
+    ySteps = np.linspace(bbox.getMinY(), bbox.getMaxY(), ny)
+    x = np.tile(xSteps, nx)
+    y = np.repeat(ySteps, ny)
+
+    psf_size = np.zeros(x.size)
+    psf_e1 = np.zeros(x.size)
+    psf_e2 = np.zeros(x.size)
+    psf_area = np.zeros(x.size)
+
+    psf = ccd_row.getPsf()
+    for i in range(x.size):
+        shape = psf.computeShape(lsst.geom.Point2D(x[i], y[i]))
+        psf_size[i] = shape.getDeterminantRadius()
+        ixx = shape.getIxx()
+        iyy = shape.getIyy()
+        ixy = shape.getIxy()
+
+        psf_e1[i] = (ixx - iyy)/(ixx + iyy + 2.*psf_size[i]**2.)
+        psf_e2[i] = (2.*ixy)/(ixx + iyy + 2.*psf_size[i]**2.)
+
+        im = psf.computeKernelImage(lsst.geom.Point2D(x[i], y[i]))
+        psf_area[i] = np.sum(im.array)/np.sum(im.array**2.)
+
+    pixel_x = np.array([pix.getX() for pix in pixels])
+    pixel_y = np.array([pix.getY() for pix in pixels])
+
+    psf_array = np.zeros(pixel_x.size, dtype=[("psf_size", "f8"),
+                                              ("psf_e1", "f8"),
+                                              ("psf_e2", "f8"),
+                                              ("psf_area", "f8")])
+
+    cheb_size = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_size, ctrl)
+    psf_array["psf_size"] = cheb_size.evaluate(pixel_x, pixel_y)
+    cheb_e1 = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_e1, ctrl)
+    psf_array["psf_e1"] = cheb_e1.evaluate(pixel_x, pixel_y)
+    cheb_e2 = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_e2, ctrl)
+    psf_array["psf_e2"] = cheb_e2.evaluate(pixel_x, pixel_y)
+    cheb_area = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_area, ctrl)
+    psf_array["psf_area"] = cheb_area.evaluate(pixel_x, pixel_y)
+
+    return psf_array
 
 
 class PropertyMapMap(dict):
@@ -114,6 +200,7 @@ class BasePropertyMap:
         Property map name.
     """
     dtype = np.float64
+    requires_psf = False
 
     ConfigClass = BasePropertyMapConfig
 
@@ -123,6 +210,7 @@ class BasePropertyMap:
         object.__init__(self)
         self.config = config
         self.name = name
+        self.zeropoint = 0.0
 
     def initialize_tract_maps(self, nside_coverage, nside):
         """Initialize the tract maps.
@@ -177,7 +265,8 @@ class BasePropertyMap:
         if self.config.do_sum:
             self.sum_values = np.zeros(n_pixels, dtype=self.dtype)
 
-    def accumulate_values(self, indices, ra, dec, weights, row):
+    def accumulate_values(self, indices, ra, dec, weights, scalings, row,
+                          psf_array=None):
         """Accumulate values from a row of a visitSummary table.
 
         Parameters
@@ -190,10 +279,14 @@ class BasePropertyMap:
             Array of declination for indices
         weights : `float` or `np.ndarray`
             Weight(s) for indices to be accumulated.
+        scalings : `float` or `np.ndarray`
+            Scaling values to coadd zeropoint.
         row : `lsst.afw.table.ExposureRecord`
             Row of a visitSummary ExposureCatalog.
+        psf_array : `np.ndarray`, optional
+            Array of approximate psf values matched to ra/dec.
         """
-        values = self.compute(row, ra, dec)
+        values = self.compute(row, ra, dec, scalings, psf_array=psf_array)
         if self.config.do_min:
             self.min_values[indices] = np.fmin(self.min_values[indices], values)
         if self.config.do_max:
@@ -222,6 +315,9 @@ class BasePropertyMap:
             use, = np.where(total_weights > 0.0)
             self.weighted_mean_values[use] /= total_weights[use]
 
+        # And perform any necessary post-processing
+        self.post_process(total_weights, total_inputs)
+
     def set_map_values(self, pixels):
         """Assign accumulated values to the maps.
 
@@ -241,7 +337,7 @@ class BasePropertyMap:
         if self.config.do_sum:
             self.sum_map[pixels] = self.sum_values
 
-    def compute(self, row, ra, dec):
+    def compute(self, row, ra, dec, scalings, psf_array=None):
         """Compute map value from a row in the visitSummary catalog.
 
         Parameters
@@ -252,47 +348,143 @@ class BasePropertyMap:
             Array of right ascensions
         dec : `np.ndarray`
             Array of declinations
+        scalings : `float` or `np.ndarray`
+            Scaling values to coadd zeropoint.
+        psf_array : `np.ndarray`, optional
+            Array of approximate psf values matched to ra/dec.
         """
         raise NotImplementedError("All property maps must implement compute()")
 
+    def post_process(self, total_weights, total_inputs):
+        """Perform post-processing on values.
 
-@register("exposure_time")
+        Parameters
+                ----------
+        total_weights : `np.ndarray`
+            Total accumulated weights, for each value index.
+        total_inputs : `np.ndarray`
+            Total number of inputs, for each value index.
+        """
+        # Override of this method is not required.
+        pass
+
+
+@register_property_map("exposure_time")
 class ExposureTimePropertyMap(BasePropertyMap):
-    def compute(self, row, ra, dec):
+    """Exposure time property map."""
+
+    def compute(self, row, ra, dec, scalings, psf_array=None):
         return row.getVisitInfo().getExposureTime()
 
 
-@register("psf_size")
+@register_property_map("psf_size")
 class PsfSizePropertyMap(BasePropertyMap):
-    def compute(self, row, ra, dec):
-        return row['psfSigma']
+    """PSF size property map."""
+    requires_psf = True
+
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        return psf_array["psf_size"]
 
 
-@register("psf_e1")
+@register_property_map("psf_e1")
 class PsfE1PropertyMap(BasePropertyMap):
-    def compute(self, row, ra, dec):
-        ixx = row['psfIxx']
-        iyy = row['psfIyy']
-        size = row['psfSigma']
-        return (ixx - iyy)/(ixx + iyy + 2.*size**2.)
+    """PSF shape e1 property map."""
+    requires_psf = True
+
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        return psf_array["psf_e1"]
 
 
-@register("psf_e2")
+@register_property_map("psf_e2")
 class PsfE2PropertyMap(BasePropertyMap):
-    def compute(self, row, ra, dec):
-        ixx = row['psfIxx']
-        iyy = row['psfIyy']
-        ixy = row['psfIxy']
-        size = row['psfSigma']
-        return (2.*ixy)/(ixx + iyy + 2.*size**2.)
+    """PSF shape e2 property map."""
+    requires_psf = True
+
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        return psf_array["psf_e2"]
 
 
-@register("n_exposure")
+@register_property_map("n_exposure")
 class NExposurePropertyMap(BasePropertyMap):
+    """Number of exposures property map."""
     dtype = np.int32
 
-    def compute(self, row, ra, dec):
+    def compute(self, row, ra, dec, scalings, psf_array=None):
         return 1
 
 
-# FIXME: add maglim map
+class PsfMaglimPropertyMapConfig(BasePropertyMapConfig):
+    """Configuration for the PsfMaglim property map.
+    """
+    maglim_nsigma = pexConfig.Field(dtype=float, default=5.0,
+                                    doc="Number of sigma to compute magnitude limit.")
+
+    def validate(self):
+        super().validate()
+        if self.do_min or self.do_max or self.do_mean or self.do_sum:
+            raise ValueError("Can only use do_weighted_mean with PsfMaglimPropertyMap")
+
+
+@register_property_map("psf_maglim")
+class PsfMaglimPropertyMap(BasePropertyMap):
+    """PSF magnitude limit property map."""
+    requires_psf = True
+
+    ConfigClass = PsfMaglimPropertyMapConfig
+
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        # Our values are the weighted mean of the psf area
+        return psf_array["psf_area"]
+
+    def post_process(self, total_weights, total_inputs):
+        psf_area = self.weighted_mean_values.copy()
+        maglim = (self.zeropoint
+                  - 2.5*np.log10(1./np.sqrt(total_weights))
+                  - 2.5*np.log10(self.config.maglim_nsigma*np.sqrt(psf_area)))
+        self.weighted_mean_values[:] = maglim
+
+
+@register_property_map("sky_background")
+class SkyBackgroundPropertyMap(BasePropertyMap):
+    """Sky background property map."""
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        return scalings*row["skyBg"]
+
+
+@register_property_map("sky_noise")
+class SkyNoisePropertyMap(BasePropertyMap):
+    """Sky noise property map."""
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        return scalings*row["skyNoise"]
+
+
+@register_property_map("dcr_dra")
+class DcrDraPropertyMap(BasePropertyMap):
+    """Effect of DCR on delta-RA property map."""
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
+        return np.tan(np.deg2rad(row["zenithDistance"]))*np.sin(par_angle)
+
+
+@register_property_map("dcr_ddec")
+class DcrDdecPropertyMap(BasePropertyMap):
+    """Effect of DCR on delta-Dec property map."""
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
+        return np.tan(np.deg2rad(row["zenithDistance"]))*np.cos(par_angle)
+
+
+@register_property_map("dcr_e1")
+class DcrE1PropertyMap(BasePropertyMap):
+    """Effect of DCR on psf shape e1 property map."""
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
+        return (np.tan(np.deg2rad(row["zenithDistance"]))**2.)*np.cos(2.*par_angle)
+
+
+@register_property_map("dcr_e2")
+class DcrE2PropertyMap(BasePropertyMap):
+    """Effect of DCR on psf shape e2 property map."""
+    def compute(self, row, ra, dec, scalings, psf_array=None):
+        par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
+        return (np.tan(np.deg2rad(row["zenithDistance"]))**2.)*np.sin(2.*par_angle)
