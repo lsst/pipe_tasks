@@ -452,6 +452,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         sky_map = inputs.pop("sky_map")
 
         tract = butlerQC.quantum.dataId["tract"]
+        band = butlerQC.quantum.dataId["band"]
 
         input_map_dict = {ref.dataId["patch"]: ref for ref in inputs["input_maps"]}
         coadd_dict = {ref.dataId["patch"]: ref for ref in inputs["coadd_exposures"]}
@@ -460,7 +461,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                               for ref, visit_summary in zip(inputRefs.visit_summaries,
                                                             inputs["visit_summaries"])}
 
-        self.run(sky_map, tract, coadd_dict, input_map_dict, visit_summary_dict)
+        self.run(sky_map, tract, band, coadd_dict, input_map_dict, visit_summary_dict)
 
         # Write the outputs
         for name, property_map in self.property_maps.items():
@@ -480,7 +481,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                 butlerQC.put(property_map.sum_map,
                              getattr(outputRefs, f"{name}_map_sum"))
 
-    def run(self, sky_map, tract, coadd_dict, input_map_dict, visit_summary_dict):
+    def run(self, sky_map, tract, band, coadd_dict, input_map_dict, visit_summary_dict):
         """Run the healsparse property task.
 
         Parameters
@@ -488,6 +489,8 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         sky_map : Sky map object
         tract : `int`
             Tract number.
+        band : `str`
+            Band name for logging.
         coadd_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
             Dictionary of coadd exposure references.  Keys are patch numbers.
         input_map_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
@@ -500,6 +503,8 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         tract_maps_initialized = False
 
         for patch in input_map_dict.keys():
+            self.log.info(f"Making maps for band {band}, tract {tract}, patch {patch}.")
+
             patch_info = tract_info[patch]
 
             input_map = input_map_dict[patch].get()
@@ -545,6 +550,10 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             for bit, ccd_row in enumerate(coadd_inputs.ccds):
                 # Which pixels in the map are used by this visit/detector
                 inmap, = np.where(input_map.check_bits_pix(valid_pixels, [bit]))
+
+                # Check if there are any valid pixels in the map from this deteector.
+                if inmap.size == 0:
+                    continue
 
                 # visit, detector_id, weight = input_dict[bit]
                 visit = ccd_row["visit"]
