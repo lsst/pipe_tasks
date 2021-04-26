@@ -857,6 +857,7 @@ class MakeWarpTask(MakeCoaddTempExpTask):
                 if photoCalib is None:
                     raise RuntimeError(f"Detector id {detectorId} has None for photoCalib "
                                        f"in externalPhotoCalibCatalog.")
+                calexp.setPhotoCalib(photoCalib)
             else:
                 photoCalib = calexp.getPhotoCalib()
 
