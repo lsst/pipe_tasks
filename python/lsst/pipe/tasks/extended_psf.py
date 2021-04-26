@@ -28,7 +28,12 @@ from typing import List
 
 from lsst.afw import image as afwImage
 from lsst.afw import fits as afwFits
+from lsst.afw import math as afwMath
 from lsst.daf.base import PropertyList
+from lsst.pipe import base as pipeBase
+from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
+import lsst.pex.config as pexConfig
+from lsst.geom import Extent2I
 
 
 @dataclass
@@ -254,3 +259,237 @@ class ExtendedPsf:
         """Alias for ``readFits``; exists for compatibility with the Butler.
         """
         return cls.read_fits(filename)
+
+
+class StackBrightStarsConfig(pexConfig.Config):
+    """Configuration parameters for StackBrightStarsTask.
+    """
+    subregion_size = pexConfig.ListField(
+        dtype=int,
+        doc="Size, in pixels, of the subregions over which the stacking will be "
+            "iteratively performed.",
+        default=(100, 100)
+    )
+    stacking_statistic = pexConfig.ChoiceField(
+        dtype=str,
+        doc="Type of statistic to use for stacking.",
+        default="MEANCLIP",
+        allowed={
+            "MEAN": "mean",
+            "MEDIAN": "median",
+            "MEANCLIP": "clipped mean",
+        }
+    )
+    num_sigma_clip = pexConfig.Field(
+        dtype=float,
+        doc="Sigma for outlier rejection; ignored if stacking_statistic != 'MEANCLIP'.",
+        default=4
+    )
+    num_iter = pexConfig.Field(
+        dtype=int,
+        doc="Number of iterations of outlier rejection; ignored if stackingStatistic != 'MEANCLIP'.",
+        default=3
+    )
+    bad_mask_planes = pexConfig.ListField(
+        dtype=str,
+        doc="Mask planes that, if set, lead to associated pixels not being included in the stacking of the "
+            "bright star stamps.",
+        default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
+    )
+    do_mag_cut = pexConfig.Field(
+        dtype=bool,
+        doc="Apply magnitude cut before stacking?",
+        default=False
+    )
+    mag_limit = pexConfig.Field(
+        dtype=float,
+        doc="Magnitude limit, in Gaia G; all stars brighter than this value will be stacked",
+        default=18
+    )
+
+
+class StackBrightStarsTask(pipeBase.CmdLineTask):
+    """Stack bright stars together to build an extended PSF model.
+    """
+    ConfigClass = StackBrightStarsConfig
+    _DefaultName = "stack_bright_stars"
+
+    def __init__(self, initInputs=None, *args, **kwargs):
+        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
+
+    def _set_up_stacking(self, example_stamp):
+        """Configure stacking statistic and control from config fields.
+        """
+        stats_control = afwMath.StatisticsControl()
+        stats_control.setNumSigmaClip(self.config.num_sigma_clip)
+        stats_control.setNumIter(self.config.num_iter)
+        if bad_masks := self.config.bad_mask_planes:
+            and_mask = example_stamp.mask.getPlaneBitMask(bad_masks[0])
+            for bm in bad_masks[1:]:
+                and_mask = and_mask | example_stamp.mask.getPlaneBitMask(bm)
+            stats_control.setAndMask(and_mask)
+        stats_flags = afwMath.stringToStatisticsProperty(self.config.stacking_statistic)
+        return stats_control, stats_flags
+
+    def run(self, bss_ref_list, region_name=None):
+        """Read input bright star stamps and stack them together.
+
+        The stacking is done iteratively over smaller areas of the final model
+        image to allow for a great number of bright star stamps to be used.
+
+        Parameters
+        ----------
+        bss_ref_list : `list` of
+                `lsst.daf.butler._deferredDatasetHandle.DeferredDatasetHandle`
+            List of available bright star stamps data references.
+        region_name : `str`, optional
+            Name of the focal plane region, if applicable. Only used for
+            logging purposes, when running over multiple such regions
+            (typically from `MeasureExtendedPsfTask`)
+        """
+        log_message = f'Building extended PSF from stamps extracted from {len(bss_ref_list)} detector images'
+        if region_name:
+            log_message += f' for region "{region_name}".'
+        self.log.info(log_message)
+        # read in example set of full stamps
+        example_bss = bss_ref_list[0].get(datasetType="brightStarStamps", immediate=True)
+        example_stamp = example_bss[0].stamp_im
+        # create model image
+        ext_psf = afwImage.MaskedImageF(example_stamp.getBBox())
+        # divide model image into smaller subregions
+        subregion_size = Extent2I(*self.config.subregion_size)
+        sub_bboxes = AssembleCoaddTask._subBBoxIter(ext_psf.getBBox(), subregion_size)
+        # compute approximate number of subregions
+        n_subregions = int(ext_psf.getDimensions()[0]/subregion_size[0] + 1)*int(
+            ext_psf.getDimensions()[1]/subregion_size[1] + 1)
+        self.log.info(f"Stacking will performed iteratively over approximately {n_subregions} "
+                      "smaller areas of the final model image.")
+        # set up stacking statistic
+        stats_control, stats_flags = self._set_up_stacking(example_stamp)
+        # perform stacking
+        for jbbox, bbox in enumerate(sub_bboxes):
+            all_stars = None
+            for bss_ref in bss_ref_list:
+                read_stars = bss_ref.get(datasetType="brightStarStamps", parameters={'bbox': bbox})
+                if self.config.do_mag_cut:
+                    read_stars = read_stars.selectByMag(magMax=self.config.mag_limit)
+                if all_stars:
+                    all_stars.extend(read_stars)
+                else:
+                    all_stars = read_stars
+            # TODO: DM-27371 add weights to bright stars for stacking
+            coadd_sub_bbox = afwMath.statisticsStack(all_stars.getMaskedImages(), stats_flags, stats_control)
+            ext_psf.assign(coadd_sub_bbox, bbox)
+        return ext_psf
+
+
+class MeasureExtendedPsfConnections(pipeBase.PipelineTaskConnections,
+                                    dimensions=("band", "instrument")):
+    input_brightStarStamps = pipeBase.connectionTypes.Input(
+        doc="Input list of bright star collections to be stacked.",
+        name="brightStarStamps",
+        storageClass="BrightStarStamps",
+        dimensions=("visit", "detector"),
+        deferLoad=True,
+        multiple=True
+    )
+    extended_psf = pipeBase.connectionTypes.Output(
+        doc="Extended PSF model built by stacking bright stars.",
+        name="extended_psf",
+        storageClass="ExtendedPsf",
+        dimensions=("band",),
+    )
+
+
+class MeasureExtendedPsfConfig(pipeBase.PipelineTaskConfig,
+                               pipelineConnections=MeasureExtendedPsfConnections):
+    """Configuration parameters for MeasureExtendedPsfTask.
+    """
+    stack_bright_stars = pexConfig.ConfigurableField(
+        target=StackBrightStarsTask,
+        doc="Stack selected bright stars",
+    )
+    detectors_focal_plane_regions = pexConfig.DictField(
+        keytype=int,
+        itemtype=str,
+        doc="Mapping from detector IDs to focal plane region names. If empty, a constant "
+            "extended PSF model is built from all selected bright stars.",
+        default={}
+    )
+
+
+class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
+    """Build and save extended PSF model.
+
+    The model is built by stacking bright star stamps, extracted and
+    preprocessed by
+    `lsst.pipe.tasks.processBrightStars.ProcessBrightStarsTask`.
+    If a mapping from detector IDs to focal plane regions is provided,
+    a different extended PSF model will be built for each focal plane
+    region. If not, a single, constant extended PSF model is built using
+    all available data.
+    """
+    ConfigClass = MeasureExtendedPsfConfig
+    _DefaultName = "measureExtendedPsf"
+
+    def __init__(self, initInputs=None, *args, **kwargs):
+        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
+        self.makeSubtask("stack_bright_stars")
+        self.focal_plane_regions = {region: [] for region in
+                                    set(self.config.detectors_focal_plane_regions.values())}
+        for det, region in self.config.detectors_focal_plane_regions.items():
+            self.focal_plane_regions[region].append(det)
+        # make no assumption on what detector IDs should be, but if we come
+        # across one where there are processed bright stars, but no
+        # corresponding focal plane region, make sure we keep track of
+        # it (eg to raise a warning only once)
+        self.regionless_dets = []
+
+    def select_detector_refs(self, ref_list):
+        """Split available sets of bright star stamps according to focal plane
+        regions.
+
+        Parameters
+        ----------
+        ref_list : `list` of
+                `lsst.daf.butler._deferredDatasetHandle.DeferredDatasetHandle`
+            List of available bright star stamps data references.
+        """
+        region_ref_list = {region: [] for region in self.focal_plane_regions.keys()}
+        for dataset_handle in ref_list:
+            det_id = dataset_handle.ref.dataId["detector"]
+            if det_id in self.regionless_dets:
+                continue
+            try:
+                region_name = self.config.detectors_focal_plane_regions[det_id]
+            except KeyError:
+                self.log.warn(f'Bright stars were available for detector {det_id}, but it was missing '
+                              'from the "detectors_focal_plane_regions" config field, so they will not '
+                              'be used to build any of the extended PSF models')
+                self.regionless_dets.append(det_id)
+                continue
+            region_ref_list[region_name].append(dataset_handle)
+        return region_ref_list
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        input_data = butlerQC.get(inputRefs)
+        bss_ref_list = input_data['input_brightStarStamps']
+        # Handle default case of a single region with empty detector list
+        if not self.config.detectors_focal_plane_regions:
+            self.log.info("No detector groups were provided to MeasureExtendedPsfTask; computing a single, "
+                          "constant extended PSF model over all available observations.")
+            output_e_psf = ExtendedPsf(self.stack_bright_stars.run(bss_ref_list))
+        else:
+            output_e_psf = ExtendedPsf()
+            region_ref_list = self.select_detector_refs(bss_ref_list)
+            for region_name, ref_list in region_ref_list.items():
+                if not ref_list:
+                    # no valid references found
+                    self.log.warn(f'No valid brightStarStamps reference found for region "{region_name}"; '
+                                  'skipping it.')
+                    continue
+                ext_psf = self.stack_bright_stars.run(ref_list, region_name)
+                output_e_psf.add_regional_extended_psf(ext_psf, region_name,
+                                                       self.focal_plane_regions[region_name])
+        output = pipeBase.Struct(extended_psf=output_e_psf)
+        butlerQC.put(output, outputRefs)
