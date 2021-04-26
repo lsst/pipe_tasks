@@ -72,7 +72,7 @@ class HealSparseMapFormatter(Formatter):
         # Docstring inherited from Formatter.write.
         # Update the location with the formatter-preferred file extension
         self.fileDescriptor.location.updateExtension(self.extension)
-        inMemoryDataset.write(self.fileDescriptor.location.path)
+        inMemoryDataset.write(self.fileDescriptor.location.path, clobber=True)
 
 
 def _is_power_of_two(value):
