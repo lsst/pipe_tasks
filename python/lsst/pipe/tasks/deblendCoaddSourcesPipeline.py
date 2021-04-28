@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import numpy as np
+
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 
@@ -154,6 +156,11 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def _makeSourceCatalog(self, mergedDetections, idFactory):
+        # There may be gaps in the mergeDet catalog, which will cause the
+        # source ids to be inconsistent. So we update the id factory
+        # with the largest id already in the catalog.
+        maxId = np.max(mergedDetections["id"])
+        idFactory.notify(maxId)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         sources = afwTable.SourceCatalog(table)
         sources.extend(mergedDetections, self.schemaMapper)
