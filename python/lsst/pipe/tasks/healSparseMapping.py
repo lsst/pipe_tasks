@@ -331,6 +331,7 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
+        deferLoad=True,
     )
     sky_map = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
@@ -457,9 +458,8 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         input_map_dict = {ref.dataId["patch"]: ref for ref in inputs["input_maps"]}
         coadd_dict = {ref.dataId["patch"]: ref for ref in inputs["coadd_exposures"]}
 
-        visit_summary_dict = {ref.dataId["visit"]: visit_summary
-                              for ref, visit_summary in zip(inputRefs.visit_summaries,
-                                                            inputs["visit_summaries"])}
+        visit_summary_dict = {ref.dataId["visit"]: ref.get()
+                              for ref in inputs["visit_summaries"]}
 
         self.run(sky_map, tract, band, coadd_dict, input_map_dict, visit_summary_dict)
 
