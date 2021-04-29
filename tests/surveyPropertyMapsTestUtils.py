@@ -19,8 +19,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-"""Utilities for HealSparsePropertyMapTask and others.
-"""
+"""Utilities for HealSparsePropertyMapTask and others."""
 import numpy as np
 
 import lsst.daf.butler
@@ -220,13 +219,13 @@ class MockCoaddReference(lsst.daf.butler.DeferredDatasetHandle):
     exposure : `lsst.afw.image.Exposure`
         The exposure to be retrieved by the data reference.
     coaddName : `str`
-        The type of coadd produced.  Typically 'deep'.
+        The type of coadd produced.  Typically "deep".
     patch : `int`
         Unique identifier for a subdivision of a tract.
     tract : `int`
         Unique identifier for a tract of a skyMap
     """
-    def __init__(self, exposure, coaddName='deep', patch=0, tract=0):
+    def __init__(self, exposure, coaddName="deep", patch=0, tract=0):
         self.coaddName = coaddName
         self.exposure = exposure
         self.tract = tract
@@ -238,19 +237,21 @@ class MockCoaddReference(lsst.daf.butler.DeferredDatasetHandle):
         Parameters
         ----------
         component : `str`, optional
-            If supplied, return the named metadata of the exposure.
+            If supplied, return the named metadata of the exposure.  Allowed
+            components are "photoCalib" or "coaddInputs".
         **kwargs
             Additional keyword arguments such as `immediate=True` that would
             control internal butler behavior.
 
         Returns
         -------
-        `lsst.afw.image.Exposure` or `lsst.afw.image.PhotoCalib` or
-        `lsst.afw.image.CoaddInputs`
+        `lsst.afw.image.Exposure` ('component=None') or
+        `lsst.afw.image.PhotoCalib` ('component="photoCalib") or
+        `lsst.afw.image.CoaddInputs` ('component="coaddInputs")
         """
-        if component == 'photoCalib':
+        if component == "photoCalib":
             return self.exposure.getPhotoCalib()
-        elif component == 'coaddInputs':
+        elif component == "coaddInputs":
             return self.exposure.getInfo().getCoaddInputs()
 
         return self.exposure.clone()

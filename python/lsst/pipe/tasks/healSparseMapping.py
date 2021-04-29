@@ -41,8 +41,7 @@ __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
 
 
 class HealSparseMapFormatter(Formatter):
-    """Interface for reading and writing healsparse.HealSparseMap files
-    """
+    """Interface for reading and writing healsparse.HealSparseMap files."""
     unsupportedParameters = frozenset()
     supportedExtensions = frozenset({".hsp", ".fit", ".fits"})
     extension = '.hsp'
@@ -435,8 +434,7 @@ class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
 
 
 class HealSparsePropertyMapTask(pipeBase.PipelineTask):
-    """Task to compute Healsparse property maps.
-    """
+    """Task to compute Healsparse property maps."""
     ConfigClass = HealSparsePropertyMapConfig
     _DefaultName = "healSparsePropertyMapTask"
 
@@ -622,7 +620,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        vertices : `list` of `lsst.sphgeom.UnitVector3d`
+        vertices : `list` [ `lsst.sphgeom.UnitVector3d` ]
             Vertices for bounding polygon.
 
         Returns
@@ -662,7 +660,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         # Start with a fairly low nside and increase until we find the approximate area.
         nside_coverage_tract = 32
         while hp.nside2pixarea(nside_coverage_tract, degrees=True) > tract_area:
-            nside_coverage_tract = int(2*nside_coverage_tract)
+            nside_coverage_tract = 2*nside_coverage_tract
         # Step back one, but don't go bigger pixels than nside=32
         nside_coverage_tract = int(np.clip(nside_coverage_tract/2, 32, None))
 

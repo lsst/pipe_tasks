@@ -52,7 +52,7 @@ class DistTimesPsfAreaPropertyMap(BasePropertyMap):
     by the psf area. Do not try this at home."""
     requires_psf = True
 
-    def compute(self, row, ra, dec, scalings, psf_array=None):
+    def _compute(self, row, ra, dec, scalings, psf_array=None):
         boresight = row.getVisitInfo().getBoresightRaDec()
         dist = esutil.coords.sphdist(ra, dec,
                                      boresight.getRa().asDegrees(), boresight.getDec().asDegrees())
