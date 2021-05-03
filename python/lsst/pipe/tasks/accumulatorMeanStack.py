@@ -49,6 +49,9 @@ class AccumulatorMeanStack(object):
         greater than this threshold will be flagged in the output image.
     mask_map : `list` [`tuple`]
         Mapping from input image bits to aggregated coadd bits.
+    no_good_pixels_mask : `int`, optional
+        Bit mask to set when there are no good pixels in the stack.
+        If not set then will set coadd masked image 'NO_DATA' bit.
     calc_error_from_input_variance : `bool`, optional
         Calculate the error from the input variance?
     compute_n_image : `bool`, optional
@@ -56,13 +59,15 @@ class AccumulatorMeanStack(object):
     """
     def __init__(self, shape,
                  bit_mask_value, mask_threshold_dict,
-                 mask_map, calc_error_from_input_variance=True,
+                 mask_map, no_good_pixels_mask=None,
+                 calc_error_from_input_variance=True,
                  compute_n_image=False):
         self.shape = shape
         self.bit_mask_value = bit_mask_value
         self.mask_map = mask_map
+        self.no_good_pixels_mask = no_good_pixels_mask
         self.calc_error_from_input_variance = calc_error_from_input_variance
-        self.compute_n_image = False
+        self.compute_n_image = compute_n_image
 
         # Only store the bits that we need to track
         self.mask_threshold_dict = {}
@@ -131,31 +136,44 @@ class AccumulatorMeanStack(object):
         stacked_masked_image : `lsst.afw.image.MaskedImage`
             Total masked image.
         """
-        # The image plane is sum(weight*data)/sum(weight)
-        stacked_masked_image.image.array[:, :] = self.sum_wdata/self.sum_weight
+        with np.warnings.catch_warnings():
+            # Let the NaNs through and flag bad pixels below
+            np.warnings.simplefilter("ignore")
 
-        if self.calc_error_from_input_variance:
-            mean_var = self.sum_w2var/(self.sum_weight**2.)
+            # The image plane is sum(weight*data)/sum(weight)
+            stacked_masked_image.image.array[:, :] = self.sum_wdata/self.sum_weight
+
+            if self.calc_error_from_input_variance:
+                mean_var = self.sum_w2var/(self.sum_weight**2.)
+            else:
+                # Compute the biased estimator
+                variance = self.sum_w2data/self.sum_weight - stacked_masked_image.image.array[:, :]**2.
+                # De-bias
+                variance *= (self.sum_weight**2.)/(self.sum_weight**2. - self.sum_weight2)
+
+                # Compute the mean variance
+                mean_var = variance*self.sum_weight2/(self.sum_weight**2.)
+
+            stacked_masked_image.variance.array[:, :] = mean_var
+
+            # Propagate bits when they cross the threshold
+            for bit in self.mask_threshold_dict:
+                hypothetical_total_weight = self.sum_weight + self.rejected_weights_by_bit[bit]
+                self.rejected_weights_by_bit[bit] /= hypothetical_total_weight
+                propagate = np.where(self.rejected_weights_by_bit[bit] > self.mask_threshold_dict[bit])
+                self.or_mask[propagate] |= 2**bit
+
+            # Map the mask planes to new bits
+            for mask_tuple in self.mask_map:
+                self.or_mask[(self.or_mask & mask_tuple[0]) > 0] |= mask_tuple[1]
+
+            stacked_masked_image.mask.array[:, :] = self.or_mask
+
+        if self.no_good_pixels_mask is None:
+            mask_dict = stacked_masked_image.maskedImage().getMask().getMaskPlaneDict()
+            no_good_pixels_mask = 2**(mask_dict['NO_DATA'])
         else:
-            # Compute the biased estimator
-            variance = self.sum_w2data/self.sum_weight - stacked_masked_image.image.array[:, :]**2.
-            # De-bias
-            variance *= (self.sum_weight**2.)/(self.sum_weight**2. - self.sum_weight2)
+            no_good_pixels_mask = self.no_good_pixels_mask
 
-            # Compute the mean variance
-            mean_var = variance*self.sum_weight2/(self.sum_weight**2.)
-
-        stacked_masked_image.variance.array[:, :] = mean_var
-
-        # Propagate bits when they cross the threshold
-        for bit in self.mask_threshold_dict:
-            hypothetical_total_weight = self.sum_weight + self.rejected_weights_by_bit[bit]
-            self.rejected_weights_by_bit[bit] /= hypothetical_total_weight
-            propagate = np.where(self.rejected_weights_by_bit[bit] > self.mask_threshold_dict[bit])
-            self.or_mask[propagate] |= 2**bit
-
-        # Map the mask planes to new bits
-        for mask_tuple in self.mask_map:
-            self.or_mask[(self.or_mask & mask_tuple[0]) > 0] |= mask_tuple[1]
-
-        stacked_masked_image.mask.array[:, :] = self.or_mask
+        bad_pixels = (self.sum_weight <= 0.0)
+        stacked_masked_image.mask.array[bad_pixels] |= no_good_pixels_mask

@@ -1050,6 +1050,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             statsCtrl.getAndMask(),
             thresholdDict,
             maskMap,
+            no_good_pixels_mask=statsCtrl.getNoGoodPixelsMask(),
             calc_error_from_input_variance=self.config.calcErrorFromInputVariance,
             compute_n_image=(nImage is not None)
         )
