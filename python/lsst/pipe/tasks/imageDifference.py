@@ -154,7 +154,7 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                                     doc="Convolve science image by its PSF before PSF-matching?")
     doScaleTemplateVariance = pexConfig.Field(dtype=bool, default=False,
                                               doc="Scale variance of the template before PSF matching")
-    doScaleDiffimVariance = pexConfig.Field(dtype=bool, default=False,
+    doScaleDiffimVariance = pexConfig.Field(dtype=bool, default=True,
                                             doc="Scale variance of the diffim before PSF matching. "
                                                 "You may do either this or template variance scaling, "
                                                 "or neither. (Doing both is a waste of CPU.)")
