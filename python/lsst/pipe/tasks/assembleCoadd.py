@@ -1048,8 +1048,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         stacker = AccumulatorMeanStack(
             coaddExposure.image.array.shape,
             statsCtrl.getAndMask(),
-            thresholdDict,
-            maskMap,
+            mask_threshold_dict=thresholdDict,
+            mask_map=maskMap,
             no_good_pixels_mask=statsCtrl.getNoGoodPixelsMask(),
             calc_error_from_input_variance=self.config.calcErrorFromInputVariance,
             compute_n_image=(nImage is not None)

@@ -43,11 +43,11 @@ class AccumulatorMeanStack(object):
         Shape of the input and output images.
     bit_mask_value : `int`
         Bit mask to flag for "bad" inputs that should not be stacked.
-    mask_threshold_dict : `dict` [`int`: `float`]
+    mask_threshold_dict : `dict` [`int`: `float`], optional
         Dictionary of mapping from bit number to threshold for flagging.
         Only bad bits (in bit_mask_value) which mask fractional weight
         greater than this threshold will be flagged in the output image.
-    mask_map : `list` [`tuple`]
+    mask_map : `list` [`tuple`], optional
         Mapping from input image bits to aggregated coadd bits.
     no_good_pixels_mask : `int`, optional
         Bit mask to set when there are no good pixels in the stack.
@@ -58,8 +58,8 @@ class AccumulatorMeanStack(object):
         Calculate the n_image map as well as stack?
     """
     def __init__(self, shape,
-                 bit_mask_value, mask_threshold_dict,
-                 mask_map, no_good_pixels_mask=None,
+                 bit_mask_value, mask_threshold_dict={},
+                 mask_map=[], no_good_pixels_mask=None,
                  calc_error_from_input_variance=True,
                  compute_n_image=False):
         self.shape = shape
@@ -69,7 +69,7 @@ class AccumulatorMeanStack(object):
         self.calc_error_from_input_variance = calc_error_from_input_variance
         self.compute_n_image = compute_n_image
 
-        # Only store the bits that we need to track
+        # Only track threshold bits that are in the bad bit_mask_value.
         self.mask_threshold_dict = {}
         for bit in mask_threshold_dict:
             if (self.bit_mask_value & 2**bit) > 0:
