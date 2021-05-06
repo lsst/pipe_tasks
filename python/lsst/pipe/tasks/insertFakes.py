@@ -41,6 +41,110 @@ from lsst.geom import SpherePoint, radians, Box2D
 __all__ = ["InsertFakesConfig", "InsertFakesTask"]
 
 
+def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
+    """Add fake sources to the given exposure
+
+    Parameters
+    ----------
+    exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+        The exposure into which the fake sources should be added
+    objects : `typing.Iterator` [`tuple` ['lsst.geom.SpherePoint`, `galsim.GSObject`]]
+        An iterator of tuples that contains (or generates) locations and object
+        surface brightness profiles to inject.
+    calibFluxRadius : `float`, optional
+        Aperture radius (in pixels) used to define the calibration for this
+        exposure+catalog.  This is used to produce the correct instrumental fluxes
+        within the radius.  The value should match that of the field defined in
+        slot_CalibFlux_instFlux.
+    logger : `lsst.log.log.log.Log` or `logging.Logger`, optional
+        Logger.
+    """
+    exposure.mask.addMaskPlane("FAKE")
+    bitmask = exposure.mask.getPlaneBitMask("FAKE")
+    if logger:
+        logger.info(f"Adding mask plane with bitmask {bitmask}")
+
+    wcs = exposure.getWcs()
+    psf = exposure.getPsf()
+
+    bbox = exposure.getBBox()
+    fullBounds = galsim.BoundsI(bbox.minX, bbox.maxX, bbox.minY, bbox.maxY)
+    gsImg = galsim.Image(exposure.image.array, bounds=fullBounds)
+
+    for spt, gsObj in objects:
+        pt = wcs.skyToPixel(spt)
+        posd = galsim.PositionD(pt.x, pt.y)
+        posi = galsim.PositionI(pt.x//1, pt.y//1)
+        if logger:
+            logger.debug(f"Adding fake source at {pt}")
+
+        mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
+        gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
+
+        psfArr = psf.computeKernelImage(pt).array
+        apCorr = psf.computeApertureFlux(calibFluxRadius)
+        psfArr /= apCorr
+        gsPSF = galsim.InterpolatedImage(galsim.Image(psfArr), wcs=gsWCS)
+
+        conv = galsim.Convolve(gsObj, gsPSF)
+        stampSize = conv.getGoodImageSize(gsWCS.minLinearScale())
+        subBounds = galsim.BoundsI(posi).withBorder(stampSize//2)
+        subBounds &= fullBounds
+
+        if subBounds.area() > 0:
+            subImg = gsImg[subBounds]
+            offset = posd - subBounds.true_center
+            # Note, for calexp injection, pixel is already part of the PSF and
+            # for coadd injection, it's incorrect to include the output pixel.
+            # So for both cases, we draw using method='no_pixel'.
+            conv.drawImage(
+                subImg,
+                add_to_image=True,
+                offset=offset,
+                wcs=gsWCS,
+                method='no_pixel'
+            )
+
+            subBox = geom.Box2I(
+                geom.Point2I(subBounds.xmin, subBounds.ymin),
+                geom.Point2I(subBounds.xmax, subBounds.ymax)
+            )
+            exposure[subBox].mask.array |= bitmask
+
+
+def _isWCSGalsimDefault(wcs, hdr):
+    """Decide if wcs = galsim.PixelScale(1.0) is explicitly present in header,
+    or if it's just the galsim default.
+
+    Parameters
+    ----------
+    wcs : galsim.BaseWCS
+        Potentially default WCS.
+    hdr : galsim.fits.FitsHeader
+        Header as read in by galsim.
+
+    Returns
+    -------
+    isDefault : bool
+        True if default, False if explicitly set in header.
+    """
+    if wcs != galsim.PixelScale(1.0):
+        return False
+    if hdr.get('GS_WCS') is not None:
+        return False
+    if hdr.get('CTYPE1', 'LINEAR') == 'LINEAR':
+        return not any(k in hdr for k in ['CD1_1', 'CDELT1'])
+    for wcs_type in galsim.fitswcs.fits_wcs_types:
+        # If one of these succeeds, then assume result is explicit
+        try:
+            wcs_type._readHeader(hdr)
+            return False
+        except Exception:
+            pass
+    else:
+        return not any(k in hdr for k in ['CD1_1', 'CDELT1'])
+
+
 class InsertFakesConnections(PipelineTaskConnections,
                              defaultTemplates={"coaddName": "deep",
                                                "fakesType": "fakes_"},
@@ -337,16 +441,15 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         The galsim galaxies are made using a double sersic profile, one for the bulge and one for the disk,
         this is then convolved with the PSF at that point.
         """
+        # Attach overriding wcs and photoCalib to image, but retain originals
+        # so we can reset at the end.
+        origWcs = image.getWcs()
+        origPhotoCalib = image.getPhotoCalib()
+        image.setWcs(wcs)
+        image.setPhotoCalib(photoCalib)
 
-        image.mask.addMaskPlane("FAKE")
-        self.bitmask = image.mask.getPlaneBitMask("FAKE")
-        self.log.info("Adding mask plane with bitmask %d" % self.bitmask)
-
-        fakeCat = self.addPixCoords(fakeCat, wcs)
-        fakeCat = self.trimFakeCat(fakeCat, image, wcs)
-        band = image.getFilterLabel().bandLabel
-        psf = image.getPsf()
-        pixelScale = wcs.getPixelScale().asArcseconds()
+        fakeCat = self.addPixCoords(fakeCat, image)
+        fakeCat = self.trimFakeCat(fakeCat, image)
 
         if len(fakeCat) > 0:
             if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
@@ -365,26 +468,134 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 if self.config.doCleanCat:
                     fakeCat = self.cleanCat(fakeCat, starCheckVal)
 
-                galaxies = (fakeCat[self.config.sourceType] == galCheckVal)
-                galImages = self.mkFakeGalsimGalaxies(fakeCat[galaxies], band, photoCalib, pixelScale, psf,
-                                                      image)
-
-                stars = (fakeCat[self.config.sourceType] == starCheckVal)
-                starImages = self.mkFakeStars(fakeCat[stars], band, photoCalib, psf, image)
+                generator = self._generateGSObjectsFromCatalog(image, fakeCat, galCheckVal, starCheckVal)
             else:
-                galImages, starImages = self.processImagesForInsertion(fakeCat, wcs, psf, photoCalib, band,
-                                                                       pixelScale)
-
-            image = self.addFakeSources(image, galImages, "galaxy")
-            image = self.addFakeSources(image, starImages, "star")
+                generator = self._generateGSObjectsFromImages(image, fakeCat)
+            _add_fake_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
         elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
             self.log.warn("No fakes found for this dataRef; processing anyway.")
         else:
             raise RuntimeError("No fakes found for this dataRef.")
 
+        # restore original exposure WCS and photoCalib
+        image.setWcs(origWcs)
+        image.setPhotoCalib(origPhotoCalib)
+
         resultStruct = pipeBase.Struct(imageWithFakes=image)
 
         return resultStruct
+
+    def _generateGSObjectsFromCatalog(self, exposure, fakeCat, galCheckVal, starCheckVal):
+        """Process catalog to generate `galsim.GSObject` s.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+            The exposure into which the fake sources should be added
+        fakeCat : `pandas.core.frame.DataFrame`
+            The catalog of fake sources to be input
+        galCheckVal : `str`, `bytes` or `int`
+            The value that is set in the sourceType column to specifiy an object is a galaxy.
+        starCheckVal : `str`, `bytes` or `int`
+            The value that is set in the sourceType column to specifiy an object is a star.
+
+        Yields
+        ------
+        gsObjects : `generator`
+            A generator of tuples of `lsst.geom.SpherePoint` and `galsim.GSObject`.
+        """
+        band = exposure.getFilterLabel().bandLabel
+        wcs = exposure.getWcs()
+        photoCalib = exposure.getPhotoCalib()
+
+        self.log.info(f"Making {len(fakeCat)} objects for insertion")
+
+        for (index, row) in fakeCat.iterrows():
+            ra = row[self.config.raColName]
+            dec = row[self.config.decColName]
+            skyCoord = SpherePoint(ra, dec, radians)
+            xy = wcs.skyToPixel(skyCoord)
+
+            try:
+                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+            except LogicError:
+                continue
+
+            sourceType = row[self.config.sourceType]
+            if sourceType == galCheckVal:
+                bulge = galsim.Sersic(n=row[self.config.nBulge], half_light_radius=row[self.config.bulgeHLR])
+                axisRatioBulge = row[self.config.bBulge]/row[self.config.aBulge]
+                bulge = bulge.shear(q=axisRatioBulge, beta=((90 - row[self.config.paBulge])*galsim.degrees))
+
+                disk = galsim.Sersic(n=row[self.config.nDisk], half_light_radius=row[self.config.diskHLR])
+                axisRatioDisk = row[self.config.bDisk]/row[self.config.aDisk]
+                disk = disk.shear(q=axisRatioDisk, beta=((90 - row[self.config.paDisk])*galsim.degrees))
+
+                gal = bulge + disk
+                gal = gal.withFlux(flux)
+
+                yield skyCoord, gal
+            elif sourceType == starCheckVal:
+                star = galsim.DeltaFunction()
+                star = star.withFlux(flux)
+                yield skyCoord, star
+            else:
+                raise TypeError(f"Unknown sourceType {sourceType}")
+
+    def _generateGSObjectsFromImages(self, exposure, fakeCat):
+        """Process catalog to generate `galsim.GSObject` s.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+            The exposure into which the fake sources should be added
+        fakeCat : `pandas.core.frame.DataFrame`
+            The catalog of fake sources to be input
+
+        Yields
+        ------
+        gsObjects : `generator`
+            A generator of tuples of `lsst.geom.SpherePoint` and `galsim.GSObject`.
+        """
+        band = exposure.getFilterLabel().bandLabel
+        wcs = exposure.getWcs()
+        photoCalib = exposure.getPhotoCalib()
+
+        self.log.info(f"Processing {len(fakeCat)} fake images")
+
+        for (index, row) in fakeCat.iterrows():
+            ra = row[self.config.raColName]
+            dec = row[self.config.decColName]
+            skyCoord = SpherePoint(ra, dec, radians)
+            xy = wcs.skyToPixel(skyCoord)
+
+            try:
+                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+            except LogicError:
+                continue
+
+            imFile = row[band+"imFilename"]
+            try:
+                imFile = imFile.decode("utf-8")
+            except AttributeError:
+                pass
+            imFile = imFile.strip()
+            im = galsim.fits.read(imFile, read_header=True)
+
+            # GalSim will always attach a WCS to the image read in as above.  If
+            # it can't find a WCS in the header, then it defaults to scale = 1.0
+            # arcsec / pix.  So if that's the scale, then we need to check if it
+            # was explicitly set or if it's just the default.  If it's just the
+            # default then we should override with the pixel scale of the target
+            # image.
+            if _isWCSGalsimDefault(im.wcs, im.header):
+                im.wcs = galsim.PixelScale(
+                    wcs.getPixelScale().asArcseconds()
+                )
+
+            obj = galsim.InterpolatedImage(im)
+            obj = obj.withFlux(flux)
+            yield skyCoord, obj
 
     def processImagesForInsertion(self, fakeCat, wcs, psf, photoCalib, band, pixelScale):
         """Process images from files into the format needed for insertion.
@@ -473,7 +684,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return galImages, starImages
 
-    def addPixCoords(self, fakeCat, wcs):
+    def addPixCoords(self, fakeCat, image):
 
         """Add pixel coordinates to the catalog of fakes.
 
@@ -481,31 +692,23 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
                     The catalog of fake sources to be input
-        wcs : `lsst.afw.geom.SkyWcs`
-                    WCS to use to add fake sources
+        image : `lsst.afw.image.exposure.exposure.ExposureF`
+                    The image into which the fake sources should be added
 
         Returns
         -------
         fakeCat : `pandas.core.frame.DataFrame`
-
-        Notes
-        -----
-        The default option is to use the WCS information from the image. If the ``useUpdatedCalibs`` config
-        option is set then it will use the updated WCS from jointCal.
         """
-
+        wcs = image.getWcs()
         ras = fakeCat[self.config.raColName].values
         decs = fakeCat[self.config.decColName].values
-        skyCoords = [SpherePoint(ra, dec, radians) for (ra, dec) in zip(ras, decs)]
-        pixCoords = wcs.skyToPixel(skyCoords)
-        xs = [coord.getX() for coord in pixCoords]
-        ys = [coord.getY() for coord in pixCoords]
+        xs, ys = wcs.skyToPixelArray(ras, decs)
         fakeCat["x"] = xs
         fakeCat["y"] = ys
 
         return fakeCat
 
-    def trimFakeCat(self, fakeCat, image, wcs):
+    def trimFakeCat(self, fakeCat, image):
         """Trim the fake cat to about the size of the input image.
 
         `fakeCat` must be processed with addPixCoords before using this method.
@@ -516,8 +719,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     The catalog of fake sources to be input
         image : `lsst.afw.image.exposure.exposure.ExposureF`
                     The image into which the fake sources should be added
-        wcs : `lsst.afw.geom.SkyWcs`
-                    WCS to use to add fake sources
 
         Returns
         -------
@@ -525,12 +726,16 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     The original fakeCat trimmed to the area of the image
         """
 
-        bbox = Box2D(image.getBBox())
+        bbox = Box2D(image.getBBox()).dilatedBy(self.config.trimBuffer)
+        xs = fakeCat["x"].values
+        ys = fakeCat["y"].values
 
-        def trim(row):
-            return bbox.dilatedBy(self.config.trimBuffer).contains(row["x"], row["y"])
+        isContained = xs >= bbox.minX
+        isContained &= xs <= bbox.maxX
+        isContained &= ys >= bbox.minY
+        isContained &= ys <= bbox.maxY
 
-        return fakeCat[fakeCat.apply(trim, axis=1)]
+        return fakeCat[isContained]
 
     def mkFakeGalsimGalaxies(self, fakeCat, band, photoCalib, pixelScale, psf, image):
         """Make images of fake galaxies using GalSim.
