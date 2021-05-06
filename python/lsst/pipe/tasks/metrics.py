@@ -108,10 +108,7 @@ class NumberDeblendedSourcesMetricTask(MetricTask):
                 deblended = ((sources["parent"] == 0)           # top-level source
                              & (sources["deblend_nChild"] > 0)  # deblended
                              )
-                if "sky_source" in sources.schema:
-                    # E712 is not applicable, because
-                    # afw.table.SourceRecord.ColumnView is not a bool.
-                    deblended = deblended & (sources["sky_source"] == False)  # noqa: E712
+                deblended = _filterSkySources(sources, deblended)
             except LookupError as e:
                 # Probably "parent"; all other columns already checked
                 raise MetricComputationError("Invalid input catalog") from e
@@ -197,10 +194,7 @@ class NumberDeblendChildSourcesMetricTask(MetricTask):
                 children = ((sources["deblend_parentNChild"] > 1)  # deblend child
                             & (sources["deblend_nChild"] == 0)     # not deblended
                             )
-                if "sky_source" in sources.schema:
-                    # E712 is not applicable, because
-                    # afw.table.SourceRecord.ColumnView is not a bool.
-                    children = children & (sources["sky_source"] == False)  # noqa: E712
+                children = _filterSkySources(sources, children)
             except LookupError as e:
                 # Probably "parent"; all other columns already checked
                 raise MetricComputationError("Invalid input catalog") from e
@@ -209,3 +203,32 @@ class NumberDeblendChildSourcesMetricTask(MetricTask):
                 meas = Measurement(self.config.metricName, nChildren * u.dimensionless_unscaled)
 
         return Struct(measurement=meas)
+
+
+def _filterSkySources(catalog, selection):
+    """Filter out any sky sources from a vector of selected sources.
+
+    If no sky source information is available, all sources are assumed to
+    be non-sky.
+
+    Parameters
+    ----------
+    catalog : `lsst.afw.table.SourceCatalog`
+        The catalog to filter.
+    selection : `numpy.ndarray` [`bool`], (N,)
+        A vector of existing source selections, of the same length as
+        ``catalog``, where selected sources are marked `True`.
+
+    Returns
+    -------
+    filtered : `numpy.ndarray` [`bool`], (N,)
+        A version of ``selection`` with any sky sources filtered out
+        (set to `False`). May be the same vector as ``selection`` if
+        no changes were made.
+    """
+    if "sky_source" in catalog.schema:
+        # E712 is not applicable, because afw.table.SourceRecord.ColumnView
+        # is not a bool.
+        return selection & (catalog["sky_source"] == False)  # noqa: E712
+    else:
+        return selection
