@@ -31,7 +31,8 @@ import lsst.pipe.base.testUtils
 from lsst.verify import Name
 from lsst.verify.gen2tasks.testUtils import MetricTaskTestCase
 
-from lsst.pipe.tasks.metrics import NumberDeblendedSourcesMetricTask
+from lsst.pipe.tasks.metrics import \
+    NumberDeblendedSourcesMetricTask, NumberDeblendChildSourcesMetricTask
 
 
 def _makeDummyCatalog(nParents, *, skyFlags=False, deblendFlags=False, nChildren=0, nGrandchildren=0):
@@ -173,6 +174,74 @@ class TestNumDeblended(MetricTaskTestCase):
 
         self.assertEqual(meas.metric_name, self.METRIC_NAME)
         assert_quantity_allclose(meas.quantity, u.Quantity(1))
+
+    def testNoDeblending(self):
+        catalog = _makeDummyCatalog(3, deblendFlags=False)
+        result = self.task.run(catalog)
+        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
+        meas = result.measurement
+        self.assertIsNone(meas)
+
+    def testMissingData(self):
+        result = self.task.run(None)
+        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
+        meas = result.measurement
+        self.assertIsNone(meas)
+
+
+class TestNumDeblendChild(MetricTaskTestCase):
+
+    METRIC_NAME = Name(metric="pipe_tasks.numDeblendChildSciSources")
+
+    @classmethod
+    def makeTask(cls):
+        return NumberDeblendChildSourcesMetricTask()
+
+    def testValid(self):
+        catalog = _makeDummyCatalog(3, deblendFlags=True, nChildren=2)
+        result = self.task.run(catalog)
+        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
+        meas = result.measurement
+
+        self.assertEqual(meas.metric_name, self.METRIC_NAME)
+        assert_quantity_allclose(meas.quantity, u.Quantity(2))
+
+    def testEmptyCatalog(self):
+        catalog = _makeDummyCatalog(0, deblendFlags=True)
+        result = self.task.run(catalog)
+        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
+        meas = result.measurement
+
+        self.assertEqual(meas.metric_name, self.METRIC_NAME)
+        assert_quantity_allclose(meas.quantity, u.Quantity(0))
+
+    def testNothingDeblended(self):
+        catalog = _makeDummyCatalog(3, deblendFlags=True, nChildren=0)
+        result = self.task.run(catalog)
+        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
+        meas = result.measurement
+
+        self.assertEqual(meas.metric_name, self.METRIC_NAME)
+        assert_quantity_allclose(meas.quantity, u.Quantity(0))
+
+    def testSkyIgnored(self):
+        catalog = _makeDummyCatalog(3, skyFlags=True, deblendFlags=True, nChildren=2)
+        result = self.task.run(catalog)
+        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
+        meas = result.measurement
+
+        self.assertEqual(meas.metric_name, self.METRIC_NAME)
+        assert_quantity_allclose(meas.quantity, u.Quantity(0))
+
+    def testMultiDeblending(self):
+        catalog = _makeDummyCatalog(5, deblendFlags=True, nChildren=3, nGrandchildren=2)
+        result = self.task.run(catalog)
+        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
+        meas = result.measurement
+
+        self.assertEqual(meas.metric_name, self.METRIC_NAME)
+        # Expect 2 from first-level children and 2 from subchildren
+        assert_quantity_allclose(meas.quantity, u.Quantity(4))
 
     def testNoDeblending(self):
         catalog = _makeDummyCatalog(3, deblendFlags=False)

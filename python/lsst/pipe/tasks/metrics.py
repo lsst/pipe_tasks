@@ -21,6 +21,7 @@
 
 __all__ = [
     "NumberDeblendedSourcesMetricTask", "NumberDeblendedSourcesMetricConfig",
+    "NumberDeblendChildSourcesMetricTask", "NumberDeblendChildSourcesMetricConfig",
 ]
 
 
@@ -117,5 +118,94 @@ class NumberDeblendedSourcesMetricTask(MetricTask):
             else:
                 nDeblended = np.count_nonzero(deblended)
                 meas = Measurement(self.config.metricName, nDeblended * u.dimensionless_unscaled)
+
+        return Struct(measurement=meas)
+
+
+class NumberDeblendChildSourcesMetricConnections(
+        MetricConnections,
+        defaultTemplates={"package": "pipe_tasks",
+                          "metric": "numDeblendChildSciSources"},
+        dimensions={"instrument", "visit", "detector"},
+):
+    sources = connectionTypes.Input(
+        doc="The catalog of science sources.",
+        name="src",
+        storageClass="SourceCatalog",
+        dimensions={"instrument", "visit", "detector"},
+    )
+
+
+class NumberDeblendChildSourcesMetricConfig(
+        MetricConfig,
+        pipelineConnections=NumberDeblendChildSourcesMetricConnections):
+    pass
+
+
+@register("numDeblendChildSciSources")
+class NumberDeblendChildSourcesMetricTask(MetricTask):
+    """Task that computes the number of science sources created
+    through deblending.
+
+    This task only counts final deblending products; i.e., if deblending was
+    run more than once or with multiple iterations, only the final set of
+    deblended sources are counted, and not any intermediate ones.
+    If sky source information is present, sky sources are excluded.
+
+    Notes
+    -----
+    The task excludes any non-sky sources in the catalog, but it does
+    not require that the catalog include a ``sky_sources`` column.
+    """
+    _DefaultName = "numDeblendChildSciSources"
+    ConfigClass = NumberDeblendChildSourcesMetricConfig
+
+    def run(self, sources):
+        """Count the number of science sources created by deblending.
+
+        Parameters
+        ----------
+        sources : `lsst.afw.table.SourceCatalog` or `None`
+            A science source catalog, which may be empty or `None`.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            A `~lsst.pipe.base.Struct` containing the following component:
+
+            ``measurement``
+                the total number of science sources from deblending
+                (`lsst.verify.Measurement`). If no deblending information is
+                available in ``sources``, this is `None`.
+
+        Raises
+        ------
+        MetricComputationError
+            Raised if ``sources`` is missing mandatory keys for
+            source catalogs.
+        """
+        if sources is None:
+            self.log.info("Nothing to do: no catalogs found.")
+            meas = None
+        # Use deblend_parentNChild rather than detect_fromBlend because the
+        # latter need not be defined in post-deblending catalogs.
+        elif "deblend_parentNChild" not in sources.schema or "deblend_nChild" not in sources.schema:
+            self.log.info("Nothing to do: no deblending performed.")
+            meas = None
+        else:
+            try:
+                children = ((sources["deblend_parentNChild"] > 1)  # deblend child
+                            & (sources["deblend_nChild"] == 0)     # not deblended
+                            )
+                if "sky_source" in sources.schema:
+                    # E712 is not applicable, because
+                    # afw.table.SourceRecord.ColumnView is not a bool.
+                    children = children & (sources["sky_source"] == False)  # noqa: E712
+            except LookupError as e:
+                # Probably "parent"; all other columns already checked
+                raise MetricComputationError("Invalid input catalog") from e
+            else:
+                nChildren = np.count_nonzero(children)
+                meas = Measurement(self.config.metricName, nChildren * u.dimensionless_unscaled)
 
         return Struct(measurement=meas)
