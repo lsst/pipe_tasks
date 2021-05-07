@@ -176,6 +176,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         doc="Perform 'online' coadd when statistic='MEAN' to save memory?",
         default=False,
     )
+    doOnlineForMeanClip = pexConfig.Field(
+        dtype=bool,
+        doc="Perform 'online' coadd when statistic='MEANCLIP' to save memory?",
+        default=False,
+    )
     doSigmaClip = pexConfig.Field(
         dtype=bool,
         doc="Perform sigma clipped outlier rejection with MEANCLIP statistic? (DEPRECATED)",
@@ -835,11 +840,12 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                                                  skyInfo.wcs,
                                                  coaddExposure.getInfo().getCoaddInputs().ccds)
 
-        if self.config.doOnlineForMean and self.config.statistic == 'MEAN':
+        if self.config.doOnlineForMean and self.config.statistic == 'MEAN' \
+           or self.config.doOnlineForMeanClip and self.config.statistic == 'MEANCLIP':
             try:
                 self.assembleOnlineCoadd(coaddExposure, tempExpRefList, imageScalerList,
                                          weightList, altMaskList, stats.ctrl,
-                                         nImage=nImage)
+                                         nImage=nImage, statistic=self.config.statistic)
             except Exception as e:
                 self.log.fatal("Cannot compute coadd %s", e)
         else:
@@ -1011,11 +1017,12 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             nImage.assign(subNImage, bbox)
 
     def assembleOnlineCoadd(self, coaddExposure, tempExpRefList, imageScalerList, weightList,
-                            altMaskList, statsCtrl, nImage=None):
+                            altMaskList, statsCtrl, nImage=None,
+                            statistic='MEAN'):
         """Assemble the coadd using the "online" method.
 
         This method takes a running sum of images and weights to save memory.
-        It only works if the MEAN statistic is used.
+        It only works if the MEAN or MEANCLIP statistic is used.
 
         Parameters
         ----------
@@ -1035,12 +1042,29 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             Statistics control object for coadd
         nImage : `lsst.afw.image.ImageU`, optional
             Keeps track of exposure count for each pixel.
+        statistic : `str`, optional
+            Type of statistic.  MEAN or MEANCLIP.
         """
+        if statistic == 'MEAN':
+            nIterations = 1
+            doSigmaClip = False
+        elif statistic == 'MEANCLIP':
+            # The getNumIter() parameter refers to iterations _after_
+            # the initial mean/sigma computation.
+            nIterations = statsCtrl.getNumIter() + 1
+            doSigmaClip = True
+        else:
+            raise ValueError("statistic must be one of 'MEAN', 'MEANCLIP'")
+
+        if nIterations < 1:
+            raise ValueError("Number of iterations (clipIter) must be at least 1")
+
         tempExpName = self.getTempExpDatasetName(self.warpType)
         coaddExposure.mask.addMaskPlane("REJECTED")
         coaddExposure.mask.addMaskPlane("CLIPPED")
         coaddExposure.mask.addMaskPlane("SENSOR_EDGE")
         maskMap = self.setRejectedMaskMapping(statsCtrl)
+        clippedBit = afwImage.Mask.getPlaneBitMask("CLIPPED")
         thresholdDict = stats_ctrl_to_threshold_dict(statsCtrl)
 
         bbox = coaddExposure.maskedImage.getBBox()
@@ -1052,33 +1076,37 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             mask_map=maskMap,
             no_good_pixels_mask=statsCtrl.getNoGoodPixelsMask(),
             calc_error_from_input_variance=self.config.calcErrorFromInputVariance,
-            compute_n_image=(nImage is not None)
+            compute_n_image=(nImage is not None),
+            sigma_clip=statsCtrl.getNumSigmaClip(),
+            do_sigma_clip=doSigmaClip,
+            clipped_bit=clippedBit
         )
 
-        for tempExpRef, imageScaler, altMask, weight in zip(tempExpRefList,
-                                                            imageScalerList,
-                                                            altMaskList,
-                                                            weightList):
-            if isinstance(tempExpRef, DeferredDatasetHandle):
-                # Gen 3 API
-                exposure = tempExpRef.get()
-            else:
-                # Gen 2 API. Delete this when Gen 2 retired
-                exposure = tempExpRef.get(tempExpName)
+        for iteration in range(nIterations):
+            for tempExpRef, imageScaler, altMask, weight in zip(tempExpRefList,
+                                                                imageScalerList,
+                                                                altMaskList,
+                                                                weightList):
+                if isinstance(tempExpRef, DeferredDatasetHandle):
+                    # Gen 3 API
+                    exposure = tempExpRef.get()
+                else:
+                    # Gen 2 API. Delete this when Gen 2 retired
+                    exposure = tempExpRef.get(tempExpName)
 
-            maskedImage = exposure.getMaskedImage()
-            mask = maskedImage.getMask()
-            if altMask is not None:
-                self.applyAltMaskPlanes(mask, altMask)
-            imageScaler.scaleMaskedImage(maskedImage)
+                maskedImage = exposure.getMaskedImage()
+                mask = maskedImage.getMask()
+                if altMask is not None:
+                    self.applyAltMaskPlanes(mask, altMask)
+                imageScaler.scaleMaskedImage(maskedImage)
 
-            stacker.add_masked_image(maskedImage, weight=weight)
+                stacker.add_masked_image(maskedImage, weight=weight)
 
-            if self.config.doInputMap:
-                visit = exposure.getInfo().getCoaddInputs().visits[0].getId()
-                self.inputMapper.mask_warp_bbox(bbox, visit, mask, statsCtrl.getAndMask())
+                if self.config.doInputMap:
+                    visit = exposure.getInfo().getCoaddInputs().visits[0].getId()
+                    self.inputMapper.mask_warp_bbox(bbox, visit, mask, statsCtrl.getAndMask())
 
-        stacker.fill_stacked_masked_image(coaddExposure.maskedImage)
+            stacker.fill_stacked_masked_image(coaddExposure.maskedImage)
 
         if nImage is not None:
             nImage.array[:, :] = stacker.n_image

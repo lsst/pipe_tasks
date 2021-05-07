@@ -56,18 +56,28 @@ class AccumulatorMeanStack(object):
         Calculate the error from the input variance?
     compute_n_image : `bool`, optional
         Calculate the n_image map as well as stack?
+    do_sigma_clip : `bool`, optional
+        Perform sigma-clipped statistics
+    sigma_clip : `float`, optional
+        Sigma for outlier rejection.  Only used if do_clip is True.
+    clipped_bit : `int`, optional
+        Bit to set for clipped pixels.
     """
     def __init__(self, shape,
                  bit_mask_value, mask_threshold_dict={},
                  mask_map=[], no_good_pixels_mask=None,
                  calc_error_from_input_variance=True,
-                 compute_n_image=False):
+                 compute_n_image=False, do_sigma_clip=False,
+                 sigma_clip=3.0, clipped_bit=None):
         self.shape = shape
         self.bit_mask_value = bit_mask_value
         self.mask_map = mask_map
         self.no_good_pixels_mask = no_good_pixels_mask
         self.calc_error_from_input_variance = calc_error_from_input_variance
         self.compute_n_image = compute_n_image
+        self.do_sigma_clip = do_sigma_clip
+        self.sigma_clip = sigma_clip
+        self.clipped_bit = clipped_bit
 
         # Only track threshold bits that are in the bad bit_mask_value.
         self.mask_threshold_dict = {}
@@ -97,6 +107,13 @@ class AccumulatorMeanStack(object):
         if self.compute_n_image:
             self.n_image = np.zeros(shape, dtype=np.int32)
 
+        if self.do_sigma_clip:
+            self._sigma_clip_initial_iteration = True
+            self._clip_mean_image = np.zeros(shape, dtype=np.float64)
+            self._clip_sigma_image = np.zeros(shape, dtype=np.float64)
+        else:
+            self._sigma_clip_initial_iteration = False
+
     def add_masked_image(self, masked_image, weight=1.0):
         """Add a masked image to the stack.
 
@@ -105,8 +122,17 @@ class AccumulatorMeanStack(object):
         masked_image : `lsst.afw.image.MaskedImage`
             Masked image to add to the stack.
         """
-        good_pixels = np.where(((masked_image.mask.array & self.bit_mask_value) == 0)
-                               & np.isfinite(masked_image.mask.array))
+        if self.do_sigma_clip and not self._sigma_clip_initial_iteration:
+            clip_delta = np.abs(masked_image.image.array - self._clip_mean_image)
+            good_pixels = np.where(((masked_image.mask.array & self.bit_mask_value) == 0)
+                                   & np.isfinite(masked_image.mask.array)
+                                   & (clip_delta < self.sigma_clip*self._clip_sigma_image))
+            clipped_pixels = np.where(clip_delta >= self.sigma_clip*self._clip_sigma_image)
+            if self.clipped_bit is not None:
+                self.or_mask[clipped_pixels] |= self.clipped_bit
+        else:
+            good_pixels = np.where(((masked_image.mask.array & self.bit_mask_value) == 0)
+                                   & np.isfinite(masked_image.mask.array))
 
         self.sum_weight[good_pixels] += weight
         self.sum_wdata[good_pixels] += weight*masked_image.image.array[good_pixels]
@@ -168,6 +194,11 @@ class AccumulatorMeanStack(object):
                 self.or_mask[(self.or_mask & mask_tuple[0]) > 0] |= mask_tuple[1]
 
             stacked_masked_image.mask.array[:, :] = self.or_mask
+
+            if self.do_sigma_clip:
+                self._sigma_clip_initial_iteration = False
+                self._clip_mean_image[:, :] = stacked_masked_image.image.array[:, :]
+                self._clip_sigma_image[:, :] = np.sqrt(stacked_masked_image.variance.array[:, :])
 
         if self.no_good_pixels_mask is None:
             mask_dict = stacked_masked_image.maskedImage().getMask().getMaskPlaneDict()
