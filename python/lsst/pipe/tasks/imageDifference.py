@@ -214,11 +214,12 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         "If this option is enabled, then detection.thresholdValue should be set to 5.0 (rather than the "
         "default of 5.5).",
     )
+    # Old style ImageMapper grid. ZogyTask has its own grid option
     doSpatiallyVarying = pexConfig.Field(
         dtype=bool,
         default=False,
-        doc="If using Zogy or A&L decorrelation, perform these on a grid across the "
-        "image in order to allow for spatial variations"
+        doc="Perform A&L decorrelation on a grid across the "
+        "image in order to allow for spatial variations. Zogy does not use this option."
     )
     detection = pexConfig.ConfigurableField(
         target=SourceDetectionTask,
