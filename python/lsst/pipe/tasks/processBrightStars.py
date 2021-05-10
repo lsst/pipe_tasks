@@ -448,6 +448,9 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.log.info("Extracting bright stars from exposure %s", dataId)
         # Extract stamps around bright stars
         extractedStamps = self.extractStamps(inputExposure, refObjLoader=refObjLoader)
+        if not extractedStamps.starIms:
+            self.log.info("No suitable bright star found.")
+            return None
         # Warp (and shift, and potentially rotate) them
         self.log.info("Applying warp and/or shift to %i star stamps from exposure %s",
                       len(extractedStamps.starIms), dataId)
@@ -500,4 +503,5 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                              refCats=inputs.pop("refCat"),
                                              config=self.config.refObjLoader)
         output = self.run(**inputs, refObjLoader=refObjLoader)
-        butlerQC.put(output, outputRefs)
+        if output:
+            butlerQC.put(output, outputRefs)
