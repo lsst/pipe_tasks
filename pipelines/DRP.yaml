@@ -48,10 +48,6 @@ tasks:
   imageDifference:
     class: lsst.pipe.tasks.imageDifference.ImageDifferenceTask
     config:
-        doDecorrelation: True
-        detection.thresholdValue: 5.0
-        doSelectSources: False
-        doScaleDiffimVariance: True
         coaddName: goodSeeing
         getTemplate.coaddName: goodSeeing
         getTemplate.warpType: direct
