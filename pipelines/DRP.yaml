@@ -58,6 +58,14 @@ tasks:
         # Setting template 'coaddName' is not sufficient to satisfy contract
         connections.coaddExposures: goodSeeingCoadd
         connections.subtractedExposure: goodSeeingDiff_differenceExp
+  transformDiaSourceCat:
+    class: lsst.ap.association.TransformDiaSourceCatalogTask
+    config:
+      connections.coaddName: goodSeeing
+      connections.diaSourceSchema: goodSeeingDiff_diaSrc_schema
+      connections.diaSourceCat: goodSeeingDiff_diaSrc
+      connections.diffIm: goodSeeingDiff_differenceExp
+      connections.diaSourceTable: goodSeeingDiff_diaSrcTable
   forcedPhotDiffim:
     class: lsst.meas.base.ForcedPhotCcdTask
     config:
@@ -149,10 +157,12 @@ subsets:
       - selectGoodSeeingVisits
       - templateGen
       - imageDifference
+      - transformDiaSourceCat
       - forcedPhotDiffim
     description: Subset for running image differencing branch of the DRP pipeline
 
 contracts:
   - selectGoodSeeingVisits.connections.goodVisits == templateGen.connections.selectedVisits
   - templateGen.connections.coaddExposure == imageDifference.connections.coaddExposures
+  - imageDifference.connections.subtractedExposure == transformDiaSourceCat.connections.diffIm
   - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
