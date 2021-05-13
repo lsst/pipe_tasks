@@ -137,12 +137,12 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
     doAddCalexpBackground = pexConfig.Field(dtype=bool, default=False,
                                             doc="Add background to calexp before processing it.  "
                                                 "Useful as ipDiffim does background matching.")
-    doUseRegister = pexConfig.Field(dtype=bool, default=True,
+    doUseRegister = pexConfig.Field(dtype=bool, default=False,
                                     doc="Use image-to-image registration to align template with "
                                         "science image")
     doDebugRegister = pexConfig.Field(dtype=bool, default=False,
                                       doc="Writing debugging data for doUseRegister")
-    doSelectSources = pexConfig.Field(dtype=bool, default=True,
+    doSelectSources = pexConfig.Field(dtype=bool, default=False,
                                       doc="Select stars to use for kernel fitting")
     doSelectDcrCatalog = pexConfig.Field(dtype=bool, default=False,
                                          doc="Select stars of extreme color as part of the control sample")
@@ -150,7 +150,7 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                                               doc="Select stars that are variable to be part "
                                                   "of the control sample")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc="Compute subtracted exposure?")
-    doPreConvolve = pexConfig.Field(dtype=bool, default=True,
+    doPreConvolve = pexConfig.Field(dtype=bool, default=False,
                                     doc="Convolve science image by its PSF before PSF-matching?")
     doScaleTemplateVariance = pexConfig.Field(dtype=bool, default=False,
                                               doc="Scale variance of the template before PSF matching")
@@ -162,13 +162,13 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                                                    doc="Use a simple gaussian PSF model for pre-convolution "
                                                        "(else use fit PSF)? Ignored if doPreConvolve false.")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc="Detect sources?")
-    doDecorrelation = pexConfig.Field(dtype=bool, default=False,
+    doDecorrelation = pexConfig.Field(dtype=bool, default=True,
                                       doc="Perform diffim decorrelation to undo pixel correlation due to A&L "
                                           "kernel convolution? If True, also update the diffim PSF.")
     doMerge = pexConfig.Field(dtype=bool, default=True,
                               doc="Merge positive and negative diaSources with grow radius "
                                   "set by growFootprint")
-    doMatchSources = pexConfig.Field(dtype=bool, default=True,
+    doMatchSources = pexConfig.Field(dtype=bool, default=False,
                                      doc="Match diaSources with input calexp sources and ref catalog sources")
     doMeasurement = pexConfig.Field(dtype=bool, default=True, doc="Measure diaSources?")
     doDipoleFitting = pexConfig.Field(dtype=bool, default=True, doc="Measure dipoles using new algorithm?")
@@ -182,7 +182,7 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
                                         doc="Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
-    doAddMetrics = pexConfig.Field(dtype=bool, default=True,
+    doAddMetrics = pexConfig.Field(dtype=bool, default=False,
                                    doc="Add columns to the source table to hold analysis metrics?")
 
     coaddName = pexConfig.Field(
@@ -290,14 +290,10 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         self.subtract['al'].kernel.active.fitForBackground = True
         self.subtract['al'].kernel.active.spatialKernelOrder = 1
         self.subtract['al'].kernel.active.spatialBgOrder = 2
-        self.doPreConvolve = False
-        self.doMatchSources = False
-        self.doAddMetrics = False
-        self.doUseRegister = False
 
         # DiaSource Detection
         self.detection.thresholdPolarity = "both"
-        self.detection.thresholdValue = 5.5
+        self.detection.thresholdValue = 5.0
         self.detection.reEstimateBackground = False
         self.detection.thresholdType = "pixel_stdev"
 
