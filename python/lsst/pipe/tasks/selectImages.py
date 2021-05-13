@@ -27,6 +27,7 @@ import lsst.pex.exceptions as pexExceptions
 import lsst.geom as geom
 import lsst.pipe.base as pipeBase
 from lsst.skymap import BaseSkyMap
+from lsst.daf.base import DateTime
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
            "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask", "BestSeeingSelectVisitsTask",
@@ -594,6 +595,18 @@ class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         doc="Do remove visits that do not actually overlap the patch?",
         default=True,
     )
+    minMJD = pexConfig.Field(
+        dtype=float,
+        doc="Minimum visit MJD to select",
+        default=None,
+        optional=True
+    )
+    maxMJD = pexConfig.Field(
+        dtype=float,
+        doc="Maximum visit MJD to select",
+        default=None,
+        optional=True
+    )
 
 
 class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
@@ -646,6 +659,9 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
             # read in one-by-one and only once. There may be hundreds
             visitSummary = visitSummary.get()
 
+            # mjd is guaranteed to be the same for every detector in the visitSummary.
+            mjd = visitSummary[0].getVisitInfo().getDate().get(system=DateTime.MJD)
+
             pixToArcseconds = [vs.getWcs().getPixelScale(vs.getBBox().getCenter()).asArcseconds()
                                for vs in visitSummary]
             # psfSigma is PSF model determinant radius at chip center in pixels
@@ -655,6 +671,12 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
             if self.config.maxPsfFwhm and fwhm > self.config.maxPsfFwhm:
                 continue
             if self.config.minPsfFwhm and fwhm < self.config.minPsfFwhm:
+                continue
+            if self.config.minMJD and mjd < self.config.minMJD:
+                self.log.debug('MJD %f earlier than %.2f; rejecting', mjd, self.config.minMJD)
+                continue
+            if self.config.maxMJD and mjd > self.config.maxMJD:
+                self.log.debug('MJD %f later than %.2f;  rejecting', mjd, self.config.maxMJD)
                 continue
             if self.config.doConfirmOverlap and not self.doesIntersectPolygon(visitSummary, patchPolygon):
                 continue
@@ -749,6 +771,18 @@ class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         doc="Do remove visits that do not actually overlap the patch?",
         default=True,
     )
+    minMJD = pexConfig.Field(
+        dtype=float,
+        doc="Minimum visit MJD to select",
+        default=None,
+        optional=True
+    )
+    maxMJD = pexConfig.Field(
+        dtype=float,
+        doc="Maximum visit MJD to select",
+        default=None,
+        optional=True
+    )
 
 
 class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
@@ -778,11 +812,17 @@ class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
             radius[i] = psfSigma
             if self.config.doConfirmOverlap:
                 intersects[i] = self.doesIntersectPolygon(visitSummary, patchPolygon)
+            if self.config.minMJD or self.config.maxMJD:
+                # mjd is guaranteed to be the same for every detector in the visitSummary.
+                mjd = visitSummary[0].getVisitInfo().getDate().get(system=DateTime.MJD)
+                aboveMin = mjd > self.config.minMJD if self.config.minMJD else True
+                belowMax = mjd < self.config.maxMJD if self.config.maxMJD else True
+                intersects[i] = intersects[i] and aboveMin and belowMax
 
         sortedVisits = [v for rad, v in sorted(zip(radius[intersects], visits[intersects]))]
-        lowerBound = min(int(np.round(self.config.qMin*len(visits))),
-                         max(0, len(visits) - self.config.nVisitsMin))
-        upperBound = max(int(np.round(self.config.qMax*len(visits))), self.config.nVisitsMin)
+        lowerBound = min(int(np.round(self.config.qMin*len(visits[intersects]))),
+                         max(0, len(visits[intersects]) - self.config.nVisitsMin))
+        upperBound = max(int(np.round(self.config.qMax*len(visits[intersects]))), self.config.nVisitsMin)
 
         # In order to store as a StructuredDataDict, convert list to dict
         goodVisits = {int(visit): True for visit in sortedVisits[lowerBound:upperBound]}
