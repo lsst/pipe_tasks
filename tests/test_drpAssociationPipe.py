@@ -26,7 +26,7 @@ import unittest
 
 import lsst.geom as geom
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
-from lsst.pipe.tasks.drpDiaPipe import DrpAssociationPipeTask
+from lsst.pipe.tasks.drpAssociationPipe import DrpAssociationPipeTask
 import lsst.skymap as skyMap
 import lsst.utils.tests
 

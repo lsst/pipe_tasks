@@ -38,10 +38,10 @@ __all__ = ["DrpAssociationPipeTask",
 
 
 class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
-                            dimensions=("tract", "patch", "skymap"),
-                            defaultTemplates={"coaddName": "deep",
-                                              "warpTypeSuffix": "",
-                                              "fakesType": ""}):
+                                    dimensions=("tract", "patch", "skymap"),
+                                    defaultTemplates={"coaddName": "deep",
+                                                      "warpTypeSuffix": "",
+                                                      "fakesType": ""}):
     diaSourceTables = pipeBase.connectionTypes.Input(
         doc="Catalog of calibrated DiaSources.",
         name="{fakesType}{coaddName}Diff_diaSrcTable",
@@ -74,24 +74,16 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
 
 class DrpAssociationPipeConfig(
         pipeBase.PipelineTaskConfig,
-        pipelineConnections=DrpAssociationPipeConnections
-    ):
-    maxFootprintArea = pexConfig.Field(
-        dtype=int,
-        default=5000,
-        doc="Maximum area of footprints")
-    # associator = pexConfig.ConfigurableField(
-    #     target=SimpleAssociationTask,
-    #     doc="Task used to associate DiaSources with DiaObjects.",
-    # )
+        pipelineConnections=DrpAssociationPipeConnections):
+    pass
 
 
 class DrpAssociationPipeTask(pipeBase.PipelineTask):
     """Driver pipeline for loading DiaSource catalogs in a patch/tract
     region and associating them.
     """
-    ConfigClass = DrpDiaPipeConfig
-    _DefaultName = "drpDiaPieTask"
+    ConfigClass = DrpAssociationPipeConfig
+    _DefaultName = "drpAssociation"
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -125,6 +117,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         output : `lsst.pipe.base.Struct`
             Results struct with attributes:
 
+            ``assocDiaSourceTable``
+                Table of DiaSources with updated value for diaObjectId.
+                (`pandas.DataFrame`)
             ``diaDiaObjectTable``
                 Table of DiaObjects from matching DiaSources
                 (`pandas.DataFrame`).
@@ -145,9 +140,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
             patchGen = self._trimToPatchGen(cat,
                                             innerPatchBox,
-                                            skyInfo.wcs,
-                                            skyMap,
-                                            tractId)
+                                            skyInfo.wcs)
             isInTractPatch = np.array(list(patchGen))
 
             nDiaSrc = isInTractPatch.sum()
@@ -159,7 +152,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                  catRef.dataId["detector"], nDiaSrc))
 
             if nDiaSrc <= 0:
-                outData.append(pd.DataFrame(columns=cat.columns))
+                diaSourceHistory.append(pd.DataFrame(columns=cat.columns))
                 continue
 
             cutCat = cat[isInTractPatch]
@@ -197,7 +190,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             Boolean representing if the DiaSource is contained within the
             current patch and tract.
         """
-
         for idx, row in cat.iterrows():
             sphPoint = geom.SpherePoint(row["ra"], row["decl"], geom.degrees)
             inPatch = innerPatchBox.contains(wcs.skyToPixel(sphPoint))
