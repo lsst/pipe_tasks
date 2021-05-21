@@ -112,15 +112,25 @@ class ScaleVarianceTask(Task):
         """
         with self.subtractedBackground(maskedImage):
             factor = self.pixelBased(maskedImage)
+            # DM-29695
+            self.log.info(f"DM-29695: inside task. Factor, pixel based:  {factor}")
             if np.isnan(factor) or factor > self.config.limit:
                 self.log.warn("Pixel-based variance rescaling factor (%f) exceeds configured limit (%f); "
                               "trying image-based method", factor, self.config.limit)
                 factor = self.imageBased(maskedImage)
+                # DM-29695
+                self.log.info(f"DM-29695: inside task. Factor, image based:  {factor}")
                 if np.isnan(factor) or factor > self.config.limit:
                     raise RuntimeError("Variance rescaling factor (%f) exceeds configured limit (%f)" %
                                        (factor, self.config.limit))
             self.log.info("Renormalizing variance by %f" % (factor,))
+            # DM-29695
+            self.log.info(f"DM-29695: inside task. Mean of variance plane:
+                          {np.mean(maskedImage.variance.array)}")
             maskedImage.variance *= factor
+            self.log.info(f"DM-29695: inside task. Mean of variance plane after factor:
+                          {np.mean(maskedImage.variance.array)}")
+
         return factor
 
     def pixelBased(self, maskedImage):
