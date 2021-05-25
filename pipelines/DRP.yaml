@@ -67,6 +67,11 @@ tasks:
       connections.diaSourceCat: goodSeeingDiff_diaSrc
       connections.diffIm: goodSeeingDiff_differenceExp
       connections.diaSourceTable: goodSeeingDiff_diaSrcTable
+  consolidateDiaSourceTable:
+    class: lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask
+    config:
+      connections.inputCatalogs:  goodSeeingDiff_diaSrcTable
+      connections.outputCatalog: diaSourceTable
   forcedPhotDiffim:
     class: lsst.meas.base.ForcedPhotCcdTask
     config:
@@ -159,6 +164,7 @@ subsets:
       - templateGen
       - imageDifference
       - transformDiaSourceCat
+      - consolidateDiaSourceTable
       - forcedPhotDiffim
     description: Subset for running image differencing branch of the DRP pipeline
 
@@ -167,3 +173,4 @@ contracts:
   - templateGen.connections.coaddExposure == imageDifference.connections.coaddExposures
   - imageDifference.connections.subtractedExposure == transformDiaSourceCat.connections.diffIm
   - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
+  - transformDiaSourceCat.connections.diaSourceTable == consolidateDiaSourceTable.connections.inputCatalogs
