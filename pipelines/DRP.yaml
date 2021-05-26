@@ -78,7 +78,7 @@ tasks:
       connections.coaddName: goodSeeing
       connections.diaSourceTables: goodSeeingDiff_diaSrcTable
       connections.assocDiaSourceTable: goodSeeingDiff_assocDiaSrcTable
-      connections.diaDiaObjectTable: goodSeeingDiff_diaObjTable
+      connections.diaObjectTable: goodSeeingDiff_diaObjTable
   forcedPhotDiffim:
     class: lsst.meas.base.ForcedPhotCcdTask
     config:
@@ -180,8 +180,5 @@ contracts:
   - templateGen.connections.coaddExposure == imageDifference.connections.coaddExposures
   - imageDifference.connections.subtractedExposure == transformDiaSourceCat.connections.diffIm
   - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
-<<<<<<< HEAD
   - transformDiaSourceCat.connections.diaSourceTable == consolidateDiaSourceTable.connections.inputCatalogs
-=======
   - transformDiaSourceCat.connections.diaSourceTable == drpAssociation.connections.diaSourceTables
->>>>>>> 4fe93738 (Add DiaAssociationPipe to DRP.yaml)

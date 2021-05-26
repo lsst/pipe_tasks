@@ -27,10 +27,10 @@ import numpy as np
 import pandas as pd
 
 import lsst.geom as geom
-import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from .coaddBase import makeSkyInfo
 from lsst.skymap import BaseSkyMap
+
+from .coaddBase import makeSkyInfo
 
 __all__ = ["DrpAssociationPipeTask",
            "DrpAssociationPipeConfig",
@@ -43,7 +43,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
                                                       "warpTypeSuffix": "",
                                                       "fakesType": ""}):
     diaSourceTables = pipeBase.connectionTypes.Input(
-        doc="Catalog of calibrated DiaSources.",
+        doc="Set of catalogs of calibrated DiaSources.",
         name="{fakesType}{coaddName}Diff_diaSrcTable",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
@@ -64,8 +64,9 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         storageClass="DataFrame",
         dimensions=("tract", "patch"),
     )
-    diaDiaObjectTable = pipeBase.connectionTypes.Output(
-        doc="Catalog of associated DiaSources into DiaObjects.",
+    diaObjectTable = pipeBase.connectionTypes.Output(
+        doc="Catalog of DiaObjects created from spatially associating "
+            "DiaSources.",
         name="{fakesType}{coaddName}Diff_diaObjTable",
         storageClass="DataFrame",
         dimensions=("tract", "patch"),
@@ -98,7 +99,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         """Trim DiaSources to the current Patch and run association.
 
         Takes in the set of DiaSource catalogs that covers the current patch,
-        trims to them to the dimensions of the patch, and [TODO: eventually]
+        trims them to the dimensions of the patch, and [TODO: eventually]
         runs association on the concatenated DiaSource Catalog.
 
         Parameters
@@ -120,7 +121,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             ``assocDiaSourceTable``
                 Table of DiaSources with updated value for diaObjectId.
                 (`pandas.DataFrame`)
-            ``diaDiaObjectTable``
+            ``diaObjectTable``
                 Table of DiaObjects from matching DiaSources
                 (`pandas.DataFrame`).
         """
@@ -138,10 +139,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 datasetType=self.config.connections.diaSourceTables,
                 immediate=True)
 
-            patchGen = self._trimToPatchGen(cat,
-                                            innerPatchBox,
-                                            skyInfo.wcs)
-            isInTractPatch = np.array(list(patchGen))
+            isInTractPatch = self._trimToPatch(cat,
+                                               innerPatchBox,
+                                               skyInfo.wcs)
 
             nDiaSrc = isInTractPatch.sum()
             self.log.info(
@@ -165,11 +165,11 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                       % (len(diaSourceHistoryCat), patchId, tractId))
 
         return pipeBase.Struct(
-            diaDiaObjectTable=pd.DataFrame(columns=["diaObjectId",
-                                                    "nDiaSources"]),
+            diaObjectTable=pd.DataFrame(columns=["diaObjectId",
+                                                 "nDiaSources"]),
             assocDiaSourceTable=diaSourceHistoryCat)
 
-    def _trimToPatchGen(self, cat, innerPatchBox, wcs):
+    def _trimToPatch(self, cat, innerPatchBox, wcs):
         """Create generator testing if a set of DiaSources are in the
         patch/tract.
 
@@ -181,16 +181,16 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             Bounding box of the patch.
         wcs : `lsst.geom.SkyWcs`
             Wcs of the tract.
-        skyMap : ``
-            SkyMap containing the patch and tract.
 
-        Yields
+        Returns
         ------
-        isInTractPatch : `bool`
-            Boolean representing if the DiaSource is contained within the
+        isInPatch : `numpy.ndarray`, (N,)
+            Booleans representing if the DiaSources are contained within the
             current patch and tract.
         """
-        for idx, row in cat.iterrows():
-            sphPoint = geom.SpherePoint(row["ra"], row["decl"], geom.degrees)
-            inPatch = innerPatchBox.contains(wcs.skyToPixel(sphPoint))
-            yield inPatch
+        isInPatch = np.array([
+            innerPatchBox.contains(
+                wcs.skyToPixel(
+                    geom.SpherePoint(row["ra"], row["decl"], geom.degrees)))
+            for idx, row in cat.iterrows()])
+        return isInPatch
