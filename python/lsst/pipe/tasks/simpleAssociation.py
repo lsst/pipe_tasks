@@ -20,14 +20,18 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-"""Simple association algorithm for DRP. 
+"""Simple association algorithm for DRP.
 Adapted from http://github.com/LSSTDESC/dia_pipe
 """
+
+import numpy as np
+import pandas as pd
 
 import lsst.afw.table as afwTable
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+
 from .associationUtils import query_disc, eq2xyz, toIndex
 
 
@@ -87,8 +91,8 @@ class SimpleAssociationTask(pipeBase.Task):
         diaSources.set_index(["ccdVisit", "diaSourceId"], inplace=True)
 
         # Empty lists to store matching and location data.
-        diaObjCat = []
-        diaObjCoords = []
+        diaObjectCat = []
+        diaObjectCoords = []
         healPixIndices = []
 
         # Create Id factory and catalog for creating DiaObjectIds.
@@ -103,24 +107,26 @@ class SimpleAssociationTask(pipeBase.Task):
             # diaObject data to create the first set of Objects.
             ccdVisitSources = diaSources.loc[ccdVisit]
             if len(diaObjectCat) == 0:
-                for diaSourceId, diaSrc in ccdVisitSources:
+                for diaSourceId, diaSrc in ccdVisitSources.iterrows():
                     self.addNewDiaObject(diaSrc,
                                          diaSources,
                                          ccdVisit,
                                          diaSourceId,
                                          diaObjectCat,
                                          idCat,
-                                         diaObjectCoordList,
-                                         healPixIndexes)
+                                         diaObjectCoords,
+                                         healPixIndices)
 
             # Run over subsequent data.
-            for diaSourceId, diaSrc in ccdVisitSources:
+            for diaSourceId, diaSrc in ccdVisitSources.iterrows():
                 # Find matches.
-                dists, matches = self.findMatches(diaSrc["ra"],
-                                                  diaSrc["decl"]
-                                                  2*self.config.tolerance,
-                                                  healPixIndices,
-                                                  diaObjCat)
+                matchResult = self.findMatches(diaSrc["ra"],
+                                               diaSrc["decl"],
+                                               2*self.config.tolerance,
+                                               healPixIndices,
+                                               diaObjectCat)
+                dists = matchResult.dists
+                matches = matchResult.matches
                 # Create a new DiaObject if no match found.
                 if dists is None:
                     self.addNewDiaObject(diaSrc,
@@ -129,21 +135,21 @@ class SimpleAssociationTask(pipeBase.Task):
                                          diaSourceId,
                                          diaObjectCat,
                                          idCat,
-                                         diaObjectCoordList,
-                                         healPixIndexes)
+                                         diaObjectCoords,
+                                         healPixIndices)
                     continue
                 # If matched, update catalogs and arrays.
                 if np.min(dists) < np.deg2rad(self.config.tolerance/3600):
-                    match_dist_arg = np.argmin(dists)
-                    match_index = np.where(matches)[0][match_dist_arg]
-                    self.updateDiaObjectCat(match_index,
-                                            diaSrc,
-                                            diaSources,
-                                            ccdVisit,
-                                            diaSourceId,
-                                            diaObjCat,
-                                            diaObjCoords,
-                                            healPixIndices)
+                    matchDistArg = np.argmin(dists)
+                    matchIndex = matches[matchDistArg]
+                    self.updateCatalogs(matchIndex,
+                                        diaSrc,
+                                        diaSources,
+                                        ccdVisit,
+                                        diaSourceId,
+                                        diaObjectCat,
+                                        diaObjectCoords,
+                                        healPixIndices)
                 # Create new DiaObject if no match found within the matching
                 # tolerance.
                 else:
@@ -153,8 +159,8 @@ class SimpleAssociationTask(pipeBase.Task):
                                          diaSourceId,
                                          diaObjectCat,
                                          idCat,
-                                         diaObjectCoordList,
-                                         healPixIndexes)
+                                         diaObjectCoords,
+                                         healPixIndices)
 
         # Drop indices before returning association diaSource catalog.
         diaSources.reset_index(inplace=True)
@@ -207,11 +213,13 @@ class SimpleAssociationTask(pipeBase.Task):
         diaObjCoords.append([sphPoint])
 
         diaObjId = idCat.addNew().get("id")
-        diaObjCat.append(self.createDiaObject(diaObjId))
+        diaObjCat.append(self.createDiaObject(diaObjId,
+                                              diaSrc["ra"],
+                                              diaSrc["decl"]))
         diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = diaObjId
 
     def updateCatalogs(self,
-                       match_index,
+                       matchIndex,
                        diaSrc,
                        diaSources,
                        ccdVisit,
@@ -223,7 +231,7 @@ class SimpleAssociationTask(pipeBase.Task):
 
         Parameters
         ----------
-        match_index : `int`
+        matchIndex : `int`
             Array index location of the DiaObject that ``diaSrc`` was
             associated to.
         diaSrc : `pandas.Series`
@@ -247,16 +255,16 @@ class SimpleAssociationTask(pipeBase.Task):
         sphPoint = geom.SpherePoint(diaSrc["ra"],
                                     diaSrc["decl"],
                                     geom.degrees)
-        diaObjCoords[match_index].append(sphPoint)
-        aveCoord = geom.averageSpherePoint(diaObjCoords[match_index])
-        diaObjCat[match_index]["ra"] = aveCoord.getRa().asDegrees()
-        diaObjCat[match_index]["decl"] = aveCoord.getDec().asDegrees()
-        healPixIndices[match_index] = toIndex(self.config.nside,
-                                              diaObjCat[match_index]["ra"],
-                                              diaObjCat[match_index]["decl"])
+        diaObjCoords[matchIndex].append(sphPoint)
+        aveCoord = geom.averageSpherePoint(diaObjCoords[matchIndex])
+        diaObjCat[matchIndex]["ra"] = aveCoord.getRa().asDegrees()
+        diaObjCat[matchIndex]["decl"] = aveCoord.getDec().asDegrees()
+        healPixIndices[matchIndex] = toIndex(self.config.nside,
+                                              diaObjCat[matchIndex]["ra"],
+                                              diaObjCat[matchIndex]["decl"])
         # Add update DiaObject Id that this source is now associated to.
-        diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = /
-            diaObjCat[match_index]["diaObjectId"]
+        diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = \
+            diaObjCat[matchIndex]["diaObjectId"]
 
     def findMatches(self, src_ra, src_dec, tol, hpIndices, diaObjs):
         """Search healPixels around DiaSource locations for DiaObjects.
@@ -290,18 +298,19 @@ class SimpleAssociationTask(pipeBase.Task):
                                    src_ra,
                                    src_dec,
                                    np.deg2rad(tol/3600.))
-        matches = np.isin(hpIndices, match_indices)
+        matchIndices = np.argwhere(np.isin(hpIndices, match_indices)).flatten()
 
-        if np.sum(matches) < 1:
+        if len(matchIndices) < 1:
             return pipeBase.Struct(dists=None, matches=None)
 
         dists = np.array(
             [np.sqrt(np.sum((eq2xyz(src_ra, src_dec) -
-                             eq2xyz(diaObj["ra"], diaObj["decl"]))**2))
-             for diaObj in diaObjs[matches]])
+                             eq2xyz(diaObjs[match]["ra"],
+                                    diaObjs[match]["decl"]))**2))
+             for match in matchIndices])
         return pipeBase.Struct(
             dists=dists,
-            matches=matches)
+            matches=matchIndices)
 
     def createDiaObject(self, objId, ra, decl):
         """Create a simple empty DiaObject with location and id information.
