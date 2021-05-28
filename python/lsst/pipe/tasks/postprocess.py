@@ -302,6 +302,7 @@ class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
         ccdVisitId = dataRef.get('ccdExposureId')
         result = self.run(src, ccdVisitId=ccdVisitId)
         dataRef.put(result.table, 'source')
+        return result
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -350,7 +351,6 @@ class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
         newCat:  `afwTable.SourceCatalog`
             Source Catalog with requested local calib columns
         """
-        mapper = afwTable.SchemaMapper(catalog.schema)
         measureConfig = SingleFrameMeasurementTask.ConfigClass()
         measureConfig.doReplaceWithNoise = False
 
@@ -358,6 +358,7 @@ class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
         exposure = dataRef.get('calexp_sub',
                                bbox=lsst.geom.Box2I(lsst.geom.Point2I(0, 0), lsst.geom.Point2I(0, 0)))
 
+        aliasMap = catalog.schema.getAliasMap()
         mapper = afwTable.SchemaMapper(catalog.schema)
         mapper.addMinimalSchema(catalog.schema, True)
         schema = mapper.getOutputSchema()
@@ -379,6 +380,7 @@ class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
                 measureConfig.plugins.names.add(plugin)
 
         measurement = SingleFrameMeasurementTask(config=measureConfig, schema=schema)
+        schema.setAliasMap(aliasMap)
         newCat = afwTable.SourceCatalog(schema)
         newCat.extend(catalog, mapper=mapper)
         measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
