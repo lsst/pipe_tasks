@@ -90,6 +90,11 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
     """
     ConfigClass = DrpAssociationPipeConfig
     _DefaultName = "drpAssociation"
+    RunnerClass = pipeBase.ButlerInitializedTaskRunner
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.makeSubtask('associator')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
