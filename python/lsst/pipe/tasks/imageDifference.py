@@ -566,6 +566,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             ``templateSources`` and ``matchingSources`` specified.
         templateExposure : `lsst.afw.image.ExposureF`, optional
             The template to be subtracted from ``exposure`` in the image subtraction.
+            ``templateExposure`` is modified in place if ``config.doScaleTemplateVariance==True``.
             The template exposure should cover the same sky area as the science exposure.
             It is either a stich of patches of a coadd skymap image or a calexp
             of the same pointing as the science exposure. Can be None only
@@ -613,6 +614,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         controlSources = None
         diaSources = None
         kernelSources = None
+        # We'll clone exposure if modified but will still need the original
+        exposureOrig = exposure
 
         if self.config.doAddCalexpBackground:
             mi = exposure.getMaskedImage()
@@ -652,10 +655,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 preConvPsf = None
                 if self.config.doPreConvolve:
                     convControl = afwMath.ConvolutionControl()
-                    # cannot convolve in place, so make a new MI to receive convolved image
-                    srcMI = exposure.getMaskedImage()
-                    exposureOrig = exposure.clone()
-                    destMI = srcMI.Factory(srcMI.getDimensions())
+                    # cannot convolve in place, so need a new image anyway
+                    srcMI = exposure.maskedImage
+                    exposure = exposure.clone()  # New deep copy
                     srcPsf = sciencePsf
                     if self.config.useGaussianForPreConvolution:
                         # convolve with a simplified PSF model: a double Gaussian
@@ -664,12 +666,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     else:
                         # convolve with science exposure's PSF model
                         preConvPsf = srcPsf
-                    afwMath.convolve(destMI, srcMI, preConvPsf.getLocalKernel(), convControl)
-                    exposure.setMaskedImage(destMI)
+                    afwMath.convolve(exposure.maskedImage, srcMI, preConvPsf.getLocalKernel(), convControl)
                     scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
                 else:
                     scienceSigmaPost = scienceSigmaOrig
-                    exposureOrig = exposure
 
                 # If requested, find and select sources from the image
                 # else, AL subtraction will do its own source detection
