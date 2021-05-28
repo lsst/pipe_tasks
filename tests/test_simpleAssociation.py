@@ -27,9 +27,9 @@ import unittest
 import lsst.afw.table as afwTable
 import lsst.geom as geom
 import lsst.utils.tests
-from lsst.pipe.tasks.associationUtils import query_disc, eq2xyz, toIndex
-from lsst.pipe.tasks.simpleAssociation import (SimpleAssociationTask,
-                                               SimpleAssociationConfig)
+from lsst.pipe.tasks.associationUtils import toIndex
+from lsst.pipe.tasks.simpleAssociation import SimpleAssociationTask
+
 
 class TestSimpleAssociation(lsst.utils.tests.TestCase):
 
@@ -59,7 +59,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         self.newDiaObjectVisit = 1236
         # Drop in two copies of the DiaObject locations to make DiaSources.
         diaSourceList = [
-            {"ccdVisit": 1234,
+            {"ccdVisitId": 1234,
              "diaSourceId": idx,
              "diaObjectId": 0,
              "ra": ra,
@@ -70,7 +70,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
             [geom.SpherePoint(diaSrc["ra"], diaSrc["decl"], geom.degrees)]
             for diaSrc in diaSourceList]
         moreDiaSources = [
-            {"ccdVisit": 1235,
+            {"ccdVisitId": 1235,
              "diaSourceId": idx + self.nDiaObjects,
              "diaObjectId": 0,
              "ra": ra,
@@ -86,12 +86,12 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
 
         self.nNewDiaSources = 2
         # Drop in two more DiaSources that are unassociated.
-        diaSourceList.append({"ccdVisit": 1236,
+        diaSourceList.append({"ccdVisitId": 1236,
                               "diaSourceId": len(diaSourceList),
                               "diaObjectId": 0,
                               "ra": 0.0,
                               "decl": 0.0})
-        diaSourceList.append({"ccdVisit": 1236,
+        diaSourceList.append({"ccdVisitId": 1236,
                               "diaSourceId": len(diaSourceList),
                               "diaObjectId": 0,
                               "ra": 1.0,
@@ -105,6 +105,8 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         del self.coordList
 
     def testRun(self):
+        """Test the full run method of the simple associator.
+        """
         simpleAssoc = SimpleAssociationTask()
         result = simpleAssoc.run(self.diaSources,
                                  self.tractPatchId,
@@ -123,12 +125,14 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
                 self.assertEqual(len(assocDiaSources.loc[diaObjId]), 1)
 
     def testUpdateCatalogs(self):
+        """Test adding data to existing DiaObject/Source catalogs.
+        """
         matchIndex = 4
         diaSrc = self.diaSources.iloc[matchIndex]
         self.diaObjects[matchIndex]["diaObjectId"] = 1234
-        ccdVisit = diaSrc["ccdVisit"]
+        ccdVisit = diaSrc["ccdVisitId"]
         diaSourceId = diaSrc["diaSourceId"]
-        self.diaSources.set_index(["ccdVisit", "diaSourceId"], inplace=True)
+        self.diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
 
         simpleAssoc = SimpleAssociationTask()
         simpleAssoc.updateCatalogs(matchIndex,
@@ -149,10 +153,12 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
                          self.diaObjects[matchIndex]["diaObjectId"])
 
     def testAddDiaObject(self):
+        """Test adding data to existing DiaObjects/Sources.
+        """
         diaSrc = self.diaSources.iloc[-1]
-        ccdVisit = diaSrc["ccdVisit"]
+        ccdVisit = diaSrc["ccdVisitId"]
         diaSourceId = diaSrc["diaSourceId"]
-        self.diaSources.set_index(["ccdVisit", "diaSourceId"], inplace=True)
+        self.diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
         idFactory = afwTable.IdFactory.makeSource(1234,
                                                   64 - 16)
         idCat = afwTable.SourceCatalog(

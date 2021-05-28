@@ -1,6 +1,10 @@
 import healpy as hp
 import numpy as np
 
+"""Utilities for interfacing with healpy. Originally implemented in
+http://github.com/LSSTDESC/dia_pipe
+"""
+
 
 def toIndex(nside, ra, dec):
     """Return healpix index given ra,dec in degrees"""

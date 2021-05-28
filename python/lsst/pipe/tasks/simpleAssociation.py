@@ -51,7 +51,12 @@ class SimpleAssociationConfig(pexConfig.Config):
 
 
 class SimpleAssociationTask(pipeBase.Task):
-    """Construct DIAObjects from a DataFrame of DIASources
+    """Construct DiaObjects from a DataFrame of DIASources by spatially
+    associating the sources.
+
+    Represents a simple, brute force algorithm matching DiaSources into
+    DiaObjects. Algorithm picks the nearest, first match DiaObject to
+    associate a source to.
     """
     ConfigClass = SimpleAssociationConfig
     _DefaultName = "simpleAssociation"
@@ -88,7 +93,7 @@ class SimpleAssociationTask(pipeBase.Task):
         """
         # Sort by ccdVisit and diaSourceId to get a reproducible ordering for
         # the association.
-        diaSources.set_index(["ccdVisit", "diaSourceId"], inplace=True)
+        diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
 
         # Empty lists to store matching and location data.
         diaObjectCat = []
@@ -116,7 +121,9 @@ class SimpleAssociationTask(pipeBase.Task):
                                          idCat,
                                          diaObjectCoords,
                                          healPixIndices)
-
+                continue
+            # Temp list to store DiaObjects already used for this ccdVisit.
+            usedMatchIndicies = []
             # Run over subsequent data.
             for diaSourceId, diaSrc in ccdVisitSources.iterrows():
                 # Find matches.
@@ -142,14 +149,28 @@ class SimpleAssociationTask(pipeBase.Task):
                 if np.min(dists) < np.deg2rad(self.config.tolerance/3600):
                     matchDistArg = np.argmin(dists)
                     matchIndex = matches[matchDistArg]
-                    self.updateCatalogs(matchIndex,
-                                        diaSrc,
-                                        diaSources,
-                                        ccdVisit,
-                                        diaSourceId,
-                                        diaObjectCat,
-                                        diaObjectCoords,
-                                        healPixIndices)
+                    # Test to see if the DiaObject has been used.
+                    if np.isin([matchIndex], usedMatchIndicies).sum() < 1:
+                        self.updateCatalogs(matchIndex,
+                                            diaSrc,
+                                            diaSources,
+                                            ccdVisit,
+                                            diaSourceId,
+                                            diaObjectCat,
+                                            diaObjectCoords,
+                                            healPixIndices)
+                        usedMatchIndicies.append(matchIndex)
+                    # If the matched DiaObject has already been used, create a
+                    # new DiaObject for this DiaSource.
+                    else:
+                        self.addNewDiaObject(diaSrc,
+                                             diaSources,
+                                             ccdVisit,
+                                             diaSourceId,
+                                             diaObjectCat,
+                                             idCat,
+                                             diaObjectCoords,
+                                             healPixIndices)
                 # Create new DiaObject if no match found within the matching
                 # tolerance.
                 else:
@@ -161,8 +182,7 @@ class SimpleAssociationTask(pipeBase.Task):
                                          idCat,
                                          diaObjectCoords,
                                          healPixIndices)
-
-        # Drop indices before returning association diaSource catalog.
+        # Drop indices before returning associated diaSource catalog.
         diaSources.reset_index(inplace=True)
 
         return pipeBase.Struct(
@@ -195,7 +215,7 @@ class SimpleAssociationTask(pipeBase.Task):
         idCat : `lsst.afw.table.SourceCatalog`
             Catalog with the IdFactory used to generate unique DiaObject
             identifiers.
-        DiaObjectCoords : `list` of `list`s of `lsst.geom.SpherePoint`s
+        diaObjectCoords : `list` of `list`s of `lsst.geom.SpherePoint`s
             Set of coordinates of DiaSource locations that make up the
             DiaObject average coordinate.
         healPixIndices : `list` of `int`s
@@ -244,7 +264,7 @@ class SimpleAssociationTask(pipeBase.Task):
             Unique identifier of the DiaSource.
         diaObjectCat : `list` of `dict`s
             Catalog of diaObjects to append the new object o.
-        DiaObjectCoords : `list` of `list`s of `lsst.geom.SpherePoint`s
+        diaObjectCoords : `list` of `list`s of `lsst.geom.SpherePoint`s
             Set of coordinates of DiaSource locations that make up the
             DiaObject average coordinate.
         healPixIndices : `list` of `int`s
@@ -259,10 +279,12 @@ class SimpleAssociationTask(pipeBase.Task):
         aveCoord = geom.averageSpherePoint(diaObjCoords[matchIndex])
         diaObjCat[matchIndex]["ra"] = aveCoord.getRa().asDegrees()
         diaObjCat[matchIndex]["decl"] = aveCoord.getDec().asDegrees()
+        nSources = diaObjCat[matchIndex]["nDiaSources"]
+        diaObjCat[matchIndex]["nDiaSources"] = nSources + 1
         healPixIndices[matchIndex] = toIndex(self.config.nside,
-                                              diaObjCat[matchIndex]["ra"],
-                                              diaObjCat[matchIndex]["decl"])
-        # Add update DiaObject Id that this source is now associated to.
+                                             diaObjCat[matchIndex]["ra"],
+                                             diaObjCat[matchIndex]["decl"])
+        # Update DiaObject Id that this source is now associated to.
         diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = \
             diaObjCat[matchIndex]["diaObjectId"]
 
@@ -275,9 +297,11 @@ class SimpleAssociationTask(pipeBase.Task):
             DiaSource RA location.
         src_dec : `float`
             DiaSource Dec location.
-        tol : `flat`
+        tol : `float`
             Size of annulus to convert to covering healPixels and search for
             DiaObjects.
+        hpIndices : `list` of `int`s
+            List of heal pix indices containing the DiaObjects in ``diaObjs``.
         diaObjs : `list` of `dict`s
             Catalog diaObjects to with full location information for comparing
             to DiaSources.
@@ -304,9 +328,9 @@ class SimpleAssociationTask(pipeBase.Task):
             return pipeBase.Struct(dists=None, matches=None)
 
         dists = np.array(
-            [np.sqrt(np.sum((eq2xyz(src_ra, src_dec) -
-                             eq2xyz(diaObjs[match]["ra"],
-                                    diaObjs[match]["decl"]))**2))
+            [np.sqrt(np.sum((eq2xyz(src_ra, src_dec)
+                             - eq2xyz(diaObjs[match]["ra"],
+                                      diaObjs[match]["decl"]))**2))
              for match in matchIndices])
         return pipeBase.Struct(
             dists=dists,
@@ -332,6 +356,7 @@ class SimpleAssociationTask(pipeBase.Task):
         new_dia_object = {"diaObjectId": objId,
                           "ra": ra,
                           "decl": decl,
+                          "nDiaSources": 1,
                           "pmParallaxNdata": 0,
                           "nearbyObj1": 0,
                           "nearbyObj2": 0,
