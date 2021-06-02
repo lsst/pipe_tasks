@@ -100,17 +100,30 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         storageClass="SourceCatalog",
         name="{fakesType}{coaddName}Diff_diaSrc_schema",
     )
+    # TODO DM-29965: Currently the AL likelihood image is not a separate data product
     subtractedExposure = pipeBase.connectionTypes.Output(
-        doc="Output difference image",
+        doc="Output AL difference or Zogy proper difference image",
         dimensions=("instrument", "visit", "detector"),
         storageClass="ExposureF",
         name="{fakesType}{coaddName}Diff_differenceExp",
+    )
+    scoreExposure = pipeBase.connectionTypes.Output(
+        doc="Output Zogy score (likelihood) image",
+        dimensions=("instrument", "visit", "detector"),
+        storageClass="ExposureF",
+        name="{fakesType}{coaddName}Diff_scoreExp",
     )
     warpedExposure = pipeBase.connectionTypes.Output(
         doc="Warped template used to create `subtractedExposure`.",
         dimensions=("instrument", "visit", "detector"),
         storageClass="ExposureF",
         name="{fakesType}{coaddName}Diff_warpedExp",
+    )
+    matchedExposure = pipeBase.connectionTypes.Output(
+        doc="Warped template used to create `subtractedExposure`.",
+        dimensions=("instrument", "visit", "detector"),
+        storageClass="ExposureF",
+        name="{fakesType}{coaddName}Diff_matchedExp",
     )
     diaSources = pipeBase.connectionTypes.Output(
         doc="Output detected diaSources on the difference image",
@@ -125,6 +138,16 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
             self.inputs.remove("coaddExposures")
         else:
             self.inputs.remove("dcrCoadds")
+        if not config.doWriteSubtractedExp:
+            self.outputs.remove("subtractedExposure")
+        if not config.doWriteScoreExp:
+            self.outputs.remove("scoreExposure")
+        if not config.doWriteWarpedExp:
+            self.outputs.remove("warpedExposure")
+        if not config.doWriteMatchedExp:
+            self.outputs.remove("matchedExposure")
+        if not config.doWriteSources:
+            self.outputs.remove("diaSources")
 
     # TODO DM-22953: Add support for refObjLoader (kernelSourcesFromRef)
     # Make kernelSources optional
@@ -138,20 +161,27 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                                             doc="Add background to calexp before processing it.  "
                                                 "Useful as ipDiffim does background matching.")
     doUseRegister = pexConfig.Field(dtype=bool, default=False,
-                                    doc="Use image-to-image registration to align template with "
-                                        "science image")
+                                    doc="Re-compute astrometry on the template. "
+                                    "Use image-to-image registration to align template with "
+                                    "science image (AL only).")
     doDebugRegister = pexConfig.Field(dtype=bool, default=False,
                                       doc="Writing debugging data for doUseRegister")
     doSelectSources = pexConfig.Field(dtype=bool, default=False,
-                                      doc="Select stars to use for kernel fitting")
+                                      doc="Select stars to use for kernel fitting (AL only)")
     doSelectDcrCatalog = pexConfig.Field(dtype=bool, default=False,
-                                         doc="Select stars of extreme color as part of the control sample")
+                                         doc="Select stars of extreme color as part "
+                                         "of the control sample (AL only)")
     doSelectVariableCatalog = pexConfig.Field(dtype=bool, default=False,
                                               doc="Select stars that are variable to be part "
-                                                  "of the control sample")
+                                                  "of the control sample (AL only)")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc="Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=False,
-                                    doc="Convolve science image by its PSF before PSF-matching?")
+                                    doc="Convolve science image by its PSF before PSF-matching (AL only)."
+                                    " The difference image becomes a likelihood image.")
+    useScoreImageDetection = pexConfig.Field(
+        dtype=bool, default=False, doc="Calculate and detect sources on the Zogy score image (Zogy only).")
+    doWriteScoreExp = pexConfig.Field(
+        dtype=bool, default=False, doc="Write score exposure (Zogy only) ?")
     doScaleTemplateVariance = pexConfig.Field(dtype=bool, default=False,
                                               doc="Scale variance of the template before PSF matching")
     doScaleDiffimVariance = pexConfig.Field(dtype=bool, default=True,
@@ -164,7 +194,7 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
     doDetection = pexConfig.Field(dtype=bool, default=True, doc="Detect sources?")
     doDecorrelation = pexConfig.Field(dtype=bool, default=True,
                                       doc="Perform diffim decorrelation to undo pixel correlation due to A&L "
-                                          "kernel convolution? If True, also update the diffim PSF.")
+                                      "kernel convolution (AL only)? If True, also update the diffim PSF.")
     doMerge = pexConfig.Field(dtype=bool, default=True,
                               doc="Merge positive and negative diaSources with grow radius "
                                   "set by growFootprint")
@@ -176,9 +206,10 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         dtype=bool,
         default=True,
         doc="Force photometer diaSource locations on PVI?")
-    doWriteSubtractedExp = pexConfig.Field(dtype=bool, default=True, doc="Write difference exposure?")
-    doWriteWarpedExp = pexConfig.Field(dtype=bool, default=False,
-                                       doc="Write WCS, warped template coadd exposure?")
+    doWriteSubtractedExp = pexConfig.Field(
+        dtype=bool, default=True, doc="Write difference exposure (AL and Zogy) ?")
+    doWriteWarpedExp = pexConfig.Field(
+        dtype=bool, default=False, doc="Write WCS, warped template coadd exposure?")
     doWriteMatchedExp = pexConfig.Field(dtype=bool, default=False,
                                         doc="Write warped and PSF-matched template coadd exposure?")
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
@@ -316,12 +347,8 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
 
     def validate(self):
         pexConfig.Config.validate(self)
-        if self.doAddMetrics and not self.doSubtract:
-            raise ValueError("Subtraction must be enabled for kernel metrics calculation.")
         if not self.doSubtract and not self.doDetection:
             raise ValueError("Either doSubtract or doDetection must be enabled.")
-        if self.subtract.name == 'zogy' and self.doAddMetrics:
-            raise ValueError("Kernel metrics does not exist in zogy subtraction.")
         if self.doMeasurement and not self.doDetection:
             raise ValueError("Cannot run source measurement without source detection.")
         if self.doMerge and not self.doDetection:
@@ -329,15 +356,43 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         if self.doUseRegister and not self.doSelectSources:
             raise ValueError("doUseRegister=True and doSelectSources=False. "
                              "Cannot run RegisterTask without selecting sources.")
-        if self.doPreConvolve and self.doDecorrelation and not self.convolveTemplate:
-            raise ValueError("doPreConvolve=True and doDecorrelation=True and "
-                             "convolveTemplate=False is not supported.")
         if hasattr(self.getTemplate, "coaddName"):
             if self.getTemplate.coaddName != self.coaddName:
                 raise ValueError("Mis-matched coaddName and getTemplate.coaddName in the config.")
         if self.doScaleDiffimVariance and self.doScaleTemplateVariance:
             raise ValueError("Scaling the diffim variance and scaling the template variance "
                              "are both set. Please choose one or the other.")
+        # We cannot allow inconsistencies that would lead to None or not available output products
+        if self.subtract.name == 'zogy':
+            if self.doWriteScoreExp and not self.useScoreImageDetection:
+                raise ValueError("doWriteScoreExp=True and useScoreImageDetection=False "
+                                 "is not supported. Score image is not calculated.")
+            if self.doWriteMatchedExp:
+                raise ValueError("doWriteMatchedExp=True Matched exposure is not "
+                                 "calculated in zogy subtraction.")
+            if self.doAddMetrics:
+                raise ValueError("doAddMetrics=True Kernel metrics does not exist in zogy subtraction.")
+            if self.doDecorrelation:
+                raise ValueError(
+                    "doDecorrelation=True The decorrelation afterburner does not exist in zogy subtraction.")
+            if self.doPreConvolve:
+                raise ValueError(
+                    "doPreConvolve=True Pre-convolution is not a zogy option.")
+            if self.doSelectSources:
+                raise ValueError(
+                    "doSelectSources=True Selecting sources for PSF matching is not a zogy option.")
+        else:
+            if self.useScoreImageDetection:
+                raise ValueError("useScoreImageDetection=True Score exposure does not "
+                                 "exist in AL subtraction.")
+            if self.doWriteScoreExp:  # Ensure output is not None
+                raise ValueError("doWriteScoreExp=True Score exposure does not exist in AL subtraction.")
+            if self.doAddMetrics and not self.doSubtract:
+                raise ValueError("Subtraction must be enabled for kernel metrics calculation.")
+            if self.doPreConvolve and self.doDecorrelation:
+                raise NotImplementedError(
+                    "doPreConvolve=True and doDecorrelation=True "
+                    "The decorrelation afterburner cannot handle pre-convolved exposures.")
 
 
 class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
@@ -464,6 +519,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         outputs = self.run(exposure=inputs['exposure'],
                            templateExposure=templateStruct.exposure,
                            idFactory=idFactory)
+        # Consistency with runDataref gen2 handling
+        if outputs.diaSources is None:
+            del outputs.diaSources
         butlerQC.put(outputs, outputRefs)
 
     @pipeBase.timeMethod
@@ -543,6 +601,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             sensorRef.put(results.selectSources, self.config.coaddName + "Diff_kernelSrc")
         if self.config.doWriteSubtractedExp:
             sensorRef.put(results.subtractedExposure, subtractedExposureName)
+        if self.config.doWriteScoreExp:
+            sensorRef.put(results.scoreExposure, self.config.coaddName + "Diff_scoreExp")
         return results
 
     @pipeBase.timeMethod
@@ -584,6 +644,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         results : `lsst.pipe.base.Struct`
             ``subtractedExposure`` : `lsst.afw.image.ExposureF`
                 Difference image.
+            ``scoreExposure`` : `lsst.afw.image.ExposureF` or `None`
+                The zogy score exposure, if calculated.
             ``matchedExposure`` : `lsst.afw.image.ExposureF`
                 The matched PSF exposure.
             ``subtractRes`` : `lsst.pipe.base.Struct`
@@ -608,6 +670,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         """
         subtractRes = None
         controlSources = None
+        scoreExposure = None
         diaSources = None
         kernelSources = None
         # We'll clone exposure if modified but will still need the original
@@ -631,10 +694,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
 
             if self.config.subtract.name == 'zogy':
                 subtractRes = self.subtract.run(exposure, templateExposure, doWarping=True)
-                if self.config.doPreConvolve:
-                    subtractedExposure = subtractRes.scoreExp
-                else:
-                    subtractedExposure = subtractRes.diffExp
+                scoreExposure = subtractRes.scoreExp
+                subtractedExposure = subtractRes.diffExp
                 subtractRes.subtractedExposure = subtractedExposure
                 subtractRes.matchedExposure = None
 
@@ -877,23 +938,47 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.doDetection:
             self.log.info("Running diaSource detection")
 
+            # subtractedExposure - reserved for task return value
+            # in zogy, it is always the proper difference image
+            # in AL, it may be (yet) pre-convolved and/or decorrelated
+            #
+            # detectionExposure - controls which exposure to use for detection
+            # in-place modifications will appear in task return
+            if self.config.useScoreImageDetection:
+                # zogy with score image detection enabled
+                self.log.info("Detection, diffim rescaling and measurements are on Zogy score image.")
+                detectionExposure = scoreExposure
+                detectOnLikelihood = True
+            else:
+                # AL or zogy with no score image detection
+                detectionExposure = subtractedExposure
+                detectOnLikelihood = False
+                if self.config.doPreConvolve:
+                    # In AL, the likelihood image is not a separate product, yet
+                    self.log.info("Detection, diffim rescaling and measurements are on AL pre-convolved "
+                                  "difference (likelihood) image.")
+                    detectOnLikelihood = True
+                else:
+                    self.log.info("Detection, diffim rescaling and measurements are on "
+                                  "(proper) difference image.")
+
             # Rescale difference image variance plane
             if self.config.doScaleDiffimVariance:
                 self.log.info("Rescaling diffim variance")
-                diffimVarFactor = self.scaleVariance.run(subtractedExposure.getMaskedImage())
+                diffimVarFactor = self.scaleVariance.run(detectionExposure.getMaskedImage())
                 self.log.info("Diffim variance scaling factor: %.2f" % diffimVarFactor)
                 self.metadata.add("scaleDiffimVarianceFactor", diffimVarFactor)
 
             # Erase existing detection mask planes
-            mask = subtractedExposure.getMaskedImage().getMask()
+            mask = detectionExposure.getMaskedImage().getMask()
             mask &= ~(mask.getPlaneBitMask("DETECTED") | mask.getPlaneBitMask("DETECTED_NEGATIVE"))
 
             table = afwTable.SourceTable.make(self.schema, idFactory)
             table.setMetadata(self.algMetadata)
             results = self.detection.run(
                 table=table,
-                exposure=subtractedExposure,
-                doSmooth=not self.config.doPreConvolve
+                exposure=detectionExposure,
+                doSmooth=not detectOnLikelihood
             )
 
             if self.config.doMerge:
@@ -911,26 +996,26 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 self.log.info("Running diaSource measurement: newDipoleFitting=%r", newDipoleFitting)
                 if not newDipoleFitting:
                     # Just fit dipole in diffim
-                    self.measurement.run(diaSources, subtractedExposure)
+                    self.measurement.run(diaSources, detectionExposure)
                 else:
                     # Use (matched) template and science image (if avail.) to constrain dipole fitting
                     if self.config.doSubtract and 'matchedExposure' in subtractRes.getDict():
-                        self.measurement.run(diaSources, subtractedExposure, exposure,
+                        self.measurement.run(diaSources, detectionExposure, exposure,
                                              subtractRes.matchedExposure)
                     else:
-                        self.measurement.run(diaSources, subtractedExposure, exposure)
+                        self.measurement.run(diaSources, detectionExposure, exposure)
                 if self.config.doApCorr:
                     self.applyApCorr.run(
                         catalog=diaSources,
-                        apCorrMap=subtractedExposure.getInfo().getApCorrMap()
+                        apCorrMap=detectionExposure.getInfo().getApCorrMap()
                     )
 
             if self.config.doForcedMeasurement:
                 # Run forced psf photometry on the PVI at the diaSource locations.
                 # Copy the measured flux and error into the diaSource.
                 forcedSources = self.forcedMeasurement.generateMeasCat(
-                    exposure, diaSources, subtractedExposure.getWcs())
-                self.forcedMeasurement.run(forcedSources, exposure, diaSources, subtractedExposure.getWcs())
+                    exposure, diaSources, detectionExposure.getWcs())
+                self.forcedMeasurement.run(forcedSources, exposure, diaSources, detectionExposure.getWcs())
                 mapper = afwTable.SchemaMapper(forcedSources.schema, diaSources.schema)
                 mapper.addMapping(forcedSources.schema.find("base_PsfFlux_instFlux")[0],
                                   "ip_diffim_forced_PsfFlux_instFlux", True)
@@ -1018,6 +1103,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         self.runDebug(exposure, subtractRes, selectSources, kernelSources, diaSources)
         return pipeBase.Struct(
             subtractedExposure=subtractedExposure,
+            scoreExposure=scoreExposure,
             warpedExposure=subtractRes.warpedExposure,
             matchedExposure=subtractRes.matchedExposure,
             subtractRes=subtractRes,
