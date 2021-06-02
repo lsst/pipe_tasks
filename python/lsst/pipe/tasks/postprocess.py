@@ -1305,7 +1305,7 @@ class ConsolidateSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
 class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
                                    dimensions=("instrument",),
                                    defaultTemplates={}):
-    visitSummaryRefs = pipeBase.connectionTypes.Input(
+    visitSummaryRefs = connectionTypes.Input(
         doc="Data references for per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
         name="visitSummary",
         storageClass="ExposureCatalog",
@@ -1334,7 +1334,6 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
     def run(self, visitSummaryRefs):
         """ Make a table of ccd information from the `visitSummary` catalogs.
-
         Parameters
         ----------
         visitSummaryRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
@@ -1389,4 +1388,76 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
             ccdEntries.append(ccdEntry)
 
         outputCatalog = pd.concat(ccdEntries)
+        return pipeBase.Struct(outputCatalog=outputCatalog)
+
+
+class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
+                                dimensions=("instrument",),
+                                defaultTemplates={}):
+    visitSummaries = connectionTypes.Input(
+        doc="Per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
+        name="visitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit",),
+        multiple=True,
+        deferLoad=True,
+    )
+    outputCatalog = connectionTypes.Output(
+        doc="Visit metadata table",
+        name="visitTable",
+        storageClass="DataFrame",
+        dimensions=("instrument",)
+    )
+
+
+class MakeVisitTableConfig(pipeBase.PipelineTaskConfig,
+                           pipelineConnections=MakeVisitTableConnections):
+    pass
+
+
+class MakeVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
+    """Produce a `visitTable` from the `visitSummary` exposure catalogs.
+    """
+    _DefaultName = 'makeVisitTable'
+    ConfigClass = MakeVisitTableConfig
+
+    def run(self, visitSummaries):
+        """ Make a table of visit information from the `visitSummary` catalogs
+
+        Parameters
+        ----------
+        visitSummaries : list of `lsst.afw.table.ExposureCatalog`
+            List of exposure catalogs with per-detector summary information.
+        Returns
+        -------
+        result : `lsst.pipe.Base.Struct`
+            Results struct with attribute:
+               ``outputCatalog``
+                    Catalog of visit information.
+        """
+        visitEntries = []
+        for visitSummary in visitSummaries:
+            visitSummary = visitSummary.get()
+            visitRow = visitSummary[0]
+            visitInfo = visitRow.getVisitInfo()
+
+            visitEntry = {}
+            visitEntry["visitId"] = visitRow['visit']
+            visitEntry["filterName"] = visitRow['physical_filter']
+            raDec = visitInfo.getBoresightRaDec()
+            visitEntry["ra"] = raDec.getRa().asDegrees()
+            visitEntry["decl"] = raDec.getDec().asDegrees()
+            visitEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
+            azAlt = visitInfo.getBoresightAzAlt()
+            visitEntry["azimuth"] = azAlt.getLongitude().asDegrees()
+            visitEntry["altitude"] = azAlt.getLatitude().asDegrees()
+            visitEntry["zenithDistance"] = 90 - azAlt.getLatitude().asDegrees()
+            visitEntry["airmass"] = visitInfo.getBoresightAirmass()
+            visitEntry["obsStart"] = visitInfo.getDate().toPython()
+            visitEntry["expTime"] = visitInfo.getExposureTime()
+            visitEntries.append(visitEntry)
+            # TODO: DM-30623, Add programId, exposureType, expMidpt, cameraTemp, mirror1Temp, mirror2Temp,
+            # mirror3Temp, domeTemp, externalTemp, dimmSeeing, pwvGPS, pwvMW, flags, nExposures
+
+        outputCatalog = pd.DataFrame(data=visitEntries)
         return pipeBase.Struct(outputCatalog=outputCatalog)
