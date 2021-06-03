@@ -100,7 +100,6 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         storageClass="SourceCatalog",
         name="{fakesType}{coaddName}Diff_diaSrc_schema",
     )
-    # TODO DM-29965: Currently the AL likelihood image is not a separate data product
     subtractedExposure = pipeBase.connectionTypes.Output(
         doc="Output AL difference or Zogy proper difference image",
         dimensions=("instrument", "visit", "detector"),
@@ -108,7 +107,7 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         name="{fakesType}{coaddName}Diff_differenceExp",
     )
     scoreExposure = pipeBase.connectionTypes.Output(
-        doc="Output Zogy score (likelihood) image",
+        doc="Output AL likelihood or Zogy score image",
         dimensions=("instrument", "visit", "detector"),
         storageClass="ExposureF",
         name="{fakesType}{coaddName}Diff_scoreExp",
@@ -176,21 +175,23 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                                                   "of the control sample (AL only)")
     doSubtract = pexConfig.Field(dtype=bool, default=True, doc="Compute subtracted exposure?")
     doPreConvolve = pexConfig.Field(dtype=bool, default=False,
-                                    doc="Convolve science image by its PSF before PSF-matching (AL only)."
-                                    " The difference image becomes a likelihood image.")
+                                    doc="Not in use. Superseded by useScoreImageDetection.",
+                                    deprecated="This option superseded by useScoreImageDetection."
+                                    " Will be removed after v22.")
     useScoreImageDetection = pexConfig.Field(
-        dtype=bool, default=False, doc="Calculate and detect sources on the Zogy score image (Zogy only).")
+        dtype=bool, default=False, doc="Calculate the pre-convolved AL likelihood or "
+        "the Zogy score image. Use it for source detection (if doDetection=True).")
     doWriteScoreExp = pexConfig.Field(
-        dtype=bool, default=False, doc="Write score exposure (Zogy only) ?")
+        dtype=bool, default=False, doc="Write AL likelihood or Zogy score exposure?")
     doScaleTemplateVariance = pexConfig.Field(dtype=bool, default=False,
                                               doc="Scale variance of the template before PSF matching")
     doScaleDiffimVariance = pexConfig.Field(dtype=bool, default=True,
                                             doc="Scale variance of the diffim before PSF matching. "
                                                 "You may do either this or template variance scaling, "
                                                 "or neither. (Doing both is a waste of CPU.)")
-    useGaussianForPreConvolution = pexConfig.Field(dtype=bool, default=True,
-                                                   doc="Use a simple gaussian PSF model for pre-convolution "
-                                                       "(else use fit PSF)? Ignored if doPreConvolve false.")
+    useGaussianForPreConvolution = pexConfig.Field(
+        dtype=bool, default=False, doc="Use a simple gaussian PSF model for pre-convolution "
+        "(oherwise use exposure PSF)? (AL and if useScoreImageDetection=True only)")
     doDetection = pexConfig.Field(dtype=bool, default=True, doc="Detect sources?")
     doDecorrelation = pexConfig.Field(dtype=bool, default=True,
                                       doc="Perform diffim decorrelation to undo pixel correlation due to A&L "
@@ -380,9 +381,6 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                              "are both set. Please choose one or the other.")
         # We cannot allow inconsistencies that would lead to None or not available output products
         if self.subtract.name == 'zogy':
-            if self.doWriteScoreExp and not self.useScoreImageDetection:
-                raise ValueError("doWriteScoreExp=True and useScoreImageDetection=False "
-                                 "is not supported. Score image is not calculated.")
             if self.doWriteMatchedExp:
                 raise ValueError("doWriteMatchedExp=True Matched exposure is not "
                                  "calculated in zogy subtraction.")
@@ -391,24 +389,34 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
             if self.doDecorrelation:
                 raise ValueError(
                     "doDecorrelation=True The decorrelation afterburner does not exist in zogy subtraction.")
-            if self.doPreConvolve:
-                raise ValueError(
-                    "doPreConvolve=True Pre-convolution is not a zogy option.")
             if self.doSelectSources:
                 raise ValueError(
                     "doSelectSources=True Selecting sources for PSF matching is not a zogy option.")
+            if self.useGaussianForPreConvolution:
+                raise ValueError(
+                    "useGaussianForPreConvolution=True This is an AL subtraction only option.")
         else:
-            if self.useScoreImageDetection:
-                raise ValueError("useScoreImageDetection=True Score exposure does not "
-                                 "exist in AL subtraction.")
-            if self.doWriteScoreExp:  # Ensure output is not None
-                raise ValueError("doWriteScoreExp=True Score exposure does not exist in AL subtraction.")
+            # AL only consistency checks
+            if self.doWriteSubtractedExp and self.useScoreImageDetection:
+                raise ValueError(
+                    "doWriteSubtractedExp=True and useScoreImageDetection=True "
+                    "Regular difference image is not calculated. "
+                    "AL subtraction calculates either the regular difference image or the score image.")
+            if self.doWriteScoreExp and not self.useScoreImageDetection:
+                raise ValueError(
+                    "doWriteScoreExp=True and useScoreImageDetection=False "
+                    "Score image is not calculated. "
+                    "AL subtraction calculates either the regular difference image or the score image.")
             if self.doAddMetrics and not self.doSubtract:
                 raise ValueError("Subtraction must be enabled for kernel metrics calculation.")
-            if self.doPreConvolve and self.doDecorrelation:
+            if self.useScoreImageDetection and self.doDecorrelation:
                 raise NotImplementedError(
-                    "doPreConvolve=True and doDecorrelation=True "
-                    "The decorrelation afterburner cannot handle pre-convolved exposures.")
+                    "doDecorrelation=True and useScoreImageDetection=True "
+                    "The decorrelation afterburner for AL likelihood images is not implemented.")
+            if self.useGaussianForPreConvolution and not self.useScoreImageDetection:
+                raise ValueError(
+                    "useGaussianForPreConvolution=True and useScoreImageDetection=False "
+                    "Gaussian PSF approximation exists only for AL subtraction w/ pre-convolution.")
 
 
 class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
@@ -696,6 +704,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         """
         subtractRes = None
         controlSources = None
+        subtractedExposure = None
         scoreExposure = None
         diaSources = None
         kernelSources = None
@@ -717,6 +726,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     templateExposure.getMaskedImage())
                 self.log.info("Template variance scaling factor: %.2f", templateVarFactor)
                 self.metadata.add("scaleTemplateVarianceFactor", templateVarFactor)
+            self.metadata.add("psfMatchingAlgorithm", self.config.subtract.name)
 
             if self.config.subtract.name == 'zogy':
                 subtractRes = self.subtract.run(exposure, templateExposure, doWarping=True)
@@ -736,18 +746,24 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 # else sigma of original science exposure
                 # TODO: DM-22762 This functional block should be moved into its own method
                 preConvPsf = None
-                if self.config.doPreConvolve:
+                if self.config.useScoreImageDetection:
+                    self.log.warn("AL likelihood image: pre-convolution of PSF is not implemented.")
                     convControl = afwMath.ConvolutionControl()
                     # cannot convolve in place, so need a new image anyway
                     srcMI = exposure.maskedImage
                     exposure = exposure.clone()  # New deep copy
                     srcPsf = sciencePsf
                     if self.config.useGaussianForPreConvolution:
+                        self.log.infof(
+                            "AL likelihood image: Using Gaussian (sigma={:.2f}) PSF estimation "
+                            "for science image pre-convolution", scienceSigmaOrig)
                         # convolve with a simplified PSF model: a double Gaussian
                         kWidth, kHeight = sciencePsf.getLocalKernel().getDimensions()
                         preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
                     else:
                         # convolve with science exposure's PSF model
+                        self.log.infof(
+                            "AL likelihood image: Using the science image PSF for pre-convolution.")
                         preConvPsf = srcPsf
                     afwMath.convolve(exposure.maskedImage, srcMI, preConvPsf.getLocalKernel(), convControl)
                     scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
@@ -765,7 +781,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                         selectSources = self.subtract.getSelectSources(
                             exposure,
                             sigma=scienceSigmaPost,
-                            doSmooth=not self.config.doPreConvolve,
+                            doSmooth=not self.config.useScoreImageDetection,
                             idFactory=idFactory,
                         )
 
@@ -931,13 +947,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     convolveTemplate=self.config.convolveTemplate,
                     doWarping=not self.config.doUseRegister
                 )
-                subtractedExposure = subtractRes.subtractedExposure
+                if self.config.useScoreImageDetection:
+                    scoreExposure = subtractRes.subtractedExposure
+                else:
+                    subtractedExposure = subtractRes.subtractedExposure
 
                 if self.config.doDetection:
                     self.log.info("Computing diffim PSF")
 
                     # Get Psf from the appropriate input image if it doesn't exist
-                    if not subtractedExposure.hasPsf():
+                    if subtractedExposure is not None and not subtractedExposure.hasPsf():
                         if self.config.convolveTemplate:
                             subtractedExposure.setPsf(exposure.getPsf())
                         else:
@@ -948,6 +967,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 # doSubtract is False.
 
                 # NOTE: At this point doSubtract == True
+                # useScoreImageDetection=True and doDecorrelation=True is not allowed in the config
                 if self.config.doDecorrelation and self.config.doSubtract:
                     preConvKernel = None
                     if preConvPsf is not None:
@@ -973,21 +993,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             # in-place modifications will appear in task return
             if self.config.useScoreImageDetection:
                 # zogy with score image detection enabled
-                self.log.info("Detection, diffim rescaling and measurements are on Zogy score image.")
+                self.log.info("Detection, diffim rescaling and measurements are "
+                              "on AL likelihood or Zogy score image.")
                 detectionExposure = scoreExposure
-                detectOnLikelihood = True
             else:
                 # AL or zogy with no score image detection
                 detectionExposure = subtractedExposure
-                detectOnLikelihood = False
-                if self.config.doPreConvolve:
-                    # In AL, the likelihood image is not a separate product, yet
-                    self.log.info("Detection, diffim rescaling and measurements are on AL pre-convolved "
-                                  "difference (likelihood) image.")
-                    detectOnLikelihood = True
-                else:
-                    self.log.info("Detection, diffim rescaling and measurements are on "
-                                  "(proper) difference image.")
 
             # Rescale difference image variance plane
             if self.config.doScaleDiffimVariance:
@@ -1005,7 +1016,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             results = self.detection.run(
                 table=table,
                 exposure=detectionExposure,
-                doSmooth=not detectOnLikelihood
+                doSmooth=not self.config.useScoreImageDetection
             )
 
             if self.config.doMerge:
