@@ -21,6 +21,9 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 
+import numpy as np
+from numpy.lib.recfunctions import rec_join
+
 from .multiBandUtils import (CullPeaksConfig, MergeSourcesRunner, _makeMakeIdFactory, makeMergeArgumentParser,
                              getInputSchema, readCatalog)
 
@@ -37,6 +40,91 @@ from lsst.pipe.base import (CmdLineTask, PipelineTask, PipelineTaskConfig, Struc
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pipe.tasks.coaddBase import getSkyInfo
 from lsst.obs.base import ExposureIdInfo
+
+
+def matchCatalogsExact(catalog1, catalog2, patch1=None, patch2=None):
+    """Match two catalogs derived from the same mergeDet catalog
+
+    When testing downstream features, like deblending methods/parameters
+    and measurement algorithms/parameters, it is useful to to compare
+    the same sources in two catalogs. In most cases this must be done
+    by matching on either RA/DEC or XY positions, which occassionally
+    will mismatch one source with another.
+
+    For a more robust solution, as long as the downstream catalog is
+    derived from the same mergeDet catalog, exact source matching
+    can be done via the unique ``(parent, deblend_peakID)``
+    combination. So this function performs this exact matching for
+    all sources both catalogs.
+
+    Parameters
+    ----------
+    catalog1, catalog2 : `lsst.afw.table.SourceCatalog`
+        The two catalogs to merge
+
+    patch1, patch2 : array of int
+        Patch for each row, converted into an integer.
+        In the gen3 butler this is done already, in gen2
+        it is recommended to use `patch2Int`, assuming that
+        the patches are the same structure as HSC, that range
+        from '0,0' to '9,9'.
+
+    Returns
+    -------
+    result: list of `lsst.afw.table.SourceMatch`
+        List of matches for each source (using an inner join).
+    """
+    # Only match the individual sources, the parents will
+    # already be matched by the mergeDet catalog
+    sidx1 = catalog1["parent"] != 0
+    sidx2 = catalog2["parent"] != 0
+
+    # Create the keys used to merge the catalogs
+    parents1 = np.array(catalog1["parent"][sidx1])
+    peaks1 = np.array(catalog1["deblend_peakId"][sidx1])
+    index1 = np.arange(len(catalog1))[sidx1]
+    parents2 = np.array(catalog2["parent"][sidx2])
+    peaks2 = np.array(catalog2["deblend_peakId"][sidx2])
+    index2 = np.arange(len(catalog2))[sidx2]
+
+    if patch1 is not None:
+        if patch2 is None:
+            msg = ("If the catalogs are from different patches then patch1 and patch2 must be specified"
+                   ", got {} and {}").format(patch1, patch2)
+            raise ValueError(msg)
+        patch1 = patch1[sidx1]
+        patch2 = patch2[sidx2]
+
+        key1 = np.rec.array((parents1, peaks1, patch1, index1),
+                            dtype=[('parent', np.int64), ('peakId', np.int32),
+                                   ("patch", patch1.dtype), ("index", np.int32)])
+        key2 = np.rec.array((parents2, peaks2, patch2, index2),
+                            dtype=[('parent', np.int64), ('peakId', np.int32),
+                                   ("patch", patch2.dtype), ("index", np.int32)])
+        matchColumns = ("parent", "peakId", "patch")
+    else:
+        key1 = np.rec.array((parents1, peaks1, index1),
+                            dtype=[('parent', np.int64), ('peakId', np.int32), ("index", np.int32)])
+        key2 = np.rec.array((parents2, peaks2, index2),
+                            dtype=[('parent', np.int64), ('peakId', np.int32), ("index", np.int32)])
+        matchColumns = ("parent", "peakId")
+    # Match the two keys.
+    # This line performs an inner join on the structured
+    # arrays `key1` and `key2`, which stores their indices
+    # as columns in a structured array.
+    matched = rec_join(matchColumns, key1, key2, jointype="inner")
+
+    # Create the full index for both catalogs
+    indices1 = matched["index1"]
+    indices2 = matched["index2"]
+
+    # Re-index the resulting catalogs
+    matches = [
+        afwTable.SourceMatch(catalog1[int(i1)], catalog2[int(i2)], 0.0)
+        for i1, i2 in zip(indices1, indices2)
+    ]
+
+    return matches
 
 
 class MergeDetectionsConnections(PipelineTaskConnections,
