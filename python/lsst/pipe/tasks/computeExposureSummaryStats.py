@@ -154,7 +154,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                 warnings.simplefilter('ignore')
                 altaz = coord.transform_to(AltAz)
 
-            zenithDistance = altaz.alt.degree
+            zenithDistance = 90.0 - altaz.alt.degree
         else:
             zenithDistance = np.nan
 

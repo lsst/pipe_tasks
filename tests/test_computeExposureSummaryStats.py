@@ -118,7 +118,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
         self.assertFloatsAlmostEqual(summary.meanVar, skySigma**2.)
 
-        self.assertFloatsAlmostEqual(summary.zenithDistance, 59.42888, atol=1e-5)
+        self.assertFloatsAlmostEqual(summary.zenithDistance, 30.57112, atol=1e-5)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
