@@ -9,18 +9,20 @@ The :ref:`command-line tasks <lsst.pipe.tasks-command-line-tasks>` listed here a
 You can also assemble your own pipelines by combining individual tasks through their Python APIs.
 
 ``lsst.pipe.tasks`` does not provide all the tasks and command-line tasks in the LSST Science Pipelines.
-For a complete overview of the available tasks, see the *Processing Data* documentation section (to be completed).
-To learn more about the task framework in general, see the :ref:`lsst.pipe.base <lsst.pipe.base>` module documentation.
+For a complete list of all available tasks, see :doc:`/tasks` and for an introduction to processing data see :doc:`/getting-started/index`.
 
-.. .. _lsst.pipe.tasks-using:
 
-.. Using lsst.pipe.tasks
-.. =====================
+.. _lsst.pipe.tasks-using:
+
+Using lsst.pipe.tasks
+=====================
 
 .. toctree linking to topics related to using the module's APIs.
 
-.. .. toctree::
-..    :maxdepth: 1
+.. toctree::
+   :maxdepth: 1
+
+   deblending-flags-overview
 
 .. _lsst.pipe.tasks-contributing:
 
