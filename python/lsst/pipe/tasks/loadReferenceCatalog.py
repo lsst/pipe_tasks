@@ -125,8 +125,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
 
         dtype = [('ra', 'np.float64'),
                  ('dec', 'np.float64'),
-                 ('refMag', 'np.float32', len(filterList)),
-                 ('refMagErr', 'np.float32', len(filterList))]
+                 ('refMag', 'np.float32', (len(filterList), )),
+                 ('refMagErr', 'np.float32', (len(filterList), ))]
 
         Reference magnitudes (AB) will be 99 for non-detections in a given band.
 
@@ -182,8 +182,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
 
         dtype = [('ra', 'np.float64'),
                  ('dec', 'np.float64'),
-                 ('refMag', 'np.float32', len(filterList)),
-                 ('refMagErr', 'np.float32', len(filterList))]
+                 ('refMag', 'np.float32', (len(filterList), )),
+                 ('refMagErr', 'np.float32', (len(filterList), ))]
 
         Reference magnitudes (AB) will be 99 for non-detections in a given band.
 
