@@ -11,6 +11,7 @@ tasks:
   transformSourceTable: lsst.pipe.tasks.postprocess.TransformSourceTableTask
   consolidateSourceTable: lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask
   consolidateVisitSummary: lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask
+  makeCcdVisitTable: lsst.pipe.tasks.postprocess.MakeCcdVisitTableTask
   makeWarp:
     class: lsst.pipe.tasks.makeCoaddTempExp.MakeWarpTask
     config:
@@ -108,6 +109,7 @@ subsets:
       - transformSourceTable
       - consolidateSourceTable
       - consolidateVisitSummary
+      - makeCcdVisitTable
     description: >
       Set of tasks for complete single frame processing. Analogous to
       SingleFrameDriver.

@@ -22,6 +22,7 @@
 import functools
 import pandas as pd
 from collections import defaultdict
+import numpy as np
 
 import lsst.geom
 import lsst.pex.config as pexConfig
@@ -32,7 +33,7 @@ import lsst.afw.table as afwTable
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
 from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
-from lsst.daf.butler import DeferredDatasetHandle
+from lsst.daf.butler import DeferredDatasetHandle, DataCoordinate
 
 from .parquetTable import ParquetTable
 from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
@@ -1299,3 +1300,93 @@ class ConsolidateSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
         """No config to write.
         """
         pass
+
+
+class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
+                                   dimensions=("instrument",),
+                                   defaultTemplates={}):
+    visitSummaryRefs = pipeBase.connectionTypes.Input(
+        doc="Data references for per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
+        name="visitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
+    outputCatalog = connectionTypes.Output(
+        doc="CCD and Visit metadata table",
+        name="CcdVisitTable",
+        storageClass="DataFrame",
+        dimensions=("instrument",)
+    )
+
+
+class MakeCcdVisitTableConfig(pipeBase.PipelineTaskConfig,
+                              pipelineConnections=MakeCcdVisitTableConnections):
+    pass
+
+
+class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
+    """Produce a `ccdVisitTable` from the `visitSummary` exposure catalogs.
+    """
+    _DefaultName = 'makeCcdVisitTable'
+    ConfigClass = MakeCcdVisitTableConfig
+
+    def run(self, visitSummaryRefs):
+        """ Make a table of ccd information from the `visitSummary` catalogs.
+
+        Parameters
+        ----------
+        visitSummaryRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            List of DeferredDatasetHandles pointing to exposure catalogs with
+            per-detector summary information.
+        Returns
+        -------
+        result : `lsst.pipe.Base.Struct`
+            Results struct with attribute:
+                - `outputCatalog`
+                    Catalog of ccd and visit information.
+        """
+        ccdEntries = []
+        for visitSummaryRef in visitSummaryRefs:
+            visitSummary = visitSummaryRef.get()
+            visitInfo = visitSummary[0].getVisitInfo()
+
+            ccdEntry = {}
+            summaryTable = visitSummary.asAstropy()
+            selectColumns = ['id', 'visit', 'physical_filter', 'ra', 'decl', 'zenithDistance', 'zeroPoint',
+                             'psfSigma', 'skyBg', 'skyNoise']
+            ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')
+            ccdEntry = ccdEntry.rename(columns={"physical_filter": "filterName", "visit": "visitId"})
+
+            dataIds = [DataCoordinate.standardize(visitSummaryRef.dataId, detector=id) for id in
+                       summaryTable['id']]
+            packer = visitSummaryRef.dataId.universe.makePacker('visit_detector', visitSummaryRef.dataId)
+            ccdVisitIds = [packer.pack(dataId) for dataId in dataIds]
+            ccdEntry['ccdVisitId'] = ccdVisitIds
+
+            pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() for vR in visitSummary])
+            ccdEntry["seeing"] = visitSummary['psfSigma'] * np.sqrt(8 * np.log(2)) * pixToArcseconds
+
+            ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
+            ccdEntry["expMidpt"] = visitInfo.getDate().toPython()
+            expTime = visitInfo.getExposureTime()
+            ccdEntry['expTime'] = expTime
+            ccdEntry["obsStart"] = ccdEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
+            ccdEntry['darkTime'] = visitInfo.getDarkTime()
+            ccdEntry['xSize'] = summaryTable['bbox_max_x'] - summaryTable['bbox_min_x']
+            ccdEntry['ySize'] = summaryTable['bbox_max_y'] - summaryTable['bbox_min_y']
+            ccdEntry['llcra'] = summaryTable['raCorners'][:, 0]
+            ccdEntry['llcdec'] = summaryTable['decCorners'][:, 0]
+            ccdEntry['ulcra'] = summaryTable['raCorners'][:, 1]
+            ccdEntry['ulcdec'] = summaryTable['decCorners'][:, 1]
+            ccdEntry['urcra'] = summaryTable['raCorners'][:, 2]
+            ccdEntry['urcdec'] = summaryTable['decCorners'][:, 2]
+            ccdEntry['lrcra'] = summaryTable['raCorners'][:, 3]
+            ccdEntry['lrcdec'] = summaryTable['decCorners'][:, 3]
+            # TODO: DM-30618, Add raftName, nExposures, ccdTemp, binX, binY, and flags,
+            # and decide if WCS, and llcx, llcy, ulcx, ulcy, etc. values are actually wanted.
+            ccdEntries.append(ccdEntry)
+
+        outputCatalog = pd.concat(ccdEntries)
+        return pipeBase.Struct(outputCatalog=outputCatalog)
