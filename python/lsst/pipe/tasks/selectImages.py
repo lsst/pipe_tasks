@@ -764,7 +764,7 @@ class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         doc="At least this number of visits selected and supercedes quantile. For example, if 10 visits "
             "cover this patch, qMin=0.33, and nVisitsMin=5, the best 5 visits will be selected.",
         dtype=int,
-        default=3,
+        default=6,
     )
     doConfirmOverlap = pexConfig.Field(
         dtype=bool,
