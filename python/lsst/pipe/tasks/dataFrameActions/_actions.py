@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = ("SingleColumnAction", "MultiColumnAction", "CoordColumn", "MagColumnDN", "SumColumns", "AddColumn",
-           "DivideColumns", "SubtractColumns", "MultiplyColumns",)
+           "DivideColumns", "SubtractColumns", "MultiplyColumns", "MagColumnNanoJansky",)
 
 from typing import Iterable
 
@@ -54,6 +54,16 @@ class MagColumnDN(SingleColumnAction):
             np.warnings.filterwarnings('ignore', r'invalid value encountered')
             np.warnings.filterwarnings('ignore', r'divide by zero')
             return -2.5 * np.log10(df[self.column] / fluxMag0)
+
+
+class MagColumnNanoJansky(SingleColumnAction):
+
+    def __call__(self, df: pd.DataFrame, **kwargs):
+
+        with np.warnings.catch_warnings():
+            np.warnings.filterwarnings('ignore', r'invalid value encountered')
+            np.warnings.filterwarnings('ignore', r'divide by zero')
+            return -2.5 * np.log10((df[self.column] * 1e-9) / 3631.0)
 
 
 class NanoJansky(SingleColumnAction):

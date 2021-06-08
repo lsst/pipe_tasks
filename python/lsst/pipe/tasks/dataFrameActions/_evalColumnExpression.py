@@ -26,7 +26,7 @@ __all__ = ("makeColumnExpressionAction", )
 import ast
 import operator as op
 
-from typing import Mapping, MutableMapping, Set, Type, Union, Optional, Any
+from typing import Mapping, MutableMapping, Set, Type, Union, Optional, Any, Iterable
 
 from numpy import log10 as log
 from numpy import (cos, sin, cosh, sinh)
@@ -114,7 +114,12 @@ def makeColumnExpressionAction(className: str, expr: str,
         parser = ExpressionParser(**values_map)
         return parser.visit(node.body)
 
-    dct: MutableMapping[str, Any] = {"__call__": __call__}
+    # create the function to look up the columns for the dynamically created action
+    def columns(self) -> Iterable[str]:
+        for name in fields:
+            yield from getattr(self, name).columns
+
+    dct: MutableMapping[str, Any] = {"__call__": __call__, "columns": property(columns)}
     if docstring is not None:
         dct['__doc__'] = docstring
     dct.update(**fields)
