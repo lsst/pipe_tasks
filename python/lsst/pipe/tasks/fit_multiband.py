@@ -111,21 +111,33 @@ class MultibandFitConnections(
         storageClass="SourceCatalog"
     )
 
-    def adjustQuantum(self, datasetRefMap):
+    def adjustQuantum(self, inputs, label, dataId):
         """Validates the `lsst.daf.butler.DatasetRef` bands against the
         subtask's list of bands to fit and drops unnecessary bands.
 
         Parameters
         ----------
-        datasetRefMap : `NamedKeyDict`
-            Mapping from dataset type to a `set` of
-            `lsst.daf.butler.DatasetRef` objects
+        inputs : `Iterable` of `tuple`
+            Three-element tuples, each a connection name, the connection
+            instance, and a `frozenset` of associated
+            `lsst.daf.butler.DatasetRef` objects, for all input and
+            prerequisite input connections.  Guaranteed to support multi-pass
+            iteration.
+        label : `str`
+            Label for this task in the pipeline (should be used in all
+            diagnostic messages).
+        dataId : `lsst.daf.butler.DataCoordinate`
+            Data ID for this quantum in the pipeline (should be used in all
+            diagnostic messages).
 
         Returns
         -------
-        datasetRefMap : `NamedKeyDict`
-            Modified mapping of input with possibly adjusted
-            `lsst.daf.butler.DatasetRef` objects.
+        adjusted : `Iterable` of `tuple`
+            Iterable of tuples of the same form as ``inputs``, with adjusted
+            sets of `lsst.daf.butler.DatasetRef` objects (datasets may be
+            removed, but not added).  Connections not returned at all will be
+            considered to be unchanged.  May include output connections as
+            well as input connections.
 
         Raises
         ------
@@ -134,7 +146,13 @@ class MultibandFitConnections(
             set, or if the band set to fit is not a subset of the data bands.
 
         """
-        datasetRefMap = super().adjustQuantum(datasetRefMap)
+        inputs_by_name = {name: (connection, refs) for name, connection, refs in inputs}
+        adjustments_by_name = {
+            name: (connection, refs)
+            for name, connection, refs in super().adjustQuantum(inputs, label, dataId)
+        }
+        inputs_by_name.update(adjustments_by_name)
+
         # Check which bands are going to be fit
         bands_fit, bands_read_only = self.config.get_band_sets()
         bands_needed = bands_fit.union(bands_read_only)
@@ -142,16 +160,16 @@ class MultibandFitConnections(
         bands_data = None
         bands_extra = set()
 
-        for type_d, ref_d in datasetRefMap.items():
+        for connection_name, connection, dataset_refs in inputs:
             # Datasets without bands in their dimensions should be fine
-            if 'band' in type_d.dimensions:
-                bands_set = {dref.dataId['band'] for dref in ref_d}
+            if 'band' in connection.dimensions:
+                bands_set = {dref.dataId['band'] for dref in dataset_refs}
                 if bands_data is None:
                     bands_data = bands_set
                     if bands_needed != bands_data:
                         if not bands_needed.issubset(bands_data):
                             raise ValueError(
-                                f'Datarefs={ref_d} have data with bands in the set={bands_set},'
+                                f'Datarefs={dataset_refs} have data with bands in the set={bands_set},'
                                 f'which is not a subset of the required bands={bands_needed} defined by '
                                 f'{self.config.__class__}.fit_multiband='
                                 f'{self.config.fit_multiband._value.__class__}\'s attributes'
@@ -162,14 +180,16 @@ class MultibandFitConnections(
                             bands_extra = bands_data.difference(bands_needed)
                 elif bands_set != bands_data:
                     raise ValueError(
-                        f'Datarefs={ref_d} have data with bands in the set={bands_set}'
+                        f'Datarefs={dataset_refs} have data with bands in the set={bands_set}'
                         f' which differs from the previous={bands_data}); bandsets must be identical.'
                     )
                 if bands_extra:
-                    for dref in ref_d:
-                        if dref.dataId['band'] in bands_extra:
-                            ref_d.remove(dref)
-        return datasetRefMap
+                    adjusted_refs = {ref for ref in dataset_refs if ref.dataId['band'] not in bands_extra}
+                    adjustments_by_name[connection_name] = (inputs_by_name, adjusted_refs)
+        return (
+            (connection_name, connection, refs)
+            for connection_name, (connection, refs) in adjustments_by_name.items()
+        )
 
 
 class MultibandFitSubConfig(pexConfig.Config):
