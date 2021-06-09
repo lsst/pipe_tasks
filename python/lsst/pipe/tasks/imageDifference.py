@@ -522,12 +522,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         )
 
         if templateStruct.area/inputs['exposure'].getBBox().getArea() < self.config.requiredTemplateFraction:
-            # TO DO DM-30649: when available, use exit code for expected failures
-            # In the meantime, raise to exit and register as a failure
             message = "Insufficient Template Coverage. (%.1f%% < %.1f%%) Not attempting subtraction." % (
                 100*templateStruct.area/inputs['exposure'].getBBox().getArea(),
                 100*self.config.requiredTemplateFraction)
-            raise pipeBase.TaskError("Expected Failure: %s" % (message))
+            raise pipeBase.NoWorkFound(message)
         else:
             outputs = self.run(exposure=inputs['exposure'],
                                templateExposure=templateStruct.exposure,
