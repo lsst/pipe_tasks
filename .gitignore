@@ -24,3 +24,4 @@ ups/*.cfgc
 testCoaddInputs-data
 _build.*
 bin
+.vscode/

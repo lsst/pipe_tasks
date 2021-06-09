@@ -175,103 +175,14 @@ class InsertFakesConnections(PipelineTaskConnections,
 class InsertFakesConfig(PipelineTaskConfig,
                         pipelineConnections=InsertFakesConnections):
     """Config for inserting fake sources
-
-    Notes
-    -----
-    The default column names are those from the University of Washington sims database.
     """
 
-    raColName = pexConfig.Field(
-        doc="RA column name used in the fake source catalog.",
-        dtype=str,
-        default="raJ2000",
-    )
-
-    decColName = pexConfig.Field(
-        doc="Dec. column name used in the fake source catalog.",
-        dtype=str,
-        default="decJ2000",
-    )
+    # Unchanged
 
     doCleanCat = pexConfig.Field(
         doc="If true removes bad sources from the catalog.",
         dtype=bool,
         default=True,
-    )
-
-    diskHLR = pexConfig.Field(
-        doc="Column name for the disk half light radius used in the fake source catalog.",
-        dtype=str,
-        default="DiskHalfLightRadius",
-    )
-
-    bulgeHLR = pexConfig.Field(
-        doc="Column name for the bulge half light radius used in the fake source catalog.",
-        dtype=str,
-        default="BulgeHalfLightRadius",
-    )
-
-    magVar = pexConfig.Field(
-        doc="The column name for the magnitude calculated taking variability into account. In the format "
-            "``filter name``magVar, e.g. imagVar for the magnitude in the i band.",
-        dtype=str,
-        default="%smagVar",
-    )
-
-    nDisk = pexConfig.Field(
-        doc="The column name for the sersic index of the disk component used in the fake source catalog.",
-        dtype=str,
-        default="disk_n",
-    )
-
-    nBulge = pexConfig.Field(
-        doc="The column name for the sersic index of the bulge component used in the fake source catalog.",
-        dtype=str,
-        default="bulge_n",
-    )
-
-    aDisk = pexConfig.Field(
-        doc="The column name for the semi major axis length of the disk component used in the fake source"
-            "catalog.",
-        dtype=str,
-        default="a_d",
-    )
-
-    aBulge = pexConfig.Field(
-        doc="The column name for the semi major axis length of the bulge component.",
-        dtype=str,
-        default="a_b",
-    )
-
-    bDisk = pexConfig.Field(
-        doc="The column name for the semi minor axis length of the disk component.",
-        dtype=str,
-        default="b_d",
-    )
-
-    bBulge = pexConfig.Field(
-        doc="The column name for the semi minor axis length of the bulge component used in the fake source "
-            "catalog.",
-        dtype=str,
-        default="b_b",
-    )
-
-    paDisk = pexConfig.Field(
-        doc="The column name for the PA of the disk component used in the fake source catalog.",
-        dtype=str,
-        default="pa_disk",
-    )
-
-    paBulge = pexConfig.Field(
-        doc="The column name for the PA of the bulge component used in the fake source catalog.",
-        dtype=str,
-        default="pa_bulge",
-    )
-
-    sourceType = pexConfig.Field(
-        doc="The column name for the source type used in the fake source catalog.",
-        dtype=str,
-        default="sourceType",
     )
 
     fakeType = pexConfig.Field(
@@ -303,13 +214,6 @@ class InsertFakesConfig(PipelineTaskConfig,
         default=False
     )
 
-    sourceSelectionColName = pexConfig.Field(
-        doc="The name of the column in the input fakes catalogue to be used to determine which sources to"
-            "add, default is none and when this is used all sources are added.",
-        dtype=str,
-        default="templateSource"
-    )
-
     insertImages = pexConfig.Field(
         doc="Insert images directly? True or False.",
         dtype=bool,
@@ -327,6 +231,232 @@ class InsertFakesConfig(PipelineTaskConfig,
         "falling within the image+buffer region will be considered for fake source injection.",
         dtype=int,
         default=100,
+    )
+
+    sourceType = pexConfig.Field(
+        doc="The column name for the source type used in the fake source catalog.",
+        dtype=str,
+        default="sourceType",
+    )
+
+    # New source catalog config variables
+
+    ra_col = pexConfig.Field(
+        doc="Source catalog column name for RA (in radians).",
+        dtype=str,
+        default="ra",
+    )
+
+    dec_col = pexConfig.Field(
+        doc="Source catalog column name for dec (in radians).",
+        dtype=str,
+        default="dec",
+    )
+
+    bulge_semimajor_col = pexConfig.Field(
+        doc="Source catalog column name for the semimajor axis (in arcseconds) "
+            "of the bulge half-light ellipse.",
+        dtype=str,
+        default="bulge_semimajor",
+    )
+
+    bulge_axis_ratio_col = pexConfig.Field(
+        doc="Source catalog column name for the axis ratio of the bulge "
+            "half-light ellipse.",
+        dtype=str,
+        default="bulge_axis_ratio",
+    )
+
+    bulge_pa_col = pexConfig.Field(
+        doc="Source catalog column name for the position angle (measured from "
+            "North through East in degrees) of the semimajor axis of the bulge "
+            "half-light ellipse.",
+        dtype=str,
+        default="bulge_pa",
+    )
+
+    bulge_n_col = pexConfig.Field(
+        doc="Source catalog column name for the Sersic index of the bulge.",
+        dtype=str,
+        default="bulge_n",
+    )
+
+    disk_semimajor_col = pexConfig.Field(
+        doc="Source catalog column name for the semimajor axis (in arcseconds) "
+            "of the disk half-light ellipse.",
+        dtype=str,
+        default="disk_semimajor",
+    )
+
+    disk_axis_ratio_col = pexConfig.Field(
+        doc="Source catalog column name for the axis ratio of the disk "
+            "half-light ellipse.",
+        dtype=str,
+        default="disk_axis_ratio",
+    )
+
+    disk_pa_col = pexConfig.Field(
+        doc="Source catalog column name for the position angle (measured from "
+            "North through East in degrees) of the semimajor axis of the disk "
+            "half-light ellipse.",
+        dtype=str,
+        default="disk_pa",
+    )
+
+    disk_n_col = pexConfig.Field(
+        doc="Source catalog column name for the Sersic index of the disk.",
+        dtype=str,
+        default="disk_n",
+    )
+
+    bulge_disk_flux_ratio_col = pexConfig.Field(
+        doc="Source catalog column name for the bulge/disk flux ratio.",
+        dtype=str,
+        default="bulge_disk_flux_ratio",
+    )
+
+    mag_col = pexConfig.Field(
+        doc="Source catalog column name template for magnitudes, in the format "
+            "``filter name``_mag_col.  E.g., if this config variable is set to "
+            "``%s_mag``, then the i-band magnitude will be searched for in the "
+            "``i_mag`` column of the source catalog.",
+        dtype=str,
+        default="%s_mag"
+    )
+
+    select_col = pexConfig.Field(
+        doc="Source catalog column name to be used to select which sources to "
+            "add.",
+        dtype=str,
+        default="select",
+    )
+
+    # Deprecated config variables
+
+    raColName = pexConfig.Field(
+        doc="RA column name used in the fake source catalog.",
+        dtype=str,
+        default="raJ2000",
+        deprecated="Use `ra_col` instead."
+    )
+
+    decColName = pexConfig.Field(
+        doc="Dec. column name used in the fake source catalog.",
+        dtype=str,
+        default="decJ2000",
+        deprecated="Use `dec_col` instead."
+    )
+
+    diskHLR = pexConfig.Field(
+        doc="Column name for the disk half light radius used in the fake source catalog.",
+        dtype=str,
+        default="DiskHalfLightRadius",
+        deprecated=(
+            "Use `disk_semimajor_col`, `disk_axis_ratio_col`, and `disk_pa_col`"
+            " to specify disk half-light ellipse."
+        )
+    )
+
+    aDisk = pexConfig.Field(
+        doc="The column name for the semi major axis length of the disk component used in the fake source"
+            "catalog.",
+        dtype=str,
+        default="a_d",
+        deprecated=(
+            "Use `disk_semimajor_col`, `disk_axis_ratio_col`, and `disk_pa_col`"
+            " to specify disk half-light ellipse."
+        )
+    )
+
+    bDisk = pexConfig.Field(
+        doc="The column name for the semi minor axis length of the disk component.",
+        dtype=str,
+        default="b_d",
+        deprecated=(
+            "Use `disk_semimajor_col`, `disk_axis_ratio_col`, and `disk_pa_col`"
+            " to specify disk half-light ellipse."
+        )
+    )
+
+    paDisk = pexConfig.Field(
+        doc="The column name for the PA of the disk component used in the fake source catalog.",
+        dtype=str,
+        default="pa_disk",
+        deprecated=(
+            "Use `disk_semimajor_col`, `disk_axis_ratio_col`, and `disk_pa_col`"
+            " to specify disk half-light ellipse."
+        )
+    )
+
+    nDisk = pexConfig.Field(
+        doc="The column name for the sersic index of the disk component used in the fake source catalog.",
+        dtype=str,
+        default="disk_n",
+        deprecated="Use `disk_n` instead."
+    )
+
+    bulgeHLR = pexConfig.Field(
+        doc="Column name for the bulge half light radius used in the fake source catalog.",
+        dtype=str,
+        default="BulgeHalfLightRadius",
+        deprecated=(
+            "Use `bulge_semimajor_col`, `bulge_axis_ratio_col`, and "
+            "`bulge_pa_col` to specify disk half-light ellipse."
+        )
+    )
+
+    aBulge = pexConfig.Field(
+        doc="The column name for the semi major axis length of the bulge component.",
+        dtype=str,
+        default="a_b",
+        deprecated=(
+            "Use `bulge_semimajor_col`, `bulge_axis_ratio_col`, and "
+            "`bulge_pa_col` to specify disk half-light ellipse."
+        )
+    )
+
+    bBulge = pexConfig.Field(
+        doc="The column name for the semi minor axis length of the bulge component used in the fake source "
+            "catalog.",
+        dtype=str,
+        default="b_b",
+        deprecated=(
+            "Use `bulge_semimajor_col`, `bulge_axis_ratio_col`, and "
+            "`bulge_pa_col` to specify disk half-light ellipse."
+        )
+    )
+
+    paBulge = pexConfig.Field(
+        doc="The column name for the PA of the bulge component used in the fake source catalog.",
+        dtype=str,
+        default="pa_bulge",
+        deprecated=(
+            "Use `bulge_semimajor_col`, `bulge_axis_ratio_col`, and "
+            "`bulge_pa_col` to specify disk half-light ellipse."
+        )
+    )
+
+    nBulge = pexConfig.Field(
+        doc="The column name for the sersic index of the bulge component used in the fake source catalog.",
+        dtype=str,
+        default="bulge_n",
+        deprecated="Use `bulge_n` instead."
+    )
+
+    magVar = pexConfig.Field(
+        doc="The column name for the magnitude calculated taking variability into account. In the format "
+            "``filter name``magVar, e.g. imagVar for the magnitude in the i band.",
+        dtype=str,
+        default="%smagVar",
+        deprecated="Use `mag_col` instead."
+    )
+
+    sourceSelectionColName = pexConfig.Field(
+        doc="The name of the column in the input fakes catalogue to be used to determine which sources to"
+            "add, default is none and when this is used all sources are added.",
+        dtype=str,
+        default="templateSource",
+        deprecated="Use `select_col` instead."
     )
 
 
@@ -448,6 +578,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         image.setWcs(wcs)
         image.setPhotoCalib(photoCalib)
 
+        band = image.getFilterLabel().bandLabel
+        fakeCat = self._standardizeColumns(fakeCat, band)
+
         fakeCat = self.addPixCoords(fakeCat, image)
         fakeCat = self.trimFakeCat(fakeCat, image)
 
@@ -486,6 +619,101 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return resultStruct
 
+    def _standardizeColumns(self, fakeCat, band):
+        """Use config variables to 'standardize' the expected columns and column
+        names in the input catalog.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.core.frame.DataFrame`
+            The catalog of fake sources to be input
+        band : `str`
+            Label for the current band being processed.
+
+        Returns
+        -------
+        outCat : `pandas.core.frame.DataFrame`
+            The standardized catalog of fake sources
+        """
+        cfg = self.config
+        replace_dict = {}
+
+        # Prefer new config variables over deprecated config variables.
+        # The following are fairly simple to handle as they're just column name
+        # changes.
+        for new_name, depr_name, std_name in [
+            (cfg.ra_col, cfg.raColName, 'ra'),
+            (cfg.dec_col, cfg.decColName, 'dec'),
+            (cfg.bulge_n_col, cfg.nBulge, 'bulge_n'),
+            (cfg.bulge_pa_col, cfg.paBulge, 'bulge_pa'),
+            (cfg.disk_n_col, cfg.nDisk, 'disk_n'),
+            (cfg.disk_pa_col, cfg.paDisk, 'disk_pa'),
+            (cfg.mag_col%band, cfg.magVar%band, 'mag'),
+            (cfg.select_col, cfg.sourceSelectionColName, 'select')
+        ]:
+            # Only standardize "select" column if doSubSelectSources is True
+            if not cfg.doSubSelectSources and std_name == 'select':
+                continue
+            if new_name in fakeCat.columns:
+                replace_dict[new_name] = std_name
+            elif depr_name in fakeCat.columns:
+                replace_dict[depr_name] = std_name
+            else:
+                raise ValueError(f"Could not determine column for {std_name}.")
+        fakeCat = fakeCat.rename(columns=replace_dict, copy=False)
+
+        # Handling the half-light radius and axis-ratio are trickier, since we
+        # moved from expecting (HLR, a, b) to expecting (semimajor, axis_ratio).
+        # Just handle these manually.
+        if (
+            cfg.bulge_semimajor_col in fakeCat.columns
+            and cfg.bulge_axis_ratio_col in fakeCat.columns
+        ):
+            fakeCat = fakeCat.rename(
+                columns={
+                    cfg.bulge_semimajor_col: 'bulge_semimajor',
+                    cfg.bulge_axis_ratio_col: 'bulge_axis_ratio',
+                    cfg.disk_semimajor_col: 'disk_semimajor',
+                    cfg.disk_axis_ratio_col: 'disk_axis_ratio',
+                },
+                copy=False
+            )
+        elif (
+            cfg.bulgeHLR in fakeCat.columns
+            and cfg.aBulge in fakeCat.columns
+            and cfg.bBulge in fakeCat.columns
+        ):
+            fakeCat['bulge_axis_ratio'] = (
+                fakeCat[cfg.bBulge]/fakeCat[cfg.aBulge]
+            )
+            fakeCat['bulge_semimajor'] = (
+                fakeCat[cfg.bulgeHLR]/np.sqrt(fakeCat['bulge_axis_ratio'])
+            )
+            fakeCat['disk_axis_ratio'] = (
+                fakeCat[cfg.bDisk]/fakeCat[cfg.aDisk]
+            )
+            fakeCat['disk_semimajor'] = (
+                fakeCat[cfg.diskHLR]/np.sqrt(fakeCat['disk_axis_ratio'])
+            )
+        else:
+            raise ValueError(
+                "Could not determine columns for half-light radius and axis "
+                "ratio."
+            )
+
+        # Process the bulge/disk flux ratio if possible.
+        if cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
+            fakeCat = fakeCat.rename(
+                columns={
+                    cfg.bulge_disk_flux_ratio_col: 'bulge_disk_flux_ratio'
+                },
+                copy=False
+            )
+        else:
+            fakeCat['bulge_disk_flux_ratio'] = 1.0
+
+        return fakeCat
+
     def _generateGSObjectsFromCatalog(self, exposure, fakeCat, galCheckVal, starCheckVal):
         """Process catalog to generate `galsim.GSObject` s.
 
@@ -505,34 +733,34 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         gsObjects : `generator`
             A generator of tuples of `lsst.geom.SpherePoint` and `galsim.GSObject`.
         """
-        band = exposure.getFilterLabel().bandLabel
         wcs = exposure.getWcs()
         photoCalib = exposure.getPhotoCalib()
 
         self.log.info(f"Making {len(fakeCat)} objects for insertion")
 
         for (index, row) in fakeCat.iterrows():
-            ra = row[self.config.raColName]
-            dec = row[self.config.decColName]
+            ra = row['ra']
+            dec = row['dec']
             skyCoord = SpherePoint(ra, dec, radians)
             xy = wcs.skyToPixel(skyCoord)
 
             try:
-                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+                flux = photoCalib.magnitudeToInstFlux(row['mag'], xy)
             except LogicError:
                 continue
 
             sourceType = row[self.config.sourceType]
             if sourceType == galCheckVal:
-                bulge = galsim.Sersic(n=row[self.config.nBulge], half_light_radius=row[self.config.bulgeHLR])
-                axisRatioBulge = row[self.config.bBulge]/row[self.config.aBulge]
-                bulge = bulge.shear(q=axisRatioBulge, beta=((90 - row[self.config.paBulge])*galsim.degrees))
+                # GalSim convention: HLR = sqrt(a * b) = a * sqrt(b / a)
+                bulge_gs_HLR = row['bulge_semimajor']*np.sqrt(row['bulge_axis_ratio'])
+                bulge = galsim.Sersic(n=row['bulge_n'], half_light_radius=bulge_gs_HLR)
+                bulge = bulge.shear(q=row['bulge_axis_ratio'], beta=((90 - row['bulge_pa'])*galsim.degrees))
 
-                disk = galsim.Sersic(n=row[self.config.nDisk], half_light_radius=row[self.config.diskHLR])
-                axisRatioDisk = row[self.config.bDisk]/row[self.config.aDisk]
-                disk = disk.shear(q=axisRatioDisk, beta=((90 - row[self.config.paDisk])*galsim.degrees))
+                disk_gs_HLR = row['disk_semimajor']*np.sqrt(row['disk_axis_ratio'])
+                disk = galsim.Sersic(n=row['disk_n'], half_light_radius=disk_gs_HLR)
+                disk = disk.shear(q=row['disk_axis_ratio'], beta=((90 - row['disk_pa'])*galsim.degrees))
 
-                gal = bulge + disk
+                gal = bulge*row['bulge_disk_flux_ratio'] + disk
                 gal = gal.withFlux(flux)
 
                 yield skyCoord, gal
@@ -565,13 +793,13 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         self.log.info(f"Processing {len(fakeCat)} fake images")
 
         for (index, row) in fakeCat.iterrows():
-            ra = row[self.config.raColName]
-            dec = row[self.config.decColName]
+            ra = row['ra']
+            dec = row['dec']
             skyCoord = SpherePoint(ra, dec, radians)
             xy = wcs.skyToPixel(skyCoord)
 
             try:
-                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+                flux = photoCalib.magnitudeToInstFlux(row['mag'], xy)
             except LogicError:
                 continue
 
@@ -641,7 +869,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         for (imFile, sourceType, mag, x, y) in zip(fakeCat[band + "imFilename"].array,
                                                    fakeCat["sourceType"].array,
-                                                   fakeCat[self.config.magVar % band].array,
+                                                   fakeCat['mag'].array,
                                                    fakeCat["x"].array, fakeCat["y"].array):
 
             im = afwImage.ImageF.readFits(imFile)
@@ -701,8 +929,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         fakeCat : `pandas.core.frame.DataFrame`
         """
         wcs = image.getWcs()
-        ras = fakeCat[self.config.raColName].values
-        decs = fakeCat[self.config.decColName].values
+        ras = fakeCat['ra'].values
+        decs = fakeCat['dec'].values
         xs, ys = wcs.skyToPixelArray(ras, decs)
         fakeCat["x"] = xs
         fakeCat["y"] = ys
@@ -789,19 +1017,20 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 continue
 
             try:
-                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+                flux = photoCalib.magnitudeToInstFlux(row['mag'], xy)
             except LogicError:
                 flux = 0
 
-            bulge = galsim.Sersic(row[self.config.nBulge], half_light_radius=row[self.config.bulgeHLR])
-            axisRatioBulge = row[self.config.bBulge]/row[self.config.aBulge]
-            bulge = bulge.shear(q=axisRatioBulge, beta=((90 - row[self.config.paBulge])*galsim.degrees))
+            # GalSim convention: HLR = sqrt(a * b) = a * sqrt(b / a)
+            bulge_gs_HLR = row['bulge_semimajor']*np.sqrt(row['bulge_axis_ratio'])
+            bulge = galsim.Sersic(n=row['bulge_n'], half_light_radius=bulge_gs_HLR)
+            bulge = bulge.shear(q=row['bulge_axis_ratio'], beta=((90 - row['bulge_pa'])*galsim.degrees))
 
-            disk = galsim.Sersic(row[self.config.nDisk], half_light_radius=row[self.config.diskHLR])
-            axisRatioDisk = row[self.config.bDisk]/row[self.config.aDisk]
-            disk = disk.shear(q=axisRatioDisk, beta=((90 - row[self.config.paDisk])*galsim.degrees))
+            disk_gs_HLR = row['disk_semimajor']*np.sqrt(row['disk_axis_ratio'])
+            disk = galsim.Sersic(n=row['disk_n'], half_light_radius=disk_gs_HLR)
+            disk = disk.shear(q=row['disk_axis_ratio'], beta=((90 - row['disk_pa'])*galsim.degrees))
 
-            gal = disk + bulge
+            gal = bulge*row['bulge_disk_flux_ratio'] + disk
             gal = gal.withFlux(flux)
 
             psfIm = galsim.InterpolatedImage(galsim.Image(psfKernel), scale=pixelScale)
@@ -861,7 +1090,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 continue
 
             try:
-                flux = photoCalib.magnitudeToInstFlux(row[self.config.magVar % band], xy)
+                flux = photoCalib.magnitudeToInstFlux(row['mag'], xy)
             except LogicError:
                 flux = 0
 
@@ -884,14 +1113,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         -------
         fakeCat : `pandas.core.frame.DataFrame`
                     The input catalog of fake sources but with the bad objects removed
-
-        Notes
-        -----
-        If the config option sourceSelectionColName is set then only objects with this column set to True
-        will be added.
         """
 
-        rowsToKeep = (((fakeCat[self.config.bulgeHLR] != 0.0) & (fakeCat[self.config.diskHLR] != 0.0))
+        rowsToKeep = (((fakeCat['bulge_semimajor'] != 0.0) & (fakeCat['disk_semimajor'] != 0.0))
                       | (fakeCat[self.config.sourceType] == starCheckVal))
         numRowsNotUsed = len(fakeCat) - len(np.where(rowsToKeep)[0])
         self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk" % numRowsNotUsed)
@@ -899,8 +1123,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         minN = galsim.Sersic._minimum_n
         maxN = galsim.Sersic._maximum_n
-        rowsWithGoodSersic = (((fakeCat[self.config.nBulge] >= minN) & (fakeCat[self.config.nBulge] <= maxN)
-                              & (fakeCat[self.config.nDisk] >= minN) & (fakeCat[self.config.nDisk] <= maxN))
+        rowsWithGoodSersic = (((fakeCat['bulge_n'] >= minN) & (fakeCat['bulge_n'] <= maxN)
+                              & (fakeCat['disk_n'] >= minN) & (fakeCat['disk_n'] <= maxN))
                               | (fakeCat[self.config.sourceType] == starCheckVal))
         numRowsNotUsed = len(fakeCat) - len(np.where(rowsWithGoodSersic)[0])
         self.log.info("Removing %d rows of galaxies with nBulge or nDisk outside of %0.2f <= n <= %0.2f" %
@@ -908,14 +1132,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         fakeCat = fakeCat[rowsWithGoodSersic]
 
         if self.config.doSubSelectSources:
-            try:
-                rowsSelected = (fakeCat[self.config.sourceSelectionColName])
-            except KeyError:
-                raise KeyError("Given column, %s, for source selection not found." %
-                               self.config.sourceSelectionColName)
-            numRowsNotUsed = len(fakeCat) - len(rowsSelected)
+            numRowsNotUsed = len(fakeCat) - len(fakeCat['select'])
             self.log.info("Removing %d rows which were not designated as template sources" % numRowsNotUsed)
-            fakeCat = fakeCat[rowsSelected]
+            fakeCat = fakeCat[fakeCat['select']]
 
         return fakeCat
 
