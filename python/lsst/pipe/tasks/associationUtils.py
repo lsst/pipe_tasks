@@ -5,6 +5,8 @@ import numpy as np
 http://github.com/LSSTDESC/dia_pipe
 """
 
+# Will update docs and the like in DM-30673
+
 
 def toIndex(nside, ra, dec):
     """Return healpix index given ra,dec in degrees"""

@@ -168,6 +168,7 @@ subsets:
       - imageDifference
       - transformDiaSourceCat
       - consolidateDiaSourceTable
+      - drpAssociation
       - forcedPhotDiffim
     description: Subset for running image differencing branch of the DRP pipeline
 

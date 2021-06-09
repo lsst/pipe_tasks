@@ -90,7 +90,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
     """
     ConfigClass = DrpAssociationPipeConfig
     _DefaultName = "drpAssociation"
-    RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -178,8 +177,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
             cutCat = cat[isInTractPatch]
             diaSourceHistory.append(cutCat)
-
-            # self.associator.addCatalog()
 
         diaSourceHistoryCat = pd.concat(diaSourceHistory)
         self.log.info("Found %i DiaSources overlapping patch %i, tract %i"

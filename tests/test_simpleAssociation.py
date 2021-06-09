@@ -42,8 +42,8 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         self.diaObjRas = np.linspace(45, 46, self.nDiaObjects)
         self.diaObjDecs = np.linspace(45, 46, self.nDiaObjects)
         # Copy a coord to get multiple matches.
-        self.diaObjRas[3] = self.diaObjRas[2] + 0.1 / 3600
-        self.diaObjDecs[3] = self.diaObjDecs[2] + 0.1 / 3600
+        self.diaObjRas[3] = self.diaObjRas[2] + 0.1/3600
+        self.diaObjDecs[3] = self.diaObjDecs[2] + 0.1/3600
         self.diaObjects = [
             simpleAssoc.createDiaObject(objId, ra, decl)
             for objId, ra, decl in zip(

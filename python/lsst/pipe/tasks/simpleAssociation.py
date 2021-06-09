@@ -54,9 +54,9 @@ class SimpleAssociationTask(pipeBase.Task):
     """Construct DiaObjects from a DataFrame of DIASources by spatially
     associating the sources.
 
-    Represents a simple, brute force algorithm matching DiaSources into
-    DiaObjects. Algorithm picks the nearest, first match DiaObject to
-    associate a source to.
+    Represents a simple, brute force algorithm, 2-way matching of DiaSources
+    into. DiaObjects. Algorithm picks the nearest, first match within the
+    matching radius of a DiaObject to associate a source to for simplicity.
     """
     ConfigClass = SimpleAssociationConfig
     _DefaultName = "simpleAssociation"
@@ -71,7 +71,8 @@ class SimpleAssociationTask(pipeBase.Task):
         Parameters
         ----------
         diaSources : `pandas.DataFrame`
-            DiaSources to spatially associate into DiaObjects
+            DiaSources grouped by CcdVisitId to spatially associate into
+            DiaObjects.
         tractPatchId : `int`
             Unique identifier for the tract patch.
         skymapBits : `int`
@@ -205,7 +206,8 @@ class SimpleAssociationTask(pipeBase.Task):
         diaSrc : `pandas.Series`
             Full unassociated DiaSource to create a DiaObject from.
         diaSources : `pandas.DataFrame`
-            DiaSource catalog to update information in.
+            DiaSource catalog to update information in. The catalog is
+            modified in place.
         ccdVisit : `int`
             Unique identifier of the ccdVisit where ``diaSrc`` was observed.
         diaSourceId : `int`
@@ -247,7 +249,7 @@ class SimpleAssociationTask(pipeBase.Task):
                        diaObjCat,
                        diaObjCoords,
                        healPixIndices):
-        """Create a new DiaObject and append its data.
+        """Update DiaObject and DiaSource values after an association.
 
         Parameters
         ----------
@@ -257,7 +259,8 @@ class SimpleAssociationTask(pipeBase.Task):
         diaSrc : `pandas.Series`
             Full unassociated DiaSource to create a DiaObject from.
         diaSources : `pandas.DataFrame`
-            DiaSource catalog to update information in.
+            DiaSource catalog to update information in. The catalog is
+            modified in place.
         ccdVisit : `int`
             Unique identifier of the ccdVisit where ``diaSrc`` was observed.
         diaSourceId : `int`
@@ -356,12 +359,5 @@ class SimpleAssociationTask(pipeBase.Task):
         new_dia_object = {"diaObjectId": objId,
                           "ra": ra,
                           "decl": decl,
-                          "nDiaSources": 1,
-                          "pmParallaxNdata": 0,
-                          "nearbyObj1": 0,
-                          "nearbyObj2": 0,
-                          "nearbyObj3": 0,
-                          "flags": 0}
-        for f in ["u", "g", "r", "i", "z", "y"]:
-            new_dia_object["%sPSFluxNdata" % f] = 0
+                          "nDiaSources": 1}
         return new_dia_object
