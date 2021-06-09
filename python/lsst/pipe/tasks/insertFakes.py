@@ -36,7 +36,7 @@ from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, Pipeli
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
-from lsst.geom import SpherePoint, radians, Box2D
+from lsst.geom import SpherePoint, radians, Box2D, Point2D
 
 __all__ = ["InsertFakesConfig", "InsertFakesTask"]
 
@@ -81,7 +81,31 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
         gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
 
-        psfArr = psf.computeKernelImage(pt).array
+        try:
+            psfArr = psf.computeKernelImage(pt).array
+        except InvalidParameterError:
+            # Try mapping to nearest point contained in bbox.
+            contained_pt = Point2D(
+                np.clip(pt.x, bbox.minX, bbox.maxX),
+                np.clip(pt.y, bbox.minY, bbox.maxY)
+            )
+            if pt == contained_pt:  # no difference, so skip immediately
+                if logger:
+                    logger.infof(
+                        "Cannot compute Psf for object at {}; skipping",
+                        pt
+                    )
+                continue
+            # otherwise, try again with new point
+            try:
+                psfArr = psf.computeKernelImage(contained_pt).array
+            except InvalidParameterError:
+                if logger:
+                    logger.infof(
+                        "Cannot compute Psf for object at {}; skipping",
+                        pt
+                    )
+                continue
         apCorr = psf.computeApertureFlux(calibFluxRadius)
         psfArr /= apCorr
         gsPSF = galsim.InterpolatedImage(galsim.Image(psfArr), wcs=gsWCS)
