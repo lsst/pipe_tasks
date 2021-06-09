@@ -27,10 +27,12 @@ import numpy as np
 import pandas as pd
 
 import lsst.geom as geom
+import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import BaseSkyMap
 
 from .coaddBase import makeSkyInfo
+from .simpleAssociation import SimpleAssociationTask
 
 __all__ = ["DrpAssociationPipeTask",
            "DrpAssociationPipeConfig",
@@ -76,7 +78,10 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
 class DrpAssociationPipeConfig(
         pipeBase.PipelineTaskConfig,
         pipelineConnections=DrpAssociationPipeConnections):
-    pass
+    associator = pexConfig.ConfigurableField(
+        target=SimpleAssociationTask,
+        doc="Task used to associate DiaSources with DiaObjects.",
+    )
 
 
 class DrpAssociationPipeTask(pipeBase.PipelineTask):
@@ -86,16 +91,31 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
     ConfigClass = DrpAssociationPipeConfig
     _DefaultName = "drpAssociation"
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.makeSubtask('associator')
+
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
         inputs["tractId"] = butlerQC.quantum.dataId["tract"]
         inputs["patchId"] = butlerQC.quantum.dataId["patch"]
+        tractPatchId, skymapBits = butlerQC.quantum.dataId.pack(
+            "tract_patch",
+            returnMaxBits=True)
+        inputs["tractPatchId"] = tractPatchId
+        inputs["skymapBits"] = skymapBits
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, diaSourceTables, skyMap, tractId, patchId):
+    def run(self,
+            diaSourceTables,
+            skyMap,
+            tractId,
+            patchId,
+            tractPatchId,
+            skymapBits):
         """Trim DiaSources to the current Patch and run association.
 
         Takes in the set of DiaSource catalogs that covers the current patch,
@@ -158,16 +178,20 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             cutCat = cat[isInTractPatch]
             diaSourceHistory.append(cutCat)
 
-            # self.associator.addCatalog()
-
         diaSourceHistoryCat = pd.concat(diaSourceHistory)
-        self.log.info("Found %i DiaSources overlaping patch %i, tract %i"
+        self.log.info("Found %i DiaSources overlapping patch %i, tract %i"
                       % (len(diaSourceHistoryCat), patchId, tractId))
 
+        assocResult = self.associator.run(diaSourceHistoryCat,
+                                          tractPatchId,
+                                          skymapBits)
+
+        self.log.info("Associated DiaSources into %i DiaObjects" %
+                      len(assocResult.diaObjects))
+
         return pipeBase.Struct(
-            diaObjectTable=pd.DataFrame(columns=["diaObjectId",
-                                                 "nDiaSources"]),
-            assocDiaSourceTable=diaSourceHistoryCat)
+            diaObjectTable=assocResult.diaObjects,
+            assocDiaSourceTable=assocResult.assocDiaSources)
 
     def _trimToPatch(self, cat, innerPatchBox, wcs):
         """Create generator testing if a set of DiaSources are in the
