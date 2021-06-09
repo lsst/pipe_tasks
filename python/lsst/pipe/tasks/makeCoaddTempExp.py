@@ -794,9 +794,9 @@ class MakeWarpTask(MakeCoaddTempExpTask):
                            ccdIdList=[ccdIdList[i] for i in goodIndices],
                            dataIdList=[dataIdList[i] for i in goodIndices],
                            skyInfo=skyInfo)
-        if self.config.makeDirect:
+        if self.config.makeDirect and results.exposures["direct"] is not None:
             butlerQC.put(results.exposures["direct"], outputRefs.direct)
-        if self.config.makePsfMatched:
+        if self.config.makePsfMatched and results.exposures["psfMatched"] is not None:
             butlerQC.put(results.exposures["psfMatched"], outputRefs.psfMatched)
 
     def filterInputs(self, indices, inputs):

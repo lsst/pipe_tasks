@@ -17,7 +17,6 @@ tasks:
     class: lsst.pipe.tasks.makeCoaddTempExp.MakeWarpTask
     config:
       makePsfMatched: true
-      doWriteEmptyWarps: true
   assembleCoadd:
     class: lsst.pipe.tasks.assembleCoadd.CompareWarpAssembleCoaddTask
     config:
