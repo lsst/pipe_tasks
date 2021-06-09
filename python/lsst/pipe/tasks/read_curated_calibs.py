@@ -1,5 +1,5 @@
 from lsst.meas.algorithms.simple_curve import Curve
-from lsst.ip.isr import (Linearizer, CrosstalkCalib, Defects)
+from lsst.ip.isr import (Linearizer, CrosstalkCalib, Defects, BrighterFatterKernel)
 
 import os
 import glob
@@ -26,7 +26,7 @@ def read_one_chip(root, chip_name, chip_id):
         The key is the validity start time as a `datetime` object.
     """
     factory_map = {'qe_curve': Curve, 'defects': Defects, 'linearizer': Linearizer,
-                   'crosstalk': CrosstalkCalib}
+                   'crosstalk': CrosstalkCalib, 'bfk': BrighterFatterKernel}
     files = []
     extensions = (".ecsv", ".yaml")
     for ext in extensions:
