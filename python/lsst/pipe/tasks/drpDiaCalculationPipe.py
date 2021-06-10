@@ -37,7 +37,6 @@ import lsst.pipe.base as pipeBase
 class DrpDiaCalculationPipeConnections(pipeBase.PipelineTaskConnections,
                                        dimensions=("tract", "patch", "skymap"),
                                        defaultTemplates={"coaddName": "deep",
-                                                         "warpTypeSuffix": "",
                                                          "fakesType": ""}):
     assocDiaSourceTable = pipeBase.connectionTypes.Input(
         doc="Catalog of DiaSources covering the patch and associated with a "
@@ -129,7 +128,8 @@ class DrpDiaCalculationPipeTask(pipeBase.PipelineTask):
                 DiaObjects with computed summary statistics based on their
                 associated DiaSource light curves. (`pandas.DataFrame`).
         """
-        if len(diaObjectTable) <=0 or len(assocDiaSourceTable) <= 0:
+        # Return empty dataFrame if no DiaObjects in this patch.
+        if len(diaObjectTable) <= 0 or len(assocDiaSourceTable) <= 0:
             return pipeBase.Struct(fullDiaObjectTable=pd.DataFrame())
         result = self.diaCalculation.run(
             diaObjectTable,

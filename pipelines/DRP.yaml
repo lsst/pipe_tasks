@@ -76,6 +76,13 @@ tasks:
       connections.diaSourceTables: goodSeeingDiff_diaSrcTable
       connections.assocDiaSourceTable: goodSeeingDiff_assocDiaSrcTable
       connections.diaObjectTable: goodSeeingDiff_diaObjTable
+  drpDiaCalculation:
+    class: lsst.pipe.tasks.drpDiaCalculationPipe.DrpDiaCalculationPipeTask
+    config:
+      connections.coaddName: goodSeeing
+      connections.assocDiaSourceTable: goodSeeingDiff_assocDiaSrcTable
+      connections.diaObjectTable: goodSeeingDiff_diaObjTable
+      connections.fullDiaObjectTable: goodSeeingDiff_fullDiaObjTable
   forcedPhotDiffim:
     class: lsst.meas.base.ForcedPhotCcdTask
     config:
@@ -172,6 +179,7 @@ subsets:
       - transformDiaSourceCat
       - consolidateDiaSourceTable
       - drpAssociation
+      - drpDiaCalculation
       - forcedPhotDiffim
     description: Subset for running image differencing branch of the DRP pipeline
 
@@ -182,3 +190,5 @@ contracts:
   - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
   - transformDiaSourceCat.connections.diaSourceTable == consolidateDiaSourceTable.connections.inputCatalogs
   - transformDiaSourceCat.connections.diaSourceTable == drpAssociation.connections.diaSourceTables
+  - drpAssociation.connections.assocDiaSourceTable == drpDiaCalculation.connections.assocDiaSourceTable
+  - drpAssociation.connections.diaObjectTable == drpDiaCalculation.connections.diaObjectTable
