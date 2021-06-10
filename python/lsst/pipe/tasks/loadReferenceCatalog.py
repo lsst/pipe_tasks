@@ -324,6 +324,10 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         # Search for a good filter to use to load the reference catalog
         # via the refObjLoader task which requires a valid filterName
         foundReferenceFilter = False
+        # Temporarily turn off proper motion because we do not need it to
+        # check the filter/flux names.
+        _requireProperMotion = self.refObjLoader.config.requireProperMotion
+        self.refObjLoader.config.requireProperMotion = False
         for filterName in filterList:
             if self.config.refObjLoader.anyFilterMapsToThis is not None:
                 refFilterName = self.config.refObjLoader.anyFilterMapsToThis
@@ -331,7 +335,6 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                 refFilterName = self.config.refObjLoader.filterMap.get(filterName)
             if refFilterName is None:
                 continue
-
             try:
                 results = self.refObjLoader.loadSkyCircle(center,
                                                           0.05*lsst.geom.degrees,
@@ -343,6 +346,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                 # This just means that the filterName wasn't listed
                 # in the reference catalog.  This is okay.
                 pass
+        self.refObjLoader.config.requireProperMotion = _requireProperMotion
 
         if not foundReferenceFilter:
             raise RuntimeError("Could not find any valid flux field(s) %s" %
