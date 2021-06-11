@@ -48,7 +48,7 @@ class LoadReferenceCatalogConfig(pexConfig.Config):
         doc="Reference object loader for photometry",
     )
     doApplyColorTerms = pexConfig.Field(
-        doc=("Apply photometric color terms to reference stars?"
+        doc=("Apply photometric color terms to reference stars? "
              "Requires that colorterms be set to a ColorTermLibrary"),
         dtype=bool,
         default=True
@@ -115,9 +115,9 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                            bboxToSpherePadding=None):
         """Get a multi-band reference catalog by specifying a bounding box and WCS.
 
-        The catalog will be in `numpy.ndarray`, with positions proper-motion corrected to
-        "epoch" (if specified, and if the reference catalog has proper motions);
-        sources cut on a reference selector (if
+        The catalog will be in `numpy.ndarray`, with positions proper-motion
+        corrected to "epoch" (if specified, and if the reference catalog has
+        proper motions); sources cut on a reference selector (if
         "config.doReferenceSelection = True"); and color-terms applied (if
         "config.doApplyColorTerms = True").
 
@@ -128,7 +128,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                  ('refMag', 'np.float32', (len(filterList), )),
                  ('refMagErr', 'np.float32', (len(filterList), ))]
 
-        Reference magnitudes (AB) will be 99 for non-detections in a given band.
+        Reference magnitudes (AB) and errors will be 99 for non-detections
+        in a given band.
 
         Parameters
         ----------
@@ -140,8 +141,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         filterList : `List` [ `str` ]
             List of camera physicalFilter names to retrieve magnitudes.
         epoch : `astropy.time.Time`, optional
-            Epoch to which to correct proper motion and parallax (if available),
-            or `None` to not apply such corrections.
+            Epoch to which to correct proper motion and parallax
+            (if available), or `None` to not apply such corrections.
         bboxToSpherePadding : `int`, optional
             Padding to account for translating a set of corners into a
             spherical (convex) boundary that is certain to encompass the
@@ -172,9 +173,9 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                             catalogFormat='numpy'):
         """Get a multi-band reference catalog by specifying a center and radius.
 
-        The catalog will be in `numpy.ndarray`, with positions proper-motion corrected to
-        "epoch" (if specified, and if the reference catalog has proper motions);
-        sources cut on a reference selector (if
+        The catalog will be in `numpy.ndarray`, with positions proper-motion
+        corrected to "epoch" (if specified, and if the reference catalog has
+        proper motions); sources cut on a reference selector (if
         "config.doReferenceSelection = True"); and color-terms applied (if
         "config.doApplyColorTerms = True").
 
@@ -185,7 +186,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                  ('refMag', 'np.float32', (len(filterList), )),
                  ('refMagErr', 'np.float32', (len(filterList), ))]
 
-        Reference magnitudes (AB) will be 99 for non-detections in a given band.
+        Reference magnitudes (AB) and errors will be 99 for non-detections
+        in a given band.
 
         Parameters
         ----------
@@ -196,8 +198,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         filterList : `List` [ `str` ]
             List of camera physicalFilter names to retrieve magnitudes.
         epoch : `astropy.time.Time`, optional
-            Epoch to which to correct proper motion and parallax (if available),
-            or `None` to not apply such corrections.
+            Epoch to which to correct proper motion and parallax
+            (if available), or `None` to not apply such corrections.
 
         Parameters
         ----------
@@ -275,18 +277,18 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                     # There is no matching reference band.
                     # This will leave the column filled with 99s
                     continue
-                self.log.debug(f"Applying color terms for filtername={filterName}")
+                self.log.debug("Applying color terms for filterName='%s'", filterName)
 
                 colorterm = self.config.colorterms.getColorterm(filterName, refCatName, doRaise=True)
 
                 refMag, refMagErr = colorterm.getCorrectedMagnitudes(refCat)
 
-                # nan_to_num replaces nans with zeros, and this ensures that we select
-                # magnitudes that both filter out nans and are not very large (corresponding
-                # to very small fluxes), as "99" is a commen sentinel for illegal magnitudes.
-
-                good, = np.where((np.nan_to_num(refMag[selected]) < 90.0)
-                                 & (np.nan_to_num(refMagErr[selected]) < 90.0)
+                # nan_to_num replaces nans with zeros, and this ensures
+                # that we select magnitudes that both filter out nans and are
+                # not very large (corresponding to very small fluxes), as "99"
+                # is a commen sentinel for illegal magnitudes.
+                good, = np.where((np.nan_to_num(refMag[selected], nan=99.0) < 90.0)
+                                 & (np.nan_to_num(refMagErr[selected], nan=99.0) < 90.0)
                                  & (np.nan_to_num(refMagErr[selected]) > 0.0))
 
                 npRefCat['refMag'][good, i] = refMag[selected][good]
@@ -294,8 +296,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         else:
             # No color terms to apply
             for i, (filterName, fluxField) in enumerate(zip(self._fluxFilters, self._fluxFields)):
-                # nan_to_num replaces nans with zeros, and this ensures that we select
-                # fluxes that both filter out nans and are positive.
+                # nan_to_num replaces nans with zeros, and this ensures that
+                # we select fluxes that both filter out nans and are positive.
                 good, = np.where((np.nan_to_num(refCat[fluxField][selected]) > 0.0)
                                  & (np.nan_to_num(refCat[fluxField+'Err'][selected]) > 0.0))
                 refMag = (refCat[fluxField][selected][good]*units.nJy).to_value(units.ABmag)
@@ -318,9 +320,6 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         filterList : `list` [`str`]
             List of camera physicalFilter names.
         """
-        # Record self._fluxFilters for checks on subsequent calls
-        self._fluxFilters = filterList
-
         # Search for a good filter to use to load the reference catalog
         # via the refObjLoader task which requires a valid filterName
         foundReferenceFilter = False
@@ -342,15 +341,23 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                 foundReferenceFilter = True
                 self._referenceFilter = refFilterName
                 break
-            except RuntimeError:
+            except RuntimeError as err:
                 # This just means that the filterName wasn't listed
                 # in the reference catalog.  This is okay.
-                pass
+                if 'not find flux' in err.args[0]:
+                    # The filterName wasn't listed in the reference catalog.
+                    # This is not a fatal failure (yet)
+                    pass
+                else:
+                    raise err
         self.refObjLoader.config.requireProperMotion = _requireProperMotion
 
         if not foundReferenceFilter:
             raise RuntimeError("Could not find any valid flux field(s) %s" %
                                (", ".join(filterList)))
+
+        # Record self._fluxFilters for checks on subsequent calls
+        self._fluxFilters = filterList
 
         # Retrieve all the fluxField names
         self._fluxFields = []
