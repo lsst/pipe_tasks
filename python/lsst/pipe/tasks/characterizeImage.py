@@ -76,10 +76,10 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
         storageClass="SourceCatalog",
     )
 
-    def adjustQuantum(self, inputs, label, dataId):
+    def adjustQuantum(self, inputs, outputs, label, dataId):
         # Docstring inherited from PipelineTaskConnections
         try:
-            return super().adjustQuantum(inputs, label, dataId)
+            return super().adjustQuantum(inputs, outputs, label, dataId)
         except pipeBase.ScalarError as err:
             raise pipeBase.ScalarError(
                 "CharacterizeImageTask can at present only be run on visits that are associated with "
