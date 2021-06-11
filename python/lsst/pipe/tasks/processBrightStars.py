@@ -353,7 +353,15 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         Returns
         -------
-        warpedStars : `list` [`afwImage.maskedImage.maskedImage.MaskedImage`]
+        result : `lsst.pipe.base.Struct`
+            Result struct with components:
+
+            - ``warpedStars``:
+                  `list` [`afwImage.maskedImage.maskedImage.MaskedImage`] of
+                  stamps of warped stars
+            - ``warpTransforms``: `list` [`afwGeom.TransformPoint2ToPoint2`] of
+                  the corresponding Transform from the initial star stamp to
+                  the common model grid
         """
         # warping control; only contains shiftingALg provided in config
         warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
@@ -375,7 +383,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         nb90Rots = np.argmin(np.abs(possibleRots - float(yaw)))
 
         # apply transformation to each star
-        warpedStars = []
+        warpedStars, warpTransforms = [], []
         for star, cent in zip(stamps, pixCenters):
             # (re)create empty destination image
             destImage = afwImage.MaskedImageF(*self.modelStampSize)
@@ -407,11 +415,12 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             # Arbitrarily set origin of shifted star to 0
             destImage.setXY0(0, 0)
 
-            # Apply rotation if apropriate
+            # Apply rotation if appropriate
             if nb90Rots:
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
             warpedStars.append(destImage.clone())
-        return warpedStars
+            warpTransforms.append(starWarper)
+        return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms)
 
     @pipeBase.timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None, skyCorr=None):
@@ -454,11 +463,14 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         # Warp (and shift, and potentially rotate) them
         self.log.info("Applying warp and/or shift to %i star stamps from exposure %s",
                       len(extractedStamps.starIms), dataId)
-        warpedStars = self.warpStamps(extractedStamps.starIms, extractedStamps.pixCenters)
+        warpOutputs = self.warpStamps(extractedStamps.starIms, extractedStamps.pixCenters)
+        warpedStars = warpOutputs.warpedStars
         brightStarList = [bSS.BrightStarStamp(stamp_im=warp,
+                                              archive_element=transform,
                                               gaiaGMag=extractedStamps.GMags[j],
                                               gaiaId=extractedStamps.gaiaIds[j])
-                          for j, warp in enumerate(warpedStars)]
+                          for j, (warp, transform) in
+                          enumerate(zip(warpedStars, warpOutputs.warpTransforms))]
         # Compute annularFlux and normalize
         self.log.info("Computing annular flux and normalizing %i bright stars from exposure %s",
                       len(warpedStars), dataId)
@@ -472,6 +484,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                                                  innerRadius=innerRadius,
                                                                  outerRadius=outerRadius,
                                                                  imCenter=self.modelCenter,
+                                                                 use_archive=True,
                                                                  statsControl=statsControl,
                                                                  statsFlag=statsFlag,
                                                                  badMaskPlanes=self.config.badMaskPlanes,
