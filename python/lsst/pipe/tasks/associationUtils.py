@@ -45,7 +45,7 @@ def toIndex(nside, ra, dec):
     index : `int`
         Unique healpix pixel ID containing point RA, DEC at resolution nside.
     """
-    return hp.pixelfunc.ang2pix(nside, np.radians(-dec + 90.), np.radians(ra))
+    return hp.pixelfunc.ang2pix(nside, np.radians(-dec + 90), np.radians(ra))
 
 
 def toRaDec(nside, index):
@@ -159,7 +159,7 @@ def convert_spherical_array(array):
 
 
 def query_disc(nside, ra, dec, max_rad, min_rad=0):
-    """Get the list of healpix indices within max_rad,min_rad given in radians
+    """Get the list of healpix indices within max_rad, min_rad given in radians
     around ra,dec given in degrees
 
     Parameters
