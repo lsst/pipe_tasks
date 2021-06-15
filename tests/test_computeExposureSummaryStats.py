@@ -115,11 +115,10 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         # Need to compare background level and noise
         # These are only approximately 0+/-10 because of the small image
         self.assertFloatsAlmostEqual(summary.skyBg, -0.079, atol=1e-3)
-        self.assertFloatsAlmostEqual(summary.skyNoise, 9.816, atol=1e-3)
 
         self.assertFloatsAlmostEqual(summary.meanVar, skySigma**2.)
 
-        self.assertFloatsAlmostEqual(summary.zenithDistance, 59.42888, atol=1e-5)
+        self.assertFloatsAlmostEqual(summary.zenithDistance, 30.57112, atol=1e-5)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
