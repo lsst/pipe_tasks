@@ -37,7 +37,9 @@ class TestAssociationUtils(lsst.utils.tests.TestCase):
         """
         # Find nearest pixel to r=45, dec=45.
         nside = 128
-        centerPixNumber = hp.ang2pix(nside, 45, 45, lonlat=True)
+        testRa = 225
+        testDec = 45
+        centerPixNumber = hp.ang2pix(nside, testRa, testDec, lonlat=True)
         ra, dec = hp.pix2ang(nside, centerPixNumber, lonlat=True)
         # Test that only one pixel is found.
         pixelReturn = query_disc(nside, ra, dec, np.radians(0.1))

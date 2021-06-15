@@ -54,9 +54,9 @@ def toRaDec(nside, index):
     Parameters
     ----------
     nside : `int`
-        Resolution of healpixel "grid">
+        Resolution of healpixel "grid".
     index : `int`
-        Index of the healpix we want to find the location of.
+        Index of the healpix pixel we want to find the location of.
 
     Returns
     -------
@@ -97,7 +97,7 @@ def eq2xyzVec(ra, dec):
     """Convert equatorial ra,dec in degrees to x,y,z on the unit sphere
     parameters
 
-    Vetorized version of ``eq2xyz``
+    Vectorized version of ``eq2xyz``
 
     Parameters
     ----------
@@ -122,16 +122,16 @@ def eq2xyzVec(ra, dec):
 
 
 def convert_spherical(ra, dec):
-    """Convert from ra,dec to spherical.
+    """Convert from ra,dec to spherical coordinates.
 
     Used in query_disc.
 
     Parameters
     ----------
     ra : `float`
-        RA in degrees.
+        RA in radians.
     dec : `float`
-        Declination in degrees
+        Declination in radians
     """
     return np.dstack([np.cos(dec*np.pi/180)*np.cos(ra*np.pi/180),
                       np.cos(dec*np.pi/180)*np.sin(ra*np.pi/180),
@@ -139,7 +139,7 @@ def convert_spherical(ra, dec):
 
 
 def convert_spherical_array(array):
-    """Convert from and a array ra,dec to spherical.
+    """Convert from and a array ra,dec to spherical coordinates.
 
     Used in query_disc
 
@@ -173,7 +173,7 @@ def query_disc(nside, ra, dec, max_rad, min_rad=0):
     max_rad : `float`
         Max distance in radians to search nearby healpixels.
     min_rad : `float`, optional
-        Minimum distance to search healpixels. Default = 0.
+        Minimum distance in radians to search healpixels. Default = 0.
     """
     if np.isscalar(ra):
         ra = np.array([ra])
