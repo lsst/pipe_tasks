@@ -1158,6 +1158,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             rec['skyBg'] = summaryStats.skyBg
             rec['skyNoise'] = summaryStats.skyNoise
             rec['meanVar'] = summaryStats.meanVar
+            rec['astromOffsetMean'] = summaryStats.astromOffsetMean
+            rec['astromOffsetStd'] = summaryStats.astromOffsetStd
 
         metadata = dafBase.PropertyList()
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
@@ -1202,6 +1204,10 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                         doc='Average sky noise (ADU)')
         schema.addField('meanVar', type='F',
                         doc='Mean variance of the weight plane (ADU**2)')
+        schema.addField('astromOffsetMean', type='F',
+                        doc='Mean offset of astrometric calibration matches (arcsec)')
+        schema.addField('astromOffsetStd', type='F',
+                        doc='Standard deviation of offsets of astrometric calibration matches (arcsec)')
 
         return schema
 
