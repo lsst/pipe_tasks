@@ -1,5 +1,5 @@
 #
-# This file is part of ap_pipe.
+# This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -34,7 +34,7 @@ from lsst.pipe.base import testUtils
 import lsst.skymap as skyMap
 import lsst.utils.tests
 
-from lsst.ap.pipe.matchApFakes import MatchApFakesTask, MatchApFakesConfig
+from lsst.pipe.tasks.matchApFakes import MatchApFakesTask, MatchApFakesConfig
 from lsst.ap.pipe.createApFakes import CreateRandomApFakesTask, CreateRandomApFakesConfig
 
 
