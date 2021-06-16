@@ -40,6 +40,8 @@ from lsst.meas.deblender import SourceDeblendTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
+from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
+
 
 __all__ = ["CalibrateConfig", "CalibrateTask"]
 
@@ -286,6 +288,15 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         doc="Injection of fake sources for testing purposes (must be "
             "retargeted)"
     )
+    doComputeSummaryStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Run subtask to measure exposure summary statistics?"
+    )
+    computeSummaryStats = pexConfig.ConfigurableField(
+        target=ComputeExposureSummaryStatsTask,
+        doc="Subtask to run computeSummaryStats on exposure"
+    )
     doWriteExposure = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -522,6 +533,8 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 photoRefObjLoader = self.photoRefObjLoader
             self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader,
                              schema=self.schema)
+        if self.config.doComputeSummaryStats:
+            self.makeSubtask('computeSummaryStats')
 
         if initInputs is not None and (astromRefObjLoader is not None or photoRefObjLoader is not None):
             raise RuntimeError("PipelineTask form of this task should not be initialized with "
@@ -776,6 +789,12 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             if icSourceCat is not None and len(self.config.icSourceFieldsToCopy) > 0:
                 self.copyIcSourceFields(icSourceCat=icSourceCat,
                                         sourceCat=sourceCat)
+
+        if self.config.doComputeSummaryStats:
+            summary = self.computeSummaryStats.run(exposure=exposure,
+                                                   sources=sourceCat,
+                                                   background=background)
+            exposure.getInfo().setSummaryStats(summary)
 
         frame = getDebugFrame(self._display, "calibrate")
         if frame:
